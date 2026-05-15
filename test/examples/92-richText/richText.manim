@@ -57,16 +57,16 @@ version: 1.0
         condenseWhite: true): 4, 4;
   }
 
-  // Row 8: Plain text — no markup, still uses h2d.HtmlText
+  // Row 8: [br] line break tag
   point {
     pos: 10, 400
-    bitmap(generated(color(600, 40, #333)));
-    @scale(2) richText(dd, "plain text no markup", yellow, left, 600): 4, 4;
+    bitmap(generated(color(600, 60, #333)));
+    @scale(2) richText(dd, "Disable all enemy[br]systems 1 turn", yellow, left, 600): 4, 4;
   }
 
   // Row 9: Hyperlinks
   point {
-    pos: 10, 450
+    pos: 10, 470
     bitmap(generated(color(600, 40, #333)));
     @scale(2) richText(dd, "Visit [link:shop][hl]the shop[/][/] or [link:inv][hl]inventory[/][/]", white, left, 600,
         styles: {hl: color(cyan)}): 4, 4;

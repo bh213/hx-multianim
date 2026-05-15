@@ -1,6 +1,5 @@
 package bh.base;
 import bh.base.Hex;
-import hxd.Math;
 
 
 abstract Degree(Float) {
@@ -14,11 +13,11 @@ abstract Degree(Float) {
     }
 	
 	@:to inline public function toRadians():Radian {
-		return new Radian(this / 180 * Math.PI);
+		return new Radian(this / 180 * std.Math.PI);
 	  }
 
     @:from static inline function fromRadian(radians:Radian):Degree {
-        return new Degree(radians.radiansValue() * 180.0 / Math.PI);
+        return new Degree(radians.radiansValue() * 180.0 / std.Math.PI);
     }
     public inline function degreesValue ():Float return this;
 }
@@ -27,7 +26,7 @@ abstract Radian(Float) {
 
 	
 	public static function fromDegreeValue(value:Float) {
-		return new Radian(value / 180.0 * Math.PI);
+		return new Radian(value / 180.0 * std.Math.PI);
 	}
 
 	public static function fromValue(value:Float) {
@@ -38,11 +37,11 @@ abstract Radian(Float) {
     }
 
 	@:to inline public  function toDegrees():Degree {
-		return new Degree(this * 180 / Math.PI);
+		return new Degree(this * 180 / std.Math.PI);
 	  }
 
     @:from static inline function fromDegree (d:Degree):Radian {
-        return new Radian(d.degreesValue() / 180.0 * Math.PI);
+        return new Radian(d.degreesValue() / 180.0 * std.Math.PI);
     }
 
     public inline function radiansValue ():Float return this;
@@ -149,7 +148,8 @@ enum abstract GridDirection(Int) {
 	}
 
 	public static function getRelativeDirection(attackDirection:GridDirection, objectDirection:GridDirection):RelativeDirection {
-		var relativeDirection = Math.iabs(attackDirection.toInt() - objectDirection.toInt());		
+		var diff = attackDirection.toInt() - objectDirection.toInt();
+		var relativeDirection = diff < 0 ? -diff : diff;		
 		switch relativeDirection {
 			case 0 : return BACK;
 			case 3 : return FRONT;

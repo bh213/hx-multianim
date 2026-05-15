@@ -1,0 +1,35 @@
+version: 1.0
+
+// Exercises BOTH codegen graphics() code paths in a single programmable.
+// Paired with the VisualTestBase LifecycleMode.DetachReattach hook to prove
+// vertex content survives an onRemove/onAdd cycle.
+//
+//   - Top-level graphics(...)           → field path  (ProgrammableCodeGen L3629)
+//   - repeatable { graphics(...) }      → runtime path (ProgrammableCodeGen L2685)
+//
+// Vanilla h2d.Graphics.clear() fires on remove, wiping the vertex buffer;
+// after reattach the object renders empty. KeepGraphics suppresses that
+// onRemove-triggered clear. If either codegen site regresses to vanilla
+// h2d.Graphics, the matching row below renders blank post-reattach.
+
+#codegenGraphicsReattach programmable(count:uint=5) {
+  // --- Field-path row (Site 2) ---
+  graphics (
+    rect(#f00, filled, 50, 30): 0, 0
+    circle(#0f0, filled, 18): 75, 15
+    roundRect(#00f, filled, 50, 30, 6): 105, 0
+    circle(#ff0, 3, 15): 185, 15
+    line(#0ff, 3, -15, -12, 15, 12): 225, 15
+  ): 20, 20
+
+  // --- Runtime-path row (Site 1: graphics inside param-dependent repeatable) ---
+  // Param-dependent count ($count) forces codegen into processRuntimeRepeat,
+  // which emits graphics via the _rt_g runtime path instead of unrolling.
+  repeatable ($i, step($count, dx: 50)) {
+    pos: 20, 70
+    graphics (
+      rect(#f0f, filled, 30, 20): 0, 0
+      circle(#0ff, 2, 8): 15, 30
+    ): 0, 0
+  }
+}

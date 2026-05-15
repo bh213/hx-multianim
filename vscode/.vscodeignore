@@ -1,0 +1,8 @@
+src/**
+node_modules/**
+.vscode/**
+tsconfig.json
+*.ts
+sync-check.js
+test/**
+.gitignore

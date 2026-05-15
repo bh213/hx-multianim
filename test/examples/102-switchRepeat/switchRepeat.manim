@@ -1,0 +1,103 @@
+version: 1.0
+
+// @switch with repeatable inside arms — tests incremental switch + repeatable count changes
+
+#switchRepeat programmable(mode:[items, grid]=items, count:uint=3) {
+  pos: 0, 0
+  @switch(mode) {
+    items {
+      repeatable($i, step($count, dx: 12)) {
+        bitmap(generated(color(10, 10, #0f0))): 0, 0
+      }
+    }
+    grid {
+      repeatable($i, step($count, dx: 12)) {
+        bitmap(generated(color(20, 10, #f00))): 0, 0
+      }
+    }
+  }
+}
+
+// Fixed repeatable count, switch changes which elements are shown
+#switchFixedRepeat programmable(style:[circles, squares]=circles) {
+  pos: 0, 0
+  @switch(style) {
+    circles {
+      repeatable($i, step(4, dx: 15)) {
+        bitmap(generated(color(10, 10, #00f))): 0, 0
+      }
+    }
+    squares {
+      repeatable($i, step(2, dx: 15)) {
+        bitmap(generated(color(30, 10, #ff0))): 0, 0
+      }
+    }
+  }
+}
+
+// @switch with text interpolation — inner param triggers rebuild
+#switchText programmable(mode:[hp, mp]=hp, value:uint=42) {
+  pos: 0, 0
+  @switch(mode) {
+    hp: text(dd, 'HP: ${value}', #f00): 0, 0;
+    mp: text(dd, 'MP: ${value}', #00f): 0, 0;
+  }
+}
+
+// Nested @switch: outer on shape, inner on size
+#switchNested programmable(shape:[circle, square]=circle, size:[small, big]=small) {
+  pos: 0, 0
+  @switch(shape) {
+    circle {
+      @switch(size) {
+        small: bitmap(generated(color(10, 10, #0f0))): 0, 0;
+        big: bitmap(generated(color(20, 20, #0f0))): 0, 0;
+      }
+    }
+    square {
+      @switch(size) {
+        small: bitmap(generated(color(10, 10, #f00))): 0, 0;
+        big: bitmap(generated(color(20, 20, #f00))): 0, 0;
+      }
+    }
+  }
+}
+
+// @switch with $param expression in bitmap size
+#switchExpr programmable(mode:[a, b]=a, size:uint=10) {
+  pos: 0, 0
+  @switch(mode) {
+    a: bitmap(generated(color($size, $size, #0f0))): 0, 0;
+    b: bitmap(generated(color($size * 2, $size * 2, #f00))): 0, 0;
+  }
+}
+
+// Main display for visual test
+#switchRepeatDemo programmable() {
+  pos: 0, 0
+
+  text(m3x6, "@switch + repeatable", #888, left, 300):10,10;
+
+  // mode=items, count=3
+  staticRef($switchRepeat, mode=>items, count=>3):10,30;
+  text(m3x6, "items,3", #555, left, 80):10,44;
+
+  // mode=items, count=5
+  staticRef($switchRepeat, mode=>items, count=>5):10,60;
+  text(m3x6, "items,5", #555, left, 80):10,74;
+
+  // mode=grid, count=3
+  staticRef($switchRepeat, mode=>grid, count=>3):10,90;
+  text(m3x6, "grid,3", #555, left, 80):10,104;
+
+  // mode=grid, count=5
+  staticRef($switchRepeat, mode=>grid, count=>5):10,120;
+  text(m3x6, "grid,5", #555, left, 80):10,134;
+
+  // Fixed repeatable count switch
+  text(m3x6, "fixed repeat switch", #888, left, 300):10,160;
+  staticRef($switchFixedRepeat, style=>circles):10,176;
+  text(m3x6, "circles(4)", #555, left, 80):10,190;
+  staticRef($switchFixedRepeat, style=>squares):10,206;
+  text(m3x6, "squares(2)", #555, left, 80):10,220;
+}

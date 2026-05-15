@@ -1,0 +1,538 @@
+package bh.test.examples;
+
+import utest.Assert;
+import h2d.col.Point;
+import bh.ui.UIElement;
+import bh.ui.controllers.UIController;
+import bh.ui.controllers.UIDefaultController;
+
+/**
+ * Mock element with configurable hit area, priority, and consumed behavior.
+ */
+private class MockInteractive implements UIElement implements StandardUIElementEvents implements UIElementPriority {
+	public final name:String;
+	public var eventPriority(default, null):Int;
+	public var consumeEvents:Bool;
+	public var receivedEvents:Array<UIElementEvents> = [];
+
+	final x:Float;
+	final y:Float;
+	final w:Float;
+	final h:Float;
+
+	public function new(name:String, x:Float, y:Float, w:Float, h:Float, priority:Int = 0, consume:Bool = true) {
+		this.name = name;
+		this.x = x;
+		this.y = y;
+		this.w = w;
+		this.h = h;
+		this.eventPriority = priority;
+		this.consumeEvents = consume;
+	}
+
+	public function getObject():h2d.Object return new h2d.Object();
+
+	public function containsPoint(pos:Point):Bool {
+		return pos.x >= x && pos.x <= x + w && pos.y >= y && pos.y <= y + h;
+	}
+
+	public function clear():Void {}
+
+	public function onEvent(wrapper:UIElementEventWrapper):Void {
+		receivedEvents.push(wrapper.event);
+		wrapper.consumed = consumeEvents;
+	}
+
+	public function clearReceived():Void {
+		receivedEvents = [];
+	}
+}
+
+/**
+ * Mock element WITHOUT UIElementPriority — tests that non-priority elements default to 0.
+ */
+private class MockInteractiveNoPriority implements UIElement implements StandardUIElementEvents {
+	public final name:String;
+	public var consumeEvents:Bool;
+	public var receivedEvents:Array<UIElementEvents> = [];
+
+	final x:Float;
+	final y:Float;
+	final w:Float;
+	final h:Float;
+
+	public function new(name:String, x:Float, y:Float, w:Float, h:Float, consume:Bool = true) {
+		this.name = name;
+		this.x = x;
+		this.y = y;
+		this.w = w;
+		this.h = h;
+		this.consumeEvents = consume;
+	}
+
+	public function getObject():h2d.Object return new h2d.Object();
+
+	public function containsPoint(pos:Point):Bool {
+		return pos.x >= x && pos.x <= x + w && pos.y >= y && pos.y <= y + h;
+	}
+
+	public function clear():Void {}
+
+	public function onEvent(wrapper:UIElementEventWrapper):Void {
+		receivedEvents.push(wrapper.event);
+		wrapper.consumed = consumeEvents;
+	}
+
+	public function clearReceived():Void {
+		receivedEvents = [];
+	}
+}
+
+/**
+ * Mock UIControllerScreenIntegration for testing UIDefaultController in isolation.
+ */
+private class MockIntegration implements UIControllerScreenIntegration {
+	public var elements:Array<UIElement> = [];
+	public var dispatchedEvents:Array<UIScreenEvent> = [];
+
+	public function new() {}
+
+	public function dispatchScreenEvent(event:UIScreenEvent, source:Null<UIElement>):Void {
+		dispatchedEvents.push(event);
+	}
+
+	public function forEachElement(type:SubElementsType, fn:UIElement->Void):Void {
+		for (e in elements) fn(e);
+	}
+
+	public function onKey(keyCode:Int, release:Bool):Bool return true;
+	public function dispatchMouseMove(pos:Point):Bool return true;
+	public function onMouseWheel(pos:Point, delta:Float):Bool return true;
+	public function dispatchMouseClick(pos:Point, button:Int, release:Bool):Bool return true;
+}
+
+/**
+ * Mock integration that throws when its allocating getElements() is called.
+ * UIDefaultController must drive its hot path entirely through forEachElement —
+ * any caller that reaches for getElements re-introduces the Array + concat
+ * allocation shape this contract removes.
+ */
+private class ThrowingGetElementsIntegration implements UIControllerScreenIntegration {
+	public var elements:Array<UIElement> = [];
+	public var getElementsCallCount:Int = 0;
+
+	public function new() {}
+
+	public function dispatchScreenEvent(event:UIScreenEvent, source:Null<UIElement>):Void {}
+
+	public function getElements(type:SubElementsType):Array<UIElement> {
+		getElementsCallCount++;
+		throw "Production code must not call getElements() — use forEachElement";
+	}
+
+	public function forEachElement(type:SubElementsType, fn:UIElement->Void):Void {
+		for (e in elements) fn(e);
+	}
+
+	public function onKey(keyCode:Int, release:Bool):Bool return true;
+	public function dispatchMouseMove(pos:Point):Bool return true;
+	public function onMouseWheel(pos:Point, delta:Float):Bool return true;
+	public function dispatchMouseClick(pos:Point, button:Int, release:Bool):Bool return true;
+}
+
+/**
+ * Unit tests for event priority ordering and consumed bubbling in UIDefaultController.
+ */
+class EventPriorityTest extends utest.Test {
+	var integration:MockIntegration;
+	var controller:UIDefaultController;
+
+	function setup() {
+		integration = new MockIntegration();
+		controller = new UIDefaultController(integration);
+	}
+
+	static function eventWrapper():EventWrapper {
+		return {
+			sourceEvent: new hxd.Event(hxd.Event.EventKind.EPush),
+			mousePoint: new Point(0, 0),
+			scene: null
+		};
+	}
+
+	// ==================== Priority Ordering ====================
+
+	@Test
+	public function testHighPriorityReceivesEventFirst():Void {
+		var low = new MockInteractive("low", 0, 0, 100, 100, 0);
+		var high = new MockInteractive("high", 0, 0, 100, 100, 10);
+		// Register low first, high second — priority should override registration order
+		integration.elements = [low, high];
+
+		controller.handleClick(new Point(50, 50), 0, false, eventWrapper());
+
+		Assert.equals(1, high.receivedEvents.length);
+		Assert.equals(0, low.receivedEvents.length);
+	}
+
+	@Test
+	public function testHighPriorityRegisteredSecondStillWins():Void {
+		var high = new MockInteractive("high", 0, 0, 100, 100, 5);
+		var low = new MockInteractive("low", 0, 0, 100, 100, 1);
+		integration.elements = [high, low];
+
+		controller.handleClick(new Point(50, 50), 0, true, eventWrapper());
+
+		Assert.equals(1, high.receivedEvents.length);
+		Assert.equals(0, low.receivedEvents.length);
+	}
+
+	@Test
+	public function testEqualPriorityPreservesRegistrationOrder():Void {
+		var first = new MockInteractive("first", 0, 0, 100, 100, 0);
+		var second = new MockInteractive("second", 0, 0, 100, 100, 0);
+		integration.elements = [first, second];
+
+		controller.handleClick(new Point(50, 50), 0, false, eventWrapper());
+
+		// Both at priority 0, first registered wins (consumed by default)
+		Assert.equals(1, first.receivedEvents.length);
+		Assert.equals(0, second.receivedEvents.length);
+	}
+
+	// ==================== Consumed Bubbling ====================
+
+	@Test
+	public function testConsumedTrueStopsAtFirstElement():Void {
+		var top = new MockInteractive("top", 0, 0, 100, 100, 10, true);
+		var bottom = new MockInteractive("bottom", 0, 0, 100, 100, 0, true);
+		integration.elements = [top, bottom];
+
+		controller.handleClick(new Point(50, 50), 0, false, eventWrapper());
+
+		Assert.equals(1, top.receivedEvents.length);
+		Assert.equals(0, bottom.receivedEvents.length);
+	}
+
+	@Test
+	public function testConsumedFalseBubblesToNext():Void {
+		var top = new MockInteractive("top", 0, 0, 100, 100, 10, false);
+		var bottom = new MockInteractive("bottom", 0, 0, 100, 100, 0, true);
+		integration.elements = [top, bottom];
+
+		controller.handleClick(new Point(50, 50), 0, false, eventWrapper());
+
+		Assert.equals(1, top.receivedEvents.length);
+		Assert.equals(1, bottom.receivedEvents.length);
+	}
+
+	@Test
+	public function testBubbleThroughMultipleLayers():Void {
+		var a = new MockInteractive("a", 0, 0, 100, 100, 20, false);
+		var b = new MockInteractive("b", 0, 0, 100, 100, 10, false);
+		var c = new MockInteractive("c", 0, 0, 100, 100, 0, true);
+		integration.elements = [a, b, c];
+
+		controller.handleClick(new Point(50, 50), 0, false, eventWrapper());
+
+		// All three receive the event: a and b pass through, c consumes
+		Assert.equals(1, a.receivedEvents.length);
+		Assert.equals(1, b.receivedEvents.length);
+		Assert.equals(1, c.receivedEvents.length);
+	}
+
+	@Test
+	public function testBubbleStopsMidChain():Void {
+		var a = new MockInteractive("a", 0, 0, 100, 100, 20, false);
+		var b = new MockInteractive("b", 0, 0, 100, 100, 10, true); // consumes
+		var c = new MockInteractive("c", 0, 0, 100, 100, 0, true);
+		integration.elements = [a, b, c];
+
+		controller.handleClick(new Point(50, 50), 0, false, eventWrapper());
+
+		Assert.equals(1, a.receivedEvents.length);
+		Assert.equals(1, b.receivedEvents.length);
+		Assert.equals(0, c.receivedEvents.length); // never reached
+	}
+
+	@Test
+	public function testAllPassThroughNoneConsume():Void {
+		var a = new MockInteractive("a", 0, 0, 100, 100, 10, false);
+		var b = new MockInteractive("b", 0, 0, 100, 100, 0, false);
+		integration.elements = [a, b];
+
+		controller.handleClick(new Point(50, 50), 0, false, eventWrapper());
+
+		// Both receive the event, neither consumes
+		Assert.equals(1, a.receivedEvents.length);
+		Assert.equals(1, b.receivedEvents.length);
+	}
+
+	// ==================== Non-overlapping ====================
+
+	@Test
+	public function testNonOverlappingOnlyHitsTarget():Void {
+		var left = new MockInteractive("left", 0, 0, 50, 100, 10, true);
+		var right = new MockInteractive("right", 60, 0, 50, 100, 0, true);
+		integration.elements = [left, right];
+
+		controller.handleClick(new Point(70, 50), 0, false, eventWrapper());
+
+		Assert.equals(0, left.receivedEvents.length);
+		Assert.equals(1, right.receivedEvents.length);
+	}
+
+	@Test
+	public function testClickMissesAll():Void {
+		var elem = new MockInteractive("elem", 0, 0, 50, 50, 0, true);
+		integration.elements = [elem];
+
+		controller.handleClick(new Point(200, 200), 0, false, eventWrapper());
+
+		Assert.equals(0, elem.receivedEvents.length);
+	}
+
+	// ==================== Mixed Priority/NoPriority ====================
+
+	@Test
+	public function testNoPriorityElementDefaultsToZero():Void {
+		var high = new MockInteractive("high", 0, 0, 100, 100, 5, true);
+		var noPrio = new MockInteractiveNoPriority("noPrio", 0, 0, 100, 100, true);
+		// noPrio registered first, but high has priority 5
+		integration.elements = [noPrio, high];
+
+		controller.handleClick(new Point(50, 50), 0, false, eventWrapper());
+
+		Assert.equals(1, high.receivedEvents.length);
+		Assert.equals(0, noPrio.receivedEvents.length);
+	}
+
+	@Test
+	public function testNoPriorityBubblePassThrough():Void {
+		var noPrio = new MockInteractiveNoPriority("noPrio", 0, 0, 100, 100, false);
+		var fallback = new MockInteractive("fallback", 0, 0, 100, 100, 0, true);
+		integration.elements = [noPrio, fallback];
+
+		controller.handleClick(new Point(50, 50), 0, false, eventWrapper());
+
+		Assert.equals(1, noPrio.receivedEvents.length);
+		Assert.equals(1, fallback.receivedEvents.length);
+	}
+
+	// ==================== Release Events ====================
+
+	@Test
+	public function testReleaseEventBubbles():Void {
+		var top = new MockInteractive("top", 0, 0, 100, 100, 10, false);
+		var bottom = new MockInteractive("bottom", 0, 0, 100, 100, 0, true);
+		integration.elements = [top, bottom];
+
+		controller.handleClick(new Point(50, 50), 0, true, eventWrapper());
+
+		Assert.equals(1, top.receivedEvents.length);
+		Assert.equals(1, bottom.receivedEvents.length);
+		// Both should receive OnRelease
+		switch top.receivedEvents[0] { case OnRelease(_): Assert.pass(); default: Assert.fail("Expected OnRelease"); }
+		switch bottom.receivedEvents[0] { case OnRelease(_): Assert.pass(); default: Assert.fail("Expected OnRelease"); }
+	}
+
+	// ==================== Wheel Events ====================
+
+	@Test
+	public function testWheelEventRespectsConsumed():Void {
+		var top = new MockInteractive("top", 0, 0, 100, 100, 10, false);
+		var bottom = new MockInteractive("bottom", 0, 0, 100, 100, 0, true);
+		integration.elements = [top, bottom];
+
+		controller.handleMouseWheel(new Point(50, 50), 1.0, eventWrapper());
+
+		Assert.equals(1, top.receivedEvents.length);
+		Assert.equals(1, bottom.receivedEvents.length);
+	}
+
+	@Test
+	public function testWheelEventStopsWhenConsumed():Void {
+		var top = new MockInteractive("top", 0, 0, 100, 100, 10, true);
+		var bottom = new MockInteractive("bottom", 0, 0, 100, 100, 0, true);
+		integration.elements = [top, bottom];
+
+		controller.handleMouseWheel(new Point(50, 50), 1.0, eventWrapper());
+
+		Assert.equals(1, top.receivedEvents.length);
+		Assert.equals(0, bottom.receivedEvents.length);
+	}
+
+	// ==================== Key Events ====================
+
+	@Test
+	public function testKeyEventBubbles():Void {
+		var top = new MockInteractive("top", 0, 0, 100, 100, 10, false);
+		var bottom = new MockInteractive("bottom", 0, 0, 100, 100, 0, true);
+		integration.elements = [top, bottom];
+
+		controller.handleKey(32, false, new Point(50, 50), eventWrapper());
+
+		Assert.equals(1, top.receivedEvents.length);
+		Assert.equals(1, bottom.receivedEvents.length);
+	}
+
+	@Test
+	public function testKeyEventStopsWhenConsumed():Void {
+		var top = new MockInteractive("top", 0, 0, 100, 100, 10, true);
+		var bottom = new MockInteractive("bottom", 0, 0, 100, 100, 0, true);
+		integration.elements = [top, bottom];
+
+		controller.handleKey(32, false, new Point(50, 50), eventWrapper());
+
+		Assert.equals(1, top.receivedEvents.length);
+		Assert.equals(0, bottom.receivedEvents.length);
+	}
+
+	// ==================== Hover (Top Element Only) ====================
+
+	@Test
+	public function testHoverOnlyTopElement():Void {
+		var top = new MockInteractive("top", 0, 0, 100, 100, 10, false);
+		var bottom = new MockInteractive("bottom", 0, 0, 100, 100, 0, true);
+		integration.elements = [top, bottom];
+
+		// Move into the overlap area
+		controller.handleMove(new Point(50, 50), eventWrapper());
+
+		// Only top gets OnEnter (hover is single-element)
+		var topHasEnter = false;
+		for (e in top.receivedEvents) switch e { case OnEnter: topHasEnter = true; default: }
+		Assert.isTrue(topHasEnter);
+
+		var bottomHasEnter = false;
+		for (e in bottom.receivedEvents) switch e { case OnEnter: bottomHasEnter = true; default: }
+		Assert.isFalse(bottomHasEnter);
+	}
+
+	// ==================== eventPriority from .manim metadata ====================
+
+	@Test
+	public function testEventPriorityFromManimMetadata():Void {
+		var result = bh.test.BuilderTestBase.buildFromSource('
+			#test programmable() {
+				bitmap(generated(color(100, 100, #666666))): 0, 0
+				interactive(100, 100, "btn1", eventPriority:int => 42): 0, 0
+			}
+		', "test");
+		var wrapper = new bh.ui.UIInteractiveWrapper(result.interactives[0], null);
+		Assert.equals(42, wrapper.eventPriority);
+	}
+
+	// UIDefaultController.update / getEventElements call integration.getElements()
+	// every frame / every event, which allocates a defensive copy + concat. The fix
+	// adds a callback variant `forEachElement(type, fn)` that streams elements
+	// (and provider sub-elements) without building an array. This test pins the
+	// contract: the new method visits the same elements in the same order.
+	@Test
+	public function testIntegrationForEachElementVisitsAllElementsInOrder():Void {
+		var a = new MockInteractive("a", 0, 0, 10, 10);
+		var b = new MockInteractive("b", 0, 0, 10, 10);
+		var c = new MockInteractive("c", 0, 0, 10, 10);
+		integration.elements = [a, b, c];
+
+		var visited:Array<UIElement> = [];
+		integration.forEachElement(SETReceiveUpdates, function(e:UIElement):Void {
+			visited.push(e);
+		});
+
+		Assert.equals(3, visited.length,
+			"forEachElement must visit every element registered on the integration. "
+			+ "If this fires, the callback variant is dropping elements that getElements() returns.");
+		Assert.equals(cast a, visited[0], "forEachElement must preserve registration order.");
+		Assert.equals(cast b, visited[1], "forEachElement must preserve registration order.");
+		Assert.equals(cast c, visited[2], "forEachElement must preserve registration order.");
+	}
+
+	@Test
+	public function testEventPriorityDefaultZero():Void {
+		var result = bh.test.BuilderTestBase.buildFromSource('
+			#test programmable() {
+				bitmap(generated(color(100, 100, #666666))): 0, 0
+				interactive(100, 100, "btn1"): 0, 0
+			}
+		', "test");
+		var wrapper = new bh.ui.UIInteractiveWrapper(result.interactives[0], null);
+		Assert.equals(0, wrapper.eventPriority);
+	}
+
+	// ==================== Allocation Watchdog ====================
+
+	// getEventElements is called from handleMove / handleClick / handleMouseWheel /
+	// handleKey — i.e. once per input event. Each call must reuse the same scratch
+	// buffer instead of allocating a new Array<UIElement>. The capture-target
+	// short-circuit must also reuse scratch rather than returning a fresh single-
+	// element array.
+	#if MULTIANIM_ALLOC_TRACK
+	@Test
+	public function testGetEventElementsReusesScratchAcrossMouseMoves():Void {
+		var a = new MockInteractive("a", 0, 0, 100, 100, 0);
+		var b = new MockInteractive("b", 0, 0, 100, 100, 5);
+		integration.elements = [a, b];
+
+		// Warm-up — settles any first-call allocation that's not on the hot path.
+		controller.handleMove(new Point(50, 50), eventWrapper());
+
+		final baseline = UIDefaultController.hitsCreationCount;
+		for (i in 0...50) {
+			controller.handleMove(new Point(50 + (i % 10), 50), eventWrapper());
+		}
+		final delta = UIDefaultController.hitsCreationCount - baseline;
+		Assert.equals(0, delta,
+			"getEventElements must reuse instance scratch instead of allocating a new "
+			+ "Array<UIElement> per call (and per sort comparator). Got " + delta
+			+ " extra allocations across 50 handleMove calls.");
+	}
+
+	@Test
+	public function testGetEventElementsCaptureTargetShortCircuitReusesScratch():Void {
+		var a = new MockInteractive("a", 0, 0, 100, 100, 0);
+		integration.elements = [a];
+
+		// Force the capture-target short-circuit path inside getEventElements.
+		// Simulate a drag-like sequence: push, then move with target captured.
+		controller.handleClick(new Point(50, 50), 0, false, eventWrapper());
+		// Manually set capture target so the short-circuit branch is exercised.
+		@:privateAccess controller.controllable.captureEvents.target = a;
+
+		controller.handleMove(new Point(60, 50), eventWrapper());
+
+		final baseline = UIDefaultController.hitsCreationCount;
+		for (i in 0...50) {
+			controller.handleMove(new Point(60 + (i % 10), 50), eventWrapper());
+		}
+		final delta = UIDefaultController.hitsCreationCount - baseline;
+		Assert.equals(0, delta,
+			"getEventElements capture-target short-circuit must reuse scratch instead of "
+			+ "returning a fresh [target] array per call. Got " + delta
+			+ " extra allocations across 50 handleMove calls with capture target set.");
+	}
+	#end
+
+	// UIDefaultController's full input hot path — handleMove, handleClick (push +
+	// release), handleMouseWheel, handleKey — must drive element discovery through
+	// the streaming forEachElement API only. Reaching for the allocating
+	// getElements() Array + concat shape is the regression this pins against.
+	@Test
+	public function testUIDefaultControllerHotPathNeverCallsGetElements():Void {
+		var integ = new ThrowingGetElementsIntegration();
+		integ.elements = [new MockInteractive("a", 0, 0, 100, 100, 0)];
+		var ctrl = new UIDefaultController(integ);
+
+		ctrl.handleMove(new Point(50, 50), eventWrapper());
+		ctrl.handleClick(new Point(50, 50), 0, false, eventWrapper());
+		ctrl.handleClick(new Point(50, 50), 0, true, eventWrapper());
+		ctrl.handleMouseWheel(new Point(50, 50), 1.0, eventWrapper());
+		ctrl.handleKey(32, false, new Point(50, 50), eventWrapper());
+		ctrl.handleKey(32, true, new Point(50, 50), eventWrapper());
+
+		Assert.equals(0, integ.getElementsCallCount,
+			"UIDefaultController must not call integration.getElements() on any input "
+			+ "handler — production code path must stream via forEachElement to avoid "
+			+ "per-event Array allocation. Got " + integ.getElementsCallCount + " calls.");
+	}
+}

@@ -5,6 +5,11 @@ res/.tmp/
 test/screenshots/
 .claude/settings.local.json
 test/res/.tmp
-node_modules/
 .playwright-mcp/
 
+lsp/bin/
+vscode/out/
+vscode/node_modules/
+vscode/*.vsix
+
+.claude/worktrees/agent-*/

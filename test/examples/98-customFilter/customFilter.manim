@@ -1,0 +1,16 @@
+version: 1.0
+
+#customFilter programmable() {
+	bitmap(generated(color(420, 720, #FF4400))) {
+		filter: perlinNoise(7.0, 15.0, 0.5)
+		pos: 0, 0
+	}
+	bitmap(generated(color(420, 720, #0044FF))) {
+		filter: perlinNoise(42.0, 8.0, 0.6)
+		pos: 430, 0
+	}
+	bitmap(generated(color(420, 720, #00FF44))) {
+		filter: group(perlinNoise(42.0, 12.0, 0.8), outline(1, #000000))
+		pos: 860, 0
+	}
+}

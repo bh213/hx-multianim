@@ -14,6 +14,19 @@ class AnimationClip extends Drawable {
 	var frames:Array<AnimationFrame>;
 	var currentFrameIndex:Int = 0;
 
+	// Reused for setSingleFrame to keep the steady-state frame-swap path
+	// allocation-free. Constructed once per clip; slot is always overwritten
+	// before being assigned to `frames`.
+	@:nullSafety(Off) final _singleFrameBuf:Array<AnimationFrame> = [null];
+
+	// Allocation watchdog for tests. Gated behind MULTIANIM_ALLOC_TRACK so the
+	// per-call increment vanishes from production builds; setFrames is the
+	// array-accepting entry point and any caller invoking it on a per-frame
+	// hot path (e.g. AnimationSM state advance) is paying for an Array alloc.
+	#if MULTIANIM_ALLOC_TRACK
+	public static var setFramesCallCount:Int = 0;
+	#end
+
 	/**
 		Creates a new AnimationClip with the given frames.
 		@param frames Array of AnimationFrame objects to play.
@@ -27,7 +40,34 @@ class AnimationClip extends Drawable {
 		Sets new frames for the animation, resetting playback to the beginning.
 	**/
 	public function setFrames(frames:Array<AnimationFrame>):Void {
+		#if MULTIANIM_ALLOC_TRACK
+		setFramesCallCount++;
+		#end
 		this.frames = frames;
+		reset();
+	}
+
+	/**
+		Replaces the playlist with a single frame without allocating a wrapper array.
+		Use this on hot paths (e.g. AnimationSM frame advance) that previously called
+		`setFrames([frame])` once per state change.
+	**/
+	public function setSingleFrame(frame:AnimationFrame):Void {
+		// _singleFrameBuf may have length 0 after a prior clearFrames() call;
+		// Haxe's arr[0] = v auto-extends the array length in that case.
+		_singleFrameBuf[0] = frame;
+		this.frames = _singleFrameBuf;
+		reset();
+	}
+
+	/**
+		Empties the playlist without allocating a wrapper array.
+		Use this in place of `setFrames([])` on callers that just want to reset the
+		clip (e.g. AnimationSM.play / loadState).
+	**/
+	public function clearFrames():Void {
+		_singleFrameBuf.resize(0);
+		this.frames = _singleFrameBuf;
 		reset();
 	}
 

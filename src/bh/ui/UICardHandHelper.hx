@@ -11,11 +11,13 @@ import bh.ui.UICardHandTargeting;
 import bh.ui.UICardHandTypes;
 import bh.ui.UICardHandTypes.TargetHighlightCallback;
 import bh.ui.UICardHandTypes.TargetAcceptsCallback;
+import bh.ui.UICardHandTypes.TargetingZone;
 import bh.ui.UIElement.UIScreenEvent;
+import bh.ui.UIHigherOrderComponent;
 import bh.ui.UIInteractiveWrapper;
+import bh.ui.UIComponentHost;
 import bh.ui.UIRichInteractiveHelper;
 import bh.ui.screens.UIScreen.LayersEnum;
-import bh.ui.screens.UIScreen.UIScreenBase;
 
 private class CardEntry {
 	public var descriptor:CardDescriptor;
@@ -24,6 +26,14 @@ private class CardEntry {
 	public var state:CardState = InHand;
 	public var layoutPos:CardLayoutPosition;
 	public var interactiveId:String;
+	/** Deferred enable: if card is disabled during animation and re-enabled before it completes,
+	 *  this flag causes the onComplete handler to restore InHand instead of staying Disabled. */
+	public var enableAfterAnimation:Bool = false;
+	/** Rebuild listener installed on the card's BuilderResult so that any `@switch` arm flip
+	 *  or other structural rebuild inside the card resyncs `interactiveHelper`'s bindings.
+	 *  Stored here so it can be removed when the card is discarded. Null if the card's result
+	 *  is not in incremental mode. */
+	public var rebuildListener:Null<Void -> Void> = null;
 
 	public function new(descriptor:CardDescriptor, result:BuilderResult, container:h2d.Object, interactiveId:String) {
 		this.descriptor = descriptor;
@@ -39,9 +49,24 @@ private class ActiveAnimation {
 	public var anim:AnimatedPath;
 	public var startRotation:Float;
 	public var endRotation:Float;
-	public var onComplete:() -> Void;
+	// Null when caller has no completion work — avoids constructing a throwaway empty
+	// closure on hot paths (e.g. applyLayout(true)'s per-card rearrange).
+	public var onComplete:Null<() -> Void>;
 
-	public function new(entry:CardEntry, anim:AnimatedPath, startRotation:Float, endRotation:Float, onComplete:() -> Void) {
+	// When true, completion (and removeAnimationsForEntry displacement) calls
+	// resolveAnimationComplete on the entry. Lets rearrangeCards drop its per-card
+	// closure: the closure only existed to drive the Disabled+enableAfterAnimation
+	// transition, which is otherwise a no-op for InHand/Hovered cards.
+	public var resolveOnComplete:Bool = false;
+
+	/** When non-null, this is a tracking draw animation that re-stretches each frame
+	 *  from `trackingFrom` toward `entry.layoutPos`. The AnimatedPath is built with
+	 *  no normalization — `rawEndpoint` is the untransformed path endpoint used to
+	 *  compute the stretch transform. */
+	public var trackingFrom:Null<FPoint> = null;
+	public var rawEndpoint:Null<FPoint> = null;
+
+	public function new(entry:CardEntry, anim:AnimatedPath, startRotation:Float, endRotation:Float, onComplete:Null<() -> Void>) {
 		this.entry = entry;
 		this.anim = anim;
 		this.startRotation = startRotation;
@@ -107,8 +132,17 @@ private class ActiveAnimation {
  *  };
  *  cardHand.drawCard({ id: "card1", buildName: "card", params: [...] });
  *  ``` */
-class UICardHandHelper {
-	final screen:UIScreenBase;
+class UICardHandHelper implements UIHigherOrderComponent {
+	// Per-helper scratch buffer reused by getCardAtBasePosition. Overwritten on
+	// entry and consumed (read out into a local result) before any other call on
+	// this helper — no reentrancy hazard because the consumer loop is pure float
+	// math with no callbacks. Was previously `static final` (shared across all
+	// helper instances); split per-instance so a second card-hand in the scene
+	// can't clobber another helper's mid-iteration buffer if any future code
+	// path ever interleaves their hit-tests.
+	final _scratchPositions:Array<CardLayoutPosition> = [];
+
+	final screen:UIComponentHost;
 	final builder:MultiAnimBuilder;
 	final interactiveHelper:UIRichInteractiveHelper;
 
@@ -126,6 +160,7 @@ class UICardHandHelper {
 	final hoverScale:Float;
 	final hoverNeighborSpread:Float;
 	final targetingThresholdY:Float;
+	var targetingZones:Array<TargetingZone>;
 	final allowCardToCard:Bool;
 	final cardToCardHighlightScale:Float;
 	final cardToCardHoverPop:Bool;
@@ -158,6 +193,9 @@ class UICardHandHelper {
 	public var returnDuration:Float = 0;
 	public var rearrangeDuration:Float = 0;
 
+	/** When true, the system cursor is hidden while in targeting mode (arrow replaces cursor). */
+	public var hideCursorWhileTargeting:Bool = false;
+
 	// Scene graph
 	final handContainer:h2d.Layers;
 	final dragContainer:h2d.Layers; // Same local space as handContainer, higher z-layer for dragged cards
@@ -176,6 +214,13 @@ class UICardHandHelper {
 	var cursorY:Float = 0;
 	var sceneCursorX:Float = 0; // scene space — for interactive containsPoint
 	var sceneCursorY:Float = 0;
+	// Reused scratch buffer for scene->local conversions on mouse events. globalToLocal mutates
+	// its input in place, so a single Point is safe to reuse across calls — avoids per-event GC.
+	var scratchPoint:h2d.col.Point = new h2d.col.Point();
+	// Reused scratch FPoints for animateCardTo's createProjectilePath call. applyStretch reads
+	// x/y and forgets, so a single pair is safe across calls. Helper is single-threaded.
+	var scratchFromFPoint:FPoint = new FPoint(0, 0);
+	var scratchToFPoint:FPoint = new FPoint(0, 0);
 	var cardToCardTarget:Null<CardEntry> = null;
 	var currentTargetId:Null<String> = null;
 	var nextCardSeq:Int = 0;
@@ -194,7 +239,20 @@ class UICardHandHelper {
 	/** Called before a card drag starts. Return false to prevent dragging. */
 	public var canDragCard:Null<(cardId:CardId) -> Bool> = null;
 
-	public function new(screen:UIScreenBase, builder:MultiAnimBuilder, ?config:CardHandConfig) {
+	/** Custom animation override for card PLAY (drag-release that succeeds).
+	 *  When set and returns true, replaces the default discard animation after a card is played.
+	 *  The container is already reparented to dragContainer at (fromX, fromY).
+	 *  You MUST call onDone() when the animation finishes to clean up the container.
+	 *  Return false to fall through to the default discardPath animation. */
+	public var customPlayAnimation:Null<(cardId:CardId, container:h2d.Object, fromX:Float, fromY:Float, onDone:() -> Void) -> Bool> = null;
+
+	/** Custom animation override for card DISCARD via API (end-of-turn, forced discard).
+	 *  When set and returns true, replaces the default discard animation.
+	 *  You MUST call onDone() when the animation finishes to clean up the container.
+	 *  Return false to fall through to the default discardPath animation. */
+	public var customDiscardAnimation:Null<(cardId:CardId, container:h2d.Object, fromX:Float, fromY:Float, onDone:() -> Void) -> Bool> = null;
+
+	public function new(screen:UIComponentHost, builder:MultiAnimBuilder, ?config:CardHandConfig) {
 		this.screen = screen;
 		this.builder = builder;
 		this.interactiveHelper = new UIRichInteractiveHelper(screen);
@@ -213,6 +271,14 @@ class UICardHandHelper {
 		hoverScale = config != null && config.hoverScale != null ? config.hoverScale : 1.15;
 		hoverNeighborSpread = config != null && config.hoverNeighborSpread != null ? config.hoverNeighborSpread : 20.0;
 		targetingThresholdY = config != null && config.targetingThresholdY != null ? config.targetingThresholdY : 100.0;
+
+		// Targeting zones: explicit zones override the legacy Y-threshold
+		if (config != null && config.targetingZones != null) {
+			targetingZones = config.targetingZones.copy();
+		} else {
+			targetingZones = [];
+		}
+
 		allowCardToCard = config != null && config.allowCardToCard != null ? config.allowCardToCard : false;
 		cardToCardHighlightScale = config != null && config.cardToCardHighlightScale != null ? config.cardToCardHighlightScale : 1.1;
 		cardToCardHoverPop = config != null && config.cardToCardHoverPop != null ? config.cardToCardHoverPop : false;
@@ -236,6 +302,12 @@ class UICardHandHelper {
 		discardPathName = config != null ? config.discardPathName : null;
 		returnPathName = config != null ? config.returnPathName : null;
 		rearrangePathName = config != null ? config.rearrangePathName : null;
+
+		// Validate path names exist in the builder (fail-fast vs deferred error at animation time)
+		validatePathName(drawPathName, "drawPathName");
+		validatePathName(discardPathName, "discardPathName");
+		validatePathName(returnPathName, "returnPathName");
+		validatePathName(rearrangePathName, "rearrangePathName");
 
 		// Scene graph — both containers are added via screen.addObjectToLayer so they
 		// end up in the same coordinate space (important when inside tab contentRoot).
@@ -267,7 +339,9 @@ class UICardHandHelper {
 		applyLayout(false);
 	}
 
-	/** Add a card to the hand with draw animation from the draw pile position. */
+	/** Add a card to the hand with draw animation from the draw pile position.
+	 *  The draw animation tracks the card's final layout position — if other cards
+	 *  are drawn/discarded during the animation, the endpoint updates dynamically. */
 	public function drawCard(descriptor:CardDescriptor, insertIndex:Int = -1):Void {
 		var entry = buildCardEntry(descriptor);
 		entry.state = Animating;
@@ -278,31 +352,31 @@ class UICardHandHelper {
 			cards.insert(insertIndex, entry);
 		addToHandLayer(entry);
 
-		// Compute new layout positions
+		// Compute layout so entry.layoutPos is set for all cards (including the new one)
 		var positions = computeLayout(-1);
 		var targetIdx = cards.indexOf(entry);
-		// Position new card at draw pile (scale/alpha controlled by animatedPath curves)
+		for (i in 0...cards.length)
+			if (i < positions.length)
+				cards[i].layoutPos = positions[i];
+
+		// Position new card at draw pile
 		entry.container.setPosition(drawPilePosition.x, drawPilePosition.y);
 		entry.container.rotation = 0;
 
-		// Animate new card to hand position using .manim path
+		// Animate using a tracking draw animation that re-stretches toward layoutPos each frame
 		if (targetIdx >= 0 && targetIdx < positions.length) {
-			var targetPos = positions[targetIdx];
-			entry.layoutPos = targetPos;
-			animateCardTo(entry, new FPoint(drawPilePosition.x, drawPilePosition.y), new FPoint(targetPos.x, targetPos.y), 0,
-				targetPos.rotation, drawPathName, () -> {
-					if (entry.state == Animating)
-						entry.state = InHand;
-					entry.container.scaleX = targetPos.scale;
-					entry.container.scaleY = targetPos.scale;
+			animateCardToTracking(entry, new FPoint(drawPilePosition.x, drawPilePosition.y), 0,
+				positions[targetIdx].rotation, drawPathName, () -> {
+					resolveAnimationComplete(entry);
+					entry.container.scaleX = entry.layoutPos.scale;
+					entry.container.scaleY = entry.layoutPos.scale;
 					emitEvent(DrawAnimComplete(descriptor.id));
-					// Use animated layout so cards smoothly rearrange to correct positions
-					// (draw target may be stale if multiple cards were drawn simultaneously)
+					// Final layout pass to ensure position is exact
 					applyLayout(true);
 				});
 		}
 
-		// Rearrange existing cards
+		// Rearrange existing cards to make room
 		rearrangeCards(positions, targetIdx);
 	}
 
@@ -319,24 +393,33 @@ class UICardHandHelper {
 			cancelDrag();
 
 		// Clear references to this card
-		if (hoveredEntry == entry)
+		if (hoveredEntry == entry) {
+			emitEvent(CardHoverEnd(entry.descriptor.id));
 			hoveredEntry = null;
+		}
 		if (cardToCardTarget == entry)
 			cardToCardTarget = null;
 
 		entry.state = Animating;
 
-		// Unregister interactive
-		interactiveHelper.unbind(entry.interactiveId);
-		screen.removeInteractives(entry.interactiveId);
+		// Unregister interactive + screen wrapper + rebuild listener
+		unregisterCardEntry(entry);
 
 		cards.splice(idx, 1);
 
-		var fromPos = new FPoint(entry.container.x, entry.container.y);
-		animateCardTo(entry, fromPos, discardPilePosition, entry.container.rotation, 0, discardPathName, () -> {
+		var fromX = entry.container.x;
+		var fromY = entry.container.y;
+		if (customDiscardAnimation != null && customDiscardAnimation(cardId, entry.container, fromX, fromY, () -> {
 			entry.container.remove();
 			emitEvent(DiscardAnimComplete(cardId));
-		});
+		})) {
+			// Custom discard animation took over
+		} else {
+			animateCardTo(entry, fromX, fromY, discardPilePosition.x, discardPilePosition.y, entry.container.rotation, 0, discardPathName, () -> {
+				entry.container.remove();
+				emitEvent(DiscardAnimComplete(cardId));
+			});
+		}
 
 		// Rearrange remaining cards
 		var positions = computeLayout(-1);
@@ -363,12 +446,21 @@ class UICardHandHelper {
 		if (!enabled && draggedEntry == entry)
 			cancelDrag();
 
-		// During animation, only Disabled overrides — enabling is deferred to onComplete
+		// During animation or disabled-while-animating: defer state changes
 		if (entry.state == Animating) {
-			if (!enabled)
+			if (!enabled) {
 				entry.state = Disabled;
+				entry.enableAfterAnimation = false;
+			} else {
+				// Already animating and enabled — no state change needed
+				entry.enableAfterAnimation = false;
+			}
+		} else if (entry.state == Disabled && isAnimatingEntry(entry)) {
+			// Card was disabled mid-animation; re-enabling defers to onComplete
+			entry.enableAfterAnimation = enabled;
 		} else {
 			entry.state = if (enabled) InHand else Disabled;
+			entry.enableAfterAnimation = false;
 		}
 
 		interactiveHelper.setDisabled(entry.interactiveId, !enabled);
@@ -384,12 +476,36 @@ class UICardHandHelper {
 		return [for (entry in cards) entry.descriptor.id];
 	}
 
+	/** Hit-test hand cards at scene coordinates. Returns the card ID under the point, or null.
+	 *  Uses base layout positions (no hover pop) for consistent detection. */
+	public function getCardIdAtPosition(sceneX:Float, sceneY:Float):Null<CardId> {
+		scratchPoint.x = sceneX;
+		scratchPoint.y = sceneY;
+		var local = handContainer.globalToLocal(scratchPoint);
+		var entry = getCardAtBasePosition(local.x, local.y);
+		return entry != null ? entry.descriptor.id : null;
+	}
+
 	/** Get the BuilderResult for a card (for direct parameter/slot access). */
 	public function getCardResult(cardId:CardId):Null<BuilderResult> {
 		var idx = findCardIndex(cardId);
 		if (idx < 0)
 			return null;
 		return cards[idx].result;
+	}
+
+	/** Find card ID by interactive ID. Returns null if no card owns this interactive. */
+	public function findCardIdByInteractiveId(interactiveId:String):Null<CardId> {
+		var entry = findCardByInteractiveId(interactiveId);
+		return entry != null ? entry.descriptor.id : null;
+	}
+
+	/** Check if a card is currently in hand (not animating, disabled, or dragging). */
+	public function isCardInHand(cardId:CardId):Bool {
+		var idx = findCardIndex(cardId);
+		if (idx < 0)
+			return false;
+		return cards[idx].state == InHand || cards[idx].state == Hovered;
 	}
 
 	// === Public API: Targeting ===
@@ -419,11 +535,68 @@ class UICardHandHelper {
 		targeting.acceptsFilter = cb;
 	}
 
+	// === Public API: Targeting Zones ===
+
+	/** Add a targeting zone. When the cursor enters any zone during drag, targeting mode activates.
+	 *  Coordinates are in handContainer's local space. */
+	public function addTargetingZone(zone:TargetingZone):Void {
+		// Replace existing zone with same id
+		for (i in 0...targetingZones.length) {
+			if (targetingZones[i].id == zone.id) {
+				targetingZones[i] = zone;
+				return;
+			}
+		}
+		targetingZones.push(zone);
+	}
+
+	/** Remove a targeting zone by id. */
+	public function removeTargetingZone(id:String):Void {
+		var i = 0;
+		while (i < targetingZones.length) {
+			if (targetingZones[i].id == id) {
+				targetingZones.splice(i, 1);
+				return;
+			}
+			i++;
+		}
+	}
+
+	/** Remove all targeting zones. Falls back to legacy Y-threshold behavior. */
+	public function clearTargetingZones():Void {
+		targetingZones = [];
+	}
+
 	// === Public API: Configuration ===
 
 	/** Enable or disable the targeting arrow visual (target detection still works). */
 	public function setArrowVisible(visible:Bool):Void {
 		targeting.arrowEnabled = visible;
+	}
+
+	/** Enable or disable arrow snap-to-target (arrow endpoint locks to target center by default). */
+	public function setArrowSnap(snap:Bool):Void {
+		targeting.snapToTarget = snap;
+	}
+
+	/** Set a custom arrow snap point provider. The callback receives the target wrapper and returns
+	 *  a point in the target's local space. When null (default), arrow snaps to interactive center.
+	 *  Example: snap to top-center of a 48x48 hex cell: `(w) -> new FPoint(24, 0)` */
+	public function setArrowSnapPointProvider(provider:Null<(UIInteractiveWrapper) -> FPoint>):Void {
+		targeting.arrowSnapPointProvider = provider;
+	}
+
+	/** Get the underlying targeting instance for direct access (e.g., sharing targets
+	 *  with other targeting systems like reactor click-to-target). */
+	public function getTargeting():UICardHandTargeting {
+		return targeting;
+	}
+
+	/** Get the targeting arrow's scene object for reparenting into a grid layer hierarchy.
+	 *  Use with `grid.addExternalObject(cardHand.getTargetingObject(), zOrder)` to control
+	 *  arrow z-ordering relative to grid layers. */
+	public function getTargetingObject():h2d.Object {
+		return targeting.getObject();
 	}
 
 	/** Show or hide the entire card hand (hand container + targeting arrow). */
@@ -437,6 +610,11 @@ class UICardHandHelper {
 		anchorX = x;
 		anchorY = y;
 		applyLayout(false);
+	}
+
+	/** Invalidate cached layout path (for hot-reload when .manim paths change). */
+	public function invalidateLayoutCache():Void {
+		resolvedPath = null;
 	}
 
 	// === Event Routing ===
@@ -455,8 +633,19 @@ class UICardHandHelper {
 
 				switch innerEvent {
 					case UIPush:
-						if (!isDragging)
-							return startDragFromInteractive(entry);
+						if (!isDragging) {
+							// Hover hit-test (getCardAtBasePosition) uses the base layout to
+							// avoid the popped card masking neighbors. Heaps routes UIPush to
+							// whichever Interactive physically contains the cursor — i.e.
+							// post-pop positions. When the hand overlaps and the hovered
+							// card has popped up out from under the cursor, the cursor sits
+							// in the popped card's old shadow over a neighbor's Interactive.
+							// Re-anchor to hoveredEntry so click follows the same hit-test
+							// as hover; fall back to the routed entry when nothing is
+							// hovered.
+							var dragEntry = hoveredEntry != null ? hoveredEntry : entry;
+							return startDragFromInteractive(dragEntry);
+						}
 					default:
 				}
 				return false;
@@ -472,7 +661,9 @@ class UICardHandHelper {
 	public function onMouseMove(screenX:Float, screenY:Float):Bool {
 		sceneCursorX = screenX;
 		sceneCursorY = screenY;
-		var local = handContainer.globalToLocal(new h2d.col.Point(screenX, screenY));
+		scratchPoint.x = screenX;
+		scratchPoint.y = screenY;
+		var local = handContainer.globalToLocal(scratchPoint);
 		cursorX = local.x;
 		cursorY = local.y;
 
@@ -494,7 +685,9 @@ class UICardHandHelper {
 	public function onMouseRelease(screenX:Float, screenY:Float):Bool {
 		sceneCursorX = screenX;
 		sceneCursorY = screenY;
-		var local = handContainer.globalToLocal(new h2d.col.Point(screenX, screenY));
+		scratchPoint.x = screenX;
+		scratchPoint.y = screenY;
+		var local = handContainer.globalToLocal(scratchPoint);
 		cursorX = local.x;
 		cursorY = local.y;
 
@@ -504,18 +697,63 @@ class UICardHandHelper {
 		return false;
 	}
 
-	/** Update animations. Call from screen's update(dt). */
+	/** Route mouse click events. Card hand does not consume raw click events. */
+	public function onMouseClick(sceneX:Float, sceneY:Float, button:Int):Bool {
+		return false;
+	}
+
+	/** Update animations. Call from screen's update(dt).
+	 *
+	 *  Two-phase: step-and-collect, then fire onCompletes after the iteration.
+	 *  See removeAnimationsForEntry — same re-entrancy hazard (drawCard's onComplete
+	 *  calls applyLayout(true) -> animateCardTo -> removeAnimationsForEntry, which
+	 *  splices entries; user onCardEvent handlers can also splice or replace
+	 *  activeAnimations). Firing inside the iteration would corrupt the outer index. */
 	public function update(dt:Float):Void {
+		if (activeAnimations.length == 0)
+			return;
+		var completed:Array<ActiveAnimation> = null;
 		var i = activeAnimations.length - 1;
 		while (i >= 0) {
 			var anim = activeAnimations[i];
 			var state = anim.anim.update(dt);
-
-			anim.entry.container.setPosition(state.position.x, state.position.y);
-
-			// Interpolate rotation alongside path
 			var rate = state.rate;
-			anim.entry.container.rotation = anim.startRotation + (anim.endRotation - anim.startRotation) * rate + state.rotation;
+
+			if (anim.trackingFrom != null) {
+				// Tracking draw animation: re-stretch raw position toward current layoutPos each frame
+				var from = anim.trackingFrom;
+				var target = anim.entry.layoutPos;
+				var rawEp = anim.rawEndpoint;
+				var rawDist = Math.sqrt(rawEp.x * rawEp.x + rawEp.y * rawEp.y);
+				if (rawDist < 1e-10) {
+					// Degenerate path — lerp directly
+					anim.entry.container.setPosition(
+						from.x + (target.x - from.x) * rate,
+						from.y + (target.y - from.y) * rate
+					);
+				} else {
+					var targetDist = Math.sqrt((target.x - from.x) * (target.x - from.x) + (target.y - from.y) * (target.y - from.y));
+					var targetAngle = Math.atan2(target.y - from.y, target.x - from.x);
+					var rawAngle = Math.atan2(rawEp.y, rawEp.x);
+					var rotation = targetAngle - rawAngle;
+					var scale = targetDist / rawDist;
+					var cosR = Math.cos(rotation);
+					var sinR = Math.sin(rotation);
+					// Transform raw path point: rotate, scale, translate to from
+					var rx = state.position.x;
+					var ry = state.position.y;
+					anim.entry.container.setPosition(
+						from.x + (rx * cosR - ry * sinR) * scale,
+						from.y + (rx * sinR + ry * cosR) * scale
+					);
+				}
+			} else {
+				anim.entry.container.setPosition(state.position.x, state.position.y);
+			}
+
+			// Interpolate rotation alongside path (tracking anims use dynamic end rotation from layoutPos)
+			var effectiveEndRotation = if (anim.trackingFrom != null) anim.entry.layoutPos.rotation else anim.endRotation;
+			anim.entry.container.rotation = anim.startRotation + (effectiveEndRotation - anim.startRotation) * rate + state.rotation;
 
 			// Apply scale/alpha from animated path curves (defined in .manim)
 			anim.entry.container.scaleX = state.scale;
@@ -523,16 +761,30 @@ class UICardHandHelper {
 			anim.entry.container.alpha = state.alpha;
 
 			if (state.done) {
+				if (completed == null)
+					completed = [];
+				completed.push(anim);
 				activeAnimations.splice(i, 1);
-				anim.onComplete();
 			}
 			i--;
 		}
+		if (completed != null) {
+			for (anim in completed) {
+				if (anim.resolveOnComplete) resolveAnimationComplete(anim.entry);
+				if (anim.onComplete != null) anim.onComplete();
+			}
+		}
+	}
+
+	/** Get the hand container. Note: CardHand also has a dragContainer at a higher layer. */
+	public function getObject():h2d.Object {
+		return handContainer;
 	}
 
 	/** Clean up all resources. */
 	public function dispose():Void {
 		clearHand();
+		chainedListeners.resize(0);
 		handContainer.remove();
 		dragContainer.remove();
 		targeting.clearTargets();
@@ -542,9 +794,7 @@ class UICardHandHelper {
 	// === Internal: Card building ===
 
 	function buildCardEntry(descriptor:CardDescriptor):CardEntry {
-		var params:Map<String, Dynamic> = descriptor.params != null ? descriptor.params.copy() : [];
-
-		var result = builder.buildWithParameters(descriptor.buildName, params, null, null, true);
+		var result = builder.buildWithParameters(descriptor.buildName, descriptor.params, null, null, true);
 
 		// Container is not parented here — caller adds it to handContainer (h2d.Layers)
 		// at the correct layer index to maintain proper z-ordering
@@ -566,6 +816,17 @@ class UICardHandHelper {
 
 		var entry = new CardEntry(descriptor, result, container, interactiveId);
 
+		// Install rebuild listener so the card hand's private `interactiveHelper` resyncs its
+		// bindings when the card's BuilderResult rebuilds (e.g. `@switch` arm flip inside the
+		// card's programmable). The screen's own resync listener is separately installed by
+		// `screen.addInteractives` above. Skip on non-incremental results — those can't rebuild.
+		if (result.isIncremental) {
+			final capturedEntry = entry;
+			final listener = () -> interactiveHelper.resync(capturedEntry.result, capturedEntry.interactiveId);
+			result.addRebuildListener(listener);
+			entry.rebuildListener = listener;
+		}
+
 		// Apply disabled state
 		var enabled = descriptor.enabled != null ? descriptor.enabled : true;
 		if (!enabled) {
@@ -580,13 +841,51 @@ class UICardHandHelper {
 		return entry;
 	}
 
+	/** Tear down all screen / helper / rebuild-listener bookkeeping for a card. Used by every
+	 *  removal site (discard, hand clear, play). Does NOT remove the card from `cards` or touch
+	 *  the scene graph — callers handle those site-specific steps around this call. */
+	function unregisterCardEntry(entry:CardEntry):Void {
+		interactiveHelper.unbind(entry.interactiveId);
+		screen.removeInteractives(entry.interactiveId);
+		if (entry.rebuildListener != null) {
+			entry.result.removeRebuildListener(entry.rebuildListener);
+			entry.rebuildListener = null;
+		}
+	}
+
 	function clearHand():Void {
+		if (isTargeting) {
+			if (hideCursorWhileTargeting)
+				hxd.System.setCursor(Default);
+			// Hide the arrow visual and clear any lingering target highlight — otherwise
+			// the arrow stays visible and `activeTargetId` outlives the cards it tracked.
+			targeting.clearLine();
+		}
+		// Drain in-flight animations and invoke each stored onComplete so listeners
+		// awaiting DrawAnimComplete / DiscardAnimComplete don't get stranded when the
+		// hand is reset mid-animation. Snapshot first so closures that re-enter (e.g.
+		// draw's applyLayout) don't mutate the iteration.
+		var pendingAnims = activeAnimations;
+		activeAnimations = [];
+		for (anim in pendingAnims) {
+			if (anim.resolveOnComplete) resolveAnimationComplete(anim.entry);
+			if (anim.onComplete != null) anim.onComplete();
+		}
+		// Cancel transition tweens on card subtrees and the targeting arrow before
+		// detaching containers — cancelAllChildren walks the parent chain to identify
+		// descendants, so it must run while cards are still parented to handContainer.
+		final tm = builder.tweenManager;
+		if (tm != null) {
+			tm.cancelAllChildren(handContainer);
+			tm.cancelAllChildren(dragContainer);
+		}
 		for (entry in cards) {
-			interactiveHelper.unbind(entry.interactiveId);
-			screen.removeInteractives(entry.interactiveId);
+			unregisterCardEntry(entry);
 			entry.container.remove();
 		}
 		cards = [];
+		// Clear again in case an onComplete (e.g. draw's applyLayout(true)) queued
+		// new rearrange animations on cards we just tore down.
 		activeAnimations = [];
 		hoveredEntry = null;
 		draggedEntry = null;
@@ -620,6 +919,30 @@ class UICardHandHelper {
 		}
 	}
 
+	/** Buffer-filling variant of computeLayout for hot-path callers (hover hit-test).
+	 *  Resizes `out` to cards.length and mutates entries in place — no allocation after
+	 *  the buffer warms up to the maximum hand size seen so far. */
+	function computeLayoutInto(hoverIdx:Int, out:Array<CardLayoutPosition>):Void {
+		switch (layoutMode) {
+			case Fan:
+				var spreadDeg = if (fanRadius > 0) hoverNeighborSpread / fanRadius * (180.0 / Math.PI) else hoverNeighborSpread;
+				UICardHandLayout.computeFanLayoutInto(out, cards.length, anchorX, anchorY, fanRadius, fanMaxAngle, hoverIdx, hoverPopDistance,
+					hoverScale, spreadDeg);
+			case Linear:
+				UICardHandLayout.computeLinearLayoutInto(out, cards.length, anchorX, anchorY, cardWidth, linearSpacing, linearMaxWidth, hoverIdx,
+					hoverPopDistance, hoverScale, hoverNeighborSpread);
+			case PathLayout:
+				var spreadRate = hoverNeighborSpread * 0.0025;
+				UICardHandLayout.computePathLayoutInto(out, cards.length, getLayoutPath(), pathDistribution, pathOrientation, hoverIdx,
+					hoverPopDistance, hoverScale, spreadRate);
+				// Offset path-local coordinates by anchor so path (0,0) maps to (anchorX, anchorY)
+				for (i in 0...out.length) {
+					out[i].x += anchorX;
+					out[i].y += anchorY;
+				}
+		}
+	}
+
 	function getLayoutPath():Path {
 		if (resolvedPath == null) {
 			if (layoutPathName == null)
@@ -644,11 +967,11 @@ class UICardHandHelper {
 				continue;
 
 			if (animated && entry.state == InHand) {
-				animateCardTo(entry, new FPoint(entry.container.x, entry.container.y), new FPoint(pos.x, pos.y), entry.container.rotation,
-					pos.rotation, rearrangePathName, () -> {});
+				animateCardTo(entry, entry.container.x, entry.container.y, pos.x, pos.y, entry.container.rotation,
+					pos.rotation, rearrangePathName, null);
 			} else if (entry.state != Animating) {
 				// Cancel any lingering rearrange animation so it doesn't override this instant position
-				activeAnimations = activeAnimations.filter(a -> a.entry != entry);
+				removeAnimationsForEntry(entry);
 				entry.container.setPosition(pos.x, pos.y);
 				entry.container.rotation = pos.rotation;
 				entry.container.scaleX = pos.scale;
@@ -667,13 +990,14 @@ class UICardHandHelper {
 
 			var pos = positions[i];
 			entry.layoutPos = pos;
-			animateCardTo(entry, new FPoint(entry.container.x, entry.container.y), new FPoint(pos.x, pos.y), entry.container.rotation,
-				pos.rotation, rearrangePathName, () -> {
-					if (entry.state == Animating)
-						entry.state = InHand;
-					entry.container.scaleX = pos.scale;
-					entry.container.scaleY = pos.scale;
-				});
+			// Null onComplete to skip allocating a closure per card per rearrange. The
+			// closure used to set scale (redundant — pos.scale is always 1.0 here since
+			// callers pass computeLayout(-1), and state.scale settles to 1.0 from the
+			// path on the final tick) and call resolveAnimationComplete (load-bearing
+			// for Disabled cards with a pending re-enable — now driven by the
+			// resolveOnComplete flag below).
+			animateCardTo(entry, entry.container.x, entry.container.y, pos.x, pos.y, entry.container.rotation,
+				pos.rotation, rearrangePathName, null, true);
 		}
 	}
 
@@ -773,6 +1097,8 @@ class UICardHandHelper {
 		if (cardToCardTarget == null)
 			return;
 		var targetIdx = cards.indexOf(cardToCardTarget);
+		if (targetIdx < 0)
+			return;
 
 		if (cardToCardSpread || cardToCardHoverPop) {
 			var hoverPositions = computeLayout(targetIdx);
@@ -836,8 +1162,9 @@ class UICardHandHelper {
 			}
 		}
 
-		// Priority 2: Targeting threshold (only when arrow enabled)
-		if (targeting.arrowEnabled && cursorY < anchorY - targetingThresholdY) {
+		// Priority 2: Targeting zones / threshold (only when arrow enabled AND card supports targeting)
+		var cardCanTarget = entry.descriptor.canTarget != null ? entry.descriptor.canTarget : true;
+		if (targeting.arrowEnabled && cardCanTarget && isInTargetingZone(cursorX, cursorY)) {
 			if (!isTargeting)
 				enterTargetingMode(entry);
 			// Card stays at hand position, arrow points from card to cursor
@@ -853,8 +1180,17 @@ class UICardHandHelper {
 				currentTargetId = null;
 			}
 			// Highlight targets under cursor during normal drag (no arrow)
-			if (!targeting.arrowEnabled)
+			if (!targeting.arrowEnabled || !cardCanTarget)
 				currentTargetId = targeting.updateHighlight(sceneCursorX, sceneCursorY, entry.descriptor.id);
+		}
+		// Override the arrow's valid color via canPlayCard check, so the player
+		// gets immediate red feedback over invalid targets (e.g. unboardable
+		// tiles for shuttle cards). null = use default hover detection.
+		if (canPlayCard != null && draggedEntry != null) {
+			var result:TargetingResult = currentTargetId != null ? TargetZone(currentTargetId) : NoTarget;
+			targeting.forceValid = canPlayCard(draggedEntry.descriptor.id, result);
+		} else {
+			targeting.forceValid = null;
 		}
 	}
 
@@ -869,6 +1205,8 @@ class UICardHandHelper {
 		entry.container.scaleX = hoverScale;
 		entry.container.scaleY = hoverScale;
 		// Arrow is already in dragContainer — no reparenting needed
+		if (hideCursorWhileTargeting)
+			hxd.System.setCursor(Hide);
 	}
 
 	function exitTargetingMode(entry:CardEntry):Void {
@@ -877,6 +1215,8 @@ class UICardHandHelper {
 		// Reparent card back to drag container
 		dragContainer.addChild(entry.container);
 		entry.container.rotation = 0;
+		if (hideCursorWhileTargeting)
+			hxd.System.setCursor(Default);
 	}
 
 	function endDrag():Bool {
@@ -889,6 +1229,8 @@ class UICardHandHelper {
 		var wasTargeting = isTargeting;
 		targeting.clearLine();
 		entry.container.alpha = 1.0;
+		if (wasTargeting && hideCursorWhileTargeting)
+			hxd.System.setCursor(Default);
 
 		// Un-highlight card-to-card target
 		restoreCardToCardEffects();
@@ -910,10 +1252,17 @@ class UICardHandHelper {
 				cardPlayed = true;
 			}
 		} else {
-			// Direct drag mode (arrow disabled) — check if card was dropped on a target
+			// Direct drag mode (arrow disabled or card canTarget=false) — check drop target or threshold
 			var dropTarget = targeting.hitTestTargets(sceneCursorX, sceneCursorY, cardId);
 			if (dropTarget != null) {
 				result = TargetZone(dropTarget);
+				if (canPlayCard == null || canPlayCard(cardId, result)) {
+					emitEvent(CardPlayed(cardId, result));
+					cardPlayed = true;
+				}
+			} else if (isInTargetingZone(cursorX, cursorY)) {
+				// Card dragged past threshold without a specific target — play with NoTarget
+				result = NoTarget;
 				if (canPlayCard == null || canPlayCard(cardId, result)) {
 					emitEvent(CardPlayed(cardId, result));
 					cardPlayed = true;
@@ -931,8 +1280,7 @@ class UICardHandHelper {
 
 		if (cardPlayed) {
 			entry.state = Animating;
-			interactiveHelper.unbind(entry.interactiveId);
-			screen.removeInteractives(entry.interactiveId);
+			unregisterCardEntry(entry);
 			var spliceIdx = cards.indexOf(entry);
 			if (spliceIdx >= 0)
 				cards.splice(spliceIdx, 1);
@@ -940,10 +1288,17 @@ class UICardHandHelper {
 			// Move card to drag container for discard animation (same local space)
 			dragContainer.addChild(entry.container);
 
-			var fromPos = new FPoint(entry.container.x, entry.container.y);
-			animateCardTo(entry, fromPos, discardPilePosition, 0, 0, discardPathName, () -> {
+			var fromX = entry.container.x;
+			var fromY = entry.container.y;
+			if (customPlayAnimation != null && customPlayAnimation(cardId, entry.container, fromX, fromY, () -> {
 				entry.container.remove();
-			});
+			})) {
+				// Custom play animation took over
+			} else {
+				animateCardTo(entry, fromX, fromY, discardPilePosition.x, discardPilePosition.y, 0, 0, discardPathName, () -> {
+					entry.container.remove();
+				});
+			}
 			applyLayout(true);
 		} else {
 			// Return to hand
@@ -955,10 +1310,9 @@ class UICardHandHelper {
 			// If wasTargeting, card is already in handContainer from enterTargetingMode
 
 			var targetPos = entry.layoutPos;
-			animateCardTo(entry, new FPoint(entry.container.x, entry.container.y), new FPoint(targetPos.x, targetPos.y),
+			animateCardTo(entry, entry.container.x, entry.container.y, targetPos.x, targetPos.y,
 				entry.container.rotation, targetPos.rotation, returnPathName, () -> {
-					if (entry.state == Animating)
-						entry.state = InHand;
+					resolveAnimationComplete(entry);
 					entry.container.scaleX = targetPos.scale;
 					entry.container.scaleY = targetPos.scale;
 					interactiveHelper.resetState(entry.interactiveId);
@@ -976,6 +1330,8 @@ class UICardHandHelper {
 		var entry = draggedEntry;
 
 		targeting.clearLine();
+		if (isTargeting && hideCursorWhileTargeting)
+			hxd.System.setCursor(Default);
 
 		// Un-highlight card-to-card target
 		restoreCardToCardEffects();
@@ -1001,7 +1357,10 @@ class UICardHandHelper {
 	 *  card from blocking neighbors and handles tightly stacked/overlapping cards
 	 *  where multiple bounding boxes cover the same point. */
 	function getCardAtBasePosition(x:Float, y:Float):Null<CardEntry> {
-		var basePositions = computeLayout(-1);
+		// Hot path — runs every mouse-move. Use the static scratch buffer so we don't
+		// allocate Array<CardLayoutPosition> + N CardLayoutPosition instances per call.
+		final basePositions = _scratchPositions;
+		computeLayoutInto(-1, basePositions);
 		var bestEntry:Null<CardEntry> = null;
 		var bestDistSq = Math.POSITIVE_INFINITY;
 
@@ -1066,45 +1425,167 @@ class UICardHandHelper {
 		return null;
 	}
 
+	function validatePathName(name:Null<String>, configField:String):Void {
+		if (name != null && !builder.hasNode(name))
+			throw 'CardHandHelper: ${configField} "${name}" not found in .manim';
+	}
+
 	// === Internal: Animation via .manim paths ===
 
-	function animateCardTo(entry:CardEntry, from:FPoint, to:FPoint, startRotation:Float, endRotation:Float, pathName:Null<String>,
-			onComplete:() -> Void):Void {
+	function animateCardTo(entry:CardEntry, fromX:Float, fromY:Float, toX:Float, toY:Float, startRotation:Float, endRotation:Float,
+			pathName:Null<String>, onComplete:Null<() -> Void>, resolveOnComplete:Bool = false):Void {
 		// Remove any existing animation for this entry
-		activeAnimations = activeAnimations.filter(a -> a.entry != entry);
+		removeAnimationsForEntry(entry);
 
-		var dx = to.x - from.x;
-		var dy = to.y - from.y;
+		var dx = toX - fromX;
+		var dy = toY - fromY;
 		// Snap if positions are close — avoids degenerate Stretch-normalized paths
 		// that produce NaN when from≈to (e.g. quick click-release)
 		if (dx * dx + dy * dy < 1.0) {
-			entry.container.setPosition(to.x, to.y);
+			entry.container.setPosition(toX, toY);
 			entry.container.rotation = endRotation;
-			onComplete();
+			if (resolveOnComplete) resolveAnimationComplete(entry);
+			if (onComplete != null) onComplete();
 			return;
 		}
 
 		if (pathName != null) {
-			// Use .manim animatedPath with Stretch normalization
-			var ap = builder.createProjectilePath(pathName, from, to);
+			// Use .manim animatedPath with Stretch normalization. applyStretch reads
+			// x/y from these FPoints and does not retain them, so the per-instance
+			// scratch pair is safe to reuse across calls.
+			scratchFromFPoint.x = fromX;
+			scratchFromFPoint.y = fromY;
+			scratchToFPoint.x = toX;
+			scratchToFPoint.y = toY;
+			var ap = builder.createProjectilePath(pathName, scratchFromFPoint, scratchToFPoint);
 			// Apply duration override if set
 			var durationOv = getDurationOverride(pathName);
 			if (durationOv > 0)
 				ap.durationOverride = durationOv;
-			activeAnimations.push(new ActiveAnimation(entry, ap, startRotation, endRotation, onComplete));
+			var queued = new ActiveAnimation(entry, ap, startRotation, endRotation, onComplete);
+			queued.resolveOnComplete = resolveOnComplete;
+			activeAnimations.push(queued);
 		} else {
 			// No path defined — instant snap
-			entry.container.setPosition(to.x, to.y);
+			entry.container.setPosition(toX, toY);
 			entry.container.rotation = endRotation;
-			onComplete();
+			if (resolveOnComplete) resolveAnimationComplete(entry);
+			if (onComplete != null) onComplete();
+		}
+	}
+
+	/** Create a tracking draw animation: the path is NOT pre-stretched. Instead, each frame
+	 *  the stretch transform is recomputed from `from` toward `entry.layoutPos`, so the
+	 *  endpoint follows layout changes dynamically. */
+	function animateCardToTracking(entry:CardEntry, from:FPoint, startRotation:Float, endRotation:Float,
+			pathName:Null<String>, onComplete:Null<() -> Void>):Void {
+		removeAnimationsForEntry(entry);
+
+		if (pathName != null) {
+			// Create AnimatedPath with NO normalization — raw path coordinates
+			var ap = builder.createAnimatedPath(pathName);
+			var durationOv = getDurationOverride(pathName);
+			if (durationOv > 0)
+				ap.durationOverride = durationOv;
+			var rawEndpoint = ap.path.getEndpoint();
+			var anim = new ActiveAnimation(entry, ap, startRotation, endRotation, onComplete);
+			anim.trackingFrom = from;
+			anim.rawEndpoint = rawEndpoint;
+			activeAnimations.push(anim);
+		} else {
+			// No path — snap to current layout position
+			entry.container.setPosition(entry.layoutPos.x, entry.layoutPos.y);
+			entry.container.rotation = endRotation;
+			if (onComplete != null) onComplete();
 		}
 	}
 
 	// === Internal: Events ===
 
+	/** Emit event to all listeners (including chained grid listeners). */
 	function emitEvent(event:CardHandEvent):Void {
+		// Notify chained listeners first (grids that convert CardPlayed → CellCardPlayed)
+		for (listener in chainedListeners)
+			listener(event);
 		if (onCardEvent != null)
 			onCardEvent(event);
+	}
+
+	/** Chained event listeners added by UIMultiAnimGrid for CellCardPlayed conversion. */
+	@:allow(bh.ui.UIMultiAnimGrid)
+	final chainedListeners:Array<(event:CardHandEvent) -> Void> = [];
+
+	/** Resolve card state when animation completes.
+	 *  Handles deferred enable/disable from setCardEnabled called during animation. */
+	function resolveAnimationComplete(entry:CardEntry):Void {
+		if (entry.state == Animating) {
+			entry.state = InHand;
+		} else if (entry.state == Disabled && entry.enableAfterAnimation) {
+			entry.state = InHand;
+			entry.enableAfterAnimation = false;
+			interactiveHelper.setDisabled(entry.interactiveId, false);
+		}
+		// If Disabled without enableAfterAnimation, stay Disabled
+	}
+
+	/** Check whether an entry has an active animation running. */
+	function isAnimatingEntry(entry:CardEntry):Bool {
+		for (anim in activeAnimations)
+			if (anim.entry == entry)
+				return true;
+		return false;
+	}
+
+	/** Remove all active animations for this entry in place (no array reallocation).
+	 *  Each displaced animation's onComplete fires so that draw/discard cleanup
+	 *  (state reset, scene-graph removal, *AnimComplete event) still runs when a
+	 *  later animateCardTo / animateCardToTracking call lands on the same entry.
+	 *  Without this, listeners awaiting DrawAnimComplete / DiscardAnimComplete stall
+	 *  and discarded card containers leak into the scene graph.
+	 *
+	 *  Two-phase: collect-then-fire. displaced.onComplete() is synchronous and
+	 *  may re-enter via applyLayout(true) -> animateCardTo -> removeAnimationsForEntry,
+	 *  via game-supplied onCardEvent handlers triggered by emitEvent (e.g. another
+	 *  discardCard or setHand([]), the latter reassigning activeAnimations). Firing
+	 *  inside the iteration would let the re-entrant call splice (or replace) the
+	 *  array under the outer `i--`, producing a null deref on the next read.
+	 *  clearHand uses the same snapshot-then-fire pattern for the same reason. */
+	function removeAnimationsForEntry(entry:CardEntry):Void {
+		var displaced:Array<ActiveAnimation> = null;
+		var i = activeAnimations.length - 1;
+		while (i >= 0) {
+			if (activeAnimations[i].entry == entry) {
+				if (displaced == null)
+					displaced = [];
+				displaced.push(activeAnimations[i]);
+				activeAnimations.splice(i, 1);
+			}
+			i--;
+		}
+		if (displaced != null) {
+			for (anim in displaced) {
+				if (anim.resolveOnComplete) resolveAnimationComplete(anim.entry);
+				if (anim.onComplete != null) anim.onComplete();
+			}
+		}
+	}
+
+	// === Internal: Targeting zone check ===
+
+	/** Check whether cursor position is in a targeting zone.
+	 *  If explicit zones are registered, checks those.
+	 *  Otherwise falls back to legacy Y-threshold (full-width zone above anchorY - threshold). */
+	function isInTargetingZone(x:Float, y:Float):Bool {
+		if (targetingZones.length > 0) {
+			for (zone in targetingZones) {
+				if (x >= zone.x && x <= zone.x + zone.w && y >= zone.y && y <= zone.y + zone.h)
+					return true;
+			}
+			// Fallback: also check registered targets directly (cursor over a target = targeting)
+			return targeting.hitTestTargets(sceneCursorX, sceneCursorY, draggedEntry != null ? draggedEntry.descriptor.id : "") != null;
+		}
+		// Legacy: simple Y threshold
+		return y < anchorY - targetingThresholdY;
 	}
 
 	// === Internal: Utilities ===

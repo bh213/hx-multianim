@@ -3,6 +3,9 @@ package bh.test.examples;
 import utest.Assert;
 import bh.test.BuilderTestBase;
 import bh.multianim.TextMarkupConverter;
+import bh.multianim.MultiAnimBuilder.BuilderParameters;
+import bh.multianim.MultiAnimBuilder.CallbackRequest;
+import bh.multianim.MultiAnimBuilder.CallbackResult;
 
 /**
  * Unit tests for TextMarkupConverter (convert, hasMarkup, extractStyleReferences, etc.)
@@ -41,6 +44,26 @@ class RichTextTest extends BuilderTestBase {
 		Assert.isNull(result);
 	}
 
+	// ==================== convert() — [br] line break ====================
+
+	@Test
+	public function testConvertBrTag():Void {
+		var result = TextMarkupConverter.convert("line1[br]line2");
+		Assert.equals("line1<br/>line2", result);
+	}
+
+	@Test
+	public function testConvertBrTagMultiple():Void {
+		var result = TextMarkupConverter.convert("a[br]b[br]c");
+		Assert.equals("a<br/>b<br/>c", result);
+	}
+
+	@Test
+	public function testConvertBrTagWithStyles():Void {
+		var result = TextMarkupConverter.convert("[damage]50[/][br]dealt");
+		Assert.equals("<damage>50</damage><br/>dealt", result);
+	}
+
 	// ==================== convert() — special tags ====================
 
 	@Test
@@ -73,6 +96,44 @@ class RichTextTest extends BuilderTestBase {
 	public function testConvertDoubleEscapeBracket():Void {
 		var result = TextMarkupConverter.convert("[[text[[");
 		Assert.equals("[text[", result);
+	}
+
+	// ==================== convert() — XML character escaping ====================
+
+	@Test
+	public function testConvertEscapesLessThan():Void {
+		var result = TextMarkupConverter.convert("Hull<25%");
+		Assert.equals("Hull&lt;25%", result);
+	}
+
+	@Test
+	public function testConvertEscapesGreaterThan():Void {
+		var result = TextMarkupConverter.convert("damage>100");
+		Assert.equals("damage&gt;100", result);
+	}
+
+	@Test
+	public function testConvertEscapesAmpersand():Void {
+		var result = TextMarkupConverter.convert("fire & ice");
+		Assert.equals("fire &amp; ice", result);
+	}
+
+	@Test
+	public function testConvertEscapesXmlWithMarkup():Void {
+		var result = TextMarkupConverter.convert("[damage]50>25[/]");
+		Assert.equals("<damage>50&gt;25</damage>", result);
+	}
+
+	@Test
+	public function testConvertEscapesMultipleXmlChars():Void {
+		var result = TextMarkupConverter.convert("a<b & c>d");
+		Assert.equals("a&lt;b &amp; c&gt;d", result);
+	}
+
+	@Test
+	public function testConvertNoXmlCharsUnchanged():Void {
+		var result = TextMarkupConverter.convert("plain text");
+		Assert.equals("plain text", result);
 	}
 
 	// ==================== convert() — reserved HTML tags ====================
@@ -143,6 +204,11 @@ class RichTextTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testHasMarkupWithBrTag():Void {
+		Assert.isTrue(TextMarkupConverter.hasMarkup("line1[br]line2"));
+	}
+
+	@Test
 	public function testHasMarkupPlainText():Void {
 		Assert.isFalse(TextMarkupConverter.hasMarkup("just plain text"));
 	}
@@ -184,6 +250,13 @@ class RichTextTest extends BuilderTestBase {
 		var refs = TextMarkupConverter.extractStyleReferences("[img:sword] [align:center] [link:help] [style]text[/]");
 		Assert.equals(1, refs.length);
 		Assert.equals("style", refs[0]);
+	}
+
+	@Test
+	public function testExtractStyleReferencesSkipsBr():Void {
+		var refs = TextMarkupConverter.extractStyleReferences("[damage]50[/][br]dealt");
+		Assert.equals(1, refs.length);
+		Assert.equals("damage", refs[0]);
 	}
 
 	@Test
@@ -410,5 +483,75 @@ class RichTextTest extends BuilderTestBase {
 		", "test");
 		Assert.notNull(result);
 		Assert.isTrue(result.object.numChildren > 0);
+	}
+
+	// ==================== autoFitFill empty fonts fallback ====================
+
+	@Test
+	public function testAutoFitFillEmptyFontsKeepsOriginal():Void {
+		// Regression: ProgrammableBuilder.autoFitFill used to fall back to
+		// `fonts[fonts.length - 1]` when no candidate fit, which evaluated to
+		// `fonts[-1]` (null) on an empty fonts array — clobbering the text's
+		// original font with null and crashing downstream rendering.
+		// Empty fonts array must now leave the original font intact.
+		var origFont = hxd.res.DefaultFont.get();
+		var t = new h2d.Text(origFont);
+		t.text = "this is a long string that wont fit in 1px";
+
+		// fitWidth tiny so the original font does NOT satisfy the constraint,
+		// forcing the function past the early-return into the fallback branch.
+		bh.multianim.ProgrammableBuilder.autoFitFill(t, [], 1.0, null);
+
+		Assert.notNull(t.font, "font must not be null after empty-fonts fallback");
+		Assert.equals(origFont, t.font, "font must remain the original when fonts array is empty");
+	}
+
+	// ==================== Hyperlink callback error gating ====================
+
+	@Test
+	public function testHyperlinkCallbackErrorGatingMatchesBuildFlags():Void {
+		// Hyperlink callback exception policy (matches the rest of the codebase —
+		// see ScreenManager.rebuildAll/loadScreen, MacroManimParser flow warning):
+		//   production (no flags)        : silent best-effort — no trace, exception swallowed
+		//   -D MULTIANIM_DEV             : trace the error, exception swallowed
+		//   -D MULTIANIM_STRICT          : rethrow
+		// Previous behaviour traced unconditionally and rethrew under MULTIANIM_DEV
+		// (the wrong flag), out of step with the codebase convention.
+		var builder = BuilderTestBase.builderFromSource("
+			#test programmable() {
+				richText(\"m3x6\", \"[link:foo]click[/]\", #FFFFFF): 0, 0
+			}
+		");
+		var bp:BuilderParameters = {
+			callback: (req) -> {
+				return switch req {
+					case Name(name) if (name == "link:foo"): throw "callback boom";
+					default: CBRNoResult;
+				}
+			}
+		};
+		var result = builder.buildWithParameters("test", new Map(), bp, null, false);
+		Assert.notNull(result.htmlTextsWithLinks);
+		Assert.equals(1, result.htmlTextsWithLinks.length);
+		var ht = result.htmlTextsWithLinks[0];
+
+		var captured:Array<String> = [];
+		var originalTrace = haxe.Log.trace;
+		haxe.Log.trace = (v, ?infos) -> captured.push(Std.string(v));
+		var threw = false;
+		try {
+			ht.onHyperlink("foo");
+		} catch (_:Dynamic) {
+			threw = true;
+		}
+		haxe.Log.trace = originalTrace;
+
+		Assert.isFalse(threw, "hyperlink callback errors must not propagate without -D MULTIANIM_STRICT");
+		#if MULTIANIM_DEV
+		Assert.equals(1, captured.length, "MULTIANIM_DEV build should trace the hyperlink callback error exactly once");
+		Assert.isTrue(captured[0].indexOf("Hyperlink callback error") >= 0, "trace should mention the hyperlink callback error");
+		#else
+		Assert.equals(0, captured.length, "production build (no MULTIANIM_DEV) must not emit a trace for hyperlink callback errors");
+		#end
 	}
 }

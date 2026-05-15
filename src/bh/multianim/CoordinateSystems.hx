@@ -1,7 +1,6 @@
 package bh.multianim;
 
 import bh.base.FPoint;
-import bh.base.Point;
 import bh.multianim.MultiAnimParser;
 import bh.base.Hex;
 
@@ -30,6 +29,9 @@ enum Coordinates {
 	SELECTED_HEX_CELL_EDGE(cell:Coordinates, direction:ReferenceableValue, factor:ReferenceableValue);
 	NAMED_COORD(name:String, coord:Coordinates);
 	WITH_OFFSET(base:Coordinates, offsetX:ReferenceableValue, offsetY:ReferenceableValue);
+	EXTRA_POINT_REF(elementName:String, pointName:String, fallback:Null<Coordinates>);
+	EXTRA_POINT_ANIM(filename:String, animName:String, pointName:String, selector:Map<String, ReferenceableValue>,
+		fallback:Null<Coordinates>);
 }
 
 @:using(bh.multianim.CoordinateSystems.HexCoordinateSystemHelper)
@@ -110,13 +112,9 @@ class HexCoordinateSystemHelper {
 	}
 
 	public static function resolveHexPixel(system:HexCoordinateSystem, x:Float, y:Float):FPoint {
-		#if !macro
-		final hex = system.hexLayout.pixelToHex(new h2d.col.Point(x, y)).round();
+		final hex = system.hexLayout.pixelToHex(new FPoint(x, y)).round();
 		final pos = system.hexLayout.hexToPixel(hex);
 		return returnPosition(pos.x, pos.y);
-		#else
-		return returnPosition(0, 0);
-		#end
 	}
 
 	public static function resolveHexToHex(system:HexCoordinateSystem, q:Float, r:Float, s:Float):Hex {

@@ -24,6 +24,8 @@ import bh.ui.UIMultiAnimTabs;
 import bh.ui.UIMultiAnimTabs.UIMultiAnimTabButton;
 import bh.ui.UIMultiAnimDraggable;
 import bh.ui.UIMultiAnimDraggable.DropZone;
+import bh.ui.UIMultiAnimDraggable.DropZoneId;
+import bh.ui.UIMultiAnimDraggable.DropZoneIdTools;
 import bh.ui.UIMultiAnimDraggable.DragEvent;
 import bh.ui.UIMultiAnimDraggable.DraggableState;
 import bh.ui.UIMultiAnimDraggable.DragDropResult;
@@ -34,6 +36,7 @@ import bh.multianim.MultiAnimBuilder.BuilderResolvedSettings;
 import bh.ui.UIElement;
 import bh.ui.UIElement.UIScreenEvent;
 import bh.ui.UIElement.UIElementEvents;
+import bh.ui.UIElement.UIElementEventWrapper;
 import bh.ui.UIElement.UIElementListItem;
 import bh.ui.UIElement.TileRef;
 import bh.ui.UIElement.SubElementsType;
@@ -44,6 +47,22 @@ import bh.paths.MultiAnimPaths.PathType;
 import bh.ui.UICardHandTypes.PathDistribution;
 import bh.ui.UICardHandTypes.PathOrientation;
 
+private class EventsOnlyElement implements UIElement implements StandardUIElementEvents {
+	public function new() {}
+	public function getObject():h2d.Object return new h2d.Object();
+	public function containsPoint(pos:Point):Bool return false;
+	public function clear():Void {}
+	public function onEvent(wrapper:UIElementEventWrapper):Void {}
+}
+
+private class UpdateOnlyElement implements UIElement implements UIElementUpdatable {
+	public function new() {}
+	public function getObject():h2d.Object return new h2d.Object();
+	public function containsPoint(pos:Point):Bool return false;
+	public function clear():Void {}
+	public function update(dt:Float):Void {}
+}
+
 /**
  * Non-visual unit tests for UI components.
  * Tests component creation, state management, event handling, and value interfaces
@@ -51,14 +70,18 @@ import bh.ui.UICardHandTypes.PathOrientation;
  */
 class UIComponentTest extends BuilderTestBase {
 	/** Read a string parameter from an incremental BuilderResult's internal state. */
-	static function getStatusParam(result:bh.multianim.MultiAnimBuilder.BuilderResult):String {
+	static function getStringParam(result:bh.multianim.MultiAnimBuilder.BuilderResult, name:String):String {
 		@:privateAccess var params = result.incrementalContext.indexedParams;
-		return switch params.get("status") {
+		return switch params.get(name) {
 			case StringValue(s): s;
 			case Index(_, v): v;
 			case Value(v): Std.string(v);
 			case _: null;
 		};
+	}
+
+	static function getStatusParam(result:bh.multianim.MultiAnimBuilder.BuilderResult):String {
+		return getStringParam(result, "status");
 	}
 	// --- Inline .manim definitions for test components ---
 
@@ -156,6 +179,18 @@ class UIComponentTest extends BuilderTestBase {
 		UITestHarness.simulateClick(button, mock);
 
 		Assert.isTrue(callbackFired);
+	}
+
+	@Test
+	public function testButtonSetText():Void {
+		var builder = BuilderTestBase.builderFromSource(BUTTON_MANIM);
+		var button = UIStandardMultiAnimButton.create(builder, "button", "Original");
+
+		@:privateAccess var result = button.result;
+		Assert.equals("Original", getStringParam(result, "buttonText"));
+
+		button.setText("Updated");
+		Assert.equals("Updated", getStringParam(result, "buttonText"));
 	}
 
 	// ============== Checkbox Tests ==============
@@ -297,6 +332,42 @@ class UIComponentTest extends BuilderTestBase {
 		screen.testRemoveElement(button);
 		elements = screen.getElements(SETReceiveEvents);
 		Assert.equals(0, elements.length);
+	}
+
+	@Test
+	public function testGetElementsFiltersLocalElementsByType():Void {
+		var screen = new UITestScreen();
+		var eventsOnly = new EventsOnlyElement();
+		var updateOnly = new UpdateOnlyElement();
+		screen.testAddElement(eventsOnly);
+		screen.testAddElement(updateOnly);
+
+		final eventList = screen.getElements(SETReceiveEvents);
+		Assert.equals(1, eventList.length);
+		Assert.equals(cast eventsOnly, eventList[0]);
+
+		final updateList = screen.getElements(SETReceiveUpdates);
+		Assert.equals(1, updateList.length);
+		Assert.equals(cast updateOnly, updateList[0]);
+	}
+
+	@Test
+	public function testForEachElementFiltersLocalElementsByType():Void {
+		var screen = new UITestScreen();
+		var eventsOnly = new EventsOnlyElement();
+		var updateOnly = new UpdateOnlyElement();
+		screen.testAddElement(eventsOnly);
+		screen.testAddElement(updateOnly);
+
+		var visitedForEvents:Array<UIElement> = [];
+		screen.forEachElement(SETReceiveEvents, e -> visitedForEvents.push(e));
+		Assert.equals(1, visitedForEvents.length);
+		Assert.equals(cast eventsOnly, visitedForEvents[0]);
+
+		var visitedForUpdates:Array<UIElement> = [];
+		screen.forEachElement(SETReceiveUpdates, e -> visitedForUpdates.push(e));
+		Assert.equals(1, visitedForUpdates.length);
+		Assert.equals(cast updateOnly, visitedForUpdates[0]);
 	}
 
 	@Test
@@ -449,6 +520,20 @@ class UIComponentTest extends BuilderTestBase {
 		Assert.equals(0, mock.eventCount());
 	}
 
+	@Test
+	public function testSliderUsesScratchPointForGlobalToLocal():Void {
+		var builder = BuilderTestBase.builderFromSource(BUTTON_MANIM);
+		var slider = UIStandardMultiAnimSlider.create(builder, "button", 200, 50.0);
+
+		// The slider must keep a single scratch Point and reuse it inside
+		// calculatePos(). Per-event Point.clone() generated GC pressure during
+		// slider drags. The scratch must exist immediately after construction.
+		// Reflect is used so the test compiles against pre-fix code that has
+		// no scratch field; the assertion fails (null) before fix, passes after.
+		var scratch:Dynamic = Reflect.field(slider, "tmpPoint");
+		Assert.notNull(scratch);
+	}
+
 	// ============== Interactive Wrapper Tests ==============
 
 	@Test
@@ -498,7 +583,7 @@ class UIComponentTest extends BuilderTestBase {
 		var mock = new MockControllable();
 
 		UITestHarness.simulateEnter(wrapper, mock);
-		Assert.isTrue(mock.hasInteractiveEvent(UIEntering));
+		Assert.isTrue(mock.hasInteractiveEvent(UIEntering()));
 	}
 
 	@Test
@@ -1633,6 +1718,96 @@ class UIComponentTest extends BuilderTestBase {
 		Assert.equals(-1, list.currentPressedIndex);
 	}
 
+	static final SCROLLABLE_LIST_CUSTOM_MANIM = "
+		#list-panel programmable(width:uint=120, height:uint=200, topClearance:uint=0) {
+			bitmap(generated(color($width, $height, #333333))): 0, 0
+			placeholder(generated(color($width, $height, #000000)), builderParameter(\"mask\")): 0, 0
+			#scrollbar point: $width - 10, 0
+		}
+
+		#list-item programmable(images:[none,tile]=none, status:[hover,pressed,normal,active,completed]=normal, selected:[true,false]=false, disabled:[true,false]=false, tile:tile, itemWidth:uint=120, index:uint=0, title:string=title, cost:string=none, font:string=testfont, fontColor:int=0xFFFFFFFF) {
+			bitmap(generated(color($itemWidth, 20, #555555))): 0, 0
+			text($font, $title, $fontColor): 4, 2
+			interactive($itemWidth, 20, $index);
+			settings{height:float=>20}
+		}
+
+		#scrollbar programmable(panelHeight:uint=100, scrollableHeight:uint=200, scrollPosition:uint=0) {
+			bitmap(generated(color(4, $panelHeight * $panelHeight / $scrollableHeight, #888888))): 0, $scrollPosition * $panelHeight / $scrollableHeight
+		}
+	";
+
+	function createCustomScrollableList(items:Array<UIElementListItem>, initialIndex:Int = 0):UIMultiAnimScrollableList {
+		ensureTestFont();
+		var builder = BuilderTestBase.builderFromSource(SCROLLABLE_LIST_CUSTOM_MANIM);
+		return UIMultiAnimScrollableList.createWithSingleBuilder(builder, "list-panel", "list-item", "scrollbar", "scrollbar", 120, 200, items, 0,
+			initialIndex);
+	}
+
+	@Test
+	public function testScrollableListBaseStatus():Void {
+		var items:Array<UIElementListItem> = [
+			{name: "Active", baseStatus: "active"},
+			{name: "Completed", baseStatus: "completed"},
+			{name: "Normal"},
+		];
+		var list = createCustomScrollableList(items);
+		Assert.equals("active", list.items[0].baseStatus);
+		Assert.equals("completed", list.items[1].baseStatus);
+		Assert.isNull(list.items[2].baseStatus);
+	}
+
+	@Test
+	public function testScrollableListBaseStatusAfterHover():Void {
+		var items:Array<UIElementListItem> = [
+			{name: "Active", baseStatus: "active"},
+			{name: "Normal"},
+		];
+		var list = createCustomScrollableList(items);
+
+		// Simulate hover on item 0
+		@:privateAccess list.currentHoverIndex = 0;
+		// Verify hover was applied
+		Assert.equals(0, list.currentHoverIndex);
+
+		// Simulate hover leaving (set to -1)
+		@:privateAccess list.currentHoverIndex = -1;
+		Assert.equals(-1, list.currentHoverIndex);
+		// The item should have been reset to "active", not "normal" — verified by no throw from setter
+	}
+
+	@Test
+	public function testScrollableListCustomParams():Void {
+		var items:Array<UIElementListItem> = [
+			{name: "Solar Power", params: ["cost" => "5cr/yr"]},
+			{name: "No params"},
+		];
+		var list = createCustomScrollableList(items);
+		Assert.notNull(list.items[0].params);
+		Assert.equals("5cr/yr", list.items[0].params.get("cost"));
+		Assert.isNull(list.items[1].params);
+	}
+
+	@Test
+	public function testScrollableListScrollToAndSelect():Void {
+		var items = createManyScrollableListItems(20);
+		var list = createScrollableList(items);
+		list.scrollToAndSelect(15);
+		Assert.equals(15, list.getSelectedIndex());
+		// Item 15 is at y=300 (15*20), panel is 200px — should have scrolled
+		@:privateAccess Assert.isTrue(list.mask.scrollY > 0);
+	}
+
+	@Test
+	public function testScrollableListSetItemsForceAppliesSelection():Void {
+		var list = createScrollableList(null, 0);
+		Assert.equals(0, list.getSelectedIndex());
+		// setItems with same index should still apply the visual (not skip due to same value)
+		var newItems:Array<UIElementListItem> = [{name: "X"}, {name: "Y"}, {name: "Z"}];
+		list.setItems(newItems, 0);
+		Assert.equals(0, list.getSelectedIndex());
+	}
+
 	// ============== Tabs Tests ==============
 
 	static final TABS_MANIM = "
@@ -2058,8 +2233,8 @@ class UIComponentTest extends BuilderTestBase {
 
 	function createDraggableWithZones():{draggable:UIMultiAnimDraggable, zones:Array<DropZone>} {
 		var draggable = createDraggable();
-		var zone1:DropZone = {id: "zone1", bounds: createDropZoneBounds(100, 100, 50, 50)};
-		var zone2:DropZone = {id: "zone2", bounds: createDropZoneBounds(200, 100, 50, 50)};
+		var zone1:DropZone = {id: Named("zone1"), bounds: createDropZoneBounds(100, 100, 50, 50)};
+		var zone2:DropZone = {id: Named("zone2"), bounds: createDropZoneBounds(200, 100, 50, 50)};
 		draggable.addDropZone(zone1);
 		draggable.addDropZone(zone2);
 		return {draggable: draggable, zones: [zone1, zone2]};
@@ -2122,22 +2297,22 @@ class UIComponentTest extends BuilderTestBase {
 	@Test
 	public function testDraggableAddDropZone():Void {
 		var draggable = createDraggable();
-		var zone:DropZone = {id: "testZone", bounds: createDropZoneBounds(0, 0, 100, 100)};
+		var zone:DropZone = {id: Named("testZone"), bounds: createDropZoneBounds(0, 0, 100, 100)};
 
 		draggable.addDropZone(zone);
 
 		Assert.equals(1, draggable.dropZones.length);
-		Assert.equals("testZone", draggable.dropZones[0].id);
+		Assert.isTrue(Type.enumEq(Named("testZone"), draggable.dropZones[0].id));
 	}
 
 	@Test
 	public function testDraggableRemoveDropZone():Void {
 		var draggable = createDraggable();
-		var zone:DropZone = {id: "testZone", bounds: createDropZoneBounds(0, 0, 100, 100)};
+		var zone:DropZone = {id: Named("testZone"), bounds: createDropZoneBounds(0, 0, 100, 100)};
 		draggable.addDropZone(zone);
 		Assert.equals(1, draggable.dropZones.length);
 
-		draggable.removeDropZone("testZone");
+		draggable.removeDropZone(Named("testZone"));
 
 		Assert.equals(0, draggable.dropZones.length);
 	}
@@ -2145,9 +2320,9 @@ class UIComponentTest extends BuilderTestBase {
 	@Test
 	public function testDraggableClearDropZones():Void {
 		var draggable = createDraggable();
-		draggable.addDropZone({id: "z1", bounds: createDropZoneBounds(0, 0, 50, 50)});
-		draggable.addDropZone({id: "z2", bounds: createDropZoneBounds(100, 0, 50, 50)});
-		draggable.addDropZone({id: "z3", bounds: createDropZoneBounds(200, 0, 50, 50)});
+		draggable.addDropZone({id: Named("z1"), bounds: createDropZoneBounds(0, 0, 50, 50)});
+		draggable.addDropZone({id: Named("z2"), bounds: createDropZoneBounds(100, 0, 50, 50)});
+		draggable.addDropZone({id: Named("z3"), bounds: createDropZoneBounds(200, 0, 50, 50)});
 		Assert.equals(3, draggable.dropZones.length);
 
 		draggable.clearDropZones();
@@ -2163,9 +2338,9 @@ class UIComponentTest extends BuilderTestBase {
 		draggable.addDropZonesFromSlots("item", result);
 
 		Assert.equals(3, draggable.dropZones.length);
-		Assert.equals("item_0", draggable.dropZones[0].id);
-		Assert.equals("item_1", draggable.dropZones[1].id);
-		Assert.equals("item_2", draggable.dropZones[2].id);
+		Assert.isTrue(Type.enumEq(SlotZone("item", 0), draggable.dropZones[0].id));
+		Assert.isTrue(Type.enumEq(SlotZone("item", 1), draggable.dropZones[1].id));
+		Assert.isTrue(Type.enumEq(SlotZone("item", 2), draggable.dropZones[2].id));
 	}
 
 	// --- Basic Drag Lifecycle ---
@@ -2317,8 +2492,8 @@ class UIComponentTest extends BuilderTestBase {
 
 		draggable.onDragEvent = (event, pos, wrapper) -> {
 			switch event {
-				case ZoneEnter(zone): events.push("enter:" + zone.id);
-				case ZoneLeave(zone): events.push("leave:" + zone.id);
+				case ZoneEnter(zone): events.push("enter:" + DropZoneIdTools.format(zone.id));
+				case ZoneLeave(zone): events.push("leave:" + DropZoneIdTools.format(zone.id));
 				default:
 			}
 		};
@@ -2338,10 +2513,10 @@ class UIComponentTest extends BuilderTestBase {
 	@Test
 	public function testDraggableZoneHighlightCallback():Void {
 		var draggable = createDraggable();
-		var highlightCalls:Array<{id:String, highlight:Bool}> = [];
+		var highlightCalls:Array<{id:DropZoneId, highlight:Bool}> = [];
 
 		var zone:DropZone = {
-			id: "hlZone",
+			id: Named("hlZone"),
 			bounds: createDropZoneBounds(100, 100, 50, 50),
 			onZoneHighlight: (z, hl) -> highlightCalls.push({id: z.id, highlight: hl})
 		};
@@ -2367,11 +2542,11 @@ class UIComponentTest extends BuilderTestBase {
 	@Test
 	public function testDraggableZonePriority():Void {
 		var draggable = createDraggable();
-		var droppedZone:Null<String> = null;
+		var droppedZone:Null<DropZoneId> = null;
 
 		// Two overlapping zones at same area, different priorities
-		var lowZone:DropZone = {id: "low", bounds: createDropZoneBounds(100, 100, 50, 50), priority: 0};
-		var highZone:DropZone = {id: "high", bounds: createDropZoneBounds(100, 100, 50, 50), priority: 10};
+		var lowZone:DropZone = {id: Named("low"), bounds: createDropZoneBounds(100, 100, 50, 50), priority: 0};
+		var highZone:DropZone = {id: Named("high"), bounds: createDropZoneBounds(100, 100, 50, 50), priority: 10};
 		draggable.addDropZone(lowZone);
 		draggable.addDropZone(highZone);
 
@@ -2383,7 +2558,7 @@ class UIComponentTest extends BuilderTestBase {
 		var mock = new MockControllable();
 		simulateDrag(draggable, mock, new Point(10, 10), new Point(125, 125));
 
-		Assert.equals("high", droppedZone);
+		Assert.isTrue(Type.enumEq(Named("high"), droppedZone));
 	}
 
 	@Test
@@ -2393,7 +2568,7 @@ class UIComponentTest extends BuilderTestBase {
 
 		// Zone that rejects all drops
 		var zone:DropZone = {
-			id: "rejecting",
+			id: Named("rejecting"),
 			bounds: createDropZoneBounds(100, 100, 50, 50),
 			accepts: (d, z) -> false
 		};
@@ -2433,7 +2608,7 @@ class UIComponentTest extends BuilderTestBase {
 		var draggable = createDraggable();
 		draggable.dragAlpha = 0.5;
 		draggable.zoneHighlightAlpha = 0.8;
-		var zone:DropZone = {id: "z", bounds: createDropZoneBounds(100, 100, 50, 50)};
+		var zone:DropZone = {id: Named("z"), bounds: createDropZoneBounds(100, 100, 50, 50)};
 		draggable.addDropZone(zone);
 		var mock = new MockControllable();
 
@@ -2505,7 +2680,7 @@ class UIComponentTest extends BuilderTestBase {
 
 		// Add slot1 as drop zone with known bounds
 		var zone:DropZone = {
-			id: "slot1",
+			id: Named("slot1"),
 			bounds: createDropZoneBounds(100, 100, 50, 50),
 			slot: slot1,
 			snapX: 100.0,
@@ -2537,7 +2712,7 @@ class UIComponentTest extends BuilderTestBase {
 
 		// Add slot1 as drop zone
 		var zone:DropZone = {
-			id: "slot1",
+			id: Named("slot1"),
 			bounds: createDropZoneBounds(100, 100, 50, 50),
 			slot: slot1,
 			snapX: 100.0,

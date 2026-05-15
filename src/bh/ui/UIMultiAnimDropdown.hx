@@ -25,7 +25,7 @@ private enum AnimState {
 @:nullSafety
 class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisablable implements UIElementUpdatable implements StandardUIElementEvents
 		implements UIElementListValue implements UIElementSubElements implements UIElementCustomAddToLayer
-		implements UIElementCursor {
+		implements UIElementCursor implements UIElementPriority {
 	final result:BuilderResult;
 	var status(default, set):StandardUIElementStates = SUINormal;
 	var root:h2d.Object;
@@ -35,6 +35,8 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 	var panelStatus:AnimState = Closed;
 	var timer:Float = 0;
 	var timerTotal:Float = 0;
+
+	public var eventPriority:Int = UIEventPriority.Content;
 
 	var transitionTimerBase = 1.0;
 	public var transitionTimerOverride:Null<Float> = null;
@@ -48,16 +50,16 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 	var panelScreen:Null<UIScreen> = null;
 	var panelLayer:Null<LayersEnum> = null;
 
-	@:nullSafety(Off)
-	function new(builder:UIElementBuilder, builtPanel, items, initialIndex = 0) {
+	function new(builder:UIElementBuilder, builtPanel:UIMultiAnimScrollableList, items:Array<UIElementListItem>, initialIndex:Int = 0) {
 		this.builder = builder;
 
 		this.root = new h2d.Object();
 		this.items = items;
 
 		var inputParams:Map<String, Dynamic> = ["status" => "normal", "panel" => "closed"];
-		if (builder.extraParams != null) {
-			for (key => value in builder.extraParams)
+		final extra = builder.extraParams;
+		if (extra != null) {
+			for (key => value in extra)
 				inputParams.set(key, value);
 		}
 		this.result = this.builder.builder.buildWithParameters(builder.name, inputParams, {callback: @:nullSafety(Off) callback}, null, true);
@@ -73,7 +75,7 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 		this.panelObject.visible = false;
 		updatable.setObject(new PositionLinkObject(panelObject));
 		this.panel.onItemChanged = onPanelItemChanged;
-		@:nullSafety(Off) this.currentItemIndex = initialIndex;
+		this.currentItemIndex = initialIndex;
 	}
 
 	public function clear() {
@@ -199,7 +201,7 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 				if (autoOpen && !isOpen()) {
 					startOpen();
 					if (closeOnOutsideClick)
-						wrapper.control.outsideClick.trackOutsideClick(true);
+						wrapper.control.trackOutsideClick(true);
 				}
 				this.status = SUIHover;
 			case OnLeave:
@@ -227,6 +229,10 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 	function startOpen() {
 		if (this.panelObject == null)
 			return;
+		// If the dropdown was reparented into a host programmable after
+		// initial layer assignment, lift the panel above that host's layer
+		// so it doesn't render behind the host's later siblings.
+		ensurePanelAboveHostLayer();
 		panel.currentHoverIndex = -1;
 		panel.currentItemIndex = this.currentItemIndex;
 		panel.currentPressedIndex = -1;
@@ -237,6 +243,7 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 		this.panelStatus = Opening;
 		this.timer = effectiveTimer;
 		this.timerTotal = this.timer;
+		this.eventPriority = UIEventPriority.Overlay;
 		result.setParameter("panel", "open");
 	}
 
@@ -248,6 +255,7 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 		this.panelStatus = Closing;
 		this.timer = effectiveTimer;
 		this.timerTotal = this.timer;
+		this.eventPriority = UIEventPriority.Content;
 		result.setParameter("panel", "closed");
 	}
 
@@ -304,6 +312,13 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 		}
 	}
 
+	public function forEachSubElement(type:SubElementsType, fn:UIElement->Void):Void {
+		switch type {
+			case SETReceiveUpdates: fn(this.panel);
+			case SETReceiveEvents:
+		}
+	}
+
 	public function customAddToLayer(requestedLayer:Null<LayersEnum>, screen:UIScreen, updateMode:Bool) {
 		if (requestedLayer == null) {
 			if (updateMode)
@@ -318,5 +333,39 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 		var higherLayer = screen.getHigherLayer(requestedLayer);
 		screen.addObjectToLayer(this.panel.getObject(), higherLayer);
 		return Added;
+	}
+
+	/** Re-place the panel on the layer above wherever our root currently
+		sits in the scene graph. Called from `startOpen` because the
+		dropdown may have been embedded inside a host programmable AFTER
+		`customAddToLayer` ran — in which case the panel landed on a layer
+		that's lower than the host's actual layer. Walks up the parent
+		chain to find the first ancestor that's a direct child of a
+		registered screen layer, then re-parents the panel one layer up
+		from there. */
+	function ensurePanelAboveHostLayer():Void {
+		if (panelScreen == null) return;
+		final layers = panelScreen.getLayers();
+		final sceneRoot = panelScreen.getSceneRoot();
+		var current:h2d.Object = this.root;
+		var hostLayer:Null<LayersEnum> = null;
+		while (current != null) {
+			final parent = current.parent;
+			if (parent == sceneRoot) {
+				final idx = sceneRoot.getChildLayer(current);
+				if (idx != -1) {
+					for (enumLayer => index in layers) {
+						if (index == idx) { hostLayer = enumLayer; break; }
+					}
+				}
+				break;
+			}
+			current = parent;
+		}
+		if (hostLayer == null) return;
+		final higher = panelScreen.getHigherLayer(hostLayer);
+		if (higher == panelLayer) return;
+		panelLayer = higher;
+		panelScreen.addObjectToLayer(this.panel.getObject(), higher);
 	}
 }

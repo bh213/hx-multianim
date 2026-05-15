@@ -41,16 +41,38 @@ class UICardHandTargeting {
 	var activeTargetId:Null<String> = null;
 	var currentValid:Bool = false;
 
+	/** Scratch point reused by path sampling in updateTargetingLine to avoid per-frame FPoint allocation. */
+	final _scratch:FPoint = new FPoint(0, 0);
+
+	// Scratches for the targeting hot path (every mouse-move during a card drag).
+	// HL is single-threaded; globalToLocal/localToGlobal mutate in place; applyStretch
+	// reads x/y and forgets — so a single instance per slot is safe across calls.
+	// Same pattern as UIMultiAnimGrid._scratchPoint and UICardHandHelper.scratchPoint.
+	final _scratchPt:h2d.col.Point = new h2d.col.Point(0, 0);
+	final _scratchOrigin:FPoint = new FPoint(0, 0);
+	final _scratchCursor:FPoint = new FPoint(0, 0);
+
 	static inline final MAX_SEGMENTS = 30;
 
 	/** When false, the targeting visual is suppressed (target detection still works). */
 	public var arrowEnabled:Bool = true;
+
+	/** When true, arrow endpoint snaps to a point on the hovered target (default: center).
+	 *  When false, arrow follows cursor freely — target detection still works. */
+	public var snapToTarget:Bool = true;
+
+	/** Optional callback to compute the arrow snap point for a target in the target's local space.
+	 *  When null, arrow snaps to interactive center. Receives the target wrapper, returns local-space point. */
+	public var arrowSnapPointProvider:Null<(UIInteractiveWrapper) -> FPoint> = null;
 
 	/** Called when a target becomes highlighted or unhighlighted during targeting. */
 	public var onTargetHighlight:Null<TargetHighlightCallback> = null;
 
 	/** Optional filter: return false to reject a card from a target. */
 	public var acceptsFilter:Null<TargetAcceptsCallback> = null;
+
+	/** When non-null, overrides the valid/invalid arrow state (bypasses target hit-testing for visuals). */
+	public var forceValid:Null<Bool> = null;
 
 	public function new(builder:MultiAnimBuilder, ?segmentName:String, ?headName:String, ?pathName:String, spacing:Float = 25.0) {
 		this.builder = builder;
@@ -107,6 +129,14 @@ class UICardHandTargeting {
 	}
 
 	public function unregisterTarget(id:String):Void {
+		if (id == activeTargetId) {
+			if (onTargetHighlight != null) {
+				var wrapper = findTarget(activeTargetId);
+				if (wrapper != null)
+					onTargetHighlight(activeTargetId, false, wrapper.metadata);
+			}
+			activeTargetId = null;
+		}
 		var i = 0;
 		while (i < targets.length) {
 			if (targets[i].id == id) {
@@ -132,9 +162,9 @@ class UICardHandTargeting {
 	 *  @return The ID of the target under cursor, or null if none. */
 	public function updateHighlight(sceneX:Float, sceneY:Float, cardId:CardId):Null<String> {
 		var hoveredWrapper:Null<UIInteractiveWrapper> = null;
-		var pt = new h2d.col.Point(sceneX, sceneY);
+		_scratchPt.set(sceneX, sceneY);
 		for (wrapper in targets) {
-			if (wrapper.containsPoint(pt)) {
+			if (wrapper.containsPoint(_scratchPt)) {
 				if (acceptsFilter == null || acceptsFilter(cardId, wrapper.id, wrapper.metadata)) {
 					hoveredWrapper = wrapper;
 					break;
@@ -160,9 +190,9 @@ class UICardHandTargeting {
 	/** Hit-test targets at a scene-space position without updating any visuals or highlight state.
 	 *  Used for final drop check in direct-drag mode. */
 	public function hitTestTargets(sceneX:Float, sceneY:Float, cardId:CardId):Null<String> {
-		var pt = new h2d.col.Point(sceneX, sceneY);
+		_scratchPt.set(sceneX, sceneY);
 		for (wrapper in targets) {
-			if (wrapper.containsPoint(pt)) {
+			if (wrapper.containsPoint(_scratchPt)) {
 				if (acceptsFilter == null || acceptsFilter(cardId, wrapper.id, wrapper.metadata))
 					return wrapper.id;
 			}
@@ -182,9 +212,9 @@ class UICardHandTargeting {
 
 		// Find target under cursor (scene-space coords for containsPoint)
 		var hoveredWrapper:Null<UIInteractiveWrapper> = null;
-		var pt = new h2d.col.Point(sceneX, sceneY);
+		_scratchPt.set(sceneX, sceneY);
 		for (wrapper in targets) {
-			if (wrapper.containsPoint(pt)) {
+			if (wrapper.containsPoint(_scratchPt)) {
 				if (acceptsFilter == null || acceptsFilter(cardId, wrapper.id, wrapper.metadata)) {
 					hoveredWrapper = wrapper;
 					break;
@@ -205,14 +235,44 @@ class UICardHandTargeting {
 				onTargetHighlight(activeTargetId, true, hoveredWrapper.metadata);
 		}
 
-		var valid = hoveredWrapper != null;
+		var valid = if (forceValid != null) forceValid else hoveredWrapper != null;
+
+		// Snap arrow endpoint to target when hovering a valid target (if snap enabled)
+		var endX = cursorX;
+		var endY = cursorY;
+		if (snapToTarget && valid && hoveredWrapper != null) {
+			// Get snap point in target's local space (default: interactive center)
+			var hasLocalPoint = false;
+			if (arrowSnapPointProvider != null) {
+				final fp = arrowSnapPointProvider(hoveredWrapper);
+				_scratchPt.set(fp.x, fp.y);
+				hasLocalPoint = true;
+			} else {
+				switch hoveredWrapper.interactive.multiAnimType {
+					case MAInteractive(width, height, _, _):
+						_scratchPt.set(width * 0.5, height * 0.5);
+						hasLocalPoint = true;
+					default:
+				}
+			}
+			if (hasLocalPoint) {
+				// Convert from target local space to arrow local space — both calls
+				// mutate _scratchPt in place and return it.
+				hoveredWrapper.interactive.localToGlobal(_scratchPt);
+				arrowContainer.globalToLocal(_scratchPt);
+				endX = _scratchPt.x;
+				endY = _scratchPt.y;
+			}
+		}
 
 		// Update arrow visuals (uses local-space coords for positioning)
 		if (hasArrowVisual && arrowEnabled && arrowPathName != null) {
 			var paths = builder.getPaths();
-			var origin = new FPoint(originX, originY);
-			var cursor = new FPoint(cursorX, cursorY);
-			var path = paths.getPath(arrowPathName, Stretch(origin, cursor));
+			_scratchOrigin.x = originX;
+			_scratchOrigin.y = originY;
+			_scratchCursor.x = endX;
+			_scratchCursor.y = endY;
+			var path = paths.getPath(arrowPathName, Stretch(_scratchOrigin, _scratchCursor));
 
 			// Calculate how many segments fit
 			var totalLen = path.totalLength;
@@ -228,16 +288,16 @@ class UICardHandTargeting {
 			// Place segments along path
 			for (i in 0...count) {
 				var rate = (i + 0.5) / (count + 1); // evenly spaced, leaving room for head
-				var pt2 = path.getPoint(rate);
+				path.getPointInto(rate, _scratch);
 				var angle = path.getTangentAngle(rate);
 
 				var inv = segmentPoolInvalid[i];
 				var val = segmentPoolValid[i];
 				inv.object.visible = !currentValid;
 				val.object.visible = currentValid;
-				inv.object.setPosition(pt2.x, pt2.y);
+				inv.object.setPosition(_scratch.x, _scratch.y);
 				inv.object.rotation = angle;
-				val.object.setPosition(pt2.x, pt2.y);
+				val.object.setPosition(_scratch.x, _scratch.y);
 				val.object.rotation = angle;
 			}
 
@@ -249,16 +309,16 @@ class UICardHandTargeting {
 			activeSegmentCount = count;
 
 			// Place arrowhead at end
-			var endPt = path.getPoint(1.0);
+			path.getPointInto(1.0, _scratch);
 			var endAngle = path.getTangentAngle(1.0);
 			if (headInvalid != null) {
 				headInvalid.object.visible = !currentValid;
-				headInvalid.object.setPosition(endPt.x, endPt.y);
+				headInvalid.object.setPosition(_scratch.x, _scratch.y);
 				headInvalid.object.rotation = endAngle;
 			}
 			if (headValid != null) {
 				headValid.object.visible = currentValid;
-				headValid.object.setPosition(endPt.x, endPt.y);
+				headValid.object.setPosition(_scratch.x, _scratch.y);
 				headValid.object.rotation = endAngle;
 			}
 		}

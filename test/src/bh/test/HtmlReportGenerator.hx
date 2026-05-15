@@ -510,10 +510,19 @@ class HtmlReportGenerator {
 			html.add('    </div>\n');
 		}
 
-		// Sort results by order index (if set) or test number for consistent ordering
+		// Sort results by test number extracted from the "#NNN: name" display name.
+		// We prefer the parsed number over orderIndex because orderIndex reflects the
+		// utest execution order, and utest discovers @Test methods via a string sort on
+		// method names — so "test100_..." runs before "test11_..." (since "100" < "11"
+		// lexicographically), which would otherwise scramble the 100+ tests in the report.
+		// Fall back to orderIndex only when the name doesn't carry a "#NNN:" prefix;
+		// stable-compare by orderIndex within the same test number.
 		results.sort(function(a, b) {
-			var idxA = a.orderIndex != null ? a.orderIndex : extractTestNumber(a.testName);
-			var idxB = b.orderIndex != null ? b.orderIndex : extractTestNumber(b.testName);
+			var numA = extractTestNumber(a.testName);
+			var numB = extractTestNumber(b.testName);
+			if (numA != numB) return numA - numB;
+			var idxA = a.orderIndex != null ? a.orderIndex : 0;
+			var idxB = b.orderIndex != null ? b.orderIndex : 0;
 			return idxA - idxB;
 		});
 

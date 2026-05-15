@@ -41,7 +41,11 @@ class UIMultiAnimTabButton implements UIElement implements UIElementDisablable i
 	public function set_disabled(value:Bool):Bool {
 		if (this.disabled != value) {
 			this.disabled = value;
-			result.setParameter("disabled", '${value}');
+			result.beginUpdate();
+			result.setParameter("status", value ? "disabled" : "normal");
+			if (result.hasParameter("disabled"))
+				result.setParameter("disabled", '${value}');
+			result.endUpdate();
 		}
 		return value;
 	}
@@ -373,6 +377,20 @@ class UIMultiAnimTabs implements UIElement implements UIElementDisablable implem
 		}
 
 		return result;
+	}
+
+	public function forEachSubElement(type:SubElementsType, fn:UIElement->Void):Void {
+		for (btn in tabButtons)
+			fn(cast btn);
+		var activeContent = tabContent.get(selectedIndex);
+		if (activeContent != null) {
+			for (element in activeContent) {
+				fn(element);
+				if (Std.isOfType(element, UIElementSubElements)) {
+					cast(element, UIElementSubElements).forEachSubElement(type, fn);
+				}
+			}
+		}
 	}
 
 	// --- UIElement ---

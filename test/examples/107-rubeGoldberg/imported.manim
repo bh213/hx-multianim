@@ -1,0 +1,6 @@
+version: 1.0
+
+#extWidget programmable(label:string="ext", bg:color=#0088FF) {
+    bitmap(generated(color(60, 20, $bg))): 0, 0
+    text(f3x5, $label, #FFFFFF): 2, 7
+}

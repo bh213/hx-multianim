@@ -9,6 +9,10 @@ import bh.test.BuilderTestBase.findVisibleBitmapDescendants;
 import bh.test.BuilderTestBase.findAllTextDescendants;
 import bh.test.BuilderTestBase.countVisibleChildren;
 import bh.multianim.MultiAnimBuilder;
+import bh.multianim.MultiAnimBuilder.BuilderParameters;
+import bh.multianim.MultiAnimBuilder.CallbackRequest;
+import bh.multianim.MultiAnimBuilder.CallbackResult;
+import bh.multianim.MultiAnimBuilder.PlaceholderValues;
 import bh.multianim.dev.HotReload;
 
 /**
@@ -543,6 +547,513 @@ class HotReloadTest extends BuilderTestBase {
 		final bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(1, bitmaps.length);
 		Assert.equals(30, Std.int(bitmaps[0].tile.width));
+	}
+
+	// ==================== Placeholder reuse helpers ====================
+
+	/**
+	 * Simulates hot-reload with BuilderParameters (callbacks/placeholderObjects).
+	 * Uses PlaceholderReuser to wrap params for reuse during rebuild.
+	 */
+	static function simulateReloadWithParams(oldSource:String, newSource:String, programmable:String,
+			builderParams:BuilderParameters,
+			?initialParams:Map<String, Dynamic>):{oldResult:BuilderResult, newResult:BuilderResult} {
+		// 1. Build original with builderParams
+		final oldBuilder = builderFromSource(oldSource);
+		if (initialParams == null) initialParams = new Map();
+		final oldResult = oldBuilder.buildWithParameters(programmable, initialParams, builderParams, null, true);
+
+		// 2. Snapshot (captures placeholder objects)
+		final snapshot = StateSnapshotter.capture(oldResult);
+
+		// 3. Detach slots
+		StateRestorer.detachSlots(oldResult);
+
+		// 4. Wrap builderParams for reuse
+		final reloadParams = PlaceholderReuser.wrapBuilderParams(builderParams, snapshot.placeholders);
+
+		// 5. Build new version with wrapped params
+		final newBuilder = builderFromSource(newSource);
+		final inputMap = StateRestorer.snapshotToInputMap(snapshot.params);
+		final newResult = newBuilder.buildWithParameters(programmable, inputMap, reloadParams, null, true);
+
+		// 6. Restore
+		StateRestorer.restore(newResult, snapshot);
+
+		// 7. Replace children, adopt internals
+		final parent = new h2d.Object();
+		parent.addChild(oldResult.object);
+		SceneSwapper.replaceChildren(oldResult.object, newResult.object);
+		final stableObject = oldResult.object;
+		oldResult.adoptFrom(newResult);
+		oldResult.object = stableObject;
+
+		return {oldResult: oldResult, newResult: newResult};
+	}
+
+	// ==================== Placeholder reuse: builderParameter PVObject ====================
+
+	@Test
+	public function testHotReload_pvObjectPlaceholderReused():Void {
+		final source = "
+			#test programmable() {
+				placeholder(nothing, builderParameter(\"myObj\")): 10, 20
+			}
+		";
+		final myObj = new h2d.Object();
+		final bp:BuilderParameters = {
+			placeholderObjects: ["myObj" => PVObject(myObj)],
+		};
+
+		final r = simulateReloadWithParams(source, source, "test", bp);
+
+		// The same h2d.Object should be in the rebuilt tree
+		Assert.isTrue(containsObject(r.oldResult.object, myObj), "PVObject should be reused in rebuilt tree");
+	}
+
+	// ==================== Placeholder reuse: builderParameter PVFactory ====================
+
+	@Test
+	public function testHotReload_pvFactoryPlaceholderReused():Void {
+		final source = "
+			#test programmable() {
+				placeholder(nothing, builderParameter(\"widget\")): 0, 0
+			}
+		";
+		var factoryCallCount = 0;
+		final factoryObj = new h2d.Object();
+		final bp:BuilderParameters = {
+			placeholderObjects: ["widget" => PVFactory((_) -> {
+				factoryCallCount++;
+				return factoryObj;
+			})],
+		};
+
+		// Build original — factory called once
+		final oldBuilder = builderFromSource(source);
+		final oldResult = oldBuilder.buildWithParameters("test", new Map(), bp, null, true);
+		Assert.equals(1, factoryCallCount, "Factory called once during initial build");
+
+		// Snapshot and reload
+		final snapshot = StateSnapshotter.capture(oldResult);
+		StateRestorer.detachSlots(oldResult);
+		final reloadParams = PlaceholderReuser.wrapBuilderParams(bp, snapshot.placeholders);
+		final newBuilder = builderFromSource(source);
+		final newResult = newBuilder.buildWithParameters("test", new Map(), reloadParams, null, true);
+
+		// Factory should NOT be called again — reused as PVObject
+		Assert.equals(1, factoryCallCount, "Factory should NOT be re-called during hot reload");
+
+		// Verify same object is in new tree
+		Assert.isTrue(containsObject(newResult.object, factoryObj), "Factory-created object should be reused");
+	}
+
+	// ==================== Placeholder reuse: callback ====================
+
+	@Test
+	public function testHotReload_callbackPlaceholderReused():Void {
+		final source = "
+			#test programmable() {
+				placeholder(nothing, callback(\"grid\")): 0, 0
+			}
+		";
+		var callbackCount = 0;
+		final gridObj = new h2d.Object();
+		final bp:BuilderParameters = {
+			callback: (request) -> {
+				switch request {
+					case Placeholder(name) if (name == "grid"):
+						callbackCount++;
+						return CBRObject(gridObj);
+					default:
+						return CBRNoResult;
+				}
+			},
+		};
+
+		final r = simulateReloadWithParams(source, source, "test", bp);
+
+		// Callback called once for initial build, NOT again during reload
+		Assert.equals(1, callbackCount, "Callback should be called once (initial build only)");
+
+		// Same object reused
+		Assert.isTrue(containsObject(r.oldResult.object, gridObj), "Callback-provided object should be reused");
+	}
+
+	// ==================== Placeholder reuse: callback with index ====================
+
+	@Test
+	public function testHotReload_callbackWithIndexPlaceholderReused():Void {
+		// Use repeatable with range to generate indexed callbacks
+		final source = "
+			#test programmable() {
+				repeatable($i, range(0, 2)) {
+					placeholder(nothing, callback(\"item\", $i)): 0, 0
+				}
+			}
+		";
+		var callbackCount = 0;
+		final items:Array<h2d.Object> = [];
+		for (i in 0...2) {
+			final obj = new h2d.Object();
+			items.push(obj);
+		}
+		final bp:BuilderParameters = {
+			callback: (request) -> {
+				switch request {
+					case PlaceholderWithIndex(name, index) if (name == "item"):
+						callbackCount++;
+						return CBRObject(items[index]);
+					default:
+						return CBRNoResult;
+				}
+			},
+		};
+
+		final r = simulateReloadWithParams(source, source, "test", bp);
+
+		// Called twice for initial build (index 0 and 1), NOT again during reload
+		Assert.equals(2, callbackCount, "Callback should be called twice (initial build only)");
+
+		// Both objects reused
+		Assert.isTrue(containsObject(r.oldResult.object, items[0]), "Item 0 should be reused");
+		Assert.isTrue(containsObject(r.oldResult.object, items[1]), "Item 1 should be reused");
+	}
+
+	// ==================== Placeholder reuse: position change preserves object ====================
+
+	@Test
+	public function testHotReload_placeholderPositionChangedObjectReused():Void {
+		final oldSource = "
+			#test programmable() {
+				placeholder(nothing, builderParameter(\"panel\")): 10, 20
+			}
+		";
+		final newSource = "
+			#test programmable() {
+				placeholder(nothing, builderParameter(\"panel\")): 100, 200
+			}
+		";
+		var factoryCallCount = 0;
+		final panelObj = new h2d.Object();
+		final bp:BuilderParameters = {
+			placeholderObjects: ["panel" => PVFactory((_) -> {
+				factoryCallCount++;
+				return panelObj;
+			})],
+		};
+
+		final r = simulateReloadWithParams(oldSource, newSource, "test", bp);
+
+		// Factory NOT re-called
+		Assert.equals(1, factoryCallCount, "Factory not re-called on position change");
+
+		// Object reused
+		Assert.isTrue(containsObject(r.oldResult.object, panelObj), "Panel should be reused after position change");
+	}
+
+	// ==================== Placeholder reuse: new placeholder falls through ====================
+
+	@Test
+	public function testHotReload_newPlaceholderFallsThrough():Void {
+		final oldSource = "
+			#test programmable() {
+				placeholder(nothing, builderParameter(\"existing\")): 0, 0
+			}
+		";
+		final newSource = "
+			#test programmable() {
+				placeholder(nothing, builderParameter(\"existing\")): 0, 0
+				placeholder(nothing, builderParameter(\"added\")): 50, 0
+			}
+		";
+		var existingCallCount = 0;
+		var addedCallCount = 0;
+		final existingObj = new h2d.Object();
+		final addedObj = new h2d.Object();
+		final bp:BuilderParameters = {
+			placeholderObjects: [
+				"existing" => PVFactory((_) -> { existingCallCount++; return existingObj; }),
+				"added" => PVFactory((_) -> { addedCallCount++; return addedObj; }),
+			],
+		};
+
+		final r = simulateReloadWithParams(oldSource, newSource, "test", bp);
+
+		// "existing" was in old build → reused (factory not called again)
+		Assert.equals(1, existingCallCount, "Existing factory called once (initial build)");
+
+		// "added" is new → factory called during reload
+		Assert.equals(1, addedCallCount, "Added factory called once (during reload)");
+
+		// Both present in result
+		Assert.isTrue(containsObject(r.oldResult.object, existingObj), "Existing object should be present");
+		Assert.isTrue(containsObject(r.oldResult.object, addedObj), "Added object should be present");
+	}
+
+	// ==================== Placeholder reuse: no placeholders = no wrapping ====================
+
+	@Test
+	public function testHotReload_noPlaceholdersNoWrapping():Void {
+		// A programmable with no placeholders should still work fine
+		final source = "
+			#test programmable(size:uint=10) {
+				bitmap(generated(color($size, $size, #f00))): 0, 0
+			}
+		";
+		final bp:BuilderParameters = {};
+
+		final r = simulateReloadWithParams(source, source, "test", bp, ["size" => 25]);
+		final bitmaps = findVisibleBitmapDescendants(r.oldResult.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(25, Std.int(bitmaps[0].tile.width));
+	}
+
+	// ==================== Placeholder capture: snapshot captures placeholders ====================
+
+	@Test
+	public function testPlaceholderSnapshot_capturedDuringBuild():Void {
+		final source = "
+			#test programmable() {
+				placeholder(nothing, builderParameter(\"a\")): 0, 0
+				placeholder(nothing, builderParameter(\"b\")): 50, 0
+			}
+		";
+		final objA = new h2d.Object();
+		final objB = new h2d.Object();
+		final bp:BuilderParameters = {
+			placeholderObjects: [
+				"a" => PVObject(objA),
+				"b" => PVObject(objB),
+			],
+		};
+
+		final builder = builderFromSource(source);
+		final result = builder.buildWithParameters("test", new Map(), bp, null, true);
+		final snapshot = StateSnapshotter.capture(result);
+
+		Assert.equals(2, snapshot.placeholders.length, "Should capture 2 placeholders");
+		// Verify names
+		var names = snapshot.placeholders.map(p -> p.name);
+		Assert.isTrue(names.indexOf("a") >= 0, "Should capture placeholder 'a'");
+		Assert.isTrue(names.indexOf("b") >= 0, "Should capture placeholder 'b'");
+	}
+
+	// ==================== PlaceholderReuser: empty snapshot returns original ====================
+
+	@Test
+	public function testPlaceholderReuser_emptySnapshotReturnsOriginal():Void {
+		final bp:BuilderParameters = {
+			callback: (_) -> CBRNoResult,
+		};
+		final wrapped = PlaceholderReuser.wrapBuilderParams(bp, []);
+		// With empty snapshot, should return original params unchanged
+		Assert.equals(bp, wrapped);
+	}
+
+	// ==================== Placeholder reuse with params: params still restored ====================
+
+	@Test
+	public function testHotReload_placeholderReusedAndParamsRestored():Void {
+		final source = "
+			#test programmable(label:string=\"default\") {
+				placeholder(nothing, builderParameter(\"widget\")): 0, 0
+				text(dd, $label, white): 0, 20
+			}
+		";
+		var factoryCallCount = 0;
+		final widgetObj = new h2d.Object();
+		final bp:BuilderParameters = {
+			placeholderObjects: ["widget" => PVFactory((_) -> {
+				factoryCallCount++;
+				return widgetObj;
+			})],
+		};
+
+		final r = simulateReloadWithParams(source, source, "test", bp, ["label" => "custom"]);
+
+		// Widget reused
+		Assert.equals(1, factoryCallCount, "Factory not re-called");
+		Assert.isTrue(containsObject(r.oldResult.object, widgetObj), "Widget should be reused");
+
+		// String param restored
+		final texts = findAllTextDescendants(r.oldResult.object);
+		Assert.equals(1, texts.length);
+		Assert.equals("custom", texts[0].text);
+	}
+
+	// ==================== Placeholder reuse: PVComponent ====================
+
+	@Test
+	public function testHotReload_pvComponentPlaceholderReused():Void {
+		final source = "
+			#test programmable() {
+				placeholder(nothing, builderParameter(\"grid\")): 30, 40
+			}
+		";
+		var factoryCallCount = 0;
+		final gridObj = new h2d.Object();
+		final bp:BuilderParameters = {
+			placeholderObjects: ["grid" => PVComponent((_) -> {
+				factoryCallCount++;
+				return gridObj;
+			}, null)],
+		};
+
+		final r = simulateReloadWithParams(source, source, "test", bp);
+
+		// Component factory NOT re-called — reused as PVObject
+		Assert.equals(1, factoryCallCount, "PVComponent factory should NOT be re-called during reload");
+		Assert.isTrue(containsObject(r.oldResult.object, gridObj), "PVComponent object should be reused");
+	}
+
+	// ==================== Placeholder reuse: value callback re-invoked ====================
+
+	@Test
+	public function testHotReload_valueCallbackReInvoked():Void {
+		// Name callback returns a scalar value used in expressions — should be re-invoked
+		final source = "
+			#test programmable() {
+				bitmap(generated(color(callback(\"width\"), 10, #f00))): 0, 0
+			}
+		";
+		var callbackCount = 0;
+		final bp:BuilderParameters = {
+			callback: (request) -> {
+				switch request {
+					case Name(name) if (name == "width"):
+						callbackCount++;
+						return CBRInteger(42);
+					default:
+						return CBRNoResult;
+				}
+			},
+		};
+
+		final r = simulateReloadWithParams(source, source, "test", bp);
+
+		// Value callback should be called TWICE — once for initial build, once for reload
+		Assert.equals(2, callbackCount, "Value callback should be re-invoked during reload");
+		final bitmaps = findVisibleBitmapDescendants(r.oldResult.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(42, Std.int(bitmaps[0].tile.width));
+	}
+
+	// ==================== Placeholder reuse: mixed callback + builderParameter ====================
+
+	@Test
+	public function testHotReload_mixedCallbackAndBuilderParameter():Void {
+		final source = "
+			#test programmable() {
+				placeholder(nothing, callback(\"fromCb\")): 0, 0
+				placeholder(nothing, builderParameter(\"fromBp\")): 50, 0
+			}
+		";
+		var cbCount = 0;
+		var bpCount = 0;
+		final cbObj = new h2d.Object();
+		final bpObj = new h2d.Object();
+		final bp:BuilderParameters = {
+			callback: (request) -> {
+				switch request {
+					case Placeholder(name) if (name == "fromCb"):
+						cbCount++;
+						return CBRObject(cbObj);
+					default:
+						return CBRNoResult;
+				}
+			},
+			placeholderObjects: ["fromBp" => PVFactory((_) -> {
+				bpCount++;
+				return bpObj;
+			})],
+		};
+
+		final r = simulateReloadWithParams(source, source, "test", bp);
+
+		// Both reused, neither re-called
+		Assert.equals(1, cbCount, "Callback placeholder not re-called");
+		Assert.equals(1, bpCount, "BuilderParameter factory not re-called");
+		Assert.isTrue(containsObject(r.oldResult.object, cbObj), "Callback object reused");
+		Assert.isTrue(containsObject(r.oldResult.object, bpObj), "BuilderParameter object reused");
+	}
+
+	// ==================== Placeholder reuse: position correctness (no doubling) ====================
+
+	@Test
+	public function testHotReload_placeholderPositionNotDoubled():Void {
+		final source = "
+			#test programmable() {
+				placeholder(nothing, builderParameter(\"obj\")): 100, 200
+			}
+		";
+		final myObj = new h2d.Object();
+		final bp:BuilderParameters = {
+			placeholderObjects: ["obj" => PVObject(myObj)],
+		};
+
+		final r = simulateReloadWithParams(source, source, "test", bp);
+
+		// The object should be at (100, 200), not (200, 400) from doubling
+		Assert.isTrue(containsObject(r.oldResult.object, myObj), "Object should be in tree");
+		// Builder applies addPosition directly to the placeholder object
+		Assert.floatEquals(100.0, myObj.x, "Object x should be 100 (not doubled to 200)");
+		Assert.floatEquals(200.0, myObj.y, "Object y should be 200 (not doubled to 400)");
+	}
+
+	// ==================== Placeholder reuse: removed placeholder ====================
+
+	@Test
+	public function testHotReload_removedPlaceholderNotInTree():Void {
+		final oldSource = "
+			#test programmable() {
+				placeholder(nothing, builderParameter(\"keep\")): 0, 0
+				placeholder(nothing, builderParameter(\"remove\")): 50, 0
+			}
+		";
+		final newSource = "
+			#test programmable() {
+				placeholder(nothing, builderParameter(\"keep\")): 0, 0
+			}
+		";
+		final keepObj = new h2d.Object();
+		final removeObj = new h2d.Object();
+		final bp:BuilderParameters = {
+			placeholderObjects: [
+				"keep" => PVObject(keepObj),
+				"remove" => PVObject(removeObj),
+			],
+		};
+
+		final r = simulateReloadWithParams(oldSource, newSource, "test", bp);
+
+		Assert.isTrue(containsObject(r.oldResult.object, keepObj), "Kept placeholder should be in tree");
+		Assert.isFalse(containsObject(r.oldResult.object, removeObj), "Removed placeholder should NOT be in tree");
+	}
+
+	// ==================== Placeholder reuse: scene field preserved ====================
+
+	@Test
+	public function testPlaceholderReuser_sceneFieldPreserved():Void {
+		final scene = new h2d.Scene();
+		final bp:BuilderParameters = {
+			callback: (_) -> CBRNoResult,
+			scene: scene,
+		};
+		final captured:PlaceholderSnapshot = [{name: "x", index: null, object: new h2d.Object()}];
+		final wrapped = PlaceholderReuser.wrapBuilderParams(bp, captured);
+
+		Assert.equals(scene, wrapped.scene, "scene field should be preserved in wrapped params");
+	}
+
+	// ==================== Helper: find h2d.Object by identity in tree ====================
+
+	static function containsObject(root:h2d.Object, target:h2d.Object):Bool {
+		if (root == target) return true;
+		for (i in 0...root.numChildren) {
+			if (containsObject(root.getChildAt(i), target)) return true;
+		}
+		return false;
 	}
 
 	// ==================== DynamicRef parameter preservation ====================

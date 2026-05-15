@@ -371,4 +371,64 @@ class InteractiveEventTest extends BuilderTestBase {
 			Assert.isTrue(Std.string(e).indexOf("foobar") >= 0);
 		}
 	}
+
+	// ==================== containsPoint allocation hygiene ====================
+	// containsPoint runs every mouse-move per registered interactive — card hand
+	// targeting iterates every drop target on every drag tick. The defensive
+	// copy that protects the caller's Point from globalToLocal's in-place mutation
+	// must be cached, not allocated per call.
+
+	@Test
+	public function testContainsPointReusesStaticScratchAcrossCalls():Void {
+		var result = BuilderTestBase.buildFromSource('
+			#test programmable() {
+				bitmap(generated(color(100, 30, #666666))): 0, 0
+				interactive(100, 30, "btn1"): 0, 0
+			}
+		', "test");
+		var wrapper = new UIInteractiveWrapper(result.interactives[0], null);
+
+		// Prime the static scratch.
+		var probe = new h2d.col.Point(10, 10);
+		wrapper.containsPoint(probe);
+		var cached:Dynamic = Reflect.field(UIInteractiveWrapper, "_scratchPt");
+		Assert.notNull(cached,
+			"UIInteractiveWrapper should expose a cached static _scratchPt h2d.col.Point after containsPoint — got null");
+
+		// Subsequent calls (with different point instances) must reuse the same Point.
+		wrapper.containsPoint(new h2d.col.Point(20, 20));
+		Assert.equals(cached, Reflect.field(UIInteractiveWrapper, "_scratchPt"),
+			"containsPoint must reuse the cached static _scratchPt (no per-call allocation)");
+
+		wrapper.containsPoint(new h2d.col.Point(50, 50));
+		Assert.equals(cached, Reflect.field(UIInteractiveWrapper, "_scratchPt"),
+			"containsPoint must reuse the cached static _scratchPt across calls");
+	}
+
+	@Test
+	public function testContainsPointDoesNotMutateCallerPoint():Void {
+		// Regression guard: a tempting "fix" is to pass `pos` straight into globalToLocal
+		// to avoid the allocation. But globalToLocal mutates in place, and callers
+		// (UICardHandTargeting, UIDefaultController.getEventElements) pass the SAME
+		// scratch Point across an iteration over multiple interactives. Mutating it
+		// would corrupt iteration N+1's input. containsPoint must leave pos untouched.
+		var result = BuilderTestBase.buildFromSource('
+			#test programmable() {
+				bitmap(generated(color(100, 30, #666666))): 0, 0
+				interactive(100, 30, "btn1"): 0, 0
+			}
+		', "test");
+		// Position the interactive so globalToLocal is NOT identity — only then can
+		// mutation of pos be observed (identity transform would leave pos unchanged
+		// even with the wrong fix).
+		result.interactives[0].setPosition(40, 25);
+		var wrapper = new UIInteractiveWrapper(result.interactives[0], null);
+
+		var pos = new h2d.col.Point(123.0, 77.0);
+		wrapper.containsPoint(pos);
+		Assert.floatEquals(123.0, pos.x, 0.001,
+			"containsPoint must not mutate caller's pos.x (would corrupt iteration over multiple interactives)");
+		Assert.floatEquals(77.0, pos.y, 0.001,
+			"containsPoint must not mutate caller's pos.y");
+	}
 }

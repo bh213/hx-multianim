@@ -1,0 +1,17 @@
+# .manim Language Server — Haxe to JS build configuration
+# Compiles MacroManimParser + LSP server to a single Node.js script.
+#
+# Build: haxe lsp/lsp-server.hxml
+# Run:   node lsp/bin/server.js
+
+-cp lsp/src
+-cp src
+
+-main manim.lsp.ManimLanguageServer
+-js lsp/bin/server.js
+
+# Exclude Heaps/HashLink dependencies (parser-only mode)
+-D noheaps
+
+# Disable position tracking in AST (not needed for LSP, saves output size)
+# -D MULTIANIM_TRACE

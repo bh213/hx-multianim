@@ -1,0 +1,64 @@
+// Test file for flipX/flipY support (#13)
+// Uses the existing crew2 sheet but applies flip via the new flipX/flipY anim properties.
+
+sheet: crew2
+allowedExtraPoints: [fire, targeting]
+center: 32, 48
+fps: 4
+
+// Original (no flip) for baseline comparison
+animation idle_normal {
+    loop: yes
+    playlist {
+        sheet: marine_l_idle
+    }
+    extrapoints {
+        targeting: -1, -12
+    }
+}
+
+// flipX in animation body — should mirror marine_l_idle horizontally
+animation idle_flipx {
+    loop: yes
+    flipX: yes
+    playlist {
+        sheet: marine_l_idle
+    }
+    extrapoints {
+        targeting: -1, -12
+    }
+}
+
+// flipY in animation body — vertically mirrored
+animation idle_flipy {
+    loop: yes
+    flipY: yes
+    playlist {
+        sheet: marine_l_idle
+    }
+}
+
+// Both flips
+animation idle_flipboth {
+    loop: yes
+    flipX: yes
+    flipY: yes
+    playlist {
+        sheet: marine_l_idle
+    }
+}
+
+// flipX with extrapoint — verifies extrapoint mirroring
+animation fire_flipx {
+    loop: yes
+    flipX: yes
+    playlist {
+        sheet: marine_l_shooting_u
+    }
+    extrapoints {
+        fire: -10, -8
+    }
+}
+
+// Compact shorthand with flipX
+anim shorthand_flipx(fps:4, loop:yes, flipX:yes): "marine_l_idle"

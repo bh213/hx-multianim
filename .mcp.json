@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "hx-multianim": {
+      "command": "npx",
+      "args": ["-y", "@bh213/hx-multianim-mcp"],
+      "env": {
+        "HX_DEV_PORT": "9001"
+      }
+    }
+  }
+}

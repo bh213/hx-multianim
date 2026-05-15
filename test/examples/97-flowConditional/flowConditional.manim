@@ -1,0 +1,9 @@
+version: 1.0
+
+#flowConditional programmable(mode:[a,b]=a) {
+  flow(layout: vertical, minWidth: 100, verticalSpacing: 2) {
+    bitmap(generated(color(80, 10, #ff0000))): 0, 0
+    @if(mode=>a) @flow.halign(right) bitmap(generated(color(40, 10, #00ff00))): 0, 0
+    @else @flow.halign(middle) @flow.offset(5, 0) bitmap(generated(color(40, 10, #0000ff))): 0, 0
+  }
+}

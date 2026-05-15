@@ -11,6 +11,15 @@ enum AnimatedPathMode {
 
 @:structInit
 class AnimatedPathState {
+	// Allocation watchdog for tests. Gated behind MULTIANIM_ALLOC_TRACK so the
+	// per-construction increment vanishes from production builds. Each AnimatedPath
+	// constructs ONE state and then mutates it in place across all updates — this
+	// counter exists to verify that contract holds (per-frame allocation == 0).
+	#if MULTIANIM_ALLOC_TRACK
+	public static var creationCount:Int = 0;
+	#end
+
+	/** Mutated in-place on each update. Clone if you need to store across frames. */
 	public var position:FPoint;
 	public var angle:Float;
 	public var rate:Float;
@@ -22,6 +31,24 @@ class AnimatedPathState {
 	public var done:Bool;
 	public var cycle:Int;
 	public var custom:Map<String, Float>;
+
+	public function new(position:FPoint, angle:Float, rate:Float, speed:Float, scale:Float, alpha:Float, rotation:Float, color:Int, done:Bool, cycle:Int,
+			custom:Map<String, Float>) {
+		this.position = position;
+		this.angle = angle;
+		this.rate = rate;
+		this.speed = speed;
+		this.scale = scale;
+		this.alpha = alpha;
+		this.rotation = rotation;
+		this.color = color;
+		this.done = done;
+		this.cycle = cycle;
+		this.custom = custom;
+		#if MULTIANIM_ALLOC_TRACK
+		creationCount++;
+		#end
+	}
 }
 
 enum CurveSlot {
@@ -53,6 +80,29 @@ private class TimedEvent {
 	public var eventName:String;
 }
 
+// Parallel insertion-ordered binding for custom curves. Iterating a Map via
+// `for (k => v in map)` on HL allocates a fresh keyValueIterator on every call
+// (even for empty maps); iterating an Array compiles to an indexed loop with
+// no per-call allocation. Public so the allocation watchdog tests can read
+// creationCount — matches the AnimatedPathState pattern in this file.
+@:structInit
+class CustomCurveBinding {
+	#if MULTIANIM_ALLOC_TRACK
+	public static var creationCount:Int = 0;
+	#end
+
+	public var name:String;
+	public var segments:Array<CurveSegment>;
+
+	public function new(name:String, segments:Array<CurveSegment>) {
+		this.name = name;
+		this.segments = segments;
+		#if MULTIANIM_ALLOC_TRACK
+		creationCount++;
+		#end
+	}
+}
+
 @:nullSafety
 class AnimatedPath {
 	public final path:Path;
@@ -78,7 +128,7 @@ class AnimatedPath {
 	var rotationCurveSegments:Array<CurveSegment> = [];
 	var progressCurveSegments:Array<CurveSegment> = [];
 	var colorCurveSegments:Array<ColorCurveSegment> = [];
-	var customCurveSegments:Map<String, Array<CurveSegment>> = [];
+	var customCurves:Array<CustomCurveBinding> = [];
 
 	// Timed events (sorted by atRate)
 	var timedEvents:Array<TimedEvent> = [];
@@ -112,6 +162,7 @@ class AnimatedPath {
 	}
 
 	public function addCurveSegment(slot:CurveSlot, startRate:Float, curve:ICurve):Void {
+		if (slot == Color) throw 'addCurveSegment() does not support Color slot — use addColorCurveSegment(startRate, curve, startColor, endColor) instead';
 		var segments = getSegmentsForSlot(slot);
 		insertSorted(segments, {startRate: startRate, curve: curve});
 	}
@@ -130,22 +181,19 @@ class AnimatedPath {
 		colorCurveSegments.insert(left, {startRate: startRate, curve: curve, startColor: startColor, endColor: endColor});
 	}
 
-	/** @deprecated Use addColorCurveSegment() for per-segment colors. */
-	public function setColorRange(startColor:Int, endColor:Int):Void {
-		// Backward compat: set colors on all existing color segments
-		for (seg in colorCurveSegments) {
-			seg.startColor = startColor;
-			seg.endColor = endColor;
-		}
-	}
-
 	public function addCustomCurveSegment(name:String, startRate:Float, curve:ICurve):Void {
-		if (!customCurveSegments.exists(name)) {
-			customCurveSegments.set(name, []);
+		var segments:Null<Array<CurveSegment>> = null;
+		for (i in 0...customCurves.length) {
+			if (customCurves[i].name == name) {
+				segments = customCurves[i].segments;
+				break;
+			}
 		}
-		var segments = customCurveSegments.get(name);
-		if (segments != null)
-			insertSorted(segments, {startRate: startRate, curve: curve});
+		if (segments == null) {
+			segments = [];
+			customCurves.push(new CustomCurveBinding(name, segments));
+		}
+		insertSorted(segments, {startRate: startRate, curve: curve});
 	}
 
 	public function addEvent(atRate:Float, eventName:String):Void {
@@ -171,17 +219,32 @@ class AnimatedPath {
 		reversed = false;
 	}
 
+	/** Returns the same `AnimatedPathState` instance held by this path. The state
+	 *  is mutated in-place by `update()` / `seek()` / `computeState()` — do not
+	 *  cache the returned reference across frames or across other calls on this
+	 *  path. Read field values into locals (or copy into a caller-owned state)
+	 *  before any further call into this AnimatedPath. See `AnimatedPathState`
+	 *  class doc for the in-place-mutation contract. */
 	public function getState():AnimatedPathState {
 		return currentState;
 	}
 
 	/** Compute and return the path state at an arbitrary rate (0..1) without
-	 *  advancing internal time/distance or firing events. */
+	 *  advancing internal time/distance or firing events. The returned reference
+	 *  IS the path's `currentState` — the same instance returned by `getState()`
+	 *  / `update()`. The next call to any of those methods overwrites these
+	 *  fields in place; copy values out before the next call if you need them.
+	 *  See `AnimatedPathState` class doc. */
 	public function seek(rate:Float):AnimatedPathState {
 		computeState(rate);
 		return currentState;
 	}
 
+	/** Advance the path by `dt` and return the path's `currentState`. The returned
+	 *  reference IS the path's `currentState` — the same instance returned by
+	 *  `getState()` / `seek()`. The next call to any of those methods overwrites
+	 *  these fields in place; copy values out before the next call if you need
+	 *  them. See `AnimatedPathState` class doc. */
 	public function update(dt:Float):AnimatedPathState {
 		if (isDone) return currentState;
 		if (dt <= 0) return currentState;
@@ -289,7 +352,7 @@ class AnimatedPath {
 
 	function computeState(rate:Float):Void {
 		currentState.rate = rate;
-		currentState.position = path.getPoint(rate);
+		path.getPointInto(rate, currentState.position);
 		currentState.angle = path.getTangentAngle(rate);
 		currentState.scale = evaluateCurveSlot(scaleCurveSegments, rate);
 		currentState.alpha = evaluateCurveSlot(alphaCurveSegments, rate);
@@ -298,9 +361,11 @@ class AnimatedPath {
 			currentState.color = evaluateColorCurve(rate);
 		currentState.done = false;
 
-		// Custom curves
-		for (name => segments in customCurveSegments) {
-			currentState.custom.set(name, evaluateCurveSlot(segments, rate));
+		// Custom curves — indexed loop over parallel array; `for (k => v in map)`
+		// allocates a fresh keyValueIterator per call on HL.
+		for (i in 0...customCurves.length) {
+			final binding = customCurves[i];
+			currentState.custom.set(binding.name, evaluateCurveSlot(binding.segments, rate));
 		}
 	}
 

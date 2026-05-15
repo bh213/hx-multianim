@@ -34,7 +34,7 @@ layouts {
   grid: 1280, 720
 
   @alpha(0.1) bitmap(generated(color(1280, 720, gray)));
-  repeatable($index, layout("mainScreen", "repeatableTest")) {
+  repeatable($index, layout("repeatableTest")) {
     pos: 0, 0
     bitmap(generated(color(60, 60, red)));
   }

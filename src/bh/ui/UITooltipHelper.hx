@@ -4,6 +4,7 @@ import bh.base.TweenManager;
 import bh.base.TweenManager.Tween;
 import bh.base.TweenManager.TweenProperty;
 import bh.ui.screens.UIScreen;
+import bh.ui.screens.UIScreen.UIScreenBase;
 import bh.multianim.MultiAnimBuilder;
 import bh.multianim.MultiAnimBuilder.BuilderResult;
 
@@ -27,7 +28,7 @@ typedef TooltipDefaults = {
 
 @:nullSafety
 class UITooltipHelper {
-	final screen:UIScreenBase;
+	final screen:UIComponentHost;
 	final builder:MultiAnimBuilder;
 	final defaultDelay:Float;
 	final defaultPosition:TooltipPosition;
@@ -59,7 +60,7 @@ class UITooltipHelper {
 	var fadingOutObj:Null<h2d.Object> = null;
 	var fadeOutTween:Null<Tween> = null;
 
-	public function new(screen:UIScreenBase, builder:MultiAnimBuilder, ?defaults:TooltipDefaults, ?tweens:TweenManager) {
+	public function new(screen:UIComponentHost, builder:MultiAnimBuilder, ?defaults:TooltipDefaults, ?tweens:TweenManager) {
 		this.screen = screen;
 		this.builder = builder;
 		this.defaultDelay = defaults?.delay ?? 0.3;
@@ -69,12 +70,16 @@ class UITooltipHelper {
 		this.defaultFadeIn = defaults?.fadeIn ?? 0.15;
 		this.defaultFadeOut = defaults?.fadeOut ?? 0.1;
 		this.tweens = tweens;
+		// Auto-register with the owning screen so in-flight fade tweens get
+		// cancelled on screen.clear() (symmetric with UIPanelHelper auto-wiring).
+		if (Std.isOfType(screen, UIScreenBase))
+			(cast screen : UIScreenBase).registerTooltipHelper(this);
 	}
 
 	/** Start hover timer for an interactive. Call from UIInteractiveEvent(UIEntering, ...) handler. */
 	public function startHover(interactiveId:String, buildName:String, ?params:Map<String, Dynamic>):Void {
-		// If already showing tooltip for this interactive, do nothing
-		if (activeTooltipId == interactiveId)
+		// If already showing tooltip for this interactive with the same buildName, do nothing
+		if (activeTooltipId == interactiveId && activeBuildName == buildName)
 			return;
 
 		// Hide any existing tooltip first
@@ -133,6 +138,11 @@ class UITooltipHelper {
 		activeTooltipId = null;
 		activeBuildName = null;
 		activeParams = null;
+		// Clear pending hover state so update() doesn't re-trigger the tooltip
+		hoverInteractiveId = null;
+		hoverBuildName = null;
+		hoverParams = null;
+		hoverTimer = 0;
 	}
 
 	/** Set custom delay for a specific interactive. */
@@ -214,7 +224,7 @@ class UITooltipHelper {
 		final position = positionOverrides.get(interactiveId) ?? defaultPosition;
 		final offset = offsetOverrides.get(interactiveId) ?? defaultOffset;
 
-		positionTooltip(result.object, wrapper.interactive, position, offset);
+		UIPositionHelper.position(result.object, wrapper.interactive, position, offset);
 		screen.addObjectToLayer(result.object, layer);
 
 		// Apply fade-in
@@ -243,23 +253,36 @@ class UITooltipHelper {
 		}
 	}
 
-	function positionTooltip(tooltip:h2d.Object, anchor:h2d.Object, position:TooltipPosition, offset:Int):Void {
-		final anchorBounds = anchor.getBounds();
-		final tooltipBounds = tooltip.getSize();
-
-		switch position {
-			case Above:
-				tooltip.x = anchorBounds.x + (anchorBounds.width - tooltipBounds.width) / 2;
-				tooltip.y = anchorBounds.y - tooltipBounds.height - offset;
-			case Below:
-				tooltip.x = anchorBounds.x + (anchorBounds.width - tooltipBounds.width) / 2;
-				tooltip.y = anchorBounds.y + anchorBounds.height + offset;
-			case Left:
-				tooltip.x = anchorBounds.x - tooltipBounds.width - offset;
-				tooltip.y = anchorBounds.y + (anchorBounds.height - tooltipBounds.height) / 2;
-			case Right:
-				tooltip.x = anchorBounds.x + anchorBounds.width + offset;
-				tooltip.y = anchorBounds.y + (anchorBounds.height - tooltipBounds.height) / 2;
+	/** Release all tween and scene resources. Call when the owning screen is torn down
+	    (e.g. during hot reload or full rebuild) to prevent in-flight fade tween closures
+	    from holding h2d.Object references past the screen's lifetime. */
+	public function dispose():Void {
+		if (fadeInTween != null) {
+			fadeInTween.cancel();
+			fadeInTween = null;
 		}
+		if (fadeOutTween != null) {
+			fadeOutTween.cancel();
+			fadeOutTween = null;
+		}
+		if (fadingOutObj != null) {
+			fadingOutObj.remove();
+			fadingOutObj = null;
+		}
+		if (activeResult != null) {
+			activeResult.object.remove();
+			activeResult = null;
+		}
+		activeTooltipId = null;
+		activeBuildName = null;
+		activeParams = null;
+		hoverInteractiveId = null;
+		hoverBuildName = null;
+		hoverParams = null;
+		hoverTimer = 0;
+		delayOverrides.clear();
+		positionOverrides.clear();
+		offsetOverrides.clear();
 	}
+
 }

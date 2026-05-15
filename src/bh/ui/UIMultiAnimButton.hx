@@ -7,8 +7,10 @@ import bh.ui.UIElement;
 import h2d.Object;
 import h2d.col.Point;
 
-class UIStandardMultiAnimButton implements UIElement implements UIElementDisablable implements StandardUIElementEvents implements UIElementCursor {
+class UIStandardMultiAnimButton implements UIElement implements UIElementDisablable implements StandardUIElementEvents implements UIElementCursor
+		implements UIElementText {
 	final result:BuilderResult;
+	var buttonText:String;
 
 	public var disabled(default, set):Bool = false;
 
@@ -17,6 +19,7 @@ class UIStandardMultiAnimButton implements UIElement implements UIElementDisabla
 	}
 
 	function new(builder:MultiAnimBuilder, name:String, buttonText:String, ?extraParams:Map<String, Dynamic>) {
+		this.buttonText = buttonText;
 		var params:Map<String, Dynamic> = ["buttonText" => buttonText, "status" => "normal", "disabled" => "false"];
 		if (extraParams != null) {
 			for (key => value in extraParams)
@@ -25,12 +28,22 @@ class UIStandardMultiAnimButton implements UIElement implements UIElementDisabla
 		this.result = builder.buildWithParameters(name, params, null, null, true);
 	}
 
+	public function setText(text:String) {
+		this.buttonText = text;
+		result.setParameter("buttonText", text);
+	}
+
+	public function getText():String {
+		return buttonText;
+	}
+
 	public function set_disabled(value:Bool):Bool {
 		if (this.disabled != value) {
 			this.disabled = value;
 			result.beginUpdate();
 			result.setParameter("status", value ? "disabled" : "normal");
-			result.setParameter("disabled", '${value}');
+			if (result.hasParameter("disabled"))
+				result.setParameter("disabled", '${value}');
 			result.endUpdate();
 		}
 		return value;
@@ -41,6 +54,7 @@ class UIStandardMultiAnimButton implements UIElement implements UIElementDisabla
 	}
 
 	public function containsPoint(pos:Point):Bool {
+		if (disabled) return false;
 		return getObject().getBounds().contains(pos);
 	}
 

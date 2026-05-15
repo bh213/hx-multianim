@@ -1,0 +1,11 @@
+version: 1.0
+
+#codegenIncGraphics programmable(val:uint=100, maxVal:uint=100) {
+  graphics(rect(#ff0000, filled, $val * 200 / $maxVal, 20): 0, 0): 0, 0
+}
+
+#codegenIncPixels programmable(val:uint=100) {
+  pixels (
+    filledRect 0, 0, $val, 5, #ff0000
+  );
+}

@@ -1,19 +1,8 @@
-# hx-multianim Dev-Mode Test Configuration
-# Run tests with: haxe test-hx-multianim-dev.hxml
-#
-# Same as test-hx-multianim.hxml but with -D MULTIANIM_DEV enabled.
-# This compiles hot-reload infrastructure and runs HotReloadTest.
+# Dev-mode test configuration (local Windows, DirectX)
+# Compiles hot-reload infrastructure and runs HotReloadTest.
+# Run: haxe test-hx-multianim-dev.hxml && hl build/hl-test-dev.hl
 
--lib heaps
--lib utest
+test-common.hxml
 -lib hldx
-
--cp test/src
--p src
--main bh.test.TestApp
--debug
--D resourcesPath=test/res
--D windowSize=1280x720
--D MULTIANIM_TRACE
 -D MULTIANIM_DEV
 -hl build/hl-test-dev.hl

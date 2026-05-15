@@ -17,4 +17,20 @@ version: 1.0
   bitmap(generated(color(80, 80, red)), left, top):600,80
   bitmap(generated(color(80, 80, red)), center, top):600,240
   bitmap(generated(color(80, 80, red)), right, top):600,400
+
+  // center() and pivot() modifiers — crosshair marks the anchor point
+  bitmap(generated(color(4, 200, white))):900,100
+  bitmap(generated(color(200, 4, white))):800,200
+
+  // no pivot (default top-left origin) — red square at anchor
+  bitmap(generated(color(60, 60, red))):900,200
+
+  // center() — green square centered on anchor
+  bitmap(center(generated(color(60, 60, green)))):900,200
+
+  // pivot(1.0, 1.0) — blue square with bottom-right at anchor
+  bitmap(pivot(1.0, 1.0, generated(color(60, 60, blue)))):900,200
+
+  // pivot(0.5, 0.0) — yellow square with top-center at anchor
+  bitmap(pivot(0.5, 0.0, generated(color(40, 40, yellow)))):900,400
 }

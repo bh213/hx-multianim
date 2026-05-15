@@ -4,7 +4,14 @@ package bh.base;
 class FPoint {
 	public var x:Float;
 	public var y:Float;
-	
+
+	// Allocation watchdog for tests. Gated behind MULTIANIM_ALLOC_TRACK so the
+	// per-construction increment vanishes from production builds; FPoint is on
+	// every particle/path/hex/layout hot path.
+	#if MULTIANIM_ALLOC_TRACK
+	public static var creationCount:Int = 0;
+	#end
+
 	inline public static function zero() {
 		return new FPoint(0, 0);
 	}
@@ -16,18 +23,11 @@ class FPoint {
 	public inline function new(x, y) {
 		this.x = x;
 		this.y = y;
-		
+		#if MULTIANIM_ALLOC_TRACK
+		creationCount++;
+		#end
 	}
 
-	#if !macro
-	public static inline function fromh2dPoint(p:h2d.col.Point) {
-		return new FPoint(p.x, p.y);
-	}
-
-	public inline function toh2dPoint() {
-		return new h2d.col.Point(x, y);
-	}
-	#end
 
 	public function toPoint() {
 		return new Point(Math.round(x), Math.round(y));

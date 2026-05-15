@@ -1,0 +1,7 @@
+version: 1.0
+
+import "test/examples/115-codegenExternalPalette/extPalette.manim" as "ext"
+
+#codegenExternalPalette programmable() {
+  bitmap(generated(color(20, 20, palette(external(ext), tones, 0)))): 0, 0
+}

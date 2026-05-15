@@ -52,9 +52,9 @@ class ReplacePaletteShader extends h3d.shader.ScreenShader {
     PALETTE_SIZE = source.length;
     for (i in 0...PALETTE_SIZE) {
         SRC_COL[i] = new Vector4();
-        SRC_COL[i].setColor(source[i].addAlphaIfNotPresent());
+        SRC_COL[i].setColor(source[i]);
         DST_COL[i] = new Vector4();
-        DST_COL[i].setColor(replacement[i].addAlphaIfNotPresent());
+        DST_COL[i].setColor(replacement[i]);
 
     }
   }

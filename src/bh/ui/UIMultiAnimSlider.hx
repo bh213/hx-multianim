@@ -27,6 +27,10 @@ class UIStandardMultiAnimSlider implements UIElement implements UIElementDisabla
 	public var step:Float = 0;
 
 	var extraParams:Null<Map<String, Dynamic>>;
+	// Scratch reused inside calculatePos() — globalToLocal mutates its argument,
+	// so we copy eventPos into this Point to keep the caller's eventPos intact
+	// without allocating per event.
+	final tmpPoint:Point = new Point();
 
 	function new(builder:MultiAnimBuilder, name:String, size:Int, initialValue:Float, ?extraParams:Null<Map<String, Dynamic>>) {
 		this.root = new h2d.Object();
@@ -101,7 +105,8 @@ class UIStandardMultiAnimSlider implements UIElement implements UIElementDisabla
 			currentResult.beginUpdate();
 			currentResult.setParameter("status", standardUIElementStatusToString(status));
 			currentResult.setParameter("value", externalToInternal(currentValue));
-			currentResult.setParameter("disabled", '$disabled');
+			if (currentResult.hasParameter("disabled"))
+				currentResult.setParameter("disabled", '$disabled');
 			currentResult.endUpdate();
 		}
 	}
@@ -143,7 +148,9 @@ class UIStandardMultiAnimSlider implements UIElement implements UIElementDisabla
 		if (start == null || end == null) return currentValue;
 		// globalToLocal on start.parent (the ninepatch) converts scene mouse coords
 		// into the same coordinate space as start.x/end.x, handling any parent scaling.
-		final localPos = start.parent.globalToLocal(eventPos.clone());
+		// globalToLocal mutates its argument — copy into scratch so eventPos stays intact.
+		tmpPoint.set(eventPos.x, eventPos.y);
+		final localPos = start.parent.globalToLocal(tmpPoint);
 		final ratio = hxd.Math.clamp((localPos.x - start.x) / (end.x - start.x), 0, 1);
 		return snapToStep(min + ratio * (max - min));
 	}

@@ -1,0 +1,70 @@
+{
+  "name": "multianim",
+  "displayName": "MultiAnim Language Support",
+  "description": "Language support for .manim and .anim files — syntax highlighting, diagnostics, completions, hover, symbols, and go-to-definition",
+  "publisher": "bh213",
+  "version": "2.0.28",
+  "engines": {
+    "vscode": "^1.87.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bh213/hx-multianim"
+  },
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "multianim",
+        "aliases": [
+          "MultiAnim",
+          "manim"
+        ],
+        "extensions": [
+          ".manim"
+        ],
+        "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "anim",
+        "aliases": [
+          "Anim",
+          "State Animation"
+        ],
+        "extensions": [
+          ".anim"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "multianim",
+        "scopeName": "source.multianim",
+        "path": "./syntaxes/multianim.tmLanguage.json"
+      },
+      {
+        "language": "anim",
+        "scopeName": "source.anim",
+        "path": "./syntaxes/anim.tmLanguage.json"
+      }
+    ]
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.0"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.87.0",
+    "@vscode/vsce": "^3.7.1",
+    "esbuild": "^0.19.0",
+    "typescript": "^5.3.0"
+  },
+  "scripts": {
+    "build": "node build.js",
+    "package": "npm run build && vsce package --allow-missing-repository",
+    "sync-check": "node sync-check.js"
+  }
+}

@@ -1,5 +1,7 @@
 package bh.multianim;
 
+import bh.multianim.BuilderError;
+
 /**
  * Wrapper for multiple named h2d.Object elements in macro-generated code.
  * Implements `IUpdatable` — the same interface as the runtime `Updatable`,
@@ -9,7 +11,7 @@ package bh.multianim;
  */
 class ProgrammableUpdatable implements IUpdatable {
 	public final objects:Array<h2d.Object>;
-	var lastObject:Null<h2d.Object> = null;
+	final addedObjects:Array<h2d.Object> = [];
 
 	public function new(objects:Array<h2d.Object>) {
 		this.objects = objects;
@@ -25,7 +27,7 @@ class ProgrammableUpdatable implements IUpdatable {
 			if (Std.isOfType(obj, h2d.Text)) {
 				(cast obj : h2d.Text).text = newText;
 			} else if (throwIfAnyFails) {
-				throw 'invalid updateText: expected h2d.Text but got ${Type.getClassName(Type.getClass(obj))}';
+				throw BuilderError.of('invalid updateText: expected h2d.Text but got ${Type.getClassName(Type.getClass(obj))}');
 			}
 		}
 	}
@@ -35,38 +37,37 @@ class ProgrammableUpdatable implements IUpdatable {
 			if (Std.isOfType(obj, h2d.Bitmap)) {
 				(cast obj : h2d.Bitmap).tile = newTile;
 			} else if (throwIfAnyFails) {
-				throw 'invalid updateTile: expected h2d.Bitmap but got ${Type.getClassName(Type.getClass(obj))}';
+				throw BuilderError.of('invalid updateTile: expected h2d.Bitmap but got ${Type.getClassName(Type.getClass(obj))}');
 			}
 		}
 	}
 
 	public function setObject(newObject:h2d.Object) {
 		if (objects.length != 1)
-			throw 'setObject needs exactly one element';
-		if (lastObject == newObject)
+			throw BuilderError.of('setObject needs exactly one element');
+		if (addedObjects.length == 1 && addedObjects[0] == newObject)
 			return;
 
-		if (lastObject != null) {
-			lastObject.remove();
-			lastObject = null;
-		}
+		for (o in addedObjects)
+			o.remove();
+		addedObjects.resize(0);
 
 		objects[0].addChild(newObject);
-		lastObject = newObject;
+		addedObjects.push(newObject);
 	}
 
 	public function addObject(newObject:h2d.Object) {
 		if (objects.length != 1)
-			throw 'addObject needs exactly one element';
+			throw BuilderError.of('addObject needs exactly one element');
 
 		objects[0].addChild(newObject);
-		lastObject = newObject;
+		addedObjects.push(newObject);
 	}
 
 	public function clearObjects() {
 		for (obj in objects) {
 			obj.removeChildren();
 		}
-		lastObject = null;
+		addedObjects.resize(0);
 	}
 }

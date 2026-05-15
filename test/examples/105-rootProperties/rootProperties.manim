@@ -1,0 +1,16 @@
+version: 1.0
+
+// Regression test for codegen honoring root-level pos / scale / rotation / alpha / filter.
+// All five must apply identically in builder and codegen paths so that the same .manim
+// renders to the same image regardless of which path built it.
+#rootProperties programmable() {
+    pos: 200, 100
+    scale: 0.6
+    rotate: 8
+    alpha: 0.85
+    filter: outline(2.0, #ffff00)
+
+    bitmap(generated(color(400, 200, #4488ff))): 0, 0
+    bitmap(generated(color(120, 120, #ff4488))): 30, 30
+    bitmap(generated(color(60, 60, #44ff88))): 200, 70
+}

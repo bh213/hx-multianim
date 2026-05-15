@@ -27,7 +27,9 @@ version: 1.0
 
   // Case 2: no params — child should use OWN defaults (10, 20, 30), NOT parent (50, 60, 70)
   text(m3x6, "2: no params (expect 10,20,30):", #aaaaaa): 5, 50
-  dynamicRef($scopeChild): 5, 61
+  // #probe: test handle for getDynamicRef — the other scopeChild sibling sites collide on the
+  // unnamed "scopeChild" key so any getDynamicRef("scopeChild") call is ambiguous.
+  #probe dynamicRef($scopeChild): 5, 61
 
   // Case 3: partial — only a passed. b,c should use child defaults (20, 30)
   text(m3x6, "3: partial a only (expect 50,20,30):", #aaaaaa): 5, 95

@@ -32,15 +32,51 @@ private enum TweenPropertyKind {
 	KCustom(getter:Void -> Float, setter:Float -> Void);
 }
 
-private class TweenPropertyEntry {
+// Public so tests can read `TweenPropertyEntry.creationCount`. Otherwise still an
+// implementation detail of the Tween class — fields are not consumed externally.
+class TweenPropertyEntry {
+	// Allocation watchdog for tests. Gated behind MULTIANIM_ALLOC_TRACK so the
+	// per-construction increment vanishes from production builds. With pooling,
+	// `creationCount` only grows when the free-list is empty (initial fill or
+	// burst beyond the high-water mark); steady-state UI churn produces 0.
+	#if MULTIANIM_ALLOC_TRACK
+	public static var creationCount:Int = 0;
+	#end
+
+	static var _pool:Array<TweenPropertyEntry> = [];
+
 	public var kind:TweenPropertyKind;
 	public var from:Float;
 	public var to:Float;
 
-	public function new(kind:TweenPropertyKind, to:Float) {
+	function new(kind:TweenPropertyKind, to:Float) {
 		this.kind = kind;
 		this.to = to;
 		this.from = 0.0;
+		#if MULTIANIM_ALLOC_TRACK
+		creationCount++;
+		#end
+	}
+
+	public static inline function acquire(kind:TweenPropertyKind, to:Float):TweenPropertyEntry {
+		// pop() is Null<T>; narrow via explicit check rather than relying on length.
+		var e = _pool.pop();
+		if (e != null) {
+			e.kind = kind;
+			e.to = to;
+			e.from = 0.0;
+			return e;
+		}
+		return new TweenPropertyEntry(kind, to);
+	}
+
+	public static inline function release(entry:TweenPropertyEntry):Void {
+		// KCustom holds two closures that may capture game state — reset to a
+		// closure-free variant so released entries don't pin objects in memory.
+		entry.kind = KAlpha;
+		entry.from = 0.0;
+		entry.to = 0.0;
+		_pool.push(entry);
 	}
 }
 
@@ -52,45 +88,110 @@ private enum TweenHandle {
 
 @:nullSafety
 class Tween {
+	// Allocation watchdog for tests. Gated behind MULTIANIM_ALLOC_TRACK so the
+	// per-construction increment vanishes from production builds. With pooling,
+	// `creationCount` only grows when the free-list is empty (initial fill or
+	// burst beyond the high-water mark); steady-state UI churn produces 0.
+	#if MULTIANIM_ALLOC_TRACK
+	public static var creationCount:Int = 0;
+	#end
+
+	static var _pool:Array<Tween> = [];
+
 	public var target(default, null):h2d.Object;
 	public var duration(default, null):Float;
 	public var elapsed(default, null):Float = 0.0;
 	public var onComplete:Null<Void -> Void> = null;
 	public var cancelled(default, null):Bool = false;
 
-	var easingFn:Float -> Float;
+	var easing:Null<EasingType>;
 	var entries:Array<TweenPropertyEntry>;
 	var initialized:Bool = false;
 	/** When true, the first step() discards its dt to avoid a large initial
 	    jump after expensive frame operations (e.g. adding scene roots). */
 	public var skipFirstDt:Bool = false;
+	/** When true, TweenManager.update() removes target from its parent after
+	    onComplete fires. Set by fadeOut(removeOnComplete=true) in lieu of a
+	    per-call `() -> target.remove()` closure. Skipped on cancellation, so
+	    behavior matches the prior closure-on-onComplete path exactly. */
+	public var removeTargetOnComplete:Bool = false;
 
 	public function new(target:h2d.Object, duration:Float, properties:Array<TweenProperty>, ?easing:EasingType) {
 		this.target = target;
 		this.duration = duration;
-		this.easingFn = easing != null ? (t) -> FloatTools.applyEasing(easing, t) : (t) -> t;
+		this.easing = easing;
 		this.entries = [];
+		#if MULTIANIM_ALLOC_TRACK
+		creationCount++;
+		#end
+		loadProperties(properties);
+	}
+
+	public static inline function acquire(target:h2d.Object, duration:Float, properties:Array<TweenProperty>,
+			?easing:EasingType):Tween {
+		var t = _pool.pop();
+		if (t != null) {
+			t.target = target;
+			t.duration = duration;
+			t.easing = easing;
+			t.elapsed = 0.0;
+			t.onComplete = null;
+			t.cancelled = false;
+			t.initialized = false;
+			t.skipFirstDt = false;
+			t.removeTargetOnComplete = false;
+			t.loadProperties(properties);
+			return t;
+		}
+		return new Tween(target, duration, properties, easing);
+	}
+
+	/** Release a tween to the shared pool. Recycles owned entries internally
+	    so callers only need release(). External references are typically nulled
+	    by the time release runs (manager calls this after onComplete fires —
+	    helpers like UIPanelHelper null their tracked tween in onComplete). */
+	public static inline function release(tween:Tween):Void {
+		tween.recycleEntries();
+		// Drop callback so a pooled instance does not pin closure-captured state.
+		tween.onComplete = null;
+		// `target` intentionally not nulled — type is non-nullable, pool depth
+		// stays small in practice (typically 1-3 instances under steady churn),
+		// and each pooled instance pins exactly one h2d.Object reference.
+		_pool.push(tween);
+	}
+
+	inline function loadProperties(properties:Array<TweenProperty>):Void {
 		for (prop in properties) {
 			switch prop {
 				case Alpha(to):
-					entries.push(new TweenPropertyEntry(KAlpha, to));
+					entries.push(TweenPropertyEntry.acquire(KAlpha, to));
 				case X(to):
-					entries.push(new TweenPropertyEntry(KX, to));
+					entries.push(TweenPropertyEntry.acquire(KX, to));
 				case Y(to):
-					entries.push(new TweenPropertyEntry(KY, to));
+					entries.push(TweenPropertyEntry.acquire(KY, to));
 				case ScaleX(to):
-					entries.push(new TweenPropertyEntry(KScaleX, to));
+					entries.push(TweenPropertyEntry.acquire(KScaleX, to));
 				case ScaleY(to):
-					entries.push(new TweenPropertyEntry(KScaleY, to));
+					entries.push(TweenPropertyEntry.acquire(KScaleY, to));
 				case Scale(to):
-					entries.push(new TweenPropertyEntry(KScaleX, to));
-					entries.push(new TweenPropertyEntry(KScaleY, to));
+					entries.push(TweenPropertyEntry.acquire(KScaleX, to));
+					entries.push(TweenPropertyEntry.acquire(KScaleY, to));
 				case Rotation(to):
-					entries.push(new TweenPropertyEntry(KRotation, to));
+					entries.push(TweenPropertyEntry.acquire(KRotation, to));
 				case Custom(getter, setter, to):
-					entries.push(new TweenPropertyEntry(KCustom(getter, setter), to));
+					entries.push(TweenPropertyEntry.acquire(KCustom(getter, setter), to));
 			}
 		}
+	}
+
+	/** Return all entries to the shared pool. Idempotent — safe to call twice. */
+	public function recycleEntries():Void {
+		for (entry in entries) {
+			TweenPropertyEntry.release(entry);
+		}
+		// Empty in place rather than reallocating; subsequent step() calls will
+		// see no entries and become no-ops, matching cancelled-tween semantics.
+		entries.resize(0);
 	}
 
 	public function setOnComplete(cb:Void -> Void):Tween {
@@ -100,6 +201,19 @@ class Tween {
 
 	public function cancel():Void {
 		cancelled = true;
+	}
+
+	/** Fire onComplete and apply removeTargetOnComplete in that order. Called at
+	    every per-tween completion site (HTween arm, sequence step/finish, group
+	    step/finish) so the flag is honored uniformly whether the tween runs bare
+	    or wrapped in a sequence/group. Not invoked on cancel — matches the prior
+	    closure-on-onComplete behavior. */
+	public function runCompletionHooks():Void {
+		var cb = onComplete;
+		if (cb != null)
+			cb();
+		if (removeTargetOnComplete)
+			target.remove();
 	}
 
 	/** Captures current property values as "from". Called when the tween starts running. */
@@ -119,6 +233,18 @@ class Tween {
 		if (!initialized)
 			init();
 
+		// Zero (or negative) duration is a "skip" intent — snap to the final
+		// state and complete immediately. Without this, elapsed/duration is
+		// 0/0=NaN (or Infinity for dt>0), clamp is not NaN-aware, and lerp
+		// propagates NaN into target.alpha/x/y/scale/rotation.
+		if (duration <= 0) {
+			for (entry in entries) {
+				setPropertyValue(entry.kind, entry.to);
+			}
+			elapsed = duration;
+			return true;
+		}
+
 		// When skipFirstDt is set, discard the first step's dt to avoid a
 		// large initial jump (e.g. the frame that added new scene roots may
 		// have caused a render spike).
@@ -129,7 +255,12 @@ class Tween {
 
 		elapsed += dt;
 		var t = FloatTools.clamp(elapsed / duration, 0.0, 1.0);
-		var easedT = easingFn(t);
+		// Inline dispatch in lieu of an `easingFn:Float -> Float` closure that
+		// previously had to be allocated per Tween (one of the per-call allocs
+		// we're explicitly here to remove). Linear shortcut keeps the no-easing
+		// path branch-free.
+		final e = easing;
+		var easedT = e == null ? t : FloatTools.applyEasing(e, t);
 
 		for (entry in entries) {
 			var value = FloatTools.lerp(easedT, entry.from, entry.to);
@@ -200,57 +331,50 @@ class TweenSequence {
 
 	public function cancel():Void {
 		cancelled = true;
-		if (currentIndex < tweens.length)
-			tweens[currentIndex].cancel();
+		for (tween in tweens)
+			tween.cancel();
 	}
 
 	/** Advance the sequence. Returns true when all tweens are complete. */
 	public function step(dt:Float):Bool {
 		if (cancelled)
 			return true;
-		if (currentIndex >= tweens.length)
-			return true;
-
-		var current = tweens[currentIndex];
-		current.init();
-
-		if (current.step(dt)) {
-			// Fire individual tween's onComplete
-			var cb = current.onComplete;
-			if (cb != null)
-				cb();
-
-			currentIndex++;
-			// Pass remaining dt to the next tween
-			var remaining = current.elapsed - current.duration;
-			if (remaining > 0 && currentIndex < tweens.length) {
-				return step(remaining);
+		// Loop instead of recursing so that a huge dt spanning many short tweens
+		// (debugger pause, paused tab) doesn't grow the native stack per tween.
+		var remainingDt = dt;
+		while (currentIndex < tweens.length) {
+			var current = tweens[currentIndex];
+			if (current.cancelled) {
+				currentIndex++;
+				continue;
 			}
-			return currentIndex >= tweens.length;
+			current.init();
+			if (!current.step(remainingDt))
+				return false;
+			current.runCompletionHooks();
+			currentIndex++;
+			remainingDt = current.elapsed - current.duration;
+			if (remainingDt <= 0)
+				break;
 		}
-		return false;
+		return currentIndex >= tweens.length;
 	}
 
 	/** Jump all remaining tweens to their final state. */
 	public function finish():Void {
+		if (cancelled)
+			return;
 		while (currentIndex < tweens.length) {
 			var current = tweens[currentIndex];
+			if (current.cancelled) {
+				currentIndex++;
+				continue;
+			}
 			current.init();
 			current.finish();
-			var cb = current.onComplete;
-			if (cb != null)
-				cb();
+			current.runCompletionHooks();
 			currentIndex++;
 		}
-	}
-
-	public function getTargets():Array<h2d.Object> {
-		var targets:Array<h2d.Object> = [];
-		for (tween in tweens) {
-			if (!targets.contains(tween.target))
-				targets.push(tween.target);
-		}
-		return targets;
 	}
 }
 
@@ -285,8 +409,17 @@ class TweenGroup {
 		var allDone = true;
 		for (tween in tweens) {
 			if (!tween.cancelled && tween.elapsed < tween.duration) {
-				if (!tween.step(dt))
+				if (tween.step(dt)) {
+					// Per-tween onComplete is fired only in finish() for groups
+					// (intentional pre-existing asymmetry with TweenSequence);
+					// removeTargetOnComplete still has to fire wherever the tween
+					// actually completes, otherwise the flag is silently dropped
+					// for tweens wrapped in a group.
+					if (tween.removeTargetOnComplete)
+						tween.target.remove();
+				} else {
 					allDone = false;
+				}
 			}
 		}
 		return allDone;
@@ -294,22 +427,15 @@ class TweenGroup {
 
 	/** Jump all tweens to their final state. */
 	public function finish():Void {
+		if (cancelled)
+			return;
 		for (tween in tweens) {
+			if (tween.cancelled)
+				continue;
 			tween.init();
 			tween.finish();
-			var cb = tween.onComplete;
-			if (cb != null)
-				cb();
+			tween.runCompletionHooks();
 		}
-	}
-
-	public function getTargets():Array<h2d.Object> {
-		var targets:Array<h2d.Object> = [];
-		for (tween in tweens) {
-			if (!targets.contains(tween.target))
-				targets.push(tween.target);
-		}
-		return targets;
 	}
 }
 
@@ -331,9 +457,7 @@ class TweenManager {
 						done = true;
 					} else if (tween.step(dt)) {
 						done = true;
-						var cb = tween.onComplete;
-						if (cb != null)
-							cb();
+						tween.runCompletionHooks();
 					}
 				case HSequence(seq):
 					if (seq.cancelled) {
@@ -355,6 +479,7 @@ class TweenManager {
 					}
 			}
 			if (done) {
+				recycleHandle(handle);
 				handles[i] = handles[handles.length - 1];
 				handles.pop();
 			} else {
@@ -363,9 +488,25 @@ class TweenManager {
 		}
 	}
 
+	static function recycleHandle(handle:TweenHandle):Void {
+		// Tween.release recycles owned entries internally, then returns the
+		// instance to the shared pool — replaces the prior recycleEntries-only
+		// path so the Tween itself is also reused at steady state.
+		switch handle {
+			case HTween(tween):
+				Tween.release(tween);
+			case HSequence(seq):
+				for (tween in seq.tweens)
+					Tween.release(tween);
+			case HGroup(group):
+				for (tween in group.tweens)
+					Tween.release(tween);
+		}
+	}
+
 	/** Create and start a tween on a target object. */
 	public function tween(target:h2d.Object, duration:Float, properties:Array<TweenProperty>, ?easing:EasingType):Tween {
-		var t = new Tween(target, duration, properties, easing);
+		var t = Tween.acquire(target, duration, properties, easing);
 		t.init();
 		handles.push(HTween(t));
 		return t;
@@ -373,7 +514,7 @@ class TweenManager {
 
 	/** Create a tween without starting it (for use in sequences). */
 	public function createTween(target:h2d.Object, duration:Float, properties:Array<TweenProperty>, ?easing:EasingType):Tween {
-		return new Tween(target, duration, properties, easing);
+		return Tween.acquire(target, duration, properties, easing);
 	}
 
 	/** Cancel a specific tween. */
@@ -393,14 +534,14 @@ class TweenManager {
 						if (tween.target == target)
 							tween.cancel();
 					}
-					if (seq.getTargets().length == 0 || Lambda.foreach(seq.tweens, t -> t.cancelled))
+					if (allCancelled(seq.tweens))
 						seq.cancel();
 				case HGroup(group):
 					for (tween in group.tweens) {
 						if (tween.target == target)
 							tween.cancel();
 					}
-					if (group.getTargets().length == 0 || Lambda.foreach(group.tweens, t -> t.cancelled))
+					if (allCancelled(group.tweens))
 						group.cancel();
 			}
 		}
@@ -418,14 +559,14 @@ class TweenManager {
 						if (isChildOf(tween.target, root))
 							tween.cancel();
 					}
-					if (Lambda.foreach(seq.tweens, t -> t.cancelled))
+					if (allCancelled(seq.tweens))
 						seq.cancel();
 				case HGroup(group):
 					for (tween in group.tweens) {
 						if (isChildOf(tween.target, root))
 							tween.cancel();
 					}
-					if (Lambda.foreach(group.tweens, t -> t.cancelled))
+					if (allCancelled(group.tweens))
 						group.cancel();
 			}
 		}
@@ -442,6 +583,7 @@ class TweenManager {
 				case HGroup(group):
 					group.cancel();
 			}
+			recycleHandle(handle);
 		}
 		handles = [];
 	}
@@ -496,8 +638,12 @@ class TweenManager {
 	/** Fade alpha from current to 0.0. Optionally remove the object when done. */
 	public function fadeOut(target:h2d.Object, duration:Float, ?easing:EasingType, removeOnComplete:Bool = false):Tween {
 		var t = tween(target, duration, [Alpha(0.0)], easing);
+		// Flag instead of `setOnComplete(() -> target.remove())` — the closure
+		// captured `target` and was allocated per call, defeating Tween pooling
+		// for fadeOut-heavy paths (panel/tooltip close, screen transitions).
+		// TweenManager.update applies this after onComplete fires.
 		if (removeOnComplete) {
-			t.setOnComplete(() -> target.remove());
+			t.removeTargetOnComplete = true;
 		}
 		return t;
 	}
@@ -513,6 +659,12 @@ class TweenManager {
 	}
 
 	// ==================== Internal ====================
+
+	static function allCancelled(tweens:Array<Tween>):Bool {
+		for (tween in tweens)
+			if (!tween.cancelled) return false;
+		return true;
+	}
 
 	static function isChildOf(obj:h2d.Object, root:h2d.Object):Bool {
 		var current:Null<h2d.Object> = obj;

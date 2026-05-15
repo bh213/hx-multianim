@@ -1,0 +1,14 @@
+# LSP Unit Tests — Haxe to JS build configuration
+# Tests analyzer, context detection, completions, and hover.
+#
+# Build: haxe lsp/test-lsp.hxml
+# Run:   node lsp/bin/test.js
+
+-cp lsp/src
+-cp lsp/test
+-cp src
+
+-main manim.lsp.test.LspTestRunner
+-js lsp/bin/test.js
+
+-D noheaps

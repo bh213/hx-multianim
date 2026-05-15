@@ -1,25 +1,6 @@
 package bh.base;
 import bh.base.GridDirection;
-#if !macro
-import h2d.col.Point;
-#end
-
-// Macro-safe Point substitute: matches h2d.col.Point's public API (x, y, new)
-// so HexLayout compiles in macro context without h2d.
-#if macro
-private class Point {
-	public var x:Float;
-	public var y:Float;
-	public function new(x:Float = 0, y:Float = 0) {
-		this.x = x;
-		this.y = y;
-	}
-	public function scale(f:Float):Void {
-		x *= f;
-		y *= f;
-	}
-}
-#end
+import bh.base.FPoint;
 
 enum HexKey {
 	HEX(q:Int, r:Int, s:Int);
@@ -106,14 +87,26 @@ abstract RelativeHex(Hex) {
 }
 
 
-class Hex 
+class Hex
 {
+    // Allocation watchdog for tests. Gated behind MULTIANIM_ALLOC_TRACK so the
+    // per-construction increment vanishes from production builds; Hex is
+    // allocated by every neighbor query, every add/subtract/scale/rotate, and
+    // every FractionalHex.round() — i.e. multiple times per cell per layout pass
+    // for hex grids.
+    #if MULTIANIM_ALLOC_TRACK
+    public static var creationCount:Int = 0;
+    #end
+
     inline public function new(q:Int, r:Int, s:Int)
     {
         this.q = q;
         this.r = r;
         this.s = s;
         if (q + r + s != 0) throw "q + r + s must be 0";
+        #if MULTIANIM_ALLOC_TRACK
+        creationCount++;
+        #end
     }
     public var q(default, null):Int;
     public var r(default, null):Int;
@@ -127,6 +120,10 @@ class Hex
         return new Hex(0,0,0);
     }
 
+    inline public static function fromAxial(q:Int, r:Int) {
+        return new Hex(q, r, -q - r);
+    }
+
     inline public static function fromKey(key:HexKey):Hex {
         switch key {
             case HEX(q, r, s): return new Hex(q,r,s);
@@ -135,6 +132,14 @@ class Hex
 
     public inline function equals(a:Hex) {
         return this.q == a.q && this.r == a.r && this.s == a.s;
+    }
+
+    public inline function setCoords(q:Int, r:Int, s:Int):Void
+    {
+        this.q = q;
+        this.r = r;
+        this.s = s;
+        if (q + r + s != 0) throw "q + r + s must be 0";
     }
 
     static inline public function add(a:Hex, b:Hex):Hex
@@ -163,6 +168,31 @@ class Hex
     static inline public function rotateRight(a:Hex):Hex
     {
         return new Hex(-a.r, -a.s, -a.q);
+    }
+
+    static inline public function addInto(a:Hex, b:Hex, out:Hex):Void
+    {
+        out.setCoords(a.q + b.q, a.r + b.r, a.s + b.s);
+    }
+
+    static inline public function subtractInto(a:Hex, b:Hex, out:Hex):Void
+    {
+        out.setCoords(a.q - b.q, a.r - b.r, a.s - b.s);
+    }
+
+    static inline public function scaleInto(a:Hex, k:Int, out:Hex):Void
+    {
+        out.setCoords(a.q * k, a.r * k, a.s * k);
+    }
+
+    static inline public function rotateLeftInto(a:Hex, out:Hex):Void
+    {
+        out.setCoords(-a.s, -a.q, -a.r);
+    }
+
+    static inline public function rotateRightInto(a:Hex, out:Hex):Void
+    {
+        out.setCoords(-a.r, -a.s, -a.q);
     }
 
     
@@ -227,12 +257,23 @@ class Hex
 
 class FractionalHex
 {
+    // Allocation watchdog for tests. Gated behind MULTIANIM_ALLOC_TRACK so the
+    // per-construction increment vanishes from production builds; FractionalHex
+    // is allocated by every HexLayout.pixelToHex() call (one per hex hit-test)
+    // and per hexLerp/hexLinedraw step.
+    #if MULTIANIM_ALLOC_TRACK
+    public static var creationCount:Int = 0;
+    #end
+
     public function new(q:Float, r:Float, s:Float)
     {
         this.q = q;
         this.r = r;
         this.s = s;
         if (Math.round(q + r + s) != 0) throw "q + r + s must be 0";
+        #if MULTIANIM_ALLOC_TRACK
+        creationCount++;
+        #end
     }
     public var q:Float;
     public var r:Float;
@@ -260,6 +301,30 @@ class FractionalHex
                 si = -qi - ri;
             }
         return new Hex(qi, ri, si);
+    }
+
+    public function roundInto(out:Hex):Void
+    {
+        var qi:Int = Math.round(this.q);
+        var ri:Int = Math.round(this.r);
+        var si:Int = Math.round(this.s);
+        var q_diff:Float = Math.abs(qi - this.q);
+        var r_diff:Float = Math.abs(ri - this.r);
+        var s_diff:Float = Math.abs(si - this.s);
+        if (q_diff > r_diff && q_diff > s_diff)
+        {
+            qi = -ri - si;
+        }
+        else
+            if (r_diff > s_diff)
+            {
+                ri = -qi - si;
+            }
+            else
+            {
+                si = -qi - ri;
+            }
+        out.setCoords(qi, ri, si);
     }
 
 
@@ -425,12 +490,12 @@ class HexLayout
 
     var orientationData(default, null):HexOrientationData;
     public var orientation(default, null):HexOrientation;
-    public var size(default, null):Point;
-    public var origin(default, null):Point;
+    public var size(default, null):FPoint;
+    public var origin(default, null):FPoint;
     static public var pointy:HexOrientationData = new HexOrientationData(Math.sqrt(3.0), Math.sqrt(3.0) / 2.0, 0.0, 3.0 / 2.0, Math.sqrt(3.0) / 3.0, -1.0 / 3.0, 0.0, 2.0 / 3.0, 0.5);
     static public var flat:HexOrientationData = new HexOrientationData(3.0 / 2.0, 0.0, Math.sqrt(3.0) / 2.0, Math.sqrt(3.0), 2.0 / 3.0, 0.0, -1.0 / 3.0, Math.sqrt(3.0) / 3.0, 0.0);
 
-    public function new(orientation:HexOrientation, size:Point, origin:Point)
+    public function new(orientation:HexOrientation, size:FPoint, origin:FPoint)
     {
 
         this.orientation = orientation;
@@ -443,30 +508,42 @@ class HexLayout
         this.origin = origin;
     }
 
-    public function createDrawableHexLayout(size:Point, origin:Point) {
+    public function createDrawableHexLayout(size:FPoint, origin:FPoint) {
         return new HexLayout(this.orientation, size, origin);
     }
 
     /** Factory to create a HexLayout from raw floats, usable from outside the module */
     public static function createFromFloats(orientation:HexOrientation, sizeX:Float, sizeY:Float, originX:Float = 0, originY:Float = 0):HexLayout {
-        return new HexLayout(orientation, new Point(sizeX, sizeY), new Point(originX, originY));
+        return new HexLayout(orientation, new FPoint(sizeX, sizeY), new FPoint(originX, originY));
     }
 
 
-    public function hexToPixel(h:Hex):Point
+    public function hexToPixel(h:Hex):FPoint
     {
         var x:Float = (orientationData.f0 * h.q + orientationData.f1 * h.r) * size.x;
         var y:Float = (orientationData.f2 * h.q + orientationData.f3 * h.r) * size.y;
-        return new Point(x + origin.x, y + origin.y);
+        return new FPoint(x + origin.x, y + origin.y);
     }
 
 
-    public function pixelToHex(p:Point):FractionalHex
+    public function pixelToHex(p:FPoint):FractionalHex
     {
-        var pt:Point = new Point((p.x - origin.x) / size.x, (p.y - origin.y) / size.y);
-        var q:Float = orientationData.b0 * pt.x + orientationData.b1 * pt.y;
-        var r:Float = orientationData.b2 * pt.x + orientationData.b3 * pt.y;
+        var ptX:Float = (p.x - origin.x) / size.x;
+        var ptY:Float = (p.y - origin.y) / size.y;
+        var q:Float = orientationData.b0 * ptX + orientationData.b1 * ptY;
+        var r:Float = orientationData.b2 * ptX + orientationData.b3 * ptY;
         return new FractionalHex(q, r, -q - r);
+    }
+
+    public function pixelToHexInto(p:FPoint, out:FractionalHex):Void
+    {
+        var ptX:Float = (p.x - origin.x) / size.x;
+        var ptY:Float = (p.y - origin.y) / size.y;
+        var q:Float = orientationData.b0 * ptX + orientationData.b1 * ptY;
+        var r:Float = orientationData.b2 * ptX + orientationData.b3 * ptY;
+        out.q = q;
+        out.r = r;
+        out.s = -q - r;
     }
 
 
@@ -483,28 +560,28 @@ class HexLayout
 
 
 
-    public function hexCornerOffset(corner:Int, towardsCenter:Float = 1.0):Point
+    public function hexCornerOffset(corner:Int, towardsCenter:Float = 1.0):FPoint
     {
         var angle:Float = 2.0 * Math.PI * (orientationData.start_angle - corner) / 6.0;
-        return new Point(size.x * Math.cos(angle) * towardsCenter, size.y * Math.sin(angle) * towardsCenter);
+        return new FPoint(size.x * Math.cos(angle) * towardsCenter, size.y * Math.sin(angle) * towardsCenter);
     }
 
 
-    public function polygonCorner(h:Hex, corner:Int, ?towardCenter:Float = 1.0):Point {
+    public function polygonCorner(h:Hex, corner:Int, ?towardCenter:Float = 1.0):FPoint {
 
-        var center:Point = hexToPixel(h);
-        var offset:Point = hexCornerOffset(corner);
-        return new Point(center.x + towardCenter * offset.x, center.y + towardCenter * offset.y);
+        var center:FPoint = hexToPixel(h);
+        var offset:FPoint = hexCornerOffset(corner);
+        return new FPoint(center.x + towardCenter * offset.x, center.y + towardCenter * offset.y);
 
     }
 
-    public function outline(hexes:Array<Hex>):Array<Point> {
+    public function outline(hexes:Array<Hex>):Array<FPoint> {
         var outline = [];
         var unprocessed = hexes.copy();
 
         while(unprocessed.length > 0) {
             final currentHex = unprocessed.pop();
-            
+
             final corners = polygonCorners(currentHex);
             for (direction in GridDirection.allDirections()) {
                 final hexInDirection = Hex.add(currentHex, direction.toHex());
@@ -512,7 +589,7 @@ class HexLayout
                     outline.push(corners[direction.toInt()]);
                     outline.push(corners[(direction.toInt()+1) % GridDirection.totalDirections]);
                 }
-            
+
             }
 
         }
@@ -522,24 +599,24 @@ class HexLayout
     }
 
 
-    public function polygonEdge(h:Hex, corner:Int, ?towardCenter:Float = 1.0):Point {
-        var center:Point = hexToPixel(h);
-        var o1:Point = hexCornerOffset(corner);
-        var o2:Point = hexCornerOffset(corner+1);
-        var edge:Point = new Point((o1.x + o2.x)/2, (o1.y + o2.y)/2);
-        edge.scale(towardCenter);
-        return new Point(center.x + edge.x, center.y + edge.y);
+    public function polygonEdge(h:Hex, corner:Int, ?towardCenter:Float = 1.0):FPoint {
+        var center:FPoint = hexToPixel(h);
+        var o1:FPoint = hexCornerOffset(corner);
+        var o2:FPoint = hexCornerOffset(corner+1);
+        var edgeX:Float = (o1.x + o2.x) / 2 * towardCenter;
+        var edgeY:Float = (o1.y + o2.y) / 2 * towardCenter;
+        return new FPoint(center.x + edgeX, center.y + edgeY);
 
     }
 
-    public function polygonCorners(h:Hex, scale:Float = 1.):Array<Point>
+    public function polygonCorners(h:Hex, scale:Float = 1.):Array<FPoint>
     {
-        var corners:Array<Point> = [];
-        var center:Point = hexToPixel(h);
+        var corners:Array<FPoint> = [];
+        var center:FPoint = hexToPixel(h);
         for (i in 0...6)
         {
-            var offset:Point = hexCornerOffset(i, scale);
-            corners.push(new Point(center.x + offset.x, center.y + offset.y));
+            var offset:FPoint = hexCornerOffset(i, scale);
+            corners.push(new FPoint(center.x + offset.x, center.y + offset.y));
         }
         return corners;
     }

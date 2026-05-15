@@ -1,0 +1,175 @@
+version: 1.0
+
+#autoFit programmable() {
+
+  // ========== Column 1: WIDTH MODE (x=10) ==========
+
+  @scale(2) text(dd, "WIDTH MODE", #AAAAAA, left): 10, 5;
+
+  // 1A: Fits in primary font — no shrink needed
+  point {
+    pos: 10, 32
+    text(f3x5, "fits primary (dd)", #666666, left): 0, -8;
+    bitmap(generated(color(100, 15, #222222)));
+    text(dd, "Hello", #44FF44, left, 100, lineBreak: false,
+        autoFit: width [m3x6, f3x5]): 1, 1;
+  }
+
+  // 1B: Primary too wide — should shrink
+  point {
+    pos: 10, 60
+    text(f3x5, "dd too wide -> smaller", #666666, left): 0, -8;
+    bitmap(generated(color(60, 15, #222222)));
+    text(dd, "Long text here", #44FF44, left, 60, lineBreak: false,
+        autoFit: width [m3x6, f3x5]): 1, 1;
+  }
+
+  // 1C: All too wide — uses last font
+  point {
+    pos: 10, 88
+    text(f3x5, "all too wide -> last font", #666666, left): 0, -8;
+    bitmap(generated(color(30, 15, #222222)));
+    text(dd, "Overflow text", #44FF44, left, 30, lineBreak: false,
+        autoFit: width [m3x6, f3x5]): 1, 1;
+  }
+
+  // 1D: Same text, wider box — dd should fit
+  point {
+    pos: 10, 116
+    text(f3x5, "wider box -> dd fits", #666666, left): 0, -8;
+    bitmap(generated(color(150, 15, #222222)));
+    text(dd, "Overflow text", #44FF44, left, 150, lineBreak: false,
+        autoFit: width [m3x6, f3x5]): 1, 1;
+  }
+
+  // ========== Column 2: BOX MODE (x=200) ==========
+
+  @scale(2) text(dd, "BOX MODE", #AAAAAA, left): 200, 5;
+
+  // 2A: Text wraps in dd — too tall, shrinks
+  point {
+    pos: 200, 32
+    text(f3x5, "dd wraps too tall -> smaller", #666666, left): 0, -8;
+    bitmap(generated(color(75, 15, #222222)));
+    text(dd, "Multi line wrapping", #FF8844, left, 75,
+        autoFit: box(75, 15) [m3x6, f3x5]): 1, 1;
+  }
+
+  // 2B: Tall box — dd fits without shrinking
+  point {
+    pos: 200, 60
+    text(f3x5, "tall box -> dd fits", #666666, left): 0, -8;
+    bitmap(generated(color(75, 30, #222222)));
+    text(dd, "Multi line wrapping", #FF8844, left, 75,
+        autoFit: box(75, 30) [m3x6, f3x5]): 1, 1;
+  }
+
+  // 2C: Tiny box — forces smallest font
+  point {
+    pos: 200, 105
+    text(f3x5, "tiny box -> smallest", #666666, left): 0, -8;
+    bitmap(generated(color(50, 10, #222222)));
+    text(dd, "Squeeze into box", #FF8844, left, 50,
+        autoFit: box(50, 10) [m3x6, f3x5]): 1, 1;
+  }
+
+  // ========== Column 3: FILL MODE (x=380) ==========
+
+  @scale(2) text(dd, "FILL MODE", #AAAAAA, left): 380, 5;
+
+  // 3A: Fill width — picks largest font that fits 150px
+  point {
+    pos: 380, 32
+    text(f3x5, "fill 150px -> picks largest", #666666, left): 0, -8;
+    bitmap(generated(color(150, 20, #222222)));
+    text(f3x5, "Fill this space", #44BBFF, left, 150, lineBreak: false,
+        autoFit: fill [pixellari, dd, m6x11, m3x6, f3x5]): 1, 1;
+  }
+
+  // 3B: Fill width — narrow, only small fonts fit
+  point {
+    pos: 380, 65
+    text(f3x5, "fill 40px -> smaller font", #666666, left): 0, -8;
+    bitmap(generated(color(40, 20, #222222)));
+    text(f3x5, "Fill this", #44BBFF, left, 40, lineBreak: false,
+        autoFit: fill [pixellari, dd, m6x11, m3x6, f3x5]): 1, 1;
+  }
+
+  // 3C: Fill width — very wide, largest font wins
+  point {
+    pos: 380, 98
+    text(f3x5, "fill 280px -> largest font", #666666, left): 0, -8;
+    bitmap(generated(color(280, 20, #222222)));
+    text(f3x5, "Fill wide", #44BBFF, left, 280, lineBreak: false,
+        autoFit: fill [pixellari, dd, m6x11, m3x6, f3x5]): 1, 1;
+  }
+
+  // ========== Column 4: FILL BOX (x=380, lower) ==========
+
+  @scale(2) text(dd, "FILL BOX", #AAAAAA, left): 380, 130;
+
+  // 3D: Fill box — height-constrained
+  point {
+    pos: 380, 155
+    text(f3x5, "fill box 150x7 -> height limit", #666666, left): 0, -8;
+    bitmap(generated(color(150, 7, #222222)));
+    text(f3x5, "Height limited", #44BBFF, left, 150,
+        autoFit: fill box(150, 7) [pixellari, dd, m6x11, m3x6, f3x5]): 1, 1;
+  }
+
+  // 3E: Fill box — generous box, largest font
+  point {
+    pos: 380, 180
+    text(f3x5, "fill box 200x20 -> largest fits", #666666, left): 0, -8;
+    bitmap(generated(color(200, 20, #222222)));
+    text(f3x5, "Roomy box", #44BBFF, left, 200,
+        autoFit: fill box(200, 20) [pixellari, dd, m6x11, m3x6, f3x5]): 1, 1;
+  }
+
+  // ========== Bottom left: RICHTEXT + AUTOFIT ==========
+
+  @scale(2) text(dd, "RICHTEXT + AUTOFIT", #AAAAAA, left): 10, 145;
+
+  // 4A: richText with styles — fits in primary
+  point {
+    pos: 10, 170
+    text(f3x5, "richText fits dd", #666666, left): 0, -8;
+    bitmap(generated(color(150, 15, #222222)));
+    richText(dd, "Deal [dmg]50[/] fire damage", white, left, 150, lineBreak: false,
+        autoFit: width [m3x6, f3x5],
+        styles: {dmg: color(#FF4444)}): 1, 1;
+  }
+
+  // 4B: richText with styles — narrow, must shrink
+  point {
+    pos: 10, 198
+    text(f3x5, "richText narrow -> smaller", #666666, left): 0, -8;
+    bitmap(generated(color(50, 15, #222222)));
+    richText(dd, "Deal [dmg]50[/] fire damage", white, left, 50, lineBreak: false,
+        autoFit: width [m3x6, f3x5],
+        styles: {dmg: color(#FF4444)}): 1, 1;
+  }
+
+  // 4C: richText fill mode
+  point {
+    pos: 10, 226
+    text(f3x5, "richText fill 200px", #666666, left): 0, -8;
+    bitmap(generated(color(200, 20, #222222)));
+    richText(f3x5, "Score: [val]12345[/] pts", white, left, 200, lineBreak: false,
+        autoFit: fill [pixellari, dd, m6x11, m3x6, f3x5],
+        styles: {val: color(#FFDD00)}): 1, 1;
+  }
+
+  // ========== Font reference (bottom) ==========
+
+  @scale(2) text(dd, "FONT REFERENCE", #AAAAAA, left): 10, 260;
+
+  point {
+    pos: 10, 282
+    text(pixellari, "pixellari: The Quick Brown Fox Jumps", #555555, left): 0, 0;
+    text(dd, "dd: The Quick Brown Fox Jumps", #555555, left): 0, 16;
+    text(m6x11, "m6x11: The Quick Brown Fox Jumps", #555555, left): 0, 28;
+    text(m3x6, "m3x6: The Quick Brown Fox Jumps", #555555, left): 0, 40;
+    text(f3x5, "f3x5: The Quick Brown Fox Jumps", #555555, left): 0, 49;
+  }
+}

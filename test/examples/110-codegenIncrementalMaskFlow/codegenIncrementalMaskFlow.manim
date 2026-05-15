@@ -1,0 +1,15 @@
+version: 1.0
+
+#codegenIncMask programmable(w:uint=200, h:uint=100) {
+  mask($w, $h) {
+    bitmap(generated(color(50, 50, #f00))): 0, 0
+  }
+}
+
+#codegenIncFlow programmable(maxW:uint=200, pad:uint=10, hsp:uint=5) {
+  flow(layout: horizontal, maxWidth: $maxW, paddingLeft: $pad, paddingRight: $pad, horizontalSpacing: $hsp) {
+    bitmap(generated(color(30, 30, #f00)));
+    bitmap(generated(color(30, 30, #0f0)));
+    bitmap(generated(color(30, 30, #00f)));
+  }
+}

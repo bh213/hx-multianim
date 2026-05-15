@@ -1,0 +1,24 @@
+version: 1.0
+
+#codegenIncInteractive programmable(w:uint=100, h:uint=50) {
+  interactive($w, $h, "btn"): 0, 0
+}
+
+#codegenIncStateanim programmable(initial:string="idle") {
+  stateanim("marine.anim", $initial, "direction"=>"l"): 0, 0
+}
+
+// Param referenced ONLY in untracked `id` slot — setParameter must throw.
+#codegenIncUntrackedId programmable(myId:string="btn") {
+  interactive(100, 50, $myId): 0, 0
+}
+
+// Param referenced ONLY in untracked metadata value — setParameter must throw.
+#codegenIncUntrackedMeta programmable(price:int=100) {
+  interactive(100, 50, "btn", price:int => $price): 0, 0
+}
+
+// Param referenced ONLY in untracked stateanim selector — setParameter must throw.
+#codegenIncUntrackedSelector programmable(dir:string="l") {
+  stateanim("marine.anim", "idle", "direction"=>$dir): 0, 0
+}

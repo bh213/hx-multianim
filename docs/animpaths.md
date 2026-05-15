@@ -465,7 +465,7 @@ var ap = builder.createProjectilePath("animName",
 **Macro codegen:**
 ```haxe
 var ap = factory.createAnimatedPath_animName();
-var ap = factory.createAnimatedPath_animName(startPoint, endPoint);
+var ap = factory.createAnimatedPath_animName(Stretch(startPoint, endPoint));
 ```
 
 ### Driving the Animation

@@ -1,0 +1,36 @@
+version: 1.0
+
+// Tests codegen negatePriorSiblings chain-boundary handling.
+//
+// Two chains in the same parent:
+//   Chain 1: @(x => xa) e1 ; @else e2           (bare @else terminates chain 1)
+//   Chain 2: @(y => yb) e3 ; @default e4        (fresh chain)
+//
+// With defaults x=xother, y=yother:
+//   Builder semantics (resolveVisibilityForChildren state machine):
+//     e1: x!=xa             → HIDE ; prev=false, any=false
+//     e2: bare @else, !prev → SHOW ; prev=true, any=true
+//     e3: y!=yb             → HIDE ; prev=false, any stays true
+//     e4: @default, any=true → HIDE
+//
+//   Correct codegen for e4 should mirror builder (HIDE) based on chain 2 only: !(y==yb).
+//
+//   Buggy codegen walks ALL prior siblings in negatePriorSiblings:
+//     e1 Conditional(x==xa) → result = !(x==xa)       (true)
+//     e2 ConditionalElse(null) → NO-OP (the bug)
+//     e3 Conditional(y==yb) → result = !(x==xa) && !(y==yb)  (true)
+//   Yielding SHOW — diverges from builder.
+//
+// Enum value names are unique across x and y (xa/xother, yb/yother) because
+// codegen exposes enum constants as static inline vars on the instance class,
+// and duplicates would collide.
+
+#chainBoundary programmable(x:[xa,xother]=xother, y:[yb,yother]=yother) {
+  // Chain 1 marker row (top)
+  @(x => xa) bitmap(generated(color(40, 20, #FF0000))): 0, 0
+  @else      bitmap(generated(color(40, 20, #00FF00))): 50, 0
+
+  // Chain 2 marker row (bottom) — @default is the divergence marker
+  @(y => yb) bitmap(generated(color(40, 20, #0000FF))): 0, 30
+  @default   bitmap(generated(color(40, 20, #FFFF00))): 50, 30
+}
