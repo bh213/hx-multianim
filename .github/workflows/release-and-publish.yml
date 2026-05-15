@@ -100,4 +100,4 @@ jobs:
       env:
         HAXELIB_PASSWORD: ${{ secrets.HAXELIB_PASSWORD }}
       run: |
-        haxelib submit . $HAXELIB_PASSWORD
+        haxelib submit . $HAXELIB_PASSWORD --always
