@@ -186,9 +186,13 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		contentTargetOwnership.clear();
 		inElementRouting = false;
 		initialSyncDone = false;
-		for (c in controllersStack) {
-			c.clearState();
+		while (controllersStack.length > 1) {
+			final c = controllersStack.pop();
+			if (c != null)
+				c.lifecycleEvent(LifecycleControllerFinished);
 		}
+		if (controllersStack.length > 0)
+			controllersStack[0].clearState();
 		getSceneRoot().removeChildren();
 		onClear();
 	}

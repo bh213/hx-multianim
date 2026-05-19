@@ -9484,4 +9484,110 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.equals(0, delta,
 			'setParameter must not invoke the resetting pushBuilderState (its empty Map + anonymous struct are immediately overwritten); got ${delta} reset allocations across ${iterations} setParameter calls');
 	}
+
+	// applyUpdates pushes a snapshot via pushBuilderStateNoReset, then immediately
+	// restores it via popBuilderState. The pushed value is a 6-field anonymous
+	// struct whose lifetime is pure stack — fresh allocation per call is wasted
+	// work on the setParameter hover/drag hot path (one applyUpdates per non-batched
+	// UI event). Recycled state objects must be drawn from a pool so steady-state
+	// setParameter triggers zero fresh allocations.
+	@Test
+	public function testSetParameterReusesPooledBuilderStateAcrossApplyUpdates():Void {
+		final result = buildFromSource("
+			#test programmable(x:uint=10) {
+				bitmap(generated(color($x * 2, $x * 2, #fff))): 0, 0
+			}
+		", "test", null, Incremental);
+
+		// Warm up — the first few setParameter calls populate the pool. Steady
+		// state (every push thereafter) must hit the pool, not allocate.
+		result.setParameter("x", 11);
+		result.setParameter("x", 12);
+		result.setParameter("x", 13);
+
+		final baseline = bh.multianim.MultiAnimBuilder.pushBuilderStateNoResetAllocCount;
+		final iterations = 10;
+		for (i in 0...iterations) {
+			result.setParameter("x", 20 + i);
+		}
+		final delta = bh.multianim.MultiAnimBuilder.pushBuilderStateNoResetAllocCount - baseline;
+		Assert.equals(0, delta,
+			'pushBuilderStateNoReset must reuse pooled state objects on the setParameter hot path; got ${delta} fresh anon-struct allocations across ${iterations} setParameter calls');
+	}
+
+	// applyUpdates re-evaluates tracked expressions by walking the full trackedExpressions array
+	// and scanning each entry's paramRefs against changedParams. For T trackeds averaging R
+	// paramRefs each, every setParameter does O(T·R) hash lookups even when only one or two
+	// trackeds reference the changed param. The fix is a reverse index keyed by paramName so
+	// setParameter("status", ...) iterates only the trackeds that actually mention "status".
+	// On the UI hover/press hot path (card hand, hex grid) T grows with element count and this
+	// scan dominates the per-mouse-move cost.
+	@Test
+	public function testSetParameterScansOnlyTrackedsReferencingChangedParam():Void {
+		final result = buildFromSource("
+			#test programmable(a:uint=0, b:uint=0, c:uint=0, d:uint=0, e:uint=0) {
+				bitmap(generated(color($a + 1, 10, #fff))): 0, 0
+				bitmap(generated(color($b + 1, 10, #fff))): 0, 0
+				bitmap(generated(color($c + 1, 10, #fff))): 0, 0
+				bitmap(generated(color($d + 1, 10, #fff))): 0, 0
+				bitmap(generated(color($e + 1, 10, #fff))): 0, 0
+			}
+		", "test", null, Incremental);
+
+		final ctx = result.incrementalContext;
+		Assert.notNull(ctx);
+
+		// Warm up — first setParameter may touch lazy init paths.
+		result.setParameter("a", 5);
+
+		// Steady state — measure scan count for a single setParameter on one param.
+		final before = ctx.trackedRelevantScanCount;
+		result.setParameter("a", 6);
+		final scanned = ctx.trackedRelevantScanCount - before;
+
+		// Only 1 tracked expression references "a". A reverse index keyed by paramName must
+		// examine only that one; without it, every setParameter scans all trackeds.
+		Assert.equals(1, scanned,
+			'setParameter("a") must examine only trackeds referencing "a"; scanned $scanned. '
+			+ 'Without a reverse index keyed by paramName, every setParameter does O(T·R) hash '
+			+ 'lookups on the UI hover/press hot path.');
+	}
+
+	// Same shape as trackedExpressions: the dynamicRefBindings forwarding pass-1 (collect unique
+	// contexts of relevant bindings) walks every binding regardless of which params changed. A
+	// reverse index keyed by paramName must short-circuit irrelevant bindings.
+	@Test
+	public function testSetParameterScansOnlyDynamicRefBindingsReferencingChangedParam():Void {
+		final result = buildFromSource("
+			#leaf programmable(val:uint=0) {
+				bitmap(generated(color($val + 1, 10, #fff))): 0, 0
+			}
+			#test programmable(a:uint=0, b:uint=0, c:uint=0, d:uint=0, e:uint=0) {
+				#r1 dynamicRef($leaf, val=>$a): 0, 0
+				#r2 dynamicRef($leaf, val=>$b): 20, 0
+				#r3 dynamicRef($leaf, val=>$c): 40, 0
+				#r4 dynamicRef($leaf, val=>$d): 60, 0
+				#r5 dynamicRef($leaf, val=>$e): 80, 0
+			}
+		", "test", null, Incremental);
+
+		final ctx = result.incrementalContext;
+		Assert.notNull(ctx);
+
+		// Warm up.
+		result.setParameter("a", 5);
+
+		// Steady state — single setParameter on one param.
+		final before = ctx.dynamicRefBindingRelevantScanCount;
+		result.setParameter("a", 6);
+		final scanned = ctx.dynamicRefBindingRelevantScanCount - before;
+
+		// Only 1 binding references "a". The forwarding pass must look it up via reverse index,
+		// not scan all bindings. The pass-2 dispatch loop walks the same set per unique context;
+		// reducing pass-1 to O(k) directly cuts the cost of card-hand hover into deeply-nested
+		// dynamicRef trees (interactives forwarded per card per mouse move).
+		Assert.equals(1, scanned,
+			'setParameter("a") must examine only dynamicRef bindings referencing "a"; scanned $scanned. '
+			+ 'Without a reverse index keyed by paramName, forwarding pass-1 scans every binding.');
+	}
 }

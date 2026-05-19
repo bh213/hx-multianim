@@ -1766,7 +1766,8 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 					final srcCell:Null<CellCoord> = binding.draggable.sourceCellCoord;
 
 					// Check for swap: swapEnabled + has source cell + swapAccepts (or default isOccupied)
-					if (swapEnabled  && (swapAccepts != null ? swapAccepts(coord, binding.draggable) : isOccupied(coord.col, coord.row))) {
+					if (swapEnabled && srcCell != null
+						&& (swapAccepts != null ? swapAccepts(coord, binding.draggable) : isOccupied(coord.col, coord.row))) {
 						return handleSwapDrop(binding, coord, srcGrid, srcCell);
 					}
 

@@ -116,6 +116,7 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.EventPriorityTest());
 		testRunner.addCase(new bh.test.examples.RubeGoldbergIncrementalTest());
 		testRunner.addCase(new bh.test.examples.ApplyParamUpdateTest());
+		testRunner.addCase(new bh.test.examples.GridCellHoverRegressionTest());
 		testRunner.addCase(new bh.test.examples.CodegenIncrementalGfxPxTest());
 		testRunner.addCase(new bh.test.examples.CodegenIncrementalMaskFlowTest());
 		testRunner.addCase(new bh.test.examples.CodegenIncrementalInteractiveStateanimTest());

@@ -1355,6 +1355,56 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 	// ============== swapEnabled drop behavior ==============
 
 	@Test
+	public function testAcceptDropsFallsBackToCellDropWhenSwapHasNoSourceCell():Void {
+		// External draggable (not built via makeDraggableFromCell) has a null sourceCellCoord.
+		// Dropping it on a swapEnabled grid's occupied cell must fall through to CellDrop
+		// instead of trying to swap with a null source cell.
+		var grid = createSwapGrid(2, 1);
+		grid.set(0, 0, "target");
+		grid.set(1, 0, "occupied");
+
+		var dragTarget = new h2d.Object();
+		var drag = UIMultiAnimDraggable.create(dragTarget);
+		drag.payload = "external";
+		// Note: sourceCellCoord is intentionally NOT set — this is what triggers the bug.
+		grid.acceptDrops(drag);
+
+		var swapFired = false;
+		var dropFired = false;
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellSwap(_, _, _, _): swapFired = true;
+				case CellDrop(_, _, _, _, _): dropFired = true;
+				default:
+			}
+		};
+
+		final zone:bh.ui.UIMultiAnimDraggable.DropZone = {
+			id: GridCell(grid, 1, 0),
+			bounds: h2d.col.Bounds.fromValues(50, 0, 50, 50),
+		};
+		final result:bh.ui.UIMultiAnimDraggable.DragDropResult = {
+			zone: zone,
+			pos: new h2d.col.Point(75, 25),
+		};
+
+		final cb = drag.onDragDrop;
+		Assert.notNull(cb, "acceptDrops should wire onDragDrop");
+		if (cb == null) return;
+
+		var threw:Null<Dynamic> = null;
+		try {
+			cb(result, null);
+		} catch (e:Dynamic) {
+			threw = e;
+		}
+
+		Assert.isNull(threw, "Drop should not throw NRE when external draggable has no source cell");
+		Assert.isFalse(swapFired, "Must not fire CellSwap when draggable has no source cell");
+		Assert.isTrue(dropFired, "Must fall through to CellDrop instead");
+	}
+
+	@Test
 	public function testSwapEnabledConfigStored():Void {
 		var grid = createSwapGrid(2, 1);
 		@:privateAccess Assert.isTrue(grid.swapEnabled);

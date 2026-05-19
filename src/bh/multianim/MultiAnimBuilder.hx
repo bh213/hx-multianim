@@ -322,6 +322,44 @@ private typedef DynamicNameBinding = {
 	internalResults:InternalBuilderResults,
 };
 
+// Promoted from an anonymous struct so applyUpdates can mark entries by generation
+// (fire-once dedup across the reverse-index walk) without a per-call allocation.
+// `gen` is the last applyUpdates cycle in which this tracked was marked relevant by
+// the reverse index `trackedByParam`. Mutable in place.
+@:nullSafety
+private class TrackedExpression {
+	public var updateFn:Void->Void;
+	public var paramRefs:Array<String>;
+	public var object:Null<h2d.Object>;
+	public var gen:Int = 0;
+	public inline function new(updateFn:Void->Void, paramRefs:Array<String>, object:Null<h2d.Object>) {
+		this.updateFn = updateFn;
+		this.paramRefs = paramRefs;
+		this.object = object;
+	}
+}
+
+// Same shape as TrackedExpression: promoted from an anonymous struct so the
+// dynamicRef forwarding pass in applyUpdates can mark relevant bindings by
+// generation via the reverse-index walk over `dynamicRefBindingsByParam`.
+@:nullSafety
+private class DynamicRefBinding {
+	public var childContext:IncrementalUpdateContext;
+	public var childParam:String;
+	public var resolveFn:Void->Dynamic;
+	public var referencedParams:Array<String>;
+	public var object:Null<h2d.Object>;
+	public var gen:Int = 0;
+	public inline function new(childContext:IncrementalUpdateContext, childParam:String,
+			resolveFn:Void->Dynamic, referencedParams:Array<String>, object:Null<h2d.Object>) {
+		this.childContext = childContext;
+		this.childParam = childParam;
+		this.resolveFn = resolveFn;
+		this.referencedParams = referencedParams;
+		this.object = object;
+	}
+}
+
 @:nullSafety
 class IncrementalUpdateContext {
 	var builder:MultiAnimBuilder;
@@ -342,13 +380,32 @@ class IncrementalUpdateContext {
 		filter:Null<h2d.filter.Filter>, alpha:Float,
 		scaleX:Float, scaleY:Float, rotation:Float, x:Float, y:Float,
 	}> = new haxe.ds.ObjectMap();
-	var trackedExpressions:Array<{updateFn:Void->Void, paramRefs:Array<String>, object:Null<h2d.Object>}> = [];
+	var trackedExpressions:Array<TrackedExpression> = [];
+	// Reverse index: paramName -> trackeds whose paramRefs include it. Populated alongside
+	// trackedExpressions in trackExpression(); pruned in cleanupDestroyedSubtree(). applyUpdates
+	// walks this map for the keys in changedParams to mark only relevant trackeds, instead of
+	// scanning every tracked's paramRefs on every setParameter (UI hover/press hot path).
+	var trackedByParam:Map<String, Array<TrackedExpression>> = new Map();
 	var deferredEntries:Array<{
 		wrapper:h2d.Object, node:Node, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
 		gridCS:GridCoordinateSystem, hexCS:HexCoordinateSystem,
 		internalResults:InternalBuilderResults, builderParams:BuilderParameters,
 	}> = [];
-	var dynamicRefBindings:Array<{childContext:IncrementalUpdateContext, childParam:String, resolveFn:Void->Dynamic, referencedParams:Array<String>, object:Null<h2d.Object>}> = [];
+	var dynamicRefBindings:Array<DynamicRefBinding> = [];
+	// Reverse index: paramName -> bindings whose referencedParams include it. Populated alongside
+	// dynamicRefBindings in trackDynamicRef(); pruned in cleanupDestroyedSubtree(). Mirrors the
+	// trackedByParam optimization for the dynamicRef forwarding pass in applyUpdates.
+	var dynamicRefBindingsByParam:Map<String, Array<DynamicRefBinding>> = new Map();
+	// Reusable scratch list of bindings whose referencedParams intersect changedParams in this
+	// applyUpdates cycle. Filled in pass 1 via the reverse-index walk; consumed by pass 2 to
+	// dispatch per unique childContext. Resized to 0 on entry; capacity persists across calls.
+	var fwdBindingScratch:Array<DynamicRefBinding> = [];
+	// Monotonically incremented at the start of each applyUpdates() body. Tracked entries and
+	// dynamicRef bindings carry a `gen` field; setting `entry.gen = applyGen` during the
+	// reverse-index walk marks the entry as relevant for this cycle without per-call allocation.
+	// Wraps via Int overflow — safe because tests check equality with the freshly-incremented
+	// value, not historical generations.
+	var applyGen:Int = 0;
 	var dynamicNameBindings:Array<DynamicNameBinding> = [];
 	var rootNode:Node;
 	// Public read (via `(default, null)`) so callers like HotReload.restoreParams
@@ -403,6 +460,16 @@ class IncrementalUpdateContext {
 	#if MULTIANIM_ALLOC_TRACK
 	public var dynamicRefForwardAllocCount:Int = 0;
 	#end
+	/** Counts how many tracked expressions applyUpdates() examined (paramRef scan) in this
+	 *  call. Should equal the number of trackeds whose paramRefs intersect changedParams,
+	 *  not the total trackedExpressions length. Without a reverse index keyed by param name,
+	 *  setParameter on a single param (UI hover hot path) scans every tracked, which is
+	 *  O(T·R) per call where T = total trackeds, R = avg paramRefs each. Pure instrumentation. */
+	public var trackedRelevantScanCount:Int = 0;
+	/** Counts how many dynamicRef bindings applyUpdates() examined in this call. Should equal
+	 *  the number of bindings whose referencedParams intersect changedParams, not the total
+	 *  dynamicRefBindings length. Same shape as trackedRelevantScanCount. Pure instrumentation. */
+	public var dynamicRefBindingRelevantScanCount:Int = 0;
 	// Reusable scratch for dynamicRef forwarding dispatch in applyUpdates(). Holds unique
 	// child contexts of relevant bindings so dispatch can batch sibling params on the
 	// same child under a single beginUpdate/endUpdate. Resized to 0 on entry; capacity
@@ -524,11 +591,29 @@ class IncrementalUpdateContext {
 	}
 
 	public function trackExpression(updateFn:Void->Void, paramRefs:Array<String>, ?object:h2d.Object):Void {
-		trackedExpressions.push({updateFn: updateFn, paramRefs: paramRefs, object: object});
+		final tracked = new TrackedExpression(updateFn, paramRefs, object);
+		trackedExpressions.push(tracked);
+		for (ref in paramRefs) {
+			var arr = trackedByParam.get(ref);
+			if (arr == null) {
+				arr = [];
+				trackedByParam.set(ref, arr);
+			}
+			arr.push(tracked);
+		}
 	}
 
 	public function trackDynamicRef(childContext:IncrementalUpdateContext, childParam:String, resolveFn:Void->Dynamic, referencedParams:Array<String>, ?object:h2d.Object):Void {
-		dynamicRefBindings.push({childContext: childContext, childParam: childParam, resolveFn: resolveFn, referencedParams: referencedParams, object: object});
+		final binding = new DynamicRefBinding(childContext, childParam, resolveFn, referencedParams, object);
+		dynamicRefBindings.push(binding);
+		for (ref in referencedParams) {
+			var arr = dynamicRefBindingsByParam.get(ref);
+			if (arr == null) {
+				arr = [];
+				dynamicRefBindingsByParam.set(ref, arr);
+			}
+			arr.push(binding);
+		}
 	}
 
 	public function trackDynamicName(binding:DynamicNameBinding):Void {
@@ -579,13 +664,20 @@ class IncrementalUpdateContext {
 		// 2. Clean IR collections via the existing helper.
 		MultiAnimBuilder.removeRegistrationsUnder(ir, container);
 
-		// 3. Drop dynamicRefBindings whose childContext was just orphaned.
+		// 3. Drop dynamicRefBindings whose childContext was just orphaned. Mirror the removal
+		//    into dynamicRefBindingsByParam so the reverse-index walk in applyUpdates doesn't
+		//    forward into a dead context.
 		if (removedChildContexts.length > 0) {
 			var i = 0;
 			while (i < dynamicRefBindings.length) {
-				if (removedChildContexts.indexOf(dynamicRefBindings[i].childContext) >= 0)
+				final binding = dynamicRefBindings[i];
+				if (removedChildContexts.indexOf(binding.childContext) >= 0) {
 					dynamicRefBindings.splice(i, 1);
-				else i++;
+					for (ref in binding.referencedParams) {
+						final arr = dynamicRefBindingsByParam.get(ref);
+						if (arr != null) arr.remove(binding);
+					}
+				} else i++;
 			}
 		}
 
@@ -599,13 +691,20 @@ class IncrementalUpdateContext {
 		}
 
 		// 5. Drop trackedExpressions whose object is a STRICT descendant of container.
-		//    The rebuild closure's own entry has object == container — keep it.
+		//    The rebuild closure's own entry has object == container — keep it. Mirror the
+		//    removal into trackedByParam so the reverse-index walk in applyUpdates doesn't
+		//    fire stale updateFns whose closures captured destroyed objects.
 		var ti = 0;
 		while (ti < trackedExpressions.length) {
-			final obj = trackedExpressions[ti].object;
-			if (obj != null && obj != container && isDescendantOf(obj, container))
+			final tracked = trackedExpressions[ti];
+			final obj = tracked.object;
+			if (obj != null && obj != container && isDescendantOf(obj, container)) {
 				trackedExpressions.splice(ti, 1);
-			else ti++;
+				for (ref in tracked.paramRefs) {
+					final arr = trackedByParam.get(ref);
+					if (arr != null) arr.remove(tracked);
+				}
+			} else ti++;
 		}
 
 		// 6. Drop conditionalEntries whose object is under container. An entry hidden by
@@ -718,25 +817,61 @@ class IncrementalUpdateContext {
 
 	/** Reset a parent to its captured baseline and replay every currently-matched
 	 *  apply entry for that parent in declaration (push) order. Safe to call
-	 *  whenever an entry's match state flips; composes overlapping applies correctly. */
+	 *  whenever an entry's match state flips; composes overlapping applies correctly.
+	 *
+	 *  Property-scoped: only restores baseline values for properties that AT LEAST
+	 *  ONE apply entry on this parent actually mutates. This preserves external
+	 *  mutations to untouched properties (e.g. a grid widget positioning a cell
+	 *  via parent.x/parent.y must not be clobbered when an `@(status=>hover) apply
+	 *  { filter: ... }` activates — the baseline.x captured at build time is stale
+	 *  the moment external code moves the parent). Matches the property-scoped
+	 *  approach used by transitions in commit 8762218. */
 	function reconcileApplyParent(parent:h2d.Object):Void {
 		final baseline = conditionalApplyBaselines.get(parent);
 		if (baseline == null) return;
-		parent.filter = cast baseline.filter;
-		parent.alpha = baseline.alpha;
-		parent.scaleX = baseline.scaleX;
-		parent.scaleY = baseline.scaleY;
-		parent.rotation = baseline.rotation;
-		parent.x = baseline.x;
-		parent.y = baseline.y;
+		// Pass 1: determine which properties any apply entry on this parent touches.
+		// `node.pos` is a Coordinates enum (never null) — default for "no explicit
+		// pos" is ZERO. We treat ZERO as "does not touch position".
+		var anyTouchesFilter = false;
+		var anyTouchesAlpha = false;
+		var anyTouchesScale = false;
+		var anyTouchesRotation = false;
+		var anyTouchesPos = false;
+		var anyTouchesTint = false;
+		for (entry in conditionalApplyEntries) {
+			if (entry.parent != parent) continue;
+			final node = entry.node;
+			if (node.filter != null) anyTouchesFilter = true;
+			if (node.alpha != null) anyTouchesAlpha = true;
+			if (node.scale != null) anyTouchesScale = true;
+			if (node.rotation != null) anyTouchesRotation = true;
+			if (node.tint != null) anyTouchesTint = true;
+			switch (node.pos) {
+				case null | ZERO:
+				default: anyTouchesPos = true;
+			}
+		}
+		// Pass 2: reset ONLY those properties to baseline.
+		if (anyTouchesFilter) parent.filter = cast baseline.filter;
+		if (anyTouchesAlpha) parent.alpha = baseline.alpha;
+		if (anyTouchesScale) { parent.scaleX = baseline.scaleX; parent.scaleY = baseline.scaleY; }
+		if (anyTouchesRotation) parent.rotation = baseline.rotation;
+		if (anyTouchesPos) { parent.x = baseline.x; parent.y = baseline.y; }
+		// (tint is on h2d.Drawable.color; applyExtendedFormProperties below
+		// re-applies it from each matched entry. No baseline restore is needed
+		// in the common case where tint is only set via apply.)
+		// Pass 3: replay each currently-matched apply entry in declaration order.
 		for (entry in conditionalApplyEntries) {
 			if (entry.parent != parent) continue;
 			if (!entry.applied) continue;
 			final node = entry.node;
-			final pos = builder.calculatePosition(node.pos,
-				MultiAnimParser.getGridCoordinateSystem(node),
-				MultiAnimParser.getHexCoordinateSystem(node));
-			builder.addPosition(parent, pos.x, pos.y);
+			final hasPos = switch (node.pos) { case null | ZERO: false; default: true; };
+			if (hasPos) {
+				final pos = builder.calculatePosition(node.pos,
+					MultiAnimParser.getGridCoordinateSystem(node),
+					MultiAnimParser.getHexCoordinateSystem(node));
+				builder.addPosition(parent, pos.x, pos.y);
+			}
 			builder.applyExtendedFormProperties(parent, node);
 		}
 	}
@@ -1379,18 +1514,21 @@ class IncrementalUpdateContext {
 		final paramRefs = MultiAnimBuilder.collectNodeParamRefs(entry.node);
 		if (paramRefs.length > 0) {
 			final capturedEntry = entry;
-			trackedExpressions.push({
-				updateFn: () -> {
+			// Route via trackExpression() so the reverse-index trackedByParam is populated too;
+			// a direct push to trackedExpressions would leave the new entry invisible to the
+			// reverse-index walk in applyUpdates and the rebuild would not fire on setParameter.
+			trackExpression(
+				() -> {
 					// Same cleanup as above — each tracked-expression rebuild must reap the previous
 					// build's IR registrations.
 					MultiAnimBuilder.removeRegistrationsUnder(capturedEntry.internalResults, capturedEntry.wrapper);
 					capturedEntry.wrapper.removeChildren();
 					rebuildDeferredContent(capturedEntry);
 				},
-				paramRefs: paramRefs,
-				object: entry.wrapper,
-			});
-		// Remove from deferred list — tracked expression handles future rebuilds
+				paramRefs,
+				entry.wrapper
+			);
+			// Remove from deferred list — tracked expression handles future rebuilds
 			deferredEntries.remove(entry);
 		}
 		// If no tracked expression, keep in deferredEntries so future show cycles re-materialize
@@ -1546,20 +1684,34 @@ class IncrementalUpdateContext {
 			// — a visible flash of an element whose chain decision never changed.
 			applyConditionalChains();
 
-			// Re-evaluate tracked expressions (skip for hidden objects)
-			for (tracked in trackedExpressions) {
-				// Skip expression evaluation for objects that are not effectively visible
-				final obj = tracked.object;
-				if (obj != null && !isEffectivelyVisible(obj))
-					continue;
-				var relevant = false;
-				for (ref in tracked.paramRefs) {
-					if (changedParams.exists(ref)) {
-						relevant = true;
-						break;
+			// Re-evaluate tracked expressions. Walk the reverse index keyed by paramName so
+			// only trackeds whose paramRefs intersect changedParams are examined — instead of
+			// scanning every tracked on every setParameter (O(T·R) per call). Each tracked
+			// carries a `gen` field; setting `tracked.gen = gen` during the per-param sweep
+			// marks it as relevant and dedups across the multiple paramRefs that may all be
+			// in changedParams (batch update). Defensive `!hasChanges` fallback fires every
+			// tracked — currently unreachable since setParameter sets hasChanges=true before
+			// applyUpdates and endUpdate guards on hasChanges, but kept for safety symmetric
+			// with the pre-existing semantics.
+			final gen = ++applyGen;
+			if (hasChanges) {
+				for (param in changedParams.keys()) {
+					final arr = trackedByParam.get(param);
+					if (arr == null) continue;
+					for (tracked in arr) {
+						if (tracked.gen == gen) continue;
+						tracked.gen = gen;
+						final obj = tracked.object;
+						if (obj != null && !isEffectivelyVisible(obj)) continue;
+						trackedRelevantScanCount++;
+						tracked.updateFn();
 					}
 				}
-				if (relevant || !hasChanges) {
+			} else {
+				for (tracked in trackedExpressions) {
+					final obj = tracked.object;
+					if (obj != null && !isEffectivelyVisible(obj)) continue;
+					trackedRelevantScanCount++;
 					tracked.updateFn();
 				}
 			}
@@ -1587,31 +1739,30 @@ class IncrementalUpdateContext {
 			// churn the prior shape produced on UI hot paths (setParameter on a parent that
 			// forwards into dynamicRef decorations fires here per mouse move).
 			fwdCtxScratch.resize(0);
-			for (binding in dynamicRefBindings) {
-				var relevant = false;
-				for (ref in binding.referencedParams) {
-					if (changedParams.exists(ref)) {
-						relevant = true;
-						break;
-					}
+			fwdBindingScratch.resize(0);
+			// Pass 1: walk the reverse index keyed by paramName to collect bindings whose
+			// referencedParams intersect changedParams. Uses the same `gen` counter bumped
+			// above for the trackedExpressions sweep — DynamicRefBinding has its own gen
+			// field, so reuse is safe (no cross-collection collision). Collect into
+			// fwdBindingScratch so pass 2 can dispatch in O(unique-ctx × relevant-bindings)
+			// without re-scanning the full dynamicRefBindings array.
+			for (param in changedParams.keys()) {
+				final arr = dynamicRefBindingsByParam.get(param);
+				if (arr == null) continue;
+				for (binding in arr) {
+					if (binding.gen == gen) continue;
+					binding.gen = gen;
+					dynamicRefBindingRelevantScanCount++;
+					fwdBindingScratch.push(binding);
+					if (fwdCtxScratch.indexOf(binding.childContext) < 0)
+						fwdCtxScratch.push(binding.childContext);
 				}
-				if (!relevant) continue;
-				if (fwdCtxScratch.indexOf(binding.childContext) < 0)
-					fwdCtxScratch.push(binding.childContext);
 			}
 			for (ctx in fwdCtxScratch) {
 				ctx.beginUpdate();
 				try {
-					for (binding in dynamicRefBindings) {
+					for (binding in fwdBindingScratch) {
 						if (binding.childContext != ctx) continue;
-						var relevant = false;
-						for (ref in binding.referencedParams) {
-							if (changedParams.exists(ref)) {
-								relevant = true;
-								break;
-							}
-						}
-						if (!relevant) continue;
 						ctx.setParameter(binding.childParam, binding.resolveFn());
 					}
 					ctx.endUpdate();
@@ -2303,6 +2454,12 @@ class MultiAnimBuilder {
 	var builderParams:BuilderParameters = {};
 	var currentNode:Null<Node> = null;
 	var stateStack:Array<StoredBuilderState> = [];
+	/** Free list of recycled StoredBuilderState records. push variants drain this before
+	 *  allocating a fresh `{...}` literal; popBuilderState nulls the reference fields and
+	 *  returns the record here. setParameter hits applyUpdates which pushes/pops once per
+	 *  call — without the pool, every non-batched UI event (hover, drag, slider tick)
+	 *  burns a 6-field anon-struct allocation. */
+	var stateStackPool:Array<StoredBuilderState> = [];
 	/** Names of programmables currently being resolved by `buildWithParameters`. Used to
 	 *  detect circular staticRef/dynamicRef chains (A→A, A→B→A, …) and surface them as a
 	 *  structured BuilderError instead of recursing to stack-overflow. Mirrors the
@@ -2365,6 +2522,14 @@ class MultiAnimBuilder {
 		this.incrementalMode = state.incrementalMode;
 		this.incrementalContext = state.incrementalContext;
 		this.currentInternalResults = state.currentInternalResults;
+		// Release reference fields so the pooled record doesn't pin destroyed nodes,
+		// contexts, or InternalBuilderResults during long idle periods. indexedParams
+		// and builderParams are non-nullable in the typedef and get fully overwritten
+		// on the next push, so we leave them alone (next push clobbers them).
+		state.currentNode = null;
+		state.incrementalContext = null;
+		state.currentInternalResults = null;
+		stateStackPool.push(state);
 	}
 
 	// Allocation watchdog for tests. Gated behind MULTIANIM_ALLOC_TRACK so the
@@ -2373,17 +2538,33 @@ class MultiAnimBuilder {
 	// hot path (one applyUpdates per non-batched UI event) must not invoke it.
 	#if MULTIANIM_ALLOC_TRACK
 	public static var pushBuilderStateResetCount:Int = 0;
+	// Counts fresh `{...}` anon-struct allocations made by pushBuilderStateNoReset
+	// (pool miss). The setParameter hot path (one applyUpdates per non-batched UI
+	// event) goes through pushBuilderStateNoReset, so steady-state setParameter
+	// must allocate zero new states after warm-up.
+	public static var pushBuilderStateNoResetAllocCount:Int = 0;
 	#end
 
 	function pushBuilderState() {
-		stateStack.push({
-			indexedParams: this.indexedParams,
-			builderParams: this.builderParams,
-			currentNode: this.currentNode,
-			incrementalMode: this.incrementalMode,
-			incrementalContext: this.incrementalContext,
-			currentInternalResults: this.currentInternalResults,
-		});
+		final pooled = stateStackPool.length > 0 ? stateStackPool.pop() : null;
+		if (pooled != null) {
+			pooled.indexedParams = this.indexedParams;
+			pooled.builderParams = this.builderParams;
+			pooled.currentNode = this.currentNode;
+			pooled.incrementalMode = this.incrementalMode;
+			pooled.incrementalContext = this.incrementalContext;
+			pooled.currentInternalResults = this.currentInternalResults;
+			stateStack.push(pooled);
+		} else {
+			stateStack.push({
+				indexedParams: this.indexedParams,
+				builderParams: this.builderParams,
+				currentNode: this.currentNode,
+				incrementalMode: this.incrementalMode,
+				incrementalContext: this.incrementalContext,
+				currentInternalResults: this.currentInternalResults,
+			});
+		}
 		#if MULTIANIM_ALLOC_TRACK
 		pushBuilderStateResetCount++;
 		#end
@@ -2398,6 +2579,20 @@ class MultiAnimBuilder {
 	 *  anonymous-struct allocation per call. The setParameter hot path
 	 *  (applyUpdates, fired per non-batched UI event) goes through here. */
 	function pushBuilderStateNoReset() {
+		final pooled = stateStackPool.length > 0 ? stateStackPool.pop() : null;
+		if (pooled != null) {
+			pooled.indexedParams = this.indexedParams;
+			pooled.builderParams = this.builderParams;
+			pooled.currentNode = this.currentNode;
+			pooled.incrementalMode = this.incrementalMode;
+			pooled.incrementalContext = this.incrementalContext;
+			pooled.currentInternalResults = this.currentInternalResults;
+			stateStack.push(pooled);
+			return;
+		}
+		#if MULTIANIM_ALLOC_TRACK
+		pushBuilderStateNoResetAllocCount++;
+		#end
 		stateStack.push({
 			indexedParams: this.indexedParams,
 			builderParams: this.builderParams,

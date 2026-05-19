@@ -172,6 +172,13 @@ class UICardHandHelper implements UIHigherOrderComponent {
 	final dragLayer:LayersEnum;
 	final interactivePrefix:String;
 
+	// Per-helper instance id, used to disambiguate the default `interactivePrefix` across
+	// multiple helpers sharing a screen. Without it, two helpers both default to "card" and
+	// their per-helper `nextCardSeq` (both starting at 0) produce colliding ids like
+	// "card_0.<identifier>" — which silently overwrite each other in screen.interactiveMap.
+	static var helperInstanceCounter:Int = 0;
+	final helperInstanceId:Int;
+
 	// Path layout config
 	final layoutPathName:Null<String>;
 	final pathDistribution:PathDistribution;
@@ -288,7 +295,8 @@ class UICardHandHelper implements UIHigherOrderComponent {
 		discardPilePosition = config != null && config.discardPilePosition != null ? config.discardPilePosition : new FPoint(1230, 680);
 		handLayer = config != null && config.handLayer != null ? config.handLayer : DefaultLayer;
 		dragLayer = config != null && config.dragLayer != null ? config.dragLayer : ModalLayer;
-		interactivePrefix = config != null && config.interactivePrefix != null ? config.interactivePrefix : "card";
+		helperInstanceId = helperInstanceCounter++;
+		interactivePrefix = config != null && config.interactivePrefix != null ? config.interactivePrefix : 'card${helperInstanceId}';
 
 		// Path layout
 		layoutPathName = config != null ? config.layoutPathName : null;

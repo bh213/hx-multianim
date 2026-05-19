@@ -136,6 +136,13 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 	// Current AnimSM state index (for lifetime-driven animation states)
 	public var currentAnimStateIndex : Int = 0;
 
+	// Pin currentAnimStateIndex against the per-frame natural-advance loop.
+	// Set by applyAnimEventOverride; cleared on init() (spawn/recycle). Without
+	// this, an override that targets a state with a startLifeRate lower than
+	// the natural-by-time index would be clobbered on the very next tick — the
+	// impact / bounce / death anim would flicker for one frame at most.
+	public var animOverrideActive : Bool = false;
+
 	// Current color curve segment index (monotonic advance; avoids O(N) rescan per frame)
 	public var currentColorSegmentIndex : Int = 0;
 
@@ -159,7 +166,8 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 				} else {
 					// Mirror burst path: rejected particles skip same-frame physics.
 					// init() left visible=false / life=maxLife+1 / rejected=true; the
-					// next update will free this particle through the lifecycle branch.
+					// next update will free this particle through the rejection
+					// short-circuit below — without paying for a physics tick.
 					return true;
 				}
 			}
@@ -167,6 +175,33 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 				visible = false;
 				return true;
 			}
+		}
+
+		// Short-circuit filter-rejected particles before physics. init() marked
+		// this particle dead (life=maxLife+1, rejected=true, visible=false); the
+		// burst / delayed-init paths deferred cleanup to this tick. Run the same
+		// emitLoop/non-loop free logic the lifecycle branch uses, but skip the
+		// full physics block (gravity, force fields, position, rotation, size,
+		// alpha, color, sprite anim, bounds) that would otherwise execute on a
+		// particle already known to be dead.
+		if (rejected) {
+			if (group.emitLoop) {
+				if (group.shutdownActive && group.liveCount > group.shutdownTargetCount) {
+					group.liveCount--;
+					group.freeParticles.push(this);
+					return false;
+				}
+				if (!group.init(this)) {
+					group.liveCount--;
+					group.freeParticles.push(this);
+					return false;
+				}
+				delay = 0;
+				return true;
+			}
+			group.liveCount--;
+			group.freeParticles.push(this);
+			return false;
 		}
 
 		var timeNormalized = life / maxLife;
@@ -248,9 +283,14 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 		if (group.animStates.length > 0) {
 			// AnimSM-driven: find active state by lifetime rate
 			var stateIdx = currentAnimStateIndex;
-			// Advance state if we've passed the next state's start rate
-			while (stateIdx + 1 < group.animStates.length && timeNormalized >= group.animStates[stateIdx + 1].startLifeRate) {
-				stateIdx++;
+			// Skip the natural advance while an event override has pinned the state —
+			// otherwise the monotonic-forward walk would clobber overrides that target
+			// a state earlier than the natural-by-time index (e.g. onBounce → "impact"
+			// fired late in life).
+			if (!animOverrideActive) {
+				while (stateIdx + 1 < group.animStates.length && timeNormalized >= group.animStates[stateIdx + 1].startLifeRate) {
+					stateIdx++;
+				}
 			}
 			currentAnimStateIndex = stateIdx;
 			var animState = group.animStates[stateIdx];
@@ -308,8 +348,10 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 		if( timeNormalized > 1 ) {
 			// Trigger OnDeath sub-emitters (skip for filter-rejected particles
 			// to avoid an explosive spawn loop at the rejection boundary).
-			if (!rejected)
+			if (!rejected) {
 				group.triggerSubEmitters(this, OnDeath);
+				group.applyAnimEventOverride(this, "onDeath");
+			}
 
 			if( group.emitLoop ) {
 				if (group.shutdownActive && group.liveCount > group.shutdownTargetCount) {
@@ -774,21 +816,27 @@ class ParticleGroup {
 		for (i in 0...count) {
 			var p = allocParticle();
 			var accepted = init(p);
-			p.x += atX;
-			p.y += atY;
-			p.vx += inheritVx;
-			p.vy += inheritVy;
-			batch.add(p);
-			// Count every batched particle so the death-branch decrement balances out.
-			// Stillborn (filter-rejected) particles still hit update()'s death branch
-			// via life=maxLife+1; gating the increment on `accepted` would drift
-			// liveCount negative across rejection-heavy bursts and poison
-			// shutdownTargetCount (= liveCount at shutdown()).
-			liveCount++;
 			if (accepted) {
+				// Apply burst-position offset only to live particles. Rejected
+				// particles are already marked dead by init(); writing the offset
+				// onto them would just clobber the rejection-state position/velocity
+				// that the next-update rejection short-circuit relies on observing.
+				p.x += atX;
+				p.y += atY;
+				p.vx += inheritVx;
+				p.vy += inheritVy;
 				p.visible = true;
 				triggerSubEmitters(p, OnBirth);
 			}
+			batch.add(p);
+			// Count every batched particle so the rejection short-circuit (or
+			// death-branch) decrement balances out. Stillborn (filter-rejected)
+			// particles still hit update() — via the rejected short-circuit at the
+			// top of Particle.update — which performs the matching liveCount--.
+			// Gating the increment on `accepted` would drift liveCount negative
+			// across rejection-heavy bursts and poison shutdownTargetCount
+			// (= liveCount at shutdown()).
+			liveCount++;
 		}
 	}
 
@@ -969,6 +1017,7 @@ class ParticleGroup {
 		// first segment / first anim state instead of getting stuck on the last one.
 		p.currentColorSegmentIndex = 0;
 		p.currentAnimStateIndex = 0;
+		p.animOverrideActive = false;
 
 		if ( !isRelative ) {
 			var parts = this.parts;
@@ -1269,6 +1318,10 @@ class ParticleGroup {
 		var stateIndex = animEventOverrides.get(triggerName);
 		if (stateIndex != null && stateIndex < animStates.length) {
 			p.currentAnimStateIndex = stateIndex;
+			// Pin against the next tick's natural-advance loop, which would otherwise
+			// walk forward by lifetime rate and clobber the override on the very next
+			// frame whenever the override targets an earlier state index.
+			p.animOverrideActive = true;
 			// Update tile immediately
 			var animState = animStates[stateIndex];
 			if (animState.tiles.length > 0) {
@@ -1412,6 +1465,12 @@ class Particles extends h2d.Drawable {
 	// a worse trade than the linear scan it replaces.
 	final groupList : Array<ParticleGroup> = [];
 
+	// Latched true once any group's batch has held at least one live particle.
+	// Gates onEnd() so a freshly-created container or a burst-only group
+	// (nparts == 0, awaiting emitBurstAt) is not auto-removed on the first sync
+	// just because no particles exist yet — distinguishes "not started" from "done".
+	var hasEmittedAny:Bool = false;
+
 	/**
 		Designated world-space anchor for non-relative groups. When non-null, groups
 		with `isRelative = false` bake emit positions into `worldAnchor`'s local frame
@@ -1509,9 +1568,12 @@ class Particles extends h2d.Drawable {
 			if ( !g.started && g.enabled ) g.start();
 			if (!g.externallyDriven)
 				g.updateTime(dt);
-			if (g.batch.first != null) isDone = false;
+			if (g.batch.first != null) {
+				isDone = false;
+				hasEmittedAny = true;
+			}
 		}
-		if (isDone) onEnd();
+		if (isDone && hasEmittedAny) onEnd();
 	}
 
 	public dynamic function onEnd():Void {

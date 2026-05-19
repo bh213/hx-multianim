@@ -503,6 +503,38 @@ class ParticleRuntimeTest extends utest.Test {
 		Assert.pass();
 	}
 
+	// ==================== AnimSM event overrides ====================
+
+	@Test
+	public function testOnDeathAnimOverrideSwitchesParticleTileAtLifecycleDeath():Void {
+		var p = createParticles();
+		var g = createGroup("main", p, false); // non-looping — particles die for real
+		var dm:Dynamic = g;
+		dm.life = 0.1;
+		dm.nparts = 1;
+
+		var aliveTile = h2d.Tile.fromColor(0x00FF00, 4, 4);
+		var deathTile = h2d.Tile.fromColor(0x0000FF, 4, 4);
+		// State "dead" has startLifeRate=2.0 so the lifetime-driven advance at
+		// Particle.update never reaches it; only the onDeath override can.
+		dm.animStates = [
+			{ name: "alive", tiles: [aliveTile], fps: 10.0, startLifeRate: 0.0 },
+			{ name: "dead",  tiles: [deathTile], fps: 10.0, startLifeRate: 2.0 }
+		];
+		g.animEventOverrides.set("onDeath", 1);
+
+		g.start();
+		var particle = g.batch.first;
+		Assert.notNull(particle, "particle should exist after start");
+		Assert.notEquals(deathTile, particle.t, "particle must not be on death tile before lifecycle death");
+
+		// Advance long enough for the particle's lifecycle to trip timeNormalized > 1.
+		advanceGroup(g, 0.5);
+
+		Assert.equals(deathTile, particle.t,
+			'Expected onDeath override to switch tile to deathTile at lifecycle death; got ${particle.t}');
+	}
+
 	// ==================== Shutdown ====================
 
 	@Test
@@ -1384,6 +1416,84 @@ class ParticleRuntimeTest extends utest.Test {
 			+ "guard around OnDeath at line 297.");
 	}
 
+	@Test
+	public function testRejectedParticleSkipsPhysicsTickBeforeFree():Void {
+		// init() marks a filter-rejected particle dead (life=maxLife+1,
+		// rejected=true, visible=false) and the particle is kept in the batch
+		// for one more update tick before being freed. That deferred-free tick
+		// must NOT run the physics block — gravity, force fields, position
+		// step, life increment, rotation, size, alpha, color, sprite anim,
+		// bounds — on a particle already known to be dead.
+		var p = createParticles();
+		var g = createGroup("main", p);
+		var dg:Dynamic = g;
+		dg.nparts = 0; // burst-only, no start() spawn
+		dg.life = 1.0;
+		dg.speed = 0; // no emit velocity, so gravity contribution is the only Δvy
+		dg.emitMode = Point(0.0, 0.0); // particle stays at origin in init
+		dg.gravity = 1000.0;
+		dg.gravityAngle = 0.0; // gravity points down — adds to vy
+
+		g.emitFilter = (x:Float, y:Float) -> false;
+		g.emitBurst(1);
+
+		var e:Dynamic = g.batch.first;
+		Assert.notNull(e, "Expected one rejected particle in batch after burst");
+		// Snapshot post-init state. With Point(0,0) + speed=0, init leaves
+		// x=0, y=0, vx=0, vy=0 even on rejection — the filter check is the
+		// last thing init does and it doesn't touch those fields.
+		var lifeBefore:Float = e.life;
+		var vyBefore:Float = e.vy;
+		var yBefore:Float = e.y;
+
+		final dt:Float = 0.016;
+		var alive:Bool = e.update(dt);
+		Assert.isFalse(alive,
+			"Rejected particle must be freed on the next update tick.");
+		Assert.floatEquals(lifeBefore, e.life, 1e-6,
+			"Rejected particle must not have `life += dt` applied before "
+			+ "being freed. life went from " + lifeBefore + " to " + e.life
+			+ " — physics ran on a dead particle.");
+		Assert.floatEquals(vyBefore, e.vy, 1e-6,
+			"Rejected particle must not accumulate gravity before being freed. "
+			+ "vy went from " + vyBefore + " to " + e.vy
+			+ " — physics ran on a dead particle.");
+		Assert.floatEquals(yBefore, e.y, 1e-6,
+			"Rejected particle must not move via the position step before "
+			+ "being freed. y went from " + yBefore + " to " + e.y
+			+ " — physics ran on a dead particle.");
+	}
+
+	@Test
+	public function testEmitBurstAtDoesNotApplyOffsetToRejectedParticle():Void {
+		// emitBurstAt unconditionally writes `p.x += atX; p.y += atY;
+		// p.vx += inheritVx; p.vy += inheritVy` after calling init(). When
+		// init() rejected via emitFilter, the particle was already marked
+		// dead and its position/velocity must not be mutated by the burst-
+		// position offset.
+		var p = createParticles();
+		var g = createGroup("main", p);
+		var dg:Dynamic = g;
+		dg.nparts = 0;
+		dg.life = 1.0;
+		dg.speed = 0;
+		dg.emitMode = Point(0.0, 0.0); // init leaves x=y=vx=vy=0 on rejection
+
+		g.emitFilter = (x:Float, y:Float) -> false;
+		g.emitBurstAt(500.0, 700.0, 50.0, 80.0, 1);
+
+		var e:Dynamic = g.batch.first;
+		Assert.notNull(e, "Expected one rejected particle in batch after burst");
+		Assert.floatEquals(0.0, e.x, 1e-6,
+			"atX must not be applied to a rejected particle. Got x=" + e.x);
+		Assert.floatEquals(0.0, e.y, 1e-6,
+			"atY must not be applied to a rejected particle. Got y=" + e.y);
+		Assert.floatEquals(0.0, e.vx, 1e-6,
+			"inheritVx must not be applied to a rejected particle. Got vx=" + e.vx);
+		Assert.floatEquals(0.0, e.vy, 1e-6,
+			"inheritVy must not be applied to a rejected particle. Got vy=" + e.vy);
+	}
+
 	// ==================== Regression: shutdown terminal multipliers reset ====================
 
 	@Test
@@ -1734,5 +1844,123 @@ class ParticleRuntimeTest extends utest.Test {
 		Assert.equals(0, firedEvents.length,
 			"AttachedPath fired " + firedEvents.length + " event(s) while group was disabled. "
 			+ "Expected zero — pathStart and timed events must not fire on a disabled group.");
+	}
+
+	// ==================== applyAnimEventOverride pinning ====================
+
+	@Test
+	public function testAnimEventOverridePersistsAcrossNextUpdate():Void {
+		// applyAnimEventOverride sets currentAnimStateIndex to the override target,
+		// but Particle.update()'s natural-advance loop is monotonic forward by lifetime
+		// — it walks forward whenever timeNormalized >= animStates[i+1].startLifeRate.
+		// If the override targets a state with a startLifeRate lower than the
+		// natural-by-time index, the very next tick walks straight past it and the
+		// impact / bounce / death anim flickers for one frame at most.
+		var p = createParticles();
+		var g = createGroup("main", p);
+		var dg:Dynamic = g;
+		dg.nparts = 1;
+		dg.emitDelay = 0;
+		dg.emitSync = 1.0; // spawn immediately, no random delay
+		dg.life = 1.0;
+		dg.lifeRand = 0;
+
+		var t0 = h2d.Tile.fromColor(0x111111, 4, 4);
+		var t1 = h2d.Tile.fromColor(0x222222, 4, 4);
+		var t2 = h2d.Tile.fromColor(0x333333, 4, 4);
+		g.animStates = [
+			{ name: "spawn", tiles: [t0], fps: 0, startLifeRate: 0.0 },
+			{ name: "mid",   tiles: [t1], fps: 0, startLifeRate: 0.3 },
+			{ name: "late",  tiles: [t2], fps: 0, startLifeRate: 0.7 }
+		];
+		// Override points at state 0 — earlier than the natural-by-time index will be.
+		g.animEventOverrides.set("onBounce", 0);
+
+		g.start();
+		Assert.equals(1, countParticles(g), "expected one particle after start()");
+
+		// Advance into the late-lifetime band so the natural advance has walked the
+		// state index to 2 (timeNormalized ≈ 0.8 ≥ states[2].startLifeRate=0.7).
+		advanceGroup(g, 0.8);
+
+		var particle:Dynamic = g.batch.first;
+		Assert.notNull(particle);
+		Assert.equals(2, particle.currentAnimStateIndex,
+			"sanity: natural advance should have reached state index 2 by lifetime≈0.8");
+
+		// Fire the override. applyAnimEventOverride sets the state index to 0 and
+		// swaps the tile immediately.
+		g.applyAnimEventOverride(particle, "onBounce");
+		Assert.equals(0, particle.currentAnimStateIndex,
+			"applyAnimEventOverride must set currentAnimStateIndex to the override target (0)");
+
+		// One more tick. With the bug, the natural-advance loop walks from 0 back up
+		// to 2 (timeNormalized ~0.81 ≥ states[1].startLifeRate=0.3 and ≥ states[2].startLifeRate=0.7)
+		// and clobbers the override. The override must remain pinned.
+		particle.update(0.016);
+		Assert.equals(0, particle.currentAnimStateIndex,
+			"override target (0) must remain pinned after the next update() — "
+			+ "the natural-advance loop must not walk past the override target. "
+			+ "Got currentAnimStateIndex=" + particle.currentAnimStateIndex);
+	}
+
+	// ==================== onEnd must not fire before the system has ever emitted ====================
+	//
+	// Particles.sync() initialises `isDone = true` and only flips it to false when at least
+	// one group has `batch.first != null`. That collapses two unrelated states — "system has
+	// never emitted anything yet" and "system has finished emitting" — into the same signal.
+	// The default `onEnd()` body calls `this.remove()`, so the container gets detached from
+	// its parent on the FIRST sync after construction unless a group has already populated
+	// its batch. The two scenarios below are the natural footguns: a freshly-created
+	// Particles whose groups are still being added, and a burst-only group (`nparts == 0`)
+	// waiting for an external `emitBurstAt()` trigger (typical worldAnchor trail-emitter
+	// pattern).
+
+	/** Invoke Particles.sync() directly so we can observe whether onEnd fires on the first tick. */
+	static function syncOnce(p:Particles, dt:Float):Void {
+		var ctx:h2d.RenderContext = bh.test.VisualTestBase.appInstance.s2d.renderer;
+		ctx.elapsedTime = dt;
+		@:privateAccess p.sync(ctx);
+	}
+
+	@Test
+	public function testEmptyParticlesContainerDoesNotFireOnEndOnFirstSync():Void {
+		var p = createParticles();
+		var endCalls = 0;
+		p.onEnd = () -> endCalls++;
+
+		syncOnce(p, 0.016);
+
+		Assert.equals(0, endCalls,
+			"onEnd fired on a freshly-created Particles that has no groups yet. The default "
+			+ "onEnd body removes the container from its parent, so the natural construction "
+			+ "sequence `new Particles(parent); configure(); addGroup(g);` loses the container "
+			+ "if the scene ticks between construction and addGroup. Got " + endCalls + " call(s).");
+	}
+
+	@Test
+	public function testParticlesWithBurstOnlyGroupDoesNotFireOnEndBeforeFirstBurst():Void {
+		var p = createParticles();
+		var tiles = [h2d.Tile.fromColor(0xFF0000, 4, 4)];
+		var g = new ParticleGroup("burst", p, tiles);
+		p.addGroup(g);
+		var dg:Dynamic = g;
+		dg.nparts = 0;            // burst-only — no continuous emission
+		dg.emitLoop = false;      // one-shot semantics
+		dg.life = 1.0;
+		dg.lifeRand = 0;
+		g.randomFunc = seededRandom(42);
+
+		var endCalls = 0;
+		p.onEnd = () -> endCalls++;
+
+		syncOnce(p, 0.016);
+
+		Assert.equals(0, endCalls,
+			"onEnd fired on a Particles whose only group is burst-only (nparts == 0) before any "
+			+ "burst was issued. start() leaves the batch empty for nparts == 0, so batch.first "
+			+ "stays null and the default onEnd removes the container before the caller can ever "
+			+ "trigger emitBurstAt(). This is the worldAnchor trail-emitter pattern. "
+			+ "Got " + endCalls + " call(s).");
 	}
 }

@@ -114,6 +114,11 @@ class UIDefaultController implements UIController {
 	// Array allocation on every mouse move/click/wheel/key.
 	final _hits:Array<UIElement> = [];
 
+	// State threaded into the cached hit-test callback so getEventElements
+	// doesn't allocate a fresh closure capturing `pos` per input event.
+	var _hitsPos:Null<Point> = null;
+	final _hitsCallback:UIElement->Void;
+
 	// Stable sort comparator: higher eventPriority first, registration order as
 	// tiebreaker. Hoisted to a static field so it's allocated once per program
 	// rather than per getEventElements call.
@@ -131,6 +136,9 @@ class UIDefaultController implements UIController {
 		// "this not fully initialised" complaint is a false positive here.
 		this._updateCallback = function(element:UIElement):Void {
 			@:nullSafety(Off) redrawAndUpdate(element, _updateDt);
+		};
+		this._hitsCallback = function(element:UIElement):Void {
+			@:nullSafety(Off) if (element.containsPoint(_hitsPos)) _hits.push(element);
 		};
 		this.controllable = new ControllableImpl(this);
 		#if MULTIANIM_ALLOC_TRACK
@@ -215,10 +223,9 @@ class UIDefaultController implements UIController {
 			_hits.push(controllable.captureEvents.target);
 			return _hits;
 		}
-		integration.forEachElement(SETReceiveEvents, function(element:UIElement):Void {
-			if (element.containsPoint(pos))
-				_hits.push(element);
-		});
+		_hitsPos = pos;
+		integration.forEachElement(SETReceiveEvents, _hitsCallback);
+		_hitsPos = null;
 		if (_hits.length > 1) {
 			haxe.ds.ArraySort.sort(_hits, _priorityComparator);
 		}
