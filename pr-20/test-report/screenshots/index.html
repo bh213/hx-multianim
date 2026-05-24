@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-05-19 07:06:25</div>
+    <div class="timestamp">Generated: 2026-05-24 09:53:18</div>
     <div class="summary">
         <strong>Summary:</strong> 101 tests,         <span style="color: #4CAF50;">101 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.4s, visual 26.2s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.4s, visual 23.5s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>7251 assertions:</strong>             <span style="color: #4CAF50;">7251 passed</span>
+            <strong>7288 assertions:</strong>             <span style="color: #4CAF50;">7288 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -642,6 +642,7 @@
                 <div class="unit-class-name">ApplyParamUpdateTest</div>
                 <div class="unit-method pass">testApply_UnconditionalParamUpdate_Builder: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testApply_UnconditionalParamUpdate_Codegen: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testRootLevelExtendedProps_RefireOnSetParameter_Builder: OK <span class="dots">....</span></div>
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">BitFlagTest</div>
@@ -690,6 +691,7 @@
                 <div class="unit-method pass">testBatchEndUpdateWithoutBeginThrows: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testBatchFlatPairStillWorks: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testBatchNestedBeginUpdateThrows: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testBatchedMultiParamUpdateFiresTrackedExpressionsInDeclarationOrder: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testBitFlagBit0Set: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testBitFlagBit1NotSet: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testBitFlagBit2Set: OK <span class="dots">..</span></div>
@@ -1021,6 +1023,7 @@
                 <div class="unit-method pass">testRepeatableExpressionCount: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testRepeatableExpressionCountSmall: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testRepeatableVarConditionalExact: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testRepeatableVarConditionalIncrementalSurvivesUnrelatedSetParameter: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testRepeatableVarConditionalNot: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testRepeatableVarConditionalRange: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testRepeatableZeroCount: OK <span class="dots">.</span></div>
@@ -1340,6 +1343,7 @@
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">DynamicRefTest</div>
+                <div class="unit-method pass">testApplyUpdatesDoesNotAllocateChangedParamsIterators: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testApplyUpdatesDoesNotAllocatePerForwardingCall: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testBasicDynamicRefBuilds: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testBeginEndUpdateBatch: OK <span class="dots">.</span></div>
@@ -1471,6 +1475,8 @@
                 <div class="unit-method pass">testRealRectCellSweepFromFullGridDemoManim: OK <span class="dots">....................</span></div>
                 <div class="unit-method pass">testRealRectCellSweepWithHighlightReset: OK <span class="dots">....................</span></div>
                 <div class="unit-method pass">testRectCellHoverThenLeaveRestoresVisuals: OK <span class="dots">......</span></div>
+                <div class="unit-method pass">testRepeatedMouseMoveOverSameCellDoesNotAllocateCellCoord: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testRepeatedMouseMoveOverSameHexCellDoesNotAllocateCellCoord: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testTwoHexCellsHoverTransitionDoesNotCorruptPrevious: OK <span class="dots">...........</span></div>
                 <div class="unit-method pass">testTwoRectCellsHoverTransitionDoesNotCorruptPrevious: OK <span class="dots">....</span></div>
             </div>
@@ -1971,6 +1977,7 @@
                 <div class="unit-method pass">testNonRelativeGroupWithTranslatedParent: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testNonRelativeVsRelativeGroupPosition: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testNullWorldAnchorPreservesScreenSpaceBaking: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testOnBounceAnimOverrideResumesLifetimeAdvanceAfterImpactWindow: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testOnDeathAnimOverrideSwitchesParticleTileAtLifecycleDeath: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testParticleGroup_HasNoStandaloneColorCurveEvaluator: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testParticleStepDoesNotAllocateFPoint: OK <span class="dots">.</span></div>
@@ -2128,6 +2135,7 @@
                 <div class="unit-method pass">testCodegenDynamicRefForwardingFailureLeavesChildUsable: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testCodegenIndexed2DNamedHiddenReturnsNull: OK <span class="dots">....................................................</span></div>
                 <div class="unit-method pass">testCodegenIndexedNamedHiddenReturnsNull: OK <span class="dots">...........................</span></div>
+                <div class="unit-method pass">testCodegenParticlesResolveParamScope: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testCodegenSetColorParamAlphaBaked: OK <span class="dots">..........</span></div>
                 <div class="unit-method pass">testCodegenSetParameterAcceptsColorStringFormats: OK <span class="dots">.......</span></div>
                 <div class="unit-method pass">testCodegenSetParameterUnknownEnumValueDoesNotThrow: OK <span class="dots">..</span></div>
@@ -2144,6 +2152,7 @@
                 <div class="unit-method pass">testCodegenSwitchRepeatableCountChange: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testCodegenSwitchRepeatableSwitchArm: OK <span class="dots">.......</span></div>
                 <div class="unit-method pass">testCodegenSwitchTextInterpolation: OK <span class="dots">......</span></div>
+                <div class="unit-method pass">testCodegenTileGroupResolveParamScope: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testCodegenTileParamSetParameter: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testCodegenTileParamSetParameterRejectsNonTile: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testCodegenTileTypedSetterRejectsNonTile: OK <span class="dots">....</span></div>
@@ -2414,6 +2423,11 @@
                 <div class="unit-method pass">testSlideLeftVariant: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSlideRightVariant: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSlideUpVariant: OK <span class="dots">..</span></div>
+            </div>
+            <div class="unit-class">
+                <div class="unit-class-name">StrictDColorVerbatimTest</div>
+                <div class="unit-method pass">testPixelWithZeroAlphaIsStoredVerbatimInBuilderAndCodegen: OK <span class="dots">.....</span></div>
+                <div class="unit-method pass">testTintWithZeroAlphaIsStoredVerbatimInBuilderAndCodegen: OK <span class="dots">.....</span></div>
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">TweenManagerTest</div>
@@ -3103,6 +3117,10 @@
                 <div class="unit-method pass">testUnregister: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testUnregisterByPrefix: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testUnregisterOnlyRemovesMatchingResult: OK <span class="dots">..</span></div>
+            </div>
+            <div class="unit-class">
+                <div class="unit-class-name">UIScreenUpdateAllocationTest</div>
+                <div class="unit-method pass">testUpdateSkipsPostponedDrainWhenQueueEmpty: OK <span class="dots">....</span></div>
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">UIScrollableScreenTest</div>
