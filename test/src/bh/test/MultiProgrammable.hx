@@ -463,4 +463,16 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/119-codegenRepeatShrink/codegenRepeatShrink.manim", "codegenRepeatShrink")
 	public var codegenRepeatShrink;
+
+	@:manim("test/examples/120-codegenParamScope/codegenParamScope.manim", "paramParticles")
+	public var paramParticles;
+
+	@:manim("test/examples/120-codegenParamScope/codegenParamScope.manim", "paramTileGroup")
+	public var paramTileGroup;
+
+	@:manim("test/examples/121-strictDColorVerbatim/strictDColorVerbatim.manim", "strictDTint")
+	public var strictDTint;
+
+	@:manim("test/examples/121-strictDColorVerbatim/strictDColorVerbatim.manim", "strictDPixels")
+	public var strictDPixels;
 }

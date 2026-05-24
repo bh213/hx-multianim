@@ -535,6 +535,51 @@ class ParticleRuntimeTest extends utest.Test {
 			'Expected onDeath override to switch tile to deathTile at lifecycle death; got ${particle.t}');
 	}
 
+	@Test
+	public function testOnBounceAnimOverrideResumesLifetimeAdvanceAfterImpactWindow():Void {
+		// onBounce fires applyAnimEventOverride mid-life, pinning currentAnimStateIndex so the
+		// next-frame natural advance can't immediately clobber the impact state (flicker fix).
+		// That pin must be a one-shot: once lifetime progression passes the end of the impact
+		// state's window, natural advance resumes. Without that release a long-lived bouncing
+		// particle freezes on the impact frame forever and never reaches its dying state.
+		var p = createParticles();
+		var g = createGroup("main", p, false); // non-looping — the particle keeps its life, no recycle
+		var dm:Dynamic = g;
+		dm.life = 1.0;
+		dm.nparts = 1;
+		dm.speed = 0; // no movement — bounce override is injected deterministically below
+
+		var flyTile = h2d.Tile.fromColor(0x00FF00, 4, 4);
+		var impactTile = h2d.Tile.fromColor(0xFF0000, 4, 4);
+		var dyingTile = h2d.Tile.fromColor(0x0000FF, 4, 4);
+		dm.animStates = [
+			{ name: "fly",    tiles: [flyTile],    fps: 10.0, startLifeRate: 0.0 },
+			{ name: "impact", tiles: [impactTile], fps: 10.0, startLifeRate: 0.4 },
+			{ name: "dying",  tiles: [dyingTile],  fps: 10.0, startLifeRate: 0.7 }
+		];
+		g.animEventOverrides.set("onBounce", 1); // impact
+
+		g.start();
+		var particle:Dynamic = g.batch.first;
+		Assert.notNull(particle, "particle should exist after start");
+
+		// Advance into the "fly" window, then inject a bounce override (as checkBounds would).
+		advanceGroup(g, 0.1);
+		Assert.equals(flyTile, particle.t, "particle should be on fly tile before bounce");
+		g.applyAnimEventOverride(particle, "onBounce");
+		Assert.equals(impactTile, particle.t, "bounce override must switch to impact tile immediately");
+
+		// Still before the end of the impact window: the pin holds, impact plays — no flicker.
+		advanceGroup(g, 0.2); // ~0.3 total < impact window end (0.7)
+		Assert.equals(impactTile, particle.t,
+			"impact override must hold until its lifetime window ends (flicker fix preserved)");
+
+		// Past the end of the impact window: the pin releases and lifetime advance resumes.
+		advanceGroup(g, 0.5); // ~0.8 total, past dying's 0.7 startLifeRate
+		Assert.equals(dyingTile, particle.t,
+			'onBounce override must release so the particle advances to its dying state; got ${particle.t}');
+	}
+
 	// ==================== Shutdown ====================
 
 	@Test

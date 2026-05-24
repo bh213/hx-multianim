@@ -4022,6 +4022,34 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.equals(5, bitmaps.length);
 	}
 
+	@Test
+	public function testRepeatableVarConditionalIncrementalSurvivesUnrelatedSetParameter():Void {
+		// A constant-count repeatable whose inner conditional references ONLY the loop var ($i).
+		// The loop var is fixed per iteration and cannot change via setParameter, so the conditional
+		// outcome must stay stable across unrelated parameter changes. In incremental mode the
+		// per-iteration conditional entries all share the one parse-time template uniqueNodeName;
+		// re-evaluating the condition with $i absent must not hide any already-built iteration.
+		final result = buildFromSource("
+			#test programmable(label:string=\"x\") {
+				repeatable($i, step(3, dx: 12)) {
+					@($i >= 1) bitmap(generated(color(10, 10, #ff0000))): 0, 0
+				}
+			}
+		", "test", null, Incremental);
+
+		Assert.isTrue(result.isIncremental, "should be in incremental mode");
+		final before = findVisibleBitmapDescendants(result.object).length;
+		Assert.equals(2, before,
+			"i=1 and i=2 satisfy @(i >= 1); i=0 is excluded. got " + before);
+
+		// Change an unrelated param — must not disturb loop-var-driven visibility.
+		result.setParameter("label", "y");
+
+		final after = findVisibleBitmapDescendants(result.object).length;
+		Assert.equals(2, after,
+			"loop-var conditional visibility must survive an unrelated setParameter. got " + after);
+	}
+
 	// ==================== Incremental scale/alpha/filter expression tracking ====================
 
 	@Test
@@ -9589,5 +9617,43 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.equals(1, scanned,
 			'setParameter("a") must examine only dynamicRef bindings referencing "a"; scanned $scanned. '
 			+ 'Without a reverse index keyed by paramName, forwarding pass-1 scans every binding.');
+	}
+
+	// applyUpdates re-evaluates relevant tracked expressions via a reverse index keyed by paramName.
+	// For a batched multi-param update (beginUpdate + several setParameter + endUpdate) the firing
+	// order must follow build/declaration order — not the order params enumerate out of the
+	// changedParams map, and not grouped-by-param. Two tracked expressions that write overlapping
+	// properties of the same object compose by firing order (last write wins), so stable declaration
+	// order is the contract. This pins it independent of map hashing: trackeds 1 and 3 reference
+	// param "pb" while tracked 2, declared between them, references "pa". Any grouped-by-param firing
+	// necessarily separates 1/3 from 2 and so cannot reproduce the 1,2,3 declaration order.
+	@Test
+	public function testBatchedMultiParamUpdateFiresTrackedExpressionsInDeclarationOrder():Void {
+		final result = buildFromSource("
+			#test programmable(pa:int=0, pb:int=0) {
+				bitmap(generated(color(10, 10, #fff))): $pa, $pb
+			}
+		", "test", null, Incremental);
+
+		final ctx = result.incrementalContext;
+		Assert.notNull(ctx);
+
+		final order:Array<String> = [];
+		// Declared interleaved across the two params: 1 -> pb, 2 -> pa, 3 -> pb.
+		// object omitted (null) so visibility never skips these recorder trackeds.
+		ctx.trackExpression(() -> order.push("1"), ["pb"]);
+		ctx.trackExpression(() -> order.push("2"), ["pa"]);
+		ctx.trackExpression(() -> order.push("3"), ["pb"]);
+
+		// Batched update touches both params, so all three recorder trackeds are relevant.
+		result.beginUpdate();
+		result.setParameter("pa", 1);
+		result.setParameter("pb", 2);
+		result.endUpdate();
+
+		Assert.equals("1,2,3", order.join(","),
+			'Batched multi-param update must fire tracked expressions in declaration order; got '
+			+ order.join(",") + '. Grouping by changedParams key order reorders trackeds that '
+			+ 'mutate overlapping properties of the same object.');
 	}
 }

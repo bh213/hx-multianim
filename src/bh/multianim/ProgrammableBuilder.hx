@@ -184,7 +184,7 @@ class ProgrammableBuilder {
 
 	/** Build a particle system via the builder (for PARTICLES nodes).
 	 *  Searches the named programmable's children for a PARTICLES node. */
-	public function buildParticles(programmableName:String, index:Int = 0):bh.base.Particles {
+	public function buildParticles(programmableName:String, index:Int = 0, ?params:Map<String, Dynamic>):bh.base.Particles {
 		final builder = getBuilder();
 		final progNode = builder.multiParserResult.nodes.get(programmableName);
 		if (progNode == null)
@@ -198,7 +198,9 @@ class ProgrammableBuilder {
 		final particlesNode = allParticles[index];
 		return switch particlesNode.type {
 			case PARTICLES(particlesDef):
-				builder.createParticleFromDef(particlesDef, particlesNode.uniqueNodeName);
+				// Resolve with the instance's parameters in scope so `$param` refs inside
+				// the particles block use the instance values, not an empty/default scope.
+				builder.buildParticleWithParams(particlesDef, particlesNode.uniqueNodeName, programmableName, params);
 			default:
 				throw new BuilderError('unexpected node type in $programmableName', particlesNode);
 		};
@@ -247,13 +249,15 @@ class ProgrammableBuilder {
 	/** Build a TileGroup by finding the Nth one in the programmable's node tree.
 	 *  Used by generated code for TILEGROUP nodes.
 	 *  Delegates to the builder which handles TileGroup's special child-add mechanism. */
-	public function buildTileGroupFromProgrammable(programmableName:String, index:Int = 0):h2d.Object {
+	public function buildTileGroupFromProgrammable(programmableName:String, index:Int = 0, ?params:Map<String, Dynamic>):h2d.Object {
 		final builder = getBuilder();
 		final progNode = builder.multiParserResult.nodes.get(programmableName);
 		if (progNode == null)
 			throw BuilderError.of('could not find programmable node: $programmableName');
-		// Build the tilegroup via the builder — it handles TileGroupMode for children
-		final result = builder.buildWithParameters(programmableName, new Map());
+		// Build the tilegroup via the builder — it handles TileGroupMode for children.
+		// Pass the instance's parameters so `$param` refs in the baked content resolve
+		// against the instance values, not the parameter defaults.
+		final result = builder.buildWithParameters(programmableName, params != null ? params : new Map());
 		// Find all TileGroups in the result's object tree
 		final tileGroups:Array<h2d.Object> = [];
 		findAllTileGroupsInTree(result.object, tileGroups);

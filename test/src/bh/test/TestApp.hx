@@ -125,6 +125,8 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.CodegenExternalPaletteTest());
 		testRunner.addCase(new bh.test.examples.ChainBoundaryConditionalTest());
 		testRunner.addCase(new bh.test.examples.EnumNumericConditionalTest());
+		testRunner.addCase(new bh.test.examples.UIScreenUpdateAllocationTest());
+		testRunner.addCase(new bh.test.examples.StrictDColorVerbatimTest());
 		#if MULTIANIM_DEV
 		testRunner.addCase(new bh.test.examples.HotReloadTest());
 		testRunner.addCase(new bh.test.examples.DevBridgeTest());

@@ -637,6 +637,63 @@ class GridCellHoverRegressionTest extends BuilderTestBase {
 		}
 	}
 
+	// ===== Allocation watchdog: hit-test must not allocate on the no-change path =====
+	// Moving the mouse repeatedly within the SAME cell (the common per-frame case
+	// when the cursor jiggles, or stays put while the game re-dispatches moves)
+	// must not allocate a fresh CellCoord every move. The hover already matches,
+	// so no new coordinate object is needed.
+	@Test
+	public function testRepeatedMouseMoveOverSameCellDoesNotAllocateCellCoord():Void {
+		final builder = bh.test.BuilderTestBase.builderFromFile("test/res/grid-demo.manim");
+		final factory = new bh.ui.UIMultiAnimGridTypes.DefaultCellVisualFactory(builder, {cellBuildName: "rectCell"});
+		final grid = new bh.ui.UIMultiAnimGrid<Dynamic>(builder, {
+			gridType: Rect(52, 52, 4),
+			cellVisualFactory: factory,
+			originX: 0,
+			originY: 0,
+		});
+		grid.addRectRegion(5, 4);
+
+		// Warm-up: first move establishes hover on the target cell (and soaks up
+		// any first-time allocations).
+		final cx = 2 * 56 + 26;
+		final cy = 1 * 56 + 26;
+		grid.onMouseMove(cx, cy);
+
+		final baseline = bh.ui.UIMultiAnimGridTypes.CellCoord.creationCount;
+		for (_ in 0...100)
+			grid.onMouseMove(cx, cy);
+
+		Assert.equals(0, bh.ui.UIMultiAnimGridTypes.CellCoord.creationCount - baseline,
+			"Repeated mouse-move over the same hovered cell must not allocate a CellCoord per move. Got " +
+			(bh.ui.UIMultiAnimGridTypes.CellCoord.creationCount - baseline) + " across 100 moves.");
+	}
+
+	// Hex variant of the same no-allocation guarantee.
+	@Test
+	public function testRepeatedMouseMoveOverSameHexCellDoesNotAllocateCellCoord():Void {
+		final builder = bh.test.BuilderTestBase.builderFromFile("test/res/grid-demo.manim");
+		final factory = new bh.ui.UIMultiAnimGridTypes.DefaultCellVisualFactory(builder, {cellBuildName: "hexCell"});
+		final grid = new bh.ui.UIMultiAnimGrid<Dynamic>(builder, {
+			gridType: Hex(POINTY, 30, 30),
+			cellVisualFactory: factory,
+			originX: 0,
+			originY: 0,
+		});
+		grid.addHexRegion(0, 0, 2);
+
+		final p = grid.cellPosition(0, 0);
+		grid.onMouseMove(p.x, p.y); // warm-up: establish hover
+
+		final baseline = bh.ui.UIMultiAnimGridTypes.CellCoord.creationCount;
+		for (_ in 0...100)
+			grid.onMouseMove(p.x, p.y);
+
+		Assert.equals(0, bh.ui.UIMultiAnimGridTypes.CellCoord.creationCount - baseline,
+			"Repeated mouse-move over the same hovered hex cell must not allocate a CellCoord per move. Got " +
+			(bh.ui.UIMultiAnimGridTypes.CellCoord.creationCount - baseline) + " across 100 moves.");
+	}
+
 	@Test
 	public function testTwoRectCellsHoverTransitionDoesNotCorruptPrevious():Void {
 		final builder = bh.test.BuilderTestBase.builderFromSource(RECT_CELL_LIKE);

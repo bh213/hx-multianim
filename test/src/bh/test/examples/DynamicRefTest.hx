@@ -128,6 +128,44 @@ class DynamicRefTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testApplyUpdatesDoesNotAllocateChangedParamsIterators():Void {
+		// applyUpdates() walks the changed-param set twice per call: once to mark relevant
+		// tracked expressions, once to collect dynamicRef forwarding bindings. Both walks
+		// must iterate a flat array, NOT changedParams.keys() — on HashLink each .keys()
+		// call heap-allocates a Map iterator object, so iterating it leaks two transient
+		// allocations on every setParameter (a UI hover/press/drag hot path).
+		final result = buildFromSource("
+			#widgetA programmable(val:uint=100) {
+				bitmap(generated(color($val, 10, #ff0000))): 0, 0
+			}
+			#parent programmable(hp:uint=100) {
+				dynamicRef($widgetA, val=>$hp): 0, 0
+			}
+		", "parent", null, Incremental);
+
+		Assert.notNull(result.incrementalContext);
+		final ctx = result.incrementalContext;
+		if (ctx == null) return;
+
+		// Warm up — first call may grow lazy structures.
+		result.setParameter("hp", 90);
+		result.setParameter("hp", 80);
+
+		final baseline = ctx.changedParamsKeysIterCount;
+
+		for (i in 0...20) {
+			result.setParameter("hp", 50 + (i % 10));
+		}
+
+		final delta = ctx.changedParamsKeysIterCount - baseline;
+		// Expected: zero. The two changed-param walks must iterate a reusable Array<String>
+		// kept in sync with changedParams, not changedParams.keys(). Pre-fix code allocates
+		// two iterators per setParameter, so 20 calls leak ~40 transient iterator objects.
+		Assert.equals(0, delta,
+			"applyUpdates iterates changedParams.keys() (allocates Map iterators) (got " + delta + " across 20 calls)");
+	}
+
+	@Test
 	public function testDynamicRefSetParameterOnSubResult():Void {
 		final result = buildFromSource("
 			#inner programmable(color:[red,green]=red) {

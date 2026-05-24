@@ -332,6 +332,12 @@ private class TrackedExpression {
 	public var paramRefs:Array<String>;
 	public var object:Null<h2d.Object>;
 	public var gen:Int = 0;
+	// Stable build/declaration sequence assigned in trackExpression(). applyUpdates fires
+	// relevant trackeds sorted by it so a batched multi-param update composes in declaration
+	// order (last write wins for two trackeds touching overlapping properties of the same
+	// object) instead of the reverse index's grouped-by-param order. Survives
+	// cleanupDestroyedSubtree splices — relative order of survivors is preserved.
+	public var declOrder:Int = 0;
 	public inline function new(updateFn:Void->Void, paramRefs:Array<String>, object:Null<h2d.Object>) {
 		this.updateFn = updateFn;
 		this.paramRefs = paramRefs;
@@ -386,6 +392,15 @@ class IncrementalUpdateContext {
 	// walks this map for the keys in changedParams to mark only relevant trackeds, instead of
 	// scanning every tracked's paramRefs on every setParameter (UI hover/press hot path).
 	var trackedByParam:Map<String, Array<TrackedExpression>> = new Map();
+	// Monotonic sequence handed to each tracked's declOrder in trackExpression(). Never
+	// reset across the context's life (splices in cleanupDestroyedSubtree must not reorder
+	// survivors), so it stably encodes build/declaration order.
+	var trackedSeq:Int = 0;
+	// Reusable scratch holding the relevant trackeds collected from the reverse index in an
+	// applyUpdates cycle. Sorted by declOrder before firing so a batched multi-param update
+	// composes in declaration order rather than grouped-by-param. Resized to 0 per cycle;
+	// capacity persists, keeping the sweep zero-alloc in steady state.
+	var trackedFireScratch:Array<TrackedExpression> = [];
 	var deferredEntries:Array<{
 		wrapper:h2d.Object, node:Node, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
 		gridCS:GridCoordinateSystem, hexCS:HexCoordinateSystem,
@@ -416,6 +431,12 @@ class IncrementalUpdateContext {
 	// writes from within this class are still allowed.
 	public var batchMode(default, null):Bool = false;
 	var changedParams:Map<String, Bool> = new Map();
+	// Flat list of the keys in changedParams, kept in sync with it. applyUpdates() walks this
+	// instead of changedParams.keys() so the per-call changed-param sweeps stay zero-alloc on
+	// HashLink (each Map.keys() call heap-allocates an iterator). The Map is retained for the
+	// O(1) .exists() membership checks (findTransitionSpec, dynamicNameBindings). Resized to 0
+	// alongside every changedParams.clear(); capacity persists across calls.
+	var changedParamList:Array<String> = [];
 	var hasChanges:Bool = false;
 	var transitionsDef:Null<Map<String, TransitionType>>;
 	public var tweenManager:Null<TweenManager> = null;
@@ -459,6 +480,14 @@ class IncrementalUpdateContext {
 	 *  instrumentation, gated so production builds skip the increments. */
 	#if MULTIANIM_ALLOC_TRACK
 	public var dynamicRefForwardAllocCount:Int = 0;
+	#end
+	/** Counts how many times applyUpdates() allocates a Map iterator by iterating
+	 *  changedParams.keys(). On HashLink each .keys() call heap-allocates an iterator
+	 *  object; the changed-param set should be walked via a flat array so steady-state
+	 *  setParameter (UI hover/press/drag hot path) stays zero-alloc here. Pure
+	 *  instrumentation, gated so production builds skip the increments. */
+	#if MULTIANIM_ALLOC_TRACK
+	public var changedParamsKeysIterCount:Int = 0;
 	#end
 	/** Counts how many tracked expressions applyUpdates() examined (paramRef scan) in this
 	 *  call. Should equal the number of trackeds whose paramRefs intersect changedParams,
@@ -592,6 +621,7 @@ class IncrementalUpdateContext {
 
 	public function trackExpression(updateFn:Void->Void, paramRefs:Array<String>, ?object:h2d.Object):Void {
 		final tracked = new TrackedExpression(updateFn, paramRefs, object);
+		tracked.declOrder = trackedSeq++;
 		trackedExpressions.push(tracked);
 		for (ref in paramRefs) {
 			var arr = trackedByParam.get(ref);
@@ -1069,6 +1099,10 @@ class IncrementalUpdateContext {
 			return;
 		}
 		indexedParams.set(name, converted);
+		// Guard the push so a param re-set within a batch (begin/set A/set A/end) appears
+		// once in changedParamList, matching the Map's dedup. The .exists() check is alloc-free.
+		if (!changedParams.exists(name))
+			changedParamList.push(name);
 		changedParams.set(name, true);
 		hasChanges = true;
 		if (!batchMode)
@@ -1079,6 +1113,7 @@ class IncrementalUpdateContext {
 		if (batchMode) throw BuilderError.of("beginUpdate: already in batch; nesting is not supported", "nested_begin_update");
 		batchMode = true;
 		changedParams.clear();
+		changedParamList.resize(0);
 		hasChanges = false;
 	}
 
@@ -1088,6 +1123,7 @@ class IncrementalUpdateContext {
 		if (hasChanges)
 			applyUpdates();
 		changedParams.clear();
+		changedParamList.resize(0);
 		hasChanges = false;
 	}
 
@@ -1104,6 +1140,7 @@ class IncrementalUpdateContext {
 		if (!batchMode) return;
 		batchMode = false;
 		changedParams.clear();
+		changedParamList.resize(0);
 		hasChanges = false;
 	}
 
@@ -1695,17 +1732,32 @@ class IncrementalUpdateContext {
 			// with the pre-existing semantics.
 			final gen = ++applyGen;
 			if (hasChanges) {
-				for (param in changedParams.keys()) {
+				// Collect the relevant trackeds (reverse-index walk; gen-dedup so a tracked
+				// referencing several changed params is gathered once), then fire them in
+				// declaration order. The reverse index groups by param, so firing inline here
+				// would run trackeds grouped-by-param (changedParamList order) for a batched
+				// multi-param update instead of build/declaration order — two trackeds writing
+				// overlapping properties of the same object would then compose by
+				// param-enumeration order rather than declaration order. Sorting the collected
+				// set by declOrder restores the stable contract. A single changed param collects
+				// an already-ordered subarray, so the sort is skipped (length <= 1) on that hot path.
+				trackedFireScratch.resize(0);
+				for (param in changedParamList) {
 					final arr = trackedByParam.get(param);
 					if (arr == null) continue;
 					for (tracked in arr) {
 						if (tracked.gen == gen) continue;
 						tracked.gen = gen;
-						final obj = tracked.object;
-						if (obj != null && !isEffectivelyVisible(obj)) continue;
-						trackedRelevantScanCount++;
-						tracked.updateFn();
+						trackedFireScratch.push(tracked);
 					}
+				}
+				if (trackedFireScratch.length > 1)
+					trackedFireScratch.sort((a, b) -> a.declOrder - b.declOrder);
+				for (tracked in trackedFireScratch) {
+					final obj = tracked.object;
+					if (obj != null && !isEffectivelyVisible(obj)) continue;
+					trackedRelevantScanCount++;
+					tracked.updateFn();
 				}
 			} else {
 				for (tracked in trackedExpressions) {
@@ -1746,7 +1798,7 @@ class IncrementalUpdateContext {
 			// field, so reuse is safe (no cross-collection collision). Collect into
 			// fwdBindingScratch so pass 2 can dispatch in O(unique-ctx × relevant-bindings)
 			// without re-scanning the full dynamicRefBindings array.
-			for (param in changedParams.keys()) {
+			for (param in changedParamList) {
 				final arr = dynamicRefBindingsByParam.get(param);
 				if (arr == null) continue;
 				for (binding in arr) {
@@ -1793,6 +1845,7 @@ class IncrementalUpdateContext {
 
 		builder.popBuilderState();
 		changedParams.clear();
+		changedParamList.resize(0);
 		hasChanges = false;
 		// Unset the re-entry guard BEFORE both (a) rethrowing a caught exception and
 		// (b) dispatching rebuild listeners. Rethrow path: a future setParameter on
@@ -2467,6 +2520,15 @@ class MultiAnimBuilder {
 	var buildingRefs:Array<String> = [];
 	var inlineAtlases:Map<String, IAtlas2> = [];
 	var incrementalMode:Bool = false;
+	/** Set true while iterating a constant-count repeatable body in incremental mode (the loop has
+	 *  no settable-param dependency, so `hasIncrementalRepeat` is false but `incrementalMode` stays
+	 *  true). Any conditional in such a body references only the loop var, which is bound during
+	 *  iteration but absent afterwards. Tracking these as incremental conditionals is wrong: the N
+	 *  per-iteration entries collapse onto the single parse-time template `uniqueNodeName`, and the
+	 *  later `applyConditionalChains` re-evaluates the condition with the loop var gone, hiding the
+	 *  surviving iteration. While set, conditionals are resolved at build time (full-mode filtering)
+	 *  and not registered as incremental entries; expression tracking stays active. */
+	var suppressConditionalTracking:Bool = false;
 	var incrementalContext:Null<IncrementalUpdateContext> = null;
 	var currentInternalResults:Null<InternalBuilderResults> = null;
 	/** When set, automatically injected into IncrementalUpdateContext for transition support. */
@@ -3919,8 +3981,11 @@ class MultiAnimBuilder {
 	// are always included (their shouldBuildInFullMode check happens later in build/buildTileGroup).
 	// ConditionalElse and ConditionalDefault are filtered here based on chain logic.
 	function resolveConditionalChildren(children:Array<Node>):Array<Node> {
-		// In incremental mode, return ALL children so they're all built (visibility handled later)
-		if (incrementalMode)
+		// In incremental mode, return ALL children so they're all built (visibility handled later).
+		// Exception: inside a constant-count repeatable body (suppressConditionalTracking), the
+		// loop-var conditionals are static once the loop var is bound, so fall through to build-time
+		// chain filtering instead of deferring to applyConditionalChains.
+		if (incrementalMode && !suppressConditionalTracking)
 			return children;
 
 		var result:Array<Node> = [];
@@ -4552,6 +4617,24 @@ class MultiAnimBuilder {
 		}
 
 		// Track scale/rotation/alpha/filter/tint if they reference params
+		trackExtendedFormExpressions(node, object);
+	}
+
+	/** Register a tracked expression so $param-driven extended-form properties
+	 *  (scale/rotation/alpha/tint/filter) re-apply on setParameter. Shared by
+	 *  trackIncrementalExpressions (child nodes) and the programmable root path in
+	 *  startBuild — root-level `scale:` / `alpha:` / ... on `programmable()` are applied
+	 *  once at build but, without this, never re-fire (the builder counterpart of the
+	 *  codegen root-tint refire). No-op outside incremental mode or when no refs.
+	 *
+	 *  `gateVisibility`: when true, the tracked is skipped during applyUpdates if its
+	 *  object isn't effectively visible (the per-child default). The programmable root
+	 *  passes false: the root has no parent (isEffectivelyVisible would return false for
+	 *  it), and re-applying scale/alpha to the root is a harmless field write that should
+	 *  always reflect current params regardless of whether the result is in a scene. */
+	function trackExtendedFormExpressions(node:Node, object:h2d.Object, gateVisibility:Bool = true):Void {
+		final ctx = incrementalContext;
+		if (ctx == null) return;
 		final extRefs:Array<String> = [];
 		final _scale = node.scale; if (_scale != null) collectParamRefs(_scale, extRefs);
 		final _rotation = node.rotation; if (_rotation != null) collectParamRefs(_rotation, extRefs);
@@ -4561,7 +4644,7 @@ class MultiAnimBuilder {
 		if (extRefs.length > 0) {
 			ctx.trackExpression(() -> {
 				applyExtendedFormProperties(object, node);
-			}, extRefs, object);
+			}, extRefs, gateVisibility ? object : null);
 		}
 	}
 
@@ -5346,7 +5429,7 @@ class MultiAnimBuilder {
 	function build(node:Node, buildMode:InternalBuildMode, gridCoordinateSystem:GridCoordinateSystem, hexCoordinateSystem:HexCoordinateSystem,
 			internalResults:InternalBuilderResults, builderParams:BuilderParameters):h2d.Object {
 		final nodeVisible = shouldBuildInFullMode(node, indexedParams);
-		if (!nodeVisible && !incrementalMode)
+		if (!nodeVisible && (!incrementalMode || suppressConditionalTracking))
 			return null;
 		this.currentNode = node;
 		this.currentInternalResults = internalResults;
@@ -5381,7 +5464,7 @@ class MultiAnimBuilder {
 		// Deferred build: skip expression evaluation for non-visible conditional nodes (like repeatables).
 		// APPLY and FINAL_VAR are excluded — APPLY modifies the parent (handled via conditionalApplyEntries),
 		// FINAL_VAR defines constants with no visual output.
-		if (!nodeVisible && incrementalMode && node.conditionals != NoConditional && incrementalContext != null
+		if (!nodeVisible && incrementalMode && !suppressConditionalTracking && node.conditionals != NoConditional && incrementalContext != null
 				&& !node.type.match(APPLY) && !node.type.match(FINAL_VAR(_, _))) {
 			final sentinel = new h2d.Object();
 			addChild(sentinel);
@@ -6032,6 +6115,16 @@ class MultiAnimBuilder {
 					incrementalMode = false;
 				}
 
+				// Constant-count repeatable in incremental mode (no settable-param dependency, so
+				// the full-rebuild path above did not fire): any conditional in the body references
+				// only the loop var, which is bound now but gone afterwards. Resolve those at build
+				// time and skip incremental conditional tracking — otherwise the per-iteration entries
+				// collapse onto the shared template uniqueNodeName and applyConditionalChains hides the
+				// survivor. Expression tracking (trackIncrementalExpressions) stays active.
+				final savedSuppressConditionalTracking = suppressConditionalTracking;
+				if (incrementalMode && incrementalContext != null)
+					suppressConditionalTracking = true;
+
 				for (count in 0...repeatCount) {
 					final resolvedIndex = switch repeatType {
 						case RangeIterator(_, _, _): rangeStart + count * rangeStep;
@@ -6075,6 +6168,7 @@ class MultiAnimBuilder {
 					}
 					cleanupFinalVars(resolvedChildren, indexedParams);
 				}
+				suppressConditionalTracking = savedSuppressConditionalTracking;
 
 				indexedParams.remove(varName);
 				switch repeatType {
@@ -6446,7 +6540,7 @@ class MultiAnimBuilder {
 
 		// In incremental mode: insert sentinel before conditional elements for position tracking
 		var conditionalSentinel:Null<h2d.Object> = null;
-		if (incrementalMode && node.conditionals != NoConditional && incrementalContext != null && current != null) {
+		if (incrementalMode && !suppressConditionalTracking && node.conditionals != NoConditional && incrementalContext != null && current != null) {
 			conditionalSentinel = new h2d.Object();
 			addChild(conditionalSentinel);
 		}
@@ -6831,6 +6925,13 @@ class MultiAnimBuilder {
 			this.currentNode = rootNode;
 			root.setPosition(0, 0);
 			applyExtendedFormProperties(root, rootNode);
+			// Root-level scale/alpha/rotation/tint/filter on programmable() must re-fire on
+			// setParameter, same as child nodes (trackIncrementalExpressions). Position is
+			// intentionally NOT tracked here — root pos composes additively with runtime
+			// setPosition, so re-applying it would clobber a caller's setPosition offset.
+			// gateVisibility=false: the root has no parent, so a visibility gate would skip it.
+			if (incrementalMode)
+				trackExtendedFormExpressions(rootNode, root, false);
 
 			final pos = calculatePosition(rootNode.pos, gridCoordinateSystem, hexCoordinateSystem);
 			addPosition(root, pos.x, pos.y);
@@ -6844,6 +6945,9 @@ class MultiAnimBuilder {
 			this.currentNode = rootNode;
 			root.setPosition(0, 0);
 			applyExtendedFormProperties(root, rootNode);
+			// gateVisibility=false — see the programmable branch above for rationale.
+			if (incrementalMode)
+				trackExtendedFormExpressions(rootNode, root, false);
 
 			final pos = calculatePosition(rootNode.pos, gridCoordinateSystem, hexCoordinateSystem);
 			addPosition(root, pos.x, pos.y);
@@ -7235,6 +7339,46 @@ class MultiAnimBuilder {
 	/** Create particles from a ParticlesDef directly (used by ProgrammableBuilder) */
 	public function createParticleFromDef(particlesDef:ParticlesDef, name:String):bh.base.Particles {
 		return createParticleImpl(particlesDef, name);
+	}
+
+	/** Build a particle system for a codegen (@:manim) instance with the instance's
+	 *  parameters pushed into scope, so `$param` references inside the particles block
+	 *  resolve against the instance values rather than an empty/default scope.
+	 *  Used by ProgrammableBuilder.buildParticles. */
+	public function buildParticleWithParams(particlesDef:ParticlesDef, name:String,
+			programmableName:String, params:Null<Map<String, Dynamic>>):bh.base.Particles {
+		final node = multiParserResult.nodes.get(programmableName);
+		if (node == null)
+			throw builderError('could not find programmable node: $programmableName');
+		pushBuilderState();
+		try {
+			this.indexedParams = resolveProgrammableParamsToScope(node, params);
+			final particles = createParticleImpl(particlesDef, name);
+			popBuilderState();
+			return particles;
+		} catch (e:Dynamic) {
+			popBuilderState();
+			throw e;
+		}
+	}
+
+	/** Convert a codegen instance's Dynamic parameter map into resolved index params,
+	 *  filling in any unsupplied parameter's default. */
+	function resolveProgrammableParamsToScope(node:Node, params:Null<Map<String, Dynamic>>):Map<String, ResolvedIndexParameters> {
+		final hasParams = params != null && params.count() > 0;
+		final defs = getProgrammableParameterDefinitions(node, hasParams);
+		final resolved:Map<String, ResolvedIndexParameters> = new Map();
+		if (params != null) {
+			for (key => value in params) {
+				final def = defs.get(key);
+				resolved.set(key, def != null ? dynamicToResolvedWithDef(def.type, value) : dynamicToResolvedInferred(value));
+			}
+		}
+		for (key => def in defs) {
+			if (!resolved.exists(key) && def.defaultValue != null)
+				resolved.set(key, def.defaultValue);
+		}
+		return resolved;
 	}
 
 	/** Get a data block by name, returning its fields as a Dynamic object. */

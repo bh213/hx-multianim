@@ -137,11 +137,24 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 	public var currentAnimStateIndex : Int = 0;
 
 	// Pin currentAnimStateIndex against the per-frame natural-advance loop.
-	// Set by applyAnimEventOverride; cleared on init() (spawn/recycle). Without
-	// this, an override that targets a state with a startLifeRate lower than
-	// the natural-by-time index would be clobbered on the very next tick — the
-	// impact / bounce / death anim would flicker for one frame at most.
+	// Set by applyAnimEventOverride; cleared on init() (spawn/recycle) AND, when the
+	// override is releasable (see below), one-shot in update() once lifetime progression
+	// passes the end of the pinned state's window. Without the pin, an override that
+	// targets a state with a startLifeRate lower than the natural-by-time index would
+	// be clobbered on the very next tick — the impact / bounce anim would flicker for
+	// one frame.
 	public var animOverrideActive : Bool = false;
+
+	// Distinguishes a "play-through" override (release the pin once the lifetime crosses
+	// the end of the override target's window, so e.g. an onBounce → impact mid-life
+	// trigger plays through once and then resumes lifetime-driven advance — otherwise a
+	// long-lived bouncing particle would freeze on the impact frame forever) from a
+	// "sticky" override (hold the pin until reinit). Set by applyAnimEventOverride: true
+	// when the override fires while the target state's window is still current/ahead
+	// (timeNormalized < overrideEnd), false when it targets a state whose window is
+	// already in the past (a deliberate late-life override into an earlier state, which
+	// must persist). onDeath needs no release either way — the particle recycles/frees.
+	public var animOverrideReleasable : Bool = false;
 
 	// Current color curve segment index (monotonic advance; avoids O(N) rescan per frame)
 	public var currentColorSegmentIndex : Int = 0;
@@ -283,10 +296,21 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 		if (group.animStates.length > 0) {
 			// AnimSM-driven: find active state by lifetime rate
 			var stateIdx = currentAnimStateIndex;
-			// Skip the natural advance while an event override has pinned the state —
+			// An event override (e.g. onBounce → "impact") pins the state so the next
+			// natural-advance pass can't immediately clobber it. A releasable (play-through)
+			// pin is one-shot: release it once lifetime progression passes the END of the
+			// pinned state's window, so the impact anim plays through once and then resumes
+			// lifetime-driven advance. Without this release a long-lived bouncing particle
+			// would freeze on the impact frame forever (localT clamps to 1.0) and never reach
+			// its dying state. A non-releasable (sticky) pin — an override fired into a state
+			// whose window is already in the past — holds until reinit. See animOverrideReleasable.
+			if (animOverrideActive && animOverrideReleasable) {
+				var overrideEnd = if (stateIdx + 1 < group.animStates.length) group.animStates[stateIdx + 1].startLifeRate else 1.0;
+				if (timeNormalized >= overrideEnd) animOverrideActive = false;
+			}
+			// Skip the natural advance while an event override is still pinned —
 			// otherwise the monotonic-forward walk would clobber overrides that target
-			// a state earlier than the natural-by-time index (e.g. onBounce → "impact"
-			// fired late in life).
+			// a state earlier than the natural-by-time index.
 			if (!animOverrideActive) {
 				while (stateIdx + 1 < group.animStates.length && timeNormalized >= group.animStates[stateIdx + 1].startLifeRate) {
 					stateIdx++;
@@ -1018,6 +1042,7 @@ class ParticleGroup {
 		p.currentColorSegmentIndex = 0;
 		p.currentAnimStateIndex = 0;
 		p.animOverrideActive = false;
+		p.animOverrideReleasable = false;
 
 		if ( !isRelative ) {
 			var parts = this.parts;
@@ -1322,6 +1347,12 @@ class ParticleGroup {
 			// walk forward by lifetime rate and clobber the override on the very next
 			// frame whenever the override targets an earlier state index.
 			p.animOverrideActive = true;
+			// Releasable (play-through) only when the override target's window is still
+			// current/ahead at fire time. If lifetime has already passed the end of that
+			// window (a deliberate late-life override into an earlier state), keep it sticky.
+			final overrideEnd = if (stateIndex + 1 < animStates.length) animStates[stateIndex + 1].startLifeRate else 1.0;
+			final timeNormalized = p.maxLife > 0 ? p.life / p.maxLife : 0.0;
+			p.animOverrideReleasable = timeNormalized < overrideEnd;
 			// Update tile immediately
 			var animState = animStates[stateIndex];
 			if (animState.tiles.length > 0) {

@@ -1568,9 +1568,7 @@ class ProgrammableCodeGen {
 				final _obj = $fieldRef;
 				if (Std.isOfType(_obj, h2d.Drawable)) {
 					final d:h2d.Drawable = cast _obj;
-					var c:Int = $tintExpr;
-					if (c >>> 24 == 0) c |= 0xFF000000;
-					d.color.setColor(c);
+					d.color.setColor($tintExpr);
 				}
 			};
 			ctorExprs.push(tintUpdateExpr);
@@ -2904,19 +2902,19 @@ class ProgrammableCodeGen {
 							case "line":
 								final ix1:Int = Math.round(s.x1) - minX; final iy1:Int = Math.round(s.y1) - minY;
 								final ix2:Int = Math.round(s.x2) - minX; final iy2:Int = Math.round(s.y2) - minY;
-								var c:Int = s.color; if (c >>> 24 == 0) c |= 0xFF000000;
+								var c:Int = s.color;
 								stmts.push(macro _rt_pl.line($v{ix1}, $v{iy1}, $v{ix2}, $v{iy2}, $v{c}));
 							case "rect":
 								final ix:Int = Math.round(s.x1) - minX; final iy:Int = Math.round(s.y1) - minY;
 								final iw:Int = Math.round(s.w); final ih:Int = Math.round(s.h);
-								var c:Int = s.color; if (c >>> 24 == 0) c |= 0xFF000000;
+								var c:Int = s.color;
 								if (s.filled)
 									stmts.push(macro _rt_pl.filledRect($v{ix}, $v{iy}, $v{iw}, $v{ih}, $v{c}));
 								else
 									stmts.push(macro _rt_pl.rect($v{ix}, $v{iy}, $v{iw}, $v{ih}, $v{c}));
 							case "pixel":
 								final ix:Int = Math.round(s.x1) - minX; final iy:Int = Math.round(s.y1) - minY;
-								var c:Int = s.color; if (c >>> 24 == 0) c |= 0xFF000000;
+								var c:Int = s.color;
 								stmts.push(macro _rt_pl.pixel($v{ix}, $v{iy}, $v{c}));
 							default:
 						}
@@ -5046,7 +5044,6 @@ class ProgrammableCodeGen {
 						final ix2:Int = Math.round(s.x2) - minX;
 						final iy2:Int = Math.round(s.y2) - minY;
 						var c:Int = s.color;
-						if (c >>> 24 == 0) c |= 0xFF000000;
 						createExprs.push(macro {
 							final _pl:bh.base.PixelLine.PixelLines = cast $fieldRef;
 							_pl.line($v{ix1}, $v{iy1}, $v{ix2}, $v{iy2}, $v{c});
@@ -5057,7 +5054,6 @@ class ProgrammableCodeGen {
 						final iw:Int = Math.round(s.w);
 						final ih:Int = Math.round(s.h);
 						var c:Int = s.color;
-						if (c >>> 24 == 0) c |= 0xFF000000;
 						if (s.filled) {
 							createExprs.push(macro {
 								final _pl:bh.base.PixelLine.PixelLines = cast $fieldRef;
@@ -5073,7 +5069,6 @@ class ProgrammableCodeGen {
 						final ix:Int = Math.round(s.x1) - minX;
 						final iy:Int = Math.round(s.y1) - minY;
 						var c:Int = s.color;
-						if (c >>> 24 == 0) c |= 0xFF000000;
 						createExprs.push(macro {
 							final _pl:bh.base.PixelLine.PixelLines = cast $fieldRef;
 							_pl.pixel($v{ix}, $v{iy}, $v{c});
@@ -5126,7 +5121,7 @@ class ProgrammableCodeGen {
 						boundsExprs.push(macro var $y1Var:Int = Math.round(${start.y}));
 						boundsExprs.push(macro var $x2Var:Int = Math.round(${end.x}));
 						boundsExprs.push(macro var $y2Var:Int = Math.round(${end.y}));
-						boundsExprs.push(macro var $cVar:Int = { var c:Int = $cExpr; if (c >>> 24 == 0) c |= 0xFF000000; c; });
+						boundsExprs.push(macro var $cVar:Int = $cExpr);
 						boundsExprs.push(macro if ($i{x1Var} < _minX) _minX = $i{x1Var});
 						boundsExprs.push(macro if ($i{y1Var} < _minY) _minY = $i{y1Var});
 						boundsExprs.push(macro if ($i{x2Var} < _minX) _minX = $i{x2Var});
@@ -5151,7 +5146,7 @@ class ProgrammableCodeGen {
 						boundsExprs.push(macro var $yVar:Int = Math.round(${start.y}));
 						boundsExprs.push(macro var $wVar:Int = $wExpr);
 						boundsExprs.push(macro var $hVar:Int = $hExpr);
-						boundsExprs.push(macro var $cVar:Int = { var c:Int = $cExpr; if (c >>> 24 == 0) c |= 0xFF000000; c; });
+						boundsExprs.push(macro var $cVar:Int = $cExpr);
 						boundsExprs.push(macro if ($i{xVar} < _minX) _minX = $i{xVar});
 						boundsExprs.push(macro if ($i{yVar} < _minY) _minY = $i{yVar});
 						boundsExprs.push(macro if ($i{xVar} + $i{wVar} + 1 > _maxX) _maxX = $i{xVar} + $i{wVar} + 1);
@@ -5168,7 +5163,7 @@ class ProgrammableCodeGen {
 						final cVar = "_c" + idx;
 						boundsExprs.push(macro var $xVar:Int = Math.round(${xy.x}));
 						boundsExprs.push(macro var $yVar:Int = Math.round(${xy.y}));
-						boundsExprs.push(macro var $cVar:Int = { var c:Int = $cExpr; if (c >>> 24 == 0) c |= 0xFF000000; c; });
+						boundsExprs.push(macro var $cVar:Int = $cExpr);
 						boundsExprs.push(macro if ($i{xVar} < _minX) _minX = $i{xVar});
 						boundsExprs.push(macro if ($i{yVar} < _minY) _minY = $i{yVar});
 						boundsExprs.push(macro if ($i{xVar} > _maxX) _maxX = $i{xVar});
@@ -5236,9 +5231,13 @@ class ProgrammableCodeGen {
 		final fieldRef = macro $p{["this", fieldName]};
 		final nameExpr:Expr = macro $v{currentProgrammableName};
 		final indexExpr:Expr = macro $v{particlesCounter++};
-		final createExprs:Array<Expr> = [
-			macro $fieldRef = this._pb.buildParticles($nameExpr, $indexExpr),
-		];
+		// Pass the instance's parameters so `$param` references inside the particles
+		// block resolve against the instance values, not an empty/default scope.
+		final mapExprs:Array<Expr> = [macro final _pt_pp = new Map<String, Dynamic>()];
+		for (pn in paramNames)
+			mapExprs.push(macro _pt_pp.set($v{pn}, $p{["this", "_" + pn]}));
+		mapExprs.push(macro $fieldRef = this._pb.buildParticles($nameExpr, $indexExpr, _pt_pp));
+		final createExprs:Array<Expr> = [{expr: EBlock(mapExprs), pos: pos}];
 
 		return {
 			fieldType: macro :bh.base.Particles,
@@ -5397,9 +5396,13 @@ class ProgrammableCodeGen {
 		final fieldRef = macro $p{["this", fieldName]};
 		final nameExpr:Expr = macro $v{currentProgrammableName};
 		final indexExpr:Expr = macro $v{tileGroupCounter++};
-		final createExprs:Array<Expr> = [
-			macro $fieldRef = this._pb.buildTileGroupFromProgrammable($nameExpr, $indexExpr),
-		];
+		// Pass the instance's parameters so `$param` references inside the tileGroup's
+		// baked content resolve against the instance values, not the defaults.
+		final mapExprs:Array<Expr> = [macro final _tg_pp = new Map<String, Dynamic>()];
+		for (pn in paramNames)
+			mapExprs.push(macro _tg_pp.set($v{pn}, $p{["this", "_" + pn]}));
+		mapExprs.push(macro $fieldRef = this._pb.buildTileGroupFromProgrammable($nameExpr, $indexExpr, _tg_pp));
+		final createExprs:Array<Expr> = [{expr: EBlock(mapExprs), pos: pos}];
 
 		return {
 			fieldType: macro :h2d.Object,
@@ -5490,9 +5493,7 @@ class ProgrammableCodeGen {
 				final _obj = $parentRef;
 				if (Std.isOfType(_obj, h2d.Drawable)) {
 					final d:h2d.Drawable = cast _obj;
-					var c:Int = $tintExpr;
-					if (c >>> 24 == 0) c |= 0xFF000000;
-					d.color.setColor(c);
+					d.color.setColor($tintExpr);
 				}
 			};
 			ctorExprs.push(tintUpdateExpr);
@@ -5620,9 +5621,7 @@ class ProgrammableCodeGen {
 				final _obj = $parentRef;
 				if (Std.isOfType(_obj, h2d.Drawable)) {
 					final d:h2d.Drawable = cast _obj;
-					var c:Int = $tintExpr;
-					if (c >>> 24 == 0) c |= 0xFF000000;
-					d.color.setColor(c);
+					d.color.setColor($tintExpr);
 				}
 			});
 			revertExprs.push(macro {

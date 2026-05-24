@@ -1,0 +1,27 @@
+version: 1.0
+
+// Programmables whose particles / tileGroup contents reference a
+// programmable parameter via $param. The codegen (@:manim) path must
+// resolve these against the instance's parameter values, not against an
+// empty/default scope.
+
+#paramParticles programmable(particleCount:int=11) {
+    point {
+        pos: 100, 100
+        particles {
+            count: $particleCount
+            emit: point(dist: 0, distRand: 0)
+            maxLife: 1.0
+            speed: 50
+            tiles: sheet("demo", "tile-center")
+            loop: false
+            size: 1.0
+        }
+    }
+}
+
+#paramTileGroup programmable(tileX:int=7) {
+    tileGroup {
+        bitmap(generated(color(20, 20, red)), left, top): $tileX, 0
+    }
+}

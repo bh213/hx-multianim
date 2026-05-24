@@ -691,6 +691,52 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		async.done();
 	}
 
+	// A $param referenced inside a particles block must resolve against the codegen
+	// instance's parameter value, not against an empty/default scope.
+	@Test
+	public function testCodegenParticlesResolveParamScope():Void {
+		clearScene();
+		final inst = createMp().paramParticles.create(99);
+		s2d.addChild(inst);
+
+		final particles = findParticles(inst);
+		Assert.notNull(particles, "expected a Particles object in the codegen instance");
+
+		var foundGroup = false;
+		for (group in particles.getGroups()) {
+			foundGroup = true;
+			Assert.equals(99, group.nparts,
+				"particles count: particleCount param must resolve to the instance value (99), not the default (11)");
+		}
+		Assert.isTrue(foundGroup, "expected at least one particle group");
+	}
+
+	// A $param referenced inside a tileGroup block must resolve against the codegen
+	// instance's parameter value, not against a throwaway empty-parameter rebuild.
+	@Test
+	public function testCodegenTileGroupResolveParamScope():Void {
+		clearScene();
+		final inst = createMp().paramTileGroup.create(250);
+		s2d.addChild(inst);
+
+		final tg = findTileGroup(inst);
+		Assert.notNull(tg, "expected a TileGroup object in the codegen instance");
+		// The baked bitmap is offset by $tileX inside the group, so the group's
+		// local content bounds start at tileX. Resolved against the instance value
+		// (250) by the fix; against the default (7) by the buggy empty rebuild.
+		Assert.equals(250.0, tg.getBounds(tg).xMin,
+			"tileGroup baked bitmap offset (tileX param) must resolve to the instance value (250), not the default (7)");
+	}
+
+	static function findTileGroup(obj:h2d.Object):Null<h2d.TileGroup> {
+		if (Std.isOfType(obj, h2d.TileGroup)) return cast obj;
+		for (i in 0...obj.numChildren) {
+			var result = findTileGroup(obj.getChildAt(i));
+			if (result != null) return result;
+		}
+		return null;
+	}
+
 	static function findParticles(obj:h2d.Object):Null<bh.base.Particles> {
 		if (Std.isOfType(obj, bh.base.Particles)) return cast obj;
 		for (i in 0...obj.numChildren) {
