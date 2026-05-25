@@ -2655,4 +2655,63 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 
 		grid.dispose();
 	}
+
+	// The hover hit-test (onMouseMove -> cellAtPointInto -> hitTestRectInto ->
+	// cells.exists(cellKey)) runs cellKey on every move. A String-keyed cell map
+	// allocated one '${col}_${row}' String per move even when the cursor stays in
+	// the same cell. cells must be Int-keyed so the membership check is alloc-free.
+	@Test
+	public function testCellHoverHitTestAllocatesNoCellKeyStringPerMove():Void {
+		var grid = createRectGrid(3, 3);
+
+		// Warm-up: establish hover on a cell so subsequent same-cell moves take the
+		// early-out path (only the hitTest membership check runs).
+		grid.onMouseMove(25, 25);
+		final baseline = UIMultiAnimGrid.cellKeyStringAllocCount;
+
+		for (i in 0...20)
+			grid.onMouseMove(25, 25); // jitter-free, stays in cell (0,0)
+
+		final delta = UIMultiAnimGrid.cellKeyStringAllocCount - baseline;
+		Assert.equals(0, delta,
+			"hover hit-test must not build a cell-key String per move — cells should "
+			+ "be Int-keyed. Built " + delta + " cell-key Strings across 20 same-cell moves.");
+		grid.dispose();
+	}
+
+	@Test
+	public function testHexCellHoverHitTestAllocatesNoCellKeyStringPerMove():Void {
+		var grid = createHexGrid(2);
+
+		grid.onMouseMove(0, 0); // warm-up: hover center hex
+		final baseline = UIMultiAnimGrid.cellKeyStringAllocCount;
+
+		for (i in 0...20)
+			grid.onMouseMove(0, 0);
+
+		final delta = UIMultiAnimGrid.cellKeyStringAllocCount - baseline;
+		Assert.equals(0, delta,
+			"hex hover hit-test must not build a cell-key String per move. Built "
+			+ delta + " cell-key Strings across 20 same-cell hex moves.");
+		grid.dispose();
+	}
+
+	// Int-packed cell keys must stay collision-free, including negative hex axial
+	// coords (q/r can be negative). Distinct (col,row) pairs must not alias.
+	@Test
+	public function testCellKeysAreCollisionFreeIncludingNegativeCoords():Void {
+		var grid = createHexGrid();
+		// Coords that a naive pack could collide; includes negatives and swapped pairs.
+		final coords = [[0, 0], [1, 0], [0, 1], [-1, 0], [0, -1], [1, -1], [-1, 1], [2, -3], [-3, 2]];
+		for (c in coords)
+			grid.addCell(c[0], c[1], {tag: c[0] + ":" + c[1]});
+
+		Assert.equals(coords.length, grid.cellCount());
+		for (c in coords) {
+			Assert.isTrue(grid.hasCell(c[0], c[1]), 'cell (${c[0]}, ${c[1]}) should exist');
+			Assert.equals(c[0] + ":" + c[1], grid.get(c[0], c[1]).tag,
+				'cell (${c[0]}, ${c[1]}) returned the wrong data — key collision');
+		}
+		grid.dispose();
+	}
 }

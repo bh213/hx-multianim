@@ -116,6 +116,7 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.EventPriorityTest());
 		testRunner.addCase(new bh.test.examples.RubeGoldbergIncrementalTest());
 		testRunner.addCase(new bh.test.examples.ApplyParamUpdateTest());
+		testRunner.addCase(new bh.test.examples.CodegenOverlappingApplyTest());
 		testRunner.addCase(new bh.test.examples.GridCellHoverRegressionTest());
 		testRunner.addCase(new bh.test.examples.CodegenIncrementalGfxPxTest());
 		testRunner.addCase(new bh.test.examples.CodegenIncrementalMaskFlowTest());
@@ -127,6 +128,7 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.EnumNumericConditionalTest());
 		testRunner.addCase(new bh.test.examples.UIScreenUpdateAllocationTest());
 		testRunner.addCase(new bh.test.examples.StrictDColorVerbatimTest());
+		testRunner.addCase(new bh.test.examples.CodegenRootTintTest());
 		#if MULTIANIM_DEV
 		testRunner.addCase(new bh.test.examples.HotReloadTest());
 		testRunner.addCase(new bh.test.examples.DevBridgeTest());

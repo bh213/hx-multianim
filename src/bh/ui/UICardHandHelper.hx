@@ -231,6 +231,12 @@ class UICardHandHelper implements UIHigherOrderComponent {
 	var cardToCardTarget:Null<CardEntry> = null;
 	var currentTargetId:Null<String> = null;
 	var nextCardSeq:Int = 0;
+	// Cached TargetingResult for the per-frame canPlayCard feedback check in updateDrag.
+	// TargetZone carries a String arg, so each construction allocates; while dragging over
+	// the same target currentTargetId is unchanged frame-to-frame, so the instance is reused.
+	// NoTarget is a parameterless singleton (no allocation).
+	var cachedTargetResult:TargetingResult = NoTarget;
+	var cachedTargetResultId:Null<String> = null;
 
 	// Animations
 	var activeAnimations:Array<ActiveAnimation> = [];
@@ -1195,8 +1201,14 @@ class UICardHandHelper implements UIHigherOrderComponent {
 		// gets immediate red feedback over invalid targets (e.g. unboardable
 		// tiles for shuttle cards). null = use default hover detection.
 		if (canPlayCard != null && draggedEntry != null) {
-			var result:TargetingResult = currentTargetId != null ? TargetZone(currentTargetId) : NoTarget;
-			targeting.forceValid = canPlayCard(draggedEntry.descriptor.id, result);
+			if (currentTargetId == null) {
+				cachedTargetResult = NoTarget;
+				cachedTargetResultId = null;
+			} else if (currentTargetId != cachedTargetResultId) {
+				cachedTargetResultId = currentTargetId;
+				cachedTargetResult = TargetZone(currentTargetId);
+			}
+			targeting.forceValid = canPlayCard(draggedEntry.descriptor.id, cachedTargetResult);
 		} else {
 			targeting.forceValid = null;
 		}

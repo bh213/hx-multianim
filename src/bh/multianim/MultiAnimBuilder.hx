@@ -385,6 +385,7 @@ class IncrementalUpdateContext {
 	var conditionalApplyBaselines:haxe.ds.ObjectMap<h2d.Object, {
 		filter:Null<h2d.filter.Filter>, alpha:Float,
 		scaleX:Float, scaleY:Float, rotation:Float, x:Float, y:Float,
+		color:Int, blendMode:h2d.BlendMode,
 	}> = new haxe.ds.ObjectMap();
 	var trackedExpressions:Array<TrackedExpression> = [];
 	// Reverse index: paramName -> trackeds whose paramRefs include it. Populated alongside
@@ -838,10 +839,15 @@ class IncrementalUpdateContext {
 	 *  no-ops so the baseline keeps the state as it was before ANY apply. */
 	public function captureApplyBaseline(parent:h2d.Object):Void {
 		if (conditionalApplyBaselines.exists(parent)) return;
+		final color = if (Std.isOfType(parent, h2d.Drawable)) {
+			final d:h2d.Drawable = cast parent;
+			d.color.toColor();
+		} else 0xFFFFFFFF;
 		conditionalApplyBaselines.set(parent, {
 			filter: parent.filter, alpha: parent.alpha,
 			scaleX: parent.scaleX, scaleY: parent.scaleY, rotation: parent.rotation,
 			x: parent.x, y: parent.y,
+			color: color, blendMode: parent.blendMode,
 		});
 	}
 
@@ -868,6 +874,7 @@ class IncrementalUpdateContext {
 		var anyTouchesRotation = false;
 		var anyTouchesPos = false;
 		var anyTouchesTint = false;
+		var anyTouchesBlendMode = false;
 		for (entry in conditionalApplyEntries) {
 			if (entry.parent != parent) continue;
 			final node = entry.node;
@@ -876,6 +883,7 @@ class IncrementalUpdateContext {
 			if (node.scale != null) anyTouchesScale = true;
 			if (node.rotation != null) anyTouchesRotation = true;
 			if (node.tint != null) anyTouchesTint = true;
+			if (node.blendMode != null) anyTouchesBlendMode = true;
 			switch (node.pos) {
 				case null | ZERO:
 				default: anyTouchesPos = true;
@@ -887,9 +895,14 @@ class IncrementalUpdateContext {
 		if (anyTouchesScale) { parent.scaleX = baseline.scaleX; parent.scaleY = baseline.scaleY; }
 		if (anyTouchesRotation) parent.rotation = baseline.rotation;
 		if (anyTouchesPos) { parent.x = baseline.x; parent.y = baseline.y; }
-		// (tint is on h2d.Drawable.color; applyExtendedFormProperties below
-		// re-applies it from each matched entry. No baseline restore is needed
-		// in the common case where tint is only set via apply.)
+		if (anyTouchesBlendMode) parent.blendMode = baseline.blendMode;
+		// tint lives on h2d.Drawable.color — restore only when the parent is a
+		// Drawable (matches applyExtendedFormProperties' guard and codegen's
+		// _applyOrigTint revert). Pass 3 re-applies it for still-matched entries.
+		if (anyTouchesTint && Std.isOfType(parent, h2d.Drawable)) {
+			final d:h2d.Drawable = cast parent;
+			d.color.setColor(baseline.color);
+		}
 		// Pass 3: replay each currently-matched apply entry in declaration order.
 		for (entry in conditionalApplyEntries) {
 			if (entry.parent != parent) continue;
@@ -1651,6 +1664,10 @@ class IncrementalUpdateContext {
 						case PPTString: () -> builder.resolveAsString(capturedValue);
 						case PPTColor: () -> builder.resolveAsColorInteger(capturedValue);
 						case PPTFloat: () -> builder.resolveAsNumber(capturedValue);
+						// Enums forward by NAME: resolveAsInteger throws on an enum-valued
+						// reference (stored as Index(...)), and setParameter's enum path
+						// accepts the string name, not the index.
+						case PPTEnum(_): () -> builder.resolveAsString(capturedValue);
 						default: () -> builder.resolveAsInteger(capturedValue);
 					};
 					trackDynamicRef(result.incrementalContext, childParam, resolveFn, refs, result.object);
@@ -5871,6 +5888,10 @@ class MultiAnimBuilder {
 								case PPTString: () -> resolveAsString(capturedValue);
 								case PPTColor: () -> resolveAsColorInteger(capturedValue);
 								case PPTFloat: () -> resolveAsNumber(capturedValue);
+								// Enums forward by NAME: resolveAsInteger throws on an enum-valued
+								// reference (stored as Index(...)), and setParameter's enum path
+								// accepts the string name, not the index.
+								case PPTEnum(_): () -> resolveAsString(capturedValue);
 								default: () -> resolveAsInteger(capturedValue);
 							};
 							incrementalContext.trackDynamicRef(result.incrementalContext, childParam, resolveFn, refs, result.object);
@@ -6775,6 +6796,12 @@ class MultiAnimBuilder {
 			if (Std.isOfType(object, h2d.Drawable)) {
 				final d:h2d.Drawable = cast object;
 				d.color.setColor(resolveAsColorInteger(node.tint));
+			} else {
+				// tint maps to h2d.Drawable.color, which container objects (the
+				// h2d.Layers programmable root, flow/layers/mask, etc.) don't have.
+				// Silently dropping it hides the mistake — fail fast instead.
+				throw builderError('tint requires a Drawable target (bitmap/text/...); '
+					+ 'cannot apply to ${Type.getClassName(Type.getClass(object))}', "tint_requires_drawable");
 			}
 		}
 	}

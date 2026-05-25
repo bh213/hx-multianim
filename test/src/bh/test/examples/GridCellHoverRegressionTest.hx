@@ -150,6 +150,41 @@ class GridCellHoverRegressionTest extends BuilderTestBase {
 			"While status=hover the @(status=>hover) apply { filter: glow(...) } must apply a filter");
 	}
 
+	// ===== Conditional apply { blendMode } must revert on un-match =====
+	// A `@(cond) apply { blendMode: add }` sets the parent's blendMode while the
+	// condition matches. When the condition flips false, the builder's
+	// reconcileApplyParent must restore the pre-apply blendMode — matching what
+	// codegen does (it saves the original blendMode in the constructor and reverts).
+	// Previously the baseline omitted blendMode entirely, so it got stuck on "add".
+	static final BLENDMODE_CELL = "
+		#bmCell programmable(status:[normal,hover]=normal) {
+		    @(status=>hover) apply { blendMode: add }
+		    bitmap(generated(color(20, 20, #4488ff))): 0, 0
+		}
+	";
+
+	@Test
+	public function testApplyBlendModeRevertsWhenConditionFlipsFalse():Void {
+		final result = buildFromSource(BLENDMODE_CELL, "bmCell", null, Incremental);
+		Assert.equals(h2d.BlendMode.Alpha, result.object.blendMode,
+			"Initial blendMode must be the default Alpha (status=normal, apply not matched)");
+
+		result.setParameter("status", "hover");
+		Assert.equals(h2d.BlendMode.Add, result.object.blendMode,
+			"While status=hover the @(status=>hover) apply { blendMode: add } must set blendMode to Add");
+
+		result.setParameter("status", "normal");
+		Assert.equals(h2d.BlendMode.Alpha, result.object.blendMode,
+			"After status→normal the apply no longer matches, so blendMode must revert to the " +
+			"pre-apply baseline (Alpha) — not stay stuck on Add");
+
+		// Second cycle — reconcile/baseline regressions often only surface on the second flip.
+		result.setParameter("status", "hover");
+		Assert.equals(h2d.BlendMode.Add, result.object.blendMode, "Second cycle: blendMode re-applies to Add");
+		result.setParameter("status", "normal");
+		Assert.equals(h2d.BlendMode.Alpha, result.object.blendMode, "Second cycle: blendMode reverts to Alpha");
+	}
+
 	// ===== Multi-cell tests (mimicking the real grid: one builder, many cells) =====
 	//
 	// The real `DefaultCellVisualFactory.buildCell` calls

@@ -599,6 +599,12 @@ class ProgrammableCodeGen {
 					if (Std.isOfType(_obj, h2d.Drawable)) {
 						final d:h2d.Drawable = cast _obj;
 						d.color.setColor($tintExpr);
+					} else {
+						// Mirror MultiAnimBuilder.applyExtendedFormProperties: tint maps to
+						// h2d.Drawable.color, which the h2d.Layers programmable root lacks.
+						// Fail fast instead of silently dropping it.
+						throw new bh.multianim.BuilderError("tint requires a Drawable target (bitmap/text/...); cannot apply to "
+							+ Type.getClassName(Type.getClass(_obj)), null, "tint_requires_drawable");
 					}
 				};
 				constructorExprs.push(tintUpdateExpr);
@@ -730,12 +736,20 @@ class ProgrammableCodeGen {
 		for (entry in repeatRebuildEntries) {
 			visExprs.push(entry.callExpr);
 		}
-		// Conditional APPLY: apply or revert parent properties based on condition
+		// Conditional APPLY: reset-and-replay, matching the builder's reconcileApplyParent.
+		// Pass 1 runs every entry's revert unconditionally, resetting all touched properties
+		// to their constructor-captured baseline (entries on the same parent capture the same
+		// baseline, since saves run consecutively before any apply executes). Pass 2 replays
+		// only the matched entries in declaration order. A per-entry `if (cond) apply else
+		// revert` cannot compose overlapping applies on the same parent — a non-matching later
+		// entry's else-revert clobbers an earlier matching entry's effect.
+		for (entry in applyEntries)
+			for (revertExpr in entry.revertExprs)
+				visExprs.push(revertExpr);
 		for (entry in applyEntries) {
 			final cond = entry.condition;
 			final applyBlock = macro $b{entry.applyExprs};
-			final revertBlock = macro $b{entry.revertExprs};
-			visExprs.push(macro if ($cond) $applyBlock else $revertBlock);
+			visExprs.push(macro if ($cond) $applyBlock);
 		}
 		// Switch updates: gate arm rebuild on the changed param being in the arm's union of
 		// param refs. _changedParam == null is the constructor's initial-build path — rebuild
@@ -1569,6 +1583,11 @@ class ProgrammableCodeGen {
 				if (Std.isOfType(_obj, h2d.Drawable)) {
 					final d:h2d.Drawable = cast _obj;
 					d.color.setColor($tintExpr);
+				} else {
+					// Mirror MultiAnimBuilder.applyExtendedFormProperties: tint maps to
+					// h2d.Drawable.color; non-Drawable containers can't carry it. Fail fast.
+					throw new bh.multianim.BuilderError("tint requires a Drawable target (bitmap/text/...); cannot apply to "
+						+ Type.getClassName(Type.getClass(_obj)), null, "tint_requires_drawable");
 				}
 			};
 			ctorExprs.push(tintUpdateExpr);
@@ -3656,7 +3675,7 @@ class ProgrammableCodeGen {
 		if (parameters != null) {
 			for (key => val in parameters) {
 				final keyExpr:Expr = macro $v{key};
-				final valExpr = rvToExpr(val);
+				final valExpr = dynamicRefForwardValueExpr(val);
 				mapBuildExprs.push(macro _refParams.set($keyExpr, $valExpr));
 			}
 		}
@@ -3687,7 +3706,7 @@ class ProgrammableCodeGen {
 			final fwdUpdateExprs:Array<Expr> = [macro final _refParams = new Map<String, Dynamic>()];
 			for (key => val in parameters) {
 				final keyExpr:Expr = macro $v{key};
-				final valExpr = rvToExpr(val);
+				final valExpr = dynamicRefForwardValueExpr(val);
 				fwdUpdateExprs.push(macro _refParams.set($keyExpr, $valExpr));
 			}
 			fwdUpdateExprs.push(macro {
@@ -3759,7 +3778,7 @@ class ProgrammableCodeGen {
 		if (parameters != null) {
 			for (key => val in parameters) {
 				final keyExpr:Expr = macro $v{key};
-				final valExpr = rvToExpr(val);
+				final valExpr = dynamicRefForwardValueExpr(val);
 				mapBuildExprs.push(macro _refParams.set($keyExpr, $valExpr));
 			}
 		}
@@ -3781,7 +3800,7 @@ class ProgrammableCodeGen {
 		if (parameters != null) {
 			for (key => val in parameters) {
 				final keyExpr:Expr = macro $v{key};
-				final valExpr = rvToExpr(val);
+				final valExpr = dynamicRefForwardValueExpr(val);
 				rebuildMapExprs.push(macro _refParams.set($keyExpr, $valExpr));
 			}
 		}
@@ -3815,7 +3834,7 @@ class ProgrammableCodeGen {
 				if (parameters != null) {
 					for (key => val in parameters) {
 						final keyExpr:Expr = macro $v{key};
-						final valExpr = rvToExpr(val);
+						final valExpr = dynamicRefForwardValueExpr(val);
 						fwdUpdateExprs.push(macro _refParams.set($keyExpr, $valExpr));
 					}
 				}
@@ -5494,6 +5513,11 @@ class ProgrammableCodeGen {
 				if (Std.isOfType(_obj, h2d.Drawable)) {
 					final d:h2d.Drawable = cast _obj;
 					d.color.setColor($tintExpr);
+				} else {
+					// Mirror MultiAnimBuilder.applyExtendedFormProperties: apply { tint: }
+					// on a non-Drawable parent is a silent no-op. Fail fast instead.
+					throw new bh.multianim.BuilderError("tint requires a Drawable target (bitmap/text/...); cannot apply to "
+						+ Type.getClassName(Type.getClass(_obj)), null, "tint_requires_drawable");
 				}
 			};
 			ctorExprs.push(tintUpdateExpr);
@@ -5622,6 +5646,11 @@ class ProgrammableCodeGen {
 				if (Std.isOfType(_obj, h2d.Drawable)) {
 					final d:h2d.Drawable = cast _obj;
 					d.color.setColor($tintExpr);
+				} else {
+					// Mirror MultiAnimBuilder.applyExtendedFormProperties replay of a matched
+					// apply entry: tint on a non-Drawable parent must fail fast, not no-op.
+					throw new bh.multianim.BuilderError("tint requires a Drawable target (bitmap/text/...); cannot apply to "
+						+ Type.getClassName(Type.getClass(_obj)), null, "tint_requires_drawable");
 				}
 			});
 			revertExprs.push(macro {
@@ -6416,6 +6445,26 @@ class ProgrammableCodeGen {
 	}
 
 	// ==================== Expression Translation ====================
+
+	// Forwarded dynamicRef value expr. An enum-typed parent reference must forward the enum
+	// NAME string — the child's PPTEnum setParameter accepts names, while the raw Int index
+	// (the enum field's storage) is rejected by dynamicValueToIndex. Every other value type
+	// keeps its raw representation so non-enum forwards avoid a string round-trip on the
+	// forwarding hot path.
+	static function dynamicRefForwardValueExpr(val:ReferenceableValue):Expr {
+		switch (val) {
+			case RVReference(ref):
+				final def = paramDefs.get(ref);
+				if (def != null) {
+					switch (def.type) {
+						case PPTEnum(_): return rvToExpr(val, true);
+						default:
+					}
+				}
+			default:
+		}
+		return rvToExpr(val, false);
+	}
 
 	static function rvToExpr(rv:ReferenceableValue, forString:Bool = false):Expr {
 		if (rv == null)

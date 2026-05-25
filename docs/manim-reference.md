@@ -555,7 +555,7 @@ Applied to any element via long-form body or inline syntax.
 | `scale: value` | Scale factor |
 | `rotate: angle` | Rotation angle (supports `deg`, `rad`, `turn`, direction constants) |
 | `alpha: value` | Opacity (0.0-1.0) |
-| `tint: color` | Color tint overlay |
+| `tint: color` | Color tint overlay (maps to `h2d.Drawable.color`). Requires a Drawable target — a root-level/container `tint:` (programmable root is an `h2d.Layers`; `flow`/`layers`/`mask` are non-Drawable) throws a `BuilderError` (`code="tint_requires_drawable"`) in builder and codegen instead of silently no-oping. Put it on a Drawable child or `apply { tint: }` onto one. |
 | `layer: index` | Z-order index within layers/programmable |
 | `filter: filterType(...)` | Visual filter |
 | `blendMode: mode` | Blend mode |

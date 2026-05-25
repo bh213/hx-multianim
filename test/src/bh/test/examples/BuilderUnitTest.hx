@@ -97,6 +97,43 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.equals(20, Std.int(bitmaps[0].tile.height));
 	}
 
+	// ==================== Root-level tint on non-Drawable ====================
+
+	@Test
+	public function testRootTintOnProgrammableThrows():Void {
+		// The programmable root is an h2d.Layers (a non-Drawable). Root-level tint:
+		// cannot apply there, and silently dropping it hides the mistake. Building
+		// such a programmable must fail fast with a BuilderError.
+		var err:String = null;
+		var builderErr:Null<bh.multianim.BuilderError> = null;
+		try {
+			buildFromSource("
+				#test programmable() {
+					tint: #FF0000
+					bitmap(generated(color(10, 10, #fff))): 0, 0
+				}
+			", "test");
+		} catch (e:Dynamic) {
+			err = Std.string(e);
+			if (Std.isOfType(e, bh.multianim.BuilderError)) builderErr = cast e;
+		}
+		Assert.notNull(err, "Root-level tint on a non-Drawable programmable root must throw");
+		Assert.notNull(builderErr, "throw must be a BuilderError, not a raw failure");
+	}
+
+	@Test
+	public function testTintOnDrawableElementStillBuilds():Void {
+		// Regression guard: tint on a Drawable element (bitmap) must keep working.
+		final result = buildFromSource("
+			#test programmable() {
+				@tint(#FF0000) bitmap(generated(color(10, 10, #fff))): 0, 0
+			}
+		", "test");
+		Assert.notNull(result, "tint on a Drawable element should build fine");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+	}
+
 	@Test
 	public function testExprLeftAssocSubtraction():Void {
 		// (x - 3) - 2 = 5; right-associated would give x - (3 - 2) = 9

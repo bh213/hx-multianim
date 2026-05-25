@@ -351,6 +351,43 @@ class DynamicRefTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testDynamicRefForwardingEnumParamUpdatesChildOnSetParameter():Void {
+		// Forwarding a parent enum into a child's enum param must keep working after a
+		// runtime setParameter on the parent. The forwarding switch resolves the value by
+		// the CHILD param type; for an enum child the resolver must produce the enum's
+		// NAME (so setParameter's PPTEnum string path accepts it). Pre-fix, the enum case
+		// fell into the default branch (resolveAsInteger), which cannot resolve an
+		// enum-valued reference (stored as Index(...)) and threw "is not a value but Index(...)".
+		final result = buildFromSource("
+			#inner programmable(mode:[a,b,c]=a) {
+				@(mode => a) bitmap(generated(color(11, 5, #ff0000))): 0, 0
+				@(mode => b) bitmap(generated(color(22, 5, #00ff00))): 0, 0
+				@(mode => c) bitmap(generated(color(33, 5, #0000ff))): 0, 0
+			}
+			#test programmable(m:[a,b,c]=a) {
+				dynamicRef($inner, mode=>$m): 0, 0
+			}
+		", "test", null, Incremental);
+
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(11, Std.int(bitmaps[0].tile.width), "initial: m=a forwards to child mode=a (width 11)");
+
+		// Changing the parent enum must propagate the new value (by name) into the child.
+		result.setParameter("m", "b");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(22, Std.int(bitmaps[0].tile.width),
+			"after setParameter('m','b'): forwarded enum must update child to mode=b (width 22)");
+
+		result.setParameter("m", "c");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(33, Std.int(bitmaps[0].tile.width),
+			"after setParameter('m','c'): forwarded enum must update child to mode=c (width 33)");
+	}
+
+	@Test
 	public function testDynamicRefSetParamUpdatesChild():Void {
 		final result = buildFromSource("
 			#inner programmable(visible:bool=true) {

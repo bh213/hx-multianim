@@ -1326,13 +1326,10 @@ class ParticleGroup {
 	}
 
 	function matchesTrigger(configured:SubEmitTrigger, actual:SubEmitTrigger):Bool {
-		return switch [configured, actual] {
-			case [OnBirth, OnBirth]: true;
-			case [OnDeath, OnDeath]: true;
-			case [OnCollision, OnCollision]: true;
-			case [OnInterval(_), OnInterval(_)]: true;
-			case _: false;
-		};
+		// Constructor-identity comparison: every matching arm was "same constructor"
+		// (OnInterval ignored its payload). Avoids the per-call array that
+		// `switch [configured, actual]` would allocate on this sub-emitter-event hot path.
+		return Type.enumIndex(configured) == Type.enumIndex(actual);
 	}
 
 	/**

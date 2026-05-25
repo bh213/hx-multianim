@@ -404,6 +404,9 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/108-applyParamUpdate/applyParamUpdate.manim", "applyParamUpdate")
 	public var applyParamUpdate;
 
+	@:manim("test/examples/122-codegenOverlappingApply/codegenOverlappingApply.manim", "codegenOverlappingApply")
+	public var codegenOverlappingApply;
+
 	@:manim("test/examples/109-codegenIncrementalGfxPx/codegenIncrementalGfxPx.manim", "codegenIncGraphics")
 	public var codegenIncGraphics;
 
@@ -461,6 +464,9 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/118-codegenDynamicRefForwarding/codegenDynamicRefForwarding.manim", "codegenDynamicRefForwarding")
 	public var codegenDynamicRefForwarding;
 
+	@:manim("test/examples/122-codegenDynamicRefEnumForwarding/codegenDynamicRefEnumForwarding.manim", "codegenDynamicRefEnumForwarding")
+	public var codegenDynamicRefEnumForwarding;
+
 	@:manim("test/examples/119-codegenRepeatShrink/codegenRepeatShrink.manim", "codegenRepeatShrink")
 	public var codegenRepeatShrink;
 
@@ -475,4 +481,7 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/121-strictDColorVerbatim/strictDColorVerbatim.manim", "strictDPixels")
 	public var strictDPixels;
+
+	@:manim("test/examples/123-codegenRootTint/codegenRootTint.manim", "codegenRootTint")
+	public var codegenRootTint;
 }
