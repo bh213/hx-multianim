@@ -47,6 +47,8 @@ class TestApp extends hxd.App {
 		FontManager.registerFont("peaberry-white", hxd.Res.fonts.WhitePeaberry.toFont(), -2, -9);
 		FontManager.registerFont("peaberry-white-outline", hxd.Res.fonts.WhitePeaberryOutline.toFont(), -2, -10);
 		FontManager.registerFont("m6x11", hxd.Res.fonts.m6x11.toFont());
+		FontManager.registerFont("o4b03", hxd.Res.fonts.o4b03.toFont());
+		FontManager.registerFont("departuremono", hxd.Res.fonts.departuremono.toFont());
 
 		// Register custom filters for testing
 		FilterManager.registerFilter("perlinNoise", [
