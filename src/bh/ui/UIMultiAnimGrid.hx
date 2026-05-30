@@ -1609,16 +1609,6 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 	// Internal: cell key
 	// ============================================================
 
-	// Allocation watchdog for tests. Gated behind MULTIANIM_ALLOC_TRACK so the
-	// increment vanishes from production builds; cellKey is on the per-mouse-move
-	// hover hit-test path (cellAtPointInto -> hitTest*Into -> cells.exists(cellKey)),
-	// so a String-allocating key leaks one String per move. Pinned at 0 across a
-	// hover by testCellHoverHitTestAllocatesNoCellKeyStringPerMove. If you ever
-	// build a cell-key String on any hot path, increment this counter there too.
-	#if MULTIANIM_ALLOC_TRACK
-	public static var cellKeyStringAllocCount:Int = 0;
-	#end
-
 	// Packs (col, row) into a single Int so cells can be stored in an Int-keyed map —
 	// no per-call String allocation on the hover hit-test hot path. Collision-free for
 	// col/row in [-32768, 32767], which covers negative hex axial coords.

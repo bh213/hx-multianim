@@ -119,12 +119,14 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.RubeGoldbergIncrementalTest());
 		testRunner.addCase(new bh.test.examples.ApplyParamUpdateTest());
 		testRunner.addCase(new bh.test.examples.CodegenOverlappingApplyTest());
+		testRunner.addCase(new bh.test.examples.CodegenApplyPosAdditiveTest());
 		testRunner.addCase(new bh.test.examples.GridCellHoverRegressionTest());
 		testRunner.addCase(new bh.test.examples.CodegenIncrementalGfxPxTest());
 		testRunner.addCase(new bh.test.examples.CodegenIncrementalMaskFlowTest());
 		testRunner.addCase(new bh.test.examples.CodegenIncrementalInteractiveStateanimTest());
 		testRunner.addCase(new bh.test.examples.CodegenRepeatFallbackUntrackedTest());
 		testRunner.addCase(new bh.test.examples.CodegenDynamicRefForwardingTest());
+		testRunner.addCase(new bh.test.examples.CodegenStaticRefForwardingTest());
 		testRunner.addCase(new bh.test.examples.CodegenExternalPaletteTest());
 		testRunner.addCase(new bh.test.examples.ChainBoundaryConditionalTest());
 		testRunner.addCase(new bh.test.examples.EnumNumericConditionalTest());

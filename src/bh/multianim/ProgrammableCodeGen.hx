@@ -79,6 +79,12 @@ class ProgrammableCodeGen {
 	static var switchUpdateEntries:Array<{paramName:String, paramRefs:Array<String>, updateExpr:Expr}> = [];
 	// Sink fields allocated for each @switch, used for runtime lookup of names/slots declared inside arms
 	static var switchSinkFields:Array<String> = [];
+	// Sink fields allocated for each param-dependent repeat, used for runtime lookup of names/slots/
+	// dynamicRefs whose bodies are rebuilt at runtime (mirrors switchSinkFields for the repeat path)
+	static var repeatSinkFields:Array<String> = [];
+	// Field name of the sink for the param-dependent repeat currently being emitted. Read by
+	// generateRuntimeChildExprs's builder-forwarding path so the forwarded build registers into it.
+	static var currentRepeatSinkField:Null<String> = null;
 	static var dynamicRefFields:Map<String, String> = new Map(); // component name -> BuilderResult field name
 	static var dynamicNameRefFields:Array<String> = []; // fieldNames of dynamic-name dynamicRefs
 	static var literalDynamicRefSiteFields:Array<String> = []; // fieldNames of literal-name dynamicRefs with forwarded $param values
@@ -162,6 +168,8 @@ class ProgrammableCodeGen {
 		visibilityEntries = [];
 		switchUpdateEntries = [];
 		switchSinkFields = [];
+		repeatSinkFields = [];
+		currentRepeatSinkField = null;
 		namedElements = [];
 		indexedNamedElements = new Map();
 		indexed2DNamedElements = new Map();
@@ -1233,6 +1241,10 @@ class ProgrammableCodeGen {
 				{name: "y", type: macro :Int},
 			], macro :bh.multianim.MultiAnimBuilder.SlotHandle, [APublic], pos));
 		}
+		// Runtime sinks to consult when a static lookup misses: @switch arms and param-dependent
+		// repeat bodies both build lazily and register into a sink rather than a static field.
+		final sinkFields = switchSinkFields.concat(repeatSinkFields);
+
 		// Generic getSlot(name:String, ?index:Null<Int>, ?indexY:Null<Int>) dispatcher
 		if (slotEntries.length > 0) {
 			final bodyExprs:Array<Expr> = [];
@@ -1285,9 +1297,9 @@ class ProgrammableCodeGen {
 				});
 			}
 
-			// Before throwing, try runtime switch arm sinks (for slots declared inside @switch arms).
-			if (switchSinkFields.length > 0) {
-				for (sf in switchSinkFields) {
+			// Before throwing, try runtime sinks (slots declared inside @switch arms or param-dep repeat bodies).
+			if (sinkFields.length > 0) {
+				for (sf in sinkFields) {
 					bodyExprs.push(macro {
 						final _r = $p{["this", sf]}.getSlot(name, index, indexY);
 						if (_r != null) return _r;
@@ -1300,10 +1312,10 @@ class ProgrammableCodeGen {
 				{name: "index", opt: true, type: macro :Null<Int>},
 				{name: "indexY", opt: true, type: macro :Null<Int>},
 			], macro :bh.multianim.MultiAnimBuilder.SlotHandle, [APublic], pos));
-		} else if (switchSinkFields.length > 0) {
-			// No static slots but there are switches — generate a sink-only dispatcher.
+		} else if (sinkFields.length > 0) {
+			// No static slots but there are runtime sinks — generate a sink-only dispatcher.
 			final bodyExprs:Array<Expr> = [];
-			for (sf in switchSinkFields) {
+			for (sf in sinkFields) {
 				bodyExprs.push(macro {
 					final _r = $p{["this", sf]}.getSlot(name, index, indexY);
 					if (_r != null) return _r;
@@ -1317,14 +1329,14 @@ class ProgrammableCodeGen {
 			], macro :bh.multianim.MultiAnimBuilder.SlotHandle, [APublic], pos));
 		}
 
-		// 8b3. Runtime lookup for indexed names declared inside @switch arms.
-		// Generated when there is at least one @switch in the programmable. Falls back to
-		// iterating per-switch sinks since these names are not known at compile time.
-		if (switchSinkFields.length > 0) {
+		// 8b3. Runtime lookup for indexed names declared inside lazily-built bodies (@switch arms or
+		// param-dependent repeats). Generated when at least one such sink exists in the programmable.
+		// Falls back to iterating the sinks since these names are not known at compile time.
+		if (sinkFields.length > 0) {
 			// getUpdatable(name:String):Null<h2d.Object>
 			{
 				final body:Array<Expr> = [];
-				for (sf in switchSinkFields) {
+				for (sf in sinkFields) {
 					body.push(macro {
 						final _r = $p{["this", sf]}.getUpdatable(name);
 						if (_r != null) return _r;
@@ -1338,7 +1350,7 @@ class ProgrammableCodeGen {
 			// getUpdatableByIndex(name:String, index:Int):Null<h2d.Object>
 			{
 				final body:Array<Expr> = [];
-				for (sf in switchSinkFields) {
+				for (sf in sinkFields) {
 					body.push(macro {
 						final _r = $p{["this", sf]}.getUpdatableByIndex(name, index);
 						if (_r != null) return _r;
@@ -1352,7 +1364,7 @@ class ProgrammableCodeGen {
 			// getUpdatable2D(name:String, x:Int, y:Int):Null<h2d.Object>
 			{
 				final body:Array<Expr> = [];
-				for (sf in switchSinkFields) {
+				for (sf in sinkFields) {
 					body.push(macro {
 						final _r = $p{["this", sf]}.getUpdatable2D(name, x, y);
 						if (_r != null) return _r;
@@ -1382,7 +1394,9 @@ class ProgrammableCodeGen {
 			instanceFields.push(makeField("_dynref_lit_" + fn, FVar(macro :bh.multianim.MultiAnimBuilder.BuilderResult, null), [APrivate], pos));
 		}
 		final hasDynamicRefs = Lambda.count(dynamicRefFields) > 0 || dynamicNameRefFields.length > 0;
-		if (hasDynamicRefs) {
+		// Param-dependent repeat bodies register dynamicRefs into their sink rather than a static
+		// field, so generate the dispatcher (with a sink fallthrough) even when there are no static refs.
+		if (hasDynamicRefs || repeatSinkFields.length > 0) {
 			final getDynRefExprs:Array<Expr> = [];
 			// Static name refs: direct switch
 			if (Lambda.count(dynamicRefFields) > 0) {
@@ -1403,6 +1417,13 @@ class ProgrammableCodeGen {
 				getDynRefExprs.push(macro {
 					if (name == $p{["this", "_dynref_name_" + fn]})
 						return $p{["this", "_dynref_" + fn]};
+				});
+			}
+			// Param-dependent repeat body sinks: dynamicRefs declared inside a runtime-rebuilt body.
+			for (sf in repeatSinkFields) {
+				getDynRefExprs.push(macro {
+					final _r = $p{["this", sf]}.getDynamicRef(name);
+					if (_r != null) return _r;
 				});
 			}
 			getDynRefExprs.push(macro return null);
@@ -2130,14 +2151,27 @@ class ProgrammableCodeGen {
 				recordUntrackedParamsInSubtree(child, countParamRefs);
 		}
 
-		// Build loop body expressions from child nodes
+		// Persistent sink holding slots / dynamicRefs / indexed names produced by the runtime
+		// fallback build of this param-dependent repeat body, so the instance's getSlot /
+		// getDynamicRef / getUpdatable* dispatchers can reach them across count changes (mirrors
+		// the @switch arm sink). Allocated once in the ctor; evicted + repopulated per rebuild.
+		final repeatSinkField = containerField + "_sink";
+		fields.push(makeField(repeatSinkField, FVar(macro :bh.multianim.MultiAnimBuilder.SwitchArmResults, null), [APrivate], pos));
+		ctorExprs.push(macro $p{["this", repeatSinkField]} = new bh.multianim.MultiAnimBuilder.SwitchArmResults());
+		repeatSinkFields.push(repeatSinkField);
+
+		// Build loop body expressions from child nodes. currentRepeatSinkField routes each child's
+		// builder-forwarding path (emitRuntimeChildViaBuilder) through this repeat's sink.
 		final containerRef = macro _rt_cont;
 		final loopBodyExprs:Array<Expr> = [];
+		final prevRepeatSinkField = currentRepeatSinkField;
+		currentRepeatSinkField = repeatSinkField;
 		if (node.children != null) {
 			for (child in node.children) {
 				generateRuntimeChildExprs(child, repeatType, containerRef, loopBodyExprs, pos);
 			}
 		}
+		currentRepeatSinkField = prevRepeatSinkField;
 
 		runtimeLoopVars.remove(varName);
 
@@ -2171,6 +2205,9 @@ class ProgrammableCodeGen {
 		final rebuildBody:Array<Expr> = [];
 		rebuildBody.push(macro if (_rt_count == $p{["this", countTrackingField]}) return);
 		rebuildBody.push(macro $p{["this", countTrackingField]} = _rt_count);
+		// Evict the previous count's registrations from the sink BEFORE removeChildren (parent links
+		// must still be intact), then rebuild the body into the same sink.
+		rebuildBody.push(macro this._pb.resetRepeatSink($p{["this", repeatSinkField]}, $containerFieldRef));
 		rebuildBody.push(macro $containerFieldRef.removeChildren());
 		rebuildBody.push(macro for (_rt_i in 0..._rt_count) $forBody);
 
@@ -2612,6 +2649,20 @@ class ProgrammableCodeGen {
 	/** Generate runtime loop body expressions for a single child node of a runtime iterator.
 	 *  For bitmap children, creates a bitmap from the tile array and positions it. */
 	static function generateRuntimeChildExprs(child:Node, repeatType:RepeatType, containerRef:Expr, bodyExprs:Array<Expr>, pos:Position):Void {
+		// Addressable-named children (#name / #name[$i] / #name[$x,$y]) inside a param-dependent
+		// repeat must be built via the builder so their name/slot/dynamicRef registrations land in
+		// the repeat sink and stay reachable from the instance's getUpdatable*/getSlot/getDynamicRef
+		// dispatchers. The inline kinds below (bitmap/text/point/...) create the object directly and
+		// would drop the registration. Slots/dynamicRefs already fall through to the builder via the
+		// default arm; this also redirects named inline kinds. Unnamed inline children keep the fast path.
+		final isAddressableName = switch (child.updatableName) {
+			case UNTUpdatable(_) | UNTIndexed(_, _) | UNTIndexed2D(_, _, _): true;
+			default: false;
+		};
+		if (isAddressableName) {
+			emitRuntimeChildViaBuilder(child, bodyExprs, containerRef, pos);
+			return;
+		}
 		switch (child.type) {
 			case BITMAP(tileSource, hAlign, vAlign):
 				final bitmapExpr:Expr = switch (tileSource) {
@@ -3103,24 +3154,33 @@ class ProgrammableCodeGen {
 			default:
 				// Forward unsupported node types (INTERACTIVE, STATIC_REF, DYNAMIC_REF, PARTICLES,
 				// STATEANIM, TILEGROUP, PLACEHOLDER, SWITCH, nested REPEAT, SLOT, APPLY, SPACER, ...)
-				// to the builder at runtime. Pass a params map so `$param` and loop-var refs inside
-				// the subtree resolve correctly — the bare buildNodeByUniqueName path doesn't set
-				// up builder state and errors with "reference X does not exist".
-				final progName = currentProgrammableName;
-				final nodeName = child.uniqueNodeName;
-				final mapExprs:Array<Expr> = [macro final _rt_pp = new Map<String, Dynamic>()];
-				for (pn in paramNames) {
-					mapExprs.push(macro _rt_pp.set($v{pn}, $p{["this", "_" + pn]}));
-				}
-				for (loopVar => loopIdent in runtimeLoopVars) {
-					mapExprs.push(macro _rt_pp.set($v{loopVar}, $i{loopIdent}));
-				}
-				mapExprs.push(macro {
-					final _rt_obj = this._pb.buildNodeByUniqueNameWithParams($v{progName}, $v{nodeName}, _rt_pp);
-					if (_rt_obj != null) $containerRef.addChild(_rt_obj);
-				});
-				bodyExprs.push({expr: EBlock(mapExprs), pos: pos});
+				// to the builder at runtime.
+				emitRuntimeChildViaBuilder(child, bodyExprs, containerRef, pos);
 		}
+	}
+
+	/** Emit the runtime builder-forwarding block for one repeat-body child: build the node via
+	 *  buildNodeByUniqueNameWithParams (so `$param` and loop-var refs resolve — the bare
+	 *  buildNodeByUniqueName path doesn't set up builder state and errors with "reference X does not
+	 *  exist") and add the result under `containerRef`. When the current param-dependent repeat has a
+	 *  sink (currentRepeatSinkField), it is passed through so the node's slot / dynamicRef / indexed-
+	 *  name registrations persist and stay reachable from the instance dispatchers. */
+	static function emitRuntimeChildViaBuilder(child:Node, bodyExprs:Array<Expr>, containerRef:Expr, pos:Position):Void {
+		final progName = currentProgrammableName;
+		final nodeName = child.uniqueNodeName;
+		final sinkExpr:Expr = currentRepeatSinkField != null ? macro $p{["this", currentRepeatSinkField]} : macro null;
+		final mapExprs:Array<Expr> = [macro final _rt_pp = new Map<String, Dynamic>()];
+		for (pn in paramNames) {
+			mapExprs.push(macro _rt_pp.set($v{pn}, $p{["this", "_" + pn]}));
+		}
+		for (loopVar => loopIdent in runtimeLoopVars) {
+			mapExprs.push(macro _rt_pp.set($v{loopVar}, $i{loopIdent}));
+		}
+		mapExprs.push(macro {
+			final _rt_obj = this._pb.buildNodeByUniqueNameWithParams($v{progName}, $v{nodeName}, _rt_pp, $sinkExpr);
+			if (_rt_obj != null) $containerRef.addChild(_rt_obj);
+		});
+		bodyExprs.push({expr: EBlock(mapExprs), pos: pos});
 	}
 
 	/** Walk a subtree and record `$param` refs inside slots that the param-dep-repeat fallback
@@ -3346,14 +3406,24 @@ class ProgrammableCodeGen {
 				recordUntrackedParamsInSubtree(child, countParamRefs2D);
 		}
 
-		// Build loop body expressions from child nodes
+		// Persistent sink for slots / dynamicRefs / indexed names produced by the runtime fallback
+		// build of this 2D param-dependent repeat body (see rebuildRepeatChildren for rationale).
+		final repeatSinkField = containerField + "_sink";
+		fields.push(makeField(repeatSinkField, FVar(macro :bh.multianim.MultiAnimBuilder.SwitchArmResults, null), [APrivate], pos));
+		ctorExprs.push(macro $p{["this", repeatSinkField]} = new bh.multianim.MultiAnimBuilder.SwitchArmResults());
+		repeatSinkFields.push(repeatSinkField);
+
+		// Build loop body expressions from child nodes, routed through this repeat's sink.
 		final containerRef = macro _rt_cont;
 		final loopBodyExprs:Array<Expr> = [];
+		final prevRepeatSinkField = currentRepeatSinkField;
+		currentRepeatSinkField = repeatSinkField;
 		if (node.children != null) {
 			for (child in node.children) {
 				generateRuntimeChildExprs(child, repeatTypeX, containerRef, loopBodyExprs, pos);
 			}
 		}
+		currentRepeatSinkField = prevRepeatSinkField;
 
 		runtimeLoopVars.remove(varNameX);
 		runtimeLoopVars.remove(varNameY);
@@ -3387,6 +3457,7 @@ class ProgrammableCodeGen {
 			if (_rt_key == $p{["this", countTrackingField]}) return;
 			$p{["this", countTrackingField]} = _rt_key;
 		});
+		rebuildBody.push(macro this._pb.resetRepeatSink($p{["this", repeatSinkField]}, $containerFieldRef));
 		rebuildBody.push(macro $containerFieldRef.removeChildren());
 		rebuildBody.push(macro for (_rt_iy in 0..._rt_countY) for (_rt_ix in 0..._rt_countX) $innerBody);
 
@@ -3625,7 +3696,9 @@ class ProgrammableCodeGen {
 		if (parameters != null) {
 			for (key => val in parameters) {
 				final keyExpr:Expr = macro $v{key};
-				final valExpr = rvToExpr(val);
+				// Forward enum refs by NAME (not raw Int index) so buildStaticRef ->
+				// dynamicValueToIndex accepts them — same as the dynamicRef sites.
+				final valExpr = dynamicRefForwardValueExpr(val);
 				mapBuildExprs.push(macro _refParams.set($keyExpr, $valExpr));
 			}
 		}
@@ -5439,17 +5512,28 @@ class ProgrammableCodeGen {
 		final parentRef = parentField != null ? (macro $p{["this", parentField]}) : (macro this);
 		final metaField = parentField != null ? parentField : "_self";
 
-		// Position offset — re-apply on param change (position is additive via
-		// generatePositionExpr; rebuild semantics match the element path).
+		// Position offset — ADD to the parent's existing placement (mirrors the builder's
+		// addPosition; generatePositionExpr would overwrite it absolutely). Capture the
+		// pre-apply base so the additive set stays idempotent when re-fired on a param
+		// change instead of accumulating each fire.
 		ensureHexLayoutIfNeeded(node.pos, node, fields, ctorExprs, pos);
-		final posExpr = generatePositionExpr(node.pos, parentField, pos, node);
-		if (posExpr != null) {
-			ctorExprs.push(posExpr);
-			if (node.pos != null) {
-				final posRefs = collectPositionParamRefs(node.pos);
-				if (posRefs.length > 0)
-					expressionUpdates.push({fieldName: metaField, updateExpr: posExpr, paramRefs: posRefs});
-			}
+		if (node.pos != null && !node.pos.match(ZERO)) {
+			final baseIdx = elementCounter++;
+			final baseFieldX = "_applyBaseX_" + baseIdx;
+			final baseFieldY = "_applyBaseY_" + baseIdx;
+			fields.push(makeField(baseFieldX, FVar(macro :Float, null), [APrivate], pos));
+			fields.push(makeField(baseFieldY, FVar(macro :Float, null), [APrivate], pos));
+			ctorExprs.push(macro $p{["this", baseFieldX]} = $parentRef.x);
+			ctorExprs.push(macro $p{["this", baseFieldY]} = $parentRef.y);
+			final delta = coordsToXYExprs(node.pos, pos, node);
+			final posUpdateExpr = macro {
+				$parentRef.x = $p{["this", baseFieldX]} + ${delta.x};
+				$parentRef.y = $p{["this", baseFieldY]} + ${delta.y};
+			};
+			ctorExprs.push(posUpdateExpr);
+			final posRefs = collectPositionParamRefs(node.pos);
+			if (posRefs.length > 0)
+				expressionUpdates.push({fieldName: metaField, updateExpr: posUpdateExpr, paramRefs: posRefs});
 		}
 
 		// Scale
@@ -5547,7 +5631,12 @@ class ProgrammableCodeGen {
 		final revertExprs:Array<Expr> = [];
 		final applyIdx = applyEntries.length;
 
-		// Position offset — save original x/y, apply offset, revert to saved
+		// Position offset — save original x/y, ADD the offset, revert to saved. The apply
+		// offset composes additively with the parent's base placement (mirrors the builder's
+		// addPosition); generatePositionExpr would overwrite it absolutely. _applyVisibility
+		// reverts every entry to its captured base before replaying matched entries, so `+=`
+		// here composes overlapping pos applies in declaration order without accumulating
+		// across rebuilds.
 		if (node.pos != null) {
 			switch (node.pos) {
 				case ZERO:
@@ -5559,9 +5648,11 @@ class ProgrammableCodeGen {
 					ctorExprs.push(macro $p{["this", saveFieldX]} = $parentRef.x);
 					ctorExprs.push(macro $p{["this", saveFieldY]} = $parentRef.y);
 					ensureHexLayoutIfNeeded(node.pos, node, fields, ctorExprs, pos);
-					final posExpr = generatePositionExpr(node.pos, parentField, pos, node);
-					if (posExpr != null)
-						applyExprs.push(posExpr);
+					final delta = coordsToXYExprs(node.pos, pos, node);
+					applyExprs.push(macro {
+						$parentRef.x += ${delta.x};
+						$parentRef.y += ${delta.y};
+					});
 					revertExprs.push(macro {
 						$parentRef.x = $p{["this", saveFieldX]};
 						$parentRef.y = $p{["this", saveFieldY]};

@@ -5435,6 +5435,49 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		}
 	}
 
+	// Regression: slots, dynamicRefs and indexed names declared inside a PARAM-DEPENDENT
+	// repeatable body must be reachable on codegen instances, the same way they already are
+	// on builder results. A param-dependent count forces codegen down the runtime-rebuild
+	// branch, which forwards these kinds to the builder via buildNodeByUniqueNameWithParams;
+	// their registrations must persist into a sink the instance's getSlot / getDynamicRef /
+	// getUpdatableByIndex dispatchers can reach. Without the sink, the builder result resolves
+	// them but the codegen instance throws / returns null (the registrations are discarded into
+	// a throwaway IR by buildSingleNodeWithParams).
+	@Test
+	public function testCodegenParamDepRepeatSlotReachable():Void {
+		// Baseline: the builder result resolves all three kinds inside the param-dependent repeat.
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/125-codegenRepeatSlot/repeatSlot.manim"));
+		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "repeatSlot.manim");
+		final result = builder.buildWithParameters("repeatSlotPanel", new Map()); // rows defaults to 2
+
+		Assert.notNull(result.getSlot("cell", 0), "builder: cell slot 0 should resolve inside a param-dependent repeat");
+		Assert.notNull(result.getSlot("cell", 1), "builder: cell slot 1 should resolve inside a param-dependent repeat");
+		Assert.notNull(result.getUpdatableByIndex("tag", 0), "builder: tag[0] indexed name should resolve inside a param-dependent repeat");
+		Assert.notNull(result.getDynamicRef("embed 0"), "builder: embed[0] dynamicRef should resolve inside a param-dependent repeat");
+
+		// Codegen instance must match. These currently fail because the runtime-rebuild fallback
+		// discards the slot/dynamicRef/indexed-name registrations.
+		final mp = createMp();
+		final instance:Dynamic = mp.repeatSlotPanel.create(); // rows defaults to 2
+
+		var slot0:Null<bh.multianim.MultiAnimBuilder.SlotHandle> = null;
+		try { slot0 = instance.getSlot("cell", 0, null); } catch (e:Dynamic) {}
+		Assert.notNull(slot0, "codegen: cell slot 0 inside a param-dependent repeat should be addressable via getSlot");
+
+		var slot1:Null<bh.multianim.MultiAnimBuilder.SlotHandle> = null;
+		try { slot1 = instance.getSlot("cell", 1, null); } catch (e:Dynamic) {}
+		Assert.notNull(slot1, "codegen: cell slot 1 inside a param-dependent repeat should be addressable via getSlot");
+
+		var tag0:Null<h2d.Object> = null;
+		try { tag0 = instance.getUpdatableByIndex("tag", 0); } catch (e:Dynamic) {}
+		Assert.notNull(tag0, "codegen: tag[0] indexed name inside a param-dependent repeat should be addressable");
+
+		var embed0:Null<bh.multianim.MultiAnimBuilder.BuilderResult> = null;
+		try { embed0 = instance.getDynamicRef("embed 0"); } catch (e:Dynamic) {}
+		Assert.notNull(embed0, "codegen: embed[0] dynamicRef inside a param-dependent repeat should be addressable");
+	}
+
 	// 2D variant of the same visibility contract: get_name(x, y) returns null when the
 	// inner conditional hides that (x, y) cell. The 2D accessor is an if/else chain
 	// rather than a switch, but it has the same dangling-ref bug shape.

@@ -2657,43 +2657,41 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 	}
 
 	// The hover hit-test (onMouseMove -> cellAtPointInto -> hitTestRectInto ->
-	// cells.exists(cellKey)) runs cellKey on every move. A String-keyed cell map
-	// allocated one '${col}_${row}' String per move even when the cursor stays in
-	// the same cell. cells must be Int-keyed so the membership check is alloc-free.
+	// cells.exists(cellKey)) runs cellKey on every move. When cells was String-keyed,
+	// the membership check built one '${col}_${row}' String per move even when the
+	// cursor stayed in the same cell. The invariant that prevents that allocation is
+	// "cells (and the layerEntries inner map) are Int-keyed" — a String-keyed regression
+	// makes the underlying map a haxe.ds.StringMap, so cells.exists() must build a String.
+	// Assert the concrete map type directly: an active guard that fails the instant the
+	// map type is reverted to String, independent of any voluntary allocation counter.
+	@:access(bh.ui.UIMultiAnimGrid)
 	@Test
-	public function testCellHoverHitTestAllocatesNoCellKeyStringPerMove():Void {
-		var grid = createRectGrid(3, 3);
+	public function testCellHoverHitTestUsesIntKeyedMapNotStringKey():Void {
+		var rect = createRectGrid(3, 3);
+		// Exercise the hover path so the lookup map is actually used.
+		rect.onMouseMove(25, 25);
+		Assert.isTrue(Std.isOfType(rect.cells, haxe.ds.IntMap),
+			"rect grid hover-path map must be Int-keyed (haxe.ds.IntMap) so cells.exists() "
+			+ "allocates no cell-key String per move; got " + Type.getClassName(Type.getClass(rect.cells)));
 
-		// Warm-up: establish hover on a cell so subsequent same-cell moves take the
-		// early-out path (only the hitTest membership check runs).
-		grid.onMouseMove(25, 25);
-		final baseline = UIMultiAnimGrid.cellKeyStringAllocCount;
+		var hex = createHexGrid(2);
+		hex.onMouseMove(0, 0);
+		Assert.isTrue(Std.isOfType(hex.cells, haxe.ds.IntMap),
+			"hex grid hover-path map must be Int-keyed (haxe.ds.IntMap); got "
+			+ Type.getClassName(Type.getClass(hex.cells)));
 
-		for (i in 0...20)
-			grid.onMouseMove(25, 25); // jitter-free, stays in cell (0,0)
+		// The per-cell layer overlays share the same packed-Int key scheme and the same
+		// regression risk, so guard their inner map type too.
+		var layered = createRectGridWithLayers(2, 2);
+		layered.addLayer("overlay", {buildName: "overlay", zOrder: 1});
+		for (_ => inner in layered.layerEntries)
+			Assert.isTrue(Std.isOfType(inner, haxe.ds.IntMap),
+				"layerEntries inner map must be Int-keyed (haxe.ds.IntMap); got "
+				+ Type.getClassName(Type.getClass(inner)));
 
-		final delta = UIMultiAnimGrid.cellKeyStringAllocCount - baseline;
-		Assert.equals(0, delta,
-			"hover hit-test must not build a cell-key String per move — cells should "
-			+ "be Int-keyed. Built " + delta + " cell-key Strings across 20 same-cell moves.");
-		grid.dispose();
-	}
-
-	@Test
-	public function testHexCellHoverHitTestAllocatesNoCellKeyStringPerMove():Void {
-		var grid = createHexGrid(2);
-
-		grid.onMouseMove(0, 0); // warm-up: hover center hex
-		final baseline = UIMultiAnimGrid.cellKeyStringAllocCount;
-
-		for (i in 0...20)
-			grid.onMouseMove(0, 0);
-
-		final delta = UIMultiAnimGrid.cellKeyStringAllocCount - baseline;
-		Assert.equals(0, delta,
-			"hex hover hit-test must not build a cell-key String per move. Built "
-			+ delta + " cell-key Strings across 20 same-cell hex moves.");
-		grid.dispose();
+		rect.dispose();
+		hex.dispose();
+		layered.dispose();
 	}
 
 	// Int-packed cell keys must stay collision-free, including negative hex axial

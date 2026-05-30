@@ -505,14 +505,22 @@ class ProgrammableBuilder {
 	 *  `$param` and loop-var refs inside the subtree resolve correctly. Used by the codegen
 	 *  runtime-rebuild fallback for param-dependent repeatable bodies. */
 	public function buildNodeByUniqueNameWithParams(programmableName:String, uniqueNodeName:String,
-			parentParams:Map<String, Dynamic>):Null<h2d.Object> {
+			parentParams:Map<String, Dynamic>, ?sink:bh.multianim.MultiAnimBuilder.SwitchArmResults):Null<h2d.Object> {
 		final builder = getBuilder();
 		if (builder == null) return null;
 		final progNode = builder.multiParserResult.nodes.get(programmableName);
 		if (progNode == null) return null;
 		final targetNode = findNodeByUniqueName(progNode, uniqueNodeName);
 		if (targetNode == null) return null;
-		return builder.buildSingleNodeWithParams(targetNode, progNode, parentParams);
+		return builder.buildSingleNodeWithParams(targetNode, progNode, parentParams, sink);
+	}
+
+	/** Reset a param-dependent repeat body's sink before the body is rebuilt at a new count.
+	 *  Called by codegen's _rebuildRepeat_X. No-op when the builder is unavailable. */
+	public function resetRepeatSink(sink:bh.multianim.MultiAnimBuilder.SwitchArmResults, container:h2d.Object):Void {
+		final builder = getBuilder();
+		if (builder == null) return;
+		builder.resetRepeatSink(sink, container);
 	}
 
 	public static function findNodeByUniqueName(node:MultiAnimParser.Node, name:String):Null<MultiAnimParser.Node> {

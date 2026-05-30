@@ -103,6 +103,11 @@ class Tween {
 	public var elapsed(default, null):Float = 0.0;
 	public var onComplete:Null<Void -> Void> = null;
 	public var cancelled(default, null):Bool = false;
+	/** Guards against double-release into the shared pool. A completion callback
+	    that runs clear() recycles the still-completing handle, then control
+	    returns to update() which recycles it again — without this flag the same
+	    instance lands in _pool twice and two later acquire() calls alias it. */
+	var pooled:Bool = false;
 
 	var easing:Null<EasingType>;
 	var entries:Array<TweenPropertyEntry>;
@@ -140,6 +145,7 @@ class Tween {
 			t.initialized = false;
 			t.skipFirstDt = false;
 			t.removeTargetOnComplete = false;
+			t.pooled = false;
 			t.loadProperties(properties);
 			return t;
 		}
@@ -151,6 +157,11 @@ class Tween {
 	    by the time release runs (manager calls this after onComplete fires —
 	    helpers like UIPanelHelper null their tracked tween in onComplete). */
 	public static inline function release(tween:Tween):Void {
+		// Idempotent: a reentrant clear() from a completion callback can release
+		// the still-completing tween before update()'s own cleanup releases it.
+		if (tween.pooled)
+			return;
+		tween.pooled = true;
 		tween.recycleEntries();
 		// Drop callback so a pooled instance does not pin closure-captured state.
 		tween.onComplete = null;

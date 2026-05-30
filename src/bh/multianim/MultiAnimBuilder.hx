@@ -2455,9 +2455,11 @@ private typedef InternalBuilderResults = {
 	htmlTextsWithLinks:Array<h2d.HtmlText>
 }
 
-/** Persistent sink for results produced inside a @switch arm. One instance per switch ordinal in a codegen
- *  programmable instance; passed to rebuildSwitchArmByOrdinal so indexed names, slots, interactives, and
- *  dynamicRefs declared inside arms remain addressable after the initial build and after arm swaps. */
+/** Persistent sink for results produced inside a lazily/runtime-built subtree — a @switch arm
+ *  (one instance per switch ordinal) or a param-dependent repeatable body (one instance per
+ *  repeat). Passed to rebuildSwitchArmByOrdinal / buildSingleNodeWithParams so indexed names,
+ *  slots, interactives, and dynamicRefs declared inside the subtree remain addressable after the
+ *  initial build and after a rebuild (arm swap / repeat count change). */
 @:nullSafety
 class SwitchArmResults {
 	@:allow(bh.multianim.MultiAnimBuilder)
@@ -2491,6 +2493,18 @@ class SwitchArmResults {
 			if (match) return entry.handle;
 		}
 		return null;
+	}
+
+	/** Returns the dynamicRef BuilderResult stored under `name` (key `"name idx"` for indexed
+	 *  sites), or null when no such writer exists in this sink. Throws when multiple unnamed sites
+	 *  collide on the key — mirrors BuilderResult.getDynamicRef so the disambiguation contract is
+	 *  identical whether the dynamicRef lives at the programmable root or inside a runtime-built body. */
+	public function getDynamicRef(name:String):Null<BuilderResult> {
+		final arr = ir.dynamicRefs.get(name);
+		if (arr == null || arr.length == 0) return null;
+		if (arr.length > 1)
+			throw BuilderError.of("getDynamicRef(\"" + name + "\"): " + arr.length + " unnamed dynamicRef sites collide on this key — use #name dynamicRef(...) or #name[$i] dynamicRef(...) to disambiguate.");
+		return arr[0];
 	}
 }
 
@@ -8603,7 +8617,7 @@ class MultiAnimBuilder {
 	 *
 	 *  progNode carries the parameter type definitions; parentParams supplies the runtime values
 	 *  (programmable params + current loop-var iteration). */
-	public function buildSingleNodeWithParams(node:Node, progNode:Node, parentParams:Map<String, Dynamic>):Null<h2d.Object> {
+	public function buildSingleNodeWithParams(node:Node, progNode:Node, parentParams:Map<String, Dynamic>, ?sink:SwitchArmResults):Null<h2d.Object> {
 		final parentBP = this.builderParams;
 		final gridCS = MultiAnimParser.getGridCoordinateSystem(node);
 		final hexCS = MultiAnimParser.getHexCoordinateSystem(node);
@@ -8627,10 +8641,24 @@ class MultiAnimBuilder {
 		};
 		this.builderParams = bp;
 		final parent = new h2d.Object();
-		final ir:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
+		// When a sink is supplied (param-dependent repeat body), register the node's slots /
+		// dynamicRefs / indexed names into it so the codegen instance dispatchers stay able to
+		// resolve them; otherwise discard into a throwaway IR (callers that only need the object).
+		final ir:InternalBuilderResults = sink != null
+			? sink.ir
+			: {names: [], interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
 		build(node, ObjectMode(parent), cast gridCS, cast hexCS, ir, bp);
 		popBuilderState();
 		return if (parent.numChildren > 0) parent.getChildAt(0) else null;
+	}
+
+	/** Evict a repeat-body sink's registrations for objects under `container`, mirroring the
+	 *  @switch arm cleanup in rebuildSwitchArmByOrdinal. Codegen's _rebuildRepeat_X calls this
+	 *  BEFORE container.removeChildren() (parent links must still be intact) so slots / dynamicRefs
+	 *  / indexed names from the previous iteration count are dropped — and stale SlotHandles marked
+	 *  disposed — before the body is rebuilt into the same sink. */
+	public function resetRepeatSink(sink:SwitchArmResults, container:h2d.Object):Void {
+		MultiAnimBuilder.removeRegistrationsUnder(sink.ir, container);
 	}
 
 	function loadTileImpl(sheetName:String, tilename:String, ?index:Int) {

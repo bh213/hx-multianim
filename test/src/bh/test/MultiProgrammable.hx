@@ -407,6 +407,9 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/122-codegenOverlappingApply/codegenOverlappingApply.manim", "codegenOverlappingApply")
 	public var codegenOverlappingApply;
 
+	@:manim("test/examples/126-codegenApplyPosAdditive/codegenApplyPosAdditive.manim", "codegenApplyPosAdditive")
+	public var codegenApplyPosAdditive;
+
 	@:manim("test/examples/109-codegenIncrementalGfxPx/codegenIncrementalGfxPx.manim", "codegenIncGraphics")
 	public var codegenIncGraphics;
 
@@ -466,6 +469,15 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/122-codegenDynamicRefEnumForwarding/codegenDynamicRefEnumForwarding.manim", "codegenDynamicRefEnumForwarding")
 	public var codegenDynamicRefEnumForwarding;
+
+	@:manim("test/examples/124-codegenStaticRefEnumForwarding/codegenStaticRefEnumForwarding.manim", "codegenStaticRefEnumForwarding")
+	public var codegenStaticRefEnumForwarding;
+
+	@:manim("test/examples/125-codegenRepeatSlot/repeatSlot.manim", "repeatSlotInner")
+	public var repeatSlotInner;
+
+	@:manim("test/examples/125-codegenRepeatSlot/repeatSlot.manim", "repeatSlotPanel")
+	public var repeatSlotPanel;
 
 	@:manim("test/examples/119-codegenRepeatShrink/codegenRepeatShrink.manim", "codegenRepeatShrink")
 	public var codegenRepeatShrink;

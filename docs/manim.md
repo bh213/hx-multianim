@@ -230,7 +230,7 @@ ninepatch("cards", "card-base-patch9", 150,200) {
 }
 ```
 
-Supports `filter`, `scale`, `alpha`, and `blendMode`.
+Supports `filter`, `scale`, `alpha`, `rotation`, `blendMode`, `tint`, and `pos`. `pos` composes *additively* with the parent's existing placement (`parent.x += dx; parent.y += dy`) — same semantics as the builder's `addPosition`. `tint` requires a Drawable parent. Overlapping `apply` entries on the same parent compose by declaration order via a reset-and-replay pass: every entry's baseline is restored, then matched entries fire in order.
 
 ### text
 Creates simple text with font, content, and color. Always creates plain `h2d.Text`.
