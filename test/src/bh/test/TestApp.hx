@@ -133,6 +133,7 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.UIScreenUpdateAllocationTest());
 		testRunner.addCase(new bh.test.examples.StrictDColorVerbatimTest());
 		testRunner.addCase(new bh.test.examples.CodegenRootTintTest());
+		testRunner.addCase(new bh.test.examples.CodegenHasSlotDynRefTest());
 		#if MULTIANIM_DEV
 		testRunner.addCase(new bh.test.examples.HotReloadTest());
 		testRunner.addCase(new bh.test.examples.DevBridgeTest());

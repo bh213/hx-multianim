@@ -5552,6 +5552,29 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		Assert.notNull(panelAgain, "panel slot should reappear after swap back to active arm");
 	}
 
+	// Regression: a #name dynamicRef declared inside a @switch arm must be reachable via
+	// getDynamicRef("name") on a codegen instance. The runtime builder resolves switch-arm
+	// dynamicRefs (arm children build into the parent IR); the codegen getDynamicRef
+	// dispatcher must likewise consult the switch sink, mirroring getSlot / getUpdatable*.
+	@Test
+	public function testCodegenSwitchArmDynamicRefIsReachable():Void {
+		final mp = createMp();
+		final instance:Dynamic = mp.switchArmDynamicRef.create(); // default mode=alpha
+
+		// The active (alpha) arm declares #embed dynamicRef($switchArmChild, value=>10).
+		// Wrap the call: when a programmable has no static dynamicRefs the dispatcher may
+		// not be generated at all, so a missing-method runtime error must surface as a clean
+		// notNull assertion failure (the right reason) rather than aborting the test.
+		var embedRef:Null<bh.multianim.MultiAnimBuilder.BuilderResult> = null;
+		try {
+			embedRef = instance.getDynamicRef("embed");
+		} catch (e:Dynamic) {}
+		Assert.notNull(embedRef,
+			"dynamicRef declared inside the active @switch arm must be reachable via "
+			+ "getDynamicRef('embed') on a codegen instance — the runtime builder resolves it, "
+			+ "so the codegen dispatcher must consult the switch sink too.");
+	}
+
 	// Setting a parameter that is not referenced anywhere inside any @switch arm must NOT
 	// tear down and rebuild the arm. The runtime path gates rebuilds on a paramRefs union
 	// (see MultiAnimBuilder.rebuildSwitchArmByOrdinal trackExpression registration); the

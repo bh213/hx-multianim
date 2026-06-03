@@ -1329,6 +1329,40 @@ class ProgrammableCodeGen {
 			], macro :bh.multianim.MultiAnimBuilder.SlotHandle, [APublic], pos));
 		}
 
+		// Existence companion to getSlot — mirrors BuilderResult.hasSlot: exact kind+index match
+		// required, never throws (returns false on any miss, including index/kind mismatch). Generated
+		// whenever getSlot is (static slots OR runtime sinks present).
+		if (slotEntries.length > 0 || sinkFields.length > 0) {
+			final hasSlotExprs:Array<Expr> = [];
+			// Non-indexed slots: match only when both index params are null.
+			for (ns in namedSlots) {
+				hasSlotExprs.push(macro if (name == $v{ns.name} && index == null && indexY == null) return true);
+			}
+			// 1D indexed slots: match when index is supplied (indexY null) and equals a present entry.
+			for (baseName => indexedList in indexedSlotGroups) {
+				for (entry in indexedList) {
+					hasSlotExprs.push(macro if (name == $v{baseName} && index != null && indexY == null && index == $v{entry.index}) return true);
+				}
+			}
+			// 2D indexed slots: match when both index params are supplied and equal a present entry.
+			for (baseName => indexedList in indexed2DSlotGroups) {
+				for (entry in indexedList) {
+					hasSlotExprs.push(macro if (name == $v{baseName} && index != null && indexY != null && index == $v{entry.indexX} && indexY == $v{entry.indexY}) return true);
+				}
+			}
+			// Runtime sinks (slots declared in @switch arms or param-dependent repeat bodies).
+			// SwitchArmResults.hasSlot is non-throwing, preserving the never-throw contract.
+			for (sf in sinkFields) {
+				hasSlotExprs.push(macro if ($p{["this", sf]}.hasSlot(name, index, indexY)) return true);
+			}
+			hasSlotExprs.push(macro return false);
+			instanceFields.push(makeMethod("hasSlot", hasSlotExprs, [
+				{name: "name", type: macro :String},
+				{name: "index", opt: true, type: macro :Null<Int>},
+				{name: "indexY", opt: true, type: macro :Null<Int>},
+			], macro :Bool, [APublic], pos));
+		}
+
 		// 8b3. Runtime lookup for indexed names declared inside lazily-built bodies (@switch arms or
 		// param-dependent repeats). Generated when at least one such sink exists in the programmable.
 		// Falls back to iterating the sinks since these names are not known at compile time.
@@ -1394,9 +1428,11 @@ class ProgrammableCodeGen {
 			instanceFields.push(makeField("_dynref_lit_" + fn, FVar(macro :bh.multianim.MultiAnimBuilder.BuilderResult, null), [APrivate], pos));
 		}
 		final hasDynamicRefs = Lambda.count(dynamicRefFields) > 0 || dynamicNameRefFields.length > 0;
-		// Param-dependent repeat bodies register dynamicRefs into their sink rather than a static
-		// field, so generate the dispatcher (with a sink fallthrough) even when there are no static refs.
-		if (hasDynamicRefs || repeatSinkFields.length > 0) {
+		// @switch arms and param-dependent repeat bodies both register dynamicRefs into a runtime
+		// sink rather than a static field, so generate the dispatcher (with a sink fallthrough) even
+		// when there are no static refs — otherwise a programmable whose only dynamicRef lives in a
+		// switch arm has no getDynamicRef method at all.
+		if (hasDynamicRefs || sinkFields.length > 0) {
 			final getDynRefExprs:Array<Expr> = [];
 			// Static name refs: direct switch
 			if (Lambda.count(dynamicRefFields) > 0) {
@@ -1419,8 +1455,9 @@ class ProgrammableCodeGen {
 						return $p{["this", "_dynref_" + fn]};
 				});
 			}
-			// Param-dependent repeat body sinks: dynamicRefs declared inside a runtime-rebuilt body.
-			for (sf in repeatSinkFields) {
+			// Runtime sinks (@switch arms + param-dependent repeat bodies): dynamicRefs declared
+			// inside a lazily-built body. Mirrors the getSlot / getUpdatable* dispatchers above.
+			for (sf in sinkFields) {
 				getDynRefExprs.push(macro {
 					final _r = $p{["this", sf]}.getDynamicRef(name);
 					if (_r != null) return _r;
@@ -1429,6 +1466,29 @@ class ProgrammableCodeGen {
 			getDynRefExprs.push(macro return null);
 			instanceFields.push(makeMethod("getDynamicRef", getDynRefExprs, [{name: "name", type: macro :String}],
 				macro :bh.multianim.MultiAnimBuilder.BuilderResult, [APublic], pos));
+
+			// Existence companion to getDynamicRef — mirrors BuilderResult.hasDynamicRef (never throws),
+			// consulting the same sources as the dispatcher above so presence and lookup stay in sync.
+			final hasDynRefExprs:Array<Expr> = [];
+			if (Lambda.count(dynamicRefFields) > 0) {
+				final refCases:Array<Case> = [];
+				for (refName => _ in dynamicRefFields) {
+					refCases.push({values: [macro $v{refName}], expr: macro return true});
+				}
+				hasDynRefExprs.push({expr: ESwitch(macro name, refCases, null), pos: pos});
+			}
+			for (fn in dynamicNameRefFields) {
+				hasDynRefExprs.push(macro {
+					if ($p{["this", "_dynref_name_" + fn]} != null && name == $p{["this", "_dynref_name_" + fn]})
+						return true;
+				});
+			}
+			for (sf in repeatSinkFields) {
+				hasDynRefExprs.push(macro if ($p{["this", sf]}.hasDynamicRef(name)) return true);
+			}
+			hasDynRefExprs.push(macro return false);
+			instanceFields.push(makeMethod("hasDynamicRef", hasDynRefExprs, [{name: "name", type: macro :String}],
+				macro :Bool, [APublic], pos));
 		}
 
 		// ============ Factory class fields (extends ProgrammableBuilder) ============

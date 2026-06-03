@@ -69,7 +69,7 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 
 **Builder API:**
 - `result.getDynamicRef("name")` — returns the `BuilderResult` for the named site; throws if the name is unknown or multiple unnamed sites collide on the key
-- `result.hasDynamicRef("name")` — existence check that never throws; returns true when at least one site is registered under the key. Reports presence only — does not detect colliding unnamed sites (a subsequent `getDynamicRef` may still throw)
+- `result.hasDynamicRef("name")` — existence check that never throws; returns true when at least one site is registered under the key. Reports presence only — does not detect colliding unnamed sites (a subsequent `getDynamicRef` may still throw). Also generated on `@:manim` codegen instances (`instance.hasDynamicRef(name)`) — consults the same sources as the codegen `getDynamicRef` dispatcher, including dynamicRefs declared inside `@switch` arms
 
 **Disambiguating sibling dynamicRef sites** — `dynamicRefs` is a map keyed by the site's name. Unnamed sites fall back to the referenced programmable name, so two unnamed `dynamicRef($X)` siblings (e.g. `@(cond) dynamicRef($X)` + `@else dynamicRef($X)`, or N iterations of `repeatable { dynamicRef($X) }`) collide on key `"X"`. In that case `getDynamicRef("X")` throws with a hint to add `#name` — the last-writer-wins result is arbitrary with respect to which sibling is attached to the scene graph. Prefix each site with a distinct `#name`, or use `#name[$i]` inside a `repeatable` to key by iteration. Two explicit `#name` sites sharing the same name throw at build time.
 
@@ -315,6 +315,8 @@ Parse-time error when used outside a flow ancestor.
 A bare `@else` or `@default` is **terminal** — it closes the chain. Any `@else` / `@default` that follows one is unreachable and rejected at parse time. To start a fresh chain, open a new `@(...)` sibling first.
 
 **`@final` constants cannot be conditional or `@switch` keys.** `@final` is a compile-time-only alias with no runtime value slot, so both the runtime matcher and codegen's condition emitter would fail on a reference to its name. Using a `@final` as a key in `@(MY_CONST=>…)`, `@if(…)`, `@any(…)`, `@all(…)`, `@else(…)`, or `@switch(MY_CONST)` is rejected at parse time with a message naming the offending `@final`. Use a programmable parameter (`param:type=default`) as the conditional key instead. The rule applies regardless of whether the `@final`'s RHS is a literal or a derived expression.
+
+**Unknown enum members in a conditional are rejected at parse time.** Multi-value (`@(p => [a, b])`), negated multi-value (`@(p != [a, b])`), and `@switch` pipe arms (`a | b { ... }`) build their match set from raw lexemes; a value not present in the parameter's declared enum is rejected with a message naming the offending value and listing the valid members. (String params accept any value; loop variables have no declared type to validate against.) This prevents the silent divergence where a typo never matched in the builder but matched enum index 0 in codegen.
 
 Conditionals also work with **repeatable loop variables** (e.g., `@($i => 0)`, `@($i >= 3)`, `@($i != 1)`) inside `repeatable` bodies.
 
@@ -600,7 +602,7 @@ Slots with parameters support visual states via conditionals. `slotContent` mark
 
 **Runtime API:**
 - `result.getSlot("name", ?index, ?indexY)` — returns a `SlotHandle`; throws when the slot is not registered or kind/index doesn't match
-- `result.hasSlot("name", ?index, ?indexY)` — existence check that never throws. Useful when an indexed slot's iteration may shrink (`repeatable` count dropping under `setParameter`) and the caller wants to skip absent indices instead of wrapping `getSlot` in try/catch
+- `result.hasSlot("name", ?index, ?indexY)` — existence check that never throws. Useful when an indexed slot's iteration may shrink (`repeatable` count dropping under `setParameter`) and the caller wants to skip absent indices instead of wrapping `getSlot` in try/catch. Also generated on `@:manim` codegen instances (`instance.hasSlot(name, index, indexY)`) with identical never-throw semantics — including for slots declared inside `@switch` arms or param-dependent `repeatable` bodies
 - `slot.setParameter("status", "active")` — update visual state (incremental)
 - `slot.setContent(obj)` / `slot.clear()` — content independent of decorations
 - `slot.getInteractives()` — interactives declared inside the slot decoration body (returns a fresh copy each call). Empty for slots built via the runtime `BuilderResult` path

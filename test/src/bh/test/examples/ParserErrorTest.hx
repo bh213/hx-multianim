@@ -5080,4 +5080,47 @@ class ParserErrorTest extends utest.Test {
 				Assert.fail('expected FilterPixelOutline(POInlineColor(...), true), got $filter');
 		}
 	}
+
+	// ===== Unknown enum value in a conditional must be rejected at parse time =====
+	// A typo'd enum member in a multi-value / pipe conditional otherwise diverges between
+	// builder (silently never matches) and codegen (matches enum index 0). Reject it instead.
+
+	@Test
+	public function testMultiValueMatchConditionalRejectsUnknownEnumValue() {
+		var error = parseExpectingError('
+			#test programmable(status:[normal,hover,pressed]=normal) {
+				@(status => [normal, hbover]) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.notNull(error, "Unknown enum value in @(p => [..]) should be rejected at parse time");
+		Assert.isTrue(error.indexOf("hbover") >= 0,
+			'Error should name the offending value "hbover", got: $error');
+	}
+
+	@Test
+	public function testMultiValueNegatedConditionalRejectsUnknownEnumValue() {
+		var error = parseExpectingError('
+			#test programmable(status:[normal,hover,pressed]=normal) {
+				@(status != [normal, hbover]) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.notNull(error, "Unknown enum value in @(p != [..]) should be rejected at parse time");
+		Assert.isTrue(error.indexOf("hbover") >= 0,
+			'Error should name the offending value "hbover", got: $error');
+	}
+
+	@Test
+	public function testSwitchPipeArmRejectsUnknownEnumValue() {
+		var error = parseExpectingError('
+			#test programmable(status:[normal,hover,pressed]=normal) {
+				@switch(status) {
+					normal | hbover { bitmap(generated(color(10, 10, #f00))): 0,0 }
+					default { bitmap(generated(color(20, 20, #00f))): 0,0 }
+				}
+			}
+		');
+		Assert.notNull(error, "Unknown enum value in @switch pipe arm should be rejected at parse time");
+		Assert.isTrue(error.indexOf("hbover") >= 0,
+			'Error should name the offending value "hbover", got: $error');
+	}
 }

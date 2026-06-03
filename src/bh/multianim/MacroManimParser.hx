@@ -1923,6 +1923,22 @@ class MacroManimParser {
 
 	// ===================== Conditional Parsing =====================
 
+	// Reject enum members that don't exist in the parameter's declared enum (typos).
+	// Multi-value [a,b] and pipe @switch arms build CoEnums from raw lexemes; without this
+	// an unknown name silently diverges — codegen matches enum index 0, builder never matches.
+	// String params accept any value; loop vars (no def) have no type to validate against.
+	function validateConditionalEnumValues(paramName:String, defs:ParametersDefinitions, values:Array<String>):Void {
+		final def = defs.get(paramName);
+		if (def == null) return;
+		switch (def.type) {
+			case PPTEnum(members):
+				for (v in values)
+					if (!members.contains(v))
+						error('conditional value "$v" is not a valid value for enum parameter "$paramName", expected one of: ${members.join(", ")}');
+			default:
+		}
+	}
+
 	function parseConditionalParameters(defs:ParametersDefinitions):Map<String, ConditionalValues> {
 		var result:Map<String, ConditionalValues> = new Map();
 		while (true) {
@@ -1976,6 +1992,7 @@ class MacroManimParser {
 								if (enums.length > 0) eatComma();
 								enums.push(expectIdentifierOrString());
 							}
+							validateConditionalEnumValues(paramName, defs, enums);
 							result.set(paramName, CoNot(CoEnums(enums)));
 						default:
 							final val = parseConditionalValue();
@@ -1997,6 +2014,7 @@ class MacroManimParser {
 								if (enums.length > 0) eatComma();
 								enums.push(expectIdentifierOrString());
 							}
+							validateConditionalEnumValues(paramName, defs, enums);
 							result.set(paramName, CoEnums(enums));
 						case TExclamation:
 							// Backward compat: @(param => !value) negate syntax
@@ -5344,6 +5362,7 @@ class MacroManimParser {
 						// and OR them at match/codegen time via CoAnyOf.
 						switch (paramType) {
 							case PPTEnum(_) | PPTString:
+								validateConditionalEnumValues(paramName, defs, values);
 								pattern = CoEnums(values);
 							default:
 								final inner:Array<ConditionalValues> = [];

@@ -383,6 +383,9 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/106-switchArmNames/switchArmNames.manim", "switchArmSlot")
 	public var switchArmSlot;
 
+	@:manim("test/examples/106-switchArmNames/switchArmNames.manim", "switchArmDynamicRef")
+	public var switchArmDynamicRef;
+
 	@:manim("test/examples/106-switchArmNames/switchArmNames.manim", "switchUnrelatedParam")
 	public var switchUnrelatedParam;
 
@@ -496,4 +499,7 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/123-codegenRootTint/codegenRootTint.manim", "codegenRootTint")
 	public var codegenRootTint;
+
+	@:manim("test/examples/127-codegenHasSlotDynRef/codegenHasSlotDynRef.manim", "codegenHasSlotDynRef")
+	public var codegenHasSlotDynRef;
 }

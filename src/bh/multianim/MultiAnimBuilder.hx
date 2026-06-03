@@ -2495,6 +2495,20 @@ class SwitchArmResults {
 		return null;
 	}
 
+	/** Existence companion to `getSlot` — never throws. Mirrors BuilderResult.hasSlot so the
+	 *  codegen instance dispatcher can consult this sink without risking a throw on a miss. */
+	public function hasSlot(name:String, ?index:Null<Int>, ?indexY:Null<Int>):Bool {
+		for (entry in ir.slots) {
+			final match = switch entry.key {
+				case Named(n): index == null && indexY == null && n == name;
+				case Indexed(n, i): index != null && indexY == null && n == name && i == index;
+				case Indexed2D(n, ix, iy): index != null && indexY != null && n == name && ix == index && iy == indexY;
+			};
+			if (match) return true;
+		}
+		return false;
+	}
+
 	/** Returns the dynamicRef BuilderResult stored under `name` (key `"name idx"` for indexed
 	 *  sites), or null when no such writer exists in this sink. Throws when multiple unnamed sites
 	 *  collide on the key — mirrors BuilderResult.getDynamicRef so the disambiguation contract is
@@ -2505,6 +2519,14 @@ class SwitchArmResults {
 		if (arr.length > 1)
 			throw BuilderError.of("getDynamicRef(\"" + name + "\"): " + arr.length + " unnamed dynamicRef sites collide on this key — use #name dynamicRef(...) or #name[$i] dynamicRef(...) to disambiguate.");
 		return arr[0];
+	}
+
+	/** Presence-only companion to `getDynamicRef` — never throws (unlike `getDynamicRef`, which
+	 *  throws on an unnamed-collision key). Lets the codegen instance hasDynamicRef dispatcher
+	 *  consult this sink without risking a throw, matching BuilderResult.hasDynamicRef. */
+	public function hasDynamicRef(name:String):Bool {
+		final arr = ir.dynamicRefs.get(name);
+		return arr != null && arr.length > 0;
 	}
 }
 
@@ -6815,7 +6837,7 @@ class MultiAnimBuilder {
 				// h2d.Layers programmable root, flow/layers/mask, etc.) don't have.
 				// Silently dropping it hides the mistake — fail fast instead.
 				throw builderError('tint requires a Drawable target (bitmap/text/...); '
-					+ 'cannot apply to ${Type.getClassName(Type.getClass(object))}', "tint_requires_drawable");
+					+ 'cannot apply to ${Std.string(Type.typeof(object))}', "tint_requires_drawable");
 			}
 		}
 	}

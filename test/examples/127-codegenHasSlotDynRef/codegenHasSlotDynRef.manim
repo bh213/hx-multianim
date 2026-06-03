@@ -1,0 +1,20 @@
+version: 1.0
+
+#leaf programmable(w:uint=8) {
+  bitmap(generated(color($w, 8, #44aa88))): 0, 0
+}
+
+#codegenHasSlotDynRef programmable() {
+  #footer slot {
+    bitmap(generated(color(10, 10, #555555))): 0, 0
+  }
+  #extra slot {
+    bitmap(generated(color(10, 10, #335577))): 12, 0
+  }
+  repeatable($i, step(3, dx: 12)) {
+    #item[$i] slot {
+      bitmap(generated(color(8, 8, #777777))): 0, 12
+    }
+  }
+  dynamicRef($leaf, w=>10): 0, 24
+}
