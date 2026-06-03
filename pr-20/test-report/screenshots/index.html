@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-05-30 13:43:28</div>
+    <div class="timestamp">Generated: 2026-06-03 07:51:33</div>
     <div class="summary">
         <strong>Summary:</strong> 101 tests,         <span style="color: #4CAF50;">101 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.3s, visual 24.2s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.3s, visual 26.2s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>7379 assertions:</strong>             <span style="color: #4CAF50;">7379 passed</span>
+            <strong>7398 assertions:</strong>             <span style="color: #4CAF50;">7398 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -1296,6 +1296,11 @@
                 <div class="unit-method pass">testRuntimeBuildExternalPalette: OK <span class="dots">...</span></div>
             </div>
             <div class="unit-class">
+                <div class="unit-class-name">CodegenHasSlotDynRefTest</div>
+                <div class="unit-method pass">testCodegenHasDynamicRefReportsPresentAndAbsentRefs: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testCodegenHasSlotReportsPresentAndAbsentSlots: OK <span class="dots">........</span></div>
+            </div>
+            <div class="unit-class">
                 <div class="unit-class-name">CodegenIncrementalGfxPxTest</div>
                 <div class="unit-method pass">testCodegenGraphics_RedrawsOnSetParameter: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testCodegenPixels_RedrawsOnSetParameter: OK <span class="dots">....</span></div>
@@ -1793,6 +1798,8 @@
                 <div class="unit-method pass">testMissingVersionDeclaration: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testMixedNamedSystemsParseSuccess: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testMultiLineBlockComment: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testMultiValueMatchConditionalRejectsUnknownEnumValue: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testMultiValueNegatedConditionalRejectsUnknownEnumValue: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testMultipleConditionalGroups: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testMultipleTileParameters: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testNameOutsideRepeatableIsValid: OK <span class="dots">.</span></div>
@@ -1897,6 +1904,7 @@
                 <div class="unit-method pass">testSwitchMultipleSwitchBlocks: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testSwitchNegativeIntegerArm: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testSwitchNestedConditionals: OK <span class="dots">..........</span></div>
+                <div class="unit-method pass">testSwitchPipeArmRejectsUnknownEnumValue: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSwitchRangeArm: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testSwitchRangeNonInteger: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSwitchRejectsArrayParam: OK <span class="dots">..</span></div>
@@ -2169,6 +2177,7 @@
                 <div class="unit-method pass">testCodegenSlidePresenceTransitionLeavesReparentedObjectAlone: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testCodegenSlotParamGridContext: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testCodegenSwitchArmCallbackInheritance: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testCodegenSwitchArmDynamicRefIsReachable: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testCodegenSwitchArmGridContext: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testCodegenSwitchArmIndexedNames: OK <span class="dots">.........</span></div>
                 <div class="unit-method pass">testCodegenSwitchArmNotRebuiltOnUnrelatedParam: OK <span class="dots">.....</span></div>
