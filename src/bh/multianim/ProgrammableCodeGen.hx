@@ -1483,7 +1483,7 @@ class ProgrammableCodeGen {
 						return true;
 				});
 			}
-			for (sf in repeatSinkFields) {
+			for (sf in sinkFields) {
 				hasDynRefExprs.push(macro if ($p{["this", sf]}.hasDynamicRef(name)) return true);
 			}
 			hasDynRefExprs.push(macro return false);

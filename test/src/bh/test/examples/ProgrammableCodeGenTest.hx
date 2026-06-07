@@ -5573,6 +5573,19 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 			"dynamicRef declared inside the active @switch arm must be reachable via "
 			+ "getDynamicRef('embed') on a codegen instance — the runtime builder resolves it, "
 			+ "so the codegen dispatcher must consult the switch sink too.");
+
+		// hasDynamicRef must agree with getDynamicRef: a ref reachable via getDynamicRef must
+		// report present. The presence companion has to consult the same switch sink as the
+		// dispatcher (not only the repeat sink), matching BuilderResult where both methods read
+		// the same map and can never disagree.
+		var hasEmbed:Bool = false;
+		try {
+			hasEmbed = instance.hasDynamicRef("embed");
+		} catch (e:Dynamic) {}
+		Assert.isTrue(hasEmbed,
+			"hasDynamicRef('embed') must return true for a dynamicRef declared inside the active "
+			+ "@switch arm — it is reachable via getDynamicRef, so presence and lookup must stay "
+			+ "in sync (the guard-before-access pattern relies on this).");
 	}
 
 	// Setting a parameter that is not referenced anywhere inside any @switch arm must NOT

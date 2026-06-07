@@ -1996,6 +1996,7 @@ class MacroManimParser {
 							result.set(paramName, CoNot(CoEnums(enums)));
 						default:
 							final val = parseConditionalValue();
+							validateConditionalEnumValues(paramName, defs, [val]);
 							final paramDef = defs.get(paramName);
 							final cv = paramDef != null ? stringToConditional(val, paramDef.type) : stringToConditionalGeneric(val);
 							result.set(paramName, CoNot(cv));
@@ -2020,6 +2021,7 @@ class MacroManimParser {
 							// Backward compat: @(param => !value) negate syntax
 							advance();
 							final val = parseConditionalValue();
+							validateConditionalEnumValues(paramName, defs, [val]);
 							final paramDef = defs.get(paramName);
 							final cv = paramDef != null ? stringToConditional(val, paramDef.type) : stringToConditionalGeneric(val);
 							result.set(paramName, CoNot(cv));
@@ -2055,6 +2057,7 @@ class MacroManimParser {
 										result.set(paramName, CoRange(val, to, false, false));
 									} else {
 										final valStr = rvToCondString(val);
+										validateConditionalEnumValues(paramName, defs, [valStr]);
 										final paramDef = defs.get(paramName);
 										if (paramDef != null) {
 											final cv = stringToConditional(valStr, paramDef.type);
@@ -5374,6 +5377,7 @@ class MacroManimParser {
 						// This makes @switch on PPTColor/PPTBool/PPTEnum produce the same conditional
 						// as @(p => value), instead of a string-only CoEnums that fails to match
 						// integer-backed values (color, bool).
+						validateConditionalEnumValues(paramName, defs, [values[0]]);
 						pattern = stringToConditional(values[0], paramType);
 					}
 			}

@@ -5123,4 +5123,47 @@ class ParserErrorTest extends utest.Test {
 		Assert.isTrue(error.indexOf("hbover") >= 0,
 			'Error should name the offending value "hbover", got: $error');
 	}
+
+	// Single-value forms must reject typo'd enum members too: they otherwise route through
+	// stringToConditional → CoStringValue, which the builder silently never matches and codegen
+	// turns into an Int == String compile error (the same divergence the multi-value tests guard).
+
+	@Test
+	public function testSingleValueMatchConditionalRejectsUnknownEnumValue() {
+		var error = parseExpectingError('
+			#test programmable(status:[normal,hover,pressed]=normal) {
+				@(status => hbover) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.notNull(error, "Unknown enum value in @(p => value) should be rejected at parse time");
+		Assert.isTrue(error.indexOf("hbover") >= 0,
+			'Error should name the offending value "hbover", got: $error');
+	}
+
+	@Test
+	public function testSingleValueNegatedConditionalRejectsUnknownEnumValue() {
+		var error = parseExpectingError('
+			#test programmable(status:[normal,hover,pressed]=normal) {
+				@(status != hbover) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.notNull(error, "Unknown enum value in @(p != value) should be rejected at parse time");
+		Assert.isTrue(error.indexOf("hbover") >= 0,
+			'Error should name the offending value "hbover", got: $error');
+	}
+
+	@Test
+	public function testSwitchSingleArmRejectsUnknownEnumValue() {
+		var error = parseExpectingError('
+			#test programmable(status:[normal,hover,pressed]=normal) {
+				@switch(status) {
+					hbover: bitmap(generated(color(10, 10, #f00))): 0,0
+					default { bitmap(generated(color(20, 20, #00f))): 0,0 }
+				}
+			}
+		');
+		Assert.notNull(error, "Unknown enum value in @switch single-value arm should be rejected at parse time");
+		Assert.isTrue(error.indexOf("hbover") >= 0,
+			'Error should name the offending value "hbover", got: $error');
+	}
 }
