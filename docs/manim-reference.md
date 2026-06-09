@@ -59,7 +59,7 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | Element | Description |
 |---------|-------------|
 | `placeholder(type, source)` | Dynamic content slot resolved at build time |
-| `staticRef($ref, params)` | Static embed of another programmable |
+| `staticRef($ref, params)` | Static embed of another programmable. `$ref` may name the target literally or via a string/enum parameter (`staticRef($which)`) — the parameter value resolves the target programmable at build time in both builder and codegen |
 | `staticRef(external("importName"), $ref, params)` | Static embed from imported .manim file |
 | `dynamicRef($ref, params)` | Dynamic embed with runtime `setParameter()` support |
 | `#name dynamicRef($ref, params)` | Named dynamic embed — `BuilderResult.getDynamicRef("name")` returns this specific site |
@@ -70,6 +70,7 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 **Builder API:**
 - `result.getDynamicRef("name")` — returns the `BuilderResult` for the named site; throws if the name is unknown or multiple unnamed sites collide on the key
 - `result.hasDynamicRef("name")` — existence check that never throws; returns true when at least one site is registered under the key. Reports presence only — does not detect colliding unnamed sites (a subsequent `getDynamicRef` may still throw). Also generated on `@:manim` codegen instances (`instance.hasDynamicRef(name)`) — consults the same sources as the codegen `getDynamicRef` dispatcher, including dynamicRefs declared inside `@switch` arms
+- `result.getDynamicRefByIndex("name", index)` — convenience for indexed `#name[$i] dynamicRef(...)`; resolves the `"name idx"` key the builder stores per `repeatable` iteration. Also generated on codegen instances (`instance.getDynamicRefByIndex(name, index)`); works for both static-count (unrolled at macro time) and param-dependent repeats
 
 **Disambiguating sibling dynamicRef sites** — `dynamicRefs` is a map keyed by the site's name. Unnamed sites fall back to the referenced programmable name, so two unnamed `dynamicRef($X)` siblings (e.g. `@(cond) dynamicRef($X)` + `@else dynamicRef($X)`, or N iterations of `repeatable { dynamicRef($X) }`) collide on key `"X"`. In that case `getDynamicRef("X")` throws with a hint to add `#name` — the last-writer-wins result is arbitrary with respect to which sibling is attached to the scene graph. Prefix each site with a distinct `#name`, or use `#name[$i]` inside a `repeatable` to key by iteration. Two explicit `#name` sites sharing the same name throw at build time.
 

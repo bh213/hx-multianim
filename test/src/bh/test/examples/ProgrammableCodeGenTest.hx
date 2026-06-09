@@ -5478,6 +5478,49 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		Assert.notNull(embed0, "codegen: embed[0] dynamicRef inside a param-dependent repeat should be addressable");
 	}
 
+	// An indexed #seg[$i] dynamicRef inside a STATIC-count repeatable (count is a literal, so
+	// codegen unrolls at macro time rather than building through the runtime sink). Each
+	// unrolled iteration must register a distinct dynamicRef keyed "seg 0", "seg 1", ... and
+	// stay reachable from the codegen instance — matching the builder. The codegen dynamicRef
+	// tracking ignores node.updatableName and keys every iteration under the target
+	// programmable name (last-writer-wins), so the indexed refs are unaddressable.
+	// Fixture: test/examples/129-codegenIndexedDynamicRef/indexedDynamicRef.manim
+	@Test
+	public function testCodegenIndexedDynamicRefInStaticRepeatIsAddressable():Void {
+		// Baseline: the builder result keys each iteration "seg 0".."seg 2".
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/129-codegenIndexedDynamicRef/indexedDynamicRef.manim"));
+		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "indexedDynamicRef.manim");
+		final result = builder.buildWithParameters("indexedDynamicRef", new Map());
+
+		Assert.notNull(result.getDynamicRef("seg 0"), "builder: seg[0] dynamicRef should resolve in a static repeat");
+		Assert.notNull(result.getDynamicRef("seg 1"), "builder: seg[1] dynamicRef should resolve in a static repeat");
+		Assert.notNull(result.getDynamicRef("seg 2"), "builder: seg[2] dynamicRef should resolve in a static repeat");
+		Assert.notNull(result.getDynamicRefByIndex("seg", 1), "builder: getDynamicRefByIndex('seg', 1) should resolve in a static repeat");
+
+		// Codegen instance must match — each unrolled indexed dynamicRef addressable & distinct.
+		final mp = createMp();
+		final instance:Dynamic = mp.indexedDynamicRef.create();
+
+		var seg0:Null<bh.multianim.MultiAnimBuilder.BuilderResult> = null;
+		var seg1:Null<bh.multianim.MultiAnimBuilder.BuilderResult> = null;
+		var seg2:Null<bh.multianim.MultiAnimBuilder.BuilderResult> = null;
+		try { seg0 = instance.getDynamicRef("seg 0"); } catch (e:Dynamic) {}
+		try { seg1 = instance.getDynamicRef("seg 1"); } catch (e:Dynamic) {}
+		try { seg2 = instance.getDynamicRef("seg 2"); } catch (e:Dynamic) {}
+
+		Assert.notNull(seg0, "codegen: seg[0] indexed dynamicRef in a static repeat should be addressable");
+		Assert.notNull(seg1, "codegen: seg[1] indexed dynamicRef in a static repeat should be addressable");
+		Assert.notNull(seg2, "codegen: seg[2] indexed dynamicRef in a static repeat should be addressable");
+		Assert.isFalse(seg0 == seg1, "codegen: each indexed dynamicRef iteration must be a distinct result, not last-writer-wins");
+
+		// getDynamicRefByIndex convenience must resolve the same per-iteration result.
+		var byIdx1:Null<bh.multianim.MultiAnimBuilder.BuilderResult> = null;
+		try { byIdx1 = instance.getDynamicRefByIndex("seg", 1); } catch (e:Dynamic) {}
+		Assert.notNull(byIdx1, "codegen: getDynamicRefByIndex('seg', 1) should resolve the indexed dynamicRef");
+		Assert.isTrue(byIdx1 == seg1, "codegen: getDynamicRefByIndex('seg', 1) must match getDynamicRef('seg 1')");
+	}
+
 	// 2D variant of the same visibility contract: get_name(x, y) returns null when the
 	// inner conditional hides that (x, y) cell. The 2D accessor is an if/else chain
 	// rather than a switch, but it has the same dangling-ref bug shape.

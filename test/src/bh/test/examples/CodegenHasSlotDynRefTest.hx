@@ -61,4 +61,18 @@ class CodegenHasSlotDynRefTest extends BuilderTestBase {
 		Assert.isNull(getRef("missing"), "precondition: getDynamicRef('missing') is null on a codegen instance");
 		Assert.isFalse(hasRef("missing"), "hasDynamicRef('missing') must be false (not throw) for an unknown name");
 	}
+
+	/** A `#name`-labeled dynamicRef must be keyed by its explicit name on a codegen instance,
+	 *  matching BuilderResult (which keys by the explicit #name via resolveDynamicRefKey).
+	 *  Fixture has `#leafRef dynamicRef($leaf, w=>12)`, so getDynamicRef("leafRef") must resolve
+	 *  and hasDynamicRef("leafRef") agree — not be keyed by the target programmable name "leaf". */
+	@Test
+	public function testCodegenNamedDynamicRefKeyedByExplicitName():Void {
+		final inst:Dynamic = createMp().codegenHasSlotDynRef.create();
+		function hasRef(name:String):Bool return inst.hasDynamicRef(name);
+		function getRef(name:String):Dynamic return inst.getDynamicRef(name);
+
+		Assert.notNull(getRef("leafRef"), "getDynamicRef('leafRef') must resolve the #leafRef-named dynamicRef on a codegen instance");
+		Assert.isTrue(hasRef("leafRef"), "hasDynamicRef('leafRef') must be true where getDynamicRef resolves it");
+	}
 }

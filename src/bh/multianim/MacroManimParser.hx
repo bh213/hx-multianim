@@ -1990,10 +1990,9 @@ class MacroManimParser {
 							var enums:Array<String> = [];
 							while (!match(TBracketClosed)) {
 								if (enums.length > 0) eatComma();
-								enums.push(expectIdentifierOrString());
+								enums.push(parseConditionalValue());
 							}
-							validateConditionalEnumValues(paramName, defs, enums);
-							result.set(paramName, CoNot(CoEnums(enums)));
+							result.set(paramName, CoNot(makeBracketMultiValue(paramName, defs, enums)));
 						default:
 							final val = parseConditionalValue();
 							validateConditionalEnumValues(paramName, defs, [val]);
@@ -2013,10 +2012,9 @@ class MacroManimParser {
 							var enums:Array<String> = [];
 							while (!match(TBracketClosed)) {
 								if (enums.length > 0) eatComma();
-								enums.push(expectIdentifierOrString());
+								enums.push(parseConditionalValue());
 							}
-							validateConditionalEnumValues(paramName, defs, enums);
-							result.set(paramName, CoEnums(enums));
+							result.set(paramName, makeBracketMultiValue(paramName, defs, enums));
 						case TExclamation:
 							// Backward compat: @(param => !value) negate syntax
 							advance();
@@ -2135,6 +2133,27 @@ class MacroManimParser {
 	function stringToConditionalGeneric(val:String):ConditionalValues {
 		final n = Std.parseInt(val);
 		return if (n != null) CoValue(n) else CoStringValue(val);
+	}
+
+	/**
+	 * Builds a type-aware multi-value conditional from a parsed bracket list `[a, b, ...]`,
+	 * mirroring the single-value routing: enum params keep raw-string CoEnums (codegen's
+	 * enumValueToIndex maps each name to its index, builder matches Index/StringValue as-is),
+	 * while every other discrete type — string, int/uint, color, bool, flags, and loop vars
+	 * with no definition — routes each value through stringToConditional and ORs them via
+	 * CoAnyOf. Without this, bracket conditionals diverge between builder and codegen: bool
+	 * never matches at runtime, int collapses to `== 0` in codegen, and string CoEnums fails
+	 * to compile in codegen (`String == 0`).
+	 */
+	function makeBracketMultiValue(paramName:String, defs:ParametersDefinitions, values:Array<String>):ConditionalValues {
+		validateConditionalEnumValues(paramName, defs, values);
+		final paramDef = defs.get(paramName);
+		if (paramDef == null)
+			return CoAnyOf([for (v in values) stringToConditionalGeneric(v)]);
+		return switch (paramDef.type) {
+			case PPTEnum(_): CoEnums(values);
+			default: CoAnyOf([for (v in values) stringToConditional(v, paramDef.type)]);
+		}
 	}
 
 	/** Converts a simple ReferenceableValue back to a string for stringToConditional fallback. */

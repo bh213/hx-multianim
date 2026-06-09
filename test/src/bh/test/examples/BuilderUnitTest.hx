@@ -4577,7 +4577,7 @@ class BuilderUnitTest extends BuilderTestBase {
 		", "nonexistent"));
 		Assert.notNull(err, "Should throw for missing programmable");
 		Assert.isTrue(err.indexOf("nonexistent") >= 0, 'Error should mention "nonexistent", got: $err');
-		Assert.isTrue(err.indexOf("could find element") >= 0, 'Error should say could not find element, got: $err');
+		Assert.isTrue(err.indexOf("could not find element") >= 0, 'Error should say could not find element, got: $err');
 	}
 
 	@Test
@@ -8442,6 +8442,41 @@ class BuilderUnitTest extends BuilderTestBase {
 		bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(1, bitmaps.length);
 		Assert.equals(150, Std.int(bitmaps[0].x));
+	}
+
+	@Test
+	public function testSwitchActiveArmSurvivesInactiveArmParamChange():Void {
+		// Changing a param referenced ONLY in a non-active arm must not tear down and
+		// rebuild the active arm. A needless rebuild would restart any stateanim playhead
+		// / re-seed particles in the active arm. Probe via object identity: the active
+		// arm's built child must remain the SAME instance after an inactive-arm-only param
+		// changes. (Refs used by the active arm still rebuild it — asserted at the end.)
+		final result = buildFromSource("
+			#test programmable(mode:[a, b]=a, ax:uint=10, bx:uint=20) {
+				@switch(mode) {
+					a: bitmap(generated(color($ax, 10, #f00))): 0, 0;
+					b: bitmap(generated(color($bx, 10, #0f0))): 0, 0;
+				}
+			}
+		", "test", null, Incremental);
+
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+		final before = bitmaps[0];
+
+		// bx is referenced ONLY in the inactive arm b. Changing it must not rebuild arm a.
+		result.setParameter("bx", 99);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.isTrue(before == bitmaps[0],
+			"active arm must not be rebuilt when a param used only in an inactive arm changes");
+
+		// Sanity: a param used by the active arm still triggers its rebuild + update.
+		result.setParameter("ax", 50);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(50, Std.int(bitmaps[0].tile.width));
 	}
 
 	@Test

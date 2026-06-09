@@ -88,6 +88,11 @@ class ProgrammableCodeGen {
 	static var dynamicRefFields:Map<String, String> = new Map(); // component name -> BuilderResult field name
 	static var dynamicNameRefFields:Array<String> = []; // fieldNames of dynamic-name dynamicRefs
 	static var literalDynamicRefSiteFields:Array<String> = []; // fieldNames of literal-name dynamicRefs with forwarded $param values
+	// Indexed #name[$i] dynamicRefs in a static-unrolled repeat. Map key "base idx" -> the per-site
+	// result field ("_dynref_lit_<fieldName>"), so each iteration is addressable as getDynamicRef("base idx"),
+	// matching the builder's resolveDynamicRefKey (MultiAnimBuilder.hx). The shared _comp_<prog> field is
+	// last-writer-wins and cannot distinguish iterations.
+	static var indexedDynamicRefFields:Map<String, String> = new Map();
 	static var hexLayoutFieldMap:Map<String, String> = new Map(); // layout key → field name
 	static var hexLayoutFieldCount:Int = 0;
 	static var needsLayoutAlign:Bool = false;
@@ -177,6 +182,7 @@ class ProgrammableCodeGen {
 		dynamicRefFields = new Map();
 		dynamicNameRefFields = [];
 		literalDynamicRefSiteFields = [];
+		indexedDynamicRefFields = new Map();
 		hasBuilderParameterPlaceholders = false;
 		untrackedParamRefs = new Map();
 		paramDefs = new Map();
@@ -1411,8 +1417,13 @@ class ProgrammableCodeGen {
 			}
 		}
 
-		// 8d. DynamicRef accessors (on instance)
+		// 8d. DynamicRef accessors (on instance). Several lookup keys can share one
+		// `_comp_<programmableRef>` field — e.g. a `#name`-labeled ref and an unnamed sibling
+		// both targeting the same programmable — so declare each distinct field only once.
+		final declaredCompFields = new Map<String, Bool>();
 		for (refName => resultField in dynamicRefFields) {
+			if (declaredCompFields.exists(resultField)) continue;
+			declaredCompFields.set(resultField, true);
 			instanceFields.push(makeField(resultField, FVar(macro :bh.multianim.MultiAnimBuilder.BuilderResult, null), [APrivate], pos));
 		}
 		// Dynamic name ref fields: container, current name, and result
@@ -1427,19 +1438,26 @@ class ProgrammableCodeGen {
 		for (fn in literalDynamicRefSiteFields) {
 			instanceFields.push(makeField("_dynref_lit_" + fn, FVar(macro :bh.multianim.MultiAnimBuilder.BuilderResult, null), [APrivate], pos));
 		}
-		final hasDynamicRefs = Lambda.count(dynamicRefFields) > 0 || dynamicNameRefFields.length > 0;
+		final hasDynamicRefs = Lambda.count(dynamicRefFields) > 0 || Lambda.count(indexedDynamicRefFields) > 0 || dynamicNameRefFields.length > 0;
 		// @switch arms and param-dependent repeat bodies both register dynamicRefs into a runtime
 		// sink rather than a static field, so generate the dispatcher (with a sink fallthrough) even
 		// when there are no static refs — otherwise a programmable whose only dynamicRef lives in a
 		// switch arm has no getDynamicRef method at all.
 		if (hasDynamicRefs || sinkFields.length > 0) {
 			final getDynRefExprs:Array<Expr> = [];
-			// Static name refs: direct switch
-			if (Lambda.count(dynamicRefFields) > 0) {
+			// Static name refs + indexed "base idx" keys: direct switch. Keys are unique across both
+			// maps, so they fold into one switch on `name`.
+			if (Lambda.count(dynamicRefFields) > 0 || Lambda.count(indexedDynamicRefFields) > 0) {
 				final refCases:Array<Case> = [];
 				for (refName => resultField in dynamicRefFields) {
 					refCases.push({
 						values: [macro $v{refName}],
+						expr: macro return $p{["this", resultField]},
+					});
+				}
+				for (refKey => resultField in indexedDynamicRefFields) {
+					refCases.push({
+						values: [macro $v{refKey}],
 						expr: macro return $p{["this", resultField]},
 					});
 				}
@@ -1467,13 +1485,23 @@ class ProgrammableCodeGen {
 			instanceFields.push(makeMethod("getDynamicRef", getDynRefExprs, [{name: "name", type: macro :String}],
 				macro :bh.multianim.MultiAnimBuilder.BuilderResult, [APublic], pos));
 
+			// Convenience for indexed #name[$i] dynamicRefs — resolves the "name idx" key.
+			// Mirrors BuilderResult.getDynamicRefByIndex (MultiAnimBuilder.hx).
+			instanceFields.push(makeMethod("getDynamicRefByIndex",
+				[macro return this.getDynamicRef(name + " " + index)],
+				[{name: "name", type: macro :String}, {name: "index", type: macro :Int}],
+				macro :bh.multianim.MultiAnimBuilder.BuilderResult, [APublic], pos));
+
 			// Existence companion to getDynamicRef — mirrors BuilderResult.hasDynamicRef (never throws),
 			// consulting the same sources as the dispatcher above so presence and lookup stay in sync.
 			final hasDynRefExprs:Array<Expr> = [];
-			if (Lambda.count(dynamicRefFields) > 0) {
+			if (Lambda.count(dynamicRefFields) > 0 || Lambda.count(indexedDynamicRefFields) > 0) {
 				final refCases:Array<Case> = [];
 				for (refName => _ in dynamicRefFields) {
 					refCases.push({values: [macro $v{refName}], expr: macro return true});
+				}
+				for (refKey => _ in indexedDynamicRefFields) {
+					refCases.push({values: [macro $v{refKey}], expr: macro return true});
 				}
 				hasDynRefExprs.push({expr: ESwitch(macro name, refCases, null), pos: pos});
 			}
@@ -1854,17 +1882,37 @@ class ProgrammableCodeGen {
 		// Track dynamicRef BuilderResult fields
 		switch (node.type) {
 			case DYNAMIC_REF(_, programmableRef, _):
+				// An explicit `#name` prefix is the lookup key, matching the builder's
+				// resolveDynamicRefKey (MultiAnimBuilder.hx). Without this the codegen path keyed
+				// the ref by its target programmable name, so getDynamicRef("name") returned null.
+				final explicitName = switch node.updatableName {
+					case UNTObject(n) | UNTUpdatable(n) if (n != null): n;
+					default: null;
+				};
+				// Indexed #name[$i] in a static-unrolled repeat: register the resolved "base idx" key
+				// against this iteration's per-site result field, so each iteration stays addressable
+				// (the shared _comp_<prog> field is last-writer-wins). Mirrors the slot path above.
+				final indexedKey = switch node.updatableName {
+					case UNTIndexed(base, ref) if (loopVarSubstitutions.exists(ref)):
+						'${base} ${loopVarSubstitutions.get(ref)}';
+					default: null;
+				};
+				if (indexedKey != null) {
+					indexedDynamicRefFields.set(indexedKey, "_dynref_lit_" + fieldName);
+				}
 				switch programmableRef {
 					case RVString(compName):
 						final resultField = "_comp_" + compName;
-						dynamicRefFields.set(compName, resultField);
+						if (indexedKey == null)
+							dynamicRefFields.set(explicitName != null ? explicitName : compName, resultField);
 					case RVReference(name):
 						if (paramNames.contains(name))
 							dynamicNameRefFields.push(fieldName);
 						else {
 							// $progName backward compat — treat as literal
 							final resultField = "_comp_" + name;
-							dynamicRefFields.set(name, resultField);
+							if (indexedKey == null)
+								dynamicRefFields.set(explicitName != null ? explicitName : name, resultField);
 						}
 					default:
 				}
@@ -2004,17 +2052,46 @@ class ProgrammableCodeGen {
 			this._pb.rebuildSwitchArm($v{progName}, $v{switchOrdinal}, $p{["this", armIdxField]}, $p{["this", switchField]}, $paramsMapExpr, $p{["this", sinkField]});
 		});
 
-		// Register lazy switch update in _applyVisibility, gated on the union of param refs
-		// across all arms (switch param + arm conditional refs + RV refs in arm children +
-		// DYNAMIC_REF / INTERACTIVE / STATEANIM payload refs). The runtime path computes the
-		// same set inline at MultiAnimBuilder SWITCH build to gate trackExpression. Without
-		// this gate every setParameter on an unrelated param would tear down all switch arm
-		// subtrees and re-seed any stateanim / particle / interactive state inside them.
+		// Register lazy switch update in _applyVisibility. The OUTER gate (built from the union of
+		// param refs across all arms) only enters this block when the changed param could matter to
+		// some arm. The INNER gate then refines to the CURRENTLY-active arm: rebuild only when the
+		// build is initial (_changedParam==null), the matched arm flipped, the changed param is the
+		// switch key, or the changed param is referenced by the active arm's OWN refs. A param
+		// referenced only in an inactive sibling arm no longer tears down + rebuilds the active arm
+		// (which would restart its stateanim playheads / re-seed its particles). Mirrors the runtime
+		// per-arm trackExpression gate in MultiAnimBuilder SWITCH build.
+		final armRefsList:Array<Array<String>> = [];
+		for (arm in arms) {
+			final r:Array<String> = [];
+			collectArmParamRefs(arm.children, r);
+			armRefsList.push(r);
+		}
 		final armParamRefs:Array<String> = [paramName];
-		for (arm in arms) collectArmParamRefs(arm.children, armParamRefs);
+		for (r in armRefsList)
+			for (x in r)
+				if (armParamRefs.indexOf(x) < 0) armParamRefs.push(x);
+		// Per-arm relevance: switch on the (new) active arm index, set _relevant if the changed
+		// param is in that arm's own refs.
+		final relevanceCases:Array<haxe.macro.Expr.Case> = [];
+		for (ai in 0...arms.length) {
+			final refs = armRefsList[ai];
+			var orExpr:Expr = macro false;
+			for (ref in refs) {
+				final refLit = ref;
+				orExpr = macro $orExpr || _changedParam == $v{refLit};
+			}
+			relevanceCases.push({values: [macro $v{ai}], expr: macro _relevant = $orExpr});
+		}
+		final relevanceSwitch:Expr = {expr: ESwitch(macro _newArmIdx, relevanceCases, macro {}), pos: pos};
+		final switchKeyLit = paramName;
 		final updateBlock:Expr = macro {
+			final _oldArmIdx = $p{["this", armIdxField]};
 			$p{["this", armIdxField]} = $armIndexExpr;
-			this._pb.rebuildSwitchArm($v{progName}, $v{switchOrdinal}, $p{["this", armIdxField]}, $p{["this", switchField]}, $paramsMapExpr, $p{["this", sinkField]});
+			final _newArmIdx = $p{["this", armIdxField]};
+			var _relevant = _changedParam == null || _newArmIdx != _oldArmIdx || _changedParam == $v{switchKeyLit};
+			if (!_relevant) $relevanceSwitch;
+			if (_relevant)
+				this._pb.rebuildSwitchArm($v{progName}, $v{switchOrdinal}, $p{["this", armIdxField]}, $p{["this", switchField]}, $paramsMapExpr, $p{["this", sinkField]});
 		};
 		switchUpdateEntries.push({
 			paramName: paramName,
@@ -3694,13 +3771,20 @@ class ProgrammableCodeGen {
 				generatePlaceholderCreate(node, fieldName, type, source, pos);
 
 			case STATIC_REF(externalReference, programmableRefRV, parameters):
-				// staticRef doesn't support dynamic names — always resolve to literal string
-				final programmableRef = switch programmableRefRV {
-					case RVString(s): s;
-					case RVReference(s): s; // $progName backward compat: treat as literal
+				// staticRef name can be driven by a param ($which) or loop var, matching the
+				// builder's resolveRefName. A bare RVReference to a non-param is the legacy
+				// $progName-as-literal form. Resolve to a runtime name expression so codegen
+				// builds the same target the builder would (not a literal "which" programmable).
+				final refNameExpr:Expr = switch programmableRefRV {
+					case RVString(s): macro $v{s};
+					case RVReference(name) if (loopVarSubstitutions.exists(name)):
+						macro $v{Std.string(loopVarSubstitutions.get(name))};
+					case RVReference(name) if (paramNames.contains(name)):
+						resolveProgrammableNameExpr(name, pos);
+					case RVReference(s): macro $v{s}; // $progName backward compat: treat as literal
 					default: throw 'unexpected ReferenceableValue for staticRef reference';
 				};
-				generateStaticRefCreate(node, fieldName, externalReference, programmableRef, parameters, pos);
+				generateStaticRefCreate(node, fieldName, externalReference, refNameExpr, parameters, pos);
 
 			case DYNAMIC_REF(externalReference, programmableRefRV, parameters):
 				switch programmableRefRV {
@@ -3746,10 +3830,9 @@ class ProgrammableCodeGen {
 	// ==================== StaticRef ====================
 
 	static function generateStaticRefCreate(node:Node, fieldName:String, externalReference:Null<String>,
-			programmableRef:String, parameters:Map<String, ReferenceableValue>, pos:Position):CreateResult {
+			refNameExpr:Expr, parameters:Map<String, ReferenceableValue>, pos:Position):CreateResult {
 		final fieldRef = macro $p{["this", fieldName]};
 		final createExprs:Array<Expr> = [];
-		final refNameExpr:Expr = macro $v{programmableRef};
 
 		// Build parameter map at runtime: new Map<String,Dynamic>()
 		final mapBuildExprs:Array<Expr> = [macro final _refParams = new Map<String, Dynamic>()];
@@ -3797,11 +3880,16 @@ class ProgrammableCodeGen {
 		}
 		final hasForwardedRefs = forwardedParamRefs.length > 0;
 
+		// Indexed #name[$i] sites need their own per-site field too (regardless of forwarded refs):
+		// the shared _comp_<programmableRef> field is last-writer-wins, so getDynamicRef("base idx")
+		// must resolve to this iteration's result. The tracking pass keyed "base idx" -> this field.
+		final isIndexedSite = node.updatableName.match(UNTIndexed(_, _));
+
 		// Per-site result field. `_comp_<programmableRef>` is shared by all sibling sites that
 		// reference the same programmable (last-writer-wins for getDynamicRef lookup), so the
 		// forwarded-param updater needs its own per-site slot to know which child to update.
-		final siteResultField = hasForwardedRefs ? "_dynref_lit_" + fieldName : null;
-		if (hasForwardedRefs) literalDynamicRefSiteFields.push(fieldName);
+		final siteResultField = (hasForwardedRefs || isIndexedSite) ? "_dynref_lit_" + fieldName : null;
+		if (hasForwardedRefs || isIndexedSite) literalDynamicRefSiteFields.push(fieldName);
 
 		// Build parameter map at runtime
 		final mapBuildExprs:Array<Expr> = [macro final _refParams = new Map<String, Dynamic>()];
@@ -3814,7 +3902,16 @@ class ProgrammableCodeGen {
 		}
 		// Build with incremental: true
 		final dynExtRefExpr:Expr = externalReference != null ? macro $v{externalReference} : macro null;
-		if (siteResultField != null) {
+		if (isIndexedSite) {
+			// Indexed sites key only their per-site field; the shared _comp_<prog> field may not even
+			// be declared when every site referencing the programmable is indexed (no plain/named site
+			// registers it). Writing only siteResultField keeps each iteration distinct and addressable.
+			mapBuildExprs.push(macro {
+				final _result = this._pb.buildDynamicRef($refNameExpr, _refParams, $dynExtRefExpr);
+				$fieldRef = _result != null ? _result.object : new h2d.Object();
+				$p{["this", siteResultField]} = _result;
+			});
+		} else if (siteResultField != null) {
 			mapBuildExprs.push(macro {
 				final _result = this._pb.buildDynamicRef($refNameExpr, _refParams, $dynExtRefExpr);
 				$fieldRef = _result != null ? _result.object : new h2d.Object();
@@ -3874,21 +3971,14 @@ class ProgrammableCodeGen {
 
 	// ==================== DynamicRef with dynamic name ====================
 
-	static function generateDynamicNameRefCreate(node:Node, fieldName:String, externalReference:Null<String>,
-			paramName:String, parameters:Map<String, ReferenceableValue>, pos:Position):CreateResult {
-		final fieldRef = macro $p{["this", fieldName]};
-		final createExprs:Array<Expr> = [];
-		final resultField = "_dynref_" + fieldName;
-		final containerField = "_dynref_container_" + fieldName;
-		final nameField = "_dynref_name_" + fieldName;
-
-		// At construction time: resolve the parameter to get the initial programmable name,
-		// build it, wrap in a container for easy rebuild
+	/** Build a runtime expression that resolves a parameter's value to a programmable-name
+	 *  String, matching how the builder's resolveRefName resolves an RVReference. Enum params
+	 *  switch on the stored Int index to the value name; string params cast through; everything
+	 *  else stringifies. Shared by the dynamic-name dynamicRef and param-named staticRef paths. */
+	static function resolveProgrammableNameExpr(paramName:String, pos:Position):Expr {
 		final paramFieldExpr = macro $p{["this", "_" + paramName]};
-
-		// Generate inline enum→string resolution based on parameter type
 		final paramDef = paramDefs.get(paramName);
-		final resolveNameExpr:Expr = if (paramDef != null) {
+		return if (paramDef != null) {
 			switch paramDef.type {
 				case PPTEnum(values):
 					// Generate switch: 0 => "val0", 1 => "val1", ...
@@ -3905,6 +3995,19 @@ class ProgrammableCodeGen {
 		} else {
 			macro Std.string($paramFieldExpr);
 		}
+	}
+
+	static function generateDynamicNameRefCreate(node:Node, fieldName:String, externalReference:Null<String>,
+			paramName:String, parameters:Map<String, ReferenceableValue>, pos:Position):CreateResult {
+		final fieldRef = macro $p{["this", fieldName]};
+		final createExprs:Array<Expr> = [];
+		final resultField = "_dynref_" + fieldName;
+		final containerField = "_dynref_container_" + fieldName;
+		final nameField = "_dynref_name_" + fieldName;
+
+		// At construction time: resolve the parameter to get the initial programmable name,
+		// build it, wrap in a container for easy rebuild
+		final resolveNameExpr:Expr = resolveProgrammableNameExpr(paramName, pos);
 
 		// Build parameter map
 		final mapBuildExprs:Array<Expr> = [macro final _refParams = new Map<String, Dynamic>()];

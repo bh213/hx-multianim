@@ -294,11 +294,11 @@ var grid = new UIMultiAnimGrid(builder, {
 
 **Cell animations** (require `tweenManager` in config):
 - `tweenCell(col, row, duration, properties, ?easing)` — animate cell object properties (e.g. shake, pulse). Non-destructive — cell stays in grid
-- `addCellAnimated(col, row, duration, properties, ?easing, ?data, ?params)` — add cell with entrance animation. Properties are FROM values (e.g. `[Scale(0.0), Alpha(0.0)]` → cell scales/fades in from 0)
-- `removeCellAnimated(col, row, duration, properties, ?easing)` — animate cell then remove. Properties are TO values (e.g. `[Scale(0.0), Alpha(0.0)]` → cell shrinks/fades out)
+- `addCellAnimated(col, row, ?data, ?params, duration=0.3, ?initProperties, ?easing)` — add cell with entrance animation. `initProperties` are FROM values (e.g. `[Scale(0.0), Alpha(0.0)]` → cell scales/fades in from 0). Note `data`/`params` precede `duration`
+- `removeCellAnimated(col, row, duration, properties, ?easing, ?onComplete)` — animate cell then remove. Properties are TO values (e.g. `[Scale(0.0), Alpha(0.0)]` → cell shrinks/fades out)
 
 **Detach/reattach cell visual:**
-- `detachCellVisual(col, row) -> h2d.Object` — remove visual from cell for free animation (e.g. fly to another location). Cell data preserved but shows empty
+- `detachCellVisual(col, row) -> Null<{object:h2d.Object, data, sceneX, sceneY}>` — remove visual from cell for free animation (e.g. fly to another location). Returns the detached object plus its data and scene position, or null if the cell doesn't exist. Cell data preserved but shows empty
 - `reattachCellVisual(col, row)` — rebuild cell visual from existing data
 
 **Lifecycle:**

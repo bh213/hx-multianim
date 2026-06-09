@@ -130,7 +130,7 @@ throw builderErrorAt(node, 'invalid param types ${a}, ${b}');
 throw BuilderError.of('Slot "$name" not found in BuilderResult');
 ```
 
-- `MultiAnimBuilder.hx` is fully migrated — all 256 string throws converted (the only remaining `throw '...'` strings are inside docstring comments showing the OLD pattern).
+- `MultiAnimBuilder.hx` is almost fully migrated — the bulk of string throws were converted to `BuilderError`. A few plain `throw '...'` strings still remain in live code paths (e.g. `buildWithParameters`'s missing-element guard); convert these opportunistically when editing nearby.
 - `code:String` is for programmatic filtering at catch sites (e.g. `resolveAsString` RVParenthesis catches `"not_a_number"` to fall back to string concat). Leave null when no catcher filters. Established codes: `"not_a_number"`, `"missing_ref"`.
 - Catch sites that surface builder errors structurally (file/line/col) all branch on `BuilderError` and call `err.parsedPos()`: `ScreenManager.rebuildAll()`, `ScreenManager.makeHotReloadFailError()` (powers DevBridge `hot_reload` + SSE notifications), `ScreenManager.strictFail()` (under `MULTIANIM_STRICT`), and `DevBridge.handleEvalManim()` (powers MCP `eval_manim`). Any new builder-error catch site that emits structured diagnostics should follow the same pattern. `parsedPos()` returns null in non-DEV builds (Node has no parserPos field), so callers must handle null.
 - Consumer catches (`catch (e)`, `catch (e:Dynamic)`, `catch (e:haxe.Exception)`) all continue to match. `'$e'` formatting preserved via `toString()` override.

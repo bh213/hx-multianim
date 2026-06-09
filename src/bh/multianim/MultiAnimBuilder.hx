@@ -620,6 +620,14 @@ class IncrementalUpdateContext {
 		props.paddingBottom = saved.paddingBottom;
 	}
 
+	/** True if `name` is among the params changed in the currently-dispatching applyUpdates cycle.
+	 *  Valid to call from inside a trackExpression update fn (changedParams is live until the end
+	 *  of applyUpdates). Used by the SWITCH rebuild gate to skip tearing down the active arm when
+	 *  the changed param is referenced only in an inactive sibling arm. */
+	public inline function isParamDirty(name:String):Bool {
+		return changedParams.exists(name);
+	}
+
 	public function trackExpression(updateFn:Void->Void, paramRefs:Array<String>, ?object:h2d.Object):Void {
 		final tracked = new TrackedExpression(updateFn, paramRefs, object);
 		tracked.declOrder = trackedSeq++;
@@ -2199,10 +2207,29 @@ class BuilderResult implements bh.ui.UIInteractiveSource {
 		incrementalContext.setTweenManager(tm);
 	}
 
-	/** `UIInteractiveSource` implementation — returns a copy of the tracked interactives list.
-	 *  The copy protects callers from mutations that may happen during structural rebuilds. */
+	/** `UIInteractiveSource` implementation — returns the tracked interactives that are currently
+	 *  attached to this result's root. A runtime-builder conditional arm (`@(open=>true)`) eagerly
+	 *  builds its interactive and detaches the arm's subtree (`removeChild`) when hidden, but the
+	 *  registration stays in the static list. Returning detached ones would leave ghost click targets
+	 *  at stale coords — the screen's `syncInteractivesFrom` diff drops their wrappers once they
+	 *  disappear here. The reachability walk (not just `o.parent != null`) also catches interactives
+	 *  nested below the detached arm root, e.g. `@(open=>true) { layers() { interactive } }`, whose
+	 *  immediate parent stays non-null. Matches codegen, whose `getInteractives()` walks the live
+	 *  scene graph. The fresh array also protects callers from mutations during structural rebuilds. */
 	public function getInteractives():Array<bh.base.MAObject> {
-		return interactives.copy();
+		return [for (o in interactives) if (isAttachedToRoot(o)) o];
+	}
+
+	/** True when walking `o`'s parent chain reaches this result's root `object` — i.e. the interactive
+	 *  is still connected to the live subtree rather than dangling under a detached conditional arm. */
+	inline function isAttachedToRoot(o:h2d.Object):Bool {
+		var n:Null<h2d.Object> = o;
+		var attached = false;
+		while (n != null) {
+			if (n == object) { attached = true; break; }
+			n = n.parent;
+		}
+		return attached;
 	}
 
 	/** `UIInteractiveSource` — true when this BuilderResult was built with `incremental: true`.
@@ -2342,6 +2369,12 @@ class BuilderResult implements bh.ui.UIInteractiveSource {
 		if (arr.length > 1)
 			throw BuilderError.of("getDynamicRef(\"" + name + "\"): " + arr.length + " unnamed dynamicRef sites collide on this key — use #name dynamicRef(...) or #name[$i] dynamicRef(...) to disambiguate, then fetch each by its explicit name.");
 		return arr[0];
+	}
+
+	/** Convenience for indexed `#name[$i] dynamicRef(...)` — resolves the `"name idx"` key the
+	 *  builder stores per repeatable iteration. Mirrors getUpdatableByIndex. */
+	public function getDynamicRefByIndex(name:String, index:Int):BuilderResult {
+		return getDynamicRef('${name} ${index}');
 	}
 
 	public function getSlot(name:String, ?index:Null<Int>, ?indexY:Null<Int>):SlotHandle {
@@ -5982,14 +6015,21 @@ class MultiAnimBuilder {
 
 				if (savedIncMode) {
 					incrementalMode = savedIncMode;
-					// Collect all param refs from all arms (any param change inside any arm triggers rebuild)
+					// Collect param refs PER ARM. The union (switchParamRefs) registers the tracked
+					// expression so any in-arm ref change still gives the update fn a chance to run.
+					// The gate inside only rebuilds the active arm when the changed param is the switch
+					// key OR is referenced by the CURRENTLY-active arm's own refs — changing a param
+					// referenced only in an inactive sibling arm no longer tears down + rebuilds the
+					// active arm (which would restart its stateanim playheads / re-seed its particles).
+					final armRefs:Array<Array<String>> = [];
 					final switchParamRefs:Array<String> = [paramName];
 					for (arm in arms) {
-						collectChildConditionalParamRefs(arm.children, switchParamRefs);
+						final refs:Array<String> = [];
+						collectChildConditionalParamRefs(arm.children, refs);
 						for (child in arm.children) {
 							final childRefs = collectNodeParamRefs(child);
 							for (r in childRefs)
-								if (switchParamRefs.indexOf(r) < 0) switchParamRefs.push(r);
+								if (refs.indexOf(r) < 0) refs.push(r);
 							// Also collect refs that live in node-type payloads (DYNAMIC_REF params,
 							// INTERACTIVE id/metadata, STATEANIM selectors, STATEANIM_CONSTRUCT
 							// animName/fps). collectNodeParamRefs omits them because the deferred
@@ -5997,8 +6037,11 @@ class MultiAnimBuilder {
 							// don't handle repeat fire for dynamicRefs; the switch arm's rebuild path
 							// does clean up (cleanupDestroyedSubtree + removeChildren), so including
 							// these refs here is safe and correct.
-							collectSwitchArmExtraParamRefs(child, switchParamRefs);
+							collectSwitchArmExtraParamRefs(child, refs);
 						}
+						armRefs.push(refs);
+						for (r in refs)
+							if (switchParamRefs.indexOf(r) < 0) switchParamRefs.push(r);
 					}
 					final capturedArms = arms;
 					final capturedParamName = paramName;
@@ -6006,8 +6049,25 @@ class MultiAnimBuilder {
 					final capturedBP = builderParams;
 					final capturedIR = internalResults;
 					final capturedCtx = savedIncCtx;
+					final capturedArmRefs = armRefs;
+					// Index of the arm currently built into the container (-1 = none / default-null).
+					var currentArmIdx = matchedArm == null ? -1 : capturedArms.indexOf(matchedArm);
 					savedIncCtx.trackExpression(() -> {
 						final newArm = resolveMatchedSwitchArm(capturedParamName, capturedArms);
+						final newArmIdx = newArm == null ? -1 : capturedArms.indexOf(newArm);
+						// Gate: when the matched arm is unchanged, only rebuild if a changed param is the
+						// switch key OR is referenced by THIS arm's own refs. If neither, the change targets
+						// an inactive arm only — skip the needless teardown so the active arm's stateanim
+						// playheads / particles are preserved.
+						if (newArmIdx == currentArmIdx) {
+							var relevant = capturedCtx.isParamDirty(capturedParamName);
+							if (!relevant && newArmIdx >= 0) {
+								for (r in capturedArmRefs[newArmIdx])
+									if (capturedCtx.isParamDirty(r)) { relevant = true; break; }
+							}
+							if (!relevant) return;
+						}
+						currentArmIdx = newArmIdx;
 						// Drop registrations + per-element bookkeeping from the previous arm before tearing
 						// down its scene graph, then build the new arm into the parent internalResults so
 						// its registrations are visible via the parent BuilderResult.
@@ -8209,7 +8269,7 @@ class MultiAnimBuilder {
 				builderParams.callback = defaultCallback;
 			var node = multiParserResult.nodes.get(name);
 			if (node == null) {
-				throw 'buildWithParameters ${inputParameters}: could find element "$name" to build';
+				throw 'buildWithParameters ${inputParameters}: could not find element "$name" to build';
 			}
 
 			final hasParams = inputParameters != null && inputParameters.count() > 0;

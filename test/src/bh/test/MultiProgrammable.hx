@@ -464,6 +464,9 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/116-enumNumericConditional/enumNumericConditional.manim", "enumNumericConditional")
 	public var enumNumericConditional;
 
+	@:manim("test/examples/130-bracketMultiValueConditional/bracketMultiValueConditional.manim", "bracketMultiValueConditional")
+	public var bracketMultiValueConditional;
+
 	@:manim("test/examples/117-codegenForwardingFailure/codegenForwardingFailure.manim", "codegenForwardingFailure")
 	public var codegenForwardingFailure;
 
@@ -502,4 +505,13 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/127-codegenHasSlotDynRef/codegenHasSlotDynRef.manim", "codegenHasSlotDynRef")
 	public var codegenHasSlotDynRef;
+
+	@:manim("test/examples/128-codegenStaticRefDynamicName/staticRefDynamicName.manim", "codegenStaticRefDynamicName")
+	public var codegenStaticRefDynamicName;
+
+	@:manim("test/examples/129-codegenIndexedDynamicRef/indexedDynamicRef.manim", "indexedDynamicRef")
+	public var indexedDynamicRef;
+
+	@:manim("test/examples/130-switchInactiveArmRebuild/switchInactiveArmRebuild.manim", "switchInactiveArmRebuild")
+	public var switchInactiveArmRebuild;
 }

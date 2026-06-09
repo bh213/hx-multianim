@@ -130,10 +130,13 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.CodegenExternalPaletteTest());
 		testRunner.addCase(new bh.test.examples.ChainBoundaryConditionalTest());
 		testRunner.addCase(new bh.test.examples.EnumNumericConditionalTest());
+		testRunner.addCase(new bh.test.examples.BracketMultiValueConditionalTest());
 		testRunner.addCase(new bh.test.examples.UIScreenUpdateAllocationTest());
 		testRunner.addCase(new bh.test.examples.StrictDColorVerbatimTest());
 		testRunner.addCase(new bh.test.examples.CodegenRootTintTest());
 		testRunner.addCase(new bh.test.examples.CodegenHasSlotDynRefTest());
+		testRunner.addCase(new bh.test.examples.CodegenStaticRefDynamicNameTest());
+		testRunner.addCase(new bh.test.examples.CodegenSwitchInactiveArmTest());
 		#if MULTIANIM_DEV
 		testRunner.addCase(new bh.test.examples.HotReloadTest());
 		testRunner.addCase(new bh.test.examples.DevBridgeTest());
