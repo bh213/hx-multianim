@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-06-07 11:21:54</div>
+    <div class="timestamp">Generated: 2026-06-09 18:21:50</div>
     <div class="summary">
         <strong>Summary:</strong> 101 tests,         <span style="color: #4CAF50;">101 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.3s, visual 23.8s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.4s, visual 24.1s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>7405 assertions:</strong>             <span style="color: #4CAF50;">7405 passed</span>
+            <strong>7455 assertions:</strong>             <span style="color: #4CAF50;">7455 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -665,6 +665,13 @@
                 <div class="unit-method pass">testMultipleBitsAllSet: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testMultipleBitsSomeSet: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testZeroFlagsNoBitsMatch: OK <span class="dots">.</span></div>
+            </div>
+            <div class="unit-class">
+                <div class="unit-class-name">BracketMultiValueConditionalTest</div>
+                <div class="unit-method pass">testCodegenBracketMultiValueMatchesAtDefaults: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testCodegenNegatedBracketRespectsMembership: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testRuntimeBracketMultiValueMatchesAtDefaults: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testRuntimeNegatedBracketRespectsMembership: OK <span class="dots">..</span></div>
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">BuilderUnitTest</div>
@@ -1064,6 +1071,7 @@
                 <div class="unit-method pass">testSiblingBuilderErrorIsTyped: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testStaticRefMutualCircularReferenceThrows: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testStaticRefSelfReferenceThrowsCircular: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testSwitchActiveArmSurvivesInactiveArmParamChange: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testTernaryNumericBitmapWidth: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testTernaryNumericBitmapWidthFalse: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testTernaryStringEq: OK <span class="dots">.</span></div>
@@ -1299,6 +1307,7 @@
                 <div class="unit-class-name">CodegenHasSlotDynRefTest</div>
                 <div class="unit-method pass">testCodegenHasDynamicRefReportsPresentAndAbsentRefs: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testCodegenHasSlotReportsPresentAndAbsentSlots: OK <span class="dots">........</span></div>
+                <div class="unit-method pass">testCodegenNamedDynamicRefKeyedByExplicitName: OK <span class="dots">..</span></div>
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">CodegenIncrementalGfxPxTest</div>
@@ -1353,9 +1362,18 @@
                 <div class="unit-method pass">testCodegenRootTintThrowsLikeBuilder: OK <span class="dots">..</span></div>
             </div>
             <div class="unit-class">
+                <div class="unit-class-name">CodegenStaticRefDynamicNameTest</div>
+                <div class="unit-method pass">testDynamicName_Builder_ResolvesParamToTarget: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testDynamicName_Codegen_ResolvesParamToTarget: OK <span class="dots">....</span></div>
+            </div>
+            <div class="unit-class">
                 <div class="unit-class-name">CodegenStaticRefForwardingTest</div>
                 <div class="unit-method pass">testEnumForwarding_Builder_ForwardsParentEnumToChild: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testEnumForwarding_Codegen_ForwardsParentEnumToChild: OK <span class="dots">....</span></div>
+            </div>
+            <div class="unit-class">
+                <div class="unit-class-name">CodegenSwitchInactiveArmTest</div>
+                <div class="unit-method pass">testCodegenSwitchActiveArmSurvivesInactiveArmParamChange: OK <span class="dots">......</span></div>
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">ColorUtilsTest</div>
@@ -1577,6 +1595,8 @@
                 <div class="unit-method pass">testDisabledCanBeSet: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testDisabledInitiallyFalse: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testEventConstants: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testHiddenConditionalInteractiveIsNotExposed: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testHiddenConditionalNestedInteractiveIsNotExposed: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testHoverAndClickEventFlags: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testHoverOnlyEventFlags: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testHoveredInitiallyFalse: OK <span class="dots">.</span></div>
@@ -2171,6 +2191,7 @@
                 <div class="unit-method pass">testCodegenCreateFromColorParamEmpty: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testCodegenDynamicRefForwardingFailureLeavesChildUsable: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testCodegenIndexed2DNamedHiddenReturnsNull: OK <span class="dots">....................................................</span></div>
+                <div class="unit-method pass">testCodegenIndexedDynamicRefInStaticRepeatIsAddressable: OK <span class="dots">..........</span></div>
                 <div class="unit-method pass">testCodegenIndexedNamedHiddenReturnsNull: OK <span class="dots">...........................</span></div>
                 <div class="unit-method pass">testCodegenParamDepRepeatSlotReachable: OK <span class="dots">........</span></div>
                 <div class="unit-method pass">testCodegenParticlesResolveParamScope: OK <span class="dots">...</span></div>
