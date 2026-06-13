@@ -1,0 +1,25 @@
+version: 1.0
+
+// Integer-resolution parity between builder and codegen. The builder truncates
+// (Std.int) when resolving repeat counts (resolveAsInteger OpDiv) and grid cell
+// coordinates (resolveAsGrid takes Int). Codegen diverges in two places:
+// - tryResolveStaticInt uses Math.round for RVFloat and OpDiv, so a statically
+//   resolvable count like step(7/2) unrolls 4 iterations where the builder runs 3
+// - grid position exprs emit raw float math ($gx * spacing), so $grid.pos($col/2, 0)
+//   with col=3 lands at 1.5 * spacing instead of the builder's Std.int(1.5) * spacing
+
+#stepCountTrunc programmable() {
+  repeatable($i, step(7 / 2, dx: 12)) {
+    bitmap(generated(color(8, 8, #0000ff))): 0, 0
+  }
+}
+
+#gridCoordParam programmable(col:int=3) {
+  grid: 10, 10
+  bitmap(generated(color(6, 6, #ff0000))): $grid.pos($col / 2, 0)
+}
+
+#gridCoordStatic programmable() {
+  grid: 10, 10
+  bitmap(generated(color(6, 6, #00ff00))): $grid.pos(3 / 2, 0)
+}

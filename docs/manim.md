@@ -2629,6 +2629,11 @@ var btn = UIStandardMultiAnimButton.create(builder, "button", "Click Me", ["widt
 // Via UIScreenBase (with macro settings injection)
 var btn = addButtonWithSingleBuilder(builder, "button", "Click Me");
 var btn = addButton(builder.createElementBuilder("button"), "Click Me", settings);
+
+// Runtime styling — drive a design-specific parameter on a live button.
+// Returns false (no-op) when the design has no such parameter; throws for
+// the widget-managed status/buttonText/disabled (use setText() / disabled).
+btn.setStyleParameter("accent", "silver");
 ```
 
 **`.manim` settings override example (in parent placeholder):**

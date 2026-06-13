@@ -5,7 +5,7 @@
 - **Generic settings pass-through**: Any setting not recognized as control or behavioral is automatically forwarded to the underlying programmable as an extra parameter. The programmable must declare a matching parameter; mismatches throw with programmable name + available params.
 - **Prefixed settings**: `item.fontColor`, `scrollbar.thickness` — dotted keys route to sub-builders in multi-programmable components (dropdown, scrollableList). Registered prefixes: dropdown has `dropdown`, `item`, `scrollbar` (main=panel); scrollableList has `item`, `scrollbar` (main=panel).
 - **Multi-forward settings**: Unprefixed `font`/`fontColor` on dropdown/scrollableList forward to ALL relevant sub-builders for backwards compatibility.
-- **Button**: `buildName` and `text` are control settings; everything else (e.g. `width`, `height`, `font`, `fontColor`) passes through to `#button` programmable. Uses incremental `BuilderResult` with `setParameter("status", ...)` for state changes.
+- **Button**: `buildName` and `text` are control settings; everything else (e.g. `width`, `height`, `font`, `fontColor`) passes through to `#button` programmable. Uses incremental `BuilderResult` with `setParameter("status", ...)` for state changes. `setStyleParameter(name, value):Bool` drives design-specific parameters at runtime — returns `false` (no-op) when the design doesn't declare the parameter; throws `BuilderError` (`code="widget_managed_param"`) for the widget-managed `status`/`buttonText`/`disabled` (use `setText()` / `disabled` instead).
 - **Checkbox**: Same incremental approach as button; uses `beginUpdate()`/`endUpdate()` when toggling both `status` and `checked` parameters.
 - **TabButton**: Same incremental approach; `selected`/`disabled` via `setParameter("checked"/"disabled", ...)`.
 - **Scrollable list / Dropdown**: `font`, `fontColor` forwarded to both item builder and dropdown button builder. The `#dropdown` programmable accepts `font`/`fontColor` params for the selected item text.
@@ -407,8 +407,8 @@ override public function onMouseClick(pos, button, release) {
 - Builder: `result.getDynamicRef("name").setParameter("param", value)`
 - Existence check: `result.hasDynamicRef("name")` — never throws, returns `false` when unknown. Reports presence only; a subsequent `getDynamicRef` may still throw if multiple unnamed sibling sites collide on the same key (disambiguate with `#name` / `#name[$i]`)
 - Batch updates: `beginUpdate()` / `endUpdate()` defers re-evaluation
-- Codegen: generates runtime builder call, returns `BuilderResult`
-- **Dynamic programmable references**: `dynamicRef($paramName, params)` where `$paramName` is a string/enum parameter of the enclosing programmable. The parameter value names the target programmable. Template change triggers full rebuild; forwarded params propagate incrementally. `getDynamicRef()` returns the current result (name changes at runtime)
+- Codegen: generates runtime builder call, returns `BuilderResult`. Lookup contract matches the builder: `getDynamicRef` on a collided unnamed key throws at lookup; a duplicate explicit `#name` is a compile-time error
+- **Dynamic programmable references**: `dynamicRef($paramName, params)` where `$paramName` is a string/enum parameter of the enclosing programmable. The parameter value names the target programmable. Template change triggers full rebuild; forwarded params propagate incrementally. `getDynamicRef()` returns the current result. With an explicit `#name`, the name is the stable lookup key across template swaps (builder and codegen); only unnamed sites are looked up by the live template name
 
 **Flow improvements** — new optional params on `flow()`:
 - `overflow: expand|limit|scroll|hidden`, `fillWidth: true`, `fillHeight: true`, `reverse: true`

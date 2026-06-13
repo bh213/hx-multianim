@@ -2938,15 +2938,23 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		final mp = createMp();
 		final instance = mp.dynamicRefs.create();
 		Assert.notNull(instance, "DynamicRefs instance should be created");
-		final dynRef = instance.getDynamicRef("statusBar");
-		Assert.notNull(dynRef, "Should have statusBar dynamicRef via codegen");
+		// "probe" is the #name-disambiguated handle in the fixture; the 16 unnamed
+		// dynamicRef($statusBar) siblings collide on the "statusBar" key, so lookups
+		// on it must throw with a #name hint — matching BuilderResult.getDynamicRef.
+		final dynRef = instance.getDynamicRef("probe");
+		Assert.notNull(dynRef, "Should have probe dynamicRef via codegen");
+		var err:String = null;
+		try instance.getDynamicRef("statusBar") catch (e:Dynamic) err = Std.string(e);
+		Assert.notNull(err, "getDynamicRef on the collided unnamed key must throw");
+		if (err != null)
+			Assert.isTrue(err.indexOf("#name") >= 0, "error must hint at #name disambiguation; got: " + err);
 	}
 
 	@Test
 	public function testDynamicRefCodegenSubResultHasObject():Void {
 		final mp = createMp();
 		final instance = mp.dynamicRefs.create();
-		final dynRef = instance.getDynamicRef("statusBar");
+		final dynRef = instance.getDynamicRef("probe");
 		Assert.notNull(dynRef, "getDynamicRef should return non-null");
 		Assert.notNull(dynRef.object, "DynamicRef sub-result should have an object");
 	}
@@ -2955,7 +2963,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	public function testDynamicRefCodegenSubResultIsIncremental():Void {
 		final mp = createMp();
 		final instance = mp.dynamicRefs.create();
-		final dynRef = instance.getDynamicRef("statusBar");
+		final dynRef = instance.getDynamicRef("probe");
 		Assert.notNull(dynRef, "getDynamicRef should return non-null");
 		Assert.notNull(dynRef.incrementalContext, "DynamicRef should be built incrementally");
 	}

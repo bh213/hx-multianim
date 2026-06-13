@@ -514,4 +514,25 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/130-switchInactiveArmRebuild/switchInactiveArmRebuild.manim", "switchInactiveArmRebuild")
 	public var switchInactiveArmRebuild;
+
+	@:manim("test/examples/131-codegenRepeatConditional/repeatConditional.manim", "repeatCondParam")
+	public var repeatCondParam;
+
+	@:manim("test/examples/131-codegenRepeatConditional/repeatConditional.manim", "repeatCondLoopVar")
+	public var repeatCondLoopVar;
+
+	@:manim("test/examples/132-codegenIntTruncation/intTruncation.manim", "stepCountTrunc")
+	public var stepCountTrunc;
+
+	@:manim("test/examples/132-codegenIntTruncation/intTruncation.manim", "gridCoordParam")
+	public var gridCoordParam;
+
+	@:manim("test/examples/132-codegenIntTruncation/intTruncation.manim", "gridCoordStatic")
+	public var gridCoordStatic;
+
+	@:manim("test/examples/133-codegenDynRefKeyContract/dynRefKeyContract.manim", "dynRefUnnamedCollision")
+	public var dynRefUnnamedCollision;
+
+	@:manim("test/examples/133-codegenDynRefKeyContract/dynRefKeyContract.manim", "dynRefNamedDynamicTarget")
+	public var dynRefNamedDynamicTarget;
 }

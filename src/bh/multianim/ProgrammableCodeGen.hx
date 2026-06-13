@@ -85,8 +85,15 @@ class ProgrammableCodeGen {
 	// Field name of the sink for the param-dependent repeat currently being emitted. Read by
 	// generateRuntimeChildExprs's builder-forwarding path so the forwarded build registers into it.
 	static var currentRepeatSinkField:Null<String> = null;
-	static var dynamicRefFields:Map<String, String> = new Map(); // component name -> BuilderResult field name
-	static var dynamicNameRefFields:Array<String> = []; // fieldNames of dynamic-name dynamicRefs
+	// dynamicRef lookup key -> result field + collision bookkeeping. `explicit` marks a #name key
+	// (a second explicit site on the same key is a compile error, mirroring the builder's
+	// build-time throw); `count` > 1 marks unnamed sites colliding on the key — the generated
+	// getDynamicRef throws at lookup, mirroring BuilderResult.getDynamicRef (MultiAnimBuilder.hx).
+	static var dynamicRefFields:Map<String, {resultField:String, explicit:Bool, count:Int}> = new Map();
+	// Dynamic-name dynamicRef sites (template named by a $param). explicitName is the stable
+	// #name lookup key when present — matching the builder's resolveDynamicRefKey, where the
+	// explicit name wins over the live template name and survives template swaps.
+	static var dynamicNameRefFields:Array<{fieldName:String, explicitName:Null<String>}> = [];
 	static var literalDynamicRefSiteFields:Array<String> = []; // fieldNames of literal-name dynamicRefs with forwarded $param values
 	// Indexed #name[$i] dynamicRefs in a static-unrolled repeat. Map key "base idx" -> the per-site
 	// result field ("_dynref_lit_<fieldName>"), so each iteration is addressable as getDynamicRef("base idx"),
@@ -1421,13 +1428,14 @@ class ProgrammableCodeGen {
 		// `_comp_<programmableRef>` field — e.g. a `#name`-labeled ref and an unnamed sibling
 		// both targeting the same programmable — so declare each distinct field only once.
 		final declaredCompFields = new Map<String, Bool>();
-		for (refName => resultField in dynamicRefFields) {
-			if (declaredCompFields.exists(resultField)) continue;
-			declaredCompFields.set(resultField, true);
-			instanceFields.push(makeField(resultField, FVar(macro :bh.multianim.MultiAnimBuilder.BuilderResult, null), [APrivate], pos));
+		for (refName => refEntry in dynamicRefFields) {
+			if (declaredCompFields.exists(refEntry.resultField)) continue;
+			declaredCompFields.set(refEntry.resultField, true);
+			instanceFields.push(makeField(refEntry.resultField, FVar(macro :bh.multianim.MultiAnimBuilder.BuilderResult, null), [APrivate], pos));
 		}
 		// Dynamic name ref fields: container, current name, and result
-		for (fn in dynamicNameRefFields) {
+		for (nameRefEntry in dynamicNameRefFields) {
+			final fn = nameRefEntry.fieldName;
 			instanceFields.push(makeField("_dynref_" + fn, FVar(macro :bh.multianim.MultiAnimBuilder.BuilderResult, null), [APrivate], pos));
 			instanceFields.push(makeField("_dynref_container_" + fn, FVar(macro :h2d.Object, null), [APrivate], pos));
 			instanceFields.push(makeField("_dynref_name_" + fn, FVar(macro :String, null), [APrivate], pos));
@@ -1449,11 +1457,23 @@ class ProgrammableCodeGen {
 			// maps, so they fold into one switch on `name`.
 			if (Lambda.count(dynamicRefFields) > 0 || Lambda.count(indexedDynamicRefFields) > 0) {
 				final refCases:Array<Case> = [];
-				for (refName => resultField in dynamicRefFields) {
-					refCases.push({
-						values: [macro $v{refName}],
-						expr: macro return $p{["this", resultField]},
-					});
+				for (refName => refEntry in dynamicRefFields) {
+					if (refEntry.count > 1) {
+						// Unnamed sibling sites collide on this key — throw at lookup like
+						// BuilderResult.getDynamicRef instead of silently returning the
+						// last-built site (the shared field is last-writer-wins).
+						final collisionMsg = "getDynamicRef(\"" + refName + "\"): " + refEntry.count
+							+ " unnamed dynamicRef sites collide on this key — use #name dynamicRef(...) or #name[$i] dynamicRef(...) to disambiguate, then fetch each by its explicit name.";
+						refCases.push({
+							values: [macro $v{refName}],
+							expr: macro throw new bh.multianim.BuilderError($v{collisionMsg}),
+						});
+					} else {
+						refCases.push({
+							values: [macro $v{refName}],
+							expr: macro return $p{["this", refEntry.resultField]},
+						});
+					}
 				}
 				for (refKey => resultField in indexedDynamicRefFields) {
 					refCases.push({
@@ -1466,12 +1486,22 @@ class ProgrammableCodeGen {
 					pos: pos,
 				});
 			}
-			// Dynamic name refs: runtime if-checks against current name
-			for (fn in dynamicNameRefFields) {
-				getDynRefExprs.push(macro {
-					if (name == $p{["this", "_dynref_name_" + fn]})
-						return $p{["this", "_dynref_" + fn]};
-				});
+			// Dynamic name refs: an explicit #name is the stable lookup key (matching the
+			// builder's resolveDynamicRefKey); only unnamed sites match the live template name.
+			for (nameRefEntry in dynamicNameRefFields) {
+				final fn = nameRefEntry.fieldName;
+				if (nameRefEntry.explicitName != null) {
+					final keyLit = nameRefEntry.explicitName;
+					getDynRefExprs.push(macro {
+						if (name == $v{keyLit})
+							return $p{["this", "_dynref_" + fn]};
+					});
+				} else {
+					getDynRefExprs.push(macro {
+						if (name == $p{["this", "_dynref_name_" + fn]})
+							return $p{["this", "_dynref_" + fn]};
+					});
+				}
 			}
 			// Runtime sinks (@switch arms + param-dependent repeat bodies): dynamicRefs declared
 			// inside a lazily-built body. Mirrors the getSlot / getUpdatable* dispatchers above.
@@ -1505,11 +1535,20 @@ class ProgrammableCodeGen {
 				}
 				hasDynRefExprs.push({expr: ESwitch(macro name, refCases, null), pos: pos});
 			}
-			for (fn in dynamicNameRefFields) {
-				hasDynRefExprs.push(macro {
-					if ($p{["this", "_dynref_name_" + fn]} != null && name == $p{["this", "_dynref_name_" + fn]})
-						return true;
-				});
+			for (nameRefEntry in dynamicNameRefFields) {
+				final fn = nameRefEntry.fieldName;
+				if (nameRefEntry.explicitName != null) {
+					final keyLit = nameRefEntry.explicitName;
+					hasDynRefExprs.push(macro {
+						if (name == $v{keyLit})
+							return true;
+					});
+				} else {
+					hasDynRefExprs.push(macro {
+						if ($p{["this", "_dynref_name_" + fn]} != null && name == $p{["this", "_dynref_name_" + fn]})
+							return true;
+					});
+				}
 			}
 			for (sf in sinkFields) {
 				hasDynRefExprs.push(macro if ($p{["this", sf]}.hasDynamicRef(name)) return true);
@@ -1904,15 +1943,21 @@ class ProgrammableCodeGen {
 					case RVString(compName):
 						final resultField = "_comp_" + compName;
 						if (indexedKey == null)
-							dynamicRefFields.set(explicitName != null ? explicitName : compName, resultField);
+							registerDynamicRefKey(explicitName != null ? explicitName : compName, resultField, explicitName != null, pos);
 					case RVReference(name):
-						if (paramNames.contains(name))
-							dynamicNameRefFields.push(fieldName);
-						else {
+						if (paramNames.contains(name)) {
+							// Dynamic-name site: the explicit #name (when present) is the stable
+							// lookup key across template swaps — see resolveDynamicRefKey
+							// (MultiAnimBuilder.hx). Explicit-name collisions are a hard error
+							// there too, so reject them at macro time.
+							if (explicitName != null && (dynamicRefFields.exists(explicitName) || dynamicNameExplicitKeyExists(explicitName)))
+								duplicateDynRefNameError(explicitName, pos);
+							dynamicNameRefFields.push({fieldName: fieldName, explicitName: explicitName});
+						} else {
 							// $progName backward compat — treat as literal
 							final resultField = "_comp_" + name;
 							if (indexedKey == null)
-								dynamicRefFields.set(explicitName != null ? explicitName : name, resultField);
+								registerDynamicRefKey(explicitName != null ? explicitName : name, resultField, explicitName != null, pos);
 						}
 					default:
 				}
@@ -1936,6 +1981,34 @@ class ProgrammableCodeGen {
 			if (node.children != null && node.children.length > 0)
 				processChildren(node.children, fieldName, fields, ctorExprs, [], pos);
 		}
+	}
+
+	/** Register a literal-target dynamicRef lookup key, mirroring the builder's collision
+	 *  contract (DYNAMIC_REF registration in MultiAnimBuilder.hx): a #name site on an
+	 *  occupied key is a hard build error; unnamed sites may share a key, but the generated
+	 *  getDynamicRef then throws at lookup (count > 1) instead of silently returning the
+	 *  last-built site. */
+	static function registerDynamicRefKey(key:String, resultField:String, isExplicit:Bool, pos:Position):Void {
+		final existing = dynamicRefFields.get(key);
+		if (isExplicit && (existing != null || dynamicNameExplicitKeyExists(key)))
+			duplicateDynRefNameError(key, pos);
+		if (existing == null) {
+			dynamicRefFields.set(key, {resultField: resultField, explicit: isExplicit, count: 1});
+		} else {
+			existing.count++;
+			existing.resultField = resultField;
+		}
+	}
+
+	static function dynamicNameExplicitKeyExists(key:String):Bool {
+		for (entry in dynamicNameRefFields)
+			if (entry.explicitName == key) return true;
+		return false;
+	}
+
+	static function duplicateDynRefNameError(key:String, pos:Position):Void {
+		Context.error('ProgrammableCodeGen: duplicate dynamicRef name "' + key
+			+ '" — two #name dynamicRef sites share the same name. Names must be unique within a programmable.', pos);
 	}
 
 	// ==================== Switch Processing ====================
@@ -2119,7 +2192,9 @@ class ProgrammableCodeGen {
 		if (rv == null) return null;
 		return switch (rv) {
 			case RVInteger(i): i;
-			case RVFloat(f): Math.round(f);
+			// Std.int (truncate), NOT Math.round — must agree with the builder's
+			// resolveAsInteger so static and runtime counts run the same iterations.
+			case RVFloat(f): Std.int(f);
 			case EBinop(op, e1, e2):
 				final left = tryResolveStaticInt(e1);
 				final right = tryResolveStaticInt(e2);
@@ -2128,7 +2203,7 @@ class ProgrammableCodeGen {
 						case OpAdd: left + right;
 						case OpSub: left - right;
 						case OpMul: left * right;
-						case OpDiv: right != 0 ? Math.round(left / right) : null;
+						case OpDiv: right != 0 ? Std.int(left / right) : null;
 						case OpMod: right != 0 ? left % right : null;
 						default: null;
 					};
@@ -2303,11 +2378,7 @@ class ProgrammableCodeGen {
 		final loopBodyExprs:Array<Expr> = [];
 		final prevRepeatSinkField = currentRepeatSinkField;
 		currentRepeatSinkField = repeatSinkField;
-		if (node.children != null) {
-			for (child in node.children) {
-				generateRuntimeChildExprs(child, repeatType, containerRef, loopBodyExprs, pos);
-			}
-		}
+		generateRuntimeChildrenExprs(node.children, repeatType, containerRef, loopBodyExprs, pos);
 		currentRepeatSinkField = prevRepeatSinkField;
 
 		runtimeLoopVars.remove(varName);
@@ -2492,7 +2563,7 @@ class ProgrammableCodeGen {
 				final gx = resolveRVStatic(gridX);
 				final gy = resolveRVStatic(gridY);
 				if (gx != null && gy != null && layout.grid != null) {
-					{x: layout.grid.spacingX * gx, y: layout.grid.spacingY * gy};
+					{x: layout.grid.spacingX * Std.int(gx), y: layout.grid.spacingY * Std.int(gy)};
 				} else {
 					null;
 				}
@@ -2707,11 +2778,7 @@ class ProgrammableCodeGen {
 
 		// Build loop body expressions from child nodes
 		final loopBodyExprs:Array<Expr> = [];
-		if (node.children != null) {
-			for (child in node.children) {
-				generateRuntimeChildExprs(child, repeatType, containerRef, loopBodyExprs, pos);
-			}
-		}
+		generateRuntimeChildrenExprs(node.children, repeatType, containerRef, loopBodyExprs, pos);
 
 		runtimeLoopVars.remove(varName);
 
@@ -2780,6 +2847,31 @@ class ProgrammableCodeGen {
 				});
 
 			default:
+		}
+	}
+
+	/** Generate runtime loop body expressions for a list of sibling child nodes, gating each
+	 *  child on its conditional chain. The builder filters repeat-body children per iteration
+	 *  via resolveConditionalChildren (MultiAnimBuilder.hx); mirror it here by wrapping each
+	 *  conditional child's creation exprs in the chain-aware condition (params resolve to
+	 *  `this._param` fields, loop vars to their runtime idents via condMapToExpr). Without the
+	 *  gate, inline kinds (bitmap/text/...) render on every iteration regardless of
+	 *  @()/@else/@default, and builder-forwarded @else/@default arms always build because
+	 *  shouldBuildInFullMode alone has no sibling-chain context. */
+	static function generateRuntimeChildrenExprs(children:Array<Node>, repeatType:RepeatType, containerRef:Expr, bodyExprs:Array<Expr>, pos:Position):Void {
+		if (children == null) return;
+		final chainSiblings:Array<{node:Node, fieldName:String}> = [];
+		for (child in children) {
+			final visCond = generateVisibilityCondition(child, chainSiblings, "", pos);
+			if (visCond != null) {
+				final gated:Array<Expr> = [];
+				generateRuntimeChildExprs(child, repeatType, containerRef, gated, pos);
+				final gatedBlock:Expr = {expr: EBlock(gated), pos: pos};
+				bodyExprs.push(macro if ($visCond) $gatedBlock);
+			} else {
+				generateRuntimeChildExprs(child, repeatType, containerRef, bodyExprs, pos);
+			}
+			chainSiblings.push({node: child, fieldName: ""});
 		}
 	}
 
@@ -2876,14 +2968,7 @@ class ProgrammableCodeGen {
 					ptStmts.push(macro _rt_obj.alpha = $alphaExpr);
 				}
 				// Recurse into point's children with _rt_obj as parent
-				if (child.children != null) {
-					for (grandchild in child.children) {
-						final innerStmts:Array<Expr> = [];
-						generateRuntimeChildExprs(grandchild, repeatType, macro _rt_obj, innerStmts, pos);
-						for (s in innerStmts)
-							ptStmts.push(s);
-					}
-				}
+				generateRuntimeChildrenExprs(child.children, repeatType, macro _rt_obj, ptStmts, pos);
 				bodyExprs.push({expr: EBlock(ptStmts), pos: pos});
 
 			case TEXT(textDef) | RICHTEXT(textDef):
@@ -3158,14 +3243,7 @@ class ProgrammableCodeGen {
 					final alphaExpr = rvToExpr(child.alpha);
 					stmts.push(macro _rt_mask.alpha = $alphaExpr);
 				}
-				if (child.children != null) {
-					for (grandchild in child.children) {
-						final innerStmts:Array<Expr> = [];
-						generateRuntimeChildExprs(grandchild, repeatType, macro _rt_mask, innerStmts, pos);
-						for (s in innerStmts)
-							stmts.push(s);
-					}
-				}
+				generateRuntimeChildrenExprs(child.children, repeatType, macro _rt_mask, stmts, pos);
 				bodyExprs.push({expr: EBlock(stmts), pos: pos});
 
 			case LAYERS:
@@ -3194,14 +3272,7 @@ class ProgrammableCodeGen {
 					final alphaExpr = rvToExpr(child.alpha);
 					stmts.push(macro _rt_layers.alpha = $alphaExpr);
 				}
-				if (child.children != null) {
-					for (grandchild in child.children) {
-						final innerStmts:Array<Expr> = [];
-						generateRuntimeChildExprs(grandchild, repeatType, macro _rt_layers, innerStmts, pos);
-						for (s in innerStmts)
-							stmts.push(s);
-					}
-				}
+				generateRuntimeChildrenExprs(child.children, repeatType, macro _rt_layers, stmts, pos);
 				bodyExprs.push({expr: EBlock(stmts), pos: pos});
 
 			case FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, horizontalSpacing, verticalSpacing, debug, multiline, bgSheet, bgTile, overflow, fillWidth, fillHeight, reverse, hAlign, vAlign):
@@ -3278,14 +3349,7 @@ class ProgrammableCodeGen {
 					final alphaExpr = rvToExpr(child.alpha);
 					stmts.push(macro _rt_flow.alpha = $alphaExpr);
 				}
-				if (child.children != null) {
-					for (grandchild in child.children) {
-						final innerStmts:Array<Expr> = [];
-						generateRuntimeChildExprs(grandchild, repeatType, macro _rt_flow, innerStmts, pos);
-						for (s in innerStmts)
-							stmts.push(s);
-					}
-				}
+				generateRuntimeChildrenExprs(child.children, repeatType, macro _rt_flow, stmts, pos);
 				bodyExprs.push({expr: EBlock(stmts), pos: pos});
 
 			default:
@@ -3555,11 +3619,7 @@ class ProgrammableCodeGen {
 		final loopBodyExprs:Array<Expr> = [];
 		final prevRepeatSinkField = currentRepeatSinkField;
 		currentRepeatSinkField = repeatSinkField;
-		if (node.children != null) {
-			for (child in node.children) {
-				generateRuntimeChildExprs(child, repeatTypeX, containerRef, loopBodyExprs, pos);
-			}
-		}
+		generateRuntimeChildrenExprs(node.children, repeatTypeX, containerRef, loopBodyExprs, pos);
 		currentRepeatSinkField = prevRepeatSinkField;
 
 		runtimeLoopVars.remove(varNameX);
@@ -4492,7 +4552,7 @@ class ProgrammableCodeGen {
 				final grid = getGridFromNode(node);
 				final gx = resolveRVStatic(gridX);
 				final gy = resolveRVStatic(gridY);
-				if (grid != null && gx != null && gy != null) {x: gx * grid.spacingX, y: gy * grid.spacingY} else null;
+				if (grid != null && gx != null && gy != null) {x: Std.int(gx) * grid.spacingX, y: Std.int(gy) * grid.spacingY} else null;
 			case SELECTED_HEX_CUBE(q, r, s):
 				final hexLayout = getHexLayoutForNode(node);
 				if (hexLayout != null) {
@@ -4605,7 +4665,7 @@ class ProgrammableCodeGen {
 					case SELECTED_GRID_POSITION(gridX, gridY):
 						final gx = resolveRVStatic(gridX);
 						final gy = resolveRVStatic(gridY);
-						if (gx != null && gy != null) {x: system.spacingX * gx, y: system.spacingY * gy} else null;
+						if (gx != null && gy != null) {x: system.spacingX * Std.int(gx), y: system.spacingY * Std.int(gy)} else null;
 					default: null;
 				};
 			case NamedHex(system):
@@ -4734,7 +4794,7 @@ class ProgrammableCodeGen {
 						if (oxv == null || oyv == null) return null;
 						ox = oxv; oy = oyv;
 					}
-					return {x: gx * grid.spacingX + ox, y: gy * grid.spacingY + oy};
+					return {x: Std.int(gx) * grid.spacingX + Std.int(ox), y: Std.int(gy) * grid.spacingY + Std.int(oy)};
 				default: return null;
 			}
 		}
@@ -4758,7 +4818,7 @@ class ProgrammableCodeGen {
 									if (oxv == null || oyv == null) return null;
 									ox = oxv; oy = oyv;
 								}
-								return {x: gx * system.spacingX + ox, y: gy * system.spacingY + oy};
+								return {x: Std.int(gx) * system.spacingX + Std.int(ox), y: Std.int(gy) * system.spacingY + Std.int(oy)};
 							default: return null;
 						}
 					case NamedHex(system):
@@ -4856,12 +4916,14 @@ class ProgrammableCodeGen {
 					final sy:Int = gridSystem.spacingY;
 					final gxExpr = argExprs[0];
 					final gyExpr = argExprs[1];
+					// Std.int on every arg — the builder resolves all four through
+					// resolveAsInteger before resolveAsGrid, so floats truncate to cells.
 					if (component == "x") {
-						if (argExprs.length >= 4) { final oxExpr = argExprs[2]; return macro $gxExpr * $v{sx} + $oxExpr; }
-						return macro $gxExpr * $v{sx};
+						if (argExprs.length >= 4) { final oxExpr = argExprs[2]; return macro Std.int($gxExpr) * $v{sx} + Std.int($oxExpr); }
+						return macro Std.int($gxExpr) * $v{sx};
 					} else {
-						if (argExprs.length >= 4) { final oyExpr = argExprs[3]; return macro $gyExpr * $v{sy} + $oyExpr; }
-						return macro $gyExpr * $v{sy};
+						if (argExprs.length >= 4) { final oyExpr = argExprs[3]; return macro Std.int($gyExpr) * $v{sy} + Std.int($oyExpr); }
+						return macro Std.int($gyExpr) * $v{sy};
 					}
 				default:
 					Context.error('Runtime .$component extraction not supported for grid method .$method()', Context.currentPos());
@@ -5056,7 +5118,7 @@ class ProgrammableCodeGen {
 					final gyExpr = rvToExpr(gridY);
 					final sx:Int = grid.spacingX;
 					final sy:Int = grid.spacingY;
-					{x: macro $gxExpr * $v{sx}, y: macro $gyExpr * $v{sy}};
+					{x: macro Std.int($gxExpr) * $v{sx}, y: macro Std.int($gyExpr) * $v{sy}};
 				} else {
 					Context.error('ProgrammableCodeGen: grid coordinate requires grid coordinate system', pos);
 					{x: macro 0.0, y: macro 0.0};
@@ -5086,7 +5148,7 @@ class ProgrammableCodeGen {
 									final gyExpr = rvToExpr(gridY);
 									final sx:Int = system.spacingX;
 									final sy:Int = system.spacingY;
-									{x: macro $gxExpr * $v{sx}, y: macro $gyExpr * $v{sy}};
+									{x: macro Std.int($gxExpr) * $v{sx}, y: macro Std.int($gyExpr) * $v{sy}};
 								default:
 									Context.error('ProgrammableCodeGen: unsupported coordinate type inside named grid', pos);
 									{x: macro 0.0, y: macro 0.0};
@@ -7263,7 +7325,7 @@ class ProgrammableCodeGen {
 					final gyExpr = rvToExpr(gridY);
 					final sx:Int = grid.spacingX;
 					final sy:Int = grid.spacingY;
-					macro $fieldRef.setPosition($gxExpr * $v{sx}, $gyExpr * $v{sy});
+					macro $fieldRef.setPosition(Std.int($gxExpr) * $v{sx}, Std.int($gyExpr) * $v{sy});
 				} else null;
 			case SELECTED_HEX_CUBE(q, r, s):
 				final hexLayout = getHexLayoutForNode(node);
