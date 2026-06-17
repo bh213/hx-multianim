@@ -286,6 +286,8 @@ if (overlayFromManim != null)
 
 **Event routing while dialog is open** (known asymmetry): when a dialog opens over `MasterAndSingle`, `overrideActiveScreenControllers = [dialog, oldMaster]` — the dialog is first in the controller list but the underlying master still receives controller events. Opening a dialog over `Single` mode blocks instead (`overrideActiveScreenControllers = [dialog]`). There is no per-dialog `blockUnderlying:Bool` flag yet. If you need a fully input-blocking modal over a master/single layout, switch to `Single` before opening the dialog, or have the master screen gate its own input handlers. See the two `case Dialog(...)` branches under `Single(...)` vs `MasterAndSingle(...)` in `ScreenManager.updateScreenMode` for the asymmetry.
 
+**Dialog over dialog (close behavior):** opening a dialog over another dialog (`modalDialog` / `modalDialogWithTransition`) removes the underlying dialog from the scene but captures it as the new dialog's `previousMode`. Closing the top dialog re-attaches and re-activates that underlying dialog — both for instant close (via `updateScreenMode`'s `Dialog -> Dialog` branch) and animated close (`closeDialogWithTransition` with a transition, via the `case Dialog(...)` arm in its controller-restore switch). Note this *revives* a dialog whose `OnDialogResult` already fired when the top dialog opened, re-running its `UIEntering`/`Entering` lifecycle. The app-side close-first convention (close the underlying dialog before opening the next) avoids relying on this revival entirely.
+
 ## Tooltip/Panel Fade Transitions
 
 Both `UITooltipHelper` and `UIPanelHelper` support optional fade-in/fade-out animations via TweenManager.

@@ -892,6 +892,20 @@ class ScreenManager {
 							activeScreenControllers.push(master);
 						if (!activeScreenControllers.contains(single))
 							activeScreenControllers.push(single);
+					case Dialog(prevDialog, _, _, _):
+						// Unlike Single/MasterAndSingle (whose screens stay in scene
+						// while a dialog is open), a previous dialog was removed from the
+						// scene when this dialog opened over it — so it must be re-added,
+						// not just have its controller restored. Mirrors the instant-close
+						// path, which routes through updateScreenMode's Dialog -> Dialog branch.
+						if (!activeScreens.contains(prevDialog)) {
+							app.s2d.add(prevDialog.getSceneRoot(), sceneLayers.dialog);
+							activeScreens.push(prevDialog);
+							prevDialog.onScreenEvent(UIEntering(null), null);
+							prevDialog.onScreenEvent(UIOnControllerEvent(Entering), null);
+							prevDialog.getController().lifecycleEvent(LifecycleControllerStarted);
+						}
+						activeScreenControllers = [prevDialog];
 					default:
 				}
 

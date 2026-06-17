@@ -2,6 +2,7 @@ package bh.test.examples;
 
 import utest.Assert;
 import bh.ui.screens.ScreenManager;
+import bh.ui.screens.ScreenTransition;
 import bh.ui.screens.UIScreen;
 import bh.ui.UIElement;
 
@@ -35,6 +36,38 @@ class ScreenManagerDialogTransitionTest extends utest.Test {
 		Assert.isTrue(d1.leavingParentAtDispatch != null,
 			"d1.sceneRoot.parent must still be attached when UILeaving fires — "
 			+ "this matches every non-dialog transition and preserves invariant for event listeners");
+
+		main.getSceneRoot().remove();
+		d1.getSceneRoot().remove();
+		d2.getSceneRoot().remove();
+	}
+
+	@Test
+	public function testAnimatedDialogClose_RestoresUnderlyingDialog():Void {
+		// A dialog opened over another dialog captures the inner dialog as its
+		// previousMode, but the inner dialog is removed from the scene when the
+		// outer one opens. Closing the outer dialog with a transition must
+		// re-attach the inner dialog and restore its input — matching the
+		// instant (no-transition) close path, which routes through
+		// updateScreenMode's Dialog -> Dialog branch.
+		var sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
+
+		var main = new ProbeScreen(sm);
+		var d1 = new ProbeScreen(sm);
+		var d2 = new ProbeScreen(sm);
+
+		sm.switchTo(main);
+		sm.modalDialog(d1, main, "d1");
+		sm.modalDialog(d2, main, "d2"); // d2.previousMode == Dialog(d1, ...)
+
+		// Animated close of the outer dialog, driven to completion.
+		sm.closeDialogWithTransition(Fade(0.2));
+		sm.finalizeTransition();
+
+		Assert.notNull(d1.getSceneRoot().parent,
+			"underlying dialog d1 must be re-attached to the scene after animated close of d2");
+		Assert.isTrue(sm.activeScreenControllers.contains(d1),
+			"underlying dialog d1 must receive input after animated close of d2");
 
 		main.getSceneRoot().remove();
 		d1.getSceneRoot().remove();
