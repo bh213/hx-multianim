@@ -2123,6 +2123,20 @@ class MacroManimParser {
 			case PPTColor:
 				final c = tryStringToColor(val);
 				if (c != null) CoValue(c) else CoValue(val.toInt());
+			case PPTString:
+				// String params always compare as strings. Without this, an
+				// integer-parseable value (e.g. `@(version => 2)`) fell into the
+				// `default` Std.parseInt branch and produced CoValue(int): the
+				// builder then threw 'invalid param types' against a StringValue and
+				// codegen emitted `String == Int` (compile error).
+				CoStringValue(val);
+			case PPTFloat:
+				// Equality conditionals (=> / !=) are unsupported for float params —
+				// float equality is unreliable and the builder/codegen backends
+				// diverge (builder throws, codegen silently matches). Comparisons
+				// (>=, <=, >, <) and ranges (a..b) do not route through here and
+				// remain supported. Consistent with @switch rejecting float params.
+				error('float parameters do not support equality conditionals (=> / !=) — float equality is unreliable; use a comparison (>=, <=, >, <) or a range (a..b) instead');
 			default:
 				final n = Std.parseInt(val);
 				if (n != null) CoValue(n) else CoStringValue(val);
@@ -5377,13 +5391,17 @@ class MacroManimParser {
 						while (match(TPipe)) {
 							values.push(parseSwitchArmValue());
 						}
-						// PPTEnum / PPTString match correctly via raw-string CoEnums (Index/StringValue
-						// runtime parameters compare to the lexeme as-is). For other discrete types
-						// (color, int, uint, bool), the raw lexeme never matches Std.string(int), so we
-						// route each value through stringToConditional to get a typed inner conditional
-						// and OR them at match/codegen time via CoAnyOf.
+						// PPTEnum matches correctly via raw-string CoEnums (Index runtime parameter
+						// compares to the lexeme as-is, codegen maps each value to its enum index).
+						// Every other discrete type routes each value through stringToConditional to
+						// get a typed inner conditional, OR'd via CoAnyOf. String params in particular
+						// must NOT use CoEnums: codegen's all-enum switch resolves arm values with
+						// findEnumIndex (Std.parseInt), which drops non-numeric string arms and emits
+						// `case <int>:` over a String subject for numeric ones — so a string pipe arm
+						// silently never matched. CoAnyOf(CoStringValue) compiles to plain string
+						// equality on both backends.
 						switch (paramType) {
-							case PPTEnum(_) | PPTString:
+							case PPTEnum(_):
 								validateConditionalEnumValues(paramName, defs, values);
 								pattern = CoEnums(values);
 							default:

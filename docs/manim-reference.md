@@ -319,6 +319,8 @@ A bare `@else` or `@default` is **terminal** — it closes the chain. Any `@else
 
 **Unknown enum members in a conditional are rejected at parse time.** Multi-value (`@(p => [a, b])`), negated multi-value (`@(p != [a, b])`), and `@switch` pipe arms (`a | b { ... }`) build their match set from raw lexemes; a value not present in the parameter's declared enum is rejected with a message naming the offending value and listing the valid members. (String params accept any value; loop variables have no declared type to validate against.) This prevents the silent divergence where a typo never matched in the builder but matched enum index 0 in codegen.
 
+**Type-aware equality.** `@(param => value)` and `@(param != value)` match by the parameter's declared type. On a `string` param the value is compared as a string — `@(version => 2)` means `version == "2"` (an integer-parseable value does **not** become a numeric match). **Float params reject equality:** `@(floatParam => N)` / `@(floatParam != N)` is a parse error (float equality is unreliable and diverged between backends — consistent with `@switch` rejecting float params). Use a comparison (`>=`, `<=`, `>`, `<`) or a range (`a..b`) on float params instead.
+
 Conditionals also work with **repeatable loop variables** (e.g., `@($i => 0)`, `@($i >= 3)`, `@($i != 1)`) inside `repeatable` bodies.
 
 **Comparison and range values support `$param` references** — e.g., `@($i < $level)`, `@(hp >= $threshold)`, `@(param => $from..$to)`, `between $min..$max`. The reference is resolved at build time from current parameter values.
@@ -372,7 +374,7 @@ Works with `@()`, `@if()`, `@any()`, `@all()`, `@else`, `@else(cond)`, `@default
 | `N..M` | Range match, inclusive (numeric params only) |
 | `default` | Fallback when no arm matches |
 
-**Parameter type support:** `@switch` works on discrete types — `enum`, `int`, `uint`, `range`, `string`, `color`, `bool`. Single-value arms route through the same type-aware converter as `@(param => value)`, so a color arm like `#FF0000` produces an integer match and `true`/`false` arms on a `bool` param work as expected. `@switch` rejects `float`, `tile`, and `flags` parameters at parse time (use `@(param => bit[N])` for flag tests). Range/comparison arms (`<= N`, `N..M`, etc.) are rejected on non-numeric parameters.
+**Parameter type support:** `@switch` works on discrete types — `enum`, `int`, `uint`, `range`, `string`, `color`, `bool`. Single-value arms route through the same type-aware converter as `@(param => value)`, so a color arm like `#FF0000` produces an integer match and `true`/`false` arms on a `bool` param work as expected. Pipe arms on a `string` param (`"alpha" | "beta": …`) match as strings (OR of string equalities) on both backends. `@switch` rejects `float`, `tile`, and `flags` parameters at parse time (use `@(param => bit[N])` for flag tests). Range/comparison arms (`<= N`, `N..M`, etc.) are rejected on non-numeric parameters.
 
 **Block arms** for multiple elements per case:
 
@@ -580,6 +582,8 @@ Applied to any element via long-form body or inline syntax.
 **Builder API:**
 - `result.getUpdatable("name")` / `result.getUpdatableByIndex("name", index)`
 - `result.hasName("name")` / `result.hasNameByIndex("name", index)` — check existence without throwing
+
+**Indexed names must resolve to a unique index.** A 1-D `#name[$i]` whose index recurs — e.g. `#tile[$j]` inside `repeatable($i) { repeatable($j) { … } }` (the inner index repeats once per outer iteration), or a duplicate-value array iterator — collides on the `"name idx"` key. This is rejected loudly on both backends: the builder throws `BuilderError` (`code="indexed_name_collision"`); codegen fails at macro time with a clear `Context.error`. Give the inner loop a unique index, or use a 2-D indexed name `#name[$x, $y]`. The same applies to indexed slots (`#name[$i] slot`, `code="indexed_slot_collision"`).
 
 ---
 

@@ -6713,10 +6713,15 @@ class MultiAnimBuilder {
 							default: 0;
 						};
 						final indexedKey = '${name} ${idx}';
+						// A 1-D indexed name must resolve to a unique index per build pass.
+						// When its index recurs (e.g. #name[$j] inside nested repeatables,
+						// or a duplicate-value array iterator), the key collides and the
+						// lookup would silently return only the first entry. Reject loudly
+						// instead — symmetric with codegen rejecting it at macro time.
 						if (names.exists(indexedKey))
-							names[indexedKey].push(toNamedResult(updatableName, builtObject, node));
-						else
-							names[indexedKey] = [toNamedResult(updatableName, builtObject, node)];
+							throw builderError('indexed name "${name}[${idx}]" is built more than once with the same index — a 1-D indexed name whose index recurs (nested loops, or a duplicate-value iterator) collides. Give the inner loop a unique index or use a 2-D indexed name (#name[indexX, indexY]).',
+								"indexed_name_collision");
+						names[indexedKey] = [toNamedResult(updatableName, builtObject, node)];
 					}
 				case UNTIndexed2D(name, indexVarX, indexVarY):
 					final indexValueX = indexedParams.get(indexVarX);
@@ -6726,9 +6731,9 @@ class MultiAnimBuilder {
 						final idxY = switch indexValueY { case Value(v): v; default: 0; };
 						final indexedKey = '${name} ${idxX} ${idxY}';
 						if (names.exists(indexedKey))
-							names[indexedKey].push(toNamedResult(updatableName, builtObject, node));
-						else
-							names[indexedKey] = [toNamedResult(updatableName, builtObject, node)];
+							throw builderError('indexed name "${name}[${idxX},${idxY}]" is built more than once with the same index pair — the indices collide. Ensure each (indexX, indexY) is unique.',
+								"indexed_name_collision");
+						names[indexedKey] = [toNamedResult(updatableName, builtObject, node)];
 					}
 				default:
 			}
@@ -6817,11 +6822,11 @@ class MultiAnimBuilder {
 				switch node.updatableName {
 					case UNTIndexed(baseName, indexVar):
 						final index = resolveAsString(RVReference(indexVar)).toInt();
-						internalResults.slots.push({key: Indexed(baseName, index), handle: new SlotHandle(object, slotIncrementalCtx, slotContentTarget)});
+						{ for (__se in internalResults.slots) switch __se.key { case Indexed(n, i) if (n == baseName && i == index): throw builderError('indexed slot "${baseName}[${index}]" is built more than once with the same index — a 1-D indexed slot whose index recurs (nested loops, or a duplicate-value iterator) collides. Give the inner loop a unique index or use a 2-D indexed slot (#name[indexX, indexY]).', "indexed_slot_collision"); default: } } internalResults.slots.push({key: Indexed(baseName, index), handle: new SlotHandle(object, slotIncrementalCtx, slotContentTarget)});
 					case UNTIndexed2D(baseName, indexVarX, indexVarY):
 						final indexX = resolveAsString(RVReference(indexVarX)).toInt();
 						final indexY = resolveAsString(RVReference(indexVarY)).toInt();
-						internalResults.slots.push({key: Indexed2D(baseName, indexX, indexY), handle: new SlotHandle(object, slotIncrementalCtx, slotContentTarget)});
+						{ for (__se in internalResults.slots) switch __se.key { case Indexed2D(n, ix, iy) if (n == baseName && ix == indexX && iy == indexY): throw builderError('indexed slot "${baseName}[${indexX},${indexY}]" is built more than once with the same index pair — the indices collide. Ensure each (indexX, indexY) is unique.', "indexed_slot_collision"); default: } } internalResults.slots.push({key: Indexed2D(baseName, indexX, indexY), handle: new SlotHandle(object, slotIncrementalCtx, slotContentTarget)});
 					case UNTObject(name) | UNTUpdatable(name):
 						internalResults.slots.push({key: Named(name), handle: new SlotHandle(object, slotIncrementalCtx, slotContentTarget)});
 					default:

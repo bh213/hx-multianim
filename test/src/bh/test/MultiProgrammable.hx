@@ -535,4 +535,22 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/133-codegenDynRefKeyContract/dynRefKeyContract.manim", "dynRefNamedDynamicTarget")
 	public var dynRefNamedDynamicTarget;
+
+	@:manim("test/examples/132-codegenIntTruncation/intTruncation.manim", "divOffsetFloat")
+	public var divOffsetFloat;
+
+	@:manim("test/examples/132-codegenIntTruncation/intTruncation.manim", "divGridFloat")
+	public var divGridFloat;
+
+	@:manim("test/examples/132-codegenIntTruncation/intTruncation.manim", "compoundTrunc")
+	public var compoundTrunc;
+
+	@:manim("test/examples/132-codegenIntTruncation/intTruncation.manim", "modGridFloat")
+	public var modGridFloat;
+
+	@:manim("test/examples/134-stringFloatConditional/stringFloatConditional.manim", "stringPipeSwitch")
+	public var stringPipeSwitch;
+
+	@:manim("test/examples/134-stringFloatConditional/stringFloatConditional.manim", "stringEqNumeric")
+	public var stringEqNumeric;
 }

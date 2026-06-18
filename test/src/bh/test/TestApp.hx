@@ -140,6 +140,8 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.CodegenRepeatConditionalTest());
 		testRunner.addCase(new bh.test.examples.CodegenIntTruncationParityTest());
 		testRunner.addCase(new bh.test.examples.CodegenDynRefKeyContractTest());
+		testRunner.addCase(new bh.test.examples.StringFloatConditionalParityTest());
+		testRunner.addCase(new bh.test.examples.NestedIndexedCollisionTest());
 		#if MULTIANIM_DEV
 		testRunner.addCase(new bh.test.examples.HotReloadTest());
 		testRunner.addCase(new bh.test.examples.DevBridgeTest());

@@ -5166,4 +5166,37 @@ class ParserErrorTest extends utest.Test {
 		Assert.isTrue(error.indexOf("hbover") >= 0,
 			'Error should name the offending value "hbover", got: $error');
 	}
+
+	// Float params support comparison/range conditionals but NOT equality (=>) — float
+	// equality is unreliable and the codegen/builder backends diverge on it. Rejected at
+	// parse time, consistent with @switch already rejecting float parameters.
+	public function testFloatParamEqualityConditionalRejected() {
+		var error = parseExpectingError('
+			#test programmable(weight:float=1.0) {
+				@(weight => 1) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.notNull(error, "@(floatParam => N) equality must be rejected at parse time");
+		if (error != null)
+			Assert.isTrue(error.toLowerCase().indexOf("float") >= 0,
+				'Float equality reject message should mention float; got: $error');
+	}
+
+	public function testFloatParamNegatedEqualityConditionalRejected() {
+		var error = parseExpectingError('
+			#test programmable(weight:float=1.0) {
+				@(weight != 1) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.notNull(error, "@(floatParam != N) equality must be rejected at parse time");
+	}
+
+	public function testFloatParamComparisonConditionalStillParses() {
+		Assert.isTrue(parseExpectingSuccess('
+			#test programmable(weight:float=1.0) {
+				@(weight >= 1) bitmap(generated(color(10, 10, #f00))): 0,0
+				@(weight => 0..2) bitmap(generated(color(10, 10, #0f0))): 0,0
+			}
+		'), "@(floatParam >= N) and @(floatParam => a..b) must still parse");
+	}
 }

@@ -71,6 +71,36 @@ class DevBridgeTest extends BuilderTestBase {
 		Assert.isTrue(threw, "Should throw for unknown method");
 	}
 
+	@Test
+	public function testDispatch_clickButtonAliasRoutesToClickInteractive():Void {
+		// "click_button" is documented (docs/devbridge.md) and exposed as an MCP tool as an
+		// alias of "click_interactive". It must reach handleClickInteractive, not fall through
+		// to the unknown-method default. With no matching interactive registered, the handler
+		// throws "Interactive not found" — the same error the canonical name produces.
+		var bridge = createTestBridge();
+
+		var aliasError:String = null;
+		try {
+			bridge.dispatch("click_button", {id: "missingInteractive"});
+		} catch (e:haxe.Exception) {
+			aliasError = e.message;
+		}
+		Assert.notNull(aliasError, "click_button should route to a handler and throw for a missing interactive");
+		Assert.isTrue(aliasError.indexOf("Unknown method") < 0,
+			"click_button must not fall through to the unknown-method default. Got: " + aliasError);
+		Assert.isTrue(aliasError.indexOf("Interactive not found") >= 0,
+			"click_button should reach handleClickInteractive. Got: " + aliasError);
+
+		// Parity: the canonical name produces the same error for the same input.
+		var canonicalError:String = null;
+		try {
+			bridge.dispatch("click_interactive", {id: "missingInteractive"});
+		} catch (e:haxe.Exception) {
+			canonicalError = e.message;
+		}
+		Assert.equals(canonicalError, aliasError);
+	}
+
 	// ==================== Static Helpers ====================
 
 	@Test

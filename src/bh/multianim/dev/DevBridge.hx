@@ -540,7 +540,7 @@ class DevBridge {
 			// v4: layout validation
 			case "check_overlaps": handleCheckOverlaps(params);
 			// v5: direct actions
-			case "click_interactive": handleClickInteractive(params);
+			case "click_interactive" | "click_button": handleClickInteractive(params);
 			// v6: batch events
 			case "send_events": handleSendEvents(params);
 			// v7: active programmables listing

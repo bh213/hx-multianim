@@ -95,4 +95,95 @@ class CodegenIntTruncationParityTest extends BuilderTestBase {
 		Assert.floatEquals(10.0, xToRoot(bitmaps[0], cast inst),
 			"codegen: $grid.pos(3/2, 0) must land on cell 1 (x=10), not 1.5 cells (x=15)");
 	}
+
+	// ==================== `div` integerizes operands (float operands) ====================
+
+	/** Builder baseline: `div` integerizes its operands before dividing, in an offset
+	 *  (float) context. $a div $b * 10 with a=9.0,b=2.5 -> Std.int(9/2)*10 = 40. */
+	@Test
+	public function testDivOperandIntegerization_Builder_Offset():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "divOffsetFloat", null);
+		final bitmaps = BuilderTestBase.findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.floatEquals(40.0, xToRoot(bitmaps[0], result.object),
+			"builder: $a div $b * 10 (a=9.0,b=2.5) -> Std.int(9/2)*10 = 40");
+	}
+
+	/** Codegen must integerize div operands like the builder. Currently keeps the float
+	 *  quotient: Std.int(9.0/2.5)*10 = 30. */
+	@Test
+	public function testDivOperandIntegerization_Codegen_Offset():Void {
+		final inst:Dynamic = createMp().divOffsetFloat.create();
+		final bitmaps = BuilderTestBase.findVisibleBitmapDescendants(cast inst);
+		Assert.equals(1, bitmaps.length);
+		Assert.floatEquals(40.0, xToRoot(bitmaps[0], cast inst),
+			"codegen: $a div $b * 10 (a=9.0,b=2.5) must integerize operands -> Std.int(9/2)*10 = 40, not Std.int(9.0/2.5)*10 = 30");
+	}
+
+	/** Builder baseline: `div` with float params in a grid coordinate -> cell 4 (x=40). */
+	@Test
+	public function testDivOperandIntegerization_Builder_Grid():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "divGridFloat", null);
+		final bitmaps = BuilderTestBase.findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.floatEquals(40.0, xToRoot(bitmaps[0], result.object),
+			"builder: $grid.pos($a div $b, 0) (a=9.0,b=2.5) -> Std.int(9/2) = cell 4 -> x=40");
+	}
+
+	/** Codegen: grid `div` with float params must land on cell 4, not cell 3. */
+	@Test
+	public function testDivOperandIntegerization_Codegen_Grid():Void {
+		final inst:Dynamic = createMp().divGridFloat.create();
+		final bitmaps = BuilderTestBase.findVisibleBitmapDescendants(cast inst);
+		Assert.equals(1, bitmaps.length);
+		Assert.floatEquals(40.0, xToRoot(bitmaps[0], cast inst),
+			"codegen: $grid.pos($a div $b, 0) (a=9.0,b=2.5) must land on cell 4 (x=40), not cell 3 (x=30)");
+	}
+
+	// ==================== Per-node truncation in integer coordinate context ====================
+
+	/** Builder baseline: a compound grid coordinate truncates at every node.
+	 *  $grid.pos(7/2*2, 0) -> Std.int(7/2)*2 = 3*2 = cell 6 -> x=60. */
+	@Test
+	public function testCompoundExpr_Builder_TruncatesPerNode():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "compoundTrunc", null);
+		final bitmaps = BuilderTestBase.findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.floatEquals(60.0, xToRoot(bitmaps[0], result.object),
+			"builder: $grid.pos(7/2*2, 0) -> Std.int(7/2)*2 = cell 6 -> x=60");
+	}
+
+	/** Codegen: a compound grid coordinate must truncate per node like the builder.
+	 *  Currently truncates once at the site: Std.int((7/2)*2) = 7 -> cell 7 (x=70). */
+	@Test
+	public function testCompoundExpr_Codegen_TruncatesPerNode():Void {
+		final inst:Dynamic = createMp().compoundTrunc.create();
+		final bitmaps = BuilderTestBase.findVisibleBitmapDescendants(cast inst);
+		Assert.equals(1, bitmaps.length);
+		Assert.floatEquals(60.0, xToRoot(bitmaps[0], cast inst),
+			"codegen: $grid.pos(7/2*2, 0) must land on cell 6 (x=60), not cell 7 (x=70)");
+	}
+
+	// ==================== `%` integerizes in integer coordinate context ====================
+
+	/** Builder baseline: `%` with float params in a grid coordinate uses integer mod.
+	 *  $grid.pos($a % $b, 0) with a=7.0,b=2.5 -> Std.int(7 % 2) = cell 1 -> x=10. */
+	@Test
+	public function testModIntegerization_Builder_Grid():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "modGridFloat", null);
+		final bitmaps = BuilderTestBase.findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.floatEquals(10.0, xToRoot(bitmaps[0], result.object),
+			"builder: $grid.pos($a % $b, 0) (a=7.0,b=2.5) -> Std.int(7 % 2) = cell 1 -> x=10");
+	}
+
+	/** Codegen: grid `%` with float params must use integer mod (cell 1), not float mod (cell 2). */
+	@Test
+	public function testModIntegerization_Codegen_Grid():Void {
+		final inst:Dynamic = createMp().modGridFloat.create();
+		final bitmaps = BuilderTestBase.findVisibleBitmapDescendants(cast inst);
+		Assert.equals(1, bitmaps.length);
+		Assert.floatEquals(10.0, xToRoot(bitmaps[0], cast inst),
+			"codegen: $grid.pos($a % $b, 0) (a=7.0,b=2.5) must land on cell 1 (x=10) via integer mod, not cell 2 (x=20) via float mod");
+	}
 }

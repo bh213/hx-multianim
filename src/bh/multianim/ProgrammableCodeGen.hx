@@ -1160,7 +1160,15 @@ class ProgrammableCodeGen {
 		// path, which only registers names for materialized entries.
 		for (name => indexedList in indexedNamedElements) {
 			final switchCases:Array<Case> = [];
+			final seenIndices = new Map<Int, Bool>();
 			for (entry in indexedList) {
+				// A 1-D indexed name must resolve to a unique index. A recurring index
+				// (nested loops, or a duplicate-value iterator) would emit duplicate
+				// switch cases here; reject loudly instead — symmetric with the runtime
+				// builder which throws an "indexed_name_collision" BuilderError.
+				if (seenIndices.exists(entry.index))
+					haxe.macro.Context.error('indexed name "${name}[${entry.index}]" is generated more than once with the same index — a 1-D indexed name whose index recurs (nested loops, or a duplicate-value iterator) collides. Give the inner loop a unique index or use a 2-D indexed name (#name[indexX, indexY]).', pos);
+				seenIndices.set(entry.index, true);
 				final fieldRef = macro $p{["this", entry.fieldName]};
 				switchCases.push({
 					values: [macro $v{entry.index}],
@@ -1177,7 +1185,12 @@ class ProgrammableCodeGen {
 		// 8b2. 2D Indexed named element accessors: get_name(x:Int, y:Int):h2d.Object
 		for (name => indexedList in indexed2DNamedElements) {
 			final ifExprs:Array<Expr> = [];
+			final seen2D = new Map<String, Bool>();
 			for (entry in indexedList) {
+				final k2d = entry.indexX + "," + entry.indexY;
+				if (seen2D.exists(k2d))
+					haxe.macro.Context.error('indexed name "${name}[${entry.indexX},${entry.indexY}]" is generated more than once with the same index pair — the indices collide. Ensure each (indexX, indexY) is unique.', pos);
+				seen2D.set(k2d, true);
 				final fieldRef = macro $p{["this", entry.fieldName]};
 				ifExprs.push(macro if (x == $v{entry.indexX} && y == $v{entry.indexY}) return $fieldRef.parent != null ? $fieldRef : null);
 			}
@@ -1213,9 +1226,16 @@ class ProgrammableCodeGen {
 					namedSlots.push({name: name, fieldName: entry.fieldName});
 			}
 		}
-		// All slot entries get private handle fields
+		// All slot entries get private handle fields. A recurring indexed slot key
+		// (e.g. #name[$j] inside nested loops) would declare the same field twice
+		// ("Duplicate class field declaration"); reject loudly with a clear message
+		// instead — symmetric with the runtime builder's "indexed_slot_collision".
+		final seenSlotFields = new Map<String, Bool>();
 		for (entry in slotEntries) {
 			final handleField = slotHandleFieldName(entry.key);
+			if (seenSlotFields.exists(handleField))
+				haxe.macro.Context.error('slot field "${handleField}" is generated more than once — an indexed slot whose index recurs (nested loops, or a duplicate-value iterator) collides. Give the inner loop a unique index or use a 2-D indexed slot (#name[indexX, indexY]).', pos);
+			seenSlotFields.set(handleField, true);
 			instanceFields.push(makeField(handleField, FVar(macro :bh.multianim.MultiAnimBuilder.SlotHandle, null), [APrivate], pos));
 		}
 		// Non-indexed: typed getSlot_name() accessor
@@ -4746,8 +4766,8 @@ class ProgrammableCodeGen {
 				final sExpr = rvToExpr(s);
 				macro new bh.base.Hex.FractionalHex($qExpr, $rExpr, $sExpr).round();
 			case SELECTED_HEX_OFFSET(col, row, parity):
-				final colExpr = rvToExpr(col);
-				final rowExpr = rvToExpr(row);
+				final colExpr = rvToExprInt(col);
+				final rowExpr = rvToExprInt(row);
 				final parityExpr = switch (parity) {
 					case EVEN: macro bh.base.Hex.OffsetCoord.EVEN;
 					case ODD: macro bh.base.Hex.OffsetCoord.ODD;
@@ -4757,8 +4777,8 @@ class ProgrammableCodeGen {
 					case FLAT: macro bh.base.Hex.OffsetCoord.roffsetToCube($parityExpr, new bh.base.Hex.OffsetCoord($colExpr, $rowExpr));
 				};
 			case SELECTED_HEX_DOUBLED(col2, row2):
-				final colExpr = rvToExpr(col2);
-				final rowExpr = rvToExpr(row2);
+				final colExpr = rvToExprInt(col2);
+				final rowExpr = rvToExprInt(row2);
 				switch (hexLayout.orientation) {
 					case POINTY: macro bh.base.Hex.DoubledCoord.qdoubledToCube(new bh.base.Hex.DoubledCoord($colExpr, $rowExpr));
 					case FLAT: macro bh.base.Hex.DoubledCoord.rdoubledToCube(new bh.base.Hex.DoubledCoord($colExpr, $rowExpr));
@@ -5060,22 +5080,22 @@ class ProgrammableCodeGen {
 					y: macro $_hlRef.hexToPixel(new bh.base.Hex.FractionalHex($qExpr, $rExpr, $sExpr).round()).y
 				};
 			case SELECTED_HEX_CORNER(count, factor):
-				final cExpr = rvToExpr(count);
+				final cExpr = rvToExprInt(count);
 				final fExpr = rvToExpr(factor);
 				{
 					x: macro $_hlRef.polygonCorner(bh.base.Hex.zero(), $cExpr, $fExpr).x,
 					y: macro $_hlRef.polygonCorner(bh.base.Hex.zero(), $cExpr, $fExpr).y
 				};
 			case SELECTED_HEX_EDGE(dir, factor):
-				final dExpr = rvToExpr(dir);
+				final dExpr = rvToExprInt(dir);
 				final fExpr = rvToExpr(factor);
 				{
 					x: macro $_hlRef.polygonEdge(bh.base.Hex.zero(), $dExpr, $fExpr).x,
 					y: macro $_hlRef.polygonEdge(bh.base.Hex.zero(), $dExpr, $fExpr).y
 				};
 			case SELECTED_HEX_OFFSET(col, row, parity):
-				final colExpr = rvToExpr(col);
-				final rowExpr = rvToExpr(row);
+				final colExpr = rvToExprInt(col);
+				final rowExpr = rvToExprInt(row);
 				final parityExpr = switch (parity) { case EVEN: macro bh.base.Hex.OffsetCoord.EVEN; case ODD: macro bh.base.Hex.OffsetCoord.ODD; };
 				final hexLayout = if (node != null) getHexLayoutForNode(node) else null;
 				if (hexLayout != null) {
@@ -5089,8 +5109,8 @@ class ProgrammableCodeGen {
 					{x: macro 0.0, y: macro 0.0};
 				}
 			case SELECTED_HEX_DOUBLED(col, row):
-				final colExpr = rvToExpr(col);
-				final rowExpr = rvToExpr(row);
+				final colExpr = rvToExprInt(col);
+				final rowExpr = rvToExprInt(row);
 				final hexLayout = if (node != null) getHexLayoutForNode(node) else null;
 				if (hexLayout != null) {
 					final hexExpr = switch (hexLayout.orientation) {
@@ -5114,8 +5134,8 @@ class ProgrammableCodeGen {
 			case SELECTED_GRID_POSITION(gridX, gridY):
 				final grid = getGridFromNode(node);
 				if (grid != null) {
-					final gxExpr = rvToExpr(gridX);
-					final gyExpr = rvToExpr(gridY);
+					final gxExpr = rvToExprInt(gridX);
+					final gyExpr = rvToExprInt(gridY);
 					final sx:Int = grid.spacingX;
 					final sy:Int = grid.spacingY;
 					{x: macro Std.int($gxExpr) * $v{sx}, y: macro Std.int($gyExpr) * $v{sy}};
@@ -5144,8 +5164,8 @@ class ProgrammableCodeGen {
 						case NamedGrid(system):
 							switch (coord) {
 								case SELECTED_GRID_POSITION(gridX, gridY):
-									final gxExpr = rvToExpr(gridX);
-									final gyExpr = rvToExpr(gridY);
+									final gxExpr = rvToExprInt(gridX);
+									final gyExpr = rvToExprInt(gridY);
 									final sx:Int = system.spacingX;
 									final sy:Int = system.spacingY;
 									{x: macro Std.int($gxExpr) * $v{sx}, y: macro Std.int($gyExpr) * $v{sy}};
@@ -5171,7 +5191,7 @@ class ProgrammableCodeGen {
 			case SELECTED_HEX_CELL_CORNER(cell, cornerIndex, factor):
 				final hexLayout = getHexLayoutForNode(node);
 				if (hexLayout != null) {
-					final ciExpr = rvToExpr(cornerIndex);
+					final ciExpr = rvToExprInt(cornerIndex);
 					final fExpr = rvToExpr(factor);
 					final cellHex = resolveCoordToStaticHex(cell, hexLayout);
 					if (cellHex != null) {
@@ -5198,7 +5218,7 @@ class ProgrammableCodeGen {
 			case SELECTED_HEX_CELL_EDGE(cell, direction, factor):
 				final hexLayout = getHexLayoutForNode(node);
 				if (hexLayout != null) {
-					final dExpr = rvToExpr(direction);
+					final dExpr = rvToExprInt(direction);
 					final fExpr = rvToExpr(factor);
 					final cellHex = resolveCoordToStaticHex(cell, hexLayout);
 					if (cellHex != null) {
@@ -6782,6 +6802,51 @@ class ProgrammableCodeGen {
 		return rvToExpr(val, false);
 	}
 
+	/**
+	 * Integer-context expression generator — mirrors the runtime builder's
+	 * `resolveAsInteger`, which truncates at EVERY node: the operands of `+`/`-`/`*`,
+	 * the quotient of `/` and `div`, and the result of `%`. `rvToExpr` is a single
+	 * float-valued resolver, so wrapping its result in one `Std.int()` truncates only
+	 * once and diverges from the builder for compound expressions (e.g. `7/2*2` ->
+	 * builder `Std.int(7/2)*2 = 6`, single-trunc `Std.int((7/2)*2) = 7`) and for
+	 * `div`/`%` with non-integer operands. Used for integer coordinate args
+	 * ($grid.pos, $hex.* offset/doubled/corner/edge) and the operands of `div`.
+	 */
+	static function rvToExprInt(rv:ReferenceableValue):Expr {
+		if (rv == null)
+			return macro 0;
+		return switch (rv) {
+			case RVInteger(i): macro $v{i};
+			case RVFloat(f): macro $v{Std.int(f)};
+			case RVParenthesis(e): rvToExprInt(e);
+			case EUnaryOp(_, e): macro -(${rvToExprInt(e)});
+			case RVTernary(cond, ifTrue, ifFalse):
+				final c = rvToExpr(cond);
+				macro($c != 0 ? ${rvToExprInt(ifTrue)} : ${rvToExprInt(ifFalse)});
+			case EBinop(op, e1, e2):
+				final l = rvToExprInt(e1);
+				final r = rvToExprInt(e2);
+				switch (op) {
+					case OpAdd: macro($l + $r);
+					case OpSub: macro($l - $r);
+					case OpMul: macro($l * $r);
+					case OpDiv | OpIntegerDiv: macro Std.int($l / $r);
+					case OpMod: macro Std.int($l % $r);
+					case OpEq: macro($l == $r ? 1 : 0);
+					case OpNotEq: macro($l != $r ? 1 : 0);
+					case OpLess: macro($l < $r ? 1 : 0);
+					case OpGreater: macro($l > $r ? 1 : 0);
+					case OpLessEq: macro($l <= $r ? 1 : 0);
+					case OpGreaterEq: macro($l >= $r ? 1 : 0);
+				}
+			default:
+				// Leaf nodes (param refs, callbacks, property/method access, array
+				// elements): rvToExpr yields a float-valued expression; truncate once,
+				// mirroring resolveAsInteger which wraps these leaves in Std.int.
+				macro Std.int(${rvToExpr(rv)});
+		}
+	}
+
 	static function rvToExpr(rv:ReferenceableValue, forString:Bool = false):Expr {
 		if (rv == null)
 			return macro 0;
@@ -6838,7 +6903,11 @@ class ProgrammableCodeGen {
 						case OpSub: macro($left - $right);
 						case OpMul: macro($left * $right);
 						case OpDiv: macro($left / $right);
-						case OpIntegerDiv: macro Std.int($left / $right);
+						// `div` integerizes its operands BEFORE dividing, matching the builder's
+						// resolveAsNumber/resolveAsInteger OpIntegerDiv (Std.int(resolveAsInteger(e1)
+						// / resolveAsInteger(e2))). Using the float operands here would compute
+						// Std.int(9.0/2.5)=3 instead of Std.int(9/2)=4.
+						case OpIntegerDiv: macro Std.int(${rvToExprInt(e1)} / ${rvToExprInt(e2)});
 						case OpMod: macro($left % $right);
 						case OpEq: macro($left == $right ? 1 : 0);
 						case OpNotEq: macro($left != $right ? 1 : 0);
@@ -7321,8 +7390,8 @@ class ProgrammableCodeGen {
 			case SELECTED_GRID_POSITION(gridX, gridY):
 				final grid = getGridFromNode(node);
 				if (grid != null) {
-					final gxExpr = rvToExpr(gridX);
-					final gyExpr = rvToExpr(gridY);
+					final gxExpr = rvToExprInt(gridX);
+					final gyExpr = rvToExprInt(gridY);
 					final sx:Int = grid.spacingX;
 					final sy:Int = grid.spacingY;
 					macro $fieldRef.setPosition(Std.int($gxExpr) * $v{sx}, Std.int($gyExpr) * $v{sy});
@@ -7363,8 +7432,8 @@ class ProgrammableCodeGen {
 						final pt = hexLayout.hexToPixel(hex);
 						macro $fieldRef.setPosition($v{pt.x}, $v{pt.y});
 					} else {
-						final colExpr = rvToExpr(col);
-						final rowExpr = rvToExpr(row);
+						final colExpr = rvToExprInt(col);
+						final rowExpr = rvToExprInt(row);
 						final parityExpr = switch (parity) {
 							case EVEN: macro bh.base.Hex.OffsetCoord.EVEN;
 							case ODD: macro bh.base.Hex.OffsetCoord.ODD;
@@ -7397,8 +7466,8 @@ class ProgrammableCodeGen {
 						final pt = hexLayout.hexToPixel(hex);
 						macro $fieldRef.setPosition($v{pt.x}, $v{pt.y});
 					} else {
-						final colExpr = rvToExpr(col2);
-						final rowExpr = rvToExpr(row2);
+						final colExpr = rvToExprInt(col2);
+						final rowExpr = rvToExprInt(row2);
 						final _hlRef = hexFieldRef(node, pos);
 						switch (hexLayout.orientation) {
 							case POINTY: macro {
@@ -7436,7 +7505,7 @@ class ProgrammableCodeGen {
 						final pt = hexLayout.polygonCorner(cellHex, Std.int(ci), f);
 						macro $fieldRef.setPosition($v{pt.x}, $v{pt.y});
 					} else {
-						final ciExpr = rvToExpr(cornerIndex);
+						final ciExpr = rvToExprInt(cornerIndex);
 						final fExpr = rvToExpr(factor);
 						final _hlRef = hexFieldRef(node, pos);
 						if (cellHex != null) {
@@ -7467,7 +7536,7 @@ class ProgrammableCodeGen {
 						final pt = hexLayout.polygonEdge(cellHex, Std.int(d), f);
 						macro $fieldRef.setPosition($v{pt.x}, $v{pt.y});
 					} else {
-						final dExpr = rvToExpr(direction);
+						final dExpr = rvToExprInt(direction);
 						final fExpr = rvToExpr(factor);
 						final _hlRef = hexFieldRef(node, pos);
 						if (cellHex != null) {
@@ -7496,7 +7565,7 @@ class ProgrammableCodeGen {
 						final pt = hexLayout.polygonCorner(bh.base.Hex.zero(), Std.int(c), f);
 						macro $fieldRef.setPosition($v{pt.x}, $v{pt.y});
 					} else {
-						final cExpr = rvToExpr(count);
+						final cExpr = rvToExprInt(count);
 						final fExpr = rvToExpr(factor);
 						final _hlRef = hexFieldRef(node, pos);
 						macro {
@@ -7514,7 +7583,7 @@ class ProgrammableCodeGen {
 						final pt = hexLayout.polygonEdge(bh.base.Hex.zero(), Std.int(d), f);
 						macro $fieldRef.setPosition($v{pt.x}, $v{pt.y});
 					} else {
-						final dExpr = rvToExpr(direction);
+						final dExpr = rvToExprInt(direction);
 						final fExpr = rvToExpr(factor);
 						final _hlRef = hexFieldRef(node, pos);
 						macro {
