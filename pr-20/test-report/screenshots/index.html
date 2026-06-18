@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-06-17 21:38:02</div>
+    <div class="timestamp">Generated: 2026-06-18 17:58:09</div>
     <div class="summary">
         <strong>Summary:</strong> 101 tests,         <span style="color: #4CAF50;">101 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.3s, visual 24.4s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.3s, visual 24s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>7510 assertions:</strong>             <span style="color: #4CAF50;">7510 passed</span>
+            <strong>7544 assertions:</strong>             <span style="color: #4CAF50;">7544 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -1350,9 +1350,17 @@
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">CodegenIntTruncationParityTest</div>
+                <div class="unit-method pass">testCompoundExpr_Builder_TruncatesPerNode: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testCompoundExpr_Codegen_TruncatesPerNode: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testDivOperandIntegerization_Builder_Grid: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testDivOperandIntegerization_Builder_Offset: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testDivOperandIntegerization_Codegen_Grid: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testDivOperandIntegerization_Codegen_Offset: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testGridCoord_Builder_TruncatesCell: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testGridCoord_Codegen_TruncatesCell_ParamExpr: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testGridCoord_Codegen_TruncatesCell_StaticExpr: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testModIntegerization_Builder_Grid: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testModIntegerization_Codegen_Grid: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testStepCount_Builder_TruncatesDivision: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testStepCount_Codegen_TruncatesDivision: OK <span class="dots">.</span></div>
             </div>
@@ -1629,6 +1637,12 @@
                 <div class="unit-method pass">testPushOnlyEventFlags: OK <span class="dots">.</span></div>
             </div>
             <div class="unit-class">
+                <div class="unit-class-name">NestedIndexedCollisionTest</div>
+                <div class="unit-method pass">testBuilder_NestedRecurringNamedIndex_Throws: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testBuilder_NestedRecurringSlotIndex_Throws: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testBuilder_SingleLoopUniqueIndex_BuildsCleanly: OK <span class="dots">..</span></div>
+            </div>
+            <div class="unit-class">
                 <div class="unit-class-name">ParameterizedSlotTest</div>
                 <div class="unit-method pass">testBasicSlotBuilds: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testCodegenBuildSlotContentInheritsTweenManagerFromBuilder: OK <span class="dots">...</span></div>
@@ -1758,6 +1772,9 @@
                 <div class="unit-method pass">testFinalWithNonLiteralRhsAsConditionalKeyRejected: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testFinalWithString: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testFinalWithTernary: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testFloatParamComparisonConditionalStillParses: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testFloatParamEqualityConditionalRejected: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testFloatParamNegatedEqualityConditionalRejected: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testFlowUnexpectedTokenError: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testGarbageInNumericPosition: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testGraphicsArcAngleUnits: OK <span class="dots">.</span></div>
@@ -2511,6 +2528,14 @@
                 <div class="unit-class-name">StrictDColorVerbatimTest</div>
                 <div class="unit-method pass">testPixelWithZeroAlphaIsStoredVerbatimInBuilderAndCodegen: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testTintWithZeroAlphaIsStoredVerbatimInBuilderAndCodegen: OK <span class="dots">.....</span></div>
+            </div>
+            <div class="unit-class">
+                <div class="unit-class-name">StringFloatConditionalParityTest</div>
+                <div class="unit-method pass">testBuilder_StringParamNumericValueEquality_Matches: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testBuilder_StringParamNumericValueEquality_NoMatchWhenDifferent: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testBuilder_StringPipeSwitchArm_Matches: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testCodegen_StringParamNumericValueEquality_Matches: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testCodegen_StringPipeSwitchArm_MatchesNonDefault: OK <span class="dots">..</span></div>
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">TweenManagerTest</div>
