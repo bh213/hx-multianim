@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-06-18 17:58:09</div>
+    <div class="timestamp">Generated: 2026-06-22 18:27:15</div>
     <div class="summary">
         <strong>Summary:</strong> 101 tests,         <span style="color: #4CAF50;">101 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.3s, visual 24s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1s, visual 26.5s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>7544 assertions:</strong>             <span style="color: #4CAF50;">7544 passed</span>
+            <strong>7581 assertions:</strong>             <span style="color: #4CAF50;">7581 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -1291,6 +1291,13 @@
                 <div class="unit-method pass">testApplyPos_AdditiveOnPositionedContainer_Codegen: OK <span class="dots">.......</span></div>
             </div>
             <div class="unit-class">
+                <div class="unit-class-name">CodegenBatchUpdateParityTest</div>
+                <div class="unit-method pass">testBatchMode_Flag: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testBatch_CoalescesRebuildListenerFires: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testBatch_DefersVisibilityUntilEndUpdate: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testUnbatched_FiresPerSetter: OK <span class="dots">.</span></div>
+            </div>
+            <div class="unit-class">
                 <div class="unit-class-name">CodegenDynRefKeyContractTest</div>
                 <div class="unit-method pass">testNamedDynamicTarget_Builder_KeyStableAcrossSwap: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testNamedDynamicTarget_Codegen_KeyStableAcrossSwap: OK <span class="dots">.......</span></div>
@@ -1361,6 +1368,8 @@
                 <div class="unit-method pass">testGridCoord_Codegen_TruncatesCell_StaticExpr: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testModIntegerization_Builder_Grid: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testModIntegerization_Codegen_Grid: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testRepeatCountParam_Builder_TruncatesPerNode: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testRepeatCountParam_Codegen_TruncatesPerNode: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testStepCount_Builder_TruncatesDivision: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testStepCount_Codegen_TruncatesDivision: OK <span class="dots">.</span></div>
             </div>
@@ -1404,6 +1413,17 @@
             <div class="unit-class">
                 <div class="unit-class-name">CodegenSwitchInactiveArmTest</div>
                 <div class="unit-method pass">testCodegenSwitchActiveArmSurvivesInactiveArmParamChange: OK <span class="dots">......</span></div>
+            </div>
+            <div class="unit-class">
+                <div class="unit-class-name">CodegenTernaryEqualityParityTest</div>
+                <div class="unit-method pass">testTernaryEnumEq_Builder: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testTernaryEnumEq_Builder_FalseBranch: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testTernaryEnumEq_Codegen: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testTernaryEnumEq_Codegen_FalseBranch: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testTernaryEnumNotEq_Builder: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testTernaryEnumNotEq_Codegen: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testTernaryStringEq_Builder: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testTernaryStringEq_Codegen: OK <span class="dots">..</span></div>
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">ColorUtilsTest</div>
@@ -1638,6 +1658,7 @@
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">NestedIndexedCollisionTest</div>
+                <div class="unit-method pass">testBuilder_NestedRecurringDynamicRefIndex_Throws: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testBuilder_NestedRecurringNamedIndex_Throws: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testBuilder_NestedRecurringSlotIndex_Throws: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testBuilder_SingleLoopUniqueIndex_BuildsCleanly: OK <span class="dots">..</span></div>
@@ -1687,6 +1708,8 @@
                 <div class="unit-method pass">testBareRangeAfterArrow: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testBlockCommentInProgrammable: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testBlockCommentWithStars: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testBoolParamAcceptsBooleanConditionalValue: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testBoolParamRejectsNonBooleanConditionalValue: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testBoundsCombined: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testBoundsCombinedNamed: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testColorStops: OK <span class="dots">.</span></div>
@@ -1892,6 +1915,11 @@
                 <div class="unit-method pass">testNestedRepeatableScope: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testNonProgrammableNoValidation: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testNotEqualsWithArray: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testNumericParamAcceptsNumericConditionalValue: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testNumericParamRejectsNonNumericBracketValue: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testNumericParamRejectsNonNumericConditionalValue: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testNumericParamRejectsNonNumericQuotedConditionalValue: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testNumericParamRejectsNonNumericSwitchArm: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testOffsetInvalidSuffix: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testOffsetOnGridPos: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testOffsetOnLayout: OK <span class="dots">.</span></div>
