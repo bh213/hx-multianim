@@ -906,14 +906,16 @@ class ProgrammableCodeGen {
 					$p{["this", paramField]} = $i{"v"};
 				});
 			}
-			// Pass param name to _applyVisibility when transitions or switches exist — the
-			// switch gate uses it to skip rebuilds whose arms don't reference this param.
+			// Build the per-setter rebuild pass. Pass the param name to _applyVisibility when
+			// transitions or switches exist — the switch gate uses it to skip rebuilds whose arms
+			// don't reference this param.
+			final applyExprs:Array<Expr> = [];
 			final hasSwitchEntries = switchUpdateEntries.length > 0;
 			if ((hasTransitions && transParamNames.exists(name)) || hasSwitchEntries) {
 				final nameStr = name;
-				setterExprs.push(macro this._applyVisibility($v{nameStr}));
+				applyExprs.push(macro this._applyVisibility($v{nameStr}));
 			} else {
-				setterExprs.push(macro this._applyVisibility());
+				applyExprs.push(macro this._applyVisibility());
 			}
 
 			var refsParam = false;
@@ -924,17 +926,59 @@ class ProgrammableCodeGen {
 				}
 			}
 			if (refsParam)
-				setterExprs.push(macro this._updateExpressions());
+				applyExprs.push(macro this._updateExpressions());
 
 			// Fire rebuild listeners after visibility + expression updates complete. Symmetric with
 			// the runtime path where `IncrementalUpdateContext.applyUpdates()` fires listeners at
 			// the end of each parameter-driven rebuild cycle. Enables `UIScreen.addInteractives`
 			// auto-resync after `@switch` arm flips that change the interactive set.
-			setterExprs.push(macro this._fireRebuildListeners());
+			applyExprs.push(macro this._fireRebuildListeners());
+
+			// Defer the rebuild to endUpdate() while a batch is open — coalesces a multi-param
+			// state change (e.g. status + disabled) into ONE _applyVisibility/_updateExpressions/
+			// _fireRebuildListeners pass, matching BuilderResult.beginUpdate/endUpdate
+			// (MultiAnimBuilder.hx). Outside a batch, apply immediately (the backing field was
+			// already updated above, so non-batched behavior is unchanged).
+			final applyBlock:Expr = {expr: EBlock(applyExprs), pos: pos};
+			setterExprs.push(macro {
+				if (this._batchMode) this._batchDirty = true;
+				else $applyBlock;
+			});
 
 			final setterParamType = publicParamType(name, def.type);
 			instanceFields.push(makeMethod("set" + toPascalCase(name), setterExprs, [{name: "v", type: setterParamType}], macro :Void, [APublic], pos));
 		}
+
+		// ==================== Batch update API ====================
+		// Mirror BuilderResult.beginUpdate/endUpdate/batchMode (MultiAnimBuilder.hx). Between
+		// beginUpdate() and endUpdate(), typed setters update their backing field immediately but
+		// defer the rebuild pass; endUpdate() runs a single combined _applyVisibility (full pass,
+		// no per-param gate) + _updateExpressions + _fireRebuildListeners — so a multi-param state
+		// change fires ONE rebuild and ONE listener pass instead of one per setter.
+		instanceFields.push(makeField("_batchMode", FVar(macro :Bool, macro false), [APrivate], pos));
+		instanceFields.push(makeField("_batchDirty", FVar(macro :Bool, macro false), [APrivate], pos));
+
+		instanceFields.push(makeMethod("beginUpdate", [
+			macro if (this._batchMode) throw "beginUpdate: already in batch; nesting is not supported",
+			macro this._batchMode = true,
+			macro this._batchDirty = false,
+		], [], macro :Void, [APublic], pos));
+
+		instanceFields.push(makeMethod("endUpdate", [
+			macro if (!this._batchMode) throw "endUpdate: no matching beginUpdate",
+			macro this._batchMode = false,
+			macro if (this._batchDirty) {
+				this._applyVisibility();
+				this._updateExpressions();
+				this._fireRebuildListeners();
+			},
+			macro this._batchDirty = false,
+		], [], macro :Void, [APublic], pos));
+
+		instanceFields.push(makeField("batchMode",
+			FProp("get", "never", macro :Bool, null), [APublic], pos));
+		instanceFields.push(makeMethod("get_batchMode",
+			[macro return this._batchMode], [], macro :Bool, [APrivate, AInline], pos));
 
 		// ==================== UIInteractiveSource implementation ====================
 		// Generated on every instance class so codegen instances can be wired to screens via
@@ -1957,6 +2001,13 @@ class ProgrammableCodeGen {
 					default: null;
 				};
 				if (indexedKey != null) {
+					// A recurring indexed dynamicRef key (e.g. #cell[$j] inside nested loops,
+					// or a duplicate-value iterator) would last-writer-win in this map, silently
+					// dropping the earlier iterations' refs. Reject loudly — symmetric with the
+					// runtime builder's "duplicate dynamicRef name" BuilderError and the indexed
+					// name (seenIndices) / slot (seenSlotFields) guards in the finalize pass.
+					if (indexedDynamicRefFields.exists(indexedKey))
+						Context.error('indexed dynamicRef "${indexedKey}" is generated more than once with the same index — a 1-D indexed dynamicRef whose index recurs (nested loops, or a duplicate-value iterator) collides. Give the inner loop a unique index or use a 2-D indexed name (#name[indexX, indexY]).', pos);
 					indexedDynamicRefFields.set(indexedKey, "_dynref_lit_" + fieldName);
 				}
 				switch programmableRef {
@@ -2354,16 +2405,20 @@ class ProgrammableCodeGen {
 		if (node.children == null) return;
 
 		// Generate the count expression: for StepIterator it's the count directly, for RangeIterator it needs calculation
+		// Per-node integer truncation via rvToExprInt — mirrors the builder's resolveAsInteger
+		// on each of start/end/step (RangeIterator) and on the count (StepIterator). Plain
+		// rvToExpr does float math with a single final truncation, which diverges from the
+		// builder on compound counts like step($n / 2 * 2): Std.int(7/2)*2 = 6 vs Std.int(7.0) = 7.
 		final countExpr:Expr = switch (repeatType) {
 			case RangeIterator(start, end, step):
-				final endExpr = rvToExpr(end);
-				final startExpr = rvToExpr(start);
-				final stepExpr = rvToExpr(step);
+				final endExpr = rvToExprInt(end);
+				final startExpr = rvToExprInt(start);
+				final stepExpr = rvToExprInt(step);
 				macro Math.ceil(($endExpr - $startExpr) / $stepExpr);
 			case StepIterator(_, _, repeats):
-				rvToExpr(repeats);
+				rvToExprInt(repeats);
 			default:
-				rvToExpr(countRV);
+				rvToExprInt(countRV);
 		};
 
 		// For RangeIterator, the loop variable should be rangeStart + _rt_i * rangeStep, not just _rt_i
@@ -3587,23 +3642,25 @@ class ProgrammableCodeGen {
 	static function rebuildRepeat2DChildren(node:Node, varNameX:String, varNameY:String, infoX:{staticCount:Null<Int>, dx:Int, dy:Int, rangeStart:Int, rangeStep:Int, countRV:Null<ReferenceableValue>}, infoY:{staticCount:Null<Int>, dx:Int, dy:Int, rangeStart:Int, rangeStep:Int, countRV:Null<ReferenceableValue>}, repeatTypeX:RepeatType, repeatTypeY:RepeatType, containerField:String, fields:Array<Field>, ctorExprs:Array<Expr>, pos:Position):Void {
 		if (node.children == null) return;
 
+		// Per-node integer truncation via rvToExprInt (see rebuildRepeatChildren) so a
+		// param-dependent compound count agrees with the builder's per-node resolveAsInteger.
 		final countXExpr:Expr = if (infoX.staticCount != null) macro $v{infoX.staticCount} else switch (repeatTypeX) {
 			case RangeIterator(start, end, step):
-				final endExpr = rvToExpr(end);
-				final startExpr = rvToExpr(start);
-				final stepExpr = rvToExpr(step);
+				final endExpr = rvToExprInt(end);
+				final startExpr = rvToExprInt(start);
+				final stepExpr = rvToExprInt(step);
 				macro Math.ceil(($endExpr - $startExpr) / $stepExpr);
-			case StepIterator(_, _, repeats): rvToExpr(repeats);
+			case StepIterator(_, _, repeats): rvToExprInt(repeats);
 			default: macro 0;
 		};
 
 		final countYExpr:Expr = if (infoY.staticCount != null) macro $v{infoY.staticCount} else switch (repeatTypeY) {
 			case RangeIterator(start, end, step):
-				final endExpr = rvToExpr(end);
-				final startExpr = rvToExpr(start);
-				final stepExpr = rvToExpr(step);
+				final endExpr = rvToExprInt(end);
+				final startExpr = rvToExprInt(start);
+				final stepExpr = rvToExprInt(step);
 				macro Math.ceil(($endExpr - $startExpr) / $stepExpr);
-			case StepIterator(_, _, repeats): rvToExpr(repeats);
+			case StepIterator(_, _, repeats): rvToExprInt(repeats);
 			default: macro 0;
 		};
 
@@ -6909,8 +6966,21 @@ class ProgrammableCodeGen {
 						// Std.int(9.0/2.5)=3 instead of Std.int(9/2)=4.
 						case OpIntegerDiv: macro Std.int(${rvToExprInt(e1)} / ${rvToExprInt(e2)});
 						case OpMod: macro($left % $right);
-						case OpEq: macro($left == $right ? 1 : 0);
-						case OpNotEq: macro($left != $right ? 1 : 0);
+						// The builder's resolveAsBool evaluates == / != as STRING equality (enum
+						// params compared by value NAME). Numeric `_field == "hover"` would be an
+						// Int == String compile error for an enum/string operand. When either side
+						// is a string or enum reference, compare with forString=true operands —
+						// rvToExpr routes enum refs through their names[] lookup (enumToStringExpr)
+						// and wraps the rest in Std.string, matching the builder. Pure-numeric
+						// operands keep the numeric comparison (same boolean result either way).
+						case OpEq:
+							if (isStringOrEnumRV(e1) || isStringOrEnumRV(e2))
+								macro(${rvToExpr(e1, true)} == ${rvToExpr(e2, true)} ? 1 : 0);
+							else macro($left == $right ? 1 : 0);
+						case OpNotEq:
+							if (isStringOrEnumRV(e1) || isStringOrEnumRV(e2))
+								macro(${rvToExpr(e1, true)} != ${rvToExpr(e2, true)} ? 1 : 0);
+							else macro($left != $right ? 1 : 0);
 						case OpLess: macro($left < $right ? 1 : 0);
 						case OpGreater: macro($left > $right ? 1 : 0);
 						case OpLessEq: macro($left <= $right ? 1 : 0);
@@ -8651,6 +8721,20 @@ class ProgrammableCodeGen {
 				def != null && def.type == PPTString;
 			case RVCallbacks(_, defaultValue): defaultValue == null || isStringRV(defaultValue);
 			case RVCallbacksWithIndex(_, _, defaultValue): defaultValue == null || isStringRV(defaultValue);
+			default: false;
+		};
+	}
+
+	/** True when `rv` resolves to a non-numeric value — a string (literal / string param /
+	 *  string callback, via isStringRV) or an enum-param reference. Used by rvToExpr's == / !=
+	 *  to pick string-equality codegen (forString operands) over the numeric comparison that
+	 *  would emit `Int == String` for these operands. */
+	static function isStringOrEnumRV(rv:ReferenceableValue):Bool {
+		if (isStringRV(rv)) return true;
+		return switch (rv) {
+			case RVReference(ref):
+				final def = paramDefs.get(ref);
+				def != null && (switch (def.type) { case PPTEnum(_): true; default: false; });
 			default: false;
 		};
 	}

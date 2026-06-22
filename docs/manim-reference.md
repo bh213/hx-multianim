@@ -319,7 +319,7 @@ A bare `@else` or `@default` is **terminal** — it closes the chain. Any `@else
 
 **Unknown enum members in a conditional are rejected at parse time.** Multi-value (`@(p => [a, b])`), negated multi-value (`@(p != [a, b])`), and `@switch` pipe arms (`a | b { ... }`) build their match set from raw lexemes; a value not present in the parameter's declared enum is rejected with a message naming the offending value and listing the valid members. (String params accept any value; loop variables have no declared type to validate against.) This prevents the silent divergence where a typo never matched in the builder but matched enum index 0 in codegen.
 
-**Type-aware equality.** `@(param => value)` and `@(param != value)` match by the parameter's declared type. On a `string` param the value is compared as a string — `@(version => 2)` means `version == "2"` (an integer-parseable value does **not** become a numeric match). **Float params reject equality:** `@(floatParam => N)` / `@(floatParam != N)` is a parse error (float equality is unreliable and diverged between backends — consistent with `@switch` rejecting float params). Use a comparison (`>=`, `<=`, `>`, `<`) or a range (`a..b`) on float params instead.
+**Type-aware equality.** `@(param => value)` and `@(param != value)` match by the parameter's declared type. On a `string` param the value is compared as a string — `@(version => 2)` means `version == "2"` (an integer-parseable value does **not** become a numeric match). **Float params reject equality:** `@(floatParam => N)` / `@(floatParam != N)` is a parse error (float equality is unreliable and diverged between backends — consistent with `@switch` rejecting float params). Use a comparison (`>=`, `<=`, `>`, `<`) or a range (`a..b`) on float params instead. **Numeric params reject non-numeric values:** `@(intParam => foo)` / `uint` / `range` / hex- & grid-direction params reject a non-integer-parseable value at parse time (these only match numeric values, not strings). **Bool params reject non-boolean values:** `@(boolParam => maybe)` is a parse error — only `true`/`false` (or `yes`/`no`, `1`/`0`) are accepted. Both guards apply to single-value, quoted, bracket multi-value, and `@switch` arms, and exist because the previous string fallthrough silently never matched in the builder and was an `Int == String` compile error in codegen.
 
 Conditionals also work with **repeatable loop variables** (e.g., `@($i => 0)`, `@($i >= 3)`, `@($i != 1)`) inside `repeatable` bodies.
 
@@ -1309,6 +1309,8 @@ When enabled, elements support efficient runtime updates without full rebuild:
 - `beginUpdate()` / `endUpdate()` for batched parameter changes
 
 Used by: dynamic refs, slider, scrollbar, parameterized slots, button, checkbox, tab button.
+
+**Batch API on codegen instances.** `@:manim` codegen instances mirror `BuilderResult`'s batch API — `beginUpdate()` / `endUpdate()` / `batchMode` (a `(get, never)` flag). Between `beginUpdate()` and `endUpdate()`, typed setters (`setStatus`, `setDisabled`, …) update their backing field immediately but defer the rebuild pass; `endUpdate()` runs a single combined `_applyVisibility` (full pass, no per-param gate) + `_updateExpressions` + `_fireRebuildListeners`, so a multi-param state change fires ONE rebuild and ONE listener pass instead of one per setter. Nesting `beginUpdate()` or an unbalanced `endUpdate()` throws. Outside a batch, setters apply immediately (non-batched behavior unchanged).
 
 ### Per-element tracked properties
 

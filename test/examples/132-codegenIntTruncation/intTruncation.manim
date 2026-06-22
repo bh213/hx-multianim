@@ -57,3 +57,15 @@ version: 1.0
   grid: 10, 10
   bitmap(generated(color(6, 6, #00ffff))): $grid.pos($a % $b, 0)
 }
+
+// Param-dependent repeat count with a compound integer expression. A count that
+// references a parameter cannot be statically unrolled, so it routes through the
+// rebuild path (rebuildRepeatChildren / rvToExpr) instead of tryResolveStaticInt.
+// The builder truncates at every node: resolveAsInteger($n / 2 * 2) = Std.int(7/2)*2
+// = 3*2 = 6 iterations. Codegen evaluates the count as float and truncates once:
+// Std.int((7.0/2.0)*2.0) = Std.int(7.0) = 7 iterations. They must agree.
+#repeatCountParamTrunc programmable(n:int=7) {
+  repeatable($i, step($n / 2 * 2, dx: 12)) {
+    bitmap(generated(color(8, 8, #0000ff))): 0, 0
+  }
+}

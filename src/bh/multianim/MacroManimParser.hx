@@ -2115,8 +2115,21 @@ class MacroManimParser {
 				switch (val.toLowerCase()) {
 					case "true" | "yes" | "1": CoValue(1);
 					case "false" | "no" | "0": CoValue(0);
-					default: CoStringValue(val);
+					// A non-boolean string previously fell to CoStringValue: the builder
+					// silently never matched (Std.string(0/1) != "maybe") and codegen emitted
+					// `_field == "maybe"` over an Int field (Int == String compile error that
+					// broke the whole @:manim build). Reject at parse time, parallel to the
+					// PPTFloat guard.
+					default: error('non-boolean conditional value "$val" for a bool parameter — use true/false (or yes/no, 1/0)');
 				}
+			case PPTInt | PPTUnsignedInt | PPTRange(_, _) | PPTHexDirection | PPTGridDirection:
+				// Numeric param types only match numeric conditional values. A non-numeric
+				// string previously fell to CoStringValue: the builder silently never matched
+				// and codegen emitted `_field == "foo"` over an Int field (Int == String
+				// compile error). Reject at parse time, parallel to the PPTFloat/PPTBool guards.
+				final n = Std.parseInt(val);
+				if (n != null) CoValue(n) else
+					error('non-numeric conditional value "$val" for a numeric parameter — int/uint/range/direction parameters only match numeric values, not strings');
 			case PPTFlags(bits):
 				final n = Std.parseInt(val);
 				if (n != null) CoFlag(n) else CoStringValue(val);

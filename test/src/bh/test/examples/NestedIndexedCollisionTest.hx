@@ -64,6 +64,28 @@ class NestedIndexedCollisionTest extends BuilderTestBase {
 			"nested loops producing a recurring indexed slot (#cell[$j]) must be rejected at build time, not silently coexist");
 	}
 
+	@Test
+	public function testBuilder_NestedRecurringDynamicRefIndex_Throws():Void {
+		final src = "#leaf programmable() {
+			bitmap(generated(color(4, 4, #ff0000))): 0, 0
+		}
+		#x programmable() {
+			repeatable($i, step(2, dy: 20)) {
+				repeatable($j, step(2, dx: 10)) {
+					#cell[$j] dynamicRef(leaf): 0, 0
+				}
+			}
+		}";
+		var thrown:Null<String> = null;
+		try {
+			BuilderTestBase.buildFromSource(src, "x", null);
+		} catch (e:Dynamic) {
+			thrown = Std.string(e);
+		}
+		Assert.notNull(thrown,
+			"nested loops producing a recurring indexed dynamicRef (#cell[$j]) must be rejected at build time, not silently collapsed to the last iteration");
+	}
+
 	// Control: a unique single-loop indexed name must still build cleanly (no over-rejection).
 	@Test
 	public function testBuilder_SingleLoopUniqueIndex_BuildsCleanly():Void {

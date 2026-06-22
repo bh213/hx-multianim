@@ -186,4 +186,25 @@ class CodegenIntTruncationParityTest extends BuilderTestBase {
 		Assert.floatEquals(10.0, xToRoot(bitmaps[0], cast inst),
 			"codegen: $grid.pos($a % $b, 0) (a=7.0,b=2.5) must land on cell 1 (x=10) via integer mod, not cell 2 (x=20) via float mod");
 	}
+
+	// ==================== Param-dependent repeat count per-node truncation ====================
+
+	/** Builder baseline: a param-dependent compound repeat count truncates at every node.
+	 *  step($n / 2 * 2) with n=7 -> resolveAsInteger = Std.int(7/2)*2 = 6 iterations. */
+	@Test
+	public function testRepeatCountParam_Builder_TruncatesPerNode():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "repeatCountParamTrunc", null);
+		Assert.equals(6, BuilderTestBase.findVisibleBitmapDescendants(result.object).length,
+			"builder: repeatable($i, step($n / 2 * 2)) with n=7 -> Std.int(7/2)*2 = 6 iterations");
+	}
+
+	/** Codegen: a param-dependent compound repeat count must truncate per node like the builder.
+	 *  Currently the rebuild path evaluates the count as float and truncates once:
+	 *  Std.int((7.0/2.0)*2.0) = Std.int(7.0) = 7 iterations. */
+	@Test
+	public function testRepeatCountParam_Codegen_TruncatesPerNode():Void {
+		final inst:Dynamic = createMp().repeatCountParamTrunc.create();
+		Assert.equals(6, BuilderTestBase.findVisibleBitmapDescendants(cast inst).length,
+			"codegen: repeatable($i, step($n / 2 * 2)) with n=7 must run 6 iterations like the builder (Std.int(7/2)*2 = 6), not 7 from a single final truncation of float math");
+	}
 }

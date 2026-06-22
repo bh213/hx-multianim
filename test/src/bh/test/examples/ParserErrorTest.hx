@@ -5199,4 +5199,90 @@ class ParserErrorTest extends utest.Test {
 			}
 		'), "@(floatParam >= N) and @(floatParam => a..b) must still parse");
 	}
+
+	// Numeric params (int / uint / range / hexDirection / gridDirection) only match numeric
+	// conditional values, and bool params only match true/false. A non-numeric / non-boolean
+	// string routed through stringToConditional → CoStringValue, which the builder silently never
+	// matched and codegen turned into an `Int == String` compile error that broke the whole @:manim
+	// build. Rejected at parse time, symmetric with the float-equality and unknown-enum guards above.
+
+	@Test
+	public function testNumericParamRejectsNonNumericConditionalValue() {
+		var error = parseExpectingError('
+			#test programmable(hp:0..100=50) {
+				@(hp => foo) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.notNull(error, "@(numericParam => nonNumericString) must be rejected at parse time, not routed to a never-matching/compile-error string conditional");
+		if (error != null)
+			Assert.isTrue(error.indexOf("foo") >= 0, 'Error should name the offending value "foo", got: $error');
+	}
+
+	@Test
+	public function testNumericParamRejectsNonNumericQuotedConditionalValue() {
+		var error = parseExpectingError('
+			#test programmable(hp:int=50) {
+				@(hp => "foo") bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.notNull(error, "@(intParam => \"foo\") quoted string must be rejected at parse time");
+	}
+
+	@Test
+	public function testNumericParamRejectsNonNumericSwitchArm() {
+		var error = parseExpectingError('
+			#test programmable(hp:int=50) {
+				@switch(hp) {
+					foo: bitmap(generated(color(10, 10, #f00))): 0,0
+					default { bitmap(generated(color(20, 20, #00f))): 0,0 }
+				}
+			}
+		');
+		Assert.notNull(error, "non-numeric @switch arm on a numeric param must be rejected at parse time");
+		if (error != null)
+			Assert.isTrue(error.indexOf("foo") >= 0, 'Error should name the offending value "foo", got: $error');
+	}
+
+	@Test
+	public function testNumericParamRejectsNonNumericBracketValue() {
+		var error = parseExpectingError('
+			#test programmable(hp:int=50) {
+				@(hp => [foo, bar]) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.notNull(error, "@(numericParam => [nonNumeric, ...]) multi-value must be rejected at parse time");
+	}
+
+	@Test
+	public function testBoolParamRejectsNonBooleanConditionalValue() {
+		var error = parseExpectingError('
+			#test programmable(on:bool=true) {
+				@(on => maybe) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.notNull(error, "@(boolParam => nonBoolean) must be rejected at parse time");
+		if (error != null)
+			Assert.isTrue(error.indexOf("maybe") >= 0, 'Error should name the offending value "maybe", got: $error');
+	}
+
+	// Controls: valid numeric / bool conditional values must still parse (guard against over-rejection).
+	@Test
+	public function testNumericParamAcceptsNumericConditionalValue() {
+		Assert.isTrue(parseExpectingSuccess('
+			#test programmable(hp:0..100=50) {
+				@(hp => 50) bitmap(generated(color(10, 10, #f00))): 0,0
+				@(hp => [10, 20]) bitmap(generated(color(10, 10, #0f0))): 0,0
+			}
+		'), "numeric conditional values (single and bracket) must still parse");
+	}
+
+	@Test
+	public function testBoolParamAcceptsBooleanConditionalValue() {
+		Assert.isTrue(parseExpectingSuccess('
+			#test programmable(on:bool=true) {
+				@(on => true) bitmap(generated(color(10, 10, #f00))): 0,0
+				@(on => false) bitmap(generated(color(10, 10, #0f0))): 0,0
+			}
+		'), "boolean conditional values (true/false) must still parse");
+	}
 }

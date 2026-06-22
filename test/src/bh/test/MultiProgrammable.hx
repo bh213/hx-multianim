@@ -548,9 +548,24 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/132-codegenIntTruncation/intTruncation.manim", "modGridFloat")
 	public var modGridFloat;
 
+	@:manim("test/examples/132-codegenIntTruncation/intTruncation.manim", "repeatCountParamTrunc")
+	public var repeatCountParamTrunc;
+
 	@:manim("test/examples/134-stringFloatConditional/stringFloatConditional.manim", "stringPipeSwitch")
 	public var stringPipeSwitch;
 
 	@:manim("test/examples/134-stringFloatConditional/stringFloatConditional.manim", "stringEqNumeric")
 	public var stringEqNumeric;
+
+	@:manim("test/examples/135-codegenTernaryEquality/ternaryEquality.manim", "ternaryEnumEq")
+	public var ternaryEnumEq;
+
+	@:manim("test/examples/135-codegenTernaryEquality/ternaryEquality.manim", "ternaryEnumNotEq")
+	public var ternaryEnumNotEq;
+
+	@:manim("test/examples/135-codegenTernaryEquality/ternaryEquality.manim", "ternaryStringEq")
+	public var ternaryStringEq;
+
+	@:manim("test/examples/136-codegenBatchUpdate/batchUpdate.manim", "batchTwoParams")
+	public var batchTwoParams;
 }
