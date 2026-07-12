@@ -568,4 +568,19 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/136-codegenBatchUpdate/batchUpdate.manim", "batchTwoParams")
 	public var batchTwoParams;
+
+	@:manim("test/examples/137-codegenRepeatParamParity/repeatParamParity.manim", "stepParamOffsets")
+	public var stepParamOffsets;
+
+	@:manim("test/examples/137-codegenRepeatParamParity/repeatParamParity.manim", "stepParamOffsetsRt")
+	public var stepParamOffsetsRt;
+
+	@:manim("test/examples/137-codegenRepeatParamParity/repeatParamParity.manim", "rangeParamBounds")
+	public var rangeParamBounds;
+
+	@:manim("test/examples/137-codegenRepeatParamParity/repeatParamParity.manim", "flowRepeat")
+	public var flowRepeat;
+
+	@:manim("test/examples/138-codegenCtxSize/ctxSize.manim", "ctxSize")
+	public var ctxSize;
 }

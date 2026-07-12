@@ -2287,27 +2287,50 @@ class ProgrammableCodeGen {
 		};
 	}
 
-	/** Resolve repeat iterator info: returns {count, dx, dy, rangeStart, rangeStep} or null if param-dependent */
-	static function resolveRepeatInfo(repeatType:RepeatType):{staticCount:Null<Int>, dx:Int, dy:Int, rangeStart:Int, rangeStep:Int, countRV:Null<ReferenceableValue>} {
+	/** Resolve repeat iterator info. staticCount is null when the count is param-dependent;
+	 *  paramScalars is true when a per-iteration scalar (step dx/dy, range start/step) is
+	 *  param-dependent and must be resolved at runtime instead of baked as a literal. */
+	static function resolveRepeatInfo(repeatType:RepeatType):{staticCount:Null<Int>, dx:Int, dy:Int, rangeStart:Int, rangeStep:Int, countRV:Null<ReferenceableValue>, paramScalars:Bool} {
 		return switch (repeatType) {
 			case StepIterator(dirX, dirY, repeats):
 				final count = tryResolveStaticInt(repeats);
 				final dxVal = dirX != null ? tryResolveStaticInt(dirX) : 0;
 				final dyVal = dirY != null ? tryResolveStaticInt(dirY) : 0;
-				{staticCount: count, dx: dxVal != null ? dxVal : 0, dy: dyVal != null ? dyVal : 0, rangeStart: 0, rangeStep: 1, countRV: count == null ? repeats : null};
+				{staticCount: count, dx: dxVal != null ? dxVal : 0, dy: dyVal != null ? dyVal : 0, rangeStart: 0, rangeStep: 1,
+					countRV: count == null ? repeats : null, paramScalars: dxVal == null || dyVal == null};
 			case RangeIterator(start, end, step):
 				final s = tryResolveStaticInt(start);
 				final e = tryResolveStaticInt(end);
 				final st = tryResolveStaticInt(step);
 				if (s != null && e != null && st != null) {
-					{staticCount: Math.ceil((e - s) / st), dx: 0, dy: 0, rangeStart: s, rangeStep: st, countRV: null};
+					{staticCount: Math.ceil((e - s) / st), dx: 0, dy: 0, rangeStart: s, rangeStep: st, countRV: null, paramScalars: false};
 				} else {
-					{staticCount: null, dx: 0, dy: 0, rangeStart: s != null ? s : 0, rangeStep: st != null ? st : 1, countRV: end};
+					{staticCount: null, dx: 0, dy: 0, rangeStart: s != null ? s : 0, rangeStep: st != null ? st : 1, countRV: end,
+						paramScalars: s == null || st == null};
 				}
 			default:
 				// LayoutIterator, ArrayIterator, etc. — not supported yet in codegen
 				null;
 		};
+	}
+
+	/** Param refs that must trigger the runtime repeat rebuild: iterator count, step
+	 *  offsets, and range bounds — mirrors the builder's repeatParamRefs collection. */
+	static function collectRepeatTriggerRefs(repeatType:RepeatType):Array<String> {
+		final refs:Array<String> = [];
+		function add(rv:Null<ReferenceableValue>) {
+			if (rv == null) return;
+			for (r in collectParamRefs(rv))
+				if (!refs.contains(r)) refs.push(r);
+		}
+		switch (repeatType) {
+			case StepIterator(dirX, dirY, repeats):
+				add(repeats); add(dirX); add(dirY);
+			case RangeIterator(start, end, step):
+				add(start); add(end); add(step);
+			default:
+		}
+		return refs;
 	}
 
 	/** Process a REPEAT node: unroll for static count, or pool for param-dependent count */
@@ -2332,6 +2355,20 @@ class ProgrammableCodeGen {
 		final info = resolveRepeatInfo(repeatType);
 		if (info == null) {
 			processRepeatFallback(node, parentField, fields, ctorExprs, siblings, pos);
+			return;
+		}
+
+		final fullyStatic = info.staticCount != null && !info.paramScalars;
+
+		// Mirror the builder's needsWrapper rule: a fully static, zero-offset,
+		// non-conditional, unpositioned repeat unrolls its children directly into the
+		// parent so containers like h2d.Flow lay out each iteration child.
+		final hasOwnPos = node.pos != null && !node.pos.match(ZERO);
+		final needsWrapper = !fullyStatic || info.dx != 0 || info.dy != 0
+			|| !node.conditionals.match(NoConditional) || hasOwnPos;
+		if (!needsWrapper) {
+			siblings.push({node: node, fieldName: null});
+			unrollRepeatChildren(node, varName, info.staticCount, 0, 0, info.rangeStart, info.rangeStep, parentField, fields, ctorExprs, pos);
 			return;
 		}
 
@@ -2360,13 +2397,13 @@ class ProgrammableCodeGen {
 				sentinelField: repeatSentinelName, parentField: parentField, layer: node.layer, restoreFlowPropsExpr: null});
 		siblings.push({node: node, fieldName: containerName});
 
-		if (info.staticCount != null) {
+		if (fullyStatic) {
 			// Static unroll: generate children N times with loop var substituted
 			unrollRepeatChildren(node, varName, info.staticCount, info.dx, info.dy, info.rangeStart, info.rangeStep, containerName, fields, ctorExprs, pos);
 		} else {
-			// Param-dependent: generate runtime rebuild method
-			final countParamRefs = collectParamRefs(info.countRV);
-			rebuildRepeatChildren(node, varName, info.dx, info.dy, info.rangeStart, info.rangeStep, containerName, fields, ctorExprs, countParamRefs, info.countRV, repeatType, pos);
+			// Param-dependent count and/or per-iteration scalars: runtime rebuild method
+			final triggerRefs = collectRepeatTriggerRefs(repeatType);
+			rebuildRepeatChildren(node, varName, containerName, fields, ctorExprs, triggerRefs, info.countRV, repeatType, pos);
 		}
 	}
 
@@ -2401,7 +2438,7 @@ class ProgrammableCodeGen {
 	}
 
 	/** Runtime rebuild repeat: generates a method that creates/recreates children based on count param */
-	static function rebuildRepeatChildren(node:Node, varName:String, dx:Int, dy:Int, rangeStart:Int, rangeStep:Int, containerField:String, fields:Array<Field>, ctorExprs:Array<Expr>, countParamRefs:Array<String>, countRV:ReferenceableValue, repeatType:RepeatType, pos:Position):Void {
+	static function rebuildRepeatChildren(node:Node, varName:String, containerField:String, fields:Array<Field>, ctorExprs:Array<Expr>, countParamRefs:Array<String>, countRV:ReferenceableValue, repeatType:RepeatType, pos:Position):Void {
 		if (node.children == null) return;
 
 		// Generate the count expression: for StepIterator it's the count directly, for RangeIterator it needs calculation
@@ -2420,6 +2457,25 @@ class ProgrammableCodeGen {
 			default:
 				rvToExprInt(countRV);
 		};
+
+		// Per-iteration scalars resolved at runtime (plain literals when static): the
+		// range loop value is start + i*step, the step offset is (dx*i, dy*i). They are
+		// passed as rebuild-method arguments so the change guard sees them too, not just
+		// the count — e.g. range($a, $a + 6) with a shifted $a keeps the same count but
+		// must still rebuild with the new loop values.
+		var startArg:Expr = macro 0;
+		var stepArg:Expr = macro 1;
+		var dxArg:Expr = macro 0;
+		var dyArg:Expr = macro 0;
+		switch (repeatType) {
+			case RangeIterator(start, _, step):
+				startArg = rvToExprInt(start);
+				stepArg = rvToExprInt(step);
+			case StepIterator(dirX, dirY, _):
+				if (dirX != null) dxArg = rvToExprInt(dirX);
+				if (dirY != null) dyArg = rvToExprInt(dirY);
+			default:
+		}
 
 		// For RangeIterator, the loop variable should be rangeStart + _rt_i * rangeStep, not just _rt_i
 		final isRange = switch (repeatType) { case RangeIterator(_, _, _): true; default: false; };
@@ -2461,15 +2517,11 @@ class ProgrammableCodeGen {
 		// Build the for-loop body: create container, position, add children
 		final forBodyExprs:Array<Expr> = [];
 		if (isRange) {
-			final rangeStartFloat:Float = rangeStart;
-			final rangeStepFloat:Float = rangeStep;
-			forBodyExprs.push(macro final _rt_val = Std.int($v{rangeStartFloat} + _rt_i * $v{rangeStepFloat}));
+			forBodyExprs.push(macro final _rt_val = _rt_start + _rt_i * _rt_step);
 		}
 		forBodyExprs.push(macro final _rt_cont = new h2d.Object());
-		final dxFloat:Float = dx;
-		final dyFloat:Float = dy;
-		if (dx != 0 || dy != 0) {
-			forBodyExprs.push(macro _rt_cont.setPosition($v{dxFloat} * _rt_i, $v{dyFloat} * _rt_i));
+		if (repeatType.match(StepIterator(_, _, _))) {
+			forBodyExprs.push(macro _rt_cont.setPosition(_rt_dx * _rt_i, _rt_dy * _rt_i));
 		}
 		final containerFieldRef = macro $p{["this", containerField]};
 		forBodyExprs.push(macro $containerFieldRef.addChild(_rt_cont));
@@ -2480,28 +2532,52 @@ class ProgrammableCodeGen {
 		// Generate rebuild method
 		final rebuildMethodName = "_rebuildRepeat_" + containerField;
 		final countTrackingField = rebuildMethodName + "_n";
+		final startTrackingField = rebuildMethodName + "_s";
+		final stepTrackingField = rebuildMethodName + "_sp";
+		final dxTrackingField = rebuildMethodName + "_dx";
+		final dyTrackingField = rebuildMethodName + "_dy";
 
-		// Tracking field for current count (to avoid unnecessary rebuilds)
+		// Tracking fields for the current iterator scalars (to avoid unnecessary rebuilds).
+		// Count starts at -1 so the first call never early-outs (count is clamped to >= 0).
 		fields.push(makeField(countTrackingField, FVar(macro :Int, macro -1), [APrivate], pos));
+		fields.push(makeField(startTrackingField, FVar(macro :Int, macro 0), [APrivate], pos));
+		fields.push(makeField(stepTrackingField, FVar(macro :Int, macro 1), [APrivate], pos));
+		fields.push(makeField(dxTrackingField, FVar(macro :Int, macro 0), [APrivate], pos));
+		fields.push(makeField(dyTrackingField, FVar(macro :Int, macro 0), [APrivate], pos));
 
-		// Rebuild method: clears container and recreates children for the new count
+		// Rebuild method: clears container and recreates children when any scalar changed
 		final rebuildBody:Array<Expr> = [];
-		rebuildBody.push(macro if (_rt_count == $p{["this", countTrackingField]}) return);
+		rebuildBody.push(macro if (_rt_count < 0) _rt_count = 0);
+		rebuildBody.push(macro if (_rt_count == $p{["this", countTrackingField]}
+			&& _rt_start == $p{["this", startTrackingField]}
+			&& _rt_step == $p{["this", stepTrackingField]}
+			&& _rt_dx == $p{["this", dxTrackingField]}
+			&& _rt_dy == $p{["this", dyTrackingField]}) return);
 		rebuildBody.push(macro $p{["this", countTrackingField]} = _rt_count);
+		rebuildBody.push(macro $p{["this", startTrackingField]} = _rt_start);
+		rebuildBody.push(macro $p{["this", stepTrackingField]} = _rt_step);
+		rebuildBody.push(macro $p{["this", dxTrackingField]} = _rt_dx);
+		rebuildBody.push(macro $p{["this", dyTrackingField]} = _rt_dy);
 		// Evict the previous count's registrations from the sink BEFORE removeChildren (parent links
 		// must still be intact), then rebuild the body into the same sink.
 		rebuildBody.push(macro this._pb.resetRepeatSink($p{["this", repeatSinkField]}, $containerFieldRef));
 		rebuildBody.push(macro $containerFieldRef.removeChildren());
 		rebuildBody.push(macro for (_rt_i in 0..._rt_count) $forBody);
 
-		fields.push(makeMethod(rebuildMethodName, rebuildBody, [{name: "_rt_count", type: macro :Int}], macro :Void, [APrivate], pos));
+		fields.push(makeMethod(rebuildMethodName, rebuildBody, [
+			{name: "_rt_count", type: macro :Int},
+			{name: "_rt_start", type: macro :Int},
+			{name: "_rt_step", type: macro :Int},
+			{name: "_rt_dx", type: macro :Int},
+			{name: "_rt_dy", type: macro :Int},
+		], macro :Void, [APrivate], pos));
 
-		// Call rebuild in constructor with default count
-		ctorExprs.push(macro $i{rebuildMethodName}(Std.int(${countExpr})));
+		// Call rebuild in constructor with default scalars
+		ctorExprs.push(macro $i{rebuildMethodName}(Std.int(${countExpr}), $startArg, $stepArg, $dxArg, $dyArg));
 
 		// Register for rebuild on param change
 		repeatRebuildEntries.push({
-			callExpr: macro $i{rebuildMethodName}(Std.int(${countExpr})),
+			callExpr: macro $i{rebuildMethodName}(Std.int(${countExpr}), $startArg, $stepArg, $dxArg, $dyArg),
 		});
 	}
 
@@ -7054,8 +7130,10 @@ class ProgrammableCodeGen {
 					switch (ref) {
 						case "ctx":
 							switch (property) {
-								case "width": macro this.getScene().width;
-								case "height": macro this.getScene().height;
+								// getScene() is null while the generated ctor runs — resolve through the
+								// helper (live scene, else injected factory scene, else structured error).
+								case "width": macro bh.multianim.ProgrammableBuilder.ctxSceneWidth(this, this._pb);
+								case "height": macro bh.multianim.ProgrammableBuilder.ctxSceneHeight(this, this._pb);
 								default:
 									Context.error('Unknown context property: $$ctx.$property', Context.currentPos());
 									macro 0;

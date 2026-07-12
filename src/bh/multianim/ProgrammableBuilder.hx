@@ -38,6 +38,11 @@ class ProgrammableBuilder {
 	var _builder:Null<Dynamic> = null;
 	public var tweenManager:Null<bh.base.TweenManager> = null;
 
+	/** Scene used to resolve $ctx.width / $ctx.height in generated constructors,
+	 *  where the instance is not yet attached (getScene() is null). Injectable like
+	 *  tweenManager; the runtime builder gets the same via BuilderParameters.scene. */
+	public var scene:Null<h2d.Scene> = null;
+
 	public function new(resourceLoader:ResourceLoader) {
 		this.resourceLoader = resourceLoader;
 	}
@@ -57,6 +62,26 @@ class ProgrammableBuilder {
 		final out:Array<bh.base.MAObject> = [];
 		collectInteractivesInto(obj, out);
 		return out;
+	}
+
+	/** Resolve $ctx.width for a codegen instance: prefer the live scene when the
+	 *  instance is attached, else the scene injected on the factory, else fail
+	 *  structurally like the builder does when BuilderParameters.scene is missing. */
+	public static function ctxSceneWidth(obj:h2d.Object, pb:ProgrammableBuilder):Float {
+		final live = obj.getScene();
+		if (live != null) return live.width;
+		final injected = pb.scene;
+		if (injected != null) return injected.width;
+		throw BuilderError.of("$ctx.width requires a scene: attach the instance first or set scene on the ProgrammableBuilder factory");
+	}
+
+	/** Resolve $ctx.height for a codegen instance. Same contract as ctxSceneWidth. */
+	public static function ctxSceneHeight(obj:h2d.Object, pb:ProgrammableBuilder):Float {
+		final live = obj.getScene();
+		if (live != null) return live.height;
+		final injected = pb.scene;
+		if (injected != null) return injected.height;
+		throw BuilderError.of("$ctx.height requires a scene: attach the instance first or set scene on the ProgrammableBuilder factory");
 	}
 
 	static function collectInteractivesInto(obj:h2d.Object, out:Array<bh.base.MAObject>):Void {

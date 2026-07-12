@@ -2471,6 +2471,21 @@ private enum InternalBuildMode {
 	TileGroupMode(tg:h2d.TileGroup);
 }
 
+/** Resolved iterator state for one axis of a REPEAT2D. Re-resolved by the
+ *  incremental rebuild closure so param-dependent values stay current. */
+@:nullSafety
+private typedef Repeat2DAxis = {
+	count:Int,
+	dx:Int,
+	dy:Int,
+	layoutName:Null<String>,
+	arrayIterator:Array<String>,
+	valueVariableName:Null<String>,
+	rangeStart:Int,
+	rangeStep:Int,
+	isRange:Bool
+}
+
 @:nullSafety
 typedef BuilderCallbackFunction = CallbackRequest->CallbackResult;
 
@@ -4179,7 +4194,22 @@ class MultiAnimBuilder {
 			case RVParenthesis(e): collectParamRefs(e, result);
 			case RVTernary(cond, t, f): collectParamRefs(cond, result); collectParamRefs(t, result); collectParamRefs(f, result);
 			case EUnaryOp(_, e): collectParamRefs(e, result);
-			case RVElementOfArray(_, idx): collectParamRefs(idx, result);
+			// arrayRef may name an array-valued param; non-param names are dormant triggers.
+			case RVElementOfArray(arrayRef, idx): result.push(arrayRef); collectParamRefs(idx, result);
+			case RVMethodCall(_, _, args): for (a in args) collectParamRefs(a, result);
+			case RVChainedMethodCall(base, _, args):
+				collectParamRefs(base, result);
+				for (a in args) collectParamRefs(a, result);
+			case RVCallbacks(name, defaultValue):
+				collectParamRefs(name, result);
+				if (defaultValue != null) collectParamRefs(defaultValue, result);
+			case RVCallbacksWithIndex(name, index, defaultValue):
+				collectParamRefs(name, result);
+				collectParamRefs(index, result);
+				if (defaultValue != null) collectParamRefs(defaultValue, result);
+			case RVColor(_, _, index): collectParamRefs(index, result);
+			case RVColorXY(_, _, x, y): collectParamRefs(x, result); collectParamRefs(y, result);
+			case RVArray(refArr): for (e in refArr) collectParamRefs(e, result);
 			default:
 		}
 	}
@@ -6436,144 +6466,195 @@ class MultiAnimBuilder {
 
 			case REPEAT2D(varNameX, varNameY, repeatTypeX, repeatTypeY):
 				var object = new h2d.Object();
-				var xRepeatCount = 0;
-				var yRepeatCount = 0;
-				var xDx = 0;
-				var xDy = 0;
-				var yDx = 0;
-				var yDy = 0;
-				var xLayoutName:Null<String> = null;
-				var yLayoutName:Null<String> = null;
-				var xArrayIterator:Array<String> = [];
-				var yArrayIterator:Array<String> = [];
-				var xValueVariableName:Null<String> = null;
-				var yValueVariableName:Null<String> = null;
-				var xRangeStart = 0;
-				var xRangeStep = 1;
-				var yRangeStart = 0;
-				var yRangeStep = 1;
 				var layouts:Null<MultiAnimLayouts> = null;
 				function getLayoutsIfNeeded() {
 					if (layouts == null) layouts = getLayouts();
 					return layouts;
 				}
 
-				switch repeatTypeX {
-					case StepIterator(dirX, dirY, repeats):
-						xRepeatCount = resolveAsInteger(repeats);
-						xDx = dirX == null ? 0 : resolveAsInteger(dirX);
-						xDy = dirY == null ? 0 : resolveAsInteger(dirY);
-					case LayoutIterator(layoutName):
-						final l = getLayoutsIfNeeded();
-						xRepeatCount = l.getLayoutSequenceLengthByLayoutName(layoutName);
-						xLayoutName = layoutName;
-					case ArrayIterator(variableName, arrayName):
-						xArrayIterator = resolveAsArray(RVArrayReference(arrayName));
-						xRepeatCount = xArrayIterator.length;
-						xValueVariableName = variableName;
-					case RangeIterator(start, end, step):
-						xRangeStart = resolveAsInteger(start);
-						final rangeEnd = resolveAsInteger(end);
-						xRangeStep = resolveAsInteger(step);
-						xRepeatCount = Math.ceil((rangeEnd - xRangeStart) / xRangeStep);
-						xDx = 0;
-						xDy = 0;
-					case StateAnimIterator(_, _, _, _):
-						throw builderErrorAt(node, 'StateAnimIterator not supported in REPEAT2D');
-					case TilesIterator(_, _, _, _):
-						throw builderErrorAt(node, 'TilesIterator not supported in REPEAT2D');
+				// Resolve one axis of the 2D repeat. Also called by the incremental rebuild
+				// closure so param-dependent counts, offsets and range bounds re-resolve.
+				function resolveAxis(repeatType:RepeatType):Repeat2DAxis {
+					var count = 0;
+					var dx = 0;
+					var dy = 0;
+					var layoutName:Null<String> = null;
+					var arrayIterator:Array<String> = [];
+					var valueVariableName:Null<String> = null;
+					var rangeStart = 0;
+					var rangeStep = 1;
+					var isRange = false;
+					switch repeatType {
+						case StepIterator(dirX, dirY, repeats):
+							count = resolveAsInteger(repeats);
+							dx = dirX == null ? 0 : resolveAsInteger(dirX);
+							dy = dirY == null ? 0 : resolveAsInteger(dirY);
+						case LayoutIterator(name):
+							count = getLayoutsIfNeeded().getLayoutSequenceLengthByLayoutName(name);
+							layoutName = name;
+						case ArrayIterator(variableName, arrayName):
+							arrayIterator = resolveAsArray(RVArrayReference(arrayName));
+							count = arrayIterator.length;
+							valueVariableName = variableName;
+						case RangeIterator(start, end, step):
+							rangeStart = resolveAsInteger(start);
+							final rangeEnd = resolveAsInteger(end);
+							rangeStep = resolveAsInteger(step);
+							count = Math.ceil((rangeEnd - rangeStart) / rangeStep);
+							isRange = true;
+						case StateAnimIterator(_, _, _, _):
+							throw builderErrorAt(node, 'StateAnimIterator not supported in REPEAT2D');
+						case TilesIterator(_, _, _, _):
+							throw builderErrorAt(node, 'TilesIterator not supported in REPEAT2D');
+					}
+					return {
+						count: count, dx: dx, dy: dy, layoutName: layoutName, arrayIterator: arrayIterator,
+						valueVariableName: valueVariableName, rangeStart: rangeStart, rangeStep: rangeStep, isRange: isRange
+					};
 				}
 
-				switch repeatTypeY {
-					case StepIterator(dirX, dirY, repeats):
-						yRepeatCount = resolveAsInteger(repeats);
-						yDx = dirX == null ? 0 : resolveAsInteger(dirX);
-						yDy = dirY == null ? 0 : resolveAsInteger(dirY);
-					case LayoutIterator(layoutName):
-						final l = getLayoutsIfNeeded();
-						yRepeatCount = l.getLayoutSequenceLengthByLayoutName(layoutName);
-						yLayoutName = layoutName;
-					case ArrayIterator(variableName, arrayName):
-						yArrayIterator = resolveAsArray(RVArrayReference(arrayName));
-						yRepeatCount = yArrayIterator.length;
-						yValueVariableName = variableName;
-					case RangeIterator(start, end, step):
-						yRangeStart = resolveAsInteger(start);
-						final rangeEnd = resolveAsInteger(end);
-						yRangeStep = resolveAsInteger(step);
-						yRepeatCount = Math.ceil((rangeEnd - yRangeStart) / yRangeStep);
-						yDx = 0;
-						yDy = 0;
-					case StateAnimIterator(_, _, _, _):
-						throw builderErrorAt(node, 'StateAnimIterator not supported in REPEAT2D');
-					case TilesIterator(_, _, _, _):
-						throw builderErrorAt(node, 'TilesIterator not supported in REPEAT2D');
+				// Run the full 2D iteration into `target`. Shared between the initial build
+				// and the incremental rebuild closure.
+				function buildIterations(xAxis:Repeat2DAxis, yAxis:Repeat2DAxis, target:h2d.Object, ir:InternalBuilderResults, bp:BuilderParameters) {
+					final gridCoordinateSystem = MultiAnimParser.getGridCoordinateSystem(node);
+					final hexCoordinateSystem = MultiAnimParser.getHexCoordinateSystem(node);
+					final yLayoutName = yAxis.layoutName;
+					var yIterator = yLayoutName == null ? null : getLayoutsIfNeeded().getIterator(yLayoutName);
+					for (yCount in 0...yAxis.count) {
+						final resolvedY = yAxis.isRange ? yAxis.rangeStart + yCount * yAxis.rangeStep : yCount;
+						var yOffsetX = 0.0;
+						var yOffsetY = 0.0;
+						if (yIterator != null) {
+							final pt = yIterator.next();
+							yOffsetX = pt.x;
+							yOffsetY = pt.y;
+						} else {
+							yOffsetX = yAxis.dx * yCount;
+							yOffsetY = yAxis.dy * yCount;
+						}
+						final xLayoutName = xAxis.layoutName;
+						var xIterator = xLayoutName == null ? null : getLayoutsIfNeeded().getIterator(xLayoutName);
+						for (xCount in 0...xAxis.count) {
+							final resolvedX = xAxis.isRange ? xAxis.rangeStart + xCount * xAxis.rangeStep : xCount;
+							var xOffsetX = 0.0;
+							var xOffsetY = 0.0;
+							if (xIterator != null) {
+								final pt = xIterator.next();
+								xOffsetX = pt.x;
+								xOffsetY = pt.y;
+							} else {
+								xOffsetX = xAxis.dx * xCount;
+								xOffsetY = xAxis.dy * xCount;
+							}
+							// Set indexed params before resolving conditional children
+							indexedParams.set(varNameX, Value(resolvedX));
+							indexedParams.set(varNameY, Value(resolvedY));
+							final xValueVariableName = xAxis.valueVariableName;
+							final yValueVariableName = yAxis.valueVariableName;
+							if (xValueVariableName != null) indexedParams.set(xValueVariableName, StringValue(xAxis.arrayIterator[xCount]));
+							if (yValueVariableName != null) indexedParams.set(yValueVariableName, StringValue(yAxis.arrayIterator[yCount]));
+							final resolvedChildren = resolveConditionalChildren(node.children);
+							for (childNode in resolvedChildren) {
+								var obj = build(childNode, ObjectMode(target), gridCoordinateSystem, hexCoordinateSystem, ir, bp);
+								if (obj == null)
+									continue;
+								addPosition(obj, xOffsetX + yOffsetX, xOffsetY + yOffsetY);
+							}
+							cleanupFinalVars(resolvedChildren, indexedParams);
+						}
+					}
 				}
+
+				final xAxis = resolveAxis(repeatTypeX);
+				final yAxis = resolveAxis(repeatTypeY);
 
 				if (indexedParams.exists(varNameX) || indexedParams.exists(varNameY))
 					throw builderErrorAt(node, 'cannot use repeatable2d index param "$varNameX" or "$varNameY" as it is already defined');
-				var yIterator = yLayoutName == null ? null : getLayoutsIfNeeded().getIterator(yLayoutName);
-				for (yCount in 0...yRepeatCount) {
-					final resolvedY = switch repeatTypeY {
-						case RangeIterator(_, _, _): yRangeStart + yCount * yRangeStep;
-						case _: yCount;
-					};
-					final gridCoordinateSystem = MultiAnimParser.getGridCoordinateSystem(node);
-					final hexCoordinateSystem = MultiAnimParser.getHexCoordinateSystem(node);
-					var yOffsetX = 0.0;
-					var yOffsetY = 0.0;
-					switch repeatTypeY {
-						case StepIterator(_, _, _):
-							yOffsetX = yDx * yCount;
-							yOffsetY = yDy * yCount;
-						case LayoutIterator(_):
-							var pt = yIterator.next();
-							yOffsetX = pt.x;
-							yOffsetY = pt.y;
-						case RangeIterator(_, _, _):
-						case ArrayIterator(_, _):
-						case StateAnimIterator(_, _, _, _):
-						case TilesIterator(_, _, _, _):
-					}
-					var xIterator = xLayoutName == null ? null : getLayoutsIfNeeded().getIterator(xLayoutName);
-					for (xCount in 0...xRepeatCount) {
-						final resolvedX = switch repeatTypeX {
-							case RangeIterator(_, _, _): xRangeStart + xCount * xRangeStep;
-							case _: xCount;
-						};
-						var xOffsetX = 0.0;
-						var xOffsetY = 0.0;
-						switch repeatTypeX {
-							case StepIterator(_, _, _):
-								xOffsetX = xDx * xCount;
-								xOffsetY = xDy * xCount;
-							case LayoutIterator(_):
-								var pt = xIterator.next();
-								xOffsetX = pt.x;
-								xOffsetY = pt.y;
-							case RangeIterator(_, _, _):
-							case ArrayIterator(_, _):
-							case StateAnimIterator(_, _, _, _):
-							case TilesIterator(_, _, _, _):
-						}
-						// Set indexed params before resolving conditional children
-						indexedParams.set(varNameX, Value(resolvedX));
-						indexedParams.set(varNameY, Value(resolvedY));
-						if (xValueVariableName != null) indexedParams.set(xValueVariableName, StringValue(xArrayIterator[xCount]));
-						if (yValueVariableName != null) indexedParams.set(yValueVariableName, StringValue(yArrayIterator[yCount]));
-						final resolvedChildren = resolveConditionalChildren(node.children);
-						for (childNode in resolvedChildren) {
-							var obj = build(childNode, ObjectMode(object), gridCoordinateSystem, hexCoordinateSystem, internalResults, builderParams);
-							if (obj == null)
-								continue;
-							addPosition(obj, xOffsetX + yOffsetX, xOffsetY + yOffsetY);
-						}
-						cleanupFinalVars(resolvedChildren, indexedParams);
+
+				// Collect param refs for incremental tracking of param-dependent repeat
+				// counts/offsets/bounds on either axis (mirrors REPEAT).
+				final repeatParamRefs:Array<String> = [];
+				function collectIteratorRefs(repeatType:RepeatType) {
+					switch repeatType {
+						case StepIterator(dirX, dirY, repeats):
+							collectParamRefs(repeats, repeatParamRefs);
+							if (dirX != null) collectParamRefs(dirX, repeatParamRefs);
+							if (dirY != null) collectParamRefs(dirY, repeatParamRefs);
+						case RangeIterator(start, end, step):
+							collectParamRefs(start, repeatParamRefs);
+							collectParamRefs(end, repeatParamRefs);
+							collectParamRefs(step, repeatParamRefs);
+						default:
 					}
 				}
+				collectIteratorRefs(repeatTypeX);
+				collectIteratorRefs(repeatTypeY);
+				// Also collect param refs from conditions inside children (e.g. @($x < $level)
+				// references $level) so changing them triggers a rebuild even with constant counts.
+				if (incrementalMode && incrementalContext != null) {
+					collectChildConditionalParamRefs(node.children, repeatParamRefs);
+					repeatParamRefs.remove(varNameX); // exclude loop variables — not settable parameters
+					repeatParamRefs.remove(varNameY);
+				}
+				final hasIncrementalRepeat = incrementalMode && incrementalContext != null && repeatParamRefs.length > 0;
 
+				// Disable incremental tracking for children of param-dependent repeats
+				// (they will be fully rebuilt when the tracked params change). Untracked params
+				// must be marked up-front for the same reason as in REPEAT.
+				final savedIncrementalMode = incrementalMode;
+				final savedIncrementalCtx = incrementalContext;
+				if (hasIncrementalRepeat) {
+					// markUntrackedParamsInSubtree takes a single excludeVar, so the second
+					// loop variable rides along in the exclusion refs list.
+					final excludeRefs = repeatParamRefs.concat([varNameY]);
+					for (childNode in node.children)
+						markUntrackedParamsInSubtree(childNode, savedIncrementalCtx, varNameX, excludeRefs);
+					incrementalMode = false;
+				}
+
+				// Constant-count 2D repeatable in incremental mode: resolve loop-var conditionals
+				// at build time and skip incremental conditional tracking (same rationale as REPEAT).
+				final savedSuppressConditionalTracking = suppressConditionalTracking;
+				if (incrementalMode && incrementalContext != null)
+					suppressConditionalTracking = true;
+
+				buildIterations(xAxis, yAxis, object, internalResults, builderParams);
+
+				suppressConditionalTracking = savedSuppressConditionalTracking;
 				indexedParams.remove(varNameX);
 				indexedParams.remove(varNameY);
+
+				// Restore incremental mode and register structural rebuild
+				if (hasIncrementalRepeat) {
+					incrementalMode = savedIncrementalMode;
+					final capturedObject = object;
+					final capturedTypeX = repeatTypeX;
+					final capturedTypeY = repeatTypeY;
+					final capturedVarNameX = varNameX;
+					final capturedVarNameY = varNameY;
+					final capturedBP = builderParams;
+					final capturedIR = internalResults;
+					final capturedCtx = savedIncrementalCtx;
+					savedIncrementalCtx.trackExpression(() -> {
+						final newXAxis = resolveAxis(capturedTypeX);
+						final newYAxis = resolveAxis(capturedTypeY);
+						// Drop registrations + per-element bookkeeping from the previous iterations
+						// before tearing down their scene graph, then rebuild into the parent
+						// internalResults (mirrors REPEAT).
+						capturedCtx.cleanupDestroyedSubtree(capturedIR, capturedObject);
+						capturedObject.removeChildren();
+						final savedMode = incrementalMode;
+						final savedCtx = incrementalContext;
+						incrementalMode = false;
+						incrementalContext = null;
+						buildIterations(newXAxis, newYAxis, capturedObject, capturedIR, capturedBP);
+						indexedParams.remove(capturedVarNameX);
+						indexedParams.remove(capturedVarNameY);
+						incrementalMode = savedMode;
+						incrementalContext = savedCtx;
+					}, repeatParamRefs, capturedObject);
+				}
+
 				skipChildren = true;
 				HeapsObject(object);
 

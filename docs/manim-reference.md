@@ -546,6 +546,8 @@ Note: coordinates are static — resolved from the initial animation state at bu
 | `$ctx.font("name").lineHeight` | Font line height |
 | `$ctx.font("name").baseLine` | Font baseline |
 
+`$ctx.width`/`$ctx.height` need a scene to resolve. Runtime builder: pass it via `BuilderParameters.scene` (a missing scene throws a `BuilderError`). Codegen (`@:manim`): the generated constructor resolves through the live scene when the instance is already attached, else through the injectable `ProgrammableBuilder.scene` field (set it on the factory like `tweenManager`), else throws the same structured `BuilderError`.
+
 ---
 
 ## Element Properties

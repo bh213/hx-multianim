@@ -144,6 +144,10 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.NestedIndexedCollisionTest());
 		testRunner.addCase(new bh.test.examples.CodegenTernaryEqualityParityTest());
 		testRunner.addCase(new bh.test.examples.CodegenBatchUpdateParityTest());
+		testRunner.addCase(new bh.test.examples.Repeat2DIncrementalTest());
+		testRunner.addCase(new bh.test.examples.PaletteIndexTrackingTest());
+		testRunner.addCase(new bh.test.examples.CodegenRepeatParamParityTest());
+		testRunner.addCase(new bh.test.examples.CodegenCtxSizeTest());
 		testRunner.addCase(new bh.test.examples.AllocationSmokeTest());
 		#if MULTIANIM_DEV
 		testRunner.addCase(new bh.test.examples.HotReloadTest());
