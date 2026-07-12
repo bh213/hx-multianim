@@ -1,0 +1,3 @@
+# Applied automatically by haxelib for every project using `-lib hx-multianim`.
+# Registers the .atlas2 resource extension (required by .manim atlas resources).
+--macro bh.base.AtlasMacroInit.init()

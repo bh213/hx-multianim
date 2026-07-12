@@ -29,6 +29,7 @@ class DevBridge {
 
 	final screenManager:ScreenManager;
 	final port:Int;
+	final bindAddress:String;
 	var serverSocket:Null<Socket>;
 
 	// ---- Startup ----
@@ -70,9 +71,10 @@ class DevBridge {
 	// ---- Pending HTTP connections (still receiving headers/body) ----
 	var pendingConnections:Array<HttpConnection> = [];
 
-	public function new(screenManager:ScreenManager, port:Int = 0) {
+	public function new(screenManager:ScreenManager, port:Int = 0, ?bindAddress:String) {
 		this.screenManager = screenManager;
 		this.port = if (port != 0) port else resolvePort();
+		this.bindAddress = if (bindAddress != null) bindAddress else resolveBindAddress();
 	}
 
 	static function resolvePort():Int {
@@ -83,6 +85,16 @@ class DevBridge {
 			trace('[DevBridge] Invalid HX_DEV_PORT="$envPort", using default 9001');
 		}
 		return 9001;
+	}
+
+	// Bind address for the HTTP server. Default is 0.0.0.0 (all interfaces) so
+	// MCP clients on other LAN machines can connect; set HX_DEV_BIND=127.0.0.1
+	// to restrict the bridge to the local machine. There is no authentication —
+	// anything that can reach the port can inspect/manipulate the app.
+	static function resolveBindAddress():String {
+		var envBind = Sys.getEnv("HX_DEV_BIND");
+		if (envBind != null && envBind != "") return envBind;
+		return "0.0.0.0";
 	}
 
 	public function start():Void {
@@ -98,10 +110,10 @@ class DevBridge {
 		var tryPort = port;
 		for (_ in 0...10) {
 			try {
-				serverSocket.bind("0.0.0.0", tryPort, onClientConnected);
+				serverSocket.bind(bindAddress, tryPort, onClientConnected);
 				actualPort = tryPort;
 				bound = true;
-				trace('[DevBridge] Listening on port $tryPort');
+				trace('[DevBridge] Listening on port $tryPort (bind $bindAddress)');
 				break;
 			} catch (e:Dynamic) {
 				trace('[DevBridge] Port $tryPort busy, trying next...');

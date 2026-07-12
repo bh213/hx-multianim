@@ -4,6 +4,13 @@ on:
   push:
     branches: [ main ]
   pull_request:
+  workflow_call:
+    inputs:
+      skip-report-deploy:
+        description: 'Skip the GitHub Pages report deploy (used when called from the release workflow)'
+        type: boolean
+        default: false
+        required: false
 
 permissions:
   contents: write
@@ -164,7 +171,7 @@ jobs:
         touch _report/.nojekyll
 
     - name: Deploy test report to GitHub Pages (main)
-      if: always() && github.event_name == 'push' && matrix.mode == 'standard'
+      if: always() && github.event_name == 'push' && matrix.mode == 'standard' && !inputs.skip-report-deploy
       uses: peaceiris/actions-gh-pages@v3
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
