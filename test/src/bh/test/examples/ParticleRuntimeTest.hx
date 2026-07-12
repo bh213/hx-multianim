@@ -312,6 +312,102 @@ class ParticleRuntimeTest extends utest.Test {
 			'Expected pooled allocation (~$burst unique Particles), saw $unique distinct instances over $cycles burst cycles');
 	}
 
+	// ==================== Gravity direction convention ====================
+
+	@Test
+	public function testGravityAngleDownAcceleratesParticlesDownward():Void {
+		// The parser's direction constants are 0°=right, 90°=down (screen
+		// convention, matching every other angle property). The builder passes
+		// degToRad(angle) straight through, so `gravityAngle: down` arrives here
+		// as π/2 — and gravity must then accelerate particles toward +y.
+		var p = createParticles();
+		var g = createGroup("main", p);
+		var dg:Dynamic = g;
+		dg.speed = 0;
+		dg.nparts = 1;
+		dg.emitSync = 1.0;
+		dg.emitMode = Point(0.0, 0.0);
+		dg.gravity = 200.0;
+		g.gravityAngle = Math.PI / 2; // "down" in the parser convention
+
+		g.start();
+		advanceGroup(g, 0.3);
+
+		var e = g.batch.first;
+		Assert.notNull(e);
+		Assert.isTrue(e.y > 1.0,
+			'gravityAngle=π/2 (down) must accelerate the particle downward; got y=${e.y}, x=${e.x}');
+		Assert.isTrue(Math.abs(e.x) < 0.01,
+			'gravityAngle=π/2 (down) must not push the particle sideways; got x=${e.x}');
+	}
+
+	@Test
+	public function testGravityWithNoAngleSetFallsDown():Void {
+		// Pin: a group with gravity but no gravityAngle assignment must keep the
+		// historical default direction — straight down.
+		var p = createParticles();
+		var g = createGroup("main", p);
+		var dg:Dynamic = g;
+		dg.speed = 0;
+		dg.nparts = 1;
+		dg.emitSync = 1.0;
+		dg.emitMode = Point(0.0, 0.0);
+		dg.gravity = 200.0;
+
+		g.start();
+		advanceGroup(g, 0.3);
+
+		var e = g.batch.first;
+		Assert.notNull(e);
+		Assert.isTrue(e.y > 1.0, 'default gravity must fall down; got y=${e.y}, x=${e.x}');
+		Assert.isTrue(Math.abs(e.x) < 0.01, 'default gravity must not drift sideways; got x=${e.x}');
+	}
+
+	// ==================== emitBurstAt must not enable child-draw of the batch ====================
+
+	@Test
+	public function testEmitBurstAtBeforeFirstDrawKeepsBatchHiddenFromChildDraw():Void {
+		// Group batches are children of the Particles object but are drawn
+		// EXPLICITLY in Particles.draw() (with blend-mode and non-relative
+		// transform handling). The batch must therefore stay invisible to the
+		// regular child draw pass — a visible batch is rendered twice (double
+		// alpha, wrong transform for non-relative groups), permanently.
+		var p = createParticles();
+		var g = createGroup("main", p);
+		Assert.isFalse(g.batch.visible, "sanity: batch starts hidden from child draw");
+
+		g.emitBurstAt(10.0, 20.0, 0.0, 0.0, 3);
+
+		Assert.isFalse(g.batch.visible,
+			"emitBurstAt before the first render must not flip batch.visible — Particles.draw() already draws group batches explicitly");
+	}
+
+	// ==================== Line-only bounds must not enforce a hidden default box ====================
+
+	@Test
+	public function testLineOnlyKillBoundsDoesNotEnforceHiddenDefaultBox():Void {
+		// A group configured with ONLY line bounds must judge particles by those
+		// lines alone. The box fields' defaults must not sneak in an invisible
+		// 0..800 x 0..600 kill box for content that never asked for a box.
+		var p = createParticles();
+		var g = createGroup("main", p);
+		var dg:Dynamic = g;
+		dg.speed = 0;
+		dg.emitMode = Point(0.0, 0.0);
+		dg.boundsMode = bh.base.Particles.BoundsMode.Kill;
+		// Vertical line at x=0, in-bounds side is x >= 0.
+		g.addBoundsLine(0, -10000, 0, 10000);
+
+		g.emitBurstAt(2000.0, 300.0, 0.0, 0.0, 1);
+		var e = g.batch.first;
+		Assert.notNull(e);
+
+		// (2000, 300) is far outside the legacy 800x600 default box but clearly
+		// on the in-bounds side of the configured line.
+		Assert.isTrue(g.checkBounds(cast e),
+			'a particle at (2000, 300) satisfies the only configured bound (x >= 0) and must survive; the hidden 800x600 default box must not kill it');
+	}
+
 	// ==================== Force Field Physics ====================
 
 	@Test

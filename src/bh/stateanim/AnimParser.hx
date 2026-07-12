@@ -248,7 +248,9 @@ private class AnimLexerHC {
 	}
 
 	public function nextToken():AnimToken {
-		// Skip spaces, tabs, AND newlines (#10 - newlines are now whitespace)
+		// Skip spaces, tabs, newlines (#10 - newlines are now whitespace),
+		// comments, and BOMs. Iterative on purpose: recursing per comment made
+		// long comment runs in generated files a stack-overflow risk.
 		while (pos < len) {
 			final c = ch();
 			if (c == ' '.code || c == '\t'.code) {
@@ -259,6 +261,30 @@ private class AnimLexerHC {
 				pos++;
 				if (pos < len && ch() == '\n'.code) pos++;
 				line++; col = 1; lineStart = pos;
+			} else if (c == 0xFEFF) {
+				// Byte-order mark: tolerated (editors prepend it), not a token.
+				pos++; col++;
+			} else if (c == '/'.code && pos + 1 < len && src.charCodeAt(pos + 1) == '/'.code) {
+				// Line comment
+				while (pos < len && ch() != '\n'.code && ch() != '\r'.code) { pos++; col++; }
+			} else if (c == '/'.code && pos + 1 < len && src.charCodeAt(pos + 1) == '*'.code) {
+				// Block comment
+				final commentLine = line;
+				final commentCol = col;
+				pos += 2; col += 2;
+				var blockClosed = false;
+				while (pos < len) {
+					if (ch() == '*'.code && pos + 1 < len && src.charCodeAt(pos + 1) == '/'.code) {
+						pos += 2; col += 2;
+						blockClosed = true;
+						break;
+					}
+					if (ch() == '\n'.code) { line++; col = 1; lineStart = pos + 1; }
+					else { col++; }
+					pos++;
+				}
+				if (!blockClosed)
+					throw '$sourceName:$commentLine:$commentCol: Unterminated block comment, missing closing */';
 			} else break;
 		}
 
@@ -268,31 +294,6 @@ private class AnimLexerHC {
 		if (pos >= len) return new AnimToken(APEof, startLine, startCol);
 
 		final c = ch();
-
-		// Line comment
-		if (c == '/'.code && pos + 1 < len && src.charCodeAt(pos + 1) == '/'.code) {
-			while (pos < len && ch() != '\n'.code && ch() != '\r'.code) { pos++; col++; }
-			return nextToken();
-		}
-
-		// Block comment
-		if (c == '/'.code && pos + 1 < len && src.charCodeAt(pos + 1) == '*'.code) {
-			pos += 2; col += 2;
-			var blockClosed = false;
-			while (pos < len) {
-				if (ch() == '*'.code && pos + 1 < len && src.charCodeAt(pos + 1) == '/'.code) {
-					pos += 2; col += 2;
-					blockClosed = true;
-					break;
-				}
-				if (ch() == '\n'.code) { line++; col = 1; lineStart = pos + 1; }
-				else { col++; }
-				pos++;
-			}
-			if (!blockClosed)
-				throw '$sourceName:$startLine:$startCol: Unterminated block comment, missing closing */';
-			return nextToken();
-		}
 
 		// Two-char tokens (must check before single-char)
 		if (c == '!'.code && pos + 1 < len && src.charCodeAt(pos + 1) == '='.code) { pos += 2; col += 2; return new AnimToken(APNotEquals, startLine, startCol); }
@@ -370,13 +371,16 @@ private class AnimLexerHC {
 			while (pos < len && isHexChar(ch())) { pos++; col++; }
 			final hexStr = src.substring(hexStart, pos);
 			if (hexStr.length == 3) {
-				// #RGB → #RRGGBB
+				// #RGB → 0xFFRRGGBB — bake opaque alpha, matching .manim strict-D
+				// semantics (an alpha-0 int makes replaceColor write transparent
+				// pixels and getColorOr* return invisible colors).
 				final r = ("0x" + hexStr.charAt(0) + hexStr.charAt(0)).toInt();
 				final g = ("0x" + hexStr.charAt(1) + hexStr.charAt(1)).toInt();
 				final b = ("0x" + hexStr.charAt(2) + hexStr.charAt(2)).toInt();
-				return new AnimToken(APColor((r << 16) | (g << 8) | b), startLine, startCol);
+				return new AnimToken(APColor(0xFF000000 | (r << 16) | (g << 8) | b), startLine, startCol);
 			} else if (hexStr.length == 6) {
-				return new AnimToken(APColor(("0x" + hexStr).toInt()), startLine, startCol);
+				// #RRGGBB → 0xFFRRGGBB — bake opaque alpha (strict-D parity).
+				return new AnimToken(APColor(0xFF000000 | ("0x" + hexStr).toInt()), startLine, startCol);
 			} else if (hexStr.length == 8) {
 				// #RRGGBBAA → store as 0xAARRGGBB
 				final rr = ("0x" + hexStr.substring(0, 2)).toInt();
@@ -400,9 +404,9 @@ private class AnimLexerHC {
 			return new AnimToken(APIdentifier(s, kw, AITString), startLine, startCol);
 		}
 
-		// Unknown character - skip it
-		pos++; col++;
-		return nextToken();
+		// Unknown character — error loudly; silently skipping made typos
+		// (stray backticks, smart quotes) vanish without a diagnostic.
+		throw '$sourceName:$startLine:$startCol: Unknown character "${String.fromCharCode(c)}" (code $c)';
 	}
 
 	static inline function isIdentStart(c:Int):Bool {
@@ -750,7 +754,10 @@ class AnimParser implements AnimParserResult {
 	var defaultLoop:Null<Int> = null; // (#3) file-level loop default
 	var defaultFlipX:Bool = false; // (#13) file-level flipX default
 	var defaultFlipY:Bool = false; // (#13) file-level flipY default
-	var cache:Map<String, Array<{name:String, states:Array<AnimationFrameState>, loopCount:Int, extraPoints:Map<String, h2d.col.IPoint>, filter:Null<h2d.filter.Filter>, tintColor:Null<Int>}>> = [];
+	// Cache holds immutable parse data only — filters are stored as their
+	// DEFINITIONS and resolved per AnimationSM in load(); extraPoints are copied
+	// per SM there too. Never hand a cached mutable instance to an SM.
+	var cache:Map<String, Array<{name:String, states:Array<AnimationFrameState>, loopCount:Int, extraPoints:Map<String, h2d.col.IPoint>, filters:Null<Array<AnimFilterEntry>>}>> = [];
 	final resourceLoader:bh.base.ResourceLoader;
 
 	// ===================== Token Access =====================
@@ -824,7 +831,11 @@ class AnimParser implements AnimParserResult {
 			var p = new AnimParser(tokens, sourceName, resourceLoader);
 			p.parse();
 			return p;
-		} catch (e) {
+		} catch (e:Dynamic) {
+			// catch (e:Dynamic) on purpose: a typed `catch (e)` wraps thrown
+			// values in haxe.ValueException on rethrow, which breaks
+			// Std.isOfType(e, InvalidSyntax) classification at catch sites
+			// (strict mode, hot reload, DevBridge).
 			#if MULTIANIM_DEV
 			trace('AnimParser.parseString failed for $sourceName: $e');
 			#end
@@ -972,16 +983,19 @@ class AnimParser implements AnimParserResult {
 
 		for (state in allStates) {
 			for (name in animationNames) {
-				var anim = findAnimationInternal(name, state, animations);
+				// findBestStateMatch throws a plain String on ambiguous selectors —
+				// convert it into a positioned InvalidSyntax so strict mode, hot
+				// reload, and DevBridge catch sites get a structured diagnostic.
+				var anim = try findAnimationInternal(name, state, animations) catch (e:String) syntaxError(e);
 				if (anim == null) syntaxError('no animation ${name} defined for states ${state}');
 				else anim.visited = true;
 
 				for (ePoint in allowedExtraPoints) {
-					var p = findExtraPoint(ePoint, state, anim, definedStates);
+					var p = try findExtraPoint(ePoint, state, anim, definedStates) catch (e:String) syntaxError(e);
 					if (p != null) p.visited = true;
 				}
 
-				var playlist = findPlaylist(state, anim, definedStates);
+				var playlist = try findPlaylist(state, anim, definedStates) catch (e:String) syntaxError(e);
 				if (playlist == null) syntaxError('no playlist for ${state}, id ${anim.name}');
 			}
 		}
@@ -998,6 +1012,21 @@ class AnimParser implements AnimParserResult {
 				if (pl.visited == false)
 					syntaxError('Playlist in anim ${anim.name} not reachable ${pl.states}');
 			}
+		}
+
+		// Comparison/range conditionals evaluate operands numerically at match
+		// time and silently fail on NaN — an arm comparing a state whose
+		// declared values are all non-numeric can never match. Reject at parse.
+		for (anim in animations) {
+			validateComparisonConditionals(anim.states, 'animation ${anim.name}');
+			for (pl in anim.playlist)
+				validateComparisonConditionals(pl.states, 'playlist in animation ${anim.name}');
+			for (ek => ev in anim.extraPoint)
+				for (ePoint in ev)
+					validateComparisonConditionals(ePoint.states, 'extra point $ek in animation ${anim.name}');
+			if (anim.filters != null)
+				for (f in anim.filters)
+					validateComparisonConditionals(f.states, 'filter in animation ${anim.name}');
 		}
 		this.metadata = metadataMap.count() > 0 ? new AnimMetadata(metadataMap) : null;
 	}
@@ -1120,6 +1149,42 @@ class AnimParser implements AnimParserResult {
 		return states;
 	}
 
+	// Reject comparison/range conditionals that can never match: non-numeric
+	// operands, or a state whose declared values are all non-numeric (matching
+	// parses both sides with Std.parseFloat and silently fails on NaN).
+	function validateComparisonConditionals(selector:Null<AnimConditionalSelector>, context:String):Void {
+		if (selector == null)
+			return;
+		for (stateName => cond in selector)
+			validateComparisonConditionalValue(stateName, cond, context);
+	}
+
+	function validateComparisonConditionalValue(stateName:String, cond:AnimConditionalValue, context:String):Void {
+		switch cond {
+			case ACVCompare(_, v):
+				if (Math.isNaN(Std.parseFloat(v)))
+					syntaxError('$context: comparison operand "$v" for state "$stateName" is not numeric — the condition can never match');
+				requireNumericStateValue(stateName, context);
+			case ACVRange(min, max):
+				if (Math.isNaN(Std.parseFloat(min)) || Math.isNaN(Std.parseFloat(max)))
+					syntaxError('$context: range bounds "$min".."$max" for state "$stateName" are not numeric — the condition can never match');
+				requireNumericStateValue(stateName, context);
+			case ACVNot(inner):
+				validateComparisonConditionalValue(stateName, inner, context);
+			default:
+		}
+	}
+
+	function requireNumericStateValue(stateName:String, context:String):Void {
+		final values = definedStates.get(stateName);
+		if (values == null)
+			return; // unknown state names are diagnosed elsewhere
+		for (v in values)
+			if (!Math.isNaN(Std.parseFloat(v)))
+				return;
+		syntaxError('$context: state "$stateName" has no numeric declared values (${values.join(", ")}) — a comparison/range condition on it can never match');
+	}
+
 	// (#1) parseStates: handles @(cond), @else, @else(cond), @default
 	function parseStates():AnimConditionalSelector {
 		var states:AnimConditionalSelector = [];
@@ -1130,6 +1195,10 @@ class AnimParser implements AnimParserResult {
 					switch peek() {
 						case APIdentifier(_, APElse, _): // @else or @else(cond)
 							advance();
+							// A preceding @(cond) in the same header would be silently
+							// discarded below — the combination has no defined meaning.
+							if (states.keys().hasNext())
+								syntaxError("@else cannot follow @(...) in the same header — stack @(...) conditions for AND, or use @else on its own");
 							if (match(APOpen)) {
 								// @else(condition) - parse just that condition
 								var elseStates:AnimConditionalSelector = [];
@@ -1139,6 +1208,9 @@ class AnimParser implements AnimParserResult {
 							return []; // bare @else = empty selector (fallback, matches everything)
 						case APIdentifier(_, APDefault, _): // @default
 							advance();
+							// Same silent-discard hazard as @else above.
+							if (states.keys().hasNext())
+								syntaxError("@default cannot follow @(...) in the same header — remove the condition or the @default");
 							return []; // empty selector (matches everything, lowest priority)
 						case APOpen: // @(cond)
 							advance();
@@ -1488,24 +1560,24 @@ class AnimParser implements AnimParserResult {
 								case APNumber(randomRadius):
 									advance();
 									final r = Std.parseFloat(randomRadius);
-									// (#9) optional metadata payload after random event
-									if (match(APCurlyOpen)) {
-										final meta = parseEventMeta();
-										anims.push(PlaylistEventData(eventName, meta));
-									} else {
-										anims.push(PlaylistEvent(RandomPointEvent(eventName, new h2d.col.IPoint(p.x, p.y), r)));
+									if (peek() == APCurlyOpen) {
+										// The event payload cannot carry both a random spec
+										// and metadata — accepting this used to silently
+										// drop the random spec.
+										syntaxError('event "$eventName": a random spec cannot be combined with a metadata block — use either "event name random x,y,r" or "event name { meta }"');
 									}
+									anims.push(PlaylistEvent(RandomPointEvent(eventName, new h2d.col.IPoint(p.x, p.y), r)));
 								default:
 									unexpectedError("expected radius");
 							}
 						case APNumber(_):
 							final p = parseCoordinates();
-							if (match(APCurlyOpen)) { // (#9) metadata on point event
-								final meta = parseEventMeta();
-								anims.push(PlaylistEventData(eventName, meta));
-							} else {
-								anims.push(PlaylistEvent(PointEvent(eventName, new h2d.col.IPoint(p.x, p.y))));
+							if (peek() == APCurlyOpen) {
+								// The event payload cannot carry both a point and
+								// metadata — accepting this used to silently drop the point.
+								syntaxError('event "$eventName": a point spec cannot be combined with a metadata block — use either "event name x,y" or "event name { meta }"');
 							}
+							anims.push(PlaylistEvent(PointEvent(eventName, new h2d.col.IPoint(p.x, p.y))));
 						case APSemiColon: // explicit statement terminator
 							advance();
 							anims.push(PlaylistEvent(Trigger(eventName)));
@@ -2123,12 +2195,18 @@ class AnimParser implements AnimParserResult {
 			case AFBrightness(v):
 				var m = new h3d.Matrix();
 				m.identity();
-				m.colorLightness(v);
+				// Documented as a multiplier (0 = black, 1 = normal). Heaps'
+				// colorLightness is an additive offset — scale the diagonal instead.
+				m._11 = v;
+				m._22 = v;
+				m._33 = v;
 				new h2d.filter.ColorMatrix(m);
 			case AFSaturate(v):
 				var m = new h3d.Matrix();
 				m.identity();
-				m.colorSaturate(v);
+				// Documented scale: 0 = grayscale, 1 = normal. Heaps'
+				// colorSaturate adds 1 internally, so shift by -1.
+				m.colorSaturate(v - 1.0);
 				new h2d.filter.ColorMatrix(m);
 			case AFGrayscale(v):
 				var m = new h3d.Matrix();
@@ -2138,7 +2216,8 @@ class AnimParser implements AnimParserResult {
 			case AFHue(v):
 				var m = new h3d.Matrix();
 				m.identity();
-				m.colorHue(v);
+				// Documented in degrees; colorHue expects radians.
+				m.colorHue(hxd.Math.degToRad(v));
 				new h2d.filter.ColorMatrix(m);
 			case AFOutline(size, color):
 				new h2d.filter.Outline(size, color);
@@ -2252,8 +2331,7 @@ class AnimParser implements AnimParserResult {
 					}
 				}
 				final loopCount:Int = anim.loop ?? 0;
-				final resolved = resolveAnimFilters(anim.filters, stateSelector);
-				cacheArray.push({name: name, states: states, loopCount: loopCount, extraPoints: extraPoints, filter: resolved.filter, tintColor: resolved.tintColor});
+				cacheArray.push({name: name, states: states, loopCount: loopCount, extraPoints: extraPoints, filters: anim.filters});
 			}
 			cache.set(hex, cacheArray);
 		}
@@ -2261,7 +2339,15 @@ class AnimParser implements AnimParserResult {
 		final cacheEntries = cache.get(hex);
 		if (cacheEntries == null) throw 'cache miss for hex ${hex}';
 		for (e in cacheEntries) {
-			animSM.addAnimationState(e.name, e.states, e.loopCount, e.extraPoints, e.filter, e.tintColor);
+			// Filters and extra points are mutable runtime state — build/copy them
+			// per AnimationSM. Handing out the cached instances let one SM's
+			// mutations (moved points, tweaked filter params) corrupt every SM
+			// sharing this cache entry.
+			final pts = new Map<String, h2d.col.IPoint>();
+			for (k => p in e.extraPoints)
+				pts.set(k, new h2d.col.IPoint(p.x, p.y));
+			final resolved = resolveAnimFilters(e.filters, stateSelector);
+			animSM.addAnimationState(e.name, e.states, e.loopCount, pts, resolved.filter, resolved.tintColor);
 		}
 	}
 

@@ -423,8 +423,15 @@ private class MacroLexer {
 				return new Token(TIdentifier(src.substring(idStart, pos)), startLine, startCol);
 			}
 
-			// Unknown character - skip
-			pos++;
+			// Byte-order mark: tolerated (editors prepend it), not a token.
+			if (c == 0xFEFF) {
+				pos++;
+				continue;
+			}
+
+			// Unknown character — error loudly; silently skipping made typos
+			// (stray backticks, smart quotes) vanish without a diagnostic.
+			throw '$sourceName:$startLine:$startCol: Unknown character "${String.fromCharCode(c)}" (code $c)';
 		}
 		return new Token(TEof, line, pos - lineStart + 1);
 	}
@@ -1215,12 +1222,34 @@ class MacroManimParser {
 	function parseXY():Coordinates {
 		var coord:Coordinates = switch (peek()) {
 			case TReference(s):
-				// Check if this is $ref.method() (coordinate method chain) or just $ref as part of OFFSET
-				// We need to peek ahead: if the token after $ref is TDot, it's a coordinate method chain
+				// Check if this is $ref.method() (coordinate method chain), a scalar
+				// $ref.property used as the X value, or just $ref as part of OFFSET.
 				advance();
 				if (match(TDot)) {
 					validateRef(s);
-					parseCoordinateMethodChain(s);
+					// A full coordinate method chain has an argument list after the
+					// identifier ($grid.pos(1, 2)); extraPoint and $ctx.hex/$ctx.grid
+					// are chains too. A bare property ($grid.width, $ctx.height) is a
+					// scalar — parse it as the X value so the X position accepts the
+					// same expressions the Y position already does.
+					final isCoordChain = switch peek() {
+						case TIdentifier(m):
+							if (isKeyword(m, "extrapoint")) true;
+							else if (s == "ctx" && (m == "hex" || m == "grid")) true;
+							else if (tpos + 1 < tokens.length) switch tokens[tpos + 1].type {
+								case TOpen: true;
+								default: false;
+							} else false;
+						default: false;
+					};
+					if (isCoordChain) {
+						parseCoordinateMethodChain(s);
+					} else {
+						final x = parseExpressionFromAtom(parsePropertyOrMethodChain(s), 0, EInt);
+						expect(TComma);
+						final y = parseIntegerOrReference();
+						OFFSET(x, y);
+					}
 				} else {
 					validateRef(s);
 					// Not a dot — this is a plain reference used in OFFSET(x, y) position
@@ -2131,8 +2160,14 @@ class MacroManimParser {
 				if (n != null) CoValue(n) else
 					error('non-numeric conditional value "$val" for a numeric parameter — int/uint/range/direction parameters only match numeric values, not strings');
 			case PPTFlags(bits):
+				// Flags only match numeric values or bit[N] tests. A non-numeric
+				// string previously fell to CoStringValue: the builder silently
+				// never matched and codegen emitted `_field == "foo"` over an Int
+				// field (compile error). Reject at parse time, parallel to the
+				// PPTFloat/PPTBool/PPTInt guards.
 				final n = Std.parseInt(val);
-				if (n != null) CoFlag(n) else CoStringValue(val);
+				if (n != null) CoFlag(n) else
+					error('non-numeric conditional value "$val" for a flags parameter — flags parameters only match numeric values or bit[N] tests');
 			case PPTColor:
 				final c = tryStringToColor(val);
 				if (c != null) CoValue(c) else CoValue(val.toInt());
@@ -2756,6 +2791,8 @@ class MacroManimParser {
 				if (layoutType == null) { error('expected layout content for $name'); return; }
 				final align = parseLayoutAlign();
 				eatSemicolon();
+				if (layouts.exists(name))
+					error('layout "$name" already defined — duplicate names silently shadow each other');
 				layouts.set(name, {name: name, type: cast layoutType, grid: grid, hex: hex, offset: foldOffsets(offsets),
 					alignX: align.alignX, alignY: align.alignY});
 			default:
@@ -5812,6 +5849,8 @@ class MacroManimParser {
 						break;
 				}
 			}
+			if (constructs.exists(stateName))
+				error('stateanim construct "$stateName" already defined — duplicate names silently shadow each other');
 			constructs.set(stateName, IndexedSheet(sheet, name, fps, loop, center));
 		}
 		return constructs;
@@ -5971,6 +6010,8 @@ class MacroManimParser {
 						error('unexpected path element: ${peek()}');
 				}
 			}
+			if (paths.exists(pathName))
+				error('path "$pathName" already defined — duplicate names silently shadow each other');
 			paths.set(pathName, pathElements);
 		}
 		return paths;
@@ -6401,6 +6442,8 @@ class MacroManimParser {
 					}
 				}
 			}
+			if (curves.exists(curveName))
+				error('curve "$curveName" already defined — duplicate names silently shadow each other');
 			curves.set(curveName, {easing: easing, points: points, segments: segments, operation: operation});
 		}
 		return curves;

@@ -196,6 +196,46 @@ class AnimFilterStateConditionalTest extends utest.Test {
 		Assert.isTrue(Std.isOfType(filter, h2d.filter.ColorMatrix));
 	}
 
+	// Documented semantics (docs/anim-reference.md, docs/manim-reference.md):
+	// brightness is a MULTIPLIER (0=black, 1=normal), saturate is 0=gray /
+	// 1=normal, hue takes DEGREES. These must match the .manim builder backend.
+
+	@Test
+	public function testAnimBrightnessFilterIsMultiplier():Void {
+		final filter = AnimParser.buildAnimFilter(AFBrightness(0.5));
+		final cm = Std.downcast(filter, h2d.filter.ColorMatrix);
+		Assert.notNull(cm, "brightness must produce a ColorMatrix");
+		if (cm == null) return;
+		Assert.floatEquals(0.5, cm.matrix._11, 0.001,
+			'brightness(0.5) must SCALE channels by 0.5 (got _11=${cm.matrix._11}) — not add an offset');
+		Assert.floatEquals(0.0, cm.matrix._41, 0.001,
+			'brightness(0.5) must not add a constant offset (got _41=${cm.matrix._41})');
+	}
+
+	@Test
+	public function testAnimSaturateFilterZeroIsGrayOneIsNormal():Void {
+		final normal = Std.downcast(AnimParser.buildAnimFilter(AFSaturate(1.0)), h2d.filter.ColorMatrix);
+		Assert.notNull(normal, "saturate must produce a ColorMatrix");
+		if (normal == null) return;
+		Assert.floatEquals(1.0, normal.matrix._11, 0.001,
+			'saturate(1.0) is documented as NORMAL saturation — expected identity, got _11=${normal.matrix._11}');
+
+		final gray = Std.downcast(AnimParser.buildAnimFilter(AFSaturate(0.0)), h2d.filter.ColorMatrix);
+		if (gray == null) return;
+		Assert.isTrue(gray.matrix._11 < 0.5,
+			'saturate(0.0) is documented as GRAYSCALE — expected _11 ≈ lumR (~0.21), got _11=${gray.matrix._11}');
+	}
+
+	@Test
+	public function testAnimHueFilterTakesDegrees():Void {
+		final cm = Std.downcast(AnimParser.buildAnimFilter(AFHue(90)), h2d.filter.ColorMatrix);
+		Assert.notNull(cm, "hue must produce a ColorMatrix");
+		if (cm == null) return;
+		// colorHue(π/2): _11 = cos(-π/2) + (1 - cos(-π/2)) / 3 = 1/3.
+		Assert.floatEquals(1.0 / 3.0, cm.matrix._11, 0.01,
+			'hue(90) is documented as 90 DEGREES — expected _11 = 1/3 (rotation by π/2 rad), got _11=${cm.matrix._11}');
+	}
+
 	@Test
 	public function testBuildAnimFilterOutline():Void {
 		final filter = AnimParser.buildAnimFilter(AFOutline(2.0, 0x00FF00));
@@ -496,7 +536,8 @@ animation {
 		final runtime = makeStateSelector([{key: "team", value: "red"}]);
 		final result = AnimParser.resolveAnimFilters(filters, runtime);
 
-		Assert.equals(0xFF0000, result.tintColor,
+		// Parsed #FF0000 bakes opaque alpha (strict-D parity) → 0xFFFF0000.
+		Assert.equals(0xFFFF0000, result.tintColor,
 			"Matching @(team=>red) must win — @default must not overwrite it via iteration order");
 	}
 
@@ -520,7 +561,8 @@ animation {
 ');
 		final runtime = makeStateSelector([{key: "team", value: "green"}]);
 		final result = AnimParser.resolveAnimFilters(filters, runtime);
-		Assert.equals(0xFFFFFF, result.tintColor,
+		// Parsed #FFFFFF bakes opaque alpha (strict-D parity) → 0xFFFFFFFF.
+		Assert.equals(0xFFFFFFFF, result.tintColor,
 			"@default should fire when no @(cond) in the chain matches");
 	}
 

@@ -265,7 +265,9 @@ class AnimatedPath {
 		switch mode {
 			case Distance(baseSpeed):
 				var currentRate = getDistanceRate();
-				var speedMultiplier = evaluateCurveSlot(speedCurveSegments, currentRate);
+				// The speed curve maps PATH POSITION rate -> multiplier, like every
+				// other curve slot — mirror it during reversed (pingPong) cycles.
+				var speedMultiplier = evaluateCurveSlot(speedCurveSegments, if (reversed) 1.0 - currentRate else currentRate);
 				effectiveSpeed = baseSpeed * speedMultiplier;
 				distance += dt * effectiveSpeed;
 				rate = getDistanceRate();
@@ -285,11 +287,16 @@ class AnimatedPath {
 				modeComplete = timeRate >= 1.0;
 		}
 
-		// Fire events up to current rate
+		// Fire events up to current progress. An event's atRate marks a PATH
+		// POSITION: in reversed (pingPong) cycles the position sweeps 1 -> 0,
+		// so events trigger in descending atRate order, each when the object
+		// actually passes its position — and the delivered state is computed
+		// at that position.
 		while (currentEventIndex < timedEvents.length) {
-			final ev = timedEvents[currentEventIndex];
-			if (ev.atRate <= rate) {
-				computeState(if (reversed) 1.0 - ev.atRate else ev.atRate);
+			final ev = if (reversed) timedEvents[timedEvents.length - 1 - currentEventIndex] else timedEvents[currentEventIndex];
+			final triggerProgress = if (reversed) 1.0 - ev.atRate else ev.atRate;
+			if (triggerProgress <= rate) {
+				computeState(ev.atRate);
 				currentState.speed = effectiveSpeed;
 				currentState.cycle = cycleCount;
 				fireEvent(ev.eventName);
@@ -315,6 +322,12 @@ class AnimatedPath {
 					case Distance(_): distance -= pathLength;
 				}
 				if (pingPong) reversed = !reversed;
+				// cycleStart announces the NEW cycle: deliver its starting state
+				// (start-of-cycle position, new cycle index) — not the end state
+				// of the cycle that just finished.
+				computeState(if (reversed) 1.0 else 0.0);
+				currentState.speed = effectiveSpeed;
+				currentState.cycle = cycleCount;
 				fireEvent("cycleStart");
 				// Re-compute rate for remainder of this frame
 				switch mode {

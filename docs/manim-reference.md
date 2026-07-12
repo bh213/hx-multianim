@@ -943,7 +943,9 @@ emit: circle(r: 50, rRand: 10, angle: 0deg, angleSpread: 180deg)
 | `speedRandom` | `speedRand` | Speed variance |
 | `speedIncrease` | `speedIncr`, `acceleration` | Acceleration |
 | `gravity` | | Gravity strength |
-| `gravityAngle` | | Gravity direction (angle) |
+| `gravityAngle` | | Gravity direction (angle; standard convention `0°`=right, `90°`=down; unset default = down) |
+
+`maxLife` must be greater than 0 (build error otherwise).
 
 ### Size & Rotation
 
@@ -1002,6 +1004,13 @@ Each stop: `rate color [curve]`. Curve specifies interpolation to next stop (def
 bounds: kill, box(x: 0, y: 0, w: 800, h: 600)
 bounds: bounce(0.6), box(x: -50, y: -50, w: 250, h: 250), line(0, 0, 100, 0)
 ```
+
+Without a `box(...)`, the box defaults to infinite — line-only bounds are
+judged by the lines alone.
+
+Coordinate space: force fields, bounds, and sub-emitter offsets operate on
+particle positions — emitter-local for `relative: true` groups, scene space
+(or `worldAnchor`-local when set) for non-relative groups.
 
 ### Force Fields
 

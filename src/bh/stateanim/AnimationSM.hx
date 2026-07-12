@@ -76,6 +76,9 @@ class AnimationSM extends h2d.Object {
 	// Loop tracking
 	var loopsRemaining:Int = 0;
 
+	// Latch so onFinished fires once per completed playback, not every update.
+	var finishedFired:Bool = false;
+
 	public function new(selector:AnimationStateSelector, ?externallyDriven:Bool = false) {
 		super(null);
 		currentSelector = selector;
@@ -136,6 +139,7 @@ class AnimationSM extends h2d.Object {
 		current = state;
 		elapsedTime = 0;
 		paused = false;
+		finishedFired = false;
 		currentStateIndex = 0;
 		loopsRemaining = state.loopCount;
 		clip.clearFrames();
@@ -217,8 +221,12 @@ class AnimationSM extends h2d.Object {
 						loopsRemaining--;
 					currentStateIndex = 0;
 				} else {
-					// Animation finished
-					onFinished();
+					// Animation finished — fire once per playback, not once per
+					// subsequent update (handlers commonly spawn/free objects).
+					if (!finishedFired) {
+						finishedFired = true;
+						onFinished();
+					}
 					return;
 				}
 			}

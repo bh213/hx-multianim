@@ -111,46 +111,62 @@ items take the next free number in their prefix. (1.1 roadmap bullets are featur
 
 ### UI / screen stack
 
-- [ ] `UI-1` **Double `OnDialogResult` when closing dialog-over-dialog** — fired at ScreenManager.hx:871 AND
+- [x] `UI-1` **Double `OnDialogResult` when closing dialog-over-dialog** — fired at ScreenManager.hx:871 AND
   again in the Dialog→Dialog branch :696-697 (second may carry `null`). A purchase-confirm handler
-  runs twice.
-- [ ] `UI-2` **`reload()`/hot-reload with a dialog open** → Dialog→Dialog branch destroys the modal overlay
+  runs twice. *(2026-07-12: Dialog→Dialog branch now distinguishes close-return (no re-fire; the
+  close path already fired it) from open-over (documented fire kept). `ScreenManagerDialogTransitionTest`.)*
+- [x] `UI-2` **`reload()`/hot-reload with a dialog open** → Dialog→Dialog branch destroys the modal overlay
   (never recreated, :647), fires spurious `UILeaving`/`UIEntering`, and delivers a **phantom
-  `OnDialogResult`** to the caller (:696-697).
+  `OnDialogResult`** to the caller (:696-697). *(2026-07-12: same-dialog refresh is now a no-op —
+  overlay, scene presence, and controllers preserved; no lifecycle round trip, no result.
+  `removeModalOverlay()` moved into the branches that actually leave the dialog.)*
 
 ### VFX / animation runtime
 
-- [ ] `VFX-1` **`gravityAngle` direction convention is swapped** — gravity applied as
+- [x] `VFX-1` **`gravityAngle` direction convention is swapped** — gravity applied as
   `vx += g·sin(θ), vy += g·cos(θ)` (Heaps legacy 0°=down; Particles.hx:231-232) while the parser's
   constants use 0°=right/90°=down (MacroManimParser.hx:806-815) and builder passes degrees→radians
   verbatim (MB:7169). `gravityAngle: down` pushes particles **right**. The unset default masks it.
   Independently confirmed by two audits. Fix the sin/cos (or add 90°−θ in builder) and audit content.
-- [ ] `VFX-2` **`.anim` color literals never bake alpha** (AnimParser.hx:374-379 → `0x00RRGGBB`; `.manim`
+  *(2026-07-12: sin/cos swapped to the standard (cos, sin) vector; default moved to π/2 so unset
+  gravity still falls down. Resolves DEC-3. `ParticleRuntimeTest`; ref 51-codegenParticles regenerated.
+  In-repo content audit: only test example 51 used gravityAngle — sibling repos should grep for it.)*
+- [x] `VFX-2` **`.anim` color literals never bake alpha** (AnimParser.hx:374-379 → `0x00RRGGBB`; `.manim`
   lexer bakes `0xFF` per strict-D). `AFTint` is guard-patched but `.anim` `replaceColor` writes
   **fully transparent** pixels (via `ReplacePaletteShader.setColor` → alpha 0), and
   `getColorOrDefault/OrException` return alpha-0 ints. Fix at the lexer; keep the `>>>24==0` guards.
-- [ ] `VFX-3` **`AnimationSM.onFinished()` fires every frame after completion** (AnimationSM.hx:213-223 — no
-  finished latch). Handlers that spawn/free objects execute once per frame.
-- [ ] `VFX-4` **`spawnCurve` + `maxLife: 0` hard-hangs the game** — `emissionAccumulator = +Inf` →
+  *(2026-07-12: 3/6-digit forms bake 0xFF at the lexer; 8-digit keeps explicit alpha; guards kept.
+  Existing color pins updated. `AnimParserTest` + anim-reference.md note.)*
+- [x] `VFX-3` **`AnimationSM.onFinished()` fires every frame after completion** (AnimationSM.hx:213-223 — no
+  finished latch). Handlers that spawn/free objects execute once per frame. *(2026-07-12: latched per
+  playback, reset in `play()`. `AnimFilterRuntimeTest`.)*
+- [x] `VFX-4` **`spawnCurve` + `maxLife: 0` hard-hangs the game** — `emissionAccumulator = +Inf` →
   `while (>= 1.0)` never terminates (Particles.hx:1438-1443; `life=0` is legal + unvalidated).
-- [ ] `VFX-5` **`emitBurstAt()` before first render → permanent double-draw** — sets `batch.visible = true`
+  *(2026-07-12: builder rejects `maxLife <= 0` with a BuilderError. `BuilderUnitTest`.)*
+- [x] `VFX-5` **`emitBurstAt()` before first render → permanent double-draw** — sets `batch.visible = true`
   (Particles.hx:835-839) but batches are drawn explicitly in `Particles.draw()`; child-draw kicks in
-  too (double alpha / wrong transform for non-relative). Delete the line.
-- [ ] `VFX-6` **Line-only `bounds:` silently enforces a hidden 800×600 box** (defaults at Particles.hx:660-672;
+  too (double alpha / wrong transform for non-relative). Delete the line. *(2026-07-12: deleted.
+  `ParticleRuntimeTest`.)*
+- [x] `VFX-6` **Line-only `bounds:` silently enforces a hidden 800×600 box** (defaults at Particles.hx:660-672;
   builder overrides only when `box(...)` present, MB:7281-7294). Default box should be ±infinity.
+  *(2026-07-12: defaults are ±infinity. `ParticleRuntimeTest`; manim-reference.md bounds note.)*
 
 ### Filter semantics (code contradicts documented intent, all three backends)
 
-- [ ] `FLT-1` **`brightness(v)` is additive**, not a multiplier — Heaps `colorLightness` does `_41 += v`
+- [x] `FLT-1` **`brightness(v)` is additive**, not a multiplier — Heaps `colorLightness` does `_41 += v`
   (MB:6938-6941, AnimParser.hx:2123-2127, codegen ~8350). The documented disabled-button pattern
   `group(brightness(0.5), grayscale(0.8))` actually **brightens**. Parser default `RVFloat(1.)`
-  shows multiplier intent.
-- [ ] `FLT-2` **`saturate(v)` scale off by one** — Heaps adds 1 internally, so `saturate(0)` = normal,
+  shows multiplier intent. *(2026-07-12: fixed as multiplier (diagonal scale) in all three backends.)*
+- [x] `FLT-2` **`saturate(v)` scale off by one** — Heaps adds 1 internally, so `saturate(0)` = normal,
   `saturate(-1)` = gray (MB:6933-6937). Doc says 0=gray/1=normal. (`grayscale` is correct.)
-- [ ] `FLT-3` **`hue(v)` takes radians**, documented as degrees; no angle-suffix support (MB:6949-6953 vs
+  *(2026-07-12: fixed — `colorSaturate(v - 1)` in all three backends.)*
+- [x] `FLT-3` **`hue(v)` takes radians**, documented as degrees; no angle-suffix support (MB:6949-6953 vs
   `dropShadow` which does deg→rad, MB:6961).
   → Decide: fix code (breaking for existing content — better now than post-1.0) or fix docs. Either
   way add tests pinning the chosen semantics. (Decision tracked as `DEC-2`.)
+  *(2026-07-12: fixed — degToRad in all three backends; angle-suffix support left for the parser
+  roadmap. DEC-2 resolved as "fix code". Matrix-level pins in `BuilderUnitTest` +
+  `AnimFilterStateConditionalTest`; refs 32/68 regenerated.)*
 
 ### Parsers (empirically reproduced)
 
@@ -296,31 +312,55 @@ items take the next free number in their prefix. (1.1 roadmap bullets are featur
   `cancelDrag()`/`clear()` outside event dispatch don't release mouse capture + no `DragCancel`.
 
 ### VFX / paths (lower severity)
-- [ ] `VFX-7` Wave segment endpoint ignores residual lateral offset for fractional `count` → position jump
+- [x] `VFX-7` Wave segment endpoint ignores residual lateral offset for fractional `count` → position jump
   into next segment + wrong Stretch scaling (MultiAnimPaths.hx:227-239 vs :723-731).
-- [ ] `VFX-8` AnimatedPath pingPong: distance-mode speed curve un-mirrored vs other slots; events fire at
+  *(2026-07-12: endpoint includes `amp·sin(count·2π)` lateral term. Continuity scan in
+  `AnimatedPathBuilderTest`. Note: only counts that aren't multiples of 0.5 exhibited it.)*
+- [x] `VFX-8` AnimatedPath pingPong: distance-mode speed curve un-mirrored vs other slots; events fire at
   forward progress (not mirrored position) in reversed cycles; `cycleStart` delivered with previous
-  cycle's end state (AnimatedPath.hx:266-269, :289-318, :345).
-- [ ] `VFX-9` `AnimParser.load()` cache shares one filter instance + one extraPoints IPoint map across all
+  cycle's end state (AnimatedPath.hx:266-269, :289-318, :345). *(2026-07-12: all three fixed —
+  speed curve mirrored; events fire by path position (descending atRate) in reversed cycles;
+  cycleStart carries the new cycle's index + start position. `AnimatedPathTest` ×3.)*
+- [x] `VFX-9` `AnimParser.load()` cache shares one filter instance + one extraPoints IPoint map across all
   AnimationSM instances per selector (AnimParser.hx:2210-2266) — mutation corrupts every SM.
-- [ ] `VFX-10` Force-field/bounds/sub-emitter coordinates are in different spaces for relative vs non-relative
-  groups — undocumented (Particles.hx:1154-1225, :1318-1324).
-- [ ] `VFX-11` `Curve` with duplicate time values → NaN (Curve.hx:40-45), unvalidated.
-- [ ] `VFX-12` `Hex.toOffsetCoordinates()` uses invalid offset=0; `HexLayout.directionToAngle` ignores
-  `start_angle` (Hex.hx:252-254, :550-554). (Both unused in-library.)
-- [ ] `VFX-13` `event name x,y { meta }` / `event name random ... { meta }` parse OK but **silently drop the
-  point/random spec** (AnimParser.hx:1491-1505). Document or reject.
+  *(2026-07-12: cache stores filter DEFINITIONS (resolved per SM); extraPoints copied per SM.
+  Also fixed `parseString`'s typed rethrow wrapping errors in haxe.ValueException. `AnimParserTest`.)*
+- [x] `VFX-10` Force-field/bounds/sub-emitter coordinates are in different spaces for relative vs non-relative
+  groups — undocumented (Particles.hx:1154-1225, :1318-1324). *(2026-07-12: documented in
+  manim-reference.md Bounds section — emitter-local for relative, scene/worldAnchor space otherwise.)*
+- [x] `VFX-11` `Curve` with duplicate time values → NaN (Curve.hx:40-45), unvalidated. *(2026-07-12: NOT
+  REPRODUCIBLE — the zero-width division is unreachable: endpoint clamps catch t == firstTime, and
+  the first-match scan always hits the earlier non-degenerate segment for duplicates at i>0.
+  Duplicate-time points behave as step curves. No fix needed; optional hardening left out.)*
+- [x] `VFX-12` `Hex.toOffsetCoordinates()` uses invalid offset=0; `HexLayout.directionToAngle` ignores
+  `start_angle` (Hex.hx:252-254, :550-554). (Both unused in-library.) *(2026-07-12:
+  toOffsetCoordinates commits to odd-q parity (ODD); directionToAngle became an instance method
+  adding 60°·start_angle. New `HexApiTest`.)*
+- [x] `VFX-13` `event name x,y { meta }` / `event name random ... { meta }` parse OK but **silently drop the
+  point/random spec** (AnimParser.hx:1491-1505). Document or reject. *(2026-07-12: REJECTED at parse
+  time (payload can't carry both). Two pre-existing tests pinning the lossy form replaced by the
+  rejection test. Carrying both = post-1.0 feature if wanted.)*
 - [ ] `VFX-14` `.anim` `@else(cond)` doesn't encode chain negation (best-score approximation); ambiguity throws
   a raw unpositioned string from `parse()` (:1916); `@(x=>a) @else(y=>b)` in one header silently
-  discards the first condition.
-- [ ] `VFX-15` `.anim` comparison/range conditionals accept non-numeric operands → NaN → arm silently dead.
+  discards the first condition. *(2026-07-12: PARTIAL — ambiguity now throws positioned
+  InvalidSyntax; `@()` + `@else`/`@default` stacking in one header is a parse error. Chain-negation
+  SEMANTICS deliberately deferred — matcher redesign, couples with DEC-7.)*
+- [x] `VFX-15` `.anim` comparison/range conditionals accept non-numeric operands → NaN → arm silently dead.
+  *(2026-07-12: post-parse validation rejects non-numeric operands and comparisons against states
+  with no numeric declared values (animation/playlist/extra-point/filter selectors). Runtime matcher
+  keeps silent-false for genuinely mixed states (pinned by existing test). `AnimParserTest`.)*
 - [ ] `VFX-16` Silent duplicate-name overwrites: paths (:5974), curves (:6404), layouts (:2759), data fields,
-  stateanim constructs; `.anim` duplicate `loop:`.
+  stateanim constructs; `.anim` duplicate `loop:`. *(2026-07-12: PARTIAL — paths/curves/layouts/
+  stateanim constructs now duplicate-error (`ParserErrorTest`). Data record fields already had a
+  guard. `.anim` duplicate `loop:` unverified — left open.)*
 - [ ] `VFX-17` Parser lexer warts: both lexers silently skip unknown characters; number lexer eats trailing `.`
   before identifiers (`10.offset(...)` pitfall root cause, MacroManimParser.hx:225); coordinate X
   can't start with `$ref[idx]` or `$grid.width` (parseXY asymmetry); AnimLexer recursion on long
   comment runs (stack overflow risk on generated files); `flags`-param conditionals with non-numeric
-  values recreate the builder/codegen divergence class (:2133-2135).
+  values recreate the builder/codegen divergence class (:2133-2135). *(2026-07-12: PARTIAL —
+  unknown chars now error in both lexers (BOM tolerated); AnimLexer comments skip iteratively;
+  `$grid.width`/`$ctx.height` accepted as coordinate X; flags guard added. DEFERRED: trailing-dot
+  number lexing (its real fix is the 1.1 ".offset() after bare x,y" feature); `$ref[idx]` as X.)*
 
 ---
 
@@ -330,10 +370,13 @@ items take the next free number in their prefix. (1.1 roadmap bullets are featur
   (CoordinateSystems.hx:97-108 + builder + 6 codegen sites: POINTY→qoffsetToCube; standard is
   q-offset=flat, r-offset=pointy). Consistent across builder/codegen so tests can't catch it, and
   existing content encodes the inverted behavior. Fix + migrate, or document as library convention.
-- [ ] `DEC-2` **brightness/saturate/hue semantics** (see `FLT-1`–`FLT-3`): fix code to documented intent
+- [x] `DEC-2` **brightness/saturate/hue semantics** (see `FLT-1`–`FLT-3`): fix code to documented intent
   (breaking visuals for content that compensated) or re-document Heaps semantics. Recommend fixing
   code — the docs, the parser default, and user intuition all agree on multiplier/degrees.
-- [ ] `DEC-3` **`gravityAngle`**: fix convention + audit existing `.manim` content (see `VFX-1`).
+  *(2026-07-12: RESOLVED as "fix code" — all three backends now match the docs. See FLT-1..3.)*
+- [x] `DEC-3` **`gravityAngle`**: fix convention + audit existing `.manim` content (see `VFX-1`).
+  *(2026-07-12: RESOLVED — convention fixed, default preserved as "down". In-repo content audited
+  (only test example 51); sibling repos (proto-game, playground) should grep `gravityAngle`.)*
 - [ ] `DEC-4` **`setParameter` value contract** (enum-by-int, tile-by-filename, stringify non-strings):
   builder and codegen disagree in both directions. Define once, generate/validate both paths
   (see `CG-21`).

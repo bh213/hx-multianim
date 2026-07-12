@@ -7014,13 +7014,19 @@ class MultiAnimBuilder {
 			case FilterSaturate(v):
 				var m = new h3d.Matrix();
 				m.identity();
-				m.colorSaturate(resolveAsNumber(v));
+				// Documented scale: 0 = grayscale, 1 = normal. Heaps'
+				// colorSaturate adds 1 internally, so shift by -1.
+				m.colorSaturate(resolveAsNumber(v) - 1.0);
 				new h2d.filter.ColorMatrix(m);
 			case FilterBrightness(v):
 				var m = new h3d.Matrix();
 				m.identity();
-				m.colorLightness(resolveAsNumber(v));
-
+				// Documented as a multiplier (0 = black, 1 = normal). Heaps'
+				// colorLightness is an additive offset — scale the diagonal instead.
+				final b = resolveAsNumber(v);
+				m._11 = b;
+				m._22 = b;
+				m._33 = b;
 				new h2d.filter.ColorMatrix(m);
 			case FilterGrayscale(v):
 				var m = new h3d.Matrix();
@@ -7030,7 +7036,8 @@ class MultiAnimBuilder {
 			case FilterHue(v):
 				var m = new h3d.Matrix();
 				m.identity();
-				m.colorHue(resolveAsNumber(v));
+				// Documented in degrees; colorHue expects radians.
+				m.colorHue(hxd.Math.degToRad(resolveAsNumber(v)));
 				new h2d.filter.ColorMatrix(m);
 			case FilterGlow(color, alpha, radius, gain, quality, smoothColor, knockout):
 				final f = new h2d.filter.Glow(resolveAsColorInteger(color), resolveAsNumber(alpha), resolveAsNumber(radius), resolveAsNumber(gain), resolveAsNumber(quality), smoothColor);
@@ -7231,8 +7238,15 @@ class MultiAnimBuilder {
 			group.emitDelay = resolveAsNumber(particlesDef.emitDelay);
 		if (particlesDef.emitSync != null)
 			group.emitSync = resolveAsNumber(particlesDef.emitSync);
-		if (particlesDef.maxLife != null)
-			group.life = resolveAsNumber(particlesDef.maxLife);
+		if (particlesDef.maxLife != null) {
+			final resolvedLife = resolveAsNumber(particlesDef.maxLife);
+			// life = 0 divides the lifetime normalization and the spawn-curve
+			// emission accumulator (rate * nparts * dt / life → +Inf → the
+			// emission while-loop never terminates and the game hangs).
+			if (resolvedLife <= 0)
+				throw builderError('maxLife must be greater than 0, got $resolvedLife');
+			group.life = resolvedLife;
+		}
 		if (particlesDef.lifeRandom != null)
 			group.lifeRand = resolveAsNumber(particlesDef.lifeRandom);
 		if (particlesDef.size != null)

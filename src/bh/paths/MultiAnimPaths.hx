@@ -230,9 +230,15 @@ class MultiAnimPaths {
 					var cnt = resolveNumber(count);
 					var totalLength = wl * cnt;
 
+					// A fractional cycle count ends mid-oscillation: the trace at
+					// rate 1.0 carries a residual lateral offset of
+					// amp * sin(cnt * 2π). The recorded endpoint (next segment's
+					// start, Stretch normalization anchor) must include it or the
+					// trace jumps at the segment boundary.
+					var residualLateral = amp * Math.sin(cnt * 2 * Math.PI);
 					var endPt = new FPoint(
-						point.x + totalLength * Math.cos(angle),
-						point.y + totalLength * Math.sin(angle)
+						point.x + totalLength * Math.cos(angle) - residualLateral * Math.sin(angle),
+						point.y + totalLength * Math.sin(angle) + residualLateral * Math.cos(angle)
 					);
 					singlePaths.push(new SinglePath(point, endPt, Wave(amp, wl, cnt, angle)));
 					// Wave ends in same direction, angle doesn't change

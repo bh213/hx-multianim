@@ -97,6 +97,122 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.equals(20, Std.int(bitmaps[0].tile.height));
 	}
 
+	// ==================== Particle maxLife validation ====================
+
+	@Test
+	public function testParticlesMaxLifeZeroIsRejectedAtBuild():Void {
+		// life = 0 is unusable: lifetime normalization divides by it, and
+		// spawn-curve emission computes `rate * nparts * dt / life` — with 0 the
+		// accumulator becomes +Inf and the emission while-loop never terminates
+		// (hard game hang). The builder must reject it with a clear error.
+		// Preflight: identical group with a sane maxLife must build — guards the
+		// assertion below against unrelated setup failures (e.g. sheet lookup).
+		final ok = buildFromSource("
+			#test programmable() {
+				#fx particles {
+					count: 5
+					emit: point(dist: 0, distRand: 0)
+					tiles: sheet(\"demo\", \"tile-center\")
+					maxLife: 1.0
+				}
+			}
+		", "test");
+		Assert.notNull(ok, "sanity: particles group with maxLife 1.0 builds");
+
+		var threw = false;
+		try {
+			buildFromSource("
+				#test programmable() {
+					#fx particles {
+						count: 5
+						emit: point(dist: 0, distRand: 0)
+						tiles: sheet(\"demo\", \"tile-center\")
+						maxLife: 0
+					}
+				}
+			", "test");
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw, "maxLife: 0 must be rejected at build time — it hard-hangs the game when combined with spawnCurve emission");
+	}
+
+	// ==================== Filter semantics: brightness / saturate / hue ====================
+	// Documented semantics (docs/manim-reference.md): brightness is a MULTIPLIER
+	// (0=black, 1=normal), saturate is 0=gray / 1=normal, hue takes DEGREES.
+
+	static function firstBitmapColorMatrix(result:bh.multianim.MultiAnimBuilder.BuilderResult):h3d.Matrix {
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		final f = Std.downcast(bitmaps[0].filter, h2d.filter.ColorMatrix);
+		Assert.notNull(f, 'expected a ColorMatrix filter, got ${bitmaps[0].filter}');
+		return f == null ? null : f.matrix;
+	}
+
+	@Test
+	public function testBrightnessFilterIsMultiplier():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				bitmap(generated(color(8, 8, #808080))) {
+					filter: brightness(0.5)
+					pos: 0, 0
+				}
+			}
+		", "test");
+		final m = firstBitmapColorMatrix(result);
+		if (m == null) return;
+		// Multiplier semantics: diagonal 0.5, no additive offset.
+		Assert.floatEquals(0.5, m._11, 0.001, 'brightness(0.5) must SCALE channels by 0.5 (got _11=${m._11}) — not add an offset');
+		Assert.floatEquals(0.0, m._41, 0.001, 'brightness(0.5) must not add a constant offset (got _41=${m._41})');
+	}
+
+	@Test
+	public function testSaturateFilterZeroIsGrayOneIsNormal():Void {
+		final normal = buildFromSource("
+			#test programmable() {
+				bitmap(generated(color(8, 8, #808080))) {
+					filter: saturate(1.0)
+					pos: 0, 0
+				}
+			}
+		", "test");
+		final mNormal = firstBitmapColorMatrix(normal);
+		if (mNormal == null) return;
+		Assert.floatEquals(1.0, mNormal._11, 0.001,
+			'saturate(1.0) is documented as NORMAL saturation — expected identity matrix, got _11=${mNormal._11}');
+
+		final gray = buildFromSource("
+			#test programmable() {
+				bitmap(generated(color(8, 8, #808080))) {
+					filter: saturate(0.0)
+					pos: 0, 0
+				}
+			}
+		", "test");
+		final mGray = firstBitmapColorMatrix(gray);
+		if (mGray == null) return;
+		// Full desaturation: _11 collapses to the red luminance weight (~0.21).
+		Assert.isTrue(mGray._11 < 0.5,
+			'saturate(0.0) is documented as GRAYSCALE — expected _11 ≈ lumR (~0.21), got _11=${mGray._11}');
+	}
+
+	@Test
+	public function testHueFilterTakesDegrees():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				bitmap(generated(color(8, 8, #808080))) {
+					filter: hue(90)
+					pos: 0, 0
+				}
+			}
+		", "test");
+		final m = firstBitmapColorMatrix(result);
+		if (m == null) return;
+		// colorHue(π/2): _11 = cos(-π/2) + (1 - cos(-π/2)) / 3 = 1/3.
+		Assert.floatEquals(1.0 / 3.0, m._11, 0.01,
+			'hue(90) is documented as 90 DEGREES — expected _11 = 1/3 (rotation by π/2 rad), got _11=${m._11}');
+	}
+
 	// ==================== Root-level tint on non-Drawable ====================
 
 	@Test

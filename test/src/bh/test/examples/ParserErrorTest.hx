@@ -5285,4 +5285,93 @@ class ParserErrorTest extends utest.Test {
 			}
 		'), "boolean conditional values (true/false) must still parse");
 	}
+
+	// ==================== Duplicate top-level names must be rejected ====================
+	// A second declaration with the same name silently overwrites the first
+	// today (map.set with no exists() check) — typos and copy-paste mistakes
+	// vanish without a diagnostic. Parameters, settings, and record fields
+	// already reject duplicates; these registries must match.
+
+	@Test
+	public function testDuplicatePathNameIsRejected() {
+		var error = parseExpectingError('
+			paths {
+				#route path { lineTo(100, 0) }
+				#route path { lineTo(0, 100) }
+			}
+			#test programmable() { bitmap(generated(color(1, 1, #000))): 0,0 }
+		');
+		Assert.notNull(error, "two paths named #route must be a parse error — the second silently overwrites the first today");
+	}
+
+	@Test
+	public function testDuplicateCurveNameIsRejected() {
+		var error = parseExpectingError('
+			curves {
+				#ease curve { easing: easeInQuad }
+				#ease curve { easing: easeOutQuad }
+			}
+			#test programmable() { bitmap(generated(color(1, 1, #000))): 0,0 }
+		');
+		Assert.notNull(error, "two curves named #ease must be a parse error — the second silently overwrites the first today");
+	}
+
+	@Test
+	public function testDuplicateLayoutNameIsRejected() {
+		var error = parseExpectingError('
+			layouts {
+				#spot list {
+					point: 10, 10
+				}
+				#spot list {
+					point: 20, 20
+				}
+			}
+			#test programmable() { bitmap(generated(color(1, 1, #000))): 0,0 }
+		');
+		Assert.notNull(error, "two layout entries named #spot must be a parse error — the second silently overwrites the first today");
+	}
+
+	// ==================== Unknown characters must not be silently skipped ====================
+
+	@Test
+	public function testManimLexerRejectsUnknownCharacters() {
+		var error = parseExpectingError('
+			#test programmable() {
+				` bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.notNull(error, "an unknown character (backtick) must produce a lexer error, not be silently skipped");
+	}
+
+	// ==================== flags conditionals: non-numeric values ====================
+
+	@Test
+	public function testFlagsParamRejectsNonNumericConditionalValue() {
+		// Same divergence class the PPTBool/PPTInt/PPTFloat guards were added
+		// for: a non-numeric flags value falls to CoStringValue — the builder
+		// silently never matches while codegen emits an Int == String compile
+		// error that breaks the whole @:manim build.
+		var error = parseExpectingError("
+			#test programmable(f:flags(4)=0) {
+				@(f => banana) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		");
+		Assert.notNull(error, "@(flagsParam => nonNumeric) must be rejected at parse time");
+	}
+
+	// ==================== Coordinate X expression parity with Y ====================
+
+	@Test
+	public function testCoordinateXAcceptsGridPropertyExpression() {
+		// $grid.width parses as the Y coordinate but not as the X coordinate —
+		// parseXY handles the two positions asymmetrically. Both must accept the
+		// same coordinate expressions.
+		Assert.isTrue(parseExpectingSuccess("
+			#test programmable() {
+				grid: 10, 10
+				bitmap(generated(color(10, 10, #f00))): $grid.width, 5
+			}
+		"), "$grid.width must be accepted as the X coordinate (it already parses as Y)");
+	}
 }

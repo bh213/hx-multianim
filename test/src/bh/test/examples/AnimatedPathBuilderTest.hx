@@ -105,6 +105,56 @@ class AnimatedPathBuilderTest extends BuilderTestBase {
 		#dummy programmable() { bitmap(generated(color(1, 1, #000))): 0,0 }
 	";
 
+	// ==================== Wave segment continuity ====================
+
+	@Test
+	public function testWaveWithFractionalCountJoinsNextSegmentContinuously():Void {
+		// A wave with count 1.25 ends mid-crest: at the segment's end the trace
+		// carries a residual lateral offset of amplitude * sin(count * 2π) = 10.
+		// The segment's recorded endpoint (where the next segment starts, and
+		// what Stretch normalization scales against) must include that offset —
+		// otherwise the traced position jumps by ~amplitude at the boundary.
+		// Note: count 1.25 is written as (5 / 4) — bare float literals are not
+		// accepted in these argument positions (parseAtomInt), but parenthesized
+		// expressions are, and `/` resolves as float division at build time.
+		final builder = builderFromSource("
+			paths {
+				#wavy path { wave(10, 40, (5 / 4)) lineTo(50, 0) }
+			}
+			#wavyAnim animatedPath {
+				path: wavy
+				type: time
+				duration: 1.0
+			}
+			#dummy programmable() { bitmap(generated(color(1, 1, #000))): 0,0 }
+		");
+		final ap = builder.createAnimatedPath("wavyAnim");
+		Assert.notNull(ap);
+
+		// Scan the whole path with a fine step: consecutive positions must never
+		// jump by more than the distance the trace can cover in one step.
+		var prev = new FPoint(0, 0);
+		var state = ap.seek(0.0);
+		prev.x = state.position.x;
+		prev.y = state.position.y;
+		var maxJump = 0.0;
+		var i = 1;
+		while (i <= 1000) {
+			state = ap.seek(i / 1000.0);
+			final dx = state.position.x - prev.x;
+			final dy = state.position.y - prev.y;
+			final d = Math.sqrt(dx * dx + dy * dy);
+			if (d > maxJump) maxJump = d;
+			prev.x = state.position.x;
+			prev.y = state.position.y;
+			i++;
+		}
+		// Total path length ~100px over 1000 steps → smooth steps are well under
+		// 1px; the missing lateral offset shows up as a ~10px discontinuity.
+		Assert.isTrue(maxJump < 2.0,
+			'path trace must be continuous across the wave->line boundary; largest step jump was ${maxJump}px (a ~10px jump means the wave endpoint ignored its residual lateral offset)');
+	}
+
 	// ==================== Builder: Basic Creation ====================
 
 	@Test

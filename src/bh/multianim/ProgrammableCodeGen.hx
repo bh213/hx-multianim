@@ -8401,19 +8401,27 @@ class ProgrammableCodeGen {
 				final cExpr = rvToExpr(color);
 				macro new h2d.filter.Outline($sExpr, $cExpr);
 			case FilterSaturate(v):
+				// Documented scale: 0 = grayscale, 1 = normal. Heaps' colorSaturate
+				// adds 1 internally, so shift by -1 (mirrors the builder).
 				final vExpr = rvToExpr(v);
 				macro {
 					final m = new h3d.Matrix();
 					m.identity();
-					m.colorSaturate($vExpr);
+					m.colorSaturate($vExpr - 1.0);
 					new h2d.filter.ColorMatrix(m);
 				};
 			case FilterBrightness(v):
+				// Documented as a multiplier (0 = black, 1 = normal). Heaps'
+				// colorLightness is an additive offset — scale the diagonal
+				// instead (mirrors the builder).
 				final vExpr = rvToExpr(v);
 				macro {
 					final m = new h3d.Matrix();
 					m.identity();
-					m.colorLightness($vExpr);
+					final _b = $vExpr;
+					m._11 = _b;
+					m._22 = _b;
+					m._33 = _b;
 					new h2d.filter.ColorMatrix(m);
 				};
 			case FilterGrayscale(v):
@@ -8425,11 +8433,12 @@ class ProgrammableCodeGen {
 					new h2d.filter.ColorMatrix(m);
 				};
 			case FilterHue(v):
+				// Documented in degrees; colorHue expects radians (mirrors the builder).
 				final vExpr = rvToExpr(v);
 				macro {
 					final m = new h3d.Matrix();
 					m.identity();
-					m.colorHue($vExpr);
+					m.colorHue(hxd.Math.degToRad($vExpr));
 					new h2d.filter.ColorMatrix(m);
 				};
 			case FilterGlow(color, alpha, radius, gain, quality, smoothColor, knockout):

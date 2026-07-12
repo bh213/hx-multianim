@@ -227,9 +227,10 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 		vx *= dv;
 		vy *= dv;
 
-		// Apply gravity
-		vx += group.gravity * dt * group.sinGravityAngle;
-		vy += group.gravity * dt * group.cosGravityAngle;
+		// Apply gravity. Screen convention (matches the .manim direction
+		// constants): 0 = right, π/2 = down — direction vector is (cos, sin).
+		vx += group.gravity * dt * group.cosGravityAngle;
+		vy += group.gravity * dt * group.sinGravityAngle;
 
 		// Apply force fields
 		group.applyForceFields(this, dt);
@@ -542,11 +543,12 @@ class ParticleGroup {
 	**/
 	public var gravity(default, null) : Float		= 0;
 	/**
-		The gravity angle in radians. `0` points down.
+		The gravity angle in radians. Screen convention matching the .manim
+		direction constants: `0` points right, `π/2` points down (the default).
 	**/
-	public var gravityAngle(default, set) : Float 	= 0;
-	var cosGravityAngle : Float = 1.0;  // cos(0) = 1
-	var sinGravityAngle : Float = 0.0;  // sin(0) = 0
+	public var gravityAngle(default, set) : Float 	= Math.PI / 2;
+	var cosGravityAngle : Float = 0.0;  // cos(π/2) = 0 — no sideways drift by default
+	var sinGravityAngle : Float = 1.0;  // sin(π/2) = 1 — default gravity falls down
 
 	/**
 		Initial particle rotation.
@@ -655,21 +657,22 @@ class ParticleGroup {
 	**/
 	public var boundsMode(default, null) : BoundsMode = None;
 	/**
-		Boundary rectangle - minX.
+		Boundary rectangle - minX. Defaults to -infinity (no box) so line-only
+		bounds configurations are not clipped by an implicit box.
 	**/
-	public var boundsMinX(default, null) : Float = 0;
+	public var boundsMinX(default, null) : Float = Math.NEGATIVE_INFINITY;
 	/**
-		Boundary rectangle - maxX.
+		Boundary rectangle - maxX. Defaults to +infinity (no box).
 	**/
-	public var boundsMaxX(default, null) : Float = 800;
+	public var boundsMaxX(default, null) : Float = Math.POSITIVE_INFINITY;
 	/**
-		Boundary rectangle - minY.
+		Boundary rectangle - minY. Defaults to -infinity (no box).
 	**/
-	public var boundsMinY(default, null) : Float = 0;
+	public var boundsMinY(default, null) : Float = Math.NEGATIVE_INFINITY;
 	/**
-		Boundary rectangle - maxY.
+		Boundary rectangle - maxY. Defaults to +infinity (no box).
 	**/
-	public var boundsMaxY(default, null) : Float = 600;
+	public var boundsMaxY(default, null) : Float = Math.POSITIVE_INFINITY;
 	/**
 		Line bounds. Each line has endpoints (x1,y1)-(x2,y2) and a precomputed outward normal (nx,ny).
 		Particles on the normal side are in-bounds; those on the opposite side are out-of-bounds.
@@ -833,7 +836,9 @@ class ParticleGroup {
 	**/
 	public function emitBurstAt(atX:Float, atY:Float, inheritVx:Float, inheritVy:Float, count:Int):Void {
 		if (!started) {
-			batch.visible = true;
+			// Note: batch.visible must stay false — group batches are children of
+			// the Particles object but are drawn explicitly in Particles.draw();
+			// a visible batch would be rendered a second time by the child pass.
 			started = true;
 			globalTime = 0;
 		}

@@ -75,6 +75,69 @@ class ScreenManagerDialogTransitionTest extends utest.Test {
 	}
 
 	@Test
+	public function testDialogOverDialogCloseDeliversDialogResultOnce():Void {
+		// Closing the top dialog of a dialog-over-dialog stack must deliver
+		// OnDialogResult for the closing dialog exactly once. The instant close
+		// path fires it in closeDialogWithTransition, and updateScreenMode's
+		// Dialog -> Dialog branch must not fire it a second time when returning
+		// to the underlying dialog.
+		var sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
+
+		var main = new ProbeScreen(sm);
+		var d1 = new ProbeScreen(sm);
+		var d2 = new ProbeScreen(sm);
+
+		sm.switchTo(main);
+		sm.modalDialog(d1, main, "d1");
+		sm.modalDialog(d2, main, "d2");
+
+		// Ignore the open-over notification for d1 — only observe the close of d2.
+		main.dialogResults = [];
+		sm.closeDialogWithTransition();
+
+		final d2Results = main.dialogResults.filter(n -> n == "d2");
+		Assert.equals(1, d2Results.length,
+			'closing the top dialog must deliver exactly one OnDialogResult("d2"); caller received: ${main.dialogResults}');
+
+		main.getSceneRoot().remove();
+		d1.getSceneRoot().remove();
+		d2.getSceneRoot().remove();
+	}
+
+	@Test
+	public function testSameDialogModeRefreshKeepsOverlayAndFiresNoPhantomResult():Void {
+		// ScreenManager.reload() ends with updateScreenMode(this.mode). With a
+		// dialog open this is a Dialog -> Dialog transition where old and new
+		// dialog are the SAME screen. That refresh must be a no-op for the
+		// dialog lifecycle: the modal overlay must survive, the caller must not
+		// receive a phantom OnDialogResult, and the dialog must not observe a
+		// spurious UILeaving/UIEntering round trip.
+		var sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
+
+		var main = new ProbeScreen(sm);
+		var d1 = new ProbeScreen(sm);
+
+		sm.switchTo(main);
+		d1.modalOverlayConfig = {color: 0x000000, alpha: 0.5};
+		sm.modalDialog(d1, main, "confirm");
+		Assert.notNull(sm.modalOverlay, "sanity: modal overlay exists after opening the dialog");
+
+		main.dialogResults = [];
+		d1.leavingObserved = false;
+
+		// What reload() does after rebuilding screens.
+		sm.updateScreenMode(sm.mode);
+
+		Assert.equals(0, main.dialogResults.length,
+			'refreshing the current mode must not deliver a phantom OnDialogResult; caller received: ${main.dialogResults}');
+		Assert.notNull(sm.modalOverlay, "modal overlay must survive a same-dialog mode refresh (reload with dialog open)");
+		Assert.isFalse(d1.leavingObserved, "open dialog must not receive spurious UILeaving on a same-dialog mode refresh");
+
+		main.getSceneRoot().remove();
+		d1.getSceneRoot().remove();
+	}
+
+	@Test
 	public function testSingleToSingle_UILeavingFiresWhileAttached():Void {
 		// Control case: Single -> Single transition fires UILeaving while attached.
 		// Dialog -> Dialog should match this ordering.
@@ -95,10 +158,12 @@ class ScreenManagerDialogTransitionTest extends utest.Test {
 	}
 }
 
-/** Screen that records the scene-root parent observed when UILeaving fires. */
+/** Screen that records the scene-root parent observed when UILeaving fires,
+ *  plus every OnDialogResult dialog name it receives as a caller. */
 private class ProbeScreen extends UIScreenBase {
 	public var leavingObserved:Bool = false;
 	public var leavingParentAtDispatch:Null<h2d.Object> = null;
+	public var dialogResults:Array<String> = [];
 
 	public function new(sm:ScreenManager) {
 		super(sm);
@@ -111,6 +176,8 @@ private class ProbeScreen extends UIScreenBase {
 			case UILeaving:
 				leavingObserved = true;
 				leavingParentAtDispatch = getSceneRoot().parent;
+			case UIOnControllerEvent(OnDialogResult(dialogName, _)):
+				dialogResults.push(dialogName);
 			default:
 		}
 	}
