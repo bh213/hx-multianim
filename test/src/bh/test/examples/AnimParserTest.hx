@@ -401,9 +401,11 @@ animation @(level < 3) {
 		// Regression: comparison conditionals used expectIdentifier() which
 		// rejected a leading minus, so @(level >= -1) failed to parse.
 		// expectSignedIdentifier() now accepts an optional leading APMinus.
+		// -2 keeps the @(level < -1) arm reachable — the reachability validation
+		// rejects animations that can never be selected for any declared state.
 		var result = parseAnimExpectingSuccess('
 sheet: testSheet
-states: level(-1, 0, 1, 2)
+states: level(-2, -1, 0, 1, 2)
 animation @(level >= -1) {
     name: idle
     fps: 4
@@ -2643,5 +2645,78 @@ flipX: yes
 ');
 		Assert.notNull(error, "file-level flipX after animations should error");
 		Assert.stringContains("flipX", error);
+	}
+
+	// ===== Reachability: fully-shadowed animations/playlists must be rejected =====
+	// The validation pass marks visited animations/extra points but compares
+	// `visited == false` on a null-default optional field (`null == false` is false),
+	// and never sets `visited` on playlists at all — so a selector that is shadowed
+	// by a more specific sibling for every state parses silently.
+
+	@Test
+	public function testFullyShadowedAnimationIsRejected() {
+		// The multi-value selector scores 1 for both states, the unconditional
+		// `idle` scores 0 — it can never be selected.
+		var error = parseAnimExpectingError('
+sheet: testSheet
+states: direction(l, r)
+animation idle @(direction=>[l, r]) {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+}
+animation idle {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle2" }
+}
+');
+		Assert.notNull(error, "fully-shadowed animation must be a parse error");
+		Assert.stringContains("not reachable", error);
+	}
+
+	@Test
+	public function testFullyShadowedPlaylistIsRejected() {
+		var error = parseAnimExpectingError('
+sheet: testSheet
+states: direction(l, r)
+animation idle {
+    fps: 4
+    loop: yes
+    playlist @(direction=>[l, r]) { sheet: "test_a" }
+    playlist { sheet: "test_b" }
+}
+');
+		Assert.notNull(error, "fully-shadowed playlist must be a parse error");
+		Assert.stringContains("not reachable", error);
+	}
+
+	// ===== Lexer: unterminated strings must error at the opening quote =====
+	// The quoted-string loop falls out at EOF without an error, swallowing the rest
+	// of the file into one token; the parser then fails far away (or not at all).
+
+	@Test
+	public function testUnterminatedStringIsRejected() {
+		var error = parseAnimExpectingError('
+sheet: testSheet
+states: direction(l)
+animation idle {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle }
+}
+');
+		Assert.notNull(error, "unterminated string must be a parse error");
+		Assert.stringContains("Unterminated string", error);
+	}
+
+	@Test
+	public function testNewlineInsideStringKeepsLineNumbersInSync() {
+		// An embedded newline inside a quoted string must bump the lexer line
+		// counter; the unknown-character error below sits on source line 5.
+		var error = parseAnimExpectingError('sheet: testSheet\nstates: direction(l)\nmetadata { note: "two\nline" }\n`\n');
+		Assert.notNull(error, "unknown character should produce a parse error");
+		Assert.isTrue(error.indexOf("test-input:5:") >= 0,
+			'Error must be reported on line 5 (the stray backtick), got: $error');
 	}
 }

@@ -170,27 +170,40 @@ items take the next free number in their prefix. (1.1 roadmap bullets are featur
 
 ### Parsers (empirically reproduced)
 
-- [ ] `PRS-1` **Parameterized slot without `{}` body permanently leaks slot param scope** — restore code only
-  in the `TCurlyOpen` branch (MacroManimParser.hx:3403-3426 vs :4019-4027).
-- [ ] `PRS-2` **Multi-line `${…}` interpolation desyncs all subsequent line numbers** (:299-308 never bumps
-  `line` on `\n`); interpolation column off-by-1/2 (:352).
-- [ ] `PRS-3` **`@` modifiers silently dropped** on `@final` / `settings{}` / `transition{}` (conditional
+- [x] `PRS-1` **Parameterized slot without `{}` body permanently leaks slot param scope** — restore code only
+  in the `TCurlyOpen` branch (MacroManimParser.hx:3403-3426 vs :4019-4027). *(2026-07-12: restore
+  hoisted after the terminator switch — all three terminators (`: x,y`, `;`, `{}`) restore.
+  `ParserErrorTest`.)*
+- [x] `PRS-2` **Multi-line `${…}` interpolation desyncs all subsequent line numbers** (:299-308 never bumps
+  `line` on `\n`); interpolation column off-by-1/2 (:352). *(2026-07-12: code scan counts newlines;
+  col remap +1 (code starts past `${`). `ParserErrorTest`.)*
+- [x] `PRS-3` **`@` modifiers silently dropped** on `@final` / `settings{}` / `transition{}` (conditional
   parsed then discarded — :3032, :3934-3962, :3895-3932); `#name` silently dropped on `@switch`
-  (:5452). Should be parse errors.
-- [ ] `PRS-4` **Nested `programmable` not rejected** — clobbers outer scope with no restore (:3549-3569).
-  Add the root-only guard the other block types have.
-- [ ] `PRS-5` **AnimParser "not reachable" validation is dead code** — checks `visited == false` on a
+  (:5452). Should be parse errors. *(2026-07-12: all four sites now parse errors. `ParserErrorTest`
+  ×4.)*
+- [x] `PRS-4` **Nested `programmable` not rejected** — clobbers outer scope with no restore (:3549-3569).
+  Add the root-only guard the other block types have. *(2026-07-12: root-only guard added.
+  `ParserErrorTest`.)*
+- [x] `PRS-5` **AnimParser "not reachable" validation is dead code** — checks `visited == false` on a
   null-default optional field (`null == false` is false); `Playlist.visited` never set
   (AnimParser.hx:990-1000, :619,:638,:673). Fully-shadowed animations parse silently.
-  CHANGELOG:288 claims these errors fire — they cannot.
-- [ ] `PRS-6` **`.anim` lexer accepts unterminated strings** — swallows the rest of the file into one token,
-  errors far away (AnimParser.hx:323-341); embedded `\n` doesn't bump line numbers.
-- [ ] `PRS-7` **2D palette declaration cannot be parsed** — the parser branch expects `TIdentifier("2d")`
+  CHANGELOG:288 claims these errors fire — they cannot. *(2026-07-12: playlist.visited now set;
+  all three checks flipped to `!= true`. One in-repo test fixture had a genuinely dead arm —
+  adjusted. Playground + proto-game scanned: all 70 `.anim` files parse clean under the enforced
+  validation. `AnimParserTest` ×2.)*
+- [x] `PRS-6` **`.anim` lexer accepts unterminated strings** — swallows the rest of the file into one token,
+  errors far away (AnimParser.hx:323-341); embedded `\n` doesn't bump line numbers. *(2026-07-12:
+  positioned "Unterminated string" error at the opening quote; embedded newlines advance the line
+  counter (mirrors the `.manim` lexer). `AnimParserTest` ×2.)*
+- [x] `PRS-7` **2D palette declaration cannot be parsed** — the parser branch expects `TIdentifier("2d")`
   (MacroManimParser.hx:3775) but the lexer tokenizes `2d` as `TInteger(2)` + `d`, so
   `palette(2d:width) { … }` can never parse ("expected 2d or file in palette()"). Docs show a third
   spelling, `palette(2d, 4)` (manim.md:1419, manim-reference.md:752), which also fails. 2D palettes
   are only reachable via `palette(file:...)` today; `PaletteColors2D` is dead. Fix the lexer/parser
   to accept one spelling and align the docs. *(Found 2026-07-12 during the BLD-2 bug review.)*
+  *(2026-07-12: parser matches the `TInteger("2")`+`TIdentifier("d")` pair — canonical spelling
+  `palette(2d: width)` parses. Doc spellings in manim.md + manim-reference.md corrected to
+  `palette(2d: width)` (the palette sub-items of DOC-10/DOC-13 are done). `ParserErrorTest`.)*
 
 ### Hot reload / LSP
 

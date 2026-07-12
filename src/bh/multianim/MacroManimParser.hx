@@ -304,6 +304,9 @@ private class MacroLexer {
 								// Hit string terminator before closing } — interpolation is unclosed
 								throw '$sourceName:$interpLine:$interpCol: Unclosed string interpolation, expected }';
 							}
+							// Newlines inside ${...} must advance the line counter, or every
+							// token after this string reports a stale line number.
+							else if (bc == '\n'.code) { line++; lineStart = pos + 1; }
 							if (depth > 0) pos++;
 						}
 						if (depth > 0) {
@@ -346,10 +349,13 @@ private class MacroLexer {
 							codeTokens.push(st);
 						}
 						if (codeTokens.length == 0) continue; // skip empty code
-						// Adjust token positions to the interpolation start in the original source
+						// Adjust token positions to the interpolation start in the original
+						// source. codeCol is the 1-based column of the `$`; the code text
+						// starts two chars later (past `${`), and sub-lexer columns are
+						// 1-based — hence the +1.
 						for (ct in codeTokens) {
 							ct.line = part.codeLine;
-							ct.col = part.codeCol + ct.col;
+							ct.col = part.codeCol + 1 + ct.col;
 						}
 						// Inside ${...}, bare identifiers are parameter references
 						// (allow ${test} as shorthand for ${$test})
@@ -3004,6 +3010,10 @@ class MacroManimParser {
 					case TIdentifier(s) if (isKeyword(s, "switch")):
 						if (atCount > 0) error("@switch cannot be combined with other @ modifiers");
 						if (parent == null) error("@switch cannot be used at root level");
+						// A #name in front of @switch was previously parsed and silently
+						// discarded — the block registers nothing under that name.
+						if (!updatableName.match(UNTObject(null)))
+							error("#name cannot be applied to @switch — name the elements inside the arms instead");
 						advance();
 						expect(TOpen);
 						final switchParam = expectIdentifierOrString();
@@ -3058,6 +3068,10 @@ class MacroManimParser {
 						hasFlowProps = true;
 						atCount++;
 					case TIdentifier(s) if (isKeyword(s, "final")):
+						// A @final is always unconditional — a preceding conditional or
+						// inline property was previously parsed and silently discarded.
+						if (atCount > 0)
+							error("@final cannot be combined with other @ modifiers or conditionals — a @final is always unconditional");
 						advance();
 						final name = expectIdentifierOrString();
 						expect(TEquals);
@@ -3585,6 +3599,11 @@ class MacroManimParser {
 
 			case TIdentifier(s) if (isKeyword(s, "programmable")):
 				advance();
+				// Root-only guard (matches palette/paths/curves/animatedPath): a nested
+				// programmable would silently clobber the outer programmable's scope
+				// (activeDefs/scopeVars/@finals/named elements) with no restore.
+				if (parent != null)
+					error("programmable must be a root node — programmables cannot be nested; embed one via staticRef/dynamicRef instead");
 				// Check for tilegroup
 				var isTileGroup = false;
 				switch (peek()) {
@@ -3809,8 +3828,16 @@ class MacroManimParser {
 					case TOpen:
 						advance();
 						switch (peek()) {
-							case TIdentifier(s2) if (isKeyword(s2, "2d")):
+							case TInteger("2"):
+								// `2d` lexes as TInteger("2") + TIdentifier("d") — identifiers
+								// cannot start with a digit — so match the token pair.
 								advance();
+								switch (peek()) {
+									case TIdentifier(d) if (d.toLowerCase() == "d"):
+										advance();
+									default:
+										error("expected 2d or file in palette()");
+								}
 								expect(TColon);
 								final width = parseInteger();
 								expect(TClosed);
@@ -3931,6 +3958,10 @@ class MacroManimParser {
 
 			case TIdentifier(s) if (isKeyword(s, "transition")):
 				advance();
+				// Modifiers were previously parsed and silently discarded — the block
+				// is declarative and unconditional.
+				if (!conditional.match(NoConditional) || alpha != null || scale != null || rotation != null || tint != null || layerIndex != -1 || hasFlowProps)
+					error("@ modifiers are not supported on transition {} — transition declarations are unconditional");
 				expect(TCurlyOpen);
 				if (parent == null) error("transition must be inside a programmable");
 				final transParamDefs = switch (parent.type) {
@@ -3970,6 +4001,10 @@ class MacroManimParser {
 
 			case TIdentifier(s) if (isKeyword(s, "settings")):
 				advance();
+				// Modifiers were previously parsed and silently discarded — the block
+				// is declarative and unconditional.
+				if (!conditional.match(NoConditional) || alpha != null || scale != null || rotation != null || tint != null || layerIndex != -1 || hasFlowProps)
+					error("@ modifiers are not supported on settings {} — settings are static and unconditional");
 				expect(TCurlyOpen);
 				if (parent == null) error("settings must have a parent");
 				if (parent.settings == null) parent.settings = new Map();
@@ -4053,19 +4088,24 @@ class MacroManimParser {
 				}
 				parseNodes(node, currentDefs);
 				for (_ in 0...loopVarsToPop) scopeVars.pop();
-				if (slotScopeSaved) {
-					currentDefs = slotSavedCurrentDefs;
-					activeDefs = slotSavedActiveDefs;
-					scopeVars = slotSavedScopeVars;
-					activeFinals = slotSavedActiveFinals;
-					activeFinalNames = slotSavedActiveFinalNames;
-					namedElements = slotSavedNamedElements;
-					slotScopeSaved = false;
-				}
 			case TEof:
 				error("unexpected end of file");
 			default:
 				error('expected : or { or ;, got ${peek()}');
+		}
+
+		// Restore the outer scope saved by a parameterized slot — must run for ALL
+		// terminators. A bodyless slot (`: x,y` / `;`) has no `{` branch, and leaving
+		// the slot's param scope installed makes every following sibling lose the
+		// enclosing programmable's params, loop vars, and @finals.
+		if (slotScopeSaved) {
+			currentDefs = slotSavedCurrentDefs;
+			activeDefs = slotSavedActiveDefs;
+			scopeVars = slotSavedScopeVars;
+			activeFinals = slotSavedActiveFinals;
+			activeFinalNames = slotSavedActiveFinalNames;
+			namedElements = slotSavedNamedElements;
+			slotScopeSaved = false;
 		}
 
 		return node;

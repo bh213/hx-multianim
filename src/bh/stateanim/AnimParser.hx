@@ -324,6 +324,7 @@ private class AnimLexerHC {
 		if (c == '"'.code) {
 			pos++; col++;
 			var buf = new StringBuf();
+			var closed = false;
 			while (pos < len) {
 				final sc = ch();
 				if (sc == '\\'.code && pos + 1 < len) {
@@ -334,9 +335,18 @@ private class AnimLexerHC {
 						pos += 6; col += 6; continue;
 					}
 				}
-				if (sc == '"'.code) { pos++; col++; break; }
+				if (sc == '"'.code) { pos++; col++; closed = true; break; }
+				// Embedded newlines are legal string content but must advance the
+				// line counter, or every token after the string reports a stale line.
+				if (sc == '\n'.code) { line++; col = 1; lineStart = pos + 1; }
+				else col++;
 				buf.addChar(sc);
-				pos++; col++;
+				pos++;
+			}
+			// Without this, EOF inside a string silently swallowed the rest of the
+			// file into one token and the parser failed far from the real mistake.
+			if (!closed) {
+				throw '$sourceName:$startLine:$startCol: Unterminated string, missing closing double quote';
 			}
 			return new AnimToken(APIdentifier(buf.toString(), null, AITQuotedString), startLine, startCol);
 		}
@@ -997,19 +1007,23 @@ class AnimParser implements AnimParserResult {
 
 				var playlist = try findPlaylist(state, anim, definedStates) catch (e:String) syntaxError(e);
 				if (playlist == null) syntaxError('no playlist for ${state}, id ${anim.name}');
+				else playlist.visited = true;
 			}
 		}
 
+		// `visited` is a null-default optional field — unvisited entries hold null,
+		// and `null == false` is false, so `== false` checks can never fire. Compare
+		// against `!= true` so fully-shadowed entries are rejected as intended.
 		for (anim in animations) {
-			if (anim.visited == false) syntaxError('animation ${anim.name} not reachable');
+			if (anim.visited != true) syntaxError('animation ${anim.name} not reachable');
 			for (ek => ev in anim.extraPoint) {
 				for (ePoint in ev) {
-					if (ePoint.visited == false)
+					if (ePoint.visited != true)
 						syntaxError('Extra point ${ek} in anim ${anim.name} not reachable ${ePoint.states}');
 				}
 			}
 			for (pl in anim.playlist) {
-				if (pl.visited == false)
+				if (pl.visited != true)
 					syntaxError('Playlist in anim ${anim.name} not reachable ${pl.states}');
 			}
 		}

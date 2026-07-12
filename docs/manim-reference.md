@@ -413,6 +413,7 @@ Works with `@()`, `@if()`, `@any()`, `@all()`, `@else`, `@else(cond)`, `@default
 
 **Notes:**
 - `@switch` cannot be combined with other `@` modifiers (`@alpha`, `@scale`, etc.)
+- `#name` cannot be applied to `@switch` (parse error) — name the elements inside the arms instead
 - Cannot be used at root level (must be inside a programmable body)
 - Only one `default` arm per `@switch` block (duplicate rejected at parse time)
 - **Incremental mode:** `setParameter()` triggers full arm rebuild (teardown + rebuild of active arm). All param refs inside all arms are collected — changing any referenced param (not just the switch param) triggers rebuild. Supports nested `@switch`, `@()` conditionals, repeatables, and `$param` expressions inside arms
@@ -751,7 +752,7 @@ Read color settings with `BuilderResolvedSettings.getColorOrDefault(key, default
 | Type | Description |
 |------|-------------|
 | `palette { colors... }` | Indexed color list |
-| `palette(2d, width) { colors... }` | 2D color grid |
+| `palette(2d: width) { colors... }` | 2D color grid (`width` colors per row) |
 | `palette(file: "image.png")` | Colors from image file |
 | `palette(external)` | External palette reference |
 
@@ -1369,6 +1370,8 @@ Builder throws `BuilderError` with `code == "untracked_param"`; codegen throws a
 ## Transition Declarations
 
 Declare animated transitions for parameter changes inside programmable elements. When a parameter with a transition is changed via `setParameter()`, visibility changes are animated instead of instant.
+
+The `transition { }` block is declarative and unconditional — `@` modifiers (conditionals, `@alpha`, `@scale`, …) on it are parse errors. The same applies to `settings { }` and `@final` declarations (a `@final` is always unconditional).
 
 ```manim
 #button programmable(status:[normal,hover,pressed]=normal) {

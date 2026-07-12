@@ -25,6 +25,10 @@ Free-form layout — newlines are whitespace. Comments: `//` line, `/* */` block
 
 **Ordering rule:** `sheet`, `states`, `fps`, `loop`, `allowedExtraPoints`, `@final`, and `metadata` must all appear before any `animation` or `anim` declaration.
 
+**Strings:** quoted strings must be closed before end of file — an unclosed
+string is a positioned `Unterminated string` error at the opening quote.
+Embedded newlines are legal string content and count toward line numbers.
+
 ---
 
 ## @final Constants
@@ -272,6 +276,12 @@ Comparison (`>=`, `<=`, `>`, `<`) and range (`min..max`) conditionals are
 validated at parse time: the operands must be numeric, and the compared state
 must declare at least one numeric value — otherwise the arm could never match
 and the file is rejected.
+
+Reachability is also validated at parse time: every animation, playlist, and
+extra point must be selectable for at least one combination of declared state
+values. An entry fully shadowed by a more specific sibling (e.g. an
+unconditional `playlist { }` after a `playlist @(direction=>[l, r])` that wins
+for every state) is rejected with a `... not reachable` error.
 
 ---
 

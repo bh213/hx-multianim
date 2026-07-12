@@ -1416,7 +1416,7 @@ Collections of colors accessed by index.
 
 **2D palette:**
 ```
-#main palette(2d, 4) {
+#main palette(2d: 4) {
   white 0xf12 0x332 0xfff
   red 0xf13 0x333 0xffa
 }

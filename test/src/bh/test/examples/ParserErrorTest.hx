@@ -5374,4 +5374,136 @@ class ParserErrorTest extends utest.Test {
 			}
 		"), "$grid.width must be accepted as the X coordinate (it already parses as Y)");
 	}
+
+	// ===== Parameterized slot without a {} body must not leak its param scope =====
+	// The slot case saves the enclosing scope and installs the slot's param scope, but the
+	// restore only runs in the `{` body branch. A bodyless parameterized slot (`: x,y` or `;`
+	// terminator) leaves the slot scope installed, so siblings lose the enclosing
+	// programmable's params, loop vars, and @finals.
+
+	@Test
+	public function testParameterizedSlotWithoutBodyKeepsOuterParamScope() {
+		Assert.isTrue(parseExpectingSuccess("
+			#test programmable(title:string=\"hi\") {
+				#s slot(p:[a,b]=a): 0, 0
+				text(dd, $title, #ffffff): 0, 10
+			}
+		"), "sibling after a bodyless parameterized slot (positioned form) must still see outer params");
+		Assert.isTrue(parseExpectingSuccess("
+			#test programmable(title:string=\"hi\") {
+				#s slot(p:[a,b]=a);
+				text(dd, $title, #ffffff): 0, 10
+			}
+		"), "sibling after a bodyless parameterized slot (semicolon form) must still see outer params");
+	}
+
+	// ===== Multi-line ${...} interpolation must keep lexer line numbers in sync =====
+	// The ${...} code scan advances over newlines without bumping the lexer's line counter,
+	// so every token after the string reports a stale line number.
+
+	@Test
+	public function testMultilineInterpolationKeepsLineNumbersInSync() {
+		// Source line 6 holds the bogus element; the interpolation spans lines 3-5.
+		var error = parseRawExpectingError("version: 1.0\n#t programmable(a:int=5) {\n\t@final S = '${\n$a\n}'\n\tbogus_element_xyz(1)\n}");
+		Assert.notNull(error, "bogus element should produce a parse error");
+		Assert.isTrue(error.indexOf("test-input:6:") >= 0,
+			'Error must be reported on line 6 (the bogus element), got: $error');
+	}
+
+	// ===== @ modifiers must not be silently discarded =====
+	// A conditional in front of @final / transition{} / settings{} parses fine and is then
+	// silently thrown away; #name in front of @switch is likewise dropped. All must be
+	// parse errors — the author asked for something the parser cannot honor.
+
+	@Test
+	public function testConditionalOnFinalRejected() {
+		var error = parseExpectingError('
+			#test programmable(mode:[on,off]=on) {
+				@(mode => on) @final X = 3
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		');
+		Assert.notNull(error, "@(cond) @final must be a parse error, not a silently unconditional @final");
+		if (error != null)
+			Assert.isTrue(error.indexOf("@final") >= 0, 'Error should mention @final, got: $error');
+	}
+
+	@Test
+	public function testConditionalOnTransitionBlockRejected() {
+		var error = parseExpectingError('
+			#test programmable(mode:[on,off]=on) {
+				@(mode => on) transition { mode: fade(0.1) }
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		');
+		Assert.notNull(error, "@(cond) transition {} must be a parse error, not silently unconditional");
+		if (error != null)
+			Assert.isTrue(error.indexOf("transition") >= 0, 'Error should mention transition, got: $error');
+	}
+
+	@Test
+	public function testConditionalOnSettingsBlockRejected() {
+		var error = parseExpectingError('
+			#test programmable(mode:[on,off]=on) {
+				@(mode => on) settings { width => 5 }
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		');
+		Assert.notNull(error, "@(cond) settings {} must be a parse error, not silently unconditional");
+		if (error != null)
+			Assert.isTrue(error.indexOf("settings") >= 0, 'Error should mention settings, got: $error');
+	}
+
+	@Test
+	public function testNameOnSwitchRejected() {
+		var error = parseExpectingError('
+			#test programmable(mode:[on,off]=on) {
+				#foo @switch(mode) {
+					on: bitmap(generated(color(10, 10, #f00)));
+					off: bitmap(generated(color(10, 10, #0f0)));
+				}
+			}
+		');
+		Assert.notNull(error, "#name on @switch must be a parse error, not silently dropped");
+		if (error != null)
+			Assert.isTrue(error.indexOf("@switch") >= 0, 'Error should mention @switch, got: $error');
+	}
+
+	// ===== Nested programmable must be rejected =====
+	// The programmable case installs a fresh scope (activeDefs/scopeVars/@finals/named
+	// elements) with no save/restore — nesting silently clobbers the outer programmable's
+	// scope. Other root-only blocks (palette, paths, curves, animatedPath) already guard.
+
+	@Test
+	public function testNestedProgrammableRejected() {
+		var error = parseExpectingError('
+			#outer programmable(a:int=1) {
+				#inner programmable(b:int=2) {
+					bitmap(generated(color(10, 10, #f00))): 0, 0
+				}
+			}
+		');
+		Assert.notNull(error, "programmable nested inside a programmable must be rejected");
+		if (error != null)
+			Assert.isTrue(error.indexOf("root") >= 0,
+				'Error should say programmable must be a root node, got: $error');
+	}
+
+	// ===== 2D palette declaration =====
+	// `2d` lexes as TInteger("2") + TIdentifier("d"); the palette( branch only matched a
+	// single TIdentifier("2d") token, so the documented 2D palette form could never parse
+	// and PaletteColors2D was unreachable except via palette(file:...).
+
+	@Test
+	public function test2dPaletteDeclarationParses() {
+		var result = parseExpectingResult("
+			#pal palette(2d: 4) {
+				#ff0000 #00ff00 #0000ff #ffff00
+				#ff00ff #00ffff #ffffff #000000
+			}
+		");
+		Assert.notNull(result, "palette(2d: width) { colors } must parse");
+		if (result != null)
+			Assert.notNull(result.nodes.get("pal"), "2D palette node should be registered under its #name");
+	}
 }
