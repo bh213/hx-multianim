@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-07-12 11:29:04</div>
+    <div class="timestamp">Generated: 2026-07-12 13:48:21</div>
     <div class="summary">
         <strong>Summary:</strong> 101 tests,         <span style="color: #4CAF50;">101 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.1s, visual 26.7s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 0.6s, visual 13.5s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>7641 assertions:</strong>             <span style="color: #4CAF50;">7641 passed</span>
+            <strong>7725 assertions:</strong>             <span style="color: #4CAF50;">7725 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -364,6 +364,7 @@
                 <div class="unit-method pass">testNewPlayResetsFilter: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testNoLoopFinishes: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testOnFinishedCallback: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testOnFinishedFiresExactlyOnceAfterCompletion: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testPausedDoesNotAdvance: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testPlayAppliesNullFilter: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testPlayDoesNotAllocateEmptyArray: OK <span class="dots">.</span></div>
@@ -386,6 +387,8 @@
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">AnimFilterStateConditionalTest</div>
+                <div class="unit-method pass">testAnimBrightnessFilterIsMultiplier: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testAnimHueFilterTakesDegrees: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testAnimSMSetFilterNullFallsBackToAnimFilter: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testAnimSMSetFilterPerFrameOverridesAnimFilter: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testAnimSMSetFilterTintOverridesAnimTint: OK <span class="dots">.</span></div>
@@ -394,6 +397,7 @@
                 <div class="unit-method pass">testAnimSMSwitchAnimChangesToNullTint: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testAnimSMWithFilterAppliedOnPlay: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testAnimSMWithTintAppliedOnPlay: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testAnimSaturateFilterZeroIsGrayOneIsNormal: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testBuildAnimFilterBrightness: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testBuildAnimFilterNone: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testBuildAnimFilterOutline: OK <span class="dots">..</span></div>
@@ -427,6 +431,10 @@
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">AnimParserTest</div>
+                <div class="unit-method pass">testAmbiguousAnimationSelectorErrorIsStructured: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testAnimColorLiteralsBakeOpaqueAlpha: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testAnimEightDigitColorKeepsExplicitAlpha: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testAnimLexerRejectsUnknownCharacters: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testAnimSMAddAndPlay: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testAnimSMDuplicateStateThrows: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testAnimSMEventCallback: OK <span class="dots">..</span></div>
@@ -441,14 +449,16 @@
                 <div class="unit-method pass">testAnimSMPlayUnknownThrows: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testAnimSMPointEvent: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testAnimSMRandomPointEvent: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testComparisonConditionalOnNonNumericStatesIsRejected: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testConditionFollowedByElseInOneHeaderIsRejected: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testCreateAnimSMInstancesDoNotShareExtraPointsOrFilters: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testDefaultConditionalInExtrapoints: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testDefaultConditionalInMetadata: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testDefaultConditionalInPlaylist: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testElseAndDefaultCombined: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testEventMetadataAllTypes: OK <span class="dots">..</span></div>
-                <div class="unit-method pass">testEventMetadataPoint: OK <span class="dots">..</span></div>
-                <div class="unit-method pass">testEventMetadataRandomPoint: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testEventMetadataTrigger: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testEventWithPointSpecAndMetadataBlockIsRejected: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testFilterBrightness: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testFilterGrayscale: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testFilterHue: OK <span class="dots">...</span></div>
@@ -465,6 +475,7 @@
                 <div class="unit-method pass">testFilterUnknownType: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testFilterWithConditionals: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testFilterWithDefault: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testManyConsecutiveCommentsParse: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testMatchCompareInStateSelector: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testMatchConditionalValueCompareGt: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testMatchConditionalValueCompareGte: OK <span class="dots">...</span></div>
@@ -583,6 +594,7 @@
                 <div class="unit-method pass">testCodegenVsBuilderCustomAnimParity: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testCodegenVsBuilderDistAnimParity: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testCodegenVsBuilderTimeAnimParity: OK <span class="dots">..........</span></div>
+                <div class="unit-method pass">testWaveWithFractionalCountJoinsNextSegmentContinuously: OK <span class="dots">..</span></div>
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">AnimatedPathTest</div>
@@ -604,6 +616,7 @@
                 <div class="unit-method pass">testCustomCurve: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testCustomEventAtRate: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testCycleCountInitiallyZero: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testCycleStartEventCarriesNewCycleState: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testDefaultAlphaWithoutCurve: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testDefaultColorWithoutCurve: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testDefaultRotationWithoutCurve: OK <span class="dots">.</span></div>
@@ -621,6 +634,8 @@
                 <div class="unit-method pass">testOnUpdateCallback: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testPathEndEvent: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testPathStartEvent: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testPingPongDistanceModeSpeedCurveFollowsPathPosition: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testPingPongEventFiresAtPathPositionInReversedCycle: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testPingPongReverses: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testReset: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testResetAfterCompletion: OK <span class="dots">...</span></div>
@@ -718,6 +733,7 @@
                 <div class="unit-method pass">testBoolSettingNumeric: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testBoolSettingTrue: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testBoolSettingYesNo: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testBrightnessFilterIsMultiplier: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testBuildWithParametersRestoresStateStackOnInnerThrow: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testBuildWithParametersStateStackBalancedAfterCaughtErrorThenSecondBuild: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testCenterTileSource: OK <span class="dots">....</span></div>
@@ -874,6 +890,7 @@
                 <div class="unit-method pass">testHexOffsetOdd: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testHexOffsetXYExtraction: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testHexWidthHeightValues: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testHueFilterTakesDegrees: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testInFlightTransitionContinuesAcrossUnrelatedSetParameter: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testIncrementalAlphaTrackedOnSetParameter: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testIncrementalApplyAlphaInterleavedSameProperty: OK <span class="dots">.....</span></div>
@@ -1007,6 +1024,7 @@
                 <div class="unit-method pass">testParticleShutdownParsesBasic: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testParticleShutdownParsesNamedCurves: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testParticleShutdownRejectsUnknownProperty: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testParticlesMaxLifeZeroIsRejectedAtBuild: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testPathGetClosestRate: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testPerElementCombinedFlowProps: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testPerElementFlowAbsolute: OK <span class="dots">..</span></div>
@@ -1054,6 +1072,7 @@
                 <div class="unit-method pass">testRichTextNestingConverted: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testRichTextStylesCreatesHtmlText: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testRootTintOnProgrammableThrows: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testSaturateFilterZeroIsGrayOneIsNormal: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testSetParameterCssHexStringOnColorParamBakesAlpha: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testSetParameterDoesNotAllocateEmptyParamContainersInApplyUpdates: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testSetParameterInvalidValueDoesNotFireRebuildListeners: OK <span class="dots">.</span></div>
@@ -1610,6 +1629,11 @@
                 <div class="unit-method pass">testTopByteZeroTreatedAsOpaque: OK <span class="dots">.</span></div>
             </div>
             <div class="unit-class">
+                <div class="unit-class-name">HexApiTest</div>
+                <div class="unit-method pass">testDirectionToAngleReflectsLayoutOrientation: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testToOffsetCoordinatesRoundTripsThroughOddQConversion: OK <span class="dots">............</span></div>
+            </div>
+            <div class="unit-class">
                 <div class="unit-class-name">InteractionControllerTest</div>
                 <div class="unit-method pass">testClearFiresLifecycleFinishedOnPushedControllers: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testClearRestoresDefaultControllerOnTopOfStack: OK <span class="dots">..</span></div>
@@ -1752,6 +1776,7 @@
                 <div class="unit-method pass">testConditionalBlockWithNestedConditionals: OK <span class="dots">.............</span></div>
                 <div class="unit-method pass">testConditionalWithDuplicateParameter: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testConditionalWithUndefinedParameter: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testCoordinateXAcceptsGridPropertyExpression: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testCoordinateXYExtractionParseSuccess: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testCtxRandomParseSuccess: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testCtxReservedAsParameterName: OK <span class="dots">..</span></div>
@@ -1786,8 +1811,11 @@
                 <div class="unit-method pass">testDefinedParamIsValid: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testDoubleCommaInEnum: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testDropShadowAngleUnit: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testDuplicateCurveNameIsRejected: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testDuplicateEnumValue: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testDuplicateLayoutNameIsRejected: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testDuplicateParameterName: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testDuplicatePathNameIsRejected: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testDuplicateRootNodeName: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testDuplicateSettingKey: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testElseAfterBareElse: OK <span class="dots">..</span></div>
@@ -1820,6 +1848,7 @@
                 <div class="unit-method pass">testFinalWithNonLiteralRhsAsConditionalKeyRejected: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testFinalWithString: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testFinalWithTernary: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testFlagsParamRejectsNonNumericConditionalValue: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testFloatParamComparisonConditionalStillParses: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testFloatParamEqualityConditionalRejected: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testFloatParamNegatedEqualityConditionalRejected: OK <span class="dots">.</span></div>
@@ -1901,6 +1930,7 @@
                 <div class="unit-method pass">testLoopVarIsValid: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testLoopVarNotValidOutsideScope: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testMalformedTernaryMissingColon: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testManimLexerRejectsUnknownCharacters: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testMissingElementName: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testMissingVersionDeclaration: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testMixedNamedSystemsParseSuccess: OK <span class="dots">.</span></div>
@@ -2106,6 +2136,7 @@
                 <div class="unit-method pass">testDelayedInitRejectionSkipsSameFramePhysics: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testEmitBurst: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testEmitBurstAt: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testEmitBurstAtBeforeFirstDrawKeepsBatchHiddenFromChildDraw: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testEmitBurstAtDoesNotApplyOffsetToRejectedParticle: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testEmitBurstReusesParticleInstancesAfterDeath: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testEmitBurstWithRejectionKeepsLiveCountFromDriftingNegative: OK <span class="dots">.</span></div>
@@ -2119,6 +2150,9 @@
                 <div class="unit-method pass">testExternallyDrivenFrozenWithoutAdvance: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testExternallyDrivenGroupLevelUpdateTime: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testExternallyDrivenParticlesConvenience: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testGravityAngleDownAcceleratesParticlesDownward: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testGravityWithNoAngleSetFallsDown: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testLineOnlyKillBoundsDoesNotEnforceHiddenDefaultBox: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testNoForceFieldsBaseline: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testNonRelativeBakeWithZeroSizeAndWorldAnchorKeepsVelocityFinite: OK <span class="dots">.......</span></div>
                 <div class="unit-method pass">testNonRelativeBakeWithZeroSizeKeepsVelocityAndRotationFinite: OK <span class="dots">.......</span></div>
@@ -2509,7 +2543,9 @@
             <div class="unit-class">
                 <div class="unit-class-name">ScreenManagerDialogTransitionTest</div>
                 <div class="unit-method pass">testAnimatedDialogClose_RestoresUnderlyingDialog: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testDialogOverDialogCloseDeliversDialogResultOnce: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testDialogToDialog_UILeavingFiresWhileAttached: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testSameDialogModeRefreshKeepsOverlayAndFiresNoPhantomResult: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testSingleToSingle_UILeavingFiresWhileAttached: OK <span class="dots">..</span></div>
             </div>
             <div class="unit-class">
@@ -4640,7 +4676,7 @@
                 <span class="test-status passed">Macro: PASSED</span>
             </div>
         </div>
-        <div class="similarity">Builder similarity: 100% (2px differ) <span style="color: #999;">(acceptance: 98%)</span> | Macro similarity: 100% (2px differ) <span style="color: #999;">(acceptance: 80%)</span></div>
+        <div class="similarity">Builder similarity: 99.99% <span style="color: #999;">(acceptance: 98%)</span> | Macro similarity: 99.99% <span style="color: #999;">(acceptance: 80%)</span></div>
         <div class="image-comparison cols-3">
             <div class="image-container">
                 <div class="image-label">Reference</div>
