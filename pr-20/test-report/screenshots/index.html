@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-07-12 13:48:21</div>
+    <div class="timestamp">Generated: 2026-07-12 18:40:48</div>
     <div class="summary">
         <strong>Summary:</strong> 101 tests,         <span style="color: #4CAF50;">101 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 0.6s, visual 13.5s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1s, visual 23.9s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>7725 assertions:</strong>             <span style="color: #4CAF50;">7725 passed</span>
+            <strong>7749 assertions:</strong>             <span style="color: #4CAF50;">7749 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -475,6 +475,8 @@
                 <div class="unit-method pass">testFilterUnknownType: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testFilterWithConditionals: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testFilterWithDefault: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testFullyShadowedAnimationIsRejected: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testFullyShadowedPlaylistIsRejected: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testManyConsecutiveCommentsParse: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testMatchCompareInStateSelector: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testMatchConditionalValueCompareGt: OK <span class="dots">...</span></div>
@@ -514,6 +516,7 @@
                 <div class="unit-method pass">testMetadataNullSelector: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testMetadataTypeMismatchColorFromString: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testMetadataTypeMismatchIntFromString: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testNewlineInsideStringKeepsLineNumbersInSync: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testParseAnimShorthand: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testParseBasicConditional: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testParseCenter: OK <span class="dots">....</span></div>
@@ -567,6 +570,7 @@
                 <div class="unit-method pass">testUnreachablePlaylistWithNoExtraPointsDetected: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testUnterminatedBlockComment: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testUnterminatedBlockCommentAtEof: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testUnterminatedStringIsRejected: OK <span class="dots">..</span></div>
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">AnimatedPathBuilderTest</div>
@@ -1738,6 +1742,7 @@
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">ParserErrorTest</div>
+                <div class="unit-method pass">test2dPaletteDeclarationParses: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testAllMissingParen: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testAllParseSuccess: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testAllParsesSuccessfully: OK <span class="dots">......</span></div>
@@ -1774,6 +1779,9 @@
                 <div class="unit-method pass">testConditionalBlockInBlock: OK <span class="dots">.............</span></div>
                 <div class="unit-method pass">testConditionalBlockMixedWithSingleElement: OK <span class="dots">............</span></div>
                 <div class="unit-method pass">testConditionalBlockWithNestedConditionals: OK <span class="dots">.............</span></div>
+                <div class="unit-method pass">testConditionalOnFinalRejected: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testConditionalOnSettingsBlockRejected: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testConditionalOnTransitionBlockRejected: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testConditionalWithDuplicateParameter: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testConditionalWithUndefinedParameter: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testCoordinateXAcceptsGridPropertyExpression: OK <span class="dots">.</span></div>
@@ -1937,8 +1945,10 @@
                 <div class="unit-method pass">testMultiLineBlockComment: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testMultiValueMatchConditionalRejectsUnknownEnumValue: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testMultiValueNegatedConditionalRejectsUnknownEnumValue: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testMultilineInterpolationKeepsLineNumbersInSync: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testMultipleConditionalGroups: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testMultipleTileParameters: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testNameOnSwitchRejected: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testNameOutsideRepeatableIsValid: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testNameWithoutIndexInsideNestedRepeatable: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testNameWithoutIndexInsideRepeatable: OK <span class="dots">..</span></div>
@@ -1967,6 +1977,7 @@
                 <div class="unit-method pass">testNegativeBareRange: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testNegativeHexInteractiveMetadata: OK <span class="dots">.......</span></div>
                 <div class="unit-method pass">testNegativeValueSymbolic: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testNestedProgrammableRejected: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testNestedRepeatableScope: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testNonProgrammableNoValidation: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testNotEqualsWithArray: OK <span class="dots">.</span></div>
@@ -1978,6 +1989,7 @@
                 <div class="unit-method pass">testOffsetInvalidSuffix: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testOffsetOnGridPos: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testOffsetOnLayout: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testParameterizedSlotWithoutBodyKeepsOuterParamScope: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testParticlesAliases: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testParticlesAngleUnitDeg: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testParticlesAngleUnitRad: OK <span class="dots">.</span></div>
