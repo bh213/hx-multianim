@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-07-12 09:20:01</div>
+    <div class="timestamp">Generated: 2026-07-12 11:29:04</div>
     <div class="summary">
         <strong>Summary:</strong> 101 tests,         <span style="color: #4CAF50;">101 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1s, visual 25s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.1s, visual 26.7s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>7587 assertions:</strong>             <span style="color: #4CAF50;">7587 passed</span>
+            <strong>7641 assertions:</strong>             <span style="color: #4CAF50;">7641 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -1302,6 +1302,11 @@
                 <div class="unit-method pass">testUnbatched_FiresPerSetter: OK <span class="dots">.</span></div>
             </div>
             <div class="unit-class">
+                <div class="unit-class-name">CodegenCtxSizeTest</div>
+                <div class="unit-method pass">testCtxWidth_Builder_NoScene_ThrowsBuilderError: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testCtxWidth_Codegen_NoScene_ThrowsBuilderErrorNotNullAccess: OK <span class="dots">.</span></div>
+            </div>
+            <div class="unit-class">
                 <div class="unit-class-name">CodegenDynRefKeyContractTest</div>
                 <div class="unit-method pass">testNamedDynamicTarget_Builder_KeyStableAcrossSwap: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testNamedDynamicTarget_Codegen_KeyStableAcrossSwap: OK <span class="dots">.......</span></div>
@@ -1399,6 +1404,17 @@
                 <div class="unit-method pass">testParamDepRepeat_DynRefTarget_Codegen_Throws: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testParamDepRepeat_InteractiveId_Builder_Throws: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testParamDepRepeat_InteractiveId_Codegen_Throws: OK <span class="dots">......</span></div>
+            </div>
+            <div class="unit-class">
+                <div class="unit-class-name">CodegenRepeatParamParityTest</div>
+                <div class="unit-method pass">testFlowRepeat_Builder_FlowSeesEachIteration: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testFlowRepeat_Codegen_FlowSeesEachIteration: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testRangeParamBounds_Builder_LoopValues: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testRangeParamBounds_Codegen_LoopValues: OK <span class="dots">.......</span></div>
+                <div class="unit-method pass">testStepParamOffsetsRuntime_Builder_SpreadsIterations: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testStepParamOffsetsRuntime_Codegen_SpreadsIterations: OK <span class="dots">........</span></div>
+                <div class="unit-method pass">testStepParamOffsets_Builder_SpreadsIterations: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testStepParamOffsets_Codegen_SpreadsIterations: OK <span class="dots">....</span></div>
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">CodegenRootTintTest</div>
@@ -1666,6 +1682,11 @@
                 <div class="unit-method pass">testBuilder_NestedRecurringNamedIndex_Throws: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testBuilder_NestedRecurringSlotIndex_Throws: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testBuilder_SingleLoopUniqueIndex_BuildsCleanly: OK <span class="dots">..</span></div>
+            </div>
+            <div class="unit-class">
+                <div class="unit-class-name">PaletteIndexTrackingTest</div>
+                <div class="unit-method pass">testPaletteIndexTint_FullBuild_ResolvesIndex: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testPaletteIndexTint_Incremental_RefiresOnIndexChange: OK <span class="dots">....</span></div>
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">ParameterizedSlotTest</div>
@@ -2380,6 +2401,15 @@
                 <div class="unit-method pass">testTextOptsCreate: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testTilesIterCreate: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testTilesIterHasBitmaps: OK <span class="dots">.</span></div>
+            </div>
+            <div class="unit-class">
+                <div class="unit-class-name">Repeat2DIncrementalTest</div>
+                <div class="unit-method pass">testLoopVarConditional_FullBuild_SelectsColumn: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testLoopVarConditional_Incremental_MatchesFullBuild: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testParamDependentCount_FullBuild_ResolvesCount: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testParamDependentCount_Incremental_RebuildsOnSetParameter: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testParamElseConditional_FullBuild_OneArmPerIteration: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testParamElseConditional_Incremental_OneArmPerIteration: OK <span class="dots">..</span></div>
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">RichTextTest</div>
