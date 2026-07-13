@@ -40,7 +40,7 @@
 | `mask(w, h)` | Clipping mask rectangle |
 | `flow(...)` | Layout flow container |
 | `repeatable($var, iterator)` | Loop elements |
-| `tilegroup` | Optimized tile grouping (supports `bitmap`, `ninepatch`, `repeatable`, `repeatable2d`, `pixels`, `point`). Children are baked once at build time, so conditionals on programmable parameters are **rejected at build time** (`BuilderError code="tilegroup_conditional"`) — use conditionals outside the tileGroup, or key them on a `repeatable` loop variable inside it |
+| `tilegroup` | Optimized tile grouping (supports `bitmap`, `ninepatch`, `repeatable`, `repeatable2d`, `pixels`, `point`). Children are baked once at build time, so conditionals on programmable parameters are **rejected at build time** (`BuilderError code="tilegroup_conditional"`), in both the nested `tilegroup {}` element and the root `programmable tileGroup(...)` form — use conditionals outside the tileGroup, or key them on a `repeatable` loop variable inside it |
 | `stateanim construct(...)` | Inline state animation |
 | `point` | Positioning point |
 | `apply(...)` | Apply properties to parent |

@@ -61,7 +61,14 @@ class MultiAnimLayouts {
             case LayoutPoint(pos):
                 var oldIndexed = builder.indexedParams;
                 builder.indexedParams = generateParameters(indexName, index);
-                var pos = builder.calculatePosition(pos, gridCoordinateSystem, hexCoordinateSystem);
+                var pos = try {
+                    builder.calculatePosition(pos, gridCoordinateSystem, hexCoordinateSystem);
+                } catch (e:Dynamic) {
+                    // A throwing coordinate resolution must not leave the loop-var scratch map
+                    // installed on the builder — that would corrupt every later build
+                    builder.indexedParams = oldIndexed;
+                    throw e;
+                }
                 builder.indexedParams = oldIndexed;
                 pos;
         }

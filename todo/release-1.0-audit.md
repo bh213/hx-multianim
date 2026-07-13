@@ -204,6 +204,12 @@ items take the next free number in their prefix. (1.1 roadmap bullets are featur
   *(2026-07-12: parser matches the `TInteger("2")`+`TIdentifier("d")` pair — canonical spelling
   `palette(2d: width)` parses. Doc spellings in manim.md + manim-reference.md corrected to
   `palette(2d: width)` (the palette sub-items of DOC-10/DOC-13 are done). `ParserErrorTest`.)*
+- [ ] `PRS-8` (low) **Slot-body ref validation excludes enclosing-programmable `@final`s** — the parser
+  rejects `$OFF` inside a parameterized slot body when `OFF` is declared in the enclosing
+  programmable body ("unknown variable $OFF. Available: <slot params>"), yet the builder merges
+  enclosing finals into the slot's param map (`mergedParams`), so that build-time support is dead
+  code from `.manim` source. Decide: add enclosing finals to slot-body parse scope, or drop the
+  builder-side merge. *(Found 2026-07-13 during the BLD-4 bug review.)*
 
 ### Hot reload / LSP
 
@@ -226,28 +232,73 @@ items take the next free number in their prefix. (1.1 roadmap bullets are featur
 ## P2 — Medium bugs (fix before 1.0 where cheap)
 
 ### Builder
-- [ ] `BLD-3` Conditional sentinels not `isAbsolute` → phantom `horizontalSpacing` slot per conditional child
+- [x] `BLD-3` Conditional sentinels not `isAbsolute` → phantom `horizontalSpacing` slot per conditional child
   inside `flow()` (MB:6660-6663; heaps Flow.hx:1452-1456). Incremental layout ≠ full layout.
-- [ ] `BLD-4` `@final` inside parameterized slot bodies lost from slot ctx → `slot.setParameter` throws
+  *(2026-07-13 verify: also affects codegen — all 5 sentinel sites funnel through
+  `createSentinelIfConditional` (CG:6674).)* *(2026-07-13: sentinels now `visible = false` at all
+  three creation sites (MB main + deferred paths, CG helper) — Flow skips invisible children in
+  every layout loop. `BuilderUnitTest`.)*
+- [x] `BLD-4` `@final` inside parameterized slot bodies lost from slot ctx → `slot.setParameter` throws
   `missing_ref` (`syncFinalsFromBuilder` called for roots :8306, neither slot path: :6787-6801, :8413-8423).
-- [ ] `BLD-5` Initially-hidden conditional arm `dynamicRef` gets no param forwarding after materialization
+  *(2026-07-13: both slot paths (runtime SLOT case + `buildSlotContent`) now call
+  `syncFinalsFromBuilder` before `cleanupFinalVars` strips the finals from the live map.
+  `ParameterizedSlotTest`. See also `PRS-8` for the parse-scope asymmetry found alongside.)*
+- [x] `BLD-5` Initially-hidden conditional arm `dynamicRef` gets no param forwarding after materialization
   (deferred path builds with `incrementalMode=false`, :1558-1605). Same layout initially-visible works.
-- [ ] `BLD-6` `programmable tilegroup` root skips `validateTileGroupSubtree` (:7036-7049) → param conditionals
-  silently freeze (full) or double-bake both arms (incremental).
-- [ ] `BLD-7` Tracked expressions skipped while invisible never re-fired on `setVisibility(true)`
-  (:1781-1793) → stale text/tint on reshow.
-- [ ] `BLD-8` `MultiAnimPaths.getPath` / `MultiAnimLayouts.resolve` swap `builder.indexedParams` with **no
+  *(2026-07-13: `rebuildDeferredContent` exposes its owning ctx via a new `deferredForwardingCtx`
+  builder field; the DYNAMIC_REF case registers `trackDynamicRef` against it; each re-materialization
+  prunes the prior cycle's bindings via the new `pruneDiscardedDynamicRefChildren` helper.
+  `DynamicRefTest`.)*
+- [x] `BLD-6` `programmable tilegroup` root skips `validateTileGroupSubtree` (:7036-7049) → param conditionals
+  silently freeze (full) or double-bake both arms (incremental). *(2026-07-13: `startBuild`'s
+  isTileGroup branch now runs the same `validateTileGroupSubtree` walk as the nested TILEGROUP case;
+  loop-var conditionals still allowed. `BuilderUnitTest` ×3. Codegen side tracked as `CG-24`.)*
+- [x] `BLD-7` Tracked expressions skipped while invisible never re-fired on `setVisibility(true)`
+  (:1781-1793) → stale text/tint on reshow. *(2026-07-13 verify: narrowed — conditional hide/show has
+  been safe since 320df45 (`addToGraph` → `refreshTrackedExpressionsFor` replay); only the
+  `visible`-flag path (`setVisibility`, DevBridge, raw writes) lost updates.)* *(2026-07-13: gate
+  narrowed to `obj.parent == null` (detached roots are provably replayed on re-attach);
+  `isEffectivelyVisible` deleted — flag-hidden objects keep receiving updates, and the per-tracked
+  O(ancestor-depth) walk on the setParameter hot path became O(1). `BuilderUnitTest`.)*
+- [x] `BLD-8` `MultiAnimPaths.getPath` / `MultiAnimLayouts.resolve` swap `builder.indexedParams` with **no
   try/finally** (MultiAnimPaths.hx:49-50/:243; MultiAnimLayouts.hx:59-71) — any throw corrupts the
   builder's param map for the rest of the session. Add a `withParams(map, fn)` helper.
-- [ ] `BLD-9` `repeatable($i, array($val, arr))` leaks `$val` into enclosing scope after the loop
+  *(2026-07-13 verify: broader — `buildSlotContent` / `rebuildSwitchArmByOrdinal` /
+  `buildSingleNodeWithParams` had the same defect plus a `stateStack` leak.)* *(2026-07-13: `getPath`
+  hoists the not-found check above the swap + restores on throw; `resolve` restores on throw; the
+  three codegen entries got the `buildWithParameters` push/try/pop/rethrow unwind. Went with inline
+  try/catch-rethrow instead of a `withParams` closure helper — `getPath` runs per mouse move during
+  card targeting and a closure per call would allocate. `AnimatedPathBuilderTest` ×2 +
+  `BuilderUnitTest`.)*
+- [x] `BLD-9` `repeatable($i, array($val, arr))` leaks `$val` into enclosing scope after the loop
   (cleanup misses `valueVariableName` at :6291-6298, :6417-6423, :6575-6576, :5267-5270).
-- [ ] `BLD-10` Eager pre-build of losing conditional arms evaluates expressions with out-of-guard values →
+  *(2026-07-13 verify: 6 leak sites, not 4 — tilegroup REPEAT2D and the REPEAT2D incremental-rebuild
+  closure also leaked, both axes; codegen path clean.)* *(2026-07-13: `ArrayIterator` value var now
+  removed at all six sites — both REPEAT cleanup switches, `cleanupTileGroupRepeatExtraVars`
+  (+ now called by the tilegroup REPEAT2D branch for both axes), and the end of REPEAT2D
+  `buildIterations` (covers full-build + incremental closure at once). `BuilderUnitTest` ×2.)*
+- [x] `BLD-10` Eager pre-build of losing conditional arms evaluates expressions with out-of-guard values →
   incremental build throws where full mode is fine (tile fallback exists :3826-3859; array bounds /
-  div-by-zero don't).
-- [ ] `BLD-11` REPEAT loop-var shadow guard checks the element `#name` instead of the loop var (:6215-6216,
-  :5318-5319; REPEAT2D does it right).
-- [ ] `BLD-12` DEV: hot-reload registry handles leak when dynamicRef subtrees rebuild while detached (sentinel
+  div-by-zero don't). *(2026-07-13 verify: narrowed — losing `@()` arms have been deferred since
+  ef8936b; the residual was `@else`/`@default` chain arms, which `shouldBuildInFullMode` reports as
+  visible so they bypassed the deferral gate.)* *(2026-07-13: new `computeLosingChainArms` chain walk
+  in the incremental sibling loops flags losing chain arms; `build()` routes them into the existing
+  deferral gate via a consumed-on-entry `pendingChainArmLosing` flag. Nodes with per-element
+  `@flow.*` props are excluded from deferral (the wrapper can't relay FlowProperties — deferring
+  them was also a latent materialize crash for `@()` arms) and keep building eagerly.
+  `BuilderUnitTest` ×2.)*
+- [x] `BLD-11` REPEAT loop-var shadow guard checks the element `#name` instead of the loop var (:6215-6216,
+  :5318-5319; REPEAT2D does it right). *(2026-07-13 verify: the shadow half is already caught at
+  parse time (5d8a3ca); the live symptom was a false positive — an element `#name` colliding with a
+  param threw the bogus "cannot use repeatable index param" error.)* *(2026-07-13: both guards now
+  test `varName`. `BuilderUnitTest` ×2.)*
+- [x] `BLD-12` DEV: hot-reload registry handles leak when dynamicRef subtrees rebuild while detached (sentinel
   `onRemove` never fires, HotReload.hx:138-166); old child contexts' transition tweens not cancelled.
+  *(2026-07-13 verify: broader — any `cleanupDestroyedSubtree` caller discarding a detached subtree
+  with dynamicRef children leaked identically.)* *(2026-07-13: the new
+  `pruneDiscardedDynamicRefChildren` (run by `cleanupDestroyedSubtree` and deferred
+  re-materialization) cancels the discarded child ctx's transition tweens and unregisters its reload
+  handle via a new `registry` back-pointer on `ReloadableHandle`. `HotReloadTest` ×2, DEV build.)*
 
 ### Codegen parity
 - [ ] `CG-5` `generated(cross(...))` renders a solid rectangle (CG:7382 — "approximate as solid color").
@@ -289,6 +340,12 @@ items take the next free number in their prefix. (1.1 roadmap bullets are featur
   LayoutIterator `$param` points → 0,0, generated tile w/h single-truncation, dynamicRef forwarded
   string params use numeric add vs builder's string concat, REPEAT2D count key collision
   (`countX*10000+countY`, CG:3725-3733).
+- [ ] `CG-24` **Codegen ignores `isTileGroup`** — `case PROGRAMMABLE(isTileGroup, ...)` captures the
+  flag but never uses it (CG:275), so a `@:manim` root-form `programmable tilegroup` is generated
+  as an ordinary per-element programmable: no TileGroup batching AND no macro-time
+  `validateTileGroupSubtreeMacro` (only `generateTileGroupCreate` calls it, nested form only).
+  Parity direction needs a decision — if codegen intentionally stays unbatched, macro-time
+  rejection would be wrong. *(Found 2026-07-13 during the BLD-6 bug review.)*
 
 ### UI layer
 - [ ] `UI-3` Interrupted screen transitions: `finalizeTransition()` doesn't finish the **entering** screen's
@@ -582,6 +639,8 @@ items take the next free number in their prefix. (1.1 roadmap bullets are featur
 - [ ] `PERF-5` Unconditional `apply{}` reconcile re-allocates `h2d.filter.*` on every setParameter of any param.
 - [ ] `PERF-6` `getCurves()` re-resolves the whole curves map per call (per colorStop segment during particle
   builds); `getLayouts()/getPaths()` allocate fresh facades inside tracked closures — memoize.
+  *(2026-07-13: also hit per mouse move — `UICardHandTargeting` calls `builder.getPaths().getPath(...)`
+  during drag targeting, allocating a fresh `MultiAnimPaths` + scratch Map each move.)*
 - [ ] `PERF-7` `BuilderResult.getSlot/hasSlot` linear scans — map-backed lookup.
 
 **Codegen (todo-performance.md items confirmed + new):**

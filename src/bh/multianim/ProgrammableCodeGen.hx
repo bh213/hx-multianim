@@ -6678,7 +6678,11 @@ class ProgrammableCodeGen {
 		fields.push(makeField(sentinelName, FVar(macro :h2d.Object, null), [APrivate], pos));
 		final sentinelRef = macro $p{["this", sentinelName]};
 		final parentRef = if (parentField != null) macro $p{["this", parentField]} else macro this;
-		ctorExprs.push(macro $sentinelRef = new h2d.Object());
+		// Invisible so layout containers (h2d.Flow) skip the anchor — mirrors the builder's sentinel
+		ctorExprs.push(macro {
+			$sentinelRef = new h2d.Object();
+			$sentinelRef.visible = false;
+		});
 		if (node.layer != -1) {
 			final layerVal:Int = node.layer;
 			ctorExprs.push(macro cast($parentRef, h2d.Layers).add($sentinelRef, $v{layerVal}));

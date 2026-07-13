@@ -46,6 +46,11 @@ class MultiAnimPaths {
 	}
 
 	public function getPath(name:String, ?normalization:PathNormalization):Path {
+		// Look up before touching builder state — the not-found throw must not leak the scratch map
+		final def = pathDefs.get(name);
+		if (def == null)
+			throw 'path not found: $name';
+
 		final oldIndexed = builder.indexedParams;
 		builder.indexedParams = [];
 
@@ -60,15 +65,11 @@ class MultiAnimPaths {
 			return builder.resolveAsNumber(value);
 		}
 
-		final def = pathDefs.get(name);
-		if (def == null)
-			throw 'path not found: $name';
-
 		var singlePaths:Array<SinglePath> = [];
 		var point = new FPoint(0, 0);
 		var angle:Float = 0.;
 
-		for (path in def) {
+		try for (path in def) {
 			switch path {
 				case LineTo(end, mode):
 					var end = resolveCoordinate(end);
@@ -244,6 +245,11 @@ class MultiAnimPaths {
 					// Wave ends in same direction, angle doesn't change
 					point = endPt;
 			}
+		} catch (e:Dynamic) {
+			// A throwing $ref resolution must not leave the scratch map installed on the
+			// builder — that would corrupt every later build in the session
+			builder.indexedParams = oldIndexed;
+			throw e;
 		}
 
 		builder.indexedParams = oldIndexed;

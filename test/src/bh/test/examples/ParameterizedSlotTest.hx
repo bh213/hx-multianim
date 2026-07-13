@@ -4,6 +4,7 @@ import utest.Assert;
 import bh.test.BuilderTestBase;
 import bh.test.BuilderTestBase.BuildMode;
 import bh.test.BuilderTestBase.buildFromSource;
+import bh.test.BuilderTestBase.findVisibleBitmapDescendants;
 
 /**
  * Unit tests for parameterized slots:
@@ -205,6 +206,51 @@ class ParameterizedSlotTest extends BuilderTestBase {
 		slot.setContent(content);
 		Assert.isTrue(slot.isOccupied());
 		Assert.equals(content, slot.getContent());
+	}
+
+	// ==================== Finals in Slot Expressions ====================
+
+	// A slot body may declare its own `@final` constants and use them in tracked
+	// expressions alongside slot parameters. The initial build resolves the final
+	// against the live parameter map, but SlotHandle.setParameter re-resolves the
+	// tracked expressions through the slot's IncrementalUpdateContext — which must
+	// still have the slot-body final in scope. If the context's parameter snapshot
+	// is taken before the slot body's finals are evaluated, setParameter blows up
+	// with "reference OFF does not exist" even though the same expression resolved
+	// fine during the initial build.
+	@Test
+	public function testParameterizedSlotSetParameterResolvesSlotBodyFinal():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				#mySlot slot(x:int=0) {
+					@final OFF = 20
+					bitmap(generated(color(10, 10, #555555))): $x + $OFF, 0
+				}
+			}
+		", "test", null, Incremental);
+		final slot = result.getSlot("mySlot");
+		Assert.notNull(slot);
+		if (slot == null) return;
+
+		// Sanity: the initial build resolves the slot-body final (x = 0 + 20).
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		if (bitmaps.length != 1) return;
+		Assert.floatEquals(20, bitmaps[0].x);
+
+		try {
+			slot.setParameter("x", 5);
+		} catch (e:Dynamic) {
+			Assert.fail("setParameter must keep slot-body @final constants in scope when "
+				+ "re-resolving tracked expressions, but threw: " + Std.string(e));
+			return;
+		}
+
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		if (bitmaps.length != 1) return;
+		Assert.floatEquals(25, bitmaps[0].x, null,
+			"bitmap x should re-resolve to slot param + slot-body final (5 + 20 = 25), got " + bitmaps[0].x);
 	}
 
 	// ==================== Indexed Slot ====================

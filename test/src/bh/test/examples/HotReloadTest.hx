@@ -1086,5 +1086,107 @@ class HotReloadTest extends BuilderTestBase {
 		Assert.notNull(drParams);
 		Assert.isTrue(drParams.exists("value"), "DynamicRef snapshot should have 'value' param");
 	}
+
+	// ==================== DynamicRef template swap: dev-resource lifetime ====================
+
+	@Test
+	public function testDynamicRefTemplateSwapWhileDetachedReleasesReloadHandle():Void {
+		// Handle lifetime must not depend on the ReloadSentinel's onRemove(): Heaps only
+		// fires onRemove for scene-ALLOCATED objects, and builder results in these tests
+		// (like off-screen game UI) are never attached to a scene. When a dynamicRef
+		// template swap discards the old child subtree, the discard path itself must
+		// release the old child's reload handle — otherwise the registry accumulates one
+		// dead handle per swap.
+		final source = "
+			#progA programmable() {
+				bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+			#progB programmable() {
+				bitmap(generated(color(20, 20, #00ff00))): 0, 0
+			}
+			#host programmable(template:string=\"progA\") {
+				#child dynamicRef($template): 0, 0
+			}
+		";
+		// Host root is NOT attached to any scene — the sentinel's onRemove never fires.
+		final result = buildFromSource(source, "host", null, Incremental);
+		Assert.notNull(result);
+
+		final child = result.getDynamicRef("child");
+		Assert.notNull(child, "named dynamicRef should be addressable as 'child'");
+
+		// Manually register the CHILD result (no loader registry is wired in tests,
+		// so nothing auto-registers — registration stays fully under test control).
+		final registry = new ReloadableRegistry();
+		final handle = registry.register("virtual.manim", child, "progA");
+		child.reloadHandle = handle;
+		Assert.equals(1, registry.getHandles("virtual.manim").length, "sanity: one handle after register");
+
+		// Swap the template — the old child subtree is discarded while detached.
+		result.setParameter("template", "progB");
+
+		// The discarded child's handle must be released. The new child was never
+		// registered by this test, so the registry must be empty.
+		Assert.equals(0, registry.getHandles("virtual.manim").length,
+			"discarding the old dynamicRef subtree must release its reload handle even when detached from any scene");
+
+		// Swap again — the registry must not grow with stale handles per swap.
+		result.setParameter("template", "progA");
+		Assert.equals(0, registry.getHandles("virtual.manim").length,
+			"repeated template swaps must not accumulate stale reload handles");
+	}
+
+	@Test
+	public function testDynamicRefTemplateSwapCancelsOldSubtreeTransitionTweens():Void {
+		// When a dynamicRef template swap discards the old child subtree, any in-flight
+		// transition tweens owned by the old child's incremental context must be cancelled.
+		// Otherwise they keep ticking against orphaned scene objects after the swap.
+		final tm = new bh.base.TweenManager();
+		final builder = builderFromSource("
+			#tplA programmable(status:[a,b]=a) {
+				transition {
+					status: crossfade(0.5)
+				}
+				@(status=>a) bitmap(generated(color(10, 10, #ff0000))): 0, 0
+				@(status=>b) bitmap(generated(color(10, 10, #00ff00))): 0, 0
+			}
+			#tplB programmable() {
+				bitmap(generated(color(20, 20, #0000ff))): 0, 0
+			}
+			#host programmable(template:string=\"tplA\") {
+				#child dynamicRef($template): 0, 0
+			}
+		");
+		builder.tweenManager = tm;
+		final result = builder.buildWithParameters("host", new Map(), null, null, true);
+		Assert.notNull(result);
+
+		final child = result.getDynamicRef("child");
+		Assert.notNull(child, "named dynamicRef should be addressable as 'child'");
+		final oldChildObject = child.object;
+
+		// Start a crossfade on the old child and advance it mid-flight.
+		child.setParameter("status", "b");
+		tm.update(0.0); // consumed by skipFirstDt
+		tm.update(0.1); // 0.1s into the 0.5s crossfade
+		Assert.isTrue(subtreeHasTweens(tm, oldChildObject),
+			"sanity: crossfade tweens must be active on the old child before the swap");
+
+		// Swap the template — old subtree discarded mid-transition.
+		result.setParameter("template", "tplB");
+
+		Assert.isFalse(subtreeHasTweens(tm, oldChildObject),
+			"discarding the old dynamicRef subtree must cancel its in-flight transition tweens");
+	}
+
+	// Recursive tween probe: TweenManager.hasTweens matches the exact target object,
+	// but transition tweens target descendants (the conditional bitmaps), not the root.
+	static function subtreeHasTweens(tm:bh.base.TweenManager, root:h2d.Object):Bool {
+		if (tm.hasTweens(root)) return true;
+		for (i in 0...root.numChildren) {
+			if (subtreeHasTweens(tm, root.getChildAt(i))) return true;
+		}
+		return false;
+	}
 }
 #end

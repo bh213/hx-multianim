@@ -339,6 +339,8 @@ Optimized element for constructing objects with many elements (e.g., HP bars). A
 #name programmable tileGroup(...)
 ```
 
+Content is baked once at build time, so conditionals keyed on programmable parameters are rejected (`BuilderError code="tilegroup_conditional"`) — in both the root form above and the nested `tilegroup {}` element. Conditionals keyed on `repeatable` loop variables are allowed (they iterate at build time).
+
 ### programmable
 Core element of the library. Creates an instance of all children belonging to this programmable.
 

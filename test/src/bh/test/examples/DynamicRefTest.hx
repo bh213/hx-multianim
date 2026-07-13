@@ -1044,6 +1044,71 @@ class DynamicRefTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testDynamicRefInInitiallyHiddenArmForwardsParamsAfterMaterialization():Void {
+		// A dynamicRef inside an initially-FALSE conditional arm is deferred at build time and
+		// only materialized when the conditional first flips true. Materialization must register
+		// the same param-forwarding bindings an initially-VISIBLE dynamicRef gets — otherwise
+		// later setParameter calls on the forwarded parent param silently stop propagating into
+		// the materialized child, which keeps rendering whatever value it was materialized with.
+		//
+		// Note the sibling test above does NOT catch this: it changes `v` BEFORE flipping the
+		// conditional, and materialization itself builds with the then-current values, so the
+		// child looks fresh. The bug only shows when the forwarded param changes AFTER
+		// materialization while the arm stays visible. Re-flipping the arm also masks it
+		// (re-materialization picks up fresh values again).
+		final result = buildFromSource("
+			#X programmable(v:uint=1) {
+				bitmap(generated(color(10, $v, #ff0000))): 0, 0
+			}
+			#host programmable(a:int=0, v:uint=5) {
+				@(a=>1) #armOn  dynamicRef($X, v=>$v): 0, 0
+				@else   #armOff dynamicRef($X, v=>$v): 0, 0
+			}
+		", "host", null, Incremental);
+
+		// a=0 → armOn's arm is hidden (deferred), armOff visible with forwarded v=5.
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(5, Std.int(bitmaps[0].tile.height));
+
+		// Flip to a=1 → armOn materializes. It is built with the CURRENT v=5, so this sanity
+		// check passes regardless of whether forwarding got registered.
+		result.setParameter("a", 1);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(5, Std.int(bitmaps[0].tile.height),
+			"materialized armOn must render the current v=5");
+
+		// Change the forwarded param while armOn stays visible. The materialized dynamicRef
+		// must receive the update exactly like an initially-visible one would.
+		result.setParameter("v", 12);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(12, Std.int(bitmaps[0].tile.height),
+			"materialized armOn must reflect v=12 after setParameter on the forwarded param (a stale value means forwarding was never registered at materialization)");
+
+		// The named sub-result must agree with the scene graph.
+		final armOn = result.getDynamicRef("armOn");
+		Assert.notNull(armOn);
+		if (armOn != null) {
+			final armOnBitmaps = findVisibleBitmapDescendants(armOn.object);
+			Assert.equals(1, armOnBitmaps.length);
+			Assert.equals(12, Std.int(armOnBitmaps[0].tile.height),
+				"armOn sub-result must reflect the forwarded v=12");
+		}
+
+		// Guard against the masking path: flipping away and back re-materializes with fresh
+		// values, so armOn must still render 12. (This alone would pass even without proper
+		// forwarding registration — the assertions above are the real signal.)
+		result.setParameter("a", 0);
+		result.setParameter("a", 1);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(12, Std.int(bitmaps[0].tile.height),
+			"armOn must still render v=12 after a re-flip of the conditional");
+	}
+
+	@Test
 	public function testDynamicRefForwardingBatchesAcrossMultipleParams():Void {
 		// When a parent batches multiple parameter changes that all forward into the SAME
 		// dynamicRef child, the child should re-evaluate once for the combined update — not

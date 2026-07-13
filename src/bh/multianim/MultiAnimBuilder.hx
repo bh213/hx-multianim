@@ -686,26 +686,40 @@ class IncrementalUpdateContext {
 	 *  - conditionalEntries / conditionalApplyEntries / deferredEntries whose objects are under container
 	 *  - activeTransitionTweens on objects under container (cancelled to avoid completion callbacks on dead objs)
 	 */
-	public function cleanupDestroyedSubtree(ir:InternalBuilderResults, container:h2d.Object):Void {
-		// 1. Capture dynamicRef child contexts that will be removed, so we can drop their bindings afterwards.
-		//    Each per-key array may hold multiple writers (unnamed sites colliding on the same key);
-		//    walk every writer so a multi-writer arm cleanup drops all dependent dynamicRefBindings.
+	/** Reap the bookkeeping for dynamicRef children under `container` that are about to be
+	 *  discarded: cancel their in-flight transition tweens (they'd keep ticking against
+	 *  orphaned objects), release their DEV reload handles (the reload sentinel's onRemove
+	 *  only fires for scene-ALLOCATED objects, so a discard while detached would leak the
+	 *  handle permanently), and prune this context's forwarding bindings into them.
+	 *  Factored out of cleanupDestroyedSubtree so discard paths that must keep the
+	 *  conditional/deferred bookkeeping intact (deferred-arm re-materialization) can reap
+	 *  just the child-ref state. Must run BEFORE removeRegistrationsUnder — it walks
+	 *  ir.dynamicRefs, which that helper splices. */
+	public function pruneDiscardedDynamicRefChildren(ir:InternalBuilderResults, container:h2d.Object):Void {
+		// Each per-key array may hold multiple writers (unnamed sites colliding on the same key);
+		// walk every writer so a multi-writer arm cleanup drops all dependent dynamicRefBindings.
 		final removedChildContexts:Array<IncrementalUpdateContext> = [];
 		for (_ => arr in ir.dynamicRefs) {
 			for (result in arr) {
 				final obj = result.object;
 				final isUnder = obj == container || (obj.parent != null && isDescendantOf(obj, container));
-				if (isUnder && result.incrementalContext != null)
+				if (!isUnder) continue;
+				if (result.incrementalContext != null) {
 					removedChildContexts.push(result.incrementalContext);
+					result.incrementalContext.cancelAllTransitions();
+				}
+				#if MULTIANIM_DEV
+				if (result.reloadHandle != null) {
+					result.reloadHandle.registry.unregister(result.reloadHandle);
+					result.reloadHandle = null;
+				}
+				#end
 			}
 		}
 
-		// 2. Clean IR collections via the existing helper.
-		MultiAnimBuilder.removeRegistrationsUnder(ir, container);
-
-		// 3. Drop dynamicRefBindings whose childContext was just orphaned. Mirror the removal
-		//    into dynamicRefBindingsByParam so the reverse-index walk in applyUpdates doesn't
-		//    forward into a dead context.
+		// Drop dynamicRefBindings whose childContext was just orphaned. Mirror the removal
+		// into dynamicRefBindingsByParam so the reverse-index walk in applyUpdates doesn't
+		// forward into a dead context.
 		if (removedChildContexts.length > 0) {
 			var i = 0;
 			while (i < dynamicRefBindings.length) {
@@ -719,6 +733,15 @@ class IncrementalUpdateContext {
 				} else i++;
 			}
 		}
+	}
+
+	public function cleanupDestroyedSubtree(ir:InternalBuilderResults, container:h2d.Object):Void {
+		// 1. Reap discarded dynamicRef children (transition tweens, DEV reload handles,
+		//    forwarding bindings) — must precede the IR cleanup below.
+		pruneDiscardedDynamicRefChildren(ir, container);
+
+		// 2. Clean IR collections via the existing helper.
+		MultiAnimBuilder.removeRegistrationsUnder(ir, container);
 
 		// 4. Drop dynamicNameBindings whose container is under the destroyed subtree.
 		var ni = 0;
@@ -1367,17 +1390,6 @@ class IncrementalUpdateContext {
 		return null;
 	}
 
-	/** Check if an object is effectively visible: in the scene graph and all ancestors visible. */
-	static function isEffectivelyVisible(obj:h2d.Object):Bool {
-		if (obj.parent == null) return false; // Not in scene graph
-		var cur = obj;
-		while (cur != null) {
-			if (!cur.visible) return false;
-			cur = cur.parent;
-		}
-		return true;
-	}
-
 	function setPresenceWithTransition(entry:{object:h2d.Object, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
 			?savedFlowProps:Null<SavedFlowProperties>}, newVisible:Bool, node:Node):Void {
 		final obj = entry.object;
@@ -1564,7 +1576,10 @@ class IncrementalUpdateContext {
 		// Register a tracked expression to rebuild when referenced params change.
 		// Reap IR registrations under the wrapper before tearing down children — otherwise each
 		// hide→show cycle leaks the previous materialization's interactives/slots/dynamicRefs/
-		// names/htmlTextsWithLinks into the parent BuilderResult.
+		// names/htmlTextsWithLinks into the parent BuilderResult. Prune the previous cycle's
+		// dynamicRef forwarding bindings first (they'd otherwise accumulate and forward into
+		// dead child contexts).
+		pruneDiscardedDynamicRefChildren(entry.internalResults, entry.wrapper);
 		MultiAnimBuilder.removeRegistrationsUnder(entry.internalResults, entry.wrapper);
 		entry.wrapper.removeChildren(); // Clear stale children from previous materialization
 		rebuildDeferredContent(entry);
@@ -1578,7 +1593,8 @@ class IncrementalUpdateContext {
 			trackExpression(
 				() -> {
 					// Same cleanup as above — each tracked-expression rebuild must reap the previous
-					// build's IR registrations.
+					// build's IR registrations and forwarding bindings.
+					pruneDiscardedDynamicRefChildren(capturedEntry.internalResults, capturedEntry.wrapper);
 					MultiAnimBuilder.removeRegistrationsUnder(capturedEntry.internalResults, capturedEntry.wrapper);
 					capturedEntry.wrapper.removeChildren();
 					rebuildDeferredContent(capturedEntry);
@@ -1600,7 +1616,17 @@ class IncrementalUpdateContext {
 		builder.incrementalMode = false;
 		builder.incrementalContext = null;
 		builder.builderParams = entry.builderParams;
-		builder.build(entry.node, ObjectMode(entry.wrapper), entry.gridCS, entry.hexCS, entry.internalResults, entry.builderParams);
+		// Expose the owning context so DYNAMIC_REF children register param forwarding against
+		// it — the non-incremental build would otherwise skip registration entirely and the
+		// materialized ref would never receive later setParameter values
+		builder.deferredForwardingCtx = this;
+		try {
+			builder.build(entry.node, ObjectMode(entry.wrapper), entry.gridCS, entry.hexCS, entry.internalResults, entry.builderParams);
+		} catch (e:Dynamic) {
+			builder.deferredForwardingCtx = null;
+			throw e;
+		}
+		builder.deferredForwardingCtx = null;
 		builder.incrementalMode = false;
 		builder.incrementalContext = null;
 	}
@@ -1780,14 +1806,19 @@ class IncrementalUpdateContext {
 					trackedFireScratch.sort((a, b) -> a.declOrder - b.declOrder);
 				for (tracked in trackedFireScratch) {
 					final obj = tracked.object;
-					if (obj != null && !isEffectivelyVisible(obj)) continue;
+					// Skip only DETACHED tracked roots — addToGraph replays them via
+					// refreshTrackedExpressionsFor on re-attach. Flag-hidden (visible=false)
+					// objects must keep firing: setVisibility(true) is a raw field write
+					// with no replay path, so skipping here would leave them stale forever.
+					if (obj != null && obj.parent == null) continue;
 					trackedRelevantScanCount++;
 					tracked.updateFn();
 				}
 			} else {
 				for (tracked in trackedExpressions) {
 					final obj = tracked.object;
-					if (obj != null && !isEffectivelyVisible(obj)) continue;
+					// Detached-root skip only — see the fast-path loop above
+					if (obj != null && obj.parent == null) continue;
 					trackedRelevantScanCount++;
 					tracked.updateFn();
 				}
@@ -2631,6 +2662,20 @@ class MultiAnimBuilder {
 	 *  and not registered as incremental entries; expression tracking stays active. */
 	var suppressConditionalTracking:Bool = false;
 	var incrementalContext:Null<IncrementalUpdateContext> = null;
+	/** Set (only) while rebuildDeferredContent materializes an initially-hidden conditional
+	 *  arm. That build runs with incrementalMode=false, which would skip the DYNAMIC_REF
+	 *  param-forwarding registration entirely — leaving the materialized ref permanently
+	 *  stale on later setParameter calls. The DYNAMIC_REF case registers its forwarding
+	 *  bindings against this context instead when set. */
+	var deferredForwardingCtx:Null<IncrementalUpdateContext> = null;
+	/** Set by the incremental sibling loops immediately before build() on an @else/@default
+	 *  arm whose chain position currently LOSES. shouldBuildInFullMode has no single-node
+	 *  answer for chain arms (returns true), so without this flag a losing chain arm is
+	 *  eagerly built with params that satisfy the preceding arm's guard — evaluating
+	 *  expressions with out-of-guard values (div-by-zero, array OOB) where a full build
+	 *  (which filters losing arms in resolveConditionalChildren) is fine. build() consumes
+	 *  and resets the flag on entry. */
+	var pendingChainArmLosing:Bool = false;
 	var currentInternalResults:Null<InternalBuilderResults> = null;
 	/** When set, automatically injected into IncrementalUpdateContext for transition support. */
 	public var tweenManager:Null<TweenManager> = null;
@@ -4077,6 +4122,53 @@ class MultiAnimBuilder {
 		}
 	}
 
+	/** Incremental-mode counterpart of resolveConditionalChildren's full-mode chain walk:
+	 *  instead of filtering, flags the @else/@default children whose chain position
+	 *  currently LOSES so the sibling loop can route them into build()'s deferred path
+	 *  (they must still exist for later chain flips, but must not eagerly evaluate their
+	 *  expressions with out-of-guard params). Returns null when no child loses — the
+	 *  common case, no allocation. Mirrors resolveVisibilityForChildren's chain logic. */
+	function computeLosingChainArms(children:Array<Node>):Null<Array<Bool>> {
+		var flags:Null<Array<Bool>> = null;
+		var prevSiblingMatched = false;
+		var anyConditionalSiblingMatched = false;
+		for (i in 0...children.length) {
+			var losing = false;
+			switch children[i].conditionals {
+				case Conditional(conditions, anyMode):
+					final matched = matchConditions(conditions, anyMode, indexedParams);
+					prevSiblingMatched = matched;
+					if (matched) anyConditionalSiblingMatched = true;
+				case ConditionalElse(extraConditions):
+					if (!prevSiblingMatched) {
+						if (extraConditions == null) {
+							prevSiblingMatched = true;
+							anyConditionalSiblingMatched = true;
+						} else {
+							final matched = matchConditions(extraConditions, false, indexedParams);
+							losing = !matched;
+							prevSiblingMatched = matched;
+							if (matched) anyConditionalSiblingMatched = true;
+						}
+					} else {
+						losing = true;
+						prevSiblingMatched = true;
+					}
+				case ConditionalDefault:
+					losing = anyConditionalSiblingMatched;
+					anyConditionalSiblingMatched = false;
+				case NoConditional:
+					prevSiblingMatched = false;
+					anyConditionalSiblingMatched = false;
+			}
+			if (losing) {
+				if (flags == null) flags = [for (_ in 0...children.length) false];
+				flags[i] = true;
+			}
+		}
+		return flags;
+	}
+
 	// Resolves @else/@default chains: returns only the children that should be built
 	// given the current indexedParams state. Regular Conditional and NoConditional nodes
 	// are always included (their shouldBuildInFullMode check happens later in build/buildTileGroup).
@@ -4743,10 +4835,10 @@ class MultiAnimBuilder {
 	 *  once at build but, without this, never re-fire (the builder counterpart of the
 	 *  codegen root-tint refire). No-op outside incremental mode or when no refs.
 	 *
-	 *  `gateVisibility`: when true, the tracked is skipped during applyUpdates if its
-	 *  object isn't effectively visible (the per-child default). The programmable root
-	 *  passes false: the root has no parent (isEffectivelyVisible would return false for
-	 *  it), and re-applying scale/alpha to the root is a harmless field write that should
+	 *  `gateVisibility`: when true, the tracked is skipped during applyUpdates while its
+	 *  object is detached (parent == null — the per-child default; addToGraph replays on
+	 *  re-attach). The programmable root passes false: the root has no parent, and
+	 *  re-applying scale/alpha to the root is a harmless field write that should
 	 *  always reflect current params regardless of whether the result is in a scene. */
 	function trackExtendedFormExpressions(node:Node, object:h2d.Object, gateVisibility:Bool = true):Void {
 		final ctx = incrementalContext;
@@ -5294,7 +5386,8 @@ class MultiAnimBuilder {
 			indexedParams.set(info.tilenameVarName, StringValue(info.tilenameIterator[count]));
 	}
 
-	private function cleanupTileGroupRepeatExtraVars(info:{bitmapVarName:Null<String>, tilenameVarName:Null<String>}):Void {
+	private function cleanupTileGroupRepeatExtraVars(info:{valueVariableName:Null<String>, bitmapVarName:Null<String>, tilenameVarName:Null<String>}):Void {
+		if (info.valueVariableName != null) indexedParams.remove(info.valueVariableName);
 		if (info.bitmapVarName != null) indexedParams.remove(info.bitmapVarName);
 		if (info.tilenameVarName != null) indexedParams.remove(info.tilenameVarName);
 	}
@@ -5345,7 +5438,7 @@ class MultiAnimBuilder {
 				final info = resolveTileGroupRepeatAxis(repeatType, node, true);
 				final iterator = info.layoutName == null ? null : getLayouts().getIterator(info.layoutName);
 
-				if (indexedParams.exists(node.updatableName.getNameString()))
+				if (indexedParams.exists(varName))
 					throw builderErrorAt(node, 'cannot use repeatable index param "$varName" as it is already defined');
 				for (count in 0...info.repeatCount) {
 					final gridCoordinateSystem = MultiAnimParser.getGridCoordinateSystem(node);
@@ -5418,6 +5511,8 @@ class MultiAnimBuilder {
 				}
 				indexedParams.remove(varNameX);
 				indexedParams.remove(varNameY);
+				cleanupTileGroupRepeatExtraVars(xInfo);
+				cleanupTileGroupRepeatExtraVars(yInfo);
 				skipChildren = true;
 				null;
 			case PIXELS(shapes):
@@ -5544,6 +5639,9 @@ class MultiAnimBuilder {
 	@:nullSafety(Off)
 	function build(node:Node, buildMode:InternalBuildMode, gridCoordinateSystem:GridCoordinateSystem, hexCoordinateSystem:HexCoordinateSystem,
 			internalResults:InternalBuilderResults, builderParams:BuilderParameters):h2d.Object {
+		// Consume unconditionally — the flag is only meaningful for the exact call it was set for
+		final chainArmLosing = pendingChainArmLosing;
+		pendingChainArmLosing = false;
 		final nodeVisible = shouldBuildInFullMode(node, indexedParams);
 		if (!nodeVisible && (!incrementalMode || suppressConditionalTracking))
 			return null;
@@ -5578,11 +5676,18 @@ class MultiAnimBuilder {
 		}
 
 		// Deferred build: skip expression evaluation for non-visible conditional nodes (like repeatables).
+		// Losing @else/@default chain arms (chainArmLosing, flagged by the sibling loop) take the
+		// same path — their nodeVisible is a passthrough `true`, but eagerly building them would
+		// evaluate expressions with params that satisfy the PRECEDING arm's guard, not their own.
 		// APPLY and FINAL_VAR are excluded — APPLY modifies the parent (handled via conditionalApplyEntries),
-		// FINAL_VAR defines constants with no visual output.
-		if (!nodeVisible && incrementalMode && !suppressConditionalTracking && node.conditionals != NoConditional && incrementalContext != null
-				&& !node.type.match(APPLY) && !node.type.match(FINAL_VAR(_, _))) {
+		// FINAL_VAR defines constants with no visual output. Nodes with per-element @flow.*
+		// properties are excluded too: the deferred wrapper is a plain h2d.Object between the
+		// flow and the element, so materialization would apply the props outside a flow parent
+		// and throw — these build eagerly and toggle via remove/add with saved FlowProperties.
+		if ((!nodeVisible || chainArmLosing) && incrementalMode && !suppressConditionalTracking && node.conditionals != NoConditional && incrementalContext != null
+				&& !node.type.match(APPLY) && !node.type.match(FINAL_VAR(_, _)) && node.flowProperties == null) {
 			final sentinel = new h2d.Object();
+			sentinel.visible = false; // keep h2d.Flow from counting the anchor as a layout child
 			addChild(sentinel);
 			var wrapper = new h2d.Object();
 			addChild(wrapper);
@@ -5973,8 +6078,12 @@ class MultiAnimBuilder {
 				if (existingArr == null) internalResults.dynamicRefs.set(dynRefKey, [result]);
 				else existingArr.push(result);
 
-				// Register parameter bindings for incremental propagation
-				if (incrementalMode && incrementalContext != null && result.incrementalContext != null) {
+				// Register parameter bindings for incremental propagation. The deferred-materialize
+				// path (rebuildDeferredContent) runs with incrementalMode=false but exposes its
+				// owning context via deferredForwardingCtx — register against that instead, or the
+				// materialized ref never receives later setParameter values.
+				final forwardingCtx = (incrementalMode && incrementalContext != null) ? incrementalContext : deferredForwardingCtx;
+				if (forwardingCtx != null && result.incrementalContext != null) {
 					final childNode = builder.multiParserResult.nodes?.get(reference);
 					final childDefs = childNode != null ? builder.getProgrammableParameterDefinitions(childNode) : new Map();
 					for (childParam => value in parameters) {
@@ -5993,7 +6102,7 @@ class MultiAnimBuilder {
 								case PPTEnum(_): () -> resolveAsString(capturedValue);
 								default: () -> resolveAsInteger(capturedValue);
 							};
-							incrementalContext.trackDynamicRef(result.incrementalContext, childParam, resolveFn, refs, result.object);
+							forwardingCtx.trackDynamicRef(result.incrementalContext, childParam, resolveFn, refs, result.object);
 						}
 					}
 				}
@@ -6242,7 +6351,7 @@ class MultiAnimBuilder {
 				final buildTarget = needsWrapper ? object : current;
 				final ownPos = needsWrapper ? null : calculatePosition(node.pos, MultiAnimParser.getGridCoordinateSystem(node), MultiAnimParser.getHexCoordinateSystem(node));
 
-				if (indexedParams.exists(node.updatableName.getNameString()))
+				if (indexedParams.exists(varName))
 					throw builderErrorAt(node, 'cannot use repeatable index param "$varName" as it is already defined');
 
 				// Disable incremental tracking for children of param-dependent repeats
@@ -6319,6 +6428,8 @@ class MultiAnimBuilder {
 
 				indexedParams.remove(varName);
 				switch repeatType {
+					case ArrayIterator(valueVariableName, _):
+						indexedParams.remove(valueVariableName);
 					case StateAnimIterator(bitmapVarName, _, _, _):
 						indexedParams.remove(bitmapVarName);
 					case TilesIterator(bitmapVarName, tilenameVarName, _, _):
@@ -6445,6 +6556,8 @@ class MultiAnimBuilder {
 						}
 						indexedParams.remove(capturedVarName);
 						switch capturedRepeatType {
+							case ArrayIterator(valueVariableName, _):
+								indexedParams.remove(valueVariableName);
 							case StateAnimIterator(bitmapVarName, _, _, _):
 								indexedParams.remove(bitmapVarName);
 							case TilesIterator(bitmapVarName, tilenameVarName, _, _):
@@ -6563,6 +6676,10 @@ class MultiAnimBuilder {
 							cleanupFinalVars(resolvedChildren, indexedParams);
 						}
 					}
+					// Loop-scoped array value variables must not survive the loop (index vars are
+					// removed by the callers, which don't see the axis structs)
+					if (xAxis.valueVariableName != null) indexedParams.remove(xAxis.valueVariableName);
+					if (yAxis.valueVariableName != null) indexedParams.remove(yAxis.valueVariableName);
 				}
 
 				final xAxis = resolveAxis(repeatTypeX);
@@ -6736,10 +6853,13 @@ class MultiAnimBuilder {
 
 		final object = builtObject.toh2dObject();
 
-		// In incremental mode: insert sentinel before conditional elements for position tracking
+		// In incremental mode: insert sentinel before conditional elements for position tracking.
+		// Invisible so layout containers (h2d.Flow) skip it — a visible zero-size child would
+		// consume a spacing slot and diverge from the full (sentinel-free) build.
 		var conditionalSentinel:Null<h2d.Object> = null;
 		if (incrementalMode && !suppressConditionalTracking && node.conditionals != NoConditional && incrementalContext != null && current != null) {
 			conditionalSentinel = new h2d.Object();
+			conditionalSentinel.visible = false;
 			addChild(conditionalSentinel);
 		}
 
@@ -6875,10 +6995,19 @@ class MultiAnimBuilder {
 
 		if (!skipChildren) { // for repeatable, as children were already processed
 			final resolvedChildren = resolveConditionalChildren(node.children);
-			for (childNode in resolvedChildren) {
+			final losingChainArms = (incrementalMode && !suppressConditionalTracking) ? computeLosingChainArms(resolvedChildren) : null;
+			for (i in 0...resolvedChildren.length) {
+				final childNode = resolvedChildren[i];
+				pendingChainArmLosing = losingChainArms != null && losingChainArms[i];
 				build(childNode, selectedBuildMode, MultiAnimParser.getGridCoordinateSystem(childNode), MultiAnimParser.getHexCoordinateSystem(childNode),
 					internalResults, builderParams);
 			}
+			// Slot-body @finals were evaluated after the slot ctx snapshotted its params —
+			// sync them (before cleanupFinalVars strips them from the live map) so
+			// SlotHandle.setParameter re-resolution can still see them (same convention
+			// as the root ctx in buildWithParameters)
+			if (slotIncrementalCtx != null)
+				slotIncrementalCtx.syncFinalsFromBuilder(indexedParams);
 			cleanupFinalVars(resolvedChildren, indexedParams);
 		}
 
@@ -7132,6 +7261,10 @@ class MultiAnimBuilder {
 			final pos = calculatePosition(rootNode.pos, gridCoordinateSystem, hexCoordinateSystem);
 			addPosition(root, pos.x, pos.y);
 
+			// Baked-once content cannot re-evaluate param conditionals — same rejection as the nested TILEGROUP case
+			for (child in rootNode.children)
+				validateTileGroupSubtree(child, []);
+
 			for (child in resolveConditionalChildren(rootNode.children)) {
 				buildTileGroup(child, root, new Point(0, 0), gridCoordinateSystem, hexCoordinateSystem, builderParams);
 			}
@@ -7152,8 +7285,11 @@ class MultiAnimBuilder {
 			final pos = calculatePosition(rootNode.pos, gridCoordinateSystem, hexCoordinateSystem);
 			addPosition(root, pos.x, pos.y);
 
-			for (child in resolveConditionalChildren(rootNode.children)) {
-				build(child, LayersMode(root), gridCoordinateSystem, hexCoordinateSystem, internalResults, builderParams);
+			final rootChildren = resolveConditionalChildren(rootNode.children);
+			final losingChainArms = (incrementalMode && !suppressConditionalTracking) ? computeLosingChainArms(rootChildren) : null;
+			for (i in 0...rootChildren.length) {
+				pendingChainArmLosing = losingChainArms != null && losingChainArms[i];
+				build(rootChildren[i], LayersMode(root), gridCoordinateSystem, hexCoordinateSystem, internalResults, builderParams);
 			}
 		} else { // non-programmable
 			final root = build(rootNode, RootMode, gridCoordinateSystem, hexCoordinateSystem, internalResults, builderParams);
@@ -7168,8 +7304,11 @@ class MultiAnimBuilder {
 			final pos = calculatePosition(rootNode.pos, gridCoordinateSystem, hexCoordinateSystem);
 			addPosition(root, pos.x, pos.y);
 
-			for (child in resolveConditionalChildren(rootNode.children)) {
-				build(child, ObjectMode(root), gridCoordinateSystem, hexCoordinateSystem, internalResults, builderParams);
+			final rootChildren = resolveConditionalChildren(rootNode.children);
+			final losingChainArms = (incrementalMode && !suppressConditionalTracking) ? computeLosingChainArms(rootChildren) : null;
+			for (i in 0...rootChildren.length) {
+				pendingChainArmLosing = losingChainArms != null && losingChainArms[i];
+				build(rootChildren[i], ObjectMode(root), gridCoordinateSystem, hexCoordinateSystem, internalResults, builderParams);
 			}
 		}
 
@@ -8477,63 +8616,76 @@ class MultiAnimBuilder {
 		final gridCS = MultiAnimParser.getGridCoordinateSystem(slotNode);
 		final hexCS = MultiAnimParser.getHexCoordinateSystem(slotNode);
 		pushBuilderState();
-
-		// Build merged params: parent params converted to resolved + slot defaults
-		final mergedParams:Map<String, ResolvedIndexParameters> = new Map();
-		if (parentParams != null) {
-			final progDefs = getProgrammableParameterDefinitions(progNode, false);
-			for (key => value in parentParams) {
-				final def = progDefs.get(key);
-				if (def != null) {
-					mergedParams.set(key, dynamicToResolvedWithDef(def.type, value));
-				} else {
-					mergedParams.set(key, dynamicToResolvedInferred(value));
+		try {
+			// Build merged params: parent params converted to resolved + slot defaults
+			final mergedParams:Map<String, ResolvedIndexParameters> = new Map();
+			if (parentParams != null) {
+				final progDefs = getProgrammableParameterDefinitions(progNode, false);
+				for (key => value in parentParams) {
+					final def = progDefs.get(key);
+					if (def != null) {
+						mergedParams.set(key, dynamicToResolvedWithDef(def.type, value));
+					} else {
+						mergedParams.set(key, dynamicToResolvedInferred(value));
+					}
 				}
 			}
-		}
-		// Merge slot parameter defaults
-		for (key => def in slotParams) {
-			if (def.defaultValue != null && !mergedParams.exists(key))
-				mergedParams.set(key, def.defaultValue);
-		}
-		this.indexedParams = mergedParams;
-
-		// Create incremental context for the slot
-		final builderParams:BuilderParameters = {
-			callback: (parentBP != null && parentBP.callback != null) ? parentBP.callback : defaultCallback,
-			placeholderObjects: parentBP != null ? parentBP.placeholderObjects : null,
-			scene: parentBP != null ? parentBP.scene : null,
-		};
-		this.builderParams = builderParams;
-		final slotCtx = new IncrementalUpdateContext(this, mergedParams, builderParams, slotNode);
-		if (tweenManager != null)
-			slotCtx.setTweenManager(tweenManager);
-		this.incrementalMode = true;
-		this.incrementalContext = slotCtx;
-
-		// Build slot children into container
-		final internalResults:InternalBuilderResults = {names: new Map(), interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
-		for (childNode in resolveConditionalChildren(slotNode.children)) {
-			build(childNode, ObjectMode(container), cast gridCS, cast hexCS, internalResults, builderParams);
-		}
-
-		popBuilderState();
-
-		// Find slotContent child if present
-		var slotContentTarget:Null<h2d.Object> = null;
-		for (i in 0...container.numChildren) {
-			if (Std.downcast(container.getChildAt(i), SlotContentRoot) != null) {
-				slotContentTarget = container.getChildAt(i);
-				break;
+			// Merge slot parameter defaults
+			for (key => def in slotParams) {
+				if (def.defaultValue != null && !mergedParams.exists(key))
+					mergedParams.set(key, def.defaultValue);
 			}
+			this.indexedParams = mergedParams;
+
+			// Create incremental context for the slot
+			final builderParams:BuilderParameters = {
+				callback: (parentBP != null && parentBP.callback != null) ? parentBP.callback : defaultCallback,
+				placeholderObjects: parentBP != null ? parentBP.placeholderObjects : null,
+				scene: parentBP != null ? parentBP.scene : null,
+			};
+			this.builderParams = builderParams;
+			final slotCtx = new IncrementalUpdateContext(this, mergedParams, builderParams, slotNode);
+			if (tweenManager != null)
+				slotCtx.setTweenManager(tweenManager);
+			this.incrementalMode = true;
+			this.incrementalContext = slotCtx;
+
+			// Build slot children into container
+			final internalResults:InternalBuilderResults = {names: new Map(), interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
+			final slotChildren = resolveConditionalChildren(slotNode.children);
+			final losingChainArms = computeLosingChainArms(slotChildren);
+			for (i in 0...slotChildren.length) {
+				pendingChainArmLosing = losingChainArms != null && losingChainArms[i];
+				build(slotChildren[i], ObjectMode(container), cast gridCS, cast hexCS, internalResults, builderParams);
+			}
+
+			// Slot-body @finals were evaluated after slotCtx snapshotted its params — sync so
+			// SlotHandle.setParameter re-resolution can still see them (mirrors the runtime slot path)
+			slotCtx.syncFinalsFromBuilder(indexedParams);
+
+			popBuilderState();
+
+			// Find slotContent child if present
+			var slotContentTarget:Null<h2d.Object> = null;
+			for (i in 0...container.numChildren) {
+				if (Std.downcast(container.getChildAt(i), SlotContentRoot) != null) {
+					slotContentTarget = container.getChildAt(i);
+					break;
+				}
+			}
+			final handle = new SlotHandle(container, slotCtx, slotContentTarget);
+			// Persist the per-slot IR so getInteractives / getUpdatable / etc. can reach decoration
+			// registrations. Without this, codegen instances built via buildParameterizedSlot
+			// would have no API path to interactives, names, sub-slots, dynamicRefs or
+			// htmlTextsWithLinks declared inside the slot decoration body.
+			handle.ir = internalResults;
+			return handle;
+		} catch (e:Dynamic) {
+			// Keep the state stack balanced and the live indexedParams restored on any
+			// throw — same unwind contract as buildWithParameters
+			popBuilderState();
+			throw e;
 		}
-		final handle = new SlotHandle(container, slotCtx, slotContentTarget);
-		// Persist the per-slot IR so getInteractives / getUpdatable / etc. can reach decoration
-		// registrations. Without this, codegen instances built via buildParameterizedSlot
-		// would have no API path to interactives, names, sub-slots, dynamicRefs or
-		// htmlTextsWithLinks declared inside the slot decoration body.
-		handle.ir = internalResults;
-		return handle;
 	}
 
 	private static function findSlotNode(node:Node, slotName:String):Null<Node> {
@@ -8636,31 +8788,38 @@ class MultiAnimBuilder {
 			final gridCS = MultiAnimParser.getGridCoordinateSystem(switchNode);
 			final hexCS = MultiAnimParser.getHexCoordinateSystem(switchNode);
 			pushBuilderState();
-			// Convert parent params to resolved index params
-			final resolvedParams:Map<String, ResolvedIndexParameters> = new Map();
-			final progDefs = getProgrammableParameterDefinitions(progNode, false);
-			for (key => value in parentParams) {
-				final def = progDefs.get(key);
-				if (def != null)
-					resolvedParams.set(key, dynamicToResolvedWithDef(def.type, value));
-				else
-					resolvedParams.set(key, dynamicToResolvedInferred(value));
+			try {
+				// Convert parent params to resolved index params
+				final resolvedParams:Map<String, ResolvedIndexParameters> = new Map();
+				final progDefs = getProgrammableParameterDefinitions(progNode, false);
+				for (key => value in parentParams) {
+					final def = progDefs.get(key);
+					if (def != null)
+						resolvedParams.set(key, dynamicToResolvedWithDef(def.type, value));
+					else
+						resolvedParams.set(key, dynamicToResolvedInferred(value));
+				}
+				this.indexedParams = resolvedParams;
+				this.incrementalMode = false;
+				this.incrementalContext = null;
+				final bp:BuilderParameters = {
+					callback: (parentBP != null && parentBP.callback != null) ? parentBP.callback : defaultCallback,
+					placeholderObjects: parentBP != null ? parentBP.placeholderObjects : null,
+					scene: parentBP != null ? parentBP.scene : null,
+				};
+				this.builderParams = bp;
+				final ir:InternalBuilderResults = sink != null
+					? sink.ir
+					: {names: new Map(), interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
+				for (child in arm.children)
+					build(child, ObjectMode(container), cast gridCS, cast hexCS, ir, bp);
+				popBuilderState();
+			} catch (e:Dynamic) {
+				// Keep the state stack balanced and the live indexedParams restored on any
+				// throw — same unwind contract as buildWithParameters
+				popBuilderState();
+				throw e;
 			}
-			this.indexedParams = resolvedParams;
-			this.incrementalMode = false;
-			this.incrementalContext = null;
-			final bp:BuilderParameters = {
-				callback: (parentBP != null && parentBP.callback != null) ? parentBP.callback : defaultCallback,
-				placeholderObjects: parentBP != null ? parentBP.placeholderObjects : null,
-				scene: parentBP != null ? parentBP.scene : null,
-			};
-			this.builderParams = bp;
-			final ir:InternalBuilderResults = sink != null
-				? sink.ir
-				: {names: new Map(), interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
-			for (child in arm.children)
-				build(child, ObjectMode(container), cast gridCS, cast hexCS, ir, bp);
-			popBuilderState();
 		}
 	}
 
@@ -8804,34 +8963,41 @@ class MultiAnimBuilder {
 		final gridCS = MultiAnimParser.getGridCoordinateSystem(node);
 		final hexCS = MultiAnimParser.getHexCoordinateSystem(node);
 		pushBuilderState();
-		final resolvedParams:Map<String, ResolvedIndexParameters> = new Map();
-		final progDefs = getProgrammableParameterDefinitions(progNode, false);
-		for (key => value in parentParams) {
-			final def = progDefs.get(key);
-			if (def != null)
-				resolvedParams.set(key, dynamicToResolvedWithDef(def.type, value));
-			else
-				resolvedParams.set(key, dynamicToResolvedInferred(value));
+		try {
+			final resolvedParams:Map<String, ResolvedIndexParameters> = new Map();
+			final progDefs = getProgrammableParameterDefinitions(progNode, false);
+			for (key => value in parentParams) {
+				final def = progDefs.get(key);
+				if (def != null)
+					resolvedParams.set(key, dynamicToResolvedWithDef(def.type, value));
+				else
+					resolvedParams.set(key, dynamicToResolvedInferred(value));
+			}
+			this.indexedParams = resolvedParams;
+			this.incrementalMode = false;
+			this.incrementalContext = null;
+			final bp:BuilderParameters = {
+				callback: (parentBP != null && parentBP.callback != null) ? parentBP.callback : defaultCallback,
+				placeholderObjects: parentBP != null ? parentBP.placeholderObjects : null,
+				scene: parentBP != null ? parentBP.scene : null,
+			};
+			this.builderParams = bp;
+			final parent = new h2d.Object();
+			// When a sink is supplied (param-dependent repeat body), register the node's slots /
+			// dynamicRefs / indexed names into it so the codegen instance dispatchers stay able to
+			// resolve them; otherwise discard into a throwaway IR (callers that only need the object).
+			final ir:InternalBuilderResults = sink != null
+				? sink.ir
+				: {names: [], interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
+			build(node, ObjectMode(parent), cast gridCS, cast hexCS, ir, bp);
+			popBuilderState();
+			return if (parent.numChildren > 0) parent.getChildAt(0) else null;
+		} catch (e:Dynamic) {
+			// Keep the state stack balanced and the live indexedParams restored on any
+			// throw — same unwind contract as buildWithParameters
+			popBuilderState();
+			throw e;
 		}
-		this.indexedParams = resolvedParams;
-		this.incrementalMode = false;
-		this.incrementalContext = null;
-		final bp:BuilderParameters = {
-			callback: (parentBP != null && parentBP.callback != null) ? parentBP.callback : defaultCallback,
-			placeholderObjects: parentBP != null ? parentBP.placeholderObjects : null,
-			scene: parentBP != null ? parentBP.scene : null,
-		};
-		this.builderParams = bp;
-		final parent = new h2d.Object();
-		// When a sink is supplied (param-dependent repeat body), register the node's slots /
-		// dynamicRefs / indexed names into it so the codegen instance dispatchers stay able to
-		// resolve them; otherwise discard into a throwaway IR (callers that only need the object).
-		final ir:InternalBuilderResults = sink != null
-			? sink.ir
-			: {names: [], interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
-		build(node, ObjectMode(parent), cast gridCS, cast hexCS, ir, bp);
-		popBuilderState();
-		return if (parent.numChildren > 0) parent.getChildAt(0) else null;
 	}
 
 	/** Evict a repeat-body sink's registrations for objects under `container`, mirroring the

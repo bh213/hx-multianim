@@ -6,6 +6,7 @@ import bh.test.BuilderTestBase.builderFromSource;
 import bh.test.BuilderTestBase.builderFromFile;
 import bh.paths.AnimatedPath;
 import bh.paths.MultiAnimPaths.PathNormalization;
+import bh.multianim.MultiAnimParser.ResolvedIndexParameters;
 import bh.base.FPoint;
 
 /**
@@ -14,6 +15,7 @@ import bh.base.FPoint;
  * Tests createAnimatedPath / createProjectilePath through the builder,
  * path normalization modes, error handling, and builder-vs-codegen equivalence.
  */
+@:access(bh.multianim.MultiAnimBuilder)
 class AnimatedPathBuilderTest extends BuilderTestBase {
 	// Shared .manim source for most tests
 	static final ANIM_PATH_SOURCE = "
@@ -374,6 +376,66 @@ class AnimatedPathBuilderTest extends BuilderTestBase {
 		} catch (e:Dynamic) {
 			Assert.pass();
 		}
+	}
+
+	@Test
+	public function testGetPathThrowLeavesBuilderParamsIntact():Void {
+		// getPath() temporarily swaps builder.indexedParams for an empty map while
+		// it resolves path commands. When the requested path does not exist, the
+		// throw fires inside that window — the builder must still hold its original
+		// parameter map afterwards (the restore has to survive the throw), or every
+		// later $ref resolution on this builder session runs against an empty map.
+		final builder = builderFromSource(ANIM_PATH_SOURCE);
+		final before = builder.indexedParams;
+		before.set("sentinelKey", ResolvedIndexParameters.Value(42));
+
+		try {
+			builder.getPaths().getPath("nonexistentPath");
+			Assert.fail("Should throw for missing path name");
+		} catch (e:Dynamic) {
+			Assert.pass();
+		}
+
+		// The live map must still contain the entry seeded before the throw...
+		Assert.isTrue(builder.indexedParams.exists("sentinelKey"),
+			"builder.indexedParams must keep pre-existing entries after getPath throws");
+		// ...and must be the very same map instance: a write through the captured
+		// reference must be visible through the builder (not a leaked temporary).
+		before.set("postThrowProbe", ResolvedIndexParameters.Value(7));
+		Assert.isTrue(builder.indexedParams.exists("postThrowProbe"),
+			"builder.indexedParams must be the same map instance it held before getPath threw");
+	}
+
+	@Test
+	public function testGetPathMidResolutionThrowLeavesBuilderParamsIntact():Void {
+		// Same restore guarantee when the throw fires mid-resolution rather than at
+		// the up-front name lookup: forward($missing) resolves its distance while
+		// the swapped-in empty map is active, so resolveAsNumber throws a
+		// missing_ref error partway through building the path segments.
+		final builder = builderFromSource("
+			paths {
+				#needsRef path {
+					lineTo(10, 0)
+					forward($missing)
+				}
+			}
+			#dummy programmable() { bitmap(generated(color(1, 1, #000))): 0,0 }
+		");
+		final before = builder.indexedParams;
+		before.set("sentinelKey", ResolvedIndexParameters.StringValue("keepMe"));
+
+		try {
+			builder.getPaths().getPath("needsRef");
+			Assert.fail("Should throw for unresolvable reference in path command");
+		} catch (e:Dynamic) {
+			Assert.pass();
+		}
+
+		Assert.isTrue(builder.indexedParams.exists("sentinelKey"),
+			"builder.indexedParams must keep pre-existing entries after a mid-resolution throw in getPath");
+		before.set("postThrowProbe", ResolvedIndexParameters.Value(7));
+		Assert.isTrue(builder.indexedParams.exists("postThrowProbe"),
+			"builder.indexedParams must be the same map instance it held before getPath threw");
 	}
 
 	// ==================== Codegen: createAnimatedPath_ Parity ====================
