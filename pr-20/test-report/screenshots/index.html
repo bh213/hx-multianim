@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-07-12 18:40:48</div>
+    <div class="timestamp">Generated: 2026-07-13 17:46:31</div>
     <div class="summary">
         <strong>Summary:</strong> 101 tests,         <span style="color: #4CAF50;">101 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1s, visual 23.9s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1s, visual 24.4s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>7749 assertions:</strong>             <span style="color: #4CAF50;">7749 passed</span>
+            <strong>7798 assertions:</strong>             <span style="color: #4CAF50;">7798 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -598,6 +598,8 @@
                 <div class="unit-method pass">testCodegenVsBuilderCustomAnimParity: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testCodegenVsBuilderDistAnimParity: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testCodegenVsBuilderTimeAnimParity: OK <span class="dots">..........</span></div>
+                <div class="unit-method pass">testGetPathMidResolutionThrowLeavesBuilderParamsIntact: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testGetPathThrowLeavesBuilderParamsIntact: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testWaveWithFractionalCountJoinsNextSegmentContinuously: OK <span class="dots">..</span></div>
             </div>
             <div class="unit-class">
@@ -748,6 +750,7 @@
                 <div class="unit-method pass">testColorSettingRejectedByGetFloatOrException: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testColorSettingRejectedByGetIntOrDefault: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testColorSettingRejectedByGetIntOrException: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testConditionalChildInFlowLaysOutSameInIncrementalAndFullMode: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testConditionalDefault: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testConditionalGreaterThan: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testConditionalIfElseDefault: OK <span class="dots">..</span></div>
@@ -854,6 +857,7 @@
                 <div class="unit-method pass">testFlowHorizontalAlign: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testFlowPropOutsideFlowThrows: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testFlowVerticalAlign: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testFullModeLosingElseArmSkipsExpressionEvaluation: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testGetColorOrDefaultAcceptsColorAndInt: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testGetColorOrDefaultRejectsStringAndFloat: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testGetColorOrExceptionAcceptsColorAndInt: OK <span class="dots">....</span></div>
@@ -931,6 +935,7 @@
                 <div class="unit-method pass">testIncrementalGraphicsWithConditionalAndExpression: OK <span class="dots">........</span></div>
                 <div class="unit-method pass">testIncrementalInterpolation: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testIncrementalLayoutWithParamIndex: OK <span class="dots">.........</span></div>
+                <div class="unit-method pass">testIncrementalLosingElseArmDefersExpressionEvaluation: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testIncrementalMultiVariable: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testIncrementalPixelsActualDataAfterSetParameter: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testIncrementalPixelsRedrawsOnSetParameter: OK <span class="dots">.....</span></div>
@@ -992,6 +997,7 @@
                 <div class="unit-method pass">testInterpolWithPrefix: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testLayoutRepeatableMultiChild: OK <span class="dots">..............</span></div>
                 <div class="unit-method pass">testLayoutRepeatableSingleChild: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testLayoutResolutionRestoresBuilderParamsOnThrow: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testMultiValueMatchFirst: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testMultiValueMatchLegendary: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testMultiValueMatchNoMatch: OK <span class="dots">..</span></div>
@@ -1051,8 +1057,12 @@
                 <div class="unit-method pass">testRebuildListenerThrowsInNonIncrementalMode: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testReentrantSetParameterDuringSwitchRebuild: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testReentrantSetParameterInRebuildListener: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testRepeatable2dArrayValueVarGoesOutOfScopeAfterLoop: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testRepeatableArrayValueVarGoesOutOfScopeAfterLoop: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testRepeatableCount: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testRepeatableCountOverride: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testRepeatableElementNameMayMatchProgrammableParam: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testRepeatableElementNameMayMatchProgrammableParamInTileGroup: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testRepeatableExpressionCount: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testRepeatableExpressionCountSmall: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testRepeatableVarConditionalExact: OK <span class="dots">..</span></div>
@@ -1075,6 +1085,9 @@
                 <div class="unit-method pass">testRichTextMarkupWithInterpolation: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testRichTextNestingConverted: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testRichTextStylesCreatesHtmlText: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testRootFormTileGroupConditionalOnParam_Builder_Throws: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testRootFormTileGroupConditionalOnParam_Incremental_Throws: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testRootFormTileGroupConditionalOnRepeatableLoopVar_Allowed: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testRootTintOnProgrammableThrows: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSaturateFilterZeroIsGrayOneIsNormal: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testSetParameterCssHexStringOnColorParamBakesAlpha: OK <span class="dots">...</span></div>
@@ -1116,6 +1129,7 @@
                 <div class="unit-method pass">testTileGroupSwitchOnParam_Throws: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testTintOnDrawableElementStillBuilds: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testTrackedExpressionTextResolvesLatestParamAfterHideChangeReveal: OK <span class="dots">......</span></div>
+                <div class="unit-method pass">testTrackedTextReplaysAfterSetVisibilityTrue: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testTransitionBatchedUpdatesScopedToParamRefs: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testTransitionCancellationPreservesUserSetTransform: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testTransitionCrossfadeSequentialTiming: OK <span class="dots">..........</span></div>
@@ -1506,6 +1520,7 @@
                 <div class="unit-method pass">testDynamicRefForwardingBatchesAcrossMultipleParams: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testDynamicRefForwardingEnumParamUpdatesChildOnSetParameter: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testDynamicRefForwardingPreservesStrictConditionalEndState: OK <span class="dots">......</span></div>
+                <div class="unit-method pass">testDynamicRefInInitiallyHiddenArmForwardsParamsAfterMaterialization: OK <span class="dots">...........</span></div>
                 <div class="unit-method pass">testDynamicRefInRepeatable: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testDynamicRefInSwitchArmPropagatesForwardedParam: OK <span class="dots">........</span></div>
                 <div class="unit-method pass">testDynamicRefIndexedInRepeatableIsIndependentlyAddressable: OK <span class="dots">............</span></div>
@@ -1728,6 +1743,7 @@
                 <div class="unit-method pass">testParameterizedSlotInheritsTweenManagerFromBuilder: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testParameterizedSlotSetContent: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testParameterizedSlotSetParameter: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testParameterizedSlotSetParameterResolvesSlotBodyFinal: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testParameterizedSlotSetParameterThrowsAfterArmSwap: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testParameterizedSlotWithBoolParam: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testSlotClear: OK <span class="dots">...</span></div>
@@ -5809,7 +5825,7 @@
                 <span class="test-status passed">Macro: PASSED</span>
             </div>
         </div>
-        <div class="similarity">Builder similarity: 100% <span style="color: #999;">(acceptance: 99.9%)</span> | Macro similarity: 99.98% <span style="color: #999;">(acceptance: 99.9%)</span></div>
+        <div class="similarity">Builder similarity: 100% <span style="color: #999;">(acceptance: 99.9%)</span> | Macro similarity: 100% <span style="color: #999;">(acceptance: 99.9%)</span></div>
         <div class="image-comparison cols-3">
             <div class="image-container">
                 <div class="image-label">Reference</div>
@@ -5823,9 +5839,6 @@
                 <div class="image-label">Macro</div>
                 <img src="./flowConditional_macro.png" alt="Macro" onclick="showOverlay(this.src)">
             </div>
-        </div>
-        <div class="diff-links">
-            <a class="diff-link" onclick="showDiff('./flowConditional_macro.png','../examples/97-flowConditional/reference.png','Macro','Reference','./flowConditional_diff_mref.png')">Diff: Macro vs Ref</a>
         </div>
     </div>
     <div class="test-result passed" id="test-#98: customFilter">
