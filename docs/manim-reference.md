@@ -89,7 +89,7 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | Element | Description |
 |---------|-------------|
 | `repeatable($var, iterator)` | Repeat child elements over an iterator |
-| `repeatable2d($x, $y, iterX, iterY)` | 2D grid repetition with two iterators |
+| `repeatable2d($x, $y, iterX, iterY)` | 2D grid repetition with two iterators. Axis kinds: `step`/`range` on both backends; `layout(...)` axes work in the builder and in codegen (codegen unrolls the layout points at macro time and composes the other axis inside each — a param-dependent linear axis combined with a layout axis is a codegen macro error); `array(...)` axes are builder-only (codegen macro error); `tiles(...)`/`stateanim(...)` axes are rejected on both backends |
 
 **Loop variable naming** — loop vars and iterator-output vars (`$v` in `array($v, …)`, `$b`/`$t` in `tiles(...)`, `$b` in `stateanim(...)`) must not share a name with a programmable parameter, an outer loop var, or any `@final` constant in scope. `repeatable2d`'s two loop vars must be distinct, and `tiles($b, $t, …)`'s two outputs must be distinct. Violations are parse errors.
 
@@ -466,6 +466,8 @@ All binary operators are **left-associative** (`a - b - c` parses as `(a - b) - 
 | `callback("name", $index)` | Callback with index argument |
 | `[val1, val2, ...]` | Array literal |
 | `$ref[index]` | Array element access |
+
+**Callback result typing** — the context the callback appears in determines the accepted `CallbackResult`: string contexts (text content) stringify `CBRInteger`/`CBRFloat`/`CBRString`; float contexts (positions, alpha, scale) accept `CBRInteger`/`CBRFloat` and throw on `CBRString`/`CBRObject`; integer contexts (grid/hex coordinates, repeat counts) accept only `CBRInteger` and throw on `CBRFloat` — identical in builder and codegen. The optional `= default` after the callback is applied on `CBRNoResult` (and when no callback is installed); a numeric-literal default in a numeric context resolves numerically.
 
 ---
 
@@ -1322,7 +1324,7 @@ When enabled, elements support efficient runtime updates without full rebuild:
 
 Used by: dynamic refs, slider, scrollbar, parameterized slots, button, checkbox, tab button.
 
-**Batch API on codegen instances.** `@:manim` codegen instances mirror `BuilderResult`'s batch API — `beginUpdate()` / `endUpdate()` / `batchMode` (a `(get, never)` flag). Between `beginUpdate()` and `endUpdate()`, typed setters (`setStatus`, `setDisabled`, …) update their backing field immediately but defer the rebuild pass; `endUpdate()` runs a single combined `_applyVisibility` (full pass, no per-param gate) + `_updateExpressions` + `_fireRebuildListeners`, so a multi-param state change fires ONE rebuild and ONE listener pass instead of one per setter. Nesting `beginUpdate()` or an unbalanced `endUpdate()` throws. Outside a batch, setters apply immediately (non-batched behavior unchanged).
+**Batch API on codegen instances.** `@:manim` codegen instances mirror `BuilderResult`'s batch API — `beginUpdate()` / `endUpdate()` / `batchMode` (a `(get, never)` flag). Between `beginUpdate()` and `endUpdate()`, typed setters (`setStatus`, `setDisabled`, …) update their backing field immediately but record the changed param NAME; `endUpdate()` replays the rebuild pass per changed param — the changed-param identity stays alive, so declared `transition {}` animations still fire, `@switch` arms rebuild only when a param they reference changed, and forced repeat rebuilds stay gated — then fires the rebuild listeners ONCE (matching the builder's changed-param set). Nesting `beginUpdate()` or an unbalanced `endUpdate()` throws. Outside a batch, setters apply immediately (non-batched behavior unchanged).
 
 ### Per-element tracked properties
 
@@ -1353,7 +1355,7 @@ rendered state inconsistent. Either rebuild the programmable or avoid
 runtime mutation of this param.
 ```
 
-Builder throws `BuilderError` with `code == "untracked_param"`; codegen throws a plain `String` from the generated setter. Params that appear in both tracked and frozen slots are also rejected (the tracked effect would apply while the frozen one would silently drift). Reasons surface the slot kind so the message is greppable: `interactive id`, `interactive metadata key`, `interactive metadata value`, `stateanim selector "<name>"`, `stateanim_construct animName "<key>"`, `stateanim_construct fps "<key>"`. Applies to param-dependent `repeatable` / `repeatable2d` bodies as well — the walker `markUntrackedParamsInSubtree` (builder) / `recordUntrackedParamsInSubtree` (codegen) seeds `untrackedParamRefs` before the repeat body is built non-incrementally, so the param-dep case is identical to the static-count case.
+Builder throws `BuilderError` with `code == "untracked_param"`; codegen throws a plain `String` from the generated setter. Params that appear in both tracked and frozen slots are also rejected (the tracked effect would apply while the frozen one would silently drift). Reasons surface the slot kind so the message is greppable: `interactive id`, `interactive metadata key`, `interactive metadata value`, `stateanim selector "<name>"`, `stateanim_construct animName "<key>"`, `stateanim_construct fps "<key>"`. Applies to param-dependent `repeatable` / `repeatable2d` bodies as well — the walker `markUntrackedParamsInSubtree` (builder) / `recordUntrackedParamsInSubtree` (codegen) seeds `untrackedParamRefs` before the repeat body is built non-incrementally, so the param-dep case is identical to the static-count case. **Exception: conditional gates.** A param referenced only by `@()`/`@else`/`@default` gates inside a param-dependent repeat body is NOT untracked on either backend — it is a rebuild trigger: changing it rebuilds the repeat body (builder folds it into `repeatParamRefs`; codegen forces the `_rebuildRepeat_*` method past its scalar early-out), and the gates re-evaluate during the rebuild.
 
 ### Other `BuilderError` codes from `setParameter` / `beginUpdate` / `endUpdate`
 

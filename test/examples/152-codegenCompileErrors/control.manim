@@ -1,0 +1,18 @@
+version: 1.0
+
+// Control fixture for the isolated compile-error checks: the same element
+// shapes with static/int-safe expressions. Must ALWAYS compile — proves the
+// compile harness itself is sound.
+
+#ctrl programmable(n:int=3) {
+  hex: flat(20, 20)
+  flow(maxWidth: 100) {
+    bitmap(generated(color(20, 20, #FF0000)));
+    spacer(4, 4);
+  }
+  repeatable($i, range(0, $n)) {
+    bitmap(generated(color(6, 6, #00FF00))): $i * 20, 0
+  }
+  bitmap(generated(color(8, 8, #0000FF))): $hex.cube(1, -1, 0)
+  bitmap(generated(color(8, 8, #FF00FF))): 0 + $ctx.random(0, 5), 0
+}

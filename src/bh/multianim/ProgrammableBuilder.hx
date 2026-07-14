@@ -240,6 +240,7 @@ class ProgrammableBuilder {
 		}
 	}
 
+
 	/** Build a state animation from a .anim file.
 	 *  Used by generated code for STATEANIM nodes. */
 	public function buildStateAnim(filename:String, selectorMap:Map<String, String>, initialState:String):AnimationSM {
@@ -300,6 +301,19 @@ class ProgrammableBuilder {
 		while (it.hasNext()) {
 			findAllTileGroupsInTree(it.next(), result);
 		}
+	}
+
+	/** Build the TileGroup identified by its parse node's uniqueNodeName.
+	 *  Used by generated code: the positional variant indexed document order over
+	 *  ALL tilegroup nodes while collecting from the conditional-filtered built
+	 *  tree — conditional siblings shifted the spaces apart (wrong content or
+	 *  out-of-range). Building the identified subtree directly also avoids the
+	 *  full-programmable build per tilegroup field. */
+	public function buildTileGroupByNode(programmableName:String, uniqueNodeName:String, ?params:Map<String, Dynamic>):h2d.Object {
+		final obj = buildNodeByUniqueNameWithParams(programmableName, uniqueNodeName, params != null ? params : new Map());
+		if (obj == null)
+			throw BuilderError.of('could not build tileGroup node "$uniqueNodeName" in programmable: $programmableName');
+		return obj;
 	}
 
 	/** Get all tiles from a sheet, optionally filtered by tile name prefix.
@@ -427,7 +441,10 @@ class ProgrammableBuilder {
 	}
 
 	/** Resolve a callback by name, returning an integer result.
-	 *  Used by generated code for RVCallbacks in numeric expressions. */
+	 *  Used by generated code for RVCallbacks in integer expressions.
+	 *  Mirrors MultiAnimBuilder.resolveAsInteger's handleCallback: wrong-typed
+	 *  results (CBRFloat/CBRString/CBRObject) throw instead of being silently
+	 *  replaced by the default. */
 	public function resolveCallbackInt(name:String, defaultValue:Int):Int {
 		final builder = getBuilder();
 		final callback = builder.builderParams.callback;
@@ -437,12 +454,13 @@ class ProgrammableBuilder {
 			case CBRInteger(val): val;
 			case CBRNoResult: defaultValue;
 			case null: defaultValue;
-			default: defaultValue;
+			default: throw new BuilderError('callback should return int but was $result for $name');
 		};
 	}
 
 	/** Resolve a callback by name and index, returning an integer result.
-	 *  Used by generated code for RVCallbacksWithIndex in numeric expressions. */
+	 *  Used by generated code for RVCallbacksWithIndex in integer expressions.
+	 *  Wrong-typed results throw (builder parity), see resolveCallbackInt. */
 	public function resolveCallbackWithIndexInt(name:String, index:Int, defaultValue:Int):Int {
 		final builder = getBuilder();
 		final callback = builder.builderParams.callback;
@@ -452,7 +470,41 @@ class ProgrammableBuilder {
 			case CBRInteger(val): val;
 			case CBRNoResult: defaultValue;
 			case null: defaultValue;
-			default: defaultValue;
+			default: throw new BuilderError('callback should return int but was $result for $name($index)');
+		};
+	}
+
+	/** Resolve a callback by name, returning a float result.
+	 *  Used by generated code for RVCallbacks in float expressions (positions,
+	 *  alpha, scale, ...). Mirrors MultiAnimBuilder.resolveAsNumber: CBRFloat
+	 *  and CBRInteger are used, CBRString/CBRObject throw. */
+	public function resolveCallbackFloat(name:String, defaultValue:Float):Float {
+		final builder = getBuilder();
+		final callback = builder.builderParams.callback;
+		if (callback == null) return defaultValue;
+		final result = callback(Name(name));
+		return switch result {
+			case CBRInteger(val): val;
+			case CBRFloat(val): val;
+			case CBRNoResult: defaultValue;
+			case null: defaultValue;
+			default: throw new BuilderError('callback should return number but was $result for $name', null, "not_a_number");
+		};
+	}
+
+	/** Resolve a callback by name and index, returning a float result.
+	 *  See resolveCallbackFloat. */
+	public function resolveCallbackWithIndexFloat(name:String, index:Int, defaultValue:Float):Float {
+		final builder = getBuilder();
+		final callback = builder.builderParams.callback;
+		if (callback == null) return defaultValue;
+		final result = callback(NameWithIndex(name, index));
+		return switch result {
+			case CBRInteger(val): val;
+			case CBRFloat(val): val;
+			case CBRNoResult: defaultValue;
+			case null: defaultValue;
+			default: throw new BuilderError('callback should return number but was $result for $name($index)', null, "not_a_number");
 		};
 	}
 

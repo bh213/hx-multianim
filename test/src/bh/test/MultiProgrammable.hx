@@ -583,4 +583,70 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/138-codegenCtxSize/ctxSize.manim", "ctxSize")
 	public var ctxSize;
+
+	@:manim("test/examples/139-codegenSwitchDefaultOrder/switchDefaultOrder.manim", "switchDefaultOrder")
+	public var switchDefaultOrder;
+
+	@:manim("test/examples/140-codegenBatchTransition/batchTransition.manim", "batchTrans")
+	public var batchTrans;
+
+	@:manim("test/examples/140-codegenBatchTransition/batchTransition.manim", "batchSwitchKeep")
+	public var batchSwitchKeep;
+
+	@:manim("test/examples/141-codegenRepeatGate/repeatGate.manim", "condGate")
+	public var condGate;
+
+	@:manim("test/examples/141-codegenRepeatGate/repeatGate.manim", "dynRefLoopHost")
+	public var dynRefLoopHost;
+
+	@:manim("test/examples/142-codegenNodeIndex/nodeIndex.manim", "particlesRepeat")
+	public var particlesRepeat;
+
+	@:manim("test/examples/142-codegenNodeIndex/nodeIndex.manim", "tgCond")
+	public var tgCond;
+
+	@:manim("test/examples/143-codegenPaletteIdx/paletteIdx.manim", "palIdx")
+	public var palIdx;
+
+	@:manim("test/examples/144-codegenExprRefire/exprRefire.manim", "exprRefire")
+	public var exprRefire;
+
+	@:manim("test/examples/144-codegenExprRefire/exprRefire.manim", "cbFloat")
+	public var cbFloat;
+
+	@:manim("test/examples/145-codegenLayerAdd/layerAdd.manim", "layerRepeat")
+	public var layerRepeat;
+
+	@:manim("test/examples/146-codegenRepeat2dParity/repeat2dParity.manim", "r2dLayoutAxis")
+	public var r2dLayoutAxis;
+
+	@:manim("test/examples/146-codegenRepeat2dParity/repeat2dParity.manim", "r2dParamOffsets")
+	public var r2dParamOffsets;
+
+	@:manim("test/examples/146-codegenRepeat2dParity/repeat2dParity.manim", "r2dRangeValues")
+	public var r2dRangeValues;
+
+	@:manim("test/examples/147-codegenTileSource/tileSource.manim", "tileMisbind")
+	public var tileMisbind;
+
+	@:manim("test/examples/147-codegenTileSource/tileSource.manim", "crossGen")
+	public var crossGen;
+
+	@:manim("test/examples/147-codegenTileSource/tileSource.manim", "genTrunc")
+	public var genTrunc;
+
+	@:manim("test/examples/148-codegenHexNamed/hexNamed.manim", "hexNamed")
+	public var hexNamed;
+
+	@:manim("test/examples/149-codegenTextWidth/textWidth.manim", "tScale")
+	public var tScale;
+
+	@:manim("test/examples/149-codegenTextWidth/textWidth.manim", "tGrid")
+	public var tGrid;
+
+	@:manim("test/examples/150-codegenLayoutParamPts/layoutParamPts.manim", "layoutParam")
+	public var layoutParam;
+
+	@:manim("test/examples/151-codegenForwardConcat/forwardConcat.manim", "concatHost")
+	public var concatHost;
 }

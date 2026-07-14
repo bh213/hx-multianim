@@ -53,6 +53,25 @@ jobs:
     - name: Build library (JavaScript)
       run: haxe hx-multianim.hxml -js build/js-manim.js -D message.reporting=pretty -D resourcesPath=test/res
 
+    - name: Codegen compile checks
+      # Each host class in test/examples/152-codegenCompileErrors/hosts registers a
+      # .manim fixture that used to break compilation OF THE GENERATED CLASS
+      # (rvToExprInt / callback-default / hex-layout lowering bugs). They cannot live
+      # in the main test binary's MultiProgrammable.hx while red — one macro-breaking
+      # fixture takes down the whole build — so this gate compiles each host in
+      # isolation. Green = every host compiles. Local equivalent:
+      # test/examples/152-codegenCompileErrors/run-compile-checks.ps1
+      run: |
+        set -e
+        for f in test/examples/152-codegenCompileErrors/hosts/*.hx; do
+          host=$(basename "$f" .hx)
+          echo "== $host =="
+          haxe -lib heaps -cp src -cp test/examples/152-codegenCompileErrors/hosts \
+            -D resourcesPath=test/res --macro "bh.base.AtlasMacroInit.init()" \
+            -D message.reporting=pretty --no-output "$host"
+        done
+        echo "codegen compile checks: OK"
+
     - name: Verify build output
       run: |
         test -f build/hl-manim.hl || (echo "ERROR: build/hl-manim.hl not found" && exit 1)

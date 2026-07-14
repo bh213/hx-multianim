@@ -1,0 +1,10 @@
+version: 1.0
+
+// A named hex system used from a runtime (param-dependent) coordinate: the
+// codegen must synthesize the hex layout field and emit the position
+// (generatePositionExpr currently returns null for non-static NAMED_COORD and
+// the element silently stays at 0,0).
+#hexNamed programmable(q:int=1) {
+  hex: #h flat(20, 20)
+  bitmap(generated(color(8, 8, #FF0000))): $h.cube($q, 0 - $q, 0)
+}

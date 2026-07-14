@@ -149,6 +149,19 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.PaletteIndexTrackingTest());
 		testRunner.addCase(new bh.test.examples.CodegenRepeatParamParityTest());
 		testRunner.addCase(new bh.test.examples.CodegenCtxSizeTest());
+		testRunner.addCase(new bh.test.examples.CodegenSwitchDefaultOrderTest());
+		testRunner.addCase(new bh.test.examples.CodegenBatchTransitionParityTest());
+		testRunner.addCase(new bh.test.examples.CodegenRepeatGateTest());
+		testRunner.addCase(new bh.test.examples.CodegenNodeIndexContractTest());
+		testRunner.addCase(new bh.test.examples.CodegenPaletteIndexTrackingTest());
+		testRunner.addCase(new bh.test.examples.CodegenExprRefireScopeTest());
+		testRunner.addCase(new bh.test.examples.CodegenContainerLayerTest());
+		testRunner.addCase(new bh.test.examples.CodegenRepeat2DParityTest());
+		testRunner.addCase(new bh.test.examples.CodegenTileSourceParityTest());
+		testRunner.addCase(new bh.test.examples.CodegenNamedHexCoordTest());
+		testRunner.addCase(new bh.test.examples.CodegenTextMaxWidthParityTest());
+		testRunner.addCase(new bh.test.examples.CodegenLayoutParamPointsTest());
+		testRunner.addCase(new bh.test.examples.CodegenForwardStringConcatTest());
 		testRunner.addCase(new bh.test.examples.AllocationSmokeTest());
 		#if MULTIANIM_DEV
 		testRunner.addCase(new bh.test.examples.HotReloadTest());

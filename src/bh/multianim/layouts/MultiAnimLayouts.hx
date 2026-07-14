@@ -53,7 +53,12 @@ class MultiAnimLayouts {
     }
 
     inline function generateParameters(name, i):Map<String, ResolvedIndexParameters> {
-        return [name=>Value(i)];
+        // Layer the layout's index/sequence var over the CURRENT params instead of
+        // replacing them — layout points may reference the enclosing programmable's
+        // params (e.g. `point: $gap, 0`), which a bare [name => Value(i)] map hid.
+        final m:Map<String, ResolvedIndexParameters> = [for (k => v in builder.indexedParams) k => v];
+        m.set(name, Value(i));
+        return m;
     }
 
     inline function resolve(gridCoordinateSystem:Null<GridCoordinateSystem>, hexCoordinateSystem:Null<HexCoordinateSystem>, offset:Point, content:LayoutContent, indexName:String, index:Int, ?builderParams:BuilderParameters):FPoint {

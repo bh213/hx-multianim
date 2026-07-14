@@ -3533,17 +3533,7 @@ class MultiAnimBuilder {
 	function generatePlaceholderBitmap(type:ResolvedGeneratedTileType):h2d.Tile {
 		return switch type {
 			case Cross(w, h, color, thickness):
-				final c = color;
-				final pl = new PixelLines(w, h);
-				for (t in 0...thickness) {
-					pl.rect(t, t, w - 1 - t * 2, h - 1 - t * 2, c);
-					pl.line(t, 0, w - 1, h - 1 - t, c);
-					pl.line(0, t, w - 1 - t, h - 1, c);
-					pl.line(t, h - 1, w - 1, t, c);
-					pl.line(0, h - 1 - t, w - 1 - t, 0, c);
-				}
-				pl.updateBitmap();
-				pl.tile;
+				bh.base.HeapsUtils.crossTile(color, w, h, thickness);
 
 			case SolidColor(w, h, color):
 				solidTile(color, w, h);

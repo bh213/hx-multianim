@@ -28,6 +28,22 @@ function solidBitmap(color:Int, width:Int, height:Int, ?parent:h2d.Object):h2d.B
     return new h2d.Bitmap(solidTile(color, width, height), parent);
 }
 
+/** Cross-in-a-box placeholder tile: rect border + 4 diagonals, repeated per
+ *  thickness step. The same drawing the runtime builder uses for
+ *  generated(cross(...)) — shared so codegen output renders identically. */
+function crossTile(color:Int, width:Int, height:Int, thickness:Int):h2d.Tile {
+    final pl = new bh.base.PixelLine.PixelLines(width, height);
+    for (t in 0...thickness) {
+        pl.rect(t, t, width - 1 - t * 2, height - 1 - t * 2, color);
+        pl.line(t, 0, width - 1, height - 1 - t, color);
+        pl.line(0, t, width - 1 - t, height - 1, color);
+        pl.line(t, height - 1, width - 1, t, color);
+        pl.line(0, height - 1 - t, width - 1 - t, 0, color);
+    }
+    pl.updateBitmap();
+    return pl.tile;
+}
+
 private function displayH2dObjectNode(sb:StringBuf, obj:h2d.Object, indent:Int) {
     for (i in 0...indent*3) sb.add('-');
     sb.add(Std.string(obj));

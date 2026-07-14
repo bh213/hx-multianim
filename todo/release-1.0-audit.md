@@ -301,51 +301,120 @@ items take the next free number in their prefix. (1.1 roadmap bullets are featur
   handle via a new `registry` back-pointer on `ReloadableHandle`. `HotReloadTest` ×2, DEV build.)*
 
 ### Codegen parity
-- [ ] `CG-5` `generated(cross(...))` renders a solid rectangle (CG:7382 — "approximate as solid color").
-- [ ] `CG-6` `@switch` non-last `default:` arm swallows later arms in the mixed-arm path (CG:2164-2182,
+- [x] `CG-5` `generated(cross(...))` renders a solid rectangle (CG:7382 — "approximate as solid color").
+  *(2026-07-13: shared `HeapsUtils.crossTile` helper — builder + codegen draw the same PixelLines cross,
+  thickness honored, dims via rvToExprInt. `CodegenTileSourceParityTest`.)*
+- [x] `CG-6` `@switch` non-last `default:` arm swallows later arms in the mixed-arm path (CG:2164-2182,
   reverse-build discards accumulated chain; all-enum path is correct).
-- [ ] `CG-7` `beginUpdate()/endUpdate()` batches suppress transitions AND force-rebuild every `@switch` arm
+  *(2026-07-13: default extracted as the fold BASE before the reverse fold — position-independent
+  fallback, builder parity. `CodegenSwitchDefaultOrderTest`. Note exposure was wider than filed:
+  since the single-value-arm fix, ordinary enum switches also took the mixed path.)*
+- [x] `CG-7` `beginUpdate()/endUpdate()` batches suppress transitions AND force-rebuild every `@switch` arm
   (`_changedParam == null`; CG:720,746,781-790,967-976). Builder batches animate + gate per-ref.
-- [ ] `CG-8` Conditional params inside a param-dependent repeat: codegen throws `untracked`, builder rebuilds
+  *(2026-07-13: `_batchDirty:Bool` → `_batchChanged:Array<String>`; endUpdate replays
+  _applyVisibility/_updateExpressions per changed name, listeners fire once.
+  `CodegenBatchTransitionParityTest`.)*
+- [x] `CG-8` Conditional params inside a param-dependent repeat: codegen throws `untracked`, builder rebuilds
   (CG:3523-3543 vs MB:6199-6204).
-- [ ] `CG-9` `graphics { polygon(...) }` with grid/hex coordinate points collapses to 0,0 (CG:4534-4551).
-- [ ] `CG-10` `particles {}` inside a static-unrolled `repeatable` throws index-out-of-range at `create()`
+  *(2026-07-13: body conditional-gate refs are FORCED rebuild triggers (`_rt_force` past the scalar
+  early-out); untracked marking dropped for them. 1D + 2D paths. `CodegenRepeatGateTest`;
+  `CodegenRepeatFallbackUntrackedTest`'s old fail-loud pin updated to the rebuild contract.)*
+- [x] `CG-9` `graphics { polygon(...) }` with grid/hex coordinate points collapses to 0,0 (CG:4534-4551).
+  *(2026-07-13: NOT A BUG — unreachable: `parseGraphicsPolygon` only ever emits OFFSET points, the
+  zero-collapsing arm is dead code. Residual: docs overstate polygon coordinate support.)*
+- [x] `CG-10` `particles {}` inside a static-unrolled `repeatable` throws index-out-of-range at `create()`
   (macro counter per unrolled iteration vs PB:187-207 counting parse nodes).
-- [ ] `CG-11` Conditional `tilegroup` siblings: macro doc-order index vs built-tree order mismatch → wrong
+  *(2026-07-13: macro bakes the PARSE-NODE ordinal (same DFS as findAllParticlesChildren) instead of a
+  per-field counter — unrolled iterations share their node's index. uniqueNodeName was NOT usable:
+  PARTICLES names embed the def map's Std.string, unstable across macro-subprocess/runtime parses.
+  `CodegenNodeIndexContractTest`.)*
+- [x] `CG-11` Conditional `tilegroup` siblings: macro doc-order index vs built-tree order mismatch → wrong
   content or out-of-range throw (CG:5787-5807 vs PB:252-267).
-- [ ] `CG-12` `$array[$idx]`: index refs untracked (no `RVElementOfArray` case in `collectParamRefsImpl`
+  *(2026-07-13: keyed by `uniqueNodeName` (stable for payload-free TILEGROUP); new
+  `PB.buildTileGroupByNode` builds the identified subtree via buildNodeByUniqueNameWithParams — also
+  removes the full-programmable build per tilegroup field. `CodegenNodeIndexContractTest`.)*
+- [x] `CG-12` `$array[$idx]`: index refs untracked (no `RVElementOfArray` case in `collectParamRefsImpl`
   CG:7158-7193) → stale content on `setIdx`.
+  *(2026-07-13: RVElementOfArray/RVColor/RVColorXY/RVArray arms added to the codegen's collector
+  (BLD-2 had fixed only the builder copy). `CodegenPaletteIndexTrackingTest`. Side-find still open:
+  `collectRVParamRefs` (dynamicRef forwarding tracker) also under-recurses.)*
 - [ ] `CG-13` Inline text/richText in runtime-iterated repeats loses `styles:`/`images:`/`autoFit`/hyperlinks
-  (fast path CG:3049-3134; named elements are forwarded and fine).
-- [ ] `CG-14` `layers()` layer ignored for repeat/`@switch` containers (bare `addChild` CG:2354,2097,2834,2529).
-- [ ] `CG-15` Flow scalars / `spacer` / `@flow.offset` use `rvToExpr` (Float) where builder uses
+  (fast path CG:3049-3134; named elements are forwarded and fine). *(2026-07-13 verify: VALID, fix
+  deferred — route styled/imaged inline text through emitRuntimeChildViaBuilder or port the feature
+  layers; also drops grid/hex positions of inline text in runtime repeats.)*
+- [x] `CG-14` `layers()` layer ignored for repeat/`@switch` containers (bare `addChild` CG:2354,2097,2834,2529).
+  *(2026-07-13: shared `emitAddToParent` helper at all container sites. Corrections: the `@switch`
+  site is moot (parser forbids `@layer` on `@switch`); builder has a shared no-wrapper layer drop
+  (zero-offset static repeat with `@layer` — parity, not fixed). `CodegenContainerLayerTest`.)*
+- [x] `CG-15` Flow scalars / `spacer` / `@flow.offset` use `rvToExpr` (Float) where builder uses
   `resolveAsInteger` → generated-code compile errors + truncation divergence (CG:6512-6544,1884-1896).
   Violates the established `rvToExprInt` invariant.
-- [ ] `CG-16` `_updateExpressions()` re-fires ALL updates → behavioral: game callbacks re-invoked, stateanim
+  *(2026-07-13: all 12 trackScalar sinks + inline runtime-repeat flow + spacer + @flow.offset (+restore)
+  → rvToExprInt. Pinned by test/examples/152-codegenCompileErrors/run-compile-checks.ps1 (green = all
+  hosts compile).)*
+- [x] `CG-16` `_updateExpressions()` re-fires ALL updates → behavioral: game callbacks re-invoked, stateanim
   `play()` restarted, filters re-allocated on unrelated `setParameter` (CG:801-808).
-- [ ] `CG-17` `CBRFloat` callback result in int context silently replaced by default (PB:406-432; builder
+  *(2026-07-13: `_updateExpressions(?changed)` with per-entry paramRefs gates (entries with no refs run
+  unconditionally); setters pass their name. Also resolves the behavioral half of PERF-8.
+  `CodegenExprRefireScopeTest`.)*
+- [x] `CG-17` `CBRFloat` callback result in int context silently replaced by default (PB:406-432; builder
   throws in int contexts, accepts in float contexts).
-- [ ] `CG-18` REPEAT2D non-step/range axes silently render **nothing** (CG:3562-3578) — should be
+  *(2026-07-13: PB int shims now THROW on wrong-typed results (builder parity); new
+  `resolveCallback(WithIndex)Float` accept CBRFloat/CBRInteger; rvToExpr numeric contexts route through
+  the float shims, rvToExprInt through the int shims. Side-find fixed with it: a LITERAL callback
+  default in a numeric coordinate took the string branch → String-into-Float generated-code compile
+  error (defaults parse via parseStringOrReference) — numeric-literal defaults now lower numerically.
+  `CodegenExprRefireScopeTest` + CgCallbackHost compile check.)*
+- [x] `CG-18` REPEAT2D non-step/range axes silently render **nothing** (CG:3562-3578) — should be
   `Context.error("not supported in codegen")`.
-- [ ] `CG-19` `bitmap($tileParam)` in runtime repeats mis-binds to the iterator tile / undefined `_rt_tiles`
+  *(2026-07-13: layout axes IMPLEMENTED (macro-time point unroll composing with the other axis, incl.
+  param-dependent linear inner axis); tiles/stateanim axes Context.error (builder throws too); array
+  axes Context.error (honest fail-fast, builder supports them — documented divergence).
+  `CodegenRepeat2DParityTest`.)*
+- [x] `CG-19` `bitmap($tileParam)` in runtime repeats mis-binds to the iterator tile / undefined `_rt_tiles`
   compile error (CG:2971-2976 matches any `TSReference`).
-- [ ] `CG-20` `dynamicRef($loopVar)` treated as literal programmable name "i" (CG:3926-3939; STATIC_REF handles it).
+  *(2026-07-13: `_rt_tiles[_rt_i]` only when the ref names the iterator's tile var; everything else via
+  tileSourceToExpr. `CodegenTileSourceParityTest` + Cg19bHost compile check.)*
+- [x] `CG-20` `dynamicRef($loopVar)` treated as literal programmable name "i" (CG:3926-3939; STATIC_REF handles it).
+  *(2026-07-13: loopVarSubstitutions guard added to the DYNAMIC_REF create + registration arms,
+  mirroring STATIC_REF. `CodegenRepeatGateTest`.)*
 - [ ] `CG-21` `setParameter` value-contract divergences — enum Int (codegen: unvalidated index; builder:
   throws), tile String (builder accepts filename; codegen throws), string non-String (builder
   stringifies; codegen throws). **Pick one contract** (decision tracked as `DEC-4`).
-- [ ] `CG-22` `.offset()`/named-coord around runtime hex coords → `unknown identifier _hexLayout` compile
+  *(2026-07-13 verify: all three confirmed on HEAD + a fourth: bool-from-Int (codegen `!=0` accepts,
+  builder throws). Also same family: codegen full-build handoffs (buildTileGroupByNode/buildParticles)
+  forward enum params as raw Int index → builder `enum "x" does not contain value "0"` throw.)*
+- [x] `CG-22` `.offset()`/named-coord around runtime hex coords → `unknown identifier _hexLayout` compile
   error (CG:7995-8022, no WITH_OFFSET/NAMED_COORD recursion).
-- [ ] `CG-23` Misc: maxWidth-with-param-scale bake, `TAWGrid` skipped, `$ctx.random` no truncation,
+  *(2026-07-13: ensureHexLayoutIfNeeded recurses into WITH_OFFSET/NAMED_COORD with a named-system
+  layout override; coordsToXYExprs' NamedHex recursion carries the NAMED layout (was: ambient);
+  generatePositionExpr's runtime NAMED_COORD now emits the position (was: silent 0,0). Corrections:
+  `.offset()` doesn't parse after `$hex.cube()` — only corner/edge chains reach WITH_OFFSET;
+  bare runtime NAMED_COORD was silent-0,0, not a compile error. `CodegenNamedHexCoordTest` +
+  Cg22Host compile check.)*
+- [ ] `CG-23` Misc: ~~maxWidth-with-param-scale bake~~, ~~`TAWGrid` skipped~~, ~~`$ctx.random` no truncation~~,
   hyperlink exception propagation asymmetry, SWITCH-node tint/filter/blendMode never applied,
-  LayoutIterator `$param` points → 0,0, generated tile w/h single-truncation, dynamicRef forwarded
-  string params use numeric add vs builder's string concat, REPEAT2D count key collision
-  (`countX*10000+countY`, CG:3725-3733).
+  ~~LayoutIterator `$param` points → 0,0~~, ~~generated tile w/h single-truncation~~, ~~dynamicRef forwarded
+  string params use numeric add vs builder's string concat~~, ~~REPEAT2D count key collision
+  (`countX*10000+countY`, CG:3725-3733)~~.
+  *(2026-07-13: all struck-through sub-items fixed — maxWidth/TAWGrid runtime scale divisor
+  (`CodegenTextMaxWidthParityTest`), $ctx.random via rvToExprInt (Cg23cHost), layout $param points
+  emit runtime positions in codegen AND the builder-side MultiAnimLayouts scope now layers the
+  index var over current params instead of replacing them (`CodegenLayoutParamPointsTest`),
+  generated dims via rvToExprInt (`CodegenTileSourceParityTest`), dynamicRef forwards resolve by
+  TARGET param type — string targets concatenate (`CodegenForwardStringConcatTest`; dynamic-name and
+  staticRef sites keep source-shape fallback), REPEAT2D rebuild reworked to per-axis tracking fields
+  + runtime dx/dy + range values start+i*step (`CodegenRepeat2DParityTest`). REMAINING: hyperlink
+  try/catch asymmetry (d) and SWITCH-node tint/filter/blendMode (e) — verified VALID, untested
+  syntax risk, fix with CG-13.)*
 - [ ] `CG-24` **Codegen ignores `isTileGroup`** — `case PROGRAMMABLE(isTileGroup, ...)` captures the
   flag but never uses it (CG:275), so a `@:manim` root-form `programmable tilegroup` is generated
   as an ordinary per-element programmable: no TileGroup batching AND no macro-time
   `validateTileGroupSubtreeMacro` (only `generateTileGroupCreate` calls it, nested form only).
   Parity direction needs a decision — if codegen intentionally stays unbatched, macro-time
-  rejection would be wrong. *(Found 2026-07-13 during the BLD-6 bug review.)*
+  rejection would be wrong. *(Found 2026-07-13 during the BLD-6 bug review.)* *(2026-07-13 verify:
+  flag still unused at CG:275; codegen output is strictly more capable (conditionals work reactively)
+  but unbatched — the root form's entire point is draw-call reduction. Decision still open.)*
 
 ### UI layer
 - [ ] `UI-3` Interrupted screen transitions: `finalizeTransition()` doesn't finish the **entering** screen's
@@ -645,7 +714,13 @@ items take the next free number in their prefix. (1.1 roadmap bullets are featur
 
 **Codegen (todo-performance.md items confirmed + new):**
 - [ ] `PERF-8` Per-param `_applyVisibility_X` / `_updateExpressions_X` (fixes the behavioral `CG-16` too).
-- [ ] `PERF-9` `buildTileGroupFromProgrammable` performs K throwaway **full builds** for K tilegroups per `create()`.
+  *(2026-07-13: the `_updateExpressions` half is DONE — per-entry paramRefs gating via
+  `_updateExpressions(?changed)`, CG-16 resolved. Remaining: per-param `_applyVisibility` gating
+  (visibility conditions still all re-evaluate per setter — cheap, but O(entries)).)*
+- [x] `PERF-9` `buildTileGroupFromProgrammable` performs K throwaway **full builds** for K tilegroups per `create()`.
+  *(2026-07-13: resolved by the CG-11 fix — codegen now calls `buildTileGroupByNode`, which builds
+  only the identified TILEGROUP subtree via `buildNodeByUniqueNameWithParams`. The old positional
+  `buildTileGroupFromProgrammable` remains for any external callers but is no longer emitted.)*
 
 **UI:**
 - [ ] `PERF-10` `getBounds()`-allocating `containsPoint` for every widget on every mouse move (only

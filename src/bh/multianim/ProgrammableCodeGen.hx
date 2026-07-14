@@ -131,6 +131,10 @@ class ProgrammableCodeGen {
 	// Repeat rebuild entries: for param-dependent repeats that need runtime rebuild when count changes
 	static var repeatRebuildEntries:Array<{callExpr:Expr}> = [];
 
+	// True when any repeat rebuild entry's force flag references _changedParam
+	// (body conditional gates) — _applyVisibility must then take the arg.
+	static var repeatForceUsesChangedParam:Bool = false;
+
 	// Conditional APPLY entries: tracks condition + apply/revert expressions for _applyVisibility()
 	static var applyEntries:Array<{condition:Expr, applyExprs:Array<Expr>, revertExprs:Array<Expr>}> = [];
 
@@ -199,6 +203,7 @@ class ProgrammableCodeGen {
 		runtimeLoopVars = new Map();
 		finalVarExprs = new Map();
 		repeatRebuildEntries = [];
+		repeatForceUsesChangedParam = false;
 		applyEntries = [];
 		allParsedNodes = new Map();
 		currentProcessingNode = null;
@@ -791,21 +796,36 @@ class ProgrammableCodeGen {
 		}
 		if (visExprs.length == 0)
 			visExprs.push(macro {});
-		// _applyVisibility takes the optional changed-param name when transitions OR switches
-		// need it. Constructor calls with no arg → null → all gates pass (full initial build).
+		// _applyVisibility takes the optional changed-param name when transitions, switches,
+		// OR forced repeat rebuilds need it. Constructor calls with no arg → null → all
+		// gates pass (full initial build).
 		final visArgs:Array<FunctionArg> = [];
-		if (hasTransitions || hasSwitches)
+		if (hasTransitions || hasSwitches || repeatForceUsesChangedParam)
 			visArgs.push({name: "_changedParam", type: macro :String, opt: true, value: null});
 		instanceFields.push(makeMethod("_applyVisibility", visExprs, visArgs, macro :Void, [APrivate], pos));
 
-		// 5. _updateExpressions()
+		// 5. _updateExpressions(?changed) — per-entry gating on the entry's paramRefs:
+		// an unrelated setParameter must not re-fire callbacks, restart stateanims, or
+		// re-allocate filters (builder parity: tracked expressions fire only when their
+		// paramRefs intersect the changed set). _changedParam == null (constructor /
+		// full pass) runs everything. Entries with no recorded refs run unconditionally
+		// (conservative — they gate internally or are cheap).
 		final exprUpdateExprs:Array<Expr> = [];
 		for (update in expressionUpdates) {
-			exprUpdateExprs.push(update.updateExpr);
+			if (update.paramRefs == null || update.paramRefs.length == 0) {
+				exprUpdateExprs.push(update.updateExpr);
+			} else {
+				var orChain:Expr = macro _changedParam == null;
+				for (r in update.paramRefs)
+					orChain = macro $orChain || _changedParam == $v{r};
+				final body = update.updateExpr;
+				exprUpdateExprs.push(macro if ($orChain) $body);
+			}
 		}
 		if (exprUpdateExprs.length == 0)
 			exprUpdateExprs.push(macro {});
-		instanceFields.push(makeMethod("_updateExpressions", exprUpdateExprs, [], macro :Void, [APrivate], pos));
+		instanceFields.push(makeMethod("_updateExpressions", exprUpdateExprs,
+			[{name: "_changedParam", type: macro :String, opt: true, value: null}], macro :Void, [APrivate], pos));
 
 		// 6. Pre-constructor: push slot/dynamicRef init expressions to constructorExprs
 		// (slotEntries and dynamicRefFields are already populated from processChildren)
@@ -907,11 +927,11 @@ class ProgrammableCodeGen {
 				});
 			}
 			// Build the per-setter rebuild pass. Pass the param name to _applyVisibility when
-			// transitions or switches exist — the switch gate uses it to skip rebuilds whose arms
-			// don't reference this param.
+			// transitions, switches, or forced repeat rebuilds exist — their gates use it to
+			// skip work that doesn't reference this param.
 			final applyExprs:Array<Expr> = [];
 			final hasSwitchEntries = switchUpdateEntries.length > 0;
-			if ((hasTransitions && transParamNames.exists(name)) || hasSwitchEntries) {
+			if ((hasTransitions && transParamNames.exists(name)) || hasSwitchEntries || repeatForceUsesChangedParam) {
 				final nameStr = name;
 				applyExprs.push(macro this._applyVisibility($v{nameStr}));
 			} else {
@@ -926,7 +946,7 @@ class ProgrammableCodeGen {
 				}
 			}
 			if (refsParam)
-				applyExprs.push(macro this._updateExpressions());
+				applyExprs.push(macro this._updateExpressions($v{name}));
 
 			// Fire rebuild listeners after visibility + expression updates complete. Symmetric with
 			// the runtime path where `IncrementalUpdateContext.applyUpdates()` fires listeners at
@@ -941,8 +961,10 @@ class ProgrammableCodeGen {
 			// already updated above, so non-batched behavior is unchanged).
 			final applyBlock:Expr = {expr: EBlock(applyExprs), pos: pos};
 			setterExprs.push(macro {
-				if (this._batchMode) this._batchDirty = true;
-				else $applyBlock;
+				if (this._batchMode) {
+					if (this._batchChanged.indexOf($v{name}) < 0)
+						this._batchChanged.push($v{name});
+				} else $applyBlock;
 			});
 
 			final setterParamType = publicParamType(name, def.type);
@@ -952,27 +974,33 @@ class ProgrammableCodeGen {
 		// ==================== Batch update API ====================
 		// Mirror BuilderResult.beginUpdate/endUpdate/batchMode (MultiAnimBuilder.hx). Between
 		// beginUpdate() and endUpdate(), typed setters update their backing field immediately but
-		// defer the rebuild pass; endUpdate() runs a single combined _applyVisibility (full pass,
-		// no per-param gate) + _updateExpressions + _fireRebuildListeners — so a multi-param state
-		// change fires ONE rebuild and ONE listener pass instead of one per setter.
+		// record the changed NAME; endUpdate() replays the rebuild pass per changed param —
+		// keeping the changed-param identity alive so transitions still animate, @switch arms
+		// rebuild only when their params changed, and forced repeat rebuilds stay gated —
+		// then fires the rebuild listeners ONCE (matching the builder's changedParams set).
 		instanceFields.push(makeField("_batchMode", FVar(macro :Bool, macro false), [APrivate], pos));
-		instanceFields.push(makeField("_batchDirty", FVar(macro :Bool, macro false), [APrivate], pos));
+		instanceFields.push(makeField("_batchChanged", FVar(macro :Array<String>, macro []), [APrivate], pos));
 
 		instanceFields.push(makeMethod("beginUpdate", [
 			macro if (this._batchMode) throw "beginUpdate: already in batch; nesting is not supported",
 			macro this._batchMode = true,
-			macro this._batchDirty = false,
+			macro this._batchChanged.resize(0),
 		], [], macro :Void, [APublic], pos));
 
+		final visTakesParam = hasTransitions || hasSwitches || repeatForceUsesChangedParam;
+		final batchVisPass:Expr = visTakesParam
+			? macro for (_bp in this._batchChanged) this._applyVisibility(_bp)
+			: macro this._applyVisibility();
 		instanceFields.push(makeMethod("endUpdate", [
 			macro if (!this._batchMode) throw "endUpdate: no matching beginUpdate",
 			macro this._batchMode = false,
-			macro if (this._batchDirty) {
-				this._applyVisibility();
-				this._updateExpressions();
+			macro if (this._batchChanged.length > 0) {
+				$batchVisPass;
+				for (_bp in this._batchChanged)
+					this._updateExpressions(_bp);
 				this._fireRebuildListeners();
 			},
-			macro this._batchDirty = false,
+			macro this._batchChanged.resize(0),
 		], [], macro :Void, [APublic], pos));
 
 		instanceFields.push(makeField("batchMode",
@@ -1855,15 +1883,7 @@ class ProgrammableCodeGen {
 		// Add to parent (parentField == null means add to this directly)
 		final parentRef = parentField != null ? (macro $p{["this", parentField]}) : (macro this);
 		final fieldRef = macro $p{["this", fieldName]};
-		if (node.layer != null && node.layer != -1) {
-			final layerVal:Int = node.layer;
-			ctorExprs.push(macro {
-				final layersParent = cast($parentRef, h2d.Layers);
-				layersParent.add($fieldRef, $v{layerVal});
-			});
-		} else {
-			ctorExprs.push(macro $parentRef.addChild($fieldRef));
-		}
+		ctorExprs.push(emitAddToParent(parentRef, fieldRef, node.layer));
 
 		// Set flow properties for spacer and per-element flow annotations after addChild
 		var flowRestoreExpr:Null<Expr> = null;
@@ -1881,8 +1901,8 @@ class ProgrammableCodeGen {
 				propStmts.push(macro final _props = _fp.getProperties($fieldRef));
 				switch (node.type) {
 					case SPACER(width, height):
-						final wExpr = width != null ? rvToExpr(width) : macro 0;
-						final hExpr = height != null ? rvToExpr(height) : macro 0;
+						final wExpr = width != null ? rvToExprInt(width) : macro 0;
+						final hExpr = height != null ? rvToExprInt(height) : macro 0;
 						propStmts.push(macro _props.minWidth = $wExpr);
 						propStmts.push(macro _props.minHeight = $hExpr);
 					default:
@@ -1890,8 +1910,8 @@ class ProgrammableCodeGen {
 				if (fp != null) {
 					if (fp.hAlign != null) propStmts.push(macro _props.horizontalAlign = ${flowAlignToExpr(fp.hAlign)});
 					if (fp.vAlign != null) propStmts.push(macro _props.verticalAlign = ${flowAlignToExpr(fp.vAlign)});
-					if (fp.offsetX != null) propStmts.push(macro _props.offsetX = ${rvToExpr(fp.offsetX)});
-					if (fp.offsetY != null) propStmts.push(macro _props.offsetY = ${rvToExpr(fp.offsetY)});
+					if (fp.offsetX != null) propStmts.push(macro _props.offsetX = ${rvToExprInt(fp.offsetX)});
+					if (fp.offsetY != null) propStmts.push(macro _props.offsetY = ${rvToExprInt(fp.offsetY)});
 					if (fp.isAbsolute) propStmts.push(macro _props.isAbsolute = true);
 				}
 				ctorExprs.push({expr: EBlock(propStmts), pos: pos});
@@ -1903,8 +1923,8 @@ class ProgrammableCodeGen {
 						final _props = _fp.getProperties($fieldRef);
 						${if (fp.hAlign != null) macro _props.horizontalAlign = ${flowAlignToExpr(fp.hAlign)} else macro {}}
 						${if (fp.vAlign != null) macro _props.verticalAlign = ${flowAlignToExpr(fp.vAlign)} else macro {}}
-						${if (fp.offsetX != null) macro _props.offsetX = ${rvToExpr(fp.offsetX)} else macro {}}
-						${if (fp.offsetY != null) macro _props.offsetY = ${rvToExpr(fp.offsetY)} else macro {}}
+						${if (fp.offsetX != null) macro _props.offsetX = ${rvToExprInt(fp.offsetX)} else macro {}}
+						${if (fp.offsetY != null) macro _props.offsetY = ${rvToExprInt(fp.offsetY)} else macro {}}
 						${if (fp.isAbsolute) macro _props.isAbsolute = true else macro {}}
 					});
 					flowRestoreExpr = {expr: EBlock(restoreStmts), pos: pos};
@@ -2015,6 +2035,13 @@ class ProgrammableCodeGen {
 						final resultField = "_comp_" + compName;
 						if (indexedKey == null)
 							registerDynamicRefKey(explicitName != null ? explicitName : compName, resultField, explicitName != null, pos);
+					case RVReference(name) if (loopVarSubstitutions.exists(name)):
+						// Loop variable in a static unroll: the resolved per-iteration value
+						// is the target programmable name (mirrors STATIC_REF).
+						final resolved = Std.string(loopVarSubstitutions.get(name));
+						final resultField = "_comp_" + resolved;
+						if (indexedKey == null)
+							registerDynamicRefKey(explicitName != null ? explicitName : resolved, resultField, explicitName != null, pos);
 					case RVReference(name):
 						if (paramNames.contains(name)) {
 							// Dynamic-name site: the explicit #name (when present) is the stable
@@ -2162,17 +2189,22 @@ class ProgrammableCodeGen {
 			final defaultExpr = macro $v{defaultArmIdx};
 			{expr: ESwitch(paramRef, cases, defaultExpr), pos: pos};
 		} else {
-			// Mixed arms: if/else chain returning arm index
-			var result:Expr = macro - 1;
-			// Build in reverse so first matching arm wins
+			// Mixed arms: if/else chain returning arm index. The default arm is the
+			// chain's BASE fallback regardless of its position in document order
+			// (builder parity: resolveMatchedSwitchArm scans all arms and uses default
+			// only when no other arm matches) — folding it inline used to discard
+			// every arm that appeared after it.
+			var defaultIdx = -1;
+			for (di in 0...arms.length)
+				if (arms[di].pattern == null)
+					defaultIdx = di;
+			var result:Expr = macro $v{defaultIdx};
+			// Build in reverse so the first matching arm wins
 			var i = arms.length - 1;
 			while (i >= 0) {
 				final arm = arms[i];
 				final idx = i;
-				if (arm.pattern == null) {
-					// Default arm — used as the base fallback
-					result = macro $v{idx};
-				} else {
+				if (arm.pattern != null) {
 					final cond = condValueToExpr(arm.pattern, paramRef, paramName);
 					result = macro if ($cond) $v{idx} else $result;
 				}
@@ -2388,7 +2420,7 @@ class ProgrammableCodeGen {
 
 		// Add to parent (parentField == null means add to this directly)
 		final parentRef = parentField != null ? (macro $p{["this", parentField]}) : (macro this);
-		ctorExprs.push(macro $parentRef.addChild($p{["this", containerName]}));
+		ctorExprs.push(emitAddToParent(parentRef, macro $p{["this", containerName]}, node.layer));
 
 		// Visibility for the container itself
 		final visCond = generateVisibilityCondition(node, siblings, containerName, pos);
@@ -2401,10 +2433,53 @@ class ProgrammableCodeGen {
 			// Static unroll: generate children N times with loop var substituted
 			unrollRepeatChildren(node, varName, info.staticCount, info.dx, info.dy, info.rangeStart, info.rangeStep, containerName, fields, ctorExprs, pos);
 		} else {
-			// Param-dependent count and/or per-iteration scalars: runtime rebuild method
+			// Param-dependent count and/or per-iteration scalars: runtime rebuild method.
+			// Body conditional gates become FORCED rebuild triggers (builder parity:
+			// collectChildConditionalParamRefs adds them to the repeat's rebuild refs) —
+			// the loop body re-evaluates `if (visCond)` per rebuild, so a gate flip just
+			// needs to force past the scalar early-out.
 			final triggerRefs = collectRepeatTriggerRefs(repeatType);
-			rebuildRepeatChildren(node, varName, containerName, fields, ctorExprs, triggerRefs, info.countRV, repeatType, pos);
+			final condRefs:Array<String> = [];
+			if (node.children != null)
+				for (child in node.children)
+					collectSubtreeConditionalRefs(child, condRefs);
+			final forcedRefs = [for (r in condRefs) if (!triggerRefs.contains(r)) r];
+			rebuildRepeatChildren(node, varName, containerName, fields, ctorExprs, triggerRefs, forcedRefs, info.countRV, repeatType, pos);
 		}
+	}
+
+	/** Collect conditional-gate param refs (gate keys + condition-value refs, e.g.
+	 *  $level in range bounds) from a runtime-rebuilt repeat body. Mirrors the
+	 *  builder's collectChildConditionalParamRefs: a gate flip must rebuild the
+	 *  repeat even when the iterator scalars are unchanged. */
+	static function collectSubtreeConditionalRefs(node:Node, refs:Array<String>):Void {
+		inline function addAll(cRefs:Array<String>) {
+			for (r in cRefs)
+				if (paramDefs.exists(r) && !loopVarSubstitutions.exists(r) && !refs.contains(r))
+					refs.push(r);
+		}
+		switch (node.conditionals) {
+			case Conditional(values, _):
+				final cRefs:Array<String> = [];
+				for (paramName => condValue in values) {
+					if (cRefs.indexOf(paramName) < 0) cRefs.push(paramName);
+					collectConditionalValueParamRefs(condValue, cRefs);
+				}
+				addAll(cRefs);
+			case ConditionalElse(values):
+				if (values != null) {
+					final cRefs:Array<String> = [];
+					for (paramName => condValue in values) {
+						if (cRefs.indexOf(paramName) < 0) cRefs.push(paramName);
+						collectConditionalValueParamRefs(condValue, cRefs);
+					}
+					addAll(cRefs);
+				}
+			case ConditionalDefault | NoConditional:
+		}
+		if (node.children != null)
+			for (child in node.children)
+				collectSubtreeConditionalRefs(child, refs);
 	}
 
 	/** Unroll repeat children: generate N copies with loop var substituted to literal values */
@@ -2438,7 +2513,7 @@ class ProgrammableCodeGen {
 	}
 
 	/** Runtime rebuild repeat: generates a method that creates/recreates children based on count param */
-	static function rebuildRepeatChildren(node:Node, varName:String, containerField:String, fields:Array<Field>, ctorExprs:Array<Expr>, countParamRefs:Array<String>, countRV:ReferenceableValue, repeatType:RepeatType, pos:Position):Void {
+	static function rebuildRepeatChildren(node:Node, varName:String, containerField:String, fields:Array<Field>, ctorExprs:Array<Expr>, countParamRefs:Array<String>, forcedRefs:Array<String>, countRV:ReferenceableValue, repeatType:RepeatType, pos:Position):Void {
 		if (node.children == null) return;
 
 		// Generate the count expression: for StepIterator it's the count directly, for RangeIterator it needs calculation
@@ -2488,10 +2563,12 @@ class ProgrammableCodeGen {
 		// generateRuntimeChildExprs forwards unsupported kinds (INTERACTIVE, SLOT, etc.) via
 		// buildNodeByUniqueNameWithParams, which skips the inline recordUntrackedParams calls
 		// that processChildren does in the static-unroll path. Count refs trigger rebuild via
-		// _rebuildRepeat_X so they must be excluded from the untracked-marking pass.
+		// _rebuildRepeat_X, and conditional-gate refs force a rebuild — both must be
+		// excluded from the untracked-marking pass.
 		if (node.children != null) {
+			final rebuildTriggeredRefs = countParamRefs.concat(forcedRefs);
 			for (child in node.children)
-				recordUntrackedParamsInSubtree(child, countParamRefs);
+				recordUntrackedParamsInSubtree(child, rebuildTriggeredRefs);
 		}
 
 		// Persistent sink holding slots / dynamicRefs / indexed names produced by the runtime
@@ -2545,10 +2622,12 @@ class ProgrammableCodeGen {
 		fields.push(makeField(dxTrackingField, FVar(macro :Int, macro 0), [APrivate], pos));
 		fields.push(makeField(dyTrackingField, FVar(macro :Int, macro 0), [APrivate], pos));
 
-		// Rebuild method: clears container and recreates children when any scalar changed
+		// Rebuild method: clears container and recreates children when any scalar changed,
+		// or when a conditional-gate param forces past the scalar guard.
 		final rebuildBody:Array<Expr> = [];
 		rebuildBody.push(macro if (_rt_count < 0) _rt_count = 0);
-		rebuildBody.push(macro if (_rt_count == $p{["this", countTrackingField]}
+		rebuildBody.push(macro if (!_rt_force
+			&& _rt_count == $p{["this", countTrackingField]}
 			&& _rt_start == $p{["this", startTrackingField]}
 			&& _rt_step == $p{["this", stepTrackingField]}
 			&& _rt_dx == $p{["this", dxTrackingField]}
@@ -2570,14 +2649,24 @@ class ProgrammableCodeGen {
 			{name: "_rt_step", type: macro :Int},
 			{name: "_rt_dx", type: macro :Int},
 			{name: "_rt_dy", type: macro :Int},
+			{name: "_rt_force", type: macro :Bool},
 		], macro :Void, [APrivate], pos));
 
 		// Call rebuild in constructor with default scalars
-		ctorExprs.push(macro $i{rebuildMethodName}(Std.int(${countExpr}), $startArg, $stepArg, $dxArg, $dyArg));
+		ctorExprs.push(macro $i{rebuildMethodName}(Std.int(${countExpr}), $startArg, $stepArg, $dxArg, $dyArg, false));
 
-		// Register for rebuild on param change
+		// Register for rebuild on param change. The force flag is true when the
+		// changed param is one of the body's conditional-gate refs (or when the
+		// changed param is unknown, i.e. a batched update).
+		var forceExpr:Expr = macro false;
+		if (forcedRefs.length > 0) {
+			repeatForceUsesChangedParam = true;
+			forceExpr = macro _changedParam == null;
+			for (r in forcedRefs)
+				forceExpr = macro $forceExpr || _changedParam == $v{r};
+		}
 		repeatRebuildEntries.push({
-			callExpr: macro $i{rebuildMethodName}(Std.int(${countExpr}), $startArg, $stepArg, $dxArg, $dyArg),
+			callExpr: macro $i{rebuildMethodName}(Std.int(${countExpr}), $startArg, $stepArg, $dxArg, $dyArg, $forceExpr),
 		});
 	}
 
@@ -2602,7 +2691,7 @@ class ProgrammableCodeGen {
 
 		final layoutRepeatSentinel = createSentinelIfConditional(node, parentField, fields, ctorExprs, pos);
 		final parentRef = parentField != null ? (macro $p{["this", parentField]}) : (macro this);
-		ctorExprs.push(macro $parentRef.addChild($p{["this", containerName]}));
+		ctorExprs.push(emitAddToParent(parentRef, macro $p{["this", containerName]}, node.layer));
 
 		final visCond = generateVisibilityCondition(node, siblings, containerName, pos);
 		if (visCond != null)
@@ -2626,7 +2715,7 @@ class ProgrammableCodeGen {
 					if (pt != null)
 						emitLayoutIterationContainer(node, containerName, pt.x + offsetX, pt.y + offsetY, isAligned, alignXInt, alignYInt, fields, ctorExprs, pos);
 					else
-						processChildren(node.children, containerName, fields, ctorExprs, [], pos);
+						emitLayoutIterationContainerRV(node, containerName, list[i], offsetX, offsetY, isAligned, alignXInt, alignYInt, fields, ctorExprs, pos);
 					loopVarSubstitutions.remove(varName);
 				}
 
@@ -2636,7 +2725,7 @@ class ProgrammableCodeGen {
 				if (pt != null)
 					emitLayoutIterationContainer(node, containerName, pt.x + offsetX, pt.y + offsetY, isAligned, alignXInt, alignYInt, fields, ctorExprs, pos);
 				else
-					processChildren(node.children, containerName, fields, ctorExprs, [], pos);
+					emitLayoutIterationContainerRV(node, containerName, content, offsetX, offsetY, isAligned, alignXInt, alignYInt, fields, ctorExprs, pos);
 				loopVarSubstitutions.remove(varName);
 
 			case Sequence(seqVarName, from, to, content):
@@ -2647,7 +2736,7 @@ class ProgrammableCodeGen {
 					if (pt != null)
 						emitLayoutIterationContainer(node, containerName, pt.x + offsetX, pt.y + offsetY, isAligned, alignXInt, alignYInt, fields, ctorExprs, pos);
 					else
-						processChildren(node.children, containerName, fields, ctorExprs, [], pos);
+						emitLayoutIterationContainerRV(node, containerName, content, offsetX, offsetY, isAligned, alignXInt, alignYInt, fields, ctorExprs, pos);
 					loopVarSubstitutions.remove(varName);
 					loopVarSubstitutions.remove(seqVarName);
 				}
@@ -2679,6 +2768,34 @@ class ProgrammableCodeGen {
 			processChildren(node.children, iterContainerName, fields, ctorExprs, [], pos);
 		} else {
 			processChildren(node.children, containerName, fields, ctorExprs, [], pos);
+		}
+	}
+
+	/** Runtime fallback for layout points that don't resolve statically ($param
+	 *  refs in the point coordinates): emit a per-iteration container positioned
+	 *  by the runtime expression. The loop var is already substituted at this
+	 *  point, so only $param refs remain in the RVs. Non-OFFSET coordinate kinds
+	 *  keep the previous behavior (children at container origin). */
+	static function emitLayoutIterationContainerRV(node:Node, containerName:String, content:LayoutContent, offsetX:Float, offsetY:Float,
+			isAligned:Bool, alignXInt:Int, alignYInt:Int, fields:Array<Field>, ctorExprs:Array<Expr>, pos:Position):Void {
+		final coords = switch (content) {
+			case LayoutPoint(c): c;
+		};
+		switch (coords) {
+			case OFFSET(x, y):
+				final xExpr = rvToExpr(x);
+				final yExpr = rvToExpr(y);
+				final iterContainerName = "_e" + (elementCounter++);
+				fields.push(makeField(iterContainerName, FVar(macro :h2d.Object, null), [APrivate], pos));
+				ctorExprs.push(macro $p{["this", iterContainerName]} = new h2d.Object());
+				if (isAligned)
+					ctorExprs.push(macro this.addAlignEntry($p{["this", iterContainerName]}, $xExpr + $v{offsetX}, $yExpr + $v{offsetY}, $v{alignXInt}, $v{alignYInt}, 0.0, 0.0))
+				else
+					ctorExprs.push(macro $p{["this", iterContainerName]}.setPosition($xExpr + $v{offsetX}, $yExpr + $v{offsetY}));
+				ctorExprs.push(macro $p{["this", containerName]}.addChild($p{["this", iterContainerName]}));
+				processChildren(node.children, iterContainerName, fields, ctorExprs, [], pos);
+			default:
+				processChildren(node.children, containerName, fields, ctorExprs, [], pos);
 		}
 	}
 
@@ -2907,7 +3024,7 @@ class ProgrammableCodeGen {
 
 		final runtimeRepeatSentinel = createSentinelIfConditional(node, parentField, fields, ctorExprs, pos);
 		final parentRef = parentField != null ? (macro $p{["this", parentField]}) : (macro this);
-		ctorExprs.push(macro $parentRef.addChild($p{["this", containerName]}));
+		ctorExprs.push(emitAddToParent(parentRef, macro $p{["this", containerName]}, node.layer));
 
 		final visCond = generateVisibilityCondition(node, siblings, containerName, pos);
 		if (visCond != null)
@@ -3045,8 +3162,18 @@ class ProgrammableCodeGen {
 		}
 		switch (child.type) {
 			case BITMAP(tileSource, hAlign, vAlign):
+				// A TSReference binds the iterator's tile array ONLY when it names the
+				// iterator's tile variable — any other reference (e.g. a `tile`-typed
+				// programmable param) lowers through tileSourceToExpr like the builder,
+				// which resolves TSReference by name. Range/step/array repeats declare
+				// no _rt_tiles at all, so the old blanket match was also a compile error.
+				final iterTileVar:Null<String> = switch (repeatType) {
+					case TilesIterator(bitmapVarName, _, _, _): bitmapVarName;
+					case StateAnimIterator(bitmapVarName, _, _, _): bitmapVarName;
+					default: null;
+				};
 				final bitmapExpr:Expr = switch (tileSource) {
-					case TSReference(_):
+					case TSReference(ref) if (iterTileVar != null && ref == iterTileVar):
 						macro _rt_tiles[_rt_i];
 					default:
 						tileSourceToExpr(tileSource);
@@ -3153,22 +3280,41 @@ class ProgrammableCodeGen {
 					default: stmts.push(macro _rt_txt.textAlign = Left);
 				}
 
-				switch (textDef.textAlignWidth) {
-					case TAWValue(value):
-						final scaleAdjust:Float = if (child.scale != null) {
-							final s = resolveRVStatic(child.scale);
-							if (s != null) s else 1.0;
-						} else 1.0;
-						final staticVal = resolveRVStatic(value);
-						if (staticVal != null) {
-							final adjustedWidth:Float = staticVal / scaleAdjust;
-							stmts.push(macro _rt_txt.maxWidth = $v{adjustedWidth});
-						} else {
-							final valExpr = rvToExpr(value);
-							final scaleExpr = macro $v{scaleAdjust};
-							stmts.push(macro _rt_txt.maxWidth = $valExpr / $scaleExpr);
-						}
-					default:
+				{
+					// $param-dependent scale: emit the runtime scale expression as the
+					// divisor instead of silently baking 1.0 (same as generateTextCreate).
+					final staticScale:Null<Float> = child.scale != null ? resolveRVStatic(child.scale) : 1.0;
+					final scaleDivExpr:Expr = if (staticScale != null) {
+						final sv:Float = staticScale;
+						macro $v{sv};
+					} else rvToExpr(child.scale);
+					switch (textDef.textAlignWidth) {
+						case TAWValue(value):
+							final staticVal = resolveRVStatic(value);
+							if (staticVal != null && staticScale != null) {
+								final adjustedWidth:Float = staticVal / staticScale;
+								stmts.push(macro _rt_txt.maxWidth = $v{adjustedWidth});
+							} else {
+								final valExpr = if (staticVal != null) {
+									final vv:Float = staticVal;
+									macro $v{vv};
+								} else rvToExpr(value);
+								stmts.push(macro _rt_txt.maxWidth = $valExpr / $scaleDivExpr);
+							}
+						case TAWGrid:
+							final grid = getGridFromNode(child);
+							if (grid != null) {
+								if (staticScale != null) {
+									final adjustedWidth:Float = grid.spacingX / staticScale;
+									stmts.push(macro _rt_txt.maxWidth = $v{adjustedWidth});
+								} else {
+									final spacing:Float = grid.spacingX;
+									final spacingExpr = macro $v{spacing};
+									stmts.push(macro _rt_txt.maxWidth = $spacingExpr / $scaleDivExpr);
+								}
+							}
+						default:
+					}
 				}
 
 				if (textDef.letterSpacing != 0)
@@ -3430,12 +3576,12 @@ class ProgrammableCodeGen {
 				final stmts:Array<Expr> = [];
 				stmts.push(macro final _rt_flow = new h2d.Flow());
 				stmts.push(macro $containerRef.addChild(_rt_flow));
-				if (maxWidth != null) stmts.push(macro _rt_flow.maxWidth = ${rvToExpr(maxWidth)});
-				if (maxHeight != null) stmts.push(macro _rt_flow.maxHeight = ${rvToExpr(maxHeight)});
-				if (minWidth != null) stmts.push(macro _rt_flow.minWidth = ${rvToExpr(minWidth)});
-				if (minHeight != null) stmts.push(macro _rt_flow.minHeight = ${rvToExpr(minHeight)});
-				if (lineHeight != null) stmts.push(macro _rt_flow.lineHeight = ${rvToExpr(lineHeight)});
-				if (colWidth != null) stmts.push(macro _rt_flow.colWidth = ${rvToExpr(colWidth)});
+				if (maxWidth != null) stmts.push(macro _rt_flow.maxWidth = ${rvToExprInt(maxWidth)});
+				if (maxHeight != null) stmts.push(macro _rt_flow.maxHeight = ${rvToExprInt(maxHeight)});
+				if (minWidth != null) stmts.push(macro _rt_flow.minWidth = ${rvToExprInt(minWidth)});
+				if (minHeight != null) stmts.push(macro _rt_flow.minHeight = ${rvToExprInt(minHeight)});
+				if (lineHeight != null) stmts.push(macro _rt_flow.lineHeight = ${rvToExprInt(lineHeight)});
+				if (colWidth != null) stmts.push(macro _rt_flow.colWidth = ${rvToExprInt(colWidth)});
 				if (layout != null) {
 					switch (layout) {
 						case MFLHorizontal: stmts.push(macro _rt_flow.layout = h2d.Flow.FlowLayout.Horizontal);
@@ -3443,12 +3589,12 @@ class ProgrammableCodeGen {
 						case MFLStack: stmts.push(macro _rt_flow.layout = h2d.Flow.FlowLayout.Stack);
 					}
 				}
-				if (paddingTop != null) stmts.push(macro _rt_flow.paddingTop = ${rvToExpr(paddingTop)});
-				if (paddingBottom != null) stmts.push(macro _rt_flow.paddingBottom = ${rvToExpr(paddingBottom)});
-				if (paddingLeft != null) stmts.push(macro _rt_flow.paddingLeft = ${rvToExpr(paddingLeft)});
-				if (paddingRight != null) stmts.push(macro _rt_flow.paddingRight = ${rvToExpr(paddingRight)});
-				if (horizontalSpacing != null) stmts.push(macro _rt_flow.horizontalSpacing = ${rvToExpr(horizontalSpacing)});
-				if (verticalSpacing != null) stmts.push(macro _rt_flow.verticalSpacing = ${rvToExpr(verticalSpacing)});
+				if (paddingTop != null) stmts.push(macro _rt_flow.paddingTop = ${rvToExprInt(paddingTop)});
+				if (paddingBottom != null) stmts.push(macro _rt_flow.paddingBottom = ${rvToExprInt(paddingBottom)});
+				if (paddingLeft != null) stmts.push(macro _rt_flow.paddingLeft = ${rvToExprInt(paddingLeft)});
+				if (paddingRight != null) stmts.push(macro _rt_flow.paddingRight = ${rvToExprInt(paddingRight)});
+				if (horizontalSpacing != null) stmts.push(macro _rt_flow.horizontalSpacing = ${rvToExprInt(horizontalSpacing)});
+				if (verticalSpacing != null) stmts.push(macro _rt_flow.verticalSpacing = ${rvToExprInt(verticalSpacing)});
 				if (debug) stmts.push(macro _rt_flow.debug = true);
 				if (multiline) stmts.push(macro _rt_flow.multiline = true);
 				if (overflow != null) {
@@ -3640,17 +3786,19 @@ class ProgrammableCodeGen {
 		fields.push(makeField(fieldName, FVar(macro :h2d.Object, null), [APrivate], pos));
 		ctorExprs.push(macro $p{["this", fieldName]} = new h2d.Object());
 		final parentRef = parentField != null ? (macro $p{["this", parentField]}) : (macro this);
-		ctorExprs.push(macro $parentRef.addChild($p{["this", fieldName]}));
+		ctorExprs.push(emitAddToParent(parentRef, macro $p{["this", fieldName]}, node.layer));
 		siblings.push({node: node, fieldName: fieldName});
 	}
 
 	/** Process a REPEAT2D node */
 	static function processRepeat2D(node:Node, varNameX:String, varNameY:String, repeatTypeX:RepeatType, repeatTypeY:RepeatType, parentField:String, fields:Array<Field>, ctorExprs:Array<Expr>, siblings:Array<{node:Node, fieldName:String}>, pos:Position):Void {
-		final infoX = resolveRepeatInfo(repeatTypeX);
-		final infoY = resolveRepeatInfo(repeatTypeY);
-		if (infoX == null || infoY == null) {
-			processRepeatFallback(node, parentField, fields, ctorExprs, siblings, pos);
-			return;
+		// Axis-kind validation up front: the builder rejects tiles()/stateanim() axes
+		// with a BuilderError; unsupported kinds must never fall into the silent
+		// empty-container fallback (they used to render NOTHING).
+		for (rt in [repeatTypeX, repeatTypeY]) switch (rt) {
+			case TilesIterator(_, _, _, _) | StateAnimIterator(_, _, _, _):
+				Context.error('repeatable2d does not support tiles()/stateanim() axes (builder parity)', pos);
+			default:
 		}
 
 		// Create the 2D repeat container
@@ -3665,7 +3813,7 @@ class ProgrammableCodeGen {
 
 		final repeat2dSentinel = createSentinelIfConditional(node, parentField, fields, ctorExprs, pos);
 		final parentRef = parentField != null ? (macro $p{["this", parentField]}) : (macro this);
-		ctorExprs.push(macro $parentRef.addChild($p{["this", containerName]}));
+		ctorExprs.push(emitAddToParent(parentRef, macro $p{["this", containerName]}, node.layer));
 
 		final visCond = generateVisibilityCondition(node, siblings, containerName, pos);
 		if (visCond != null)
@@ -3673,12 +3821,141 @@ class ProgrammableCodeGen {
 				sentinelField: repeat2dSentinel, parentField: parentField, layer: node.layer, restoreFlowPropsExpr: null});
 		siblings.push({node: node, fieldName: containerName});
 
+		// Layout axes: unroll the layout axis at macro time into per-point containers
+		// and emit the other axis as a nested 1D repeat inside each (positions compose
+		// additively — builder parity for the previously silent layout/array-axis hole).
+		final hasLayoutAxis = repeatTypeX.match(LayoutIterator(_)) || repeatTypeY.match(LayoutIterator(_));
+		if (hasLayoutAxis) {
+			emit2DAxis(node, varNameY, repeatTypeY, containerName, fields, ctorExprs, pos,
+				c -> emit2DAxis(node, varNameX, repeatTypeX, c, fields, ctorExprs, pos, null));
+			return;
+		}
+
+		final infoX = resolveRepeatInfo(repeatTypeX);
+		final infoY = resolveRepeatInfo(repeatTypeY);
+		if (infoX == null || infoY == null) {
+			// ArrayIterator (and any future kind): fail loudly instead of rendering nothing.
+			Context.error('repeatable2d axis kind not supported in codegen (use step/range/layout axes)', pos);
+			return;
+		}
+
 		if (infoX.staticCount != null && infoY.staticCount != null) {
 			// Both axes static: fully unroll
 			unrollRepeat2DChildren(node, varNameX, varNameY, infoX, infoY, containerName, fields, ctorExprs, pos);
 		} else {
 			// At least one axis is param-dependent: runtime rebuild
 			rebuildRepeat2DChildren(node, varNameX, varNameY, infoX, infoY, repeatTypeX, repeatTypeY, containerName, fields, ctorExprs, pos);
+		}
+	}
+
+	/** Emit one axis of a layout-bearing REPEAT2D. Layout axes unroll into per-point
+	 *  containers; linear axes delegate to the 1D unroll/rebuild machinery. `inner`
+	 *  emits the next axis into the given container (null → process the node's
+	 *  children directly). */
+	static function emit2DAxis(node:Node, varName:String, repeatType:RepeatType, containerField:String, fields:Array<Field>, ctorExprs:Array<Expr>, pos:Position, inner:Null<String -> Void>):Void {
+		switch (repeatType) {
+			case LayoutIterator(layoutName):
+				final layout = getLayoutDef(layoutName);
+				if (layout == null) {
+					Context.error('ProgrammableCodeGen: layout "$layoutName" not found in layouts block', pos);
+					return;
+				}
+				forEachLayoutPoint(layout, (i, pt, content) -> {
+					loopVarSubstitutions.set(varName, i);
+					final iterName = "_e" + (elementCounter++);
+					fields.push(makeField(iterName, FVar(macro :h2d.Object, null), [APrivate], pos));
+					ctorExprs.push(macro $p{["this", iterName]} = new h2d.Object());
+					if (pt != null) {
+						if (pt.x != 0 || pt.y != 0)
+							ctorExprs.push(macro $p{["this", iterName]}.setPosition($v{pt.x}, $v{pt.y}));
+					} else if (content != null) {
+						// $param-dependent point: emit the runtime position expression.
+						switch (content) {
+							case LayoutPoint(OFFSET(x, y)):
+								final xExpr = rvToExpr(x);
+								final yExpr = rvToExpr(y);
+								ctorExprs.push(macro $p{["this", iterName]}.setPosition($xExpr, $yExpr));
+							default:
+						}
+					}
+					ctorExprs.push(macro $p{["this", containerField]}.addChild($p{["this", iterName]}));
+					if (inner != null)
+						inner(iterName)
+					else
+						processChildren(node.children, iterName, fields, ctorExprs, [], pos);
+					loopVarSubstitutions.remove(varName);
+				});
+			default:
+				final info = resolveRepeatInfo(repeatType);
+				if (info == null) {
+					Context.error('repeatable2d axis kind not supported in codegen (use step/range/layout axes)', pos);
+					return;
+				}
+				if (inner == null) {
+					final fullyStatic = info.staticCount != null && !info.paramScalars;
+					if (fullyStatic) {
+						unrollRepeatChildren(node, varName, info.staticCount, info.dx, info.dy, info.rangeStart, info.rangeStep, containerField, fields, ctorExprs, pos);
+					} else {
+						final triggerRefs = collectRepeatTriggerRefs(repeatType);
+						final condRefs:Array<String> = [];
+						if (node.children != null)
+							for (child in node.children)
+								collectSubtreeConditionalRefs(child, condRefs);
+						final forcedRefs = [for (r in condRefs) if (!triggerRefs.contains(r)) r];
+						rebuildRepeatChildren(node, varName, containerField, fields, ctorExprs, triggerRefs, forcedRefs, info.countRV, repeatType, pos);
+					}
+				} else {
+					// Linear OUTER axis combined with a layout inner axis: unroll (static only).
+					if (info.staticCount == null || info.paramScalars) {
+						Context.error('repeatable2d: a param-dependent linear axis combined with a layout axis is not supported in codegen', pos);
+						return;
+					}
+					for (i in 0...info.staticCount) {
+						loopVarSubstitutions.set(varName, info.rangeStart + i * info.rangeStep);
+						final offX:Float = info.dx * i;
+						final offY:Float = info.dy * i;
+						final iterName = "_e" + (elementCounter++);
+						fields.push(makeField(iterName, FVar(macro :h2d.Object, null), [APrivate], pos));
+						ctorExprs.push(macro $p{["this", iterName]} = new h2d.Object());
+						if (offX != 0 || offY != 0)
+							ctorExprs.push(macro $p{["this", iterName]}.setPosition($v{offX}, $v{offY}));
+						ctorExprs.push(macro $p{["this", containerField]}.addChild($p{["this", iterName]}));
+						inner(iterName);
+						loopVarSubstitutions.remove(varName);
+					}
+				}
+		}
+	}
+
+	/** Iterate a layout's points at macro time: calls cb(index, staticPt, content)
+	 *  per point. staticPt null → the point coordinates need runtime resolution
+	 *  ($param refs); content carries the raw coords for that case. */
+	static function forEachLayoutPoint(layout:Layout, cb:(i:Int, pt:Null<{x:Float, y:Float}>, content:Null<LayoutContent>) -> Void):Void {
+		final offsetX:Float = layout.offset != null ? layout.offset.x : 0;
+		final offsetY:Float = layout.offset != null ? layout.offset.y : 0;
+		switch (layout.type) {
+			case List(list):
+				for (i in 0...list.length) {
+					final pt = resolveLayoutPoint(list[i], layout, i);
+					cb(i, pt != null ? {x: pt.x + offsetX, y: pt.y + offsetY} : null, list[i]);
+				}
+			case Single(content):
+				final pt = resolveLayoutPoint(content, layout, 0);
+				cb(0, pt != null ? {x: pt.x + offsetX, y: pt.y + offsetY} : null, content);
+			case Sequence(seqVarName, from, to, content):
+				for (i in from...(to + 1)) {
+					loopVarSubstitutions.set(seqVarName, i);
+					final pt = resolveLayoutPointSequence(content, layout, seqVarName, i);
+					cb(i - from, pt != null ? {x: pt.x + offsetX, y: pt.y + offsetY} : null, content);
+					loopVarSubstitutions.remove(seqVarName);
+				}
+			case Grid(cols, rows, cellW, cellH):
+				final total = cols * rows;
+				for (i in 0...total) {
+					final col = i % cols;
+					final row = Std.int(i / cols);
+					cb(i, {x: col * cellW + offsetX, y: row * cellH + offsetY}, null);
+				}
 		}
 	}
 
@@ -3714,50 +3991,80 @@ class ProgrammableCodeGen {
 		}
 	}
 
-	/** Runtime rebuild 2D repeat: generates a method that creates/recreates children based on count params */
+	/** Runtime rebuild 2D repeat: generates a method that creates/recreates children based on count params.
+	 *  Mirrors the 1D rebuildRepeatChildren shape: per-axis runtime scalars (start/step/dx/dy)
+	 *  are passed as arguments, participate in the change guard (separate tracking fields —
+	 *  no packed count key), and range loop values are start + i*step. */
 	static function rebuildRepeat2DChildren(node:Node, varNameX:String, varNameY:String, infoX:{staticCount:Null<Int>, dx:Int, dy:Int, rangeStart:Int, rangeStep:Int, countRV:Null<ReferenceableValue>}, infoY:{staticCount:Null<Int>, dx:Int, dy:Int, rangeStart:Int, rangeStep:Int, countRV:Null<ReferenceableValue>}, repeatTypeX:RepeatType, repeatTypeY:RepeatType, containerField:String, fields:Array<Field>, ctorExprs:Array<Expr>, pos:Position):Void {
 		if (node.children == null) return;
 
 		// Per-node integer truncation via rvToExprInt (see rebuildRepeatChildren) so a
 		// param-dependent compound count agrees with the builder's per-node resolveAsInteger.
-		final countXExpr:Expr = if (infoX.staticCount != null) macro $v{infoX.staticCount} else switch (repeatTypeX) {
-			case RangeIterator(start, end, step):
-				final endExpr = rvToExprInt(end);
-				final startExpr = rvToExprInt(start);
-				final stepExpr = rvToExprInt(step);
-				macro Math.ceil(($endExpr - $startExpr) / $stepExpr);
-			case StepIterator(_, _, repeats): rvToExprInt(repeats);
-			default: macro 0;
-		};
-
-		final countYExpr:Expr = if (infoY.staticCount != null) macro $v{infoY.staticCount} else switch (repeatTypeY) {
-			case RangeIterator(start, end, step):
-				final endExpr = rvToExprInt(end);
-				final startExpr = rvToExprInt(start);
-				final stepExpr = rvToExprInt(step);
-				macro Math.ceil(($endExpr - $startExpr) / $stepExpr);
-			case StepIterator(_, _, repeats): rvToExprInt(repeats);
-			default: macro 0;
-		};
-
-		// Use runtimeLoopVars so rvToExpr generates runtime references
-		runtimeLoopVars.set(varNameX, "_rt_ix");
-		runtimeLoopVars.set(varNameY, "_rt_iy");
-
-		// Record untracked param refs in the repeat body (see rebuildRepeatChildren for rationale).
-		// Collect count refs from both axes — they trigger rebuild via _rebuildRepeat2D_X.
-		final countParamRefs2D:Array<String> = [];
-		if (infoX.countRV != null) {
-			final tmp = collectParamRefs(infoX.countRV);
-			for (r in tmp) if (countParamRefs2D.indexOf(r) < 0) countParamRefs2D.push(r);
+		inline function axisCountExpr(info:{staticCount:Null<Int>, dx:Int, dy:Int, rangeStart:Int, rangeStep:Int, countRV:Null<ReferenceableValue>}, repeatType:RepeatType):Expr {
+			return if (info.staticCount != null) macro $v{info.staticCount} else switch (repeatType) {
+				case RangeIterator(start, end, step):
+					final endExpr = rvToExprInt(end);
+					final startExpr = rvToExprInt(start);
+					final stepExpr = rvToExprInt(step);
+					macro Math.ceil(($endExpr - $startExpr) / $stepExpr);
+				case StepIterator(_, _, repeats): rvToExprInt(repeats);
+				default: macro 0;
+			};
 		}
-		if (infoY.countRV != null) {
-			final tmp = collectParamRefs(infoY.countRV);
-			for (r in tmp) if (countParamRefs2D.indexOf(r) < 0) countParamRefs2D.push(r);
+		final countXExpr = axisCountExpr(infoX, repeatTypeX);
+		final countYExpr = axisCountExpr(infoY, repeatTypeY);
+
+		// Per-axis runtime scalars (plain literals when static), passed as rebuild args
+		// so the change guard sees them — same convention as the 1D path.
+		var startXArg:Expr = macro 0;
+		var stepXArg:Expr = macro 1;
+		var dxXArg:Expr = macro 0;
+		var dyXArg:Expr = macro 0;
+		switch (repeatTypeX) {
+			case RangeIterator(start, _, step):
+				startXArg = rvToExprInt(start);
+				stepXArg = rvToExprInt(step);
+			case StepIterator(dirX, dirY, _):
+				if (dirX != null) dxXArg = rvToExprInt(dirX);
+				if (dirY != null) dyXArg = rvToExprInt(dirY);
+			default:
 		}
-		if (node.children != null) {
+		var startYArg:Expr = macro 0;
+		var stepYArg:Expr = macro 1;
+		var dxYArg:Expr = macro 0;
+		var dyYArg:Expr = macro 0;
+		switch (repeatTypeY) {
+			case RangeIterator(start, _, step):
+				startYArg = rvToExprInt(start);
+				stepYArg = rvToExprInt(step);
+			case StepIterator(dirX, dirY, _):
+				if (dirX != null) dxYArg = rvToExprInt(dirX);
+				if (dirY != null) dyYArg = rvToExprInt(dirY);
+			default:
+		}
+
+		// Range axes expose start + i*step as the loop value.
+		final isRangeX = repeatTypeX.match(RangeIterator(_, _, _));
+		final isRangeY = repeatTypeY.match(RangeIterator(_, _, _));
+		runtimeLoopVars.set(varNameX, isRangeX ? "_rt_valx" : "_rt_ix");
+		runtimeLoopVars.set(varNameY, isRangeY ? "_rt_valy" : "_rt_iy");
+
+		// Rebuild triggers: iterator scalar refs from both axes; body conditional
+		// gates become FORCED triggers (see rebuildRepeatChildren).
+		final triggerRefs2D = collectRepeatTriggerRefs(repeatTypeX);
+		for (r in collectRepeatTriggerRefs(repeatTypeY))
+			if (!triggerRefs2D.contains(r)) triggerRefs2D.push(r);
+		final condRefs2D:Array<String> = [];
+		for (child in node.children)
+			collectSubtreeConditionalRefs(child, condRefs2D);
+		final forcedRefs2D = [for (r in condRefs2D) if (!triggerRefs2D.contains(r)) r];
+
+		// Record untracked param refs in the repeat body (see rebuildRepeatChildren for
+		// rationale) — rebuild-triggered refs are excluded.
+		{
+			final rebuildTriggeredRefs = triggerRefs2D.concat(forcedRefs2D);
 			for (child in node.children)
-				recordUntrackedParamsInSubtree(child, countParamRefs2D);
+				recordUntrackedParamsInSubtree(child, rebuildTriggeredRefs);
 		}
 
 		// Persistent sink for slots / dynamicRefs / indexed names produced by the runtime fallback
@@ -3778,50 +4085,96 @@ class ProgrammableCodeGen {
 		runtimeLoopVars.remove(varNameX);
 		runtimeLoopVars.remove(varNameY);
 
-		// Build inner loop body: create container, position, add children
+		// Build inner loop body: loop value, container, position, children.
 		final innerBodyExprs:Array<Expr> = [];
+		if (isRangeX)
+			innerBodyExprs.push(macro final _rt_valx = _rt_startX + _rt_ix * _rt_stepX);
 		innerBodyExprs.push(macro final _rt_cont = new h2d.Object());
-		final dxX:Float = infoX.dx;
-		final dyX:Float = infoX.dy;
-		final dxY:Float = infoY.dx;
-		final dyY:Float = infoY.dy;
-		if (dxX != 0 || dyX != 0 || dxY != 0 || dyY != 0) {
-			innerBodyExprs.push(macro _rt_cont.setPosition($v{dxX} * _rt_ix + $v{dxY} * _rt_iy, $v{dyX} * _rt_ix + $v{dyY} * _rt_iy));
-		}
+		innerBodyExprs.push(macro _rt_cont.setPosition(_rt_dxX * _rt_ix + _rt_dxY * _rt_iy, _rt_dyX * _rt_ix + _rt_dyY * _rt_iy));
 		final containerFieldRef = macro $p{["this", containerField]};
 		innerBodyExprs.push(macro $containerFieldRef.addChild(_rt_cont));
 		for (e in loopBodyExprs) innerBodyExprs.push(e);
-
 		final innerBody:Expr = {expr: EBlock(innerBodyExprs), pos: pos};
 
-		// Generate rebuild method
-		final rebuildMethodName = "_rebuildRepeat_" + containerField;
-		final countTrackingField = rebuildMethodName + "_n";
+		final outerBody:Expr = if (isRangeY)
+			macro {
+				final _rt_valy = _rt_startY + _rt_iy * _rt_stepY;
+				for (_rt_ix in 0..._rt_countX) $innerBody;
+			}
+		else
+			macro for (_rt_ix in 0..._rt_countX) $innerBody;
 
-		// Tracking field: encode both counts as countX * 10000 + countY for change detection
-		fields.push(makeField(countTrackingField, FVar(macro :Int, macro -1), [APrivate], pos));
+		// Generate rebuild method with per-scalar tracking fields (count starts at -1
+		// so the first call never early-outs).
+		final rebuildMethodName = "_rebuildRepeat_" + containerField;
+		final track = (suffix:String, init:Int) -> {
+			final f = rebuildMethodName + suffix;
+			fields.push(makeField(f, FVar(macro :Int, macro $v{init}), [APrivate], pos));
+			return f;
+		};
+		final tCountX = track("_nx", -1);
+		final tCountY = track("_ny", -1);
+		final tStartX = track("_sx", 0);
+		final tStepX = track("_spx", 1);
+		final tDxX = track("_dxx", 0);
+		final tDyX = track("_dyx", 0);
+		final tStartY = track("_sy", 0);
+		final tStepY = track("_spy", 1);
+		final tDxY = track("_dxy", 0);
+		final tDyY = track("_dyy", 0);
 
 		final rebuildBody:Array<Expr> = [];
-		rebuildBody.push(macro {
-			final _rt_key = _rt_countX * 10000 + _rt_countY;
-			if (_rt_key == $p{["this", countTrackingField]}) return;
-			$p{["this", countTrackingField]} = _rt_key;
-		});
+		rebuildBody.push(macro if (_rt_countX < 0) _rt_countX = 0);
+		rebuildBody.push(macro if (_rt_countY < 0) _rt_countY = 0);
+		rebuildBody.push(macro if (!_rt_force
+			&& _rt_countX == $p{["this", tCountX]} && _rt_countY == $p{["this", tCountY]}
+			&& _rt_startX == $p{["this", tStartX]} && _rt_stepX == $p{["this", tStepX]}
+			&& _rt_dxX == $p{["this", tDxX]} && _rt_dyX == $p{["this", tDyX]}
+			&& _rt_startY == $p{["this", tStartY]} && _rt_stepY == $p{["this", tStepY]}
+			&& _rt_dxY == $p{["this", tDxY]} && _rt_dyY == $p{["this", tDyY]}) return);
+		rebuildBody.push(macro $p{["this", tCountX]} = _rt_countX);
+		rebuildBody.push(macro $p{["this", tCountY]} = _rt_countY);
+		rebuildBody.push(macro $p{["this", tStartX]} = _rt_startX);
+		rebuildBody.push(macro $p{["this", tStepX]} = _rt_stepX);
+		rebuildBody.push(macro $p{["this", tDxX]} = _rt_dxX);
+		rebuildBody.push(macro $p{["this", tDyX]} = _rt_dyX);
+		rebuildBody.push(macro $p{["this", tStartY]} = _rt_startY);
+		rebuildBody.push(macro $p{["this", tStepY]} = _rt_stepY);
+		rebuildBody.push(macro $p{["this", tDxY]} = _rt_dxY);
+		rebuildBody.push(macro $p{["this", tDyY]} = _rt_dyY);
 		rebuildBody.push(macro this._pb.resetRepeatSink($p{["this", repeatSinkField]}, $containerFieldRef));
 		rebuildBody.push(macro $containerFieldRef.removeChildren());
-		rebuildBody.push(macro for (_rt_iy in 0..._rt_countY) for (_rt_ix in 0..._rt_countX) $innerBody);
+		rebuildBody.push(macro for (_rt_iy in 0..._rt_countY) $outerBody);
 
 		fields.push(makeMethod(rebuildMethodName, rebuildBody, [
 			{name: "_rt_countX", type: macro :Int},
 			{name: "_rt_countY", type: macro :Int},
+			{name: "_rt_startX", type: macro :Int},
+			{name: "_rt_stepX", type: macro :Int},
+			{name: "_rt_dxX", type: macro :Int},
+			{name: "_rt_dyX", type: macro :Int},
+			{name: "_rt_startY", type: macro :Int},
+			{name: "_rt_stepY", type: macro :Int},
+			{name: "_rt_dxY", type: macro :Int},
+			{name: "_rt_dyY", type: macro :Int},
+			{name: "_rt_force", type: macro :Bool},
 		], macro :Void, [APrivate], pos));
 
 		// Call rebuild in constructor
-		ctorExprs.push(macro $i{rebuildMethodName}(Std.int($countXExpr), Std.int($countYExpr)));
+		ctorExprs.push(macro $i{rebuildMethodName}(Std.int($countXExpr), Std.int($countYExpr),
+			$startXArg, $stepXArg, $dxXArg, $dyXArg, $startYArg, $stepYArg, $dxYArg, $dyYArg, false));
 
-		// Register for rebuild on param change
+		// Register for rebuild on param change (forced when a conditional-gate ref changed).
+		var forceExpr:Expr = macro false;
+		if (forcedRefs2D.length > 0) {
+			repeatForceUsesChangedParam = true;
+			forceExpr = macro _changedParam == null;
+			for (r in forcedRefs2D)
+				forceExpr = macro $forceExpr || _changedParam == $v{r};
+		}
 		repeatRebuildEntries.push({
-			callExpr: macro $i{rebuildMethodName}(Std.int($countXExpr), Std.int($countYExpr)),
+			callExpr: macro $i{rebuildMethodName}(Std.int($countXExpr), Std.int($countYExpr),
+				$startXArg, $stepXArg, $dxXArg, $dyXArg, $startYArg, $stepYArg, $dxYArg, $dyYArg, $forceExpr),
 		});
 	}
 
@@ -4003,6 +4356,12 @@ class ProgrammableCodeGen {
 				switch programmableRefRV {
 					case RVString(programmableRef):
 						generateDynamicRefCreate(node, fieldName, externalReference, programmableRef, parameters, pos);
+					case RVReference(name) if (loopVarSubstitutions.exists(name)):
+						// Loop variable in a static unroll resolves per iteration
+						// (mirrors STATIC_REF) — not a literal programmable named after
+						// the loop variable.
+						generateDynamicRefCreate(node, fieldName, externalReference,
+							Std.string(loopVarSubstitutions.get(name)), parameters, pos);
 					case RVReference(name):
 						// If the name is a parameter of this programmable, it's a dynamic name ref.
 						// Otherwise, it's a literal programmable name ($progName backward compat).
@@ -4109,7 +4468,7 @@ class ProgrammableCodeGen {
 		if (parameters != null) {
 			for (key => val in parameters) {
 				final keyExpr:Expr = macro $v{key};
-				final valExpr = dynamicRefForwardValueExpr(val);
+				final valExpr = dynamicRefForwardValueExpr(val, programmableRef, key);
 				mapBuildExprs.push(macro _refParams.set($keyExpr, $valExpr));
 			}
 		}
@@ -4149,7 +4508,7 @@ class ProgrammableCodeGen {
 			final fwdUpdateExprs:Array<Expr> = [macro final _refParams = new Map<String, Dynamic>()];
 			for (key => val in parameters) {
 				final keyExpr:Expr = macro $v{key};
-				final valExpr = dynamicRefForwardValueExpr(val);
+				final valExpr = dynamicRefForwardValueExpr(val, programmableRef, key);
 				fwdUpdateExprs.push(macro _refParams.set($keyExpr, $valExpr));
 			}
 			fwdUpdateExprs.push(macro {
@@ -5190,7 +5549,7 @@ class ProgrammableCodeGen {
 
 	/** Resolve a Coordinates value to expression pair {x:Expr, y:Expr}, supporting all coordinate types.
 	 *  Falls back to rvToExpr for OFFSET when static resolution fails (param-dependent). */
-	static function coordsToXYExprs(coords:Coordinates, pos:Position, ?node:MultiAnimParser.Node):{x:Expr, y:Expr} {
+	static function coordsToXYExprs(coords:Coordinates, pos:Position, ?node:MultiAnimParser.Node, ?hexLayoutOverride:bh.base.Hex.HexLayout):{x:Expr, y:Expr} {
 		if (coords == null) return {x: macro 0.0, y: macro 0.0};
 
 		// First try static resolution (works for all coordinate types)
@@ -5199,8 +5558,13 @@ class ProgrammableCodeGen {
 			return {x: macro $v{staticXY.x}, y: macro $v{staticXY.y}};
 		}
 
-		// Fall back to expression-based resolution for param-dependent coords
-		final _hlRef = hexFieldRef(node != null ? node : currentProcessingNode);
+		// Fall back to expression-based resolution for param-dependent coords.
+		// hexLayoutOverride carries a NAMED hex system's layout through the NamedHex
+		// recursion — without it the lowering referenced the ambient system's field
+		// (wrong layout, or a never-synthesized _hexLayout when none exists).
+		final _hlRef = hexLayoutOverride != null
+			? hexFieldRef(null, hexLayoutOverride, pos)
+			: hexFieldRef(node != null ? node : currentProcessingNode);
 		return switch (coords) {
 			case OFFSET(xrv, yrv):
 				{x: rvToExpr(xrv), y: rvToExpr(yrv)};
@@ -5307,15 +5671,16 @@ class ProgrammableCodeGen {
 									{x: macro 0.0, y: macro 0.0};
 							}
 						case NamedHex(system):
-							// Delegate to the hex handling by recursing with the inner coord
-							coordsToXYExprs(coord, pos, node);
+							// Delegate to the hex handling by recursing with the inner coord,
+							// carrying the NAMED system's layout (not the ambient one).
+							coordsToXYExprs(coord, pos, node, system.hexLayout);
 					}
 				} else {
 					Context.error('ProgrammableCodeGen: named coordinate system "$name" not found', pos);
 					{x: macro 0.0, y: macro 0.0};
 				}
 			case WITH_OFFSET(base, offsetX, offsetY):
-				final baseXY = coordsToXYExprs(base, pos, node);
+				final baseXY = coordsToXYExprs(base, pos, node, hexLayoutOverride);
 				final oxExpr = rvToExpr(offsetX);
 				final oyExpr = rvToExpr(offsetY);
 				final bx = baseXY.x;
@@ -5697,10 +6062,43 @@ class ProgrammableCodeGen {
 
 	// ==================== Particles ====================
 
+	/** Ordinal of a PARTICLES parse node within the current programmable — mirrors
+	 *  ProgrammableBuilder.findAllParticlesChildren's walk so the macro-baked index
+	 *  and the runtime lookup agree. Falls back to the legacy per-field counter when
+	 *  the node cannot be located (should not happen). */
+	static function particlesNodeOrdinal(target:Node):Int {
+		final progNode = allParsedNodes != null ? allParsedNodes.get(currentProgrammableName) : null;
+		if (progNode != null) {
+			final all:Array<Node> = [];
+			collectParticlesNodes(progNode, all);
+			for (i in 0...all.length)
+				if (all[i] == target)
+					return i;
+		}
+		return particlesCounter++;
+	}
+
+	static function collectParticlesNodes(node:Node, result:Array<Node>):Void {
+		if (node.children == null)
+			return;
+		for (child in node.children) {
+			switch child.type {
+				case PARTICLES(_): result.push(child);
+				default: collectParticlesNodes(child, result);
+			}
+		}
+	}
+
 	static function generateParticlesCreate(node:Node, fieldName:String, particlesDef:ParticlesDef, pos:Position):CreateResult {
 		final fieldRef = macro $p{["this", fieldName]};
 		final nameExpr:Expr = macro $v{currentProgrammableName};
-		final indexExpr:Expr = macro $v{particlesCounter++};
+		// Key by the PARSE NODE's ordinal (same DFS walk as the runtime's
+		// findAllParticlesChildren), not by generated-field position: a static unroll
+		// emits several fields for ONE parse node, so the per-field counter
+		// over-counted and buildParticles threw out-of-range. (uniqueNodeName is NOT
+		// usable here — for PARTICLES it embeds the def's map Std.string, which is
+		// not stable across the macro subprocess / runtime parses.)
+		final indexExpr:Expr = macro $v{particlesNodeOrdinal(node)};
 		// Pass the instance's parameters so `$param` references inside the particles
 		// block resolve against the instance values, not an empty/default scope.
 		final mapExprs:Array<Expr> = [macro final _pt_pp = new Map<String, Dynamic>()];
@@ -5865,13 +6263,17 @@ class ProgrammableCodeGen {
 			validateTileGroupSubtreeMacro(child, [], pos);
 		final fieldRef = macro $p{["this", fieldName]};
 		final nameExpr:Expr = macro $v{currentProgrammableName};
-		final indexExpr:Expr = macro $v{tileGroupCounter++};
+		// Key by the parse node's uniqueNodeName, not a positional counter: the
+		// positional index spanned ALL tilegroup nodes in document order while the
+		// runtime collected only the conditional-filtered built tree — conditional
+		// siblings shifted the index spaces apart (wrong content or out-of-range).
+		final keyExpr:Expr = macro $v{node.uniqueNodeName};
 		// Pass the instance's parameters so `$param` references inside the tileGroup's
 		// baked content resolve against the instance values, not the defaults.
 		final mapExprs:Array<Expr> = [macro final _tg_pp = new Map<String, Dynamic>()];
 		for (pn in paramNames)
 			mapExprs.push(macro _tg_pp.set($v{pn}, $p{["this", "_" + pn]}));
-		mapExprs.push(macro $fieldRef = this._pb.buildTileGroupFromProgrammable($nameExpr, $indexExpr, _tg_pp));
+		mapExprs.push(macro $fieldRef = this._pb.buildTileGroupByNode($nameExpr, $keyExpr, _tg_pp));
 		final createExprs:Array<Expr> = [{expr: EBlock(mapExprs), pos: pos}];
 
 		return {
@@ -6347,21 +6749,41 @@ class ProgrammableCodeGen {
 			case Left: createExprs.push(macro $fieldRef.textAlign = Left);
 		}
 
-		// maxWidth — divide by scale to match builder behavior (alignment is calculated pre-scale)
+		// maxWidth — divide by scale to match builder behavior (alignment is calculated pre-scale).
+		// A $param-dependent scale cannot be resolved statically: emit the runtime scale
+		// expression as the divisor instead of silently baking 1.0.
+		final staticScale:Null<Float> = node.scale != null ? resolveRVStatic(node.scale) : 1.0;
+		final scaleDivExpr:Expr = if (staticScale != null) {
+			final sv:Float = staticScale;
+			macro $v{sv};
+		} else rvToExpr(node.scale);
 		switch (textDef.textAlignWidth) {
 			case TAWValue(value):
-				final scaleAdjust:Float = if (node.scale != null) {
-					final s = resolveRVStatic(node.scale);
-					if (s != null) s else 1.0;
-				} else 1.0;
 				final staticVal = resolveRVStatic(value);
-				if (staticVal != null) {
-					final adjustedWidth:Float = staticVal / scaleAdjust;
+				if (staticVal != null && staticScale != null) {
+					final adjustedWidth:Float = staticVal / staticScale;
 					createExprs.push(macro $fieldRef.maxWidth = $v{adjustedWidth});
 				} else {
-					final valExpr = rvToExpr(value);
-					final scaleExpr = macro $v{scaleAdjust};
-					createExprs.push(macro $fieldRef.maxWidth = $valExpr / $scaleExpr);
+					final valExpr = if (staticVal != null) {
+						final vv:Float = staticVal;
+						macro $v{vv};
+					} else rvToExpr(value);
+					createExprs.push(macro $fieldRef.maxWidth = $valExpr / $scaleDivExpr);
+				}
+			case TAWGrid:
+				// Builder parity: maxWidth from the enclosing grid spacing; silently
+				// skipped when no grid system is in scope (matches the builder's
+				// `if (gridCoordinateSystem != null)` no-op).
+				final grid = getGridFromNode(node);
+				if (grid != null) {
+					if (staticScale != null) {
+						final adjustedWidth:Float = grid.spacingX / staticScale;
+						createExprs.push(macro $fieldRef.maxWidth = $v{adjustedWidth});
+					} else {
+						final spacing:Float = grid.spacingX;
+						final spacingExpr = macro $v{spacing};
+						createExprs.push(macro $fieldRef.maxWidth = $spacingExpr / $scaleDivExpr);
+					}
 				}
 			default:
 		}
@@ -6567,6 +6989,21 @@ class ProgrammableCodeGen {
 		};
 	}
 
+	/** Add a generated element/container field to its parent, honoring a declared
+	 *  @layer(N) when the parent is an h2d.Layers. Mirrors the builder's addChild
+	 *  closure (MultiAnimBuilder.build) — repeat/switch wrapper containers must go
+	 *  through this too, or they land on the topmost existing layer. */
+	static function emitAddToParent(parentRef:Expr, fieldRef:Expr, layer:Null<Int>):Expr {
+		if (layer != null && layer != -1) {
+			final layerVal:Int = layer;
+			return macro {
+				final layersParent = cast($parentRef, h2d.Layers);
+				layersParent.add($fieldRef, $v{layerVal});
+			};
+		}
+		return macro $parentRef.addChild($fieldRef);
+	}
+
 	static function flowAlignToExpr(align:MacroFlowAlign):Expr {
 		return switch (align) {
 			case MFALeft: macro h2d.Flow.FlowAlign.Left;
@@ -6584,10 +7021,11 @@ class ProgrammableCodeGen {
 
 		// Helper: emit ctor assignment for a scalar int prop, plus an exprUpdate entry when the
 		// value references any programmable param. Mirrors the builder's per-scalar tracking in
-		// MultiAnimBuilder.trackIncrementalExpressions case FLOW(...).
+		// MultiAnimBuilder.trackIncrementalExpressions case FLOW(...). The h2d.Flow sinks are
+		// Int-typed, so the value must go through rvToExprInt (builder: resolveAsInteger).
 		inline function trackScalar(rv:Null<ReferenceableValue>, assign:Expr -> Expr):Void {
 			if (rv == null) return;
-			final valueExpr = rvToExpr(rv);
+			final valueExpr = rvToExprInt(rv);
 			createExprs.push(assign(valueExpr));
 			final refs = collectParamRefs(rv);
 			if (refs.length > 0) {
@@ -6919,12 +7357,32 @@ class ProgrammableCodeGen {
 
 	// ==================== Expression Translation ====================
 
-	// Forwarded dynamicRef value expr. An enum-typed parent reference must forward the enum
-	// NAME string — the child's PPTEnum setParameter accepts names, while the raw Int index
-	// (the enum field's storage) is rejected by dynamicValueToIndex. Every other value type
-	// keeps its raw representation so non-enum forwards avoid a string round-trip on the
-	// forwarding hot path.
-	static function dynamicRefForwardValueExpr(val:ReferenceableValue):Expr {
+	// Forwarded dynamicRef value expr. Resolved by the TARGET param's declared type when
+	// the target programmable is known at macro time (builder parity: the runtime's
+	// resolveReferenceableValue dispatches on the target's DefinitionType — e.g.
+	// `label => $a + $b` into a string param CONCATENATES "1"+"2", it doesn't add).
+	// Fallback by source shape: an enum-typed parent reference forwards the enum NAME
+	// string — the child's PPTEnum setParameter accepts names, while the raw Int index
+	// (the enum field's storage) is rejected by dynamicValueToIndex. Every other value
+	// keeps its raw representation so non-string forwards avoid a string round-trip on
+	// the forwarding hot path.
+	static function dynamicRefForwardValueExpr(val:ReferenceableValue, ?targetProgrammable:String, ?forwardParamName:String):Expr {
+		if (targetProgrammable != null && forwardParamName != null && allParsedNodes != null) {
+			final targetNode = allParsedNodes.get(targetProgrammable);
+			if (targetNode != null) {
+				switch (targetNode.type) {
+					case PROGRAMMABLE(_, tparams, _) if (tparams != null):
+						final tdef = tparams.get(forwardParamName);
+						if (tdef != null) {
+							switch (tdef.type) {
+								case PPTString | PPTEnum(_): return rvToExpr(val, true);
+								default:
+							}
+						}
+					default:
+				}
+			}
+		}
 		switch (val) {
 			case RVReference(ref):
 				final def = paramDefs.get(ref);
@@ -6976,12 +7434,52 @@ class ProgrammableCodeGen {
 					case OpLessEq: macro($l <= $r ? 1 : 0);
 					case OpGreaterEq: macro($l >= $r ? 1 : 0);
 				}
+			case RVCallbacks(name, defaultValue):
+				// Integer contexts route through the INT shim, which throws on CBRFloat
+				// (builder parity: resolveAsInteger's handleCallback) — Std.int() around
+				// the float shim would silently truncate instead.
+				final nameExpr = rvToExpr(name);
+				macro this._pb.resolveCallbackInt(Std.string($nameExpr), ${callbackIntDefaultExpr(defaultValue)});
+			case RVCallbacksWithIndex(name, index, defaultValue):
+				final nameExpr = rvToExpr(name);
+				final indexExpr = rvToExprInt(index);
+				macro this._pb.resolveCallbackWithIndexInt(Std.string($nameExpr), $indexExpr, ${callbackIntDefaultExpr(defaultValue)});
 			default:
-				// Leaf nodes (param refs, callbacks, property/method access, array
-				// elements): rvToExpr yields a float-valued expression; truncate once,
+				// Leaf nodes (param refs, property/method access, array elements):
+				// rvToExpr yields a float-valued expression; truncate once,
 				// mirroring resolveAsInteger which wraps these leaves in Std.int.
 				macro Std.int(${rvToExpr(rv)});
 		}
+	}
+
+	/** Numeric lowering of a callback default for FLOAT contexts. Callback defaults
+	 *  are parsed with parseStringOrReference, so literals arrive as RVString —
+	 *  numeric-literal strings bake to their float value. Returns null when the
+	 *  default is genuinely string-typed (caller falls back to the string shim). */
+	static function callbackNumericDefaultExpr(defaultValue:Null<ReferenceableValue>):Null<Expr> {
+		if (defaultValue == null)
+			return macro 0.0;
+		return switch (defaultValue) {
+			case RVString(s):
+				final f = Std.parseFloat(s);
+				Math.isNaN(f) ? null : macro $v{f};
+			case _:
+				isStringRV(defaultValue) ? null : macro(${rvToExpr(defaultValue)} : Float);
+		};
+	}
+
+	/** Integer lowering of a callback default for INT contexts (see
+	 *  callbackNumericDefaultExpr for the RVString rationale). */
+	static function callbackIntDefaultExpr(defaultValue:Null<ReferenceableValue>):Expr {
+		if (defaultValue == null)
+			return macro 0;
+		return switch (defaultValue) {
+			case RVString(s):
+				final f = Std.parseFloat(s);
+				Math.isNaN(f) ? macro 0 : macro $v{Std.int(f)};
+			case _:
+				rvToExprInt(defaultValue);
+		};
 	}
 
 	static function rvToExpr(rv:ReferenceableValue, forString:Bool = false):Expr {
@@ -7086,23 +7584,29 @@ class ProgrammableCodeGen {
 				final falseE = rvToExpr(ifFalse, forString);
 				macro($condE != 0 ? $trueE : $falseE);
 			case RVCallbacks(name, defaultValue):
+				// String contexts (forString or a genuinely string-typed default) resolve
+				// through the string shim. Numeric contexts resolve through the FLOAT shim
+				// (builder parity: resolveAsNumber accepts CBRFloat); note callback defaults
+				// are parsed with parseStringOrReference, so a literal `= 0` arrives as
+				// RVString("0") and must be recognized as numeric here — the string shim
+				// would feed a String into Float sinks and break generated-code compilation.
 				final nameExpr = rvToExpr(name);
-				final defExpr = rvToExpr(defaultValue);
-				if (isStringRV(defaultValue) || defaultValue == null) {
-					final defStr = defaultValue != null ? defExpr : macro "";
+				final numDef = forString ? null : callbackNumericDefaultExpr(defaultValue);
+				if (numDef == null) {
+					final defStr = defaultValue != null ? rvToExpr(defaultValue, true) : macro "";
 					macro this._pb.resolveCallback(Std.string($nameExpr), $defStr);
 				} else {
-					macro this._pb.resolveCallbackInt(Std.string($nameExpr), $defExpr);
+					macro this._pb.resolveCallbackFloat(Std.string($nameExpr), $numDef);
 				}
 			case RVCallbacksWithIndex(name, index, defaultValue):
 				final nameExpr = rvToExpr(name);
-				final indexExpr = rvToExpr(index);
-				final defExpr = rvToExpr(defaultValue);
-				if (isStringRV(defaultValue) || defaultValue == null) {
-					final defStr = defaultValue != null ? defExpr : macro "";
+				final indexExpr = rvToExprInt(index);
+				final numDef = forString ? null : callbackNumericDefaultExpr(defaultValue);
+				if (numDef == null) {
+					final defStr = defaultValue != null ? rvToExpr(defaultValue, true) : macro "";
 					macro this._pb.resolveCallbackWithIndex(Std.string($nameExpr), $indexExpr, $defStr);
 				} else {
-					macro this._pb.resolveCallbackWithIndexInt(Std.string($nameExpr), $indexExpr, $defExpr);
+					macro this._pb.resolveCallbackWithIndexFloat(Std.string($nameExpr), $indexExpr, $numDef);
 				}
 			case RVColorXY(externalReference, name, x, y):
 				final nameExpr = macro $v{name};
@@ -7153,8 +7657,11 @@ class ProgrammableCodeGen {
 						switch (method) {
 							case "random":
 								if (args.length == 2) {
-									final minExpr = rvToExpr(args[0]);
-									final maxExpr = rvToExpr(args[1]);
+									// Std.random takes Int; the builder truncates each arg per
+									// node (resolveAsInteger), so float args must go through
+									// rvToExprInt here too.
+									final minExpr = rvToExprInt(args[0]);
+									final maxExpr = rvToExprInt(args[1]);
 									macro $minExpr + Std.random($maxExpr - $minExpr);
 								} else {
 									Context.error('$$ctx.random() requires 2 arguments (min, max)', Context.currentPos());
@@ -7270,6 +7777,21 @@ class ProgrammableCodeGen {
 			case RVChainedMethodCall(base, _, args):
 				collectParamRefsImpl(base, refs);
 				for (a in args) collectParamRefsImpl(a, refs);
+			// Mirrors the builder's collectParamRefs (BLD-2): without these arms
+			// palette/array lookups collect no refs and setParameter never re-fires them.
+			case RVElementOfArray(arrayRef, index):
+				if (finalVarExprs.exists(arrayRef))
+					collectParamRefsImpl(finalVarExprs.get(arrayRef), refs)
+				else if (paramDefs.exists(arrayRef) && !loopVarSubstitutions.exists(arrayRef) && !refs.contains(arrayRef))
+					refs.push(arrayRef);
+				collectParamRefsImpl(index, refs);
+			case RVColor(_, _, index):
+				collectParamRefsImpl(index, refs);
+			case RVColorXY(_, _, x, y):
+				collectParamRefsImpl(x, refs);
+				collectParamRefsImpl(y, refs);
+			case RVArray(refArr):
+				for (e in refArr) collectParamRefsImpl(e, refs);
 			default:
 		}
 	}
@@ -7457,19 +7979,21 @@ class ProgrammableCodeGen {
 			case TSGenerated(genType):
 				switch (genType) {
 					case SolidColor(w, h, color):
-						final wExpr = rvToExpr(w);
-						final hExpr = rvToExpr(h);
+						// Dims are integer contexts — per-node truncation (rvToExprInt)
+						// mirrors the builder's resolveAsInteger.
+						final wExpr = rvToExprInt(w);
+						final hExpr = rvToExprInt(h);
 						final cExpr = rvToExpr(color);
-						macro bh.base.HeapsUtils.solidTile($cExpr, Std.int($wExpr), Std.int($hExpr));
+						macro bh.base.HeapsUtils.solidTile($cExpr, $wExpr, $hExpr);
 					case Cross(w, h, color, thickness):
-						// Cross: solid color with diagonal lines — approximate as solid color
-						final wExpr = rvToExpr(w);
-						final hExpr = rvToExpr(h);
+						final wExpr = rvToExprInt(w);
+						final hExpr = rvToExprInt(h);
 						final cExpr = rvToExpr(color);
-						macro bh.base.HeapsUtils.solidTile($cExpr, Std.int($wExpr), Std.int($hExpr));
+						final tExpr = rvToExprInt(thickness);
+						macro bh.base.HeapsUtils.crossTile($cExpr, $wExpr, $hExpr, $tExpr);
 					case SolidColorWithText(w, h, color, text, textColor, font):
-						final wExpr = rvToExpr(w);
-						final hExpr = rvToExpr(h);
+						final wExpr = rvToExprInt(w);
+						final hExpr = rvToExprInt(h);
 						final cExpr = rvToExpr(color);
 						final textExpr = rvToExpr(text);
 						final tcExpr = rvToExpr(textColor);
@@ -7764,10 +8288,16 @@ class ProgrammableCodeGen {
 				final namedCS = if (node != null) getNamedCoordSystem(name, node) else null;
 				if (namedCS != null) {
 					final pt = resolveNamedCoordStatic(namedCS, coord, pos, node);
-					if (pt != null)
-						macro $fieldRef.setPosition($v{pt.x}, $v{pt.y})
-					else
-						null;
+					if (pt != null) {
+						macro $fieldRef.setPosition($v{pt.x}, $v{pt.y});
+					} else {
+						// Runtime (param-dependent) named coordinate: emit the runtime
+						// position — returning null silently left the element at 0,0.
+						// coordsToXYExprs' NAMED_COORD arm threads the named system's
+						// own layout through the hex lowering.
+						final xy = coordsToXYExprs(NAMED_COORD(name, coord), pos, node);
+						macro $fieldRef.setPosition(${xy.x}, ${xy.y});
+					}
 				} else null;
 			case WITH_OFFSET(base, offsetX, offsetY):
 				final ox = resolveRVStatic(offsetX);
@@ -8073,11 +8603,30 @@ class ProgrammableCodeGen {
 		return {expr: EField({expr: EConst(CIdent("this")), pos: pos}, fieldName), pos: pos};
 	}
 
-	/** Ensure _hexLayout field exists on instance class if coords need runtime hex calculation */
+	/** Ensure _hexLayout field exists on instance class if coords need runtime hex calculation.
+	 *  Recurses into WITH_OFFSET / NAMED_COORD wrappers (previously they fell into the
+	 *  default arm, so the field was never synthesized while the lowering still referenced
+	 *  it — a missing-field error in the generated class). layoutOverride carries a named
+	 *  system's layout so its own field gets created (not the ambient one's). */
 	static function ensureHexLayoutIfNeeded(coords:Coordinates, node:MultiAnimParser.Node, fields:Array<Field>, ctorExprs:Array<Expr>,
-			pos:Position):Void {
+			pos:Position, ?layoutOverride:bh.base.Hex.HexLayout):Void {
 		if (coords == null)
 			return;
+		switch (coords) {
+			case WITH_OFFSET(base, _, _):
+				ensureHexLayoutIfNeeded(base, node, fields, ctorExprs, pos, layoutOverride);
+				return;
+			case NAMED_COORD(name, coord):
+				final namedCS = node != null ? getNamedCoordSystem(name, node) : null;
+				switch (namedCS) {
+					case NamedHex(system):
+						ensureHexLayoutIfNeeded(coord, node, fields, ctorExprs, pos, system.hexLayout);
+					default:
+				}
+				return;
+			default:
+		}
+		final effectiveLayout = layoutOverride != null ? layoutOverride : getHexLayoutForNode(node);
 		final needsRuntime = switch (coords) {
 			case SELECTED_HEX_CORNER(count, factor) | SELECTED_HEX_EDGE(count, factor):
 				resolveRVStatic(count) == null || resolveRVStatic(factor) == null;
@@ -8090,16 +8639,13 @@ class ProgrammableCodeGen {
 			case SELECTED_HEX_PIXEL(_, _):
 				true; // pixelToHex always requires runtime
 			case SELECTED_HEX_CELL_CORNER(cell, cornerIndex, factor):
-				resolveRVStatic(cornerIndex) == null || resolveRVStatic(factor) == null || resolveCoordToStaticHex(cell, getHexLayoutForNode(node)) == null;
+				resolveRVStatic(cornerIndex) == null || resolveRVStatic(factor) == null || resolveCoordToStaticHex(cell, effectiveLayout) == null;
 			case SELECTED_HEX_CELL_EDGE(cell, direction, factor):
-				resolveRVStatic(direction) == null || resolveRVStatic(factor) == null || resolveCoordToStaticHex(cell, getHexLayoutForNode(node)) == null;
+				resolveRVStatic(direction) == null || resolveRVStatic(factor) == null || resolveCoordToStaticHex(cell, effectiveLayout) == null;
 			default: false;
 		};
-		if (needsRuntime) {
-			final hexLayout = getHexLayoutForNode(node);
-			if (hexLayout != null) {
-				getOrCreateHexField(hexLayout, fields, ctorExprs, pos);
-			}
+		if (needsRuntime && effectiveLayout != null) {
+			getOrCreateHexField(effectiveLayout, fields, ctorExprs, pos);
 		}
 	}
 
