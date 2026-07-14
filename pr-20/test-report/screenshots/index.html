@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-07-13 17:46:31</div>
+    <div class="timestamp">Generated: 2026-07-14 21:12:12</div>
     <div class="summary">
         <strong>Summary:</strong> 101 tests,         <span style="color: #4CAF50;">101 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1s, visual 24.4s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1s, visual 24.2s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>7798 assertions:</strong>             <span style="color: #4CAF50;">7798 passed</span>
+            <strong>7942 assertions:</strong>             <span style="color: #4CAF50;">7942 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -1332,11 +1332,24 @@
                 <div class="unit-method pass">testApplyPos_AdditiveOnPositionedContainer_Codegen: OK <span class="dots">.......</span></div>
             </div>
             <div class="unit-class">
+                <div class="unit-class-name">CodegenBatchTransitionParityTest</div>
+                <div class="unit-method pass">testBatchSwitchKeep_Builder_PreservesArm: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testBatchSwitchKeep_Codegen_PreservesArm: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testBatchTransition_Builder_Animates: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testBatchTransition_Codegen_Animates: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testTransitionUnbatched_Codegen_Animates: OK <span class="dots">.</span></div>
+            </div>
+            <div class="unit-class">
                 <div class="unit-class-name">CodegenBatchUpdateParityTest</div>
                 <div class="unit-method pass">testBatchMode_Flag: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testBatch_CoalescesRebuildListenerFires: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testBatch_DefersVisibilityUntilEndUpdate: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testUnbatched_FiresPerSetter: OK <span class="dots">.</span></div>
+            </div>
+            <div class="unit-class">
+                <div class="unit-class-name">CodegenContainerLayerTest</div>
+                <div class="unit-method pass">testLayerRepeat_Builder_ContainerAtDeclaredLayer: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testLayerRepeat_Codegen_ContainerAtDeclaredLayer: OK <span class="dots">..</span></div>
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">CodegenCtxSizeTest</div>
@@ -1359,9 +1372,21 @@
                 <div class="unit-method pass">testLiteralNameDynamicRef_Codegen_TypedSetterForwardsParentParamToChild: OK <span class="dots">....</span></div>
             </div>
             <div class="unit-class">
+                <div class="unit-class-name">CodegenExprRefireScopeTest</div>
+                <div class="unit-method pass">testCbFloat_Builder_UsesFloatResult: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testCbFloat_Codegen_UsesFloatResult: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testExprRefire_Builder_UnrelatedParamDoesNotReinvoke: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testExprRefire_Codegen_UnrelatedParamDoesNotReinvoke: OK <span class="dots">...</span></div>
+            </div>
+            <div class="unit-class">
                 <div class="unit-class-name">CodegenExternalPaletteTest</div>
                 <div class="unit-method pass">testCodegenBuildExternalPalette: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testRuntimeBuildExternalPalette: OK <span class="dots">...</span></div>
+            </div>
+            <div class="unit-class">
+                <div class="unit-class-name">CodegenForwardStringConcatTest</div>
+                <div class="unit-method pass">testForwardConcat_Builder_ConcatenatesForStringTarget: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testForwardConcat_Codegen_ConcatenatesForStringTarget: OK <span class="dots">..</span></div>
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">CodegenHasSlotDynRefTest</div>
@@ -1420,9 +1445,39 @@
                 <div class="unit-method pass">testStepCount_Codegen_TruncatesDivision: OK <span class="dots">.</span></div>
             </div>
             <div class="unit-class">
+                <div class="unit-class-name">CodegenLayoutParamPointsTest</div>
+                <div class="unit-method pass">testLayoutParamPoints_Builder_ResolvesParamPoints: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testLayoutParamPoints_Codegen_ResolvesParamPoints: OK <span class="dots">....</span></div>
+            </div>
+            <div class="unit-class">
+                <div class="unit-class-name">CodegenNamedHexCoordTest</div>
+                <div class="unit-method pass">testHexNamed_Codegen_PositionsAtNamedHexCoord: OK <span class="dots">....</span></div>
+            </div>
+            <div class="unit-class">
+                <div class="unit-class-name">CodegenNodeIndexContractTest</div>
+                <div class="unit-method pass">testParticlesRepeat_Builder_BuildsPerIteration: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testParticlesRepeat_Codegen_BuildsPerIteration: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testTgCond_Builder_OneVisibleTileGroup: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testTgCond_Codegen_CreateSucceeds: OK <span class="dots">.</span></div>
+            </div>
+            <div class="unit-class">
                 <div class="unit-class-name">CodegenOverlappingApplyTest</div>
                 <div class="unit-method pass">testOverlappingApply_MatchedEntryNotClobberedByLaterElse_Builder: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testOverlappingApply_MatchedEntryNotClobberedByLaterElse_Codegen: OK <span class="dots">....</span></div>
+            </div>
+            <div class="unit-class">
+                <div class="unit-class-name">CodegenPaletteIndexTrackingTest</div>
+                <div class="unit-method pass">testPaletteIndexTint_Builder_RefiresOnIndexChange: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testPaletteIndexTint_Codegen_RefiresOnIndexChange: OK <span class="dots">....</span></div>
+            </div>
+            <div class="unit-class">
+                <div class="unit-class-name">CodegenRepeat2DParityTest</div>
+                <div class="unit-method pass">testR2dLayoutAxis_Builder_Renders: OK <span class="dots">.....</span></div>
+                <div class="unit-method pass">testR2dLayoutAxis_Codegen_Renders: OK <span class="dots">.....</span></div>
+                <div class="unit-method pass">testR2dParamOffsets_Builder_SpreadsColumns: OK <span class="dots">.....</span></div>
+                <div class="unit-method pass">testR2dParamOffsets_Codegen_SpreadsColumns: OK <span class="dots">..........</span></div>
+                <div class="unit-method pass">testR2dRangeValues_Builder_LoopValues: OK <span class="dots">.......</span></div>
+                <div class="unit-method pass">testR2dRangeValues_Codegen_LoopValues: OK <span class="dots">............</span></div>
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">CodegenRepeatConditionalTest</div>
@@ -1436,11 +1491,18 @@
                 <div class="unit-method pass">testParamDepRepeat_ChildPos_Builder_Throws: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testParamDepRepeat_ChildPos_Codegen_Throws: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testParamDepRepeat_ConditionalRef_Builder_TriggersRebuild: OK <span class="dots">.</span></div>
-                <div class="unit-method pass">testParamDepRepeat_ConditionalRef_Codegen_Throws: OK <span class="dots">......</span></div>
+                <div class="unit-method pass">testParamDepRepeat_ConditionalRef_Codegen_TriggersRebuild: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testParamDepRepeat_DynRefTarget_Builder_Throws: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testParamDepRepeat_DynRefTarget_Codegen_Throws: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testParamDepRepeat_InteractiveId_Builder_Throws: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testParamDepRepeat_InteractiveId_Codegen_Throws: OK <span class="dots">......</span></div>
+            </div>
+            <div class="unit-class">
+                <div class="unit-class-name">CodegenRepeatGateTest</div>
+                <div class="unit-method pass">testCondGate_Builder_GateFlipRerenders: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testCondGate_Codegen_GateFlipRerenders: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testDynRefLoopVar_Builder_ResolvesPerIteration: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testDynRefLoopVar_Codegen_ResolvesPerIteration: OK <span class="dots">...</span></div>
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">CodegenRepeatParamParityTest</div>
@@ -1468,6 +1530,11 @@
                 <div class="unit-method pass">testEnumForwarding_Codegen_ForwardsParentEnumToChild: OK <span class="dots">....</span></div>
             </div>
             <div class="unit-class">
+                <div class="unit-class-name">CodegenSwitchDefaultOrderTest</div>
+                <div class="unit-method pass">testSwitchDefaultOrder_Builder_ArmAfterDefaultMatches: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testSwitchDefaultOrder_Codegen_ArmAfterDefaultMatches: OK <span class="dots">......</span></div>
+            </div>
+            <div class="unit-class">
                 <div class="unit-class-name">CodegenSwitchInactiveArmTest</div>
                 <div class="unit-method pass">testCodegenSwitchActiveArmSurvivesInactiveArmParamChange: OK <span class="dots">......</span></div>
             </div>
@@ -1481,6 +1548,22 @@
                 <div class="unit-method pass">testTernaryEnumNotEq_Codegen: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testTernaryStringEq_Builder: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testTernaryStringEq_Codegen: OK <span class="dots">..</span></div>
+            </div>
+            <div class="unit-class">
+                <div class="unit-class-name">CodegenTextMaxWidthParityTest</div>
+                <div class="unit-method pass">testGridMaxWidth_Builder_UsesGridSpacing: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testGridMaxWidth_Codegen_UsesGridSpacing: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testScaledMaxWidth_Builder_DividesByLiveScale: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testScaledMaxWidth_Codegen_DividesByLiveScale: OK <span class="dots">...</span></div>
+            </div>
+            <div class="unit-class">
+                <div class="unit-class-name">CodegenTileSourceParityTest</div>
+                <div class="unit-method pass">testCrossGen_Builder_DrawsRealCross: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testCrossGen_Codegen_DrawsRealCross: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testGenTrunc_Builder_PerNodeTruncation: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testGenTrunc_Codegen_PerNodeTruncation: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testTileMisbind_Builder_BindsTileParam: OK <span class="dots">.......</span></div>
+                <div class="unit-method pass">testTileMisbind_Codegen_BindsTileParam: OK <span class="dots">.......</span></div>
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">ColorUtilsTest</div>
