@@ -1,0 +1,17 @@
+version: 1.0
+
+// Fixture: literal-name dynamicRef forwarding a parent ENUM param into a child enum param.
+// Parent.setParameter("parentMode", "b") must propagate into child's mode by NAME.
+// Codegen emits the parent enum field (an Int index) for the forwarded value, which the
+// child's setParameter rejects (dynamicValueToIndex stringifies the int and checks the
+// enum value list) — so this exercises the enum forwarding defect on the codegen path.
+
+#cgFwdEnumChild programmable(mode:[a,b,c]=a) {
+  @(mode => a) bitmap(generated(color(11, 5, #ff0000))): 0, 0
+  @(mode => b) bitmap(generated(color(22, 5, #00ff00))): 0, 0
+  @(mode => c) bitmap(generated(color(33, 5, #0000ff))): 0, 0
+}
+
+#codegenDynamicRefEnumForwarding programmable(parentMode:[a,b,c]=a) {
+  dynamicRef($cgFwdEnumChild, mode => $parentMode): 0, 0
+}

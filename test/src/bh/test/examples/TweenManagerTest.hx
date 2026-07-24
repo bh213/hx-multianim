@@ -1153,6 +1153,39 @@ class TweenManagerTest extends utest.Test {
 		Assert.isFalse(Math.isNaN(obj.rotation), "zero-duration tween must not write NaN to rotation");
 	}
 
+	// Calling clear() from a tween's onComplete must not push the completing tween
+	// onto the shared pool twice. TweenManager.update() fires onComplete BEFORE its
+	// own cleanup; if that callback runs clear() (a realistic screen-transition
+	// teardown), clear() already recycles the completing handle, then update()
+	// recycles it again. A non-idempotent release double-pushes the instance, so two
+	// later acquire() calls hand the SAME Tween to two logical tweens → cross-talk
+	// on target/elapsed/entries.
+	@Test
+	public function testClearFromOnCompleteDoesNotDoubleReleaseTween():Void {
+		var mgr = new TweenManager();
+		var triggerObj = createObject();
+
+		// Tween whose completion callback tears everything down via clear().
+		mgr.tween(triggerObj, 0.1, [Alpha(0.0)]).setOnComplete(() -> mgr.clear());
+		mgr.update(0.2); // completes → onComplete → clear() → (buggy) double release
+
+		// Two fresh tweens on distinct targets. If the completing tween was pushed
+		// to the pool twice, these two acquire() calls pop the same instance.
+		var objA = createObject();
+		var objB = createObject();
+		var tA = mgr.tween(objA, 1.0, [X(100.0)]);
+		var tB = mgr.tween(objB, 1.0, [Y(200.0)]);
+
+		Assert.isTrue(tA != tB,
+			"clear() invoked from a tween's onComplete must not double-release the completing "
+			+ "tween into the pool; two subsequent tween() calls received the same Tween instance, "
+			+ "which causes cross-talk on target/elapsed/entries.");
+
+		// Direct consequence of the aliasing: configuring tB clobbers tA's target.
+		Assert.equals(objA, tA.target,
+			"Aliased tween instances share state — creating tB overwrote tA.target.");
+	}
+
 	@Test
 	public function testZeroDurationTweenSnapsToFinalValue():Void {
 		var mgr = new TweenManager();

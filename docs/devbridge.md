@@ -21,6 +21,12 @@ Runtime inspection and manipulation server for hx-multianim applications. Design
 2. **Constructor parameter** `new DevBridge(screenManager, port)` — if `port != 0`, uses that value; if `0`, checks env var
 3. **Auto-fallback** — if the configured port is busy, tries up to 10 consecutive ports (e.g. 9001→9010)
 
+**Bind address configuration:**
+1. **Environment variable** `HX_DEV_BIND` — the address the HTTP server binds to. Defaults to `0.0.0.0` (all interfaces) so MCP clients on other LAN machines can connect.
+2. **Constructor parameter** `new DevBridge(screenManager, port, bindAddress)` — overrides the env var.
+
+> **Security note:** DevBridge has no authentication and answers with `Access-Control-Allow-Origin: *`. Anything that can reach the port can screenshot the app, inject input, evaluate `.manim`, or quit the process. On untrusted networks set `HX_DEV_BIND=127.0.0.1` to restrict the bridge to the local machine. (DevBridge only compiles with `-D MULTIANIM_DEV`, so release builds are unaffected.)
+
 **Ready signal:** When `HX_DEV_READY_FILE` env var is set, DevBridge writes JSON to that path after binding:
 ```json
 {"port": 9001, "timestamp": 1711234567.89}

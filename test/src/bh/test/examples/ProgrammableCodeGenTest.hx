@@ -691,6 +691,52 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		async.done();
 	}
 
+	// A $param referenced inside a particles block must resolve against the codegen
+	// instance's parameter value, not against an empty/default scope.
+	@Test
+	public function testCodegenParticlesResolveParamScope():Void {
+		clearScene();
+		final inst = createMp().paramParticles.create(99);
+		s2d.addChild(inst);
+
+		final particles = findParticles(inst);
+		Assert.notNull(particles, "expected a Particles object in the codegen instance");
+
+		var foundGroup = false;
+		for (group in particles.getGroups()) {
+			foundGroup = true;
+			Assert.equals(99, group.nparts,
+				"particles count: particleCount param must resolve to the instance value (99), not the default (11)");
+		}
+		Assert.isTrue(foundGroup, "expected at least one particle group");
+	}
+
+	// A $param referenced inside a tileGroup block must resolve against the codegen
+	// instance's parameter value, not against a throwaway empty-parameter rebuild.
+	@Test
+	public function testCodegenTileGroupResolveParamScope():Void {
+		clearScene();
+		final inst = createMp().paramTileGroup.create(250);
+		s2d.addChild(inst);
+
+		final tg = findTileGroup(inst);
+		Assert.notNull(tg, "expected a TileGroup object in the codegen instance");
+		// The baked bitmap is offset by $tileX inside the group, so the group's
+		// local content bounds start at tileX. Resolved against the instance value
+		// (250) by the fix; against the default (7) by the buggy empty rebuild.
+		Assert.equals(250.0, tg.getBounds(tg).xMin,
+			"tileGroup baked bitmap offset (tileX param) must resolve to the instance value (250), not the default (7)");
+	}
+
+	static function findTileGroup(obj:h2d.Object):Null<h2d.TileGroup> {
+		if (Std.isOfType(obj, h2d.TileGroup)) return cast obj;
+		for (i in 0...obj.numChildren) {
+			var result = findTileGroup(obj.getChildAt(i));
+			if (result != null) return result;
+		}
+		return null;
+	}
+
 	static function findParticles(obj:h2d.Object):Null<bh.base.Particles> {
 		if (Std.isOfType(obj, bh.base.Particles)) return cast obj;
 		for (i in 0...obj.numChildren) {
@@ -2892,15 +2938,23 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		final mp = createMp();
 		final instance = mp.dynamicRefs.create();
 		Assert.notNull(instance, "DynamicRefs instance should be created");
-		final dynRef = instance.getDynamicRef("statusBar");
-		Assert.notNull(dynRef, "Should have statusBar dynamicRef via codegen");
+		// "probe" is the #name-disambiguated handle in the fixture; the 16 unnamed
+		// dynamicRef($statusBar) siblings collide on the "statusBar" key, so lookups
+		// on it must throw with a #name hint — matching BuilderResult.getDynamicRef.
+		final dynRef = instance.getDynamicRef("probe");
+		Assert.notNull(dynRef, "Should have probe dynamicRef via codegen");
+		var err:String = null;
+		try instance.getDynamicRef("statusBar") catch (e:Dynamic) err = Std.string(e);
+		Assert.notNull(err, "getDynamicRef on the collided unnamed key must throw");
+		if (err != null)
+			Assert.isTrue(err.indexOf("#name") >= 0, "error must hint at #name disambiguation; got: " + err);
 	}
 
 	@Test
 	public function testDynamicRefCodegenSubResultHasObject():Void {
 		final mp = createMp();
 		final instance = mp.dynamicRefs.create();
-		final dynRef = instance.getDynamicRef("statusBar");
+		final dynRef = instance.getDynamicRef("probe");
 		Assert.notNull(dynRef, "getDynamicRef should return non-null");
 		Assert.notNull(dynRef.object, "DynamicRef sub-result should have an object");
 	}
@@ -2909,7 +2963,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	public function testDynamicRefCodegenSubResultIsIncremental():Void {
 		final mp = createMp();
 		final instance = mp.dynamicRefs.create();
-		final dynRef = instance.getDynamicRef("statusBar");
+		final dynRef = instance.getDynamicRef("probe");
 		Assert.notNull(dynRef, "getDynamicRef should return non-null");
 		Assert.notNull(dynRef.incrementalContext, "DynamicRef should be built incrementally");
 	}
@@ -5389,6 +5443,92 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		}
 	}
 
+	// Regression: slots, dynamicRefs and indexed names declared inside a PARAM-DEPENDENT
+	// repeatable body must be reachable on codegen instances, the same way they already are
+	// on builder results. A param-dependent count forces codegen down the runtime-rebuild
+	// branch, which forwards these kinds to the builder via buildNodeByUniqueNameWithParams;
+	// their registrations must persist into a sink the instance's getSlot / getDynamicRef /
+	// getUpdatableByIndex dispatchers can reach. Without the sink, the builder result resolves
+	// them but the codegen instance throws / returns null (the registrations are discarded into
+	// a throwaway IR by buildSingleNodeWithParams).
+	@Test
+	public function testCodegenParamDepRepeatSlotReachable():Void {
+		// Baseline: the builder result resolves all three kinds inside the param-dependent repeat.
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/125-codegenRepeatSlot/repeatSlot.manim"));
+		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "repeatSlot.manim");
+		final result = builder.buildWithParameters("repeatSlotPanel", new Map()); // rows defaults to 2
+
+		Assert.notNull(result.getSlot("cell", 0), "builder: cell slot 0 should resolve inside a param-dependent repeat");
+		Assert.notNull(result.getSlot("cell", 1), "builder: cell slot 1 should resolve inside a param-dependent repeat");
+		Assert.notNull(result.getUpdatableByIndex("tag", 0), "builder: tag[0] indexed name should resolve inside a param-dependent repeat");
+		Assert.notNull(result.getDynamicRef("embed 0"), "builder: embed[0] dynamicRef should resolve inside a param-dependent repeat");
+
+		// Codegen instance must match. These currently fail because the runtime-rebuild fallback
+		// discards the slot/dynamicRef/indexed-name registrations.
+		final mp = createMp();
+		final instance:Dynamic = mp.repeatSlotPanel.create(); // rows defaults to 2
+
+		var slot0:Null<bh.multianim.MultiAnimBuilder.SlotHandle> = null;
+		try { slot0 = instance.getSlot("cell", 0, null); } catch (e:Dynamic) {}
+		Assert.notNull(slot0, "codegen: cell slot 0 inside a param-dependent repeat should be addressable via getSlot");
+
+		var slot1:Null<bh.multianim.MultiAnimBuilder.SlotHandle> = null;
+		try { slot1 = instance.getSlot("cell", 1, null); } catch (e:Dynamic) {}
+		Assert.notNull(slot1, "codegen: cell slot 1 inside a param-dependent repeat should be addressable via getSlot");
+
+		var tag0:Null<h2d.Object> = null;
+		try { tag0 = instance.getUpdatableByIndex("tag", 0); } catch (e:Dynamic) {}
+		Assert.notNull(tag0, "codegen: tag[0] indexed name inside a param-dependent repeat should be addressable");
+
+		var embed0:Null<bh.multianim.MultiAnimBuilder.BuilderResult> = null;
+		try { embed0 = instance.getDynamicRef("embed 0"); } catch (e:Dynamic) {}
+		Assert.notNull(embed0, "codegen: embed[0] dynamicRef inside a param-dependent repeat should be addressable");
+	}
+
+	// An indexed #seg[$i] dynamicRef inside a STATIC-count repeatable (count is a literal, so
+	// codegen unrolls at macro time rather than building through the runtime sink). Each
+	// unrolled iteration must register a distinct dynamicRef keyed "seg 0", "seg 1", ... and
+	// stay reachable from the codegen instance — matching the builder. The codegen dynamicRef
+	// tracking ignores node.updatableName and keys every iteration under the target
+	// programmable name (last-writer-wins), so the indexed refs are unaddressable.
+	// Fixture: test/examples/129-codegenIndexedDynamicRef/indexedDynamicRef.manim
+	@Test
+	public function testCodegenIndexedDynamicRefInStaticRepeatIsAddressable():Void {
+		// Baseline: the builder result keys each iteration "seg 0".."seg 2".
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/129-codegenIndexedDynamicRef/indexedDynamicRef.manim"));
+		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "indexedDynamicRef.manim");
+		final result = builder.buildWithParameters("indexedDynamicRef", new Map());
+
+		Assert.notNull(result.getDynamicRef("seg 0"), "builder: seg[0] dynamicRef should resolve in a static repeat");
+		Assert.notNull(result.getDynamicRef("seg 1"), "builder: seg[1] dynamicRef should resolve in a static repeat");
+		Assert.notNull(result.getDynamicRef("seg 2"), "builder: seg[2] dynamicRef should resolve in a static repeat");
+		Assert.notNull(result.getDynamicRefByIndex("seg", 1), "builder: getDynamicRefByIndex('seg', 1) should resolve in a static repeat");
+
+		// Codegen instance must match — each unrolled indexed dynamicRef addressable & distinct.
+		final mp = createMp();
+		final instance:Dynamic = mp.indexedDynamicRef.create();
+
+		var seg0:Null<bh.multianim.MultiAnimBuilder.BuilderResult> = null;
+		var seg1:Null<bh.multianim.MultiAnimBuilder.BuilderResult> = null;
+		var seg2:Null<bh.multianim.MultiAnimBuilder.BuilderResult> = null;
+		try { seg0 = instance.getDynamicRef("seg 0"); } catch (e:Dynamic) {}
+		try { seg1 = instance.getDynamicRef("seg 1"); } catch (e:Dynamic) {}
+		try { seg2 = instance.getDynamicRef("seg 2"); } catch (e:Dynamic) {}
+
+		Assert.notNull(seg0, "codegen: seg[0] indexed dynamicRef in a static repeat should be addressable");
+		Assert.notNull(seg1, "codegen: seg[1] indexed dynamicRef in a static repeat should be addressable");
+		Assert.notNull(seg2, "codegen: seg[2] indexed dynamicRef in a static repeat should be addressable");
+		Assert.isFalse(seg0 == seg1, "codegen: each indexed dynamicRef iteration must be a distinct result, not last-writer-wins");
+
+		// getDynamicRefByIndex convenience must resolve the same per-iteration result.
+		var byIdx1:Null<bh.multianim.MultiAnimBuilder.BuilderResult> = null;
+		try { byIdx1 = instance.getDynamicRefByIndex("seg", 1); } catch (e:Dynamic) {}
+		Assert.notNull(byIdx1, "codegen: getDynamicRefByIndex('seg', 1) should resolve the indexed dynamicRef");
+		Assert.isTrue(byIdx1 == seg1, "codegen: getDynamicRefByIndex('seg', 1) must match getDynamicRef('seg 1')");
+	}
+
 	// 2D variant of the same visibility contract: get_name(x, y) returns null when the
 	// inner conditional hides that (x, y) cell. The 2D accessor is an if/else chain
 	// rather than a switch, but it has the same dangling-ref bug shape.
@@ -5461,6 +5601,42 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		instance.setMode(0);
 		final panelAgain:Null<bh.multianim.MultiAnimBuilder.SlotHandle> = instance.getSlot("panel", null, null);
 		Assert.notNull(panelAgain, "panel slot should reappear after swap back to active arm");
+	}
+
+	// Regression: a #name dynamicRef declared inside a @switch arm must be reachable via
+	// getDynamicRef("name") on a codegen instance. The runtime builder resolves switch-arm
+	// dynamicRefs (arm children build into the parent IR); the codegen getDynamicRef
+	// dispatcher must likewise consult the switch sink, mirroring getSlot / getUpdatable*.
+	@Test
+	public function testCodegenSwitchArmDynamicRefIsReachable():Void {
+		final mp = createMp();
+		final instance:Dynamic = mp.switchArmDynamicRef.create(); // default mode=alpha
+
+		// The active (alpha) arm declares #embed dynamicRef($switchArmChild, value=>10).
+		// Wrap the call: when a programmable has no static dynamicRefs the dispatcher may
+		// not be generated at all, so a missing-method runtime error must surface as a clean
+		// notNull assertion failure (the right reason) rather than aborting the test.
+		var embedRef:Null<bh.multianim.MultiAnimBuilder.BuilderResult> = null;
+		try {
+			embedRef = instance.getDynamicRef("embed");
+		} catch (e:Dynamic) {}
+		Assert.notNull(embedRef,
+			"dynamicRef declared inside the active @switch arm must be reachable via "
+			+ "getDynamicRef('embed') on a codegen instance — the runtime builder resolves it, "
+			+ "so the codegen dispatcher must consult the switch sink too.");
+
+		// hasDynamicRef must agree with getDynamicRef: a ref reachable via getDynamicRef must
+		// report present. The presence companion has to consult the same switch sink as the
+		// dispatcher (not only the repeat sink), matching BuilderResult where both methods read
+		// the same map and can never disagree.
+		var hasEmbed:Bool = false;
+		try {
+			hasEmbed = instance.hasDynamicRef("embed");
+		} catch (e:Dynamic) {}
+		Assert.isTrue(hasEmbed,
+			"hasDynamicRef('embed') must return true for a dynamicRef declared inside the active "
+			+ "@switch arm — it is reachable via getDynamicRef, so presence and lookup must stay "
+			+ "in sync (the guard-before-access pattern relies on this).");
 	}
 
 	// Setting a parameter that is not referenced anywhere inside any @switch arm must NOT

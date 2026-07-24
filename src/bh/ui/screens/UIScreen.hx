@@ -78,6 +78,17 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	var tweens(get, never):TweenManager;
 	var groups:Map<String, Array<UIElement>> = [];
 	var postCustomAddToLayer:Map<h2d.Object, UIElementCustomAddToLayer> = [];
+	// True while at least one element awaits a customAddToLayer drain in update().
+	// Lets update() skip iterating (and allocating a key-value iterator over) the
+	// postponed map on the common empty steady-state path.
+	var postCustomAddToLayerPending:Bool = false;
+	// Allocation watchdog for tests. Gated behind MULTIANIM_ALLOC_TRACK so the
+	// per-frame increment vanishes from production builds; counts how often
+	// update() allocates a key-value iterator to drain postponed
+	// customAddToLayer elements (should be 0 per frame in the empty steady state).
+	#if MULTIANIM_ALLOC_TRACK
+	public static var postponedDrainCount:Int = 0;
+	#end
 	var interactiveWrappers:Array<UIInteractiveWrapper> = [];
 	var interactiveMap:Map<String, UIInteractiveWrapper> = [];
 	/** Tracks (source, prefix) pairs registered via addInteractives so we can resync wrappers
@@ -182,13 +193,18 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 			comp.dispose();
 		higherOrderComponents = [];
 		postCustomAddToLayer.clear();
+		postCustomAddToLayerPending = false;
 		contentTarget = null;
 		contentTargetOwnership.clear();
 		inElementRouting = false;
 		initialSyncDone = false;
-		for (c in controllersStack) {
-			c.clearState();
+		while (controllersStack.length > 1) {
+			final c = controllersStack.pop();
+			if (c != null)
+				c.lifecycleEvent(LifecycleControllerFinished);
 		}
+		if (controllersStack.length > 0)
+			controllersStack[0].clearState();
 		getSceneRoot().removeChildren();
 		onClear();
 	}
@@ -286,13 +302,19 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		for (comp in higherOrderComponents)
 			comp.update(dt);
 		// controller.update(dt) is already called by ScreenManager.update() before screen.update()
-		for (obj => v in postCustomAddToLayer) {
-			var insertedLayer = findLayerFromObject(obj);
-			if (insertedLayer == null)
-				throw 'could not find layer for object $obj';
-			v.customAddToLayer(insertedLayer, this, true);
+		if (postCustomAddToLayerPending) {
+			#if MULTIANIM_ALLOC_TRACK
+			postponedDrainCount++;
+			#end
+			for (obj => v in postCustomAddToLayer) {
+				var insertedLayer = findLayerFromObject(obj);
+				if (insertedLayer == null)
+					throw 'could not find layer for object $obj';
+				v.customAddToLayer(insertedLayer, this, true);
+			}
+			postCustomAddToLayer.clear();
+			postCustomAddToLayerPending = false;
 		}
-		postCustomAddToLayer.clear();
 	}
 
 	static inline function elementMatchesType(e:UIElement, type:SubElementsType):Bool {
@@ -1210,6 +1232,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 						if (postCustomAddToLayer.exists(element.getObject()))
 							throw 'element already is in postCustomAddToLayer';
 						postCustomAddToLayer.set(element.getObject(), customElement);
+						postCustomAddToLayerPending = true;
 				}
 			}
 			if (layer != null && element.getObject().parent == null) {
@@ -1233,6 +1256,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 					if (postCustomAddToLayer.exists(element.getObject()))
 						throw 'element already is in postCustomAddToLayer';
 					postCustomAddToLayer.set(element.getObject(), customElement);
+					postCustomAddToLayerPending = true;
 			}
 		}
 		if (layer != null && element.getObject().parent == null) {

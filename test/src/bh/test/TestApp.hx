@@ -47,6 +47,8 @@ class TestApp extends hxd.App {
 		FontManager.registerFont("peaberry-white", hxd.Res.fonts.WhitePeaberry.toFont(), -2, -9);
 		FontManager.registerFont("peaberry-white-outline", hxd.Res.fonts.WhitePeaberryOutline.toFont(), -2, -10);
 		FontManager.registerFont("m6x11", hxd.Res.fonts.m6x11.toFont());
+		FontManager.registerFont("o4b03", hxd.Res.fonts.o4b03.toFont());
+		FontManager.registerFont("departuremono", hxd.Res.fonts.departuremono.toFont());
 
 		// Register custom filters for testing
 		FilterManager.registerFilter("perlinNoise", [
@@ -97,6 +99,7 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.FloatingTextHelperTest());
 		testRunner.addCase(new bh.test.examples.ScreenShakeHelperTest());
 		testRunner.addCase(new bh.test.examples.HeapsUtilsTest());
+		testRunner.addCase(new bh.test.examples.HexApiTest());
 		testRunner.addCase(new bh.test.examples.ColorUtilsTest());
 		testRunner.addCase(new bh.test.examples.CardHandOrchestratorTest());
 		testRunner.addCase(new bh.test.examples.CardHandIntegrationTest());
@@ -116,14 +119,50 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.EventPriorityTest());
 		testRunner.addCase(new bh.test.examples.RubeGoldbergIncrementalTest());
 		testRunner.addCase(new bh.test.examples.ApplyParamUpdateTest());
+		testRunner.addCase(new bh.test.examples.CodegenOverlappingApplyTest());
+		testRunner.addCase(new bh.test.examples.CodegenApplyPosAdditiveTest());
+		testRunner.addCase(new bh.test.examples.GridCellHoverRegressionTest());
 		testRunner.addCase(new bh.test.examples.CodegenIncrementalGfxPxTest());
 		testRunner.addCase(new bh.test.examples.CodegenIncrementalMaskFlowTest());
 		testRunner.addCase(new bh.test.examples.CodegenIncrementalInteractiveStateanimTest());
 		testRunner.addCase(new bh.test.examples.CodegenRepeatFallbackUntrackedTest());
 		testRunner.addCase(new bh.test.examples.CodegenDynamicRefForwardingTest());
+		testRunner.addCase(new bh.test.examples.CodegenStaticRefForwardingTest());
 		testRunner.addCase(new bh.test.examples.CodegenExternalPaletteTest());
 		testRunner.addCase(new bh.test.examples.ChainBoundaryConditionalTest());
 		testRunner.addCase(new bh.test.examples.EnumNumericConditionalTest());
+		testRunner.addCase(new bh.test.examples.BracketMultiValueConditionalTest());
+		testRunner.addCase(new bh.test.examples.UIScreenUpdateAllocationTest());
+		testRunner.addCase(new bh.test.examples.StrictDColorVerbatimTest());
+		testRunner.addCase(new bh.test.examples.CodegenRootTintTest());
+		testRunner.addCase(new bh.test.examples.CodegenHasSlotDynRefTest());
+		testRunner.addCase(new bh.test.examples.CodegenStaticRefDynamicNameTest());
+		testRunner.addCase(new bh.test.examples.CodegenSwitchInactiveArmTest());
+		testRunner.addCase(new bh.test.examples.CodegenRepeatConditionalTest());
+		testRunner.addCase(new bh.test.examples.CodegenIntTruncationParityTest());
+		testRunner.addCase(new bh.test.examples.CodegenDynRefKeyContractTest());
+		testRunner.addCase(new bh.test.examples.StringFloatConditionalParityTest());
+		testRunner.addCase(new bh.test.examples.NestedIndexedCollisionTest());
+		testRunner.addCase(new bh.test.examples.CodegenTernaryEqualityParityTest());
+		testRunner.addCase(new bh.test.examples.CodegenBatchUpdateParityTest());
+		testRunner.addCase(new bh.test.examples.Repeat2DIncrementalTest());
+		testRunner.addCase(new bh.test.examples.PaletteIndexTrackingTest());
+		testRunner.addCase(new bh.test.examples.CodegenRepeatParamParityTest());
+		testRunner.addCase(new bh.test.examples.CodegenCtxSizeTest());
+		testRunner.addCase(new bh.test.examples.CodegenSwitchDefaultOrderTest());
+		testRunner.addCase(new bh.test.examples.CodegenBatchTransitionParityTest());
+		testRunner.addCase(new bh.test.examples.CodegenRepeatGateTest());
+		testRunner.addCase(new bh.test.examples.CodegenNodeIndexContractTest());
+		testRunner.addCase(new bh.test.examples.CodegenPaletteIndexTrackingTest());
+		testRunner.addCase(new bh.test.examples.CodegenExprRefireScopeTest());
+		testRunner.addCase(new bh.test.examples.CodegenContainerLayerTest());
+		testRunner.addCase(new bh.test.examples.CodegenRepeat2DParityTest());
+		testRunner.addCase(new bh.test.examples.CodegenTileSourceParityTest());
+		testRunner.addCase(new bh.test.examples.CodegenNamedHexCoordTest());
+		testRunner.addCase(new bh.test.examples.CodegenTextMaxWidthParityTest());
+		testRunner.addCase(new bh.test.examples.CodegenLayoutParamPointsTest());
+		testRunner.addCase(new bh.test.examples.CodegenForwardStringConcatTest());
+		testRunner.addCase(new bh.test.examples.AllocationSmokeTest());
 		#if MULTIANIM_DEV
 		testRunner.addCase(new bh.test.examples.HotReloadTest());
 		testRunner.addCase(new bh.test.examples.DevBridgeTest());

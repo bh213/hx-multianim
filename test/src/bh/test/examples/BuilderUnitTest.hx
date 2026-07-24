@@ -16,6 +16,7 @@ import bh.multianim.MultiAnimParser.CustomFilterArgType;
 import bh.multianim.MultiAnimParser.TransitionType;
 import bh.multianim.MultiAnimParser.TransitionDirection;
 import bh.multianim.MultiAnimParser.EasingType;
+import bh.multianim.MultiAnimParser.ResolvedIndexParameters;
 import bh.multianim.CodegenTransitionHelper;
 import bh.base.FilterManager;
 import bh.base.MAObject;
@@ -95,6 +96,159 @@ class BuilderUnitTest extends BuilderTestBase {
 		final bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(25, Std.int(bitmaps[0].tile.width));
 		Assert.equals(20, Std.int(bitmaps[0].tile.height));
+	}
+
+	// ==================== Particle maxLife validation ====================
+
+	@Test
+	public function testParticlesMaxLifeZeroIsRejectedAtBuild():Void {
+		// life = 0 is unusable: lifetime normalization divides by it, and
+		// spawn-curve emission computes `rate * nparts * dt / life` — with 0 the
+		// accumulator becomes +Inf and the emission while-loop never terminates
+		// (hard game hang). The builder must reject it with a clear error.
+		// Preflight: identical group with a sane maxLife must build — guards the
+		// assertion below against unrelated setup failures (e.g. sheet lookup).
+		final ok = buildFromSource("
+			#test programmable() {
+				#fx particles {
+					count: 5
+					emit: point(dist: 0, distRand: 0)
+					tiles: sheet(\"demo\", \"tile-center\")
+					maxLife: 1.0
+				}
+			}
+		", "test");
+		Assert.notNull(ok, "sanity: particles group with maxLife 1.0 builds");
+
+		var threw = false;
+		try {
+			buildFromSource("
+				#test programmable() {
+					#fx particles {
+						count: 5
+						emit: point(dist: 0, distRand: 0)
+						tiles: sheet(\"demo\", \"tile-center\")
+						maxLife: 0
+					}
+				}
+			", "test");
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw, "maxLife: 0 must be rejected at build time — it hard-hangs the game when combined with spawnCurve emission");
+	}
+
+	// ==================== Filter semantics: brightness / saturate / hue ====================
+	// Documented semantics (docs/manim-reference.md): brightness is a MULTIPLIER
+	// (0=black, 1=normal), saturate is 0=gray / 1=normal, hue takes DEGREES.
+
+	static function firstBitmapColorMatrix(result:bh.multianim.MultiAnimBuilder.BuilderResult):h3d.Matrix {
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		final f = Std.downcast(bitmaps[0].filter, h2d.filter.ColorMatrix);
+		Assert.notNull(f, 'expected a ColorMatrix filter, got ${bitmaps[0].filter}');
+		return f == null ? null : f.matrix;
+	}
+
+	@Test
+	public function testBrightnessFilterIsMultiplier():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				bitmap(generated(color(8, 8, #808080))) {
+					filter: brightness(0.5)
+					pos: 0, 0
+				}
+			}
+		", "test");
+		final m = firstBitmapColorMatrix(result);
+		if (m == null) return;
+		// Multiplier semantics: diagonal 0.5, no additive offset.
+		Assert.floatEquals(0.5, m._11, 0.001, 'brightness(0.5) must SCALE channels by 0.5 (got _11=${m._11}) — not add an offset');
+		Assert.floatEquals(0.0, m._41, 0.001, 'brightness(0.5) must not add a constant offset (got _41=${m._41})');
+	}
+
+	@Test
+	public function testSaturateFilterZeroIsGrayOneIsNormal():Void {
+		final normal = buildFromSource("
+			#test programmable() {
+				bitmap(generated(color(8, 8, #808080))) {
+					filter: saturate(1.0)
+					pos: 0, 0
+				}
+			}
+		", "test");
+		final mNormal = firstBitmapColorMatrix(normal);
+		if (mNormal == null) return;
+		Assert.floatEquals(1.0, mNormal._11, 0.001,
+			'saturate(1.0) is documented as NORMAL saturation — expected identity matrix, got _11=${mNormal._11}');
+
+		final gray = buildFromSource("
+			#test programmable() {
+				bitmap(generated(color(8, 8, #808080))) {
+					filter: saturate(0.0)
+					pos: 0, 0
+				}
+			}
+		", "test");
+		final mGray = firstBitmapColorMatrix(gray);
+		if (mGray == null) return;
+		// Full desaturation: _11 collapses to the red luminance weight (~0.21).
+		Assert.isTrue(mGray._11 < 0.5,
+			'saturate(0.0) is documented as GRAYSCALE — expected _11 ≈ lumR (~0.21), got _11=${mGray._11}');
+	}
+
+	@Test
+	public function testHueFilterTakesDegrees():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				bitmap(generated(color(8, 8, #808080))) {
+					filter: hue(90)
+					pos: 0, 0
+				}
+			}
+		", "test");
+		final m = firstBitmapColorMatrix(result);
+		if (m == null) return;
+		// colorHue(π/2): _11 = cos(-π/2) + (1 - cos(-π/2)) / 3 = 1/3.
+		Assert.floatEquals(1.0 / 3.0, m._11, 0.01,
+			'hue(90) is documented as 90 DEGREES — expected _11 = 1/3 (rotation by π/2 rad), got _11=${m._11}');
+	}
+
+	// ==================== Root-level tint on non-Drawable ====================
+
+	@Test
+	public function testRootTintOnProgrammableThrows():Void {
+		// The programmable root is an h2d.Layers (a non-Drawable). Root-level tint:
+		// cannot apply there, and silently dropping it hides the mistake. Building
+		// such a programmable must fail fast with a BuilderError.
+		var err:String = null;
+		var builderErr:Null<bh.multianim.BuilderError> = null;
+		try {
+			buildFromSource("
+				#test programmable() {
+					tint: #FF0000
+					bitmap(generated(color(10, 10, #fff))): 0, 0
+				}
+			", "test");
+		} catch (e:Dynamic) {
+			err = Std.string(e);
+			if (Std.isOfType(e, bh.multianim.BuilderError)) builderErr = cast e;
+		}
+		Assert.notNull(err, "Root-level tint on a non-Drawable programmable root must throw");
+		Assert.notNull(builderErr, "throw must be a BuilderError, not a raw failure");
+	}
+
+	@Test
+	public function testTintOnDrawableElementStillBuilds():Void {
+		// Regression guard: tint on a Drawable element (bitmap) must keep working.
+		final result = buildFromSource("
+			#test programmable() {
+				@tint(#FF0000) bitmap(generated(color(10, 10, #fff))): 0, 0
+			}
+		", "test");
+		Assert.notNull(result, "tint on a Drawable element should build fine");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
 	}
 
 	@Test
@@ -329,6 +483,81 @@ class BuilderUnitTest extends BuilderTestBase {
 		", "test", params);
 		final bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(0, bitmaps.length);
+	}
+
+	@Test
+	public function testRepeatableElementNameMayMatchProgrammableParam():Void {
+		// The #name given to a repeatable element lives in a different namespace than
+		// the loop variable — only the LOOP VARIABLE ($i) can collide with a
+		// programmable parameter. Naming the element after an existing param must build.
+		final result = buildFromSource("
+			#test programmable(marker:int=0) {
+				#marker repeatable($i, step(3, dx: 12)) {
+					bitmap(generated(color(10, 10, #f00))): 0, 0
+				}
+			}
+		", "test");
+		Assert.notNull(result, "repeatable #name matching a programmable param must not be rejected");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(3, bitmaps.length);
+	}
+
+	@Test
+	public function testRepeatableElementNameMayMatchProgrammableParamInTileGroup():Void {
+		// Same namespace rule for the tileGroup repeat path.
+		final result = buildFromSource("
+			#test programmable(marker:int=0) {
+				tileGroup {
+					#marker repeatable($i, step(3, dx: 12, dy: 0)) {
+						bitmap(generated(color(10, 10, #f00))): 0, 0
+					}
+				}
+			}
+		", "test");
+		Assert.notNull(result, "repeatable #name matching a programmable param must not be rejected inside tileGroup");
+	}
+
+	@Test
+	public function testRepeatableArrayValueVarGoesOutOfScopeAfterLoop():Void {
+		// array($val, $items) binds $val per iteration — it is scoped to the loop
+		// body. A sibling AFTER the repeatable that references $val must fail the
+		// build; without cleanup it silently resolves to the LAST array element,
+		// so staticRef($val) quietly embeds #three. (staticRef targets are the one
+		// reference position not validated at parse time, so this reaches the builder.)
+		final err = expectError(() -> buildFromSource("
+			#three programmable() {
+				bitmap(generated(color(10, 10, #0f0))): 0, 0
+			}
+			#test programmable(items:array=[one, two, three]) {
+				repeatable($v, array($val, $items)) {
+					bitmap(generated(color(10, 10, #f00))): 0, 0
+				}
+				staticRef($val): 0, 20
+			}
+		", "test"));
+		Assert.notNull(err, "referencing the array value variable after the loop must fail — it silently resolves to the last element and embeds #three otherwise");
+		if (err != null)
+			Assert.isTrue(err.indexOf("val") >= 0, 'error should name the out-of-scope variable "val", got: $err');
+	}
+
+	@Test
+	public function testRepeatable2dArrayValueVarGoesOutOfScopeAfterLoop():Void {
+		// Same scoping rule for the 2D repeat path — its axis iterator output vars
+		// must not survive past the loop either.
+		final err = expectError(() -> buildFromSource("
+			#three programmable() {
+				bitmap(generated(color(10, 10, #0f0))): 0, 0
+			}
+			#test programmable(items:array=[one, two, three]) {
+				repeatable2d($x, $y, range(0, 2), array($val, $items)) {
+					bitmap(generated(color(10, 10, #f00))): 0, 0
+				}
+				staticRef($val): 0, 40
+			}
+		", "test"));
+		Assert.notNull(err, "referencing the 2D array value variable after the loop must fail — it silently resolves to the last element and embeds #three otherwise");
+		if (err != null)
+			Assert.isTrue(err.indexOf("val") >= 0, 'error should name the out-of-scope variable "val", got: $err');
 	}
 
 	// ==================== Data blocks (inline source) ====================
@@ -1271,6 +1500,29 @@ class BuilderUnitTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testTrackedTextReplaysAfterSetVisibilityTrue():Void {
+		// Parameter updates that arrive while an element is flag-hidden are skipped
+		// (no point updating an invisible object) — but they must be replayed when
+		// the element is shown again, or it surfaces with stale content.
+		final result = buildFromSource("
+			#test programmable(msg:string=\"hello\") {
+				#label text(dd, '${msg}', #fff): 0, 0
+			}
+		", "test", null, Incremental);
+		var texts = findAllTextDescendants(result.object);
+		Assert.equals("hello", texts[0].text);
+
+		final label = result.getUpdatable("label");
+		label.setVisibility(false);
+		result.setParameter("msg", "world");
+		label.setVisibility(true);
+
+		texts = findAllTextDescendants(result.object);
+		Assert.equals("world", texts[0].text,
+			"parameter update applied while hidden must replay when the element becomes visible again");
+	}
+
+	@Test
 	public function testIncrementalConditionalRange():Void {
 		final params = new Map<String, Dynamic>();
 		params.set("value", 35);
@@ -1291,6 +1543,48 @@ class BuilderUnitTest extends BuilderTestBase {
 		bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(1, bitmaps.length);
 		Assert.equals(30, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
+	public function testIncrementalLosingElseArmDefersExpressionEvaluation():Void {
+		// With n=0 the @() arm wins. The losing @else arm must be deferred, not
+		// built eagerly — eager building evaluates its position expression
+		// (100 div $n) and explodes on the very parameter value that hides the arm.
+		try {
+			final result = buildFromSource("
+				#test programmable(n:int=0) {
+					@(n => 0) bitmap(generated(color(10, 10, #f00))): 0, 0
+					@else bitmap(generated(color(10, 10, #0f0))): 100 div $n, 0
+				}
+			", "test", null, Incremental);
+
+			var bitmaps = findVisibleBitmapDescendants(result.object);
+			Assert.equals(1, bitmaps.length);
+			Assert.equals(0, Std.int(bitmaps[0].x));
+
+			// Flip to the @else arm — its expression evaluates now: 100 div 5 = 20
+			result.setParameter("n", 5);
+			bitmaps = findVisibleBitmapDescendants(result.object);
+			Assert.equals(1, bitmaps.length);
+			Assert.equals(20, Std.int(bitmaps[0].x));
+		} catch (e:Dynamic) {
+			Assert.fail('incremental build with the @else arm losing must not evaluate its expressions, got: ${Std.string(e)}');
+		}
+	}
+
+	@Test
+	public function testFullModeLosingElseArmSkipsExpressionEvaluation():Void {
+		// Regression pin: the full (non-incremental) build only builds the matching
+		// arm, so the losing @else expression is never evaluated with n=0.
+		final result = buildFromSource("
+			#test programmable(n:int=0) {
+				@(n => 0) bitmap(generated(color(10, 10, #f00))): 0, 0
+				@else bitmap(generated(color(10, 10, #0f0))): 100 div $n, 0
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(0, Std.int(bitmaps[0].x));
 	}
 
 	@Test
@@ -4022,6 +4316,34 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.equals(5, bitmaps.length);
 	}
 
+	@Test
+	public function testRepeatableVarConditionalIncrementalSurvivesUnrelatedSetParameter():Void {
+		// A constant-count repeatable whose inner conditional references ONLY the loop var ($i).
+		// The loop var is fixed per iteration and cannot change via setParameter, so the conditional
+		// outcome must stay stable across unrelated parameter changes. In incremental mode the
+		// per-iteration conditional entries all share the one parse-time template uniqueNodeName;
+		// re-evaluating the condition with $i absent must not hide any already-built iteration.
+		final result = buildFromSource("
+			#test programmable(label:string=\"x\") {
+				repeatable($i, step(3, dx: 12)) {
+					@($i >= 1) bitmap(generated(color(10, 10, #ff0000))): 0, 0
+				}
+			}
+		", "test", null, Incremental);
+
+		Assert.isTrue(result.isIncremental, "should be in incremental mode");
+		final before = findVisibleBitmapDescendants(result.object).length;
+		Assert.equals(2, before,
+			"i=1 and i=2 satisfy @(i >= 1); i=0 is excluded. got " + before);
+
+		// Change an unrelated param — must not disturb loop-var-driven visibility.
+		result.setParameter("label", "y");
+
+		final after = findVisibleBitmapDescendants(result.object).length;
+		Assert.equals(2, after,
+			"loop-var conditional visibility must survive an unrelated setParameter. got " + after);
+	}
+
 	// ==================== Incremental scale/alpha/filter expression tracking ====================
 
 	@Test
@@ -4288,6 +4610,37 @@ class BuilderUnitTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testConditionalChildInFlowLaysOutSameInIncrementalAndFullMode():Void {
+		// Incremental mode inserts a position-anchor sentinel object before each
+		// conditional element. Inside an h2d.Flow that sentinel must not take part
+		// in layout — a zero-size but flowed phantom child consumes an extra
+		// horizontalSpacing slot and shifts every element after the conditional.
+		final source = "
+			#test programmable(show:bool=true) {
+				flow(layout: horizontal, horizontalSpacing: 10) {
+					bitmap(generated(color(20, 10, #f00))): 0, 0
+					@(show=>true) bitmap(generated(color(20, 10, #0f0))): 0, 0
+					bitmap(generated(color(20, 10, #00f))): 0, 0
+				}
+			}
+		";
+		final fullResult = buildFromSource(source, "test");
+		final incResult = buildFromSource(source, "test", null, Incremental);
+		final fullFlow = Std.downcast(fullResult.object.getChildAt(0), h2d.Flow);
+		final incFlow = Std.downcast(incResult.object.getChildAt(0), h2d.Flow);
+		Assert.notNull(fullFlow, "Full build root child should be a Flow");
+		Assert.notNull(incFlow, "Incremental build root child should be a Flow");
+		fullFlow.reflow();
+		incFlow.reflow();
+		final fullBitmaps = findVisibleBitmapDescendants(fullFlow);
+		final incBitmaps = findVisibleBitmapDescendants(incFlow);
+		Assert.equals(3, fullBitmaps.length);
+		Assert.equals(3, incBitmaps.length);
+		Assert.equals(Std.int(fullBitmaps[2].x), Std.int(incBitmaps[2].x),
+			"last flow child must sit at the same x in incremental and full builds — the conditional sentinel must not consume a spacing slot");
+	}
+
+	@Test
 	public function testFlowPropOutsideFlowThrows():Void {
 		// per-element flow properties outside of flow should throw at parse time
 		Assert.raises(function() {
@@ -4512,7 +4865,7 @@ class BuilderUnitTest extends BuilderTestBase {
 		", "nonexistent"));
 		Assert.notNull(err, "Should throw for missing programmable");
 		Assert.isTrue(err.indexOf("nonexistent") >= 0, 'Error should mention "nonexistent", got: $err');
-		Assert.isTrue(err.indexOf("could find element") >= 0, 'Error should say could not find element, got: $err');
+		Assert.isTrue(err.indexOf("could not find element") >= 0, 'Error should say could not find element, got: $err');
 	}
 
 	@Test
@@ -8380,6 +8733,41 @@ class BuilderUnitTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testSwitchActiveArmSurvivesInactiveArmParamChange():Void {
+		// Changing a param referenced ONLY in a non-active arm must not tear down and
+		// rebuild the active arm. A needless rebuild would restart any stateanim playhead
+		// / re-seed particles in the active arm. Probe via object identity: the active
+		// arm's built child must remain the SAME instance after an inactive-arm-only param
+		// changes. (Refs used by the active arm still rebuild it — asserted at the end.)
+		final result = buildFromSource("
+			#test programmable(mode:[a, b]=a, ax:uint=10, bx:uint=20) {
+				@switch(mode) {
+					a: bitmap(generated(color($ax, 10, #f00))): 0, 0;
+					b: bitmap(generated(color($bx, 10, #0f0))): 0, 0;
+				}
+			}
+		", "test", null, Incremental);
+
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(10, Std.int(bitmaps[0].tile.width));
+		final before = bitmaps[0];
+
+		// bx is referenced ONLY in the inactive arm b. Changing it must not rebuild arm a.
+		result.setParameter("bx", 99);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.isTrue(before == bitmaps[0],
+			"active arm must not be rebuilt when a param used only in an inactive arm changes");
+
+		// Sanity: a param used by the active arm still triggers its rebuild + update.
+		result.setParameter("ax", 50);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(50, Std.int(bitmaps[0].tile.width));
+	}
+
+	@Test
 	public function testIncrementalSwitchInsideConditional():Void {
 		// @switch nested inside @() conditional — outer conditional hides the switch
 		final result = buildFromSource("
@@ -8669,6 +9057,32 @@ class BuilderUnitTest extends BuilderTestBase {
 			'Message should preserve original "not found" text, got: $message');
 	}
 
+	/** A throwing layout resolution must not leave the temporary index-parameter map
+	 *  installed on the builder. `MultiAnimLayouts.resolve` swaps `builder.indexedParams`
+	 *  for a scratch map (holding the layout's own index variable) while resolving a
+	 *  point and restores the original only on the success path — an error mid-resolve
+	 *  (here: 100 div $i at $i = 0) must restore it too, or every later resolution on
+	 *  this builder runs against the leaked scratch map. */
+	@Test
+	@:access(bh.multianim.MultiAnimBuilder)
+	public function testLayoutResolutionRestoresBuilderParamsOnThrow():Void {
+		final builder = builderFromSource("
+			layouts {
+				#L sequence($i: 0..3) point: 100 div $i, 0
+			}
+		");
+		builder.indexedParams.set("sentinelKey", ResolvedIndexParameters.StringValue("sentinel"));
+		var threw = false;
+		try {
+			builder.getLayouts().getPoint("L", 0); // index 0 → 100 div 0 → throws mid-resolve
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw, "resolving the layout point at index 0 should throw (division by zero)");
+		Assert.isTrue(builder.indexedParams.exists("sentinelKey"),
+			"builder.indexedParams must be restored after a throwing layout resolution — the scratch index map leaked otherwise");
+	}
+
 	// ==================== TileGroup + mutable-conditional rejection ====================
 
 	// tileGroup bakes children into a single drawable at build time and is never re-entered
@@ -8736,6 +9150,41 @@ class BuilderUnitTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testRootFormTileGroupConditionalOnParam_Builder_Throws():Void {
+		// Root form `programmable tilegroup(...)` bakes its whole body exactly like
+		// a nested tileGroup {} and must reject param conditionals the same way.
+		final msg = buildExpectingTileGroupConditional("
+			#test programmable tilegroup(mode:[a,b]=a) {
+				@(mode=>a) bitmap(generated(color(20, 20, red))): 0, 0
+				@(mode=>b) bitmap(generated(color(20, 20, blue))): 0, 0
+			}
+		");
+		Assert.notNull(msg, "root-form programmable tilegroup with a param conditional must throw like nested tileGroup {}");
+	}
+
+	@Test
+	public function testRootFormTileGroupConditionalOnParam_Incremental_Throws():Void {
+		// Incremental root-form builds must be rejected too — they silently
+		// double-bake both arms alongside each other otherwise.
+		var caught:Null<bh.multianim.BuilderError> = null;
+		try {
+			buildFromSource("
+				#test programmable tilegroup(mode:[a,b]=a) {
+					@(mode=>a) bitmap(generated(color(20, 20, red))): 0, 0
+					@(mode=>b) bitmap(generated(color(20, 20, blue))): 0, 0
+				}
+			", "test", null, Incremental);
+		} catch (e:bh.multianim.BuilderError) {
+			caught = e;
+		} catch (e:Dynamic) {
+			Assert.fail('Expected BuilderError, got: ${Std.string(e)}');
+		}
+		Assert.notNull(caught, "incremental root-form tilegroup build with a param conditional must throw");
+		if (caught != null)
+			Assert.equals("tilegroup_conditional", caught.code, 'code should be tilegroup_conditional, got "${caught.code}"');
+	}
+
+	@Test
 	public function testTileGroupElseOnParam_Throws():Void {
 		// Bare @else following a mutable-param @() is equally broken — the @() site throws first.
 		final msg = buildExpectingTileGroupConditional("
@@ -8784,6 +9233,21 @@ class BuilderUnitTest extends BuilderTestBase {
 			}
 		", "test");
 		Assert.notNull(result, "Loop-var conditionals inside tileGroup must still build");
+	}
+
+	@Test
+	public function testRootFormTileGroupConditionalOnRepeatableLoopVar_Allowed():Void {
+		// Same allowance for the root form — loop vars iterate at build time.
+		final result = buildFromSource("
+			#test programmable tilegroup() {
+				repeatable($i, step(3, dx: 20, dy: 0)) {
+					@($i => 0) bitmap(generated(color(20, 20, red))): 0, 0
+					@($i => 1) bitmap(generated(color(20, 20, green))): 0, 0
+					@($i => 2) bitmap(generated(color(20, 20, blue))): 0, 0
+				}
+			}
+		", "test");
+		Assert.notNull(result, "loop-var conditionals inside a root-form tilegroup must still build");
 	}
 
 	@Test
@@ -9483,5 +9947,149 @@ class BuilderUnitTest extends BuilderTestBase {
 		final delta = bh.multianim.MultiAnimBuilder.pushBuilderStateResetCount - baseline;
 		Assert.equals(0, delta,
 			'setParameter must not invoke the resetting pushBuilderState (its empty Map + anonymous struct are immediately overwritten); got ${delta} reset allocations across ${iterations} setParameter calls');
+	}
+
+	// applyUpdates pushes a snapshot via pushBuilderStateNoReset, then immediately
+	// restores it via popBuilderState. The pushed value is a 6-field anonymous
+	// struct whose lifetime is pure stack — fresh allocation per call is wasted
+	// work on the setParameter hover/drag hot path (one applyUpdates per non-batched
+	// UI event). Recycled state objects must be drawn from a pool so steady-state
+	// setParameter triggers zero fresh allocations.
+	@Test
+	public function testSetParameterReusesPooledBuilderStateAcrossApplyUpdates():Void {
+		final result = buildFromSource("
+			#test programmable(x:uint=10) {
+				bitmap(generated(color($x * 2, $x * 2, #fff))): 0, 0
+			}
+		", "test", null, Incremental);
+
+		// Warm up — the first few setParameter calls populate the pool. Steady
+		// state (every push thereafter) must hit the pool, not allocate.
+		result.setParameter("x", 11);
+		result.setParameter("x", 12);
+		result.setParameter("x", 13);
+
+		final baseline = bh.multianim.MultiAnimBuilder.pushBuilderStateNoResetAllocCount;
+		final iterations = 10;
+		for (i in 0...iterations) {
+			result.setParameter("x", 20 + i);
+		}
+		final delta = bh.multianim.MultiAnimBuilder.pushBuilderStateNoResetAllocCount - baseline;
+		Assert.equals(0, delta,
+			'pushBuilderStateNoReset must reuse pooled state objects on the setParameter hot path; got ${delta} fresh anon-struct allocations across ${iterations} setParameter calls');
+	}
+
+	// applyUpdates re-evaluates tracked expressions by walking the full trackedExpressions array
+	// and scanning each entry's paramRefs against changedParams. For T trackeds averaging R
+	// paramRefs each, every setParameter does O(T·R) hash lookups even when only one or two
+	// trackeds reference the changed param. The fix is a reverse index keyed by paramName so
+	// setParameter("status", ...) iterates only the trackeds that actually mention "status".
+	// On the UI hover/press hot path (card hand, hex grid) T grows with element count and this
+	// scan dominates the per-mouse-move cost.
+	@Test
+	public function testSetParameterScansOnlyTrackedsReferencingChangedParam():Void {
+		final result = buildFromSource("
+			#test programmable(a:uint=0, b:uint=0, c:uint=0, d:uint=0, e:uint=0) {
+				bitmap(generated(color($a + 1, 10, #fff))): 0, 0
+				bitmap(generated(color($b + 1, 10, #fff))): 0, 0
+				bitmap(generated(color($c + 1, 10, #fff))): 0, 0
+				bitmap(generated(color($d + 1, 10, #fff))): 0, 0
+				bitmap(generated(color($e + 1, 10, #fff))): 0, 0
+			}
+		", "test", null, Incremental);
+
+		final ctx = result.incrementalContext;
+		Assert.notNull(ctx);
+
+		// Warm up — first setParameter may touch lazy init paths.
+		result.setParameter("a", 5);
+
+		// Steady state — measure scan count for a single setParameter on one param.
+		final before = ctx.trackedRelevantScanCount;
+		result.setParameter("a", 6);
+		final scanned = ctx.trackedRelevantScanCount - before;
+
+		// Only 1 tracked expression references "a". A reverse index keyed by paramName must
+		// examine only that one; without it, every setParameter scans all trackeds.
+		Assert.equals(1, scanned,
+			'setParameter("a") must examine only trackeds referencing "a"; scanned $scanned. '
+			+ 'Without a reverse index keyed by paramName, every setParameter does O(T·R) hash '
+			+ 'lookups on the UI hover/press hot path.');
+	}
+
+	// Same shape as trackedExpressions: the dynamicRefBindings forwarding pass-1 (collect unique
+	// contexts of relevant bindings) walks every binding regardless of which params changed. A
+	// reverse index keyed by paramName must short-circuit irrelevant bindings.
+	@Test
+	public function testSetParameterScansOnlyDynamicRefBindingsReferencingChangedParam():Void {
+		final result = buildFromSource("
+			#leaf programmable(val:uint=0) {
+				bitmap(generated(color($val + 1, 10, #fff))): 0, 0
+			}
+			#test programmable(a:uint=0, b:uint=0, c:uint=0, d:uint=0, e:uint=0) {
+				#r1 dynamicRef($leaf, val=>$a): 0, 0
+				#r2 dynamicRef($leaf, val=>$b): 20, 0
+				#r3 dynamicRef($leaf, val=>$c): 40, 0
+				#r4 dynamicRef($leaf, val=>$d): 60, 0
+				#r5 dynamicRef($leaf, val=>$e): 80, 0
+			}
+		", "test", null, Incremental);
+
+		final ctx = result.incrementalContext;
+		Assert.notNull(ctx);
+
+		// Warm up.
+		result.setParameter("a", 5);
+
+		// Steady state — single setParameter on one param.
+		final before = ctx.dynamicRefBindingRelevantScanCount;
+		result.setParameter("a", 6);
+		final scanned = ctx.dynamicRefBindingRelevantScanCount - before;
+
+		// Only 1 binding references "a". The forwarding pass must look it up via reverse index,
+		// not scan all bindings. The pass-2 dispatch loop walks the same set per unique context;
+		// reducing pass-1 to O(k) directly cuts the cost of card-hand hover into deeply-nested
+		// dynamicRef trees (interactives forwarded per card per mouse move).
+		Assert.equals(1, scanned,
+			'setParameter("a") must examine only dynamicRef bindings referencing "a"; scanned $scanned. '
+			+ 'Without a reverse index keyed by paramName, forwarding pass-1 scans every binding.');
+	}
+
+	// applyUpdates re-evaluates relevant tracked expressions via a reverse index keyed by paramName.
+	// For a batched multi-param update (beginUpdate + several setParameter + endUpdate) the firing
+	// order must follow build/declaration order — not the order params enumerate out of the
+	// changedParams map, and not grouped-by-param. Two tracked expressions that write overlapping
+	// properties of the same object compose by firing order (last write wins), so stable declaration
+	// order is the contract. This pins it independent of map hashing: trackeds 1 and 3 reference
+	// param "pb" while tracked 2, declared between them, references "pa". Any grouped-by-param firing
+	// necessarily separates 1/3 from 2 and so cannot reproduce the 1,2,3 declaration order.
+	@Test
+	public function testBatchedMultiParamUpdateFiresTrackedExpressionsInDeclarationOrder():Void {
+		final result = buildFromSource("
+			#test programmable(pa:int=0, pb:int=0) {
+				bitmap(generated(color(10, 10, #fff))): $pa, $pb
+			}
+		", "test", null, Incremental);
+
+		final ctx = result.incrementalContext;
+		Assert.notNull(ctx);
+
+		final order:Array<String> = [];
+		// Declared interleaved across the two params: 1 -> pb, 2 -> pa, 3 -> pb.
+		// object omitted (null) so visibility never skips these recorder trackeds.
+		ctx.trackExpression(() -> order.push("1"), ["pb"]);
+		ctx.trackExpression(() -> order.push("2"), ["pa"]);
+		ctx.trackExpression(() -> order.push("3"), ["pb"]);
+
+		// Batched update touches both params, so all three recorder trackeds are relevant.
+		result.beginUpdate();
+		result.setParameter("pa", 1);
+		result.setParameter("pb", 2);
+		result.endUpdate();
+
+		Assert.equals("1,2,3", order.join(","),
+			'Batched multi-param update must fire tracked expressions in declaration order; got '
+			+ order.join(",") + '. Grouping by changedParams key order reorders trackeds that '
+			+ 'mutate overlapping properties of the same object.');
 	}
 }

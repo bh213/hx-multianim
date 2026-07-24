@@ -230,7 +230,7 @@ ninepatch("cards", "card-base-patch9", 150,200) {
 }
 ```
 
-Supports `filter`, `scale`, `alpha`, and `blendMode`.
+Supports `filter`, `scale`, `alpha`, `rotation`, `blendMode`, `tint`, and `pos`. `pos` composes *additively* with the parent's existing placement (`parent.x += dx; parent.y += dy`) — same semantics as the builder's `addPosition`. `tint` requires a Drawable parent. Overlapping `apply` entries on the same parent compose by declaration order via a reset-and-replay pass: every entry's baseline is restored, then matched entries fire in order.
 
 ### text
 Creates simple text with font, content, and color. Always creates plain `h2d.Text`.
@@ -338,6 +338,8 @@ Optimized element for constructing objects with many elements (e.g., HP bars). A
 ```
 #name programmable tileGroup(...)
 ```
+
+Content is baked once at build time, so conditionals keyed on programmable parameters are rejected (`BuilderError code="tilegroup_conditional"`) — in both the root form above and the nested `tilegroup {}` element. Conditionals keyed on `repeatable` loop variables are allowed (they iterate at build time).
 
 ### programmable
 Core element of the library. Creates an instance of all children belonging to this programmable.
@@ -1416,7 +1418,7 @@ Collections of colors accessed by index.
 
 **2D palette:**
 ```
-#main palette(2d, 4) {
+#main palette(2d: 4) {
   white 0xf12 0x332 0xfff
   red 0xf13 0x333 0xffa
 }
@@ -2629,6 +2631,11 @@ var btn = UIStandardMultiAnimButton.create(builder, "button", "Click Me", ["widt
 // Via UIScreenBase (with macro settings injection)
 var btn = addButtonWithSingleBuilder(builder, "button", "Click Me");
 var btn = addButton(builder.createElementBuilder("button"), "Click Me", settings);
+
+// Runtime styling — drive a design-specific parameter on a live button.
+// Returns false (no-op) when the design has no such parameter; throws for
+// the widget-managed status/buttonText/disabled (use setText() / disabled).
+btn.setStyleParameter("accent", "silver");
 ```
 
 **`.manim` settings override example (in parent placeholder):**

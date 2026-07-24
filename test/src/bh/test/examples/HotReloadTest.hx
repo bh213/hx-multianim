@@ -23,6 +23,7 @@ import bh.multianim.dev.HotReload;
  * NOTE: Use double-quoted strings ("...") for .manim source — single-quoted strings
  * trigger Haxe string interpolation which conflicts with .manim $ references.
  */
+@:access(bh.ui.screens.ScreenManager)
 class HotReloadTest extends BuilderTestBase {
 	// ===== Helper: simulate hot-reload cycle =====
 
@@ -1085,6 +1086,167 @@ class HotReloadTest extends BuilderTestBase {
 		final drParams = snapshot.dynamicRefs.get("bar");
 		Assert.notNull(drParams);
 		Assert.isTrue(drParams.exists("value"), "DynamicRef snapshot should have 'value' param");
+	}
+
+	// ==================== DynamicRef template swap: dev-resource lifetime ====================
+
+	@Test
+	public function testDynamicRefTemplateSwapWhileDetachedReleasesReloadHandle():Void {
+		// Handle lifetime must not depend on the ReloadSentinel's onRemove(): Heaps only
+		// fires onRemove for scene-ALLOCATED objects, and builder results in these tests
+		// (like off-screen game UI) are never attached to a scene. When a dynamicRef
+		// template swap discards the old child subtree, the discard path itself must
+		// release the old child's reload handle — otherwise the registry accumulates one
+		// dead handle per swap.
+		final source = "
+			#progA programmable() {
+				bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+			#progB programmable() {
+				bitmap(generated(color(20, 20, #00ff00))): 0, 0
+			}
+			#host programmable(template:string=\"progA\") {
+				#child dynamicRef($template): 0, 0
+			}
+		";
+		// Host root is NOT attached to any scene — the sentinel's onRemove never fires.
+		final result = buildFromSource(source, "host", null, Incremental);
+		Assert.notNull(result);
+
+		final child = result.getDynamicRef("child");
+		Assert.notNull(child, "named dynamicRef should be addressable as 'child'");
+
+		// Manually register the CHILD result (no loader registry is wired in tests,
+		// so nothing auto-registers — registration stays fully under test control).
+		final registry = new ReloadableRegistry();
+		final handle = registry.register("virtual.manim", child, "progA");
+		child.reloadHandle = handle;
+		Assert.equals(1, registry.getHandles("virtual.manim").length, "sanity: one handle after register");
+
+		// Swap the template — the old child subtree is discarded while detached.
+		result.setParameter("template", "progB");
+
+		// The discarded child's handle must be released. The new child was never
+		// registered by this test, so the registry must be empty.
+		Assert.equals(0, registry.getHandles("virtual.manim").length,
+			"discarding the old dynamicRef subtree must release its reload handle even when detached from any scene");
+
+		// Swap again — the registry must not grow with stale handles per swap.
+		result.setParameter("template", "progA");
+		Assert.equals(0, registry.getHandles("virtual.manim").length,
+			"repeated template swaps must not accumulate stale reload handles");
+	}
+
+	@Test
+	public function testDynamicRefTemplateSwapCancelsOldSubtreeTransitionTweens():Void {
+		// When a dynamicRef template swap discards the old child subtree, any in-flight
+		// transition tweens owned by the old child's incremental context must be cancelled.
+		// Otherwise they keep ticking against orphaned scene objects after the swap.
+		final tm = new bh.base.TweenManager();
+		final builder = builderFromSource("
+			#tplA programmable(status:[a,b]=a) {
+				transition {
+					status: crossfade(0.5)
+				}
+				@(status=>a) bitmap(generated(color(10, 10, #ff0000))): 0, 0
+				@(status=>b) bitmap(generated(color(10, 10, #00ff00))): 0, 0
+			}
+			#tplB programmable() {
+				bitmap(generated(color(20, 20, #0000ff))): 0, 0
+			}
+			#host programmable(template:string=\"tplA\") {
+				#child dynamicRef($template): 0, 0
+			}
+		");
+		builder.tweenManager = tm;
+		final result = builder.buildWithParameters("host", new Map(), null, null, true);
+		Assert.notNull(result);
+
+		final child = result.getDynamicRef("child");
+		Assert.notNull(child, "named dynamicRef should be addressable as 'child'");
+		final oldChildObject = child.object;
+
+		// Start a crossfade on the old child and advance it mid-flight.
+		child.setParameter("status", "b");
+		tm.update(0.0); // consumed by skipFirstDt
+		tm.update(0.1); // 0.1s into the 0.5s crossfade
+		Assert.isTrue(subtreeHasTweens(tm, oldChildObject),
+			"sanity: crossfade tweens must be active on the old child before the swap");
+
+		// Swap the template — old subtree discarded mid-transition.
+		result.setParameter("template", "tplB");
+
+		Assert.isFalse(subtreeHasTweens(tm, oldChildObject),
+			"discarding the old dynamicRef subtree must cancel its in-flight transition tweens");
+	}
+
+	// Recursive tween probe: TweenManager.hasTweens matches the exact target object,
+	// but transition tweens target descendants (the conditional bitmaps), not the root.
+	static function subtreeHasTweens(tm:bh.base.TweenManager, root:h2d.Object):Bool {
+		if (tm.hasTweens(root)) return true;
+		for (i in 0...root.numChildren) {
+			if (subtreeHasTweens(tm, root.getChildAt(i))) return true;
+		}
+		return false;
+	}
+
+	// ==================== reloadable=false opt-out ====================
+
+	@Test
+	public function testReloadableFalseSkipsInPlaceReload():Void {
+		// docs/hot-reload.md ("Controlling Reloadability") documents
+		// `result.reloadable = false` as an opt-out. The flag is set by callers
+		// AFTER buildWithParameters returns, so the reload loop itself must
+		// consult it — registration-time reads can never see the opt-out.
+		// Drives the real ScreenManager.hotReload() loop against a temp file.
+		final fileName = "hotreload-optout-tmp.manim";
+		final filePath = "test/res/" + fileName;
+		final v1 = "version: 1.0\n"
+			+ "#optout programmable() {\n"
+			+ "	bitmap(generated(color(10, 10, #ff0000))): 0, 0\n"
+			+ "}\n"
+			+ "#normal programmable() {\n"
+			+ "	bitmap(generated(color(10, 10, #00ff00))): 0, 0\n"
+			+ "}\n";
+		final v2 = "version: 1.0\n"
+			+ "#optout programmable() {\n"
+			+ "	bitmap(generated(color(99, 10, #ff0000))): 0, 0\n"
+			+ "}\n"
+			+ "#normal programmable() {\n"
+			+ "	bitmap(generated(color(99, 10, #00ff00))): 0, 0\n"
+			+ "}\n";
+		sys.io.File.saveContent(filePath, v1);
+		var caught:Null<Dynamic> = null;
+		try {
+			final sm = new bh.ui.screens.ScreenManager(bh.test.VisualTestBase.appInstance);
+			final builder = sm.buildFromResourceName(fileName, false);
+			final rOpt = builder.buildWithParameters("optout", new Map(), null, null, true);
+			final rNorm = builder.buildWithParameters("normal", new Map(), null, null, true);
+
+			Assert.equals(2, sm.hotReloadRegistry.getHandles(fileName).length,
+				"sanity: both incremental results register reload handles");
+			Assert.equals(10, Std.int(findVisibleBitmapDescendants(rOpt.object)[0].tile.width));
+
+			// The documented opt-out — set after build, as any real caller would.
+			rOpt.reloadable = false;
+
+			sys.io.File.saveContent(filePath, v2);
+			sm.hotReload();
+
+			final normBitmaps = findVisibleBitmapDescendants(rNorm.object);
+			Assert.equals(99, Std.int(normBitmaps[0].tile.width),
+				"control: a reloadable result must be rebuilt in place by hotReload()");
+
+			final optBitmaps = findVisibleBitmapDescendants(rOpt.object);
+			Assert.equals(10, Std.int(optBitmaps[0].tile.width),
+				"a result with reloadable=false must be skipped by the reload loop");
+		} catch (e:Dynamic) {
+			caught = e;
+		}
+		if (sys.FileSystem.exists(filePath))
+			sys.FileSystem.deleteFile(filePath);
+		if (caught != null)
+			throw caught;
 	}
 }
 #end

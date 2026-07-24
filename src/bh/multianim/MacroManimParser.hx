@@ -304,6 +304,9 @@ private class MacroLexer {
 								// Hit string terminator before closing } — interpolation is unclosed
 								throw '$sourceName:$interpLine:$interpCol: Unclosed string interpolation, expected }';
 							}
+							// Newlines inside ${...} must advance the line counter, or every
+							// token after this string reports a stale line number.
+							else if (bc == '\n'.code) { line++; lineStart = pos + 1; }
 							if (depth > 0) pos++;
 						}
 						if (depth > 0) {
@@ -346,10 +349,13 @@ private class MacroLexer {
 							codeTokens.push(st);
 						}
 						if (codeTokens.length == 0) continue; // skip empty code
-						// Adjust token positions to the interpolation start in the original source
+						// Adjust token positions to the interpolation start in the original
+						// source. codeCol is the 1-based column of the `$`; the code text
+						// starts two chars later (past `${`), and sub-lexer columns are
+						// 1-based — hence the +1.
 						for (ct in codeTokens) {
 							ct.line = part.codeLine;
-							ct.col = part.codeCol + ct.col;
+							ct.col = part.codeCol + 1 + ct.col;
 						}
 						// Inside ${...}, bare identifiers are parameter references
 						// (allow ${test} as shorthand for ${$test})
@@ -423,8 +429,15 @@ private class MacroLexer {
 				return new Token(TIdentifier(src.substring(idStart, pos)), startLine, startCol);
 			}
 
-			// Unknown character - skip
-			pos++;
+			// Byte-order mark: tolerated (editors prepend it), not a token.
+			if (c == 0xFEFF) {
+				pos++;
+				continue;
+			}
+
+			// Unknown character — error loudly; silently skipping made typos
+			// (stray backticks, smart quotes) vanish without a diagnostic.
+			throw '$sourceName:$startLine:$startCol: Unknown character "${String.fromCharCode(c)}" (code $c)';
 		}
 		return new Token(TEof, line, pos - lineStart + 1);
 	}
@@ -1215,12 +1228,34 @@ class MacroManimParser {
 	function parseXY():Coordinates {
 		var coord:Coordinates = switch (peek()) {
 			case TReference(s):
-				// Check if this is $ref.method() (coordinate method chain) or just $ref as part of OFFSET
-				// We need to peek ahead: if the token after $ref is TDot, it's a coordinate method chain
+				// Check if this is $ref.method() (coordinate method chain), a scalar
+				// $ref.property used as the X value, or just $ref as part of OFFSET.
 				advance();
 				if (match(TDot)) {
 					validateRef(s);
-					parseCoordinateMethodChain(s);
+					// A full coordinate method chain has an argument list after the
+					// identifier ($grid.pos(1, 2)); extraPoint and $ctx.hex/$ctx.grid
+					// are chains too. A bare property ($grid.width, $ctx.height) is a
+					// scalar — parse it as the X value so the X position accepts the
+					// same expressions the Y position already does.
+					final isCoordChain = switch peek() {
+						case TIdentifier(m):
+							if (isKeyword(m, "extrapoint")) true;
+							else if (s == "ctx" && (m == "hex" || m == "grid")) true;
+							else if (tpos + 1 < tokens.length) switch tokens[tpos + 1].type {
+								case TOpen: true;
+								default: false;
+							} else false;
+						default: false;
+					};
+					if (isCoordChain) {
+						parseCoordinateMethodChain(s);
+					} else {
+						final x = parseExpressionFromAtom(parsePropertyOrMethodChain(s), 0, EInt);
+						expect(TComma);
+						final y = parseIntegerOrReference();
+						OFFSET(x, y);
+					}
 				} else {
 					validateRef(s);
 					// Not a dot — this is a plain reference used in OFFSET(x, y) position
@@ -1923,6 +1958,22 @@ class MacroManimParser {
 
 	// ===================== Conditional Parsing =====================
 
+	// Reject enum members that don't exist in the parameter's declared enum (typos).
+	// Multi-value [a,b] and pipe @switch arms build CoEnums from raw lexemes; without this
+	// an unknown name silently diverges — codegen matches enum index 0, builder never matches.
+	// String params accept any value; loop vars (no def) have no type to validate against.
+	function validateConditionalEnumValues(paramName:String, defs:ParametersDefinitions, values:Array<String>):Void {
+		final def = defs.get(paramName);
+		if (def == null) return;
+		switch (def.type) {
+			case PPTEnum(members):
+				for (v in values)
+					if (!members.contains(v))
+						error('conditional value "$v" is not a valid value for enum parameter "$paramName", expected one of: ${members.join(", ")}');
+			default:
+		}
+	}
+
 	function parseConditionalParameters(defs:ParametersDefinitions):Map<String, ConditionalValues> {
 		var result:Map<String, ConditionalValues> = new Map();
 		while (true) {
@@ -1974,11 +2025,12 @@ class MacroManimParser {
 							var enums:Array<String> = [];
 							while (!match(TBracketClosed)) {
 								if (enums.length > 0) eatComma();
-								enums.push(expectIdentifierOrString());
+								enums.push(parseConditionalValue());
 							}
-							result.set(paramName, CoNot(CoEnums(enums)));
+							result.set(paramName, CoNot(makeBracketMultiValue(paramName, defs, enums)));
 						default:
 							final val = parseConditionalValue();
+							validateConditionalEnumValues(paramName, defs, [val]);
 							final paramDef = defs.get(paramName);
 							final cv = paramDef != null ? stringToConditional(val, paramDef.type) : stringToConditionalGeneric(val);
 							result.set(paramName, CoNot(cv));
@@ -1995,13 +2047,14 @@ class MacroManimParser {
 							var enums:Array<String> = [];
 							while (!match(TBracketClosed)) {
 								if (enums.length > 0) eatComma();
-								enums.push(expectIdentifierOrString());
+								enums.push(parseConditionalValue());
 							}
-							result.set(paramName, CoEnums(enums));
+							result.set(paramName, makeBracketMultiValue(paramName, defs, enums));
 						case TExclamation:
 							// Backward compat: @(param => !value) negate syntax
 							advance();
 							final val = parseConditionalValue();
+							validateConditionalEnumValues(paramName, defs, [val]);
 							final paramDef = defs.get(paramName);
 							final cv = paramDef != null ? stringToConditional(val, paramDef.type) : stringToConditionalGeneric(val);
 							result.set(paramName, CoNot(cv));
@@ -2037,6 +2090,7 @@ class MacroManimParser {
 										result.set(paramName, CoRange(val, to, false, false));
 									} else {
 										final valStr = rvToCondString(val);
+										validateConditionalEnumValues(paramName, defs, [valStr]);
 										final paramDef = defs.get(paramName);
 										if (paramDef != null) {
 											final cv = stringToConditional(valStr, paramDef.type);
@@ -2096,14 +2150,47 @@ class MacroManimParser {
 				switch (val.toLowerCase()) {
 					case "true" | "yes" | "1": CoValue(1);
 					case "false" | "no" | "0": CoValue(0);
-					default: CoStringValue(val);
+					// A non-boolean string previously fell to CoStringValue: the builder
+					// silently never matched (Std.string(0/1) != "maybe") and codegen emitted
+					// `_field == "maybe"` over an Int field (Int == String compile error that
+					// broke the whole @:manim build). Reject at parse time, parallel to the
+					// PPTFloat guard.
+					default: error('non-boolean conditional value "$val" for a bool parameter — use true/false (or yes/no, 1/0)');
 				}
-			case PPTFlags(bits):
+			case PPTInt | PPTUnsignedInt | PPTRange(_, _) | PPTHexDirection | PPTGridDirection:
+				// Numeric param types only match numeric conditional values. A non-numeric
+				// string previously fell to CoStringValue: the builder silently never matched
+				// and codegen emitted `_field == "foo"` over an Int field (Int == String
+				// compile error). Reject at parse time, parallel to the PPTFloat/PPTBool guards.
 				final n = Std.parseInt(val);
-				if (n != null) CoFlag(n) else CoStringValue(val);
+				if (n != null) CoValue(n) else
+					error('non-numeric conditional value "$val" for a numeric parameter — int/uint/range/direction parameters only match numeric values, not strings');
+			case PPTFlags(bits):
+				// Flags only match numeric values or bit[N] tests. A non-numeric
+				// string previously fell to CoStringValue: the builder silently
+				// never matched and codegen emitted `_field == "foo"` over an Int
+				// field (compile error). Reject at parse time, parallel to the
+				// PPTFloat/PPTBool/PPTInt guards.
+				final n = Std.parseInt(val);
+				if (n != null) CoFlag(n) else
+					error('non-numeric conditional value "$val" for a flags parameter — flags parameters only match numeric values or bit[N] tests');
 			case PPTColor:
 				final c = tryStringToColor(val);
 				if (c != null) CoValue(c) else CoValue(val.toInt());
+			case PPTString:
+				// String params always compare as strings. Without this, an
+				// integer-parseable value (e.g. `@(version => 2)`) fell into the
+				// `default` Std.parseInt branch and produced CoValue(int): the
+				// builder then threw 'invalid param types' against a StringValue and
+				// codegen emitted `String == Int` (compile error).
+				CoStringValue(val);
+			case PPTFloat:
+				// Equality conditionals (=> / !=) are unsupported for float params —
+				// float equality is unreliable and the builder/codegen backends
+				// diverge (builder throws, codegen silently matches). Comparisons
+				// (>=, <=, >, <) and ranges (a..b) do not route through here and
+				// remain supported. Consistent with @switch rejecting float params.
+				error('float parameters do not support equality conditionals (=> / !=) — float equality is unreliable; use a comparison (>=, <=, >, <) or a range (a..b) instead');
 			default:
 				final n = Std.parseInt(val);
 				if (n != null) CoValue(n) else CoStringValue(val);
@@ -2114,6 +2201,27 @@ class MacroManimParser {
 	function stringToConditionalGeneric(val:String):ConditionalValues {
 		final n = Std.parseInt(val);
 		return if (n != null) CoValue(n) else CoStringValue(val);
+	}
+
+	/**
+	 * Builds a type-aware multi-value conditional from a parsed bracket list `[a, b, ...]`,
+	 * mirroring the single-value routing: enum params keep raw-string CoEnums (codegen's
+	 * enumValueToIndex maps each name to its index, builder matches Index/StringValue as-is),
+	 * while every other discrete type — string, int/uint, color, bool, flags, and loop vars
+	 * with no definition — routes each value through stringToConditional and ORs them via
+	 * CoAnyOf. Without this, bracket conditionals diverge between builder and codegen: bool
+	 * never matches at runtime, int collapses to `== 0` in codegen, and string CoEnums fails
+	 * to compile in codegen (`String == 0`).
+	 */
+	function makeBracketMultiValue(paramName:String, defs:ParametersDefinitions, values:Array<String>):ConditionalValues {
+		validateConditionalEnumValues(paramName, defs, values);
+		final paramDef = defs.get(paramName);
+		if (paramDef == null)
+			return CoAnyOf([for (v in values) stringToConditionalGeneric(v)]);
+		return switch (paramDef.type) {
+			case PPTEnum(_): CoEnums(values);
+			default: CoAnyOf([for (v in values) stringToConditional(v, paramDef.type)]);
+		}
 	}
 
 	/** Converts a simple ReferenceableValue back to a string for stringToConditional fallback. */
@@ -2689,6 +2797,8 @@ class MacroManimParser {
 				if (layoutType == null) { error('expected layout content for $name'); return; }
 				final align = parseLayoutAlign();
 				eatSemicolon();
+				if (layouts.exists(name))
+					error('layout "$name" already defined — duplicate names silently shadow each other');
 				layouts.set(name, {name: name, type: cast layoutType, grid: grid, hex: hex, offset: foldOffsets(offsets),
 					alignX: align.alignX, alignY: align.alignY});
 			default:
@@ -2900,6 +3010,10 @@ class MacroManimParser {
 					case TIdentifier(s) if (isKeyword(s, "switch")):
 						if (atCount > 0) error("@switch cannot be combined with other @ modifiers");
 						if (parent == null) error("@switch cannot be used at root level");
+						// A #name in front of @switch was previously parsed and silently
+						// discarded — the block registers nothing under that name.
+						if (!updatableName.match(UNTObject(null)))
+							error("#name cannot be applied to @switch — name the elements inside the arms instead");
 						advance();
 						expect(TOpen);
 						final switchParam = expectIdentifierOrString();
@@ -2954,6 +3068,10 @@ class MacroManimParser {
 						hasFlowProps = true;
 						atCount++;
 					case TIdentifier(s) if (isKeyword(s, "final")):
+						// A @final is always unconditional — a preceding conditional or
+						// inline property was previously parsed and silently discarded.
+						if (atCount > 0)
+							error("@final cannot be combined with other @ modifiers or conditionals — a @final is always unconditional");
 						advance();
 						final name = expectIdentifierOrString();
 						expect(TEquals);
@@ -3352,9 +3470,17 @@ class MacroManimParser {
 					slotScopeSaved = true;
 					currentDefs = parsed.defs;
 					activeDefs = parsed.defs;
-					scopeVars = [];
+					// Enclosing @final constants stay visible inside the slot body —
+					// the builder merges them into the slot's param map, and
+					// buildSlotContent replays them for setParameter rebuilds.
+					// Enclosing params and loop vars stay hidden: a slot rebuild
+					// only receives the slot's own parameters.
+					scopeVars = slotSavedActiveFinalNames != null ? slotSavedActiveFinalNames.copy() : [];
 					activeFinals = new Map();
-					activeFinalNames = [];
+					if (slotSavedActiveFinals != null)
+						for (k => v in slotSavedActiveFinals)
+							activeFinals.set(k, v);
+					activeFinalNames = slotSavedActiveFinalNames != null ? slotSavedActiveFinalNames.copy() : [];
 					namedElements = [];
 					createNode(SLOT(parsed.defs, parsed.order), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 				} else {
@@ -3481,6 +3607,11 @@ class MacroManimParser {
 
 			case TIdentifier(s) if (isKeyword(s, "programmable")):
 				advance();
+				// Root-only guard (matches palette/paths/curves/animatedPath): a nested
+				// programmable would silently clobber the outer programmable's scope
+				// (activeDefs/scopeVars/@finals/named elements) with no restore.
+				if (parent != null)
+					error("programmable must be a root node — programmables cannot be nested; embed one via staticRef/dynamicRef instead");
 				// Check for tilegroup
 				var isTileGroup = false;
 				switch (peek()) {
@@ -3705,8 +3836,16 @@ class MacroManimParser {
 					case TOpen:
 						advance();
 						switch (peek()) {
-							case TIdentifier(s2) if (isKeyword(s2, "2d")):
+							case TInteger("2"):
+								// `2d` lexes as TInteger("2") + TIdentifier("d") — identifiers
+								// cannot start with a digit — so match the token pair.
 								advance();
+								switch (peek()) {
+									case TIdentifier(d) if (d.toLowerCase() == "d"):
+										advance();
+									default:
+										error("expected 2d or file in palette()");
+								}
 								expect(TColon);
 								final width = parseInteger();
 								expect(TClosed);
@@ -3827,6 +3966,10 @@ class MacroManimParser {
 
 			case TIdentifier(s) if (isKeyword(s, "transition")):
 				advance();
+				// Modifiers were previously parsed and silently discarded — the block
+				// is declarative and unconditional.
+				if (!conditional.match(NoConditional) || alpha != null || scale != null || rotation != null || tint != null || layerIndex != -1 || hasFlowProps)
+					error("@ modifiers are not supported on transition {} — transition declarations are unconditional");
 				expect(TCurlyOpen);
 				if (parent == null) error("transition must be inside a programmable");
 				final transParamDefs = switch (parent.type) {
@@ -3866,6 +4009,10 @@ class MacroManimParser {
 
 			case TIdentifier(s) if (isKeyword(s, "settings")):
 				advance();
+				// Modifiers were previously parsed and silently discarded — the block
+				// is declarative and unconditional.
+				if (!conditional.match(NoConditional) || alpha != null || scale != null || rotation != null || tint != null || layerIndex != -1 || hasFlowProps)
+					error("@ modifiers are not supported on settings {} — settings are static and unconditional");
 				expect(TCurlyOpen);
 				if (parent == null) error("settings must have a parent");
 				if (parent.settings == null) parent.settings = new Map();
@@ -3949,19 +4096,24 @@ class MacroManimParser {
 				}
 				parseNodes(node, currentDefs);
 				for (_ in 0...loopVarsToPop) scopeVars.pop();
-				if (slotScopeSaved) {
-					currentDefs = slotSavedCurrentDefs;
-					activeDefs = slotSavedActiveDefs;
-					scopeVars = slotSavedScopeVars;
-					activeFinals = slotSavedActiveFinals;
-					activeFinalNames = slotSavedActiveFinalNames;
-					namedElements = slotSavedNamedElements;
-					slotScopeSaved = false;
-				}
 			case TEof:
 				error("unexpected end of file");
 			default:
 				error('expected : or { or ;, got ${peek()}');
+		}
+
+		// Restore the outer scope saved by a parameterized slot — must run for ALL
+		// terminators. A bodyless slot (`: x,y` / `;`) has no `{` branch, and leaving
+		// the slot's param scope installed makes every following sibling lose the
+		// enclosing programmable's params, loop vars, and @finals.
+		if (slotScopeSaved) {
+			currentDefs = slotSavedCurrentDefs;
+			activeDefs = slotSavedActiveDefs;
+			scopeVars = slotSavedScopeVars;
+			activeFinals = slotSavedActiveFinals;
+			activeFinalNames = slotSavedActiveFinalNames;
+			namedElements = slotSavedNamedElements;
+			slotScopeSaved = false;
 		}
 
 		return node;
@@ -5337,13 +5489,18 @@ class MacroManimParser {
 						while (match(TPipe)) {
 							values.push(parseSwitchArmValue());
 						}
-						// PPTEnum / PPTString match correctly via raw-string CoEnums (Index/StringValue
-						// runtime parameters compare to the lexeme as-is). For other discrete types
-						// (color, int, uint, bool), the raw lexeme never matches Std.string(int), so we
-						// route each value through stringToConditional to get a typed inner conditional
-						// and OR them at match/codegen time via CoAnyOf.
+						// PPTEnum matches correctly via raw-string CoEnums (Index runtime parameter
+						// compares to the lexeme as-is, codegen maps each value to its enum index).
+						// Every other discrete type routes each value through stringToConditional to
+						// get a typed inner conditional, OR'd via CoAnyOf. String params in particular
+						// must NOT use CoEnums: codegen's all-enum switch resolves arm values with
+						// findEnumIndex (Std.parseInt), which drops non-numeric string arms and emits
+						// `case <int>:` over a String subject for numeric ones — so a string pipe arm
+						// silently never matched. CoAnyOf(CoStringValue) compiles to plain string
+						// equality on both backends.
 						switch (paramType) {
-							case PPTEnum(_) | PPTString:
+							case PPTEnum(_):
+								validateConditionalEnumValues(paramName, defs, values);
 								pattern = CoEnums(values);
 							default:
 								final inner:Array<ConditionalValues> = [];
@@ -5355,6 +5512,7 @@ class MacroManimParser {
 						// This makes @switch on PPTColor/PPTBool/PPTEnum produce the same conditional
 						// as @(p => value), instead of a string-only CoEnums that fails to match
 						// integer-backed values (color, bool).
+						validateConditionalEnumValues(paramName, defs, [values[0]]);
 						pattern = stringToConditional(values[0], paramType);
 					}
 			}
@@ -5739,6 +5897,8 @@ class MacroManimParser {
 						break;
 				}
 			}
+			if (constructs.exists(stateName))
+				error('stateanim construct "$stateName" already defined — duplicate names silently shadow each other');
 			constructs.set(stateName, IndexedSheet(sheet, name, fps, loop, center));
 		}
 		return constructs;
@@ -5898,6 +6058,8 @@ class MacroManimParser {
 						error('unexpected path element: ${peek()}');
 				}
 			}
+			if (paths.exists(pathName))
+				error('path "$pathName" already defined — duplicate names silently shadow each other');
 			paths.set(pathName, pathElements);
 		}
 		return paths;
@@ -6328,6 +6490,8 @@ class MacroManimParser {
 					}
 				}
 			}
+			if (curves.exists(curveName))
+				error('curve "$curveName" already defined — duplicate names silently shadow each other');
 			curves.set(curveName, {easing: easing, points: points, segments: segments, operation: operation});
 		}
 		return curves;

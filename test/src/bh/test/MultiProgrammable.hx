@@ -383,6 +383,9 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/106-switchArmNames/switchArmNames.manim", "switchArmSlot")
 	public var switchArmSlot;
 
+	@:manim("test/examples/106-switchArmNames/switchArmNames.manim", "switchArmDynamicRef")
+	public var switchArmDynamicRef;
+
 	@:manim("test/examples/106-switchArmNames/switchArmNames.manim", "switchUnrelatedParam")
 	public var switchUnrelatedParam;
 
@@ -403,6 +406,12 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/108-applyParamUpdate/applyParamUpdate.manim", "applyParamUpdate")
 	public var applyParamUpdate;
+
+	@:manim("test/examples/122-codegenOverlappingApply/codegenOverlappingApply.manim", "codegenOverlappingApply")
+	public var codegenOverlappingApply;
+
+	@:manim("test/examples/126-codegenApplyPosAdditive/codegenApplyPosAdditive.manim", "codegenApplyPosAdditive")
+	public var codegenApplyPosAdditive;
 
 	@:manim("test/examples/109-codegenIncrementalGfxPx/codegenIncrementalGfxPx.manim", "codegenIncGraphics")
 	public var codegenIncGraphics;
@@ -455,12 +464,189 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/116-enumNumericConditional/enumNumericConditional.manim", "enumNumericConditional")
 	public var enumNumericConditional;
 
+	@:manim("test/examples/130-bracketMultiValueConditional/bracketMultiValueConditional.manim", "bracketMultiValueConditional")
+	public var bracketMultiValueConditional;
+
 	@:manim("test/examples/117-codegenForwardingFailure/codegenForwardingFailure.manim", "codegenForwardingFailure")
 	public var codegenForwardingFailure;
 
 	@:manim("test/examples/118-codegenDynamicRefForwarding/codegenDynamicRefForwarding.manim", "codegenDynamicRefForwarding")
 	public var codegenDynamicRefForwarding;
 
+	@:manim("test/examples/122-codegenDynamicRefEnumForwarding/codegenDynamicRefEnumForwarding.manim", "codegenDynamicRefEnumForwarding")
+	public var codegenDynamicRefEnumForwarding;
+
+	@:manim("test/examples/124-codegenStaticRefEnumForwarding/codegenStaticRefEnumForwarding.manim", "codegenStaticRefEnumForwarding")
+	public var codegenStaticRefEnumForwarding;
+
+	@:manim("test/examples/125-codegenRepeatSlot/repeatSlot.manim", "repeatSlotInner")
+	public var repeatSlotInner;
+
+	@:manim("test/examples/125-codegenRepeatSlot/repeatSlot.manim", "repeatSlotPanel")
+	public var repeatSlotPanel;
+
 	@:manim("test/examples/119-codegenRepeatShrink/codegenRepeatShrink.manim", "codegenRepeatShrink")
 	public var codegenRepeatShrink;
+
+	@:manim("test/examples/120-codegenParamScope/codegenParamScope.manim", "paramParticles")
+	public var paramParticles;
+
+	@:manim("test/examples/120-codegenParamScope/codegenParamScope.manim", "paramTileGroup")
+	public var paramTileGroup;
+
+	@:manim("test/examples/121-strictDColorVerbatim/strictDColorVerbatim.manim", "strictDTint")
+	public var strictDTint;
+
+	@:manim("test/examples/121-strictDColorVerbatim/strictDColorVerbatim.manim", "strictDPixels")
+	public var strictDPixels;
+
+	@:manim("test/examples/123-codegenRootTint/codegenRootTint.manim", "codegenRootTint")
+	public var codegenRootTint;
+
+	@:manim("test/examples/127-codegenHasSlotDynRef/codegenHasSlotDynRef.manim", "codegenHasSlotDynRef")
+	public var codegenHasSlotDynRef;
+
+	@:manim("test/examples/128-codegenStaticRefDynamicName/staticRefDynamicName.manim", "codegenStaticRefDynamicName")
+	public var codegenStaticRefDynamicName;
+
+	@:manim("test/examples/129-codegenIndexedDynamicRef/indexedDynamicRef.manim", "indexedDynamicRef")
+	public var indexedDynamicRef;
+
+	@:manim("test/examples/130-switchInactiveArmRebuild/switchInactiveArmRebuild.manim", "switchInactiveArmRebuild")
+	public var switchInactiveArmRebuild;
+
+	@:manim("test/examples/131-codegenRepeatConditional/repeatConditional.manim", "repeatCondParam")
+	public var repeatCondParam;
+
+	@:manim("test/examples/131-codegenRepeatConditional/repeatConditional.manim", "repeatCondLoopVar")
+	public var repeatCondLoopVar;
+
+	@:manim("test/examples/132-codegenIntTruncation/intTruncation.manim", "stepCountTrunc")
+	public var stepCountTrunc;
+
+	@:manim("test/examples/132-codegenIntTruncation/intTruncation.manim", "gridCoordParam")
+	public var gridCoordParam;
+
+	@:manim("test/examples/132-codegenIntTruncation/intTruncation.manim", "gridCoordStatic")
+	public var gridCoordStatic;
+
+	@:manim("test/examples/133-codegenDynRefKeyContract/dynRefKeyContract.manim", "dynRefUnnamedCollision")
+	public var dynRefUnnamedCollision;
+
+	@:manim("test/examples/133-codegenDynRefKeyContract/dynRefKeyContract.manim", "dynRefNamedDynamicTarget")
+	public var dynRefNamedDynamicTarget;
+
+	@:manim("test/examples/132-codegenIntTruncation/intTruncation.manim", "divOffsetFloat")
+	public var divOffsetFloat;
+
+	@:manim("test/examples/132-codegenIntTruncation/intTruncation.manim", "divGridFloat")
+	public var divGridFloat;
+
+	@:manim("test/examples/132-codegenIntTruncation/intTruncation.manim", "compoundTrunc")
+	public var compoundTrunc;
+
+	@:manim("test/examples/132-codegenIntTruncation/intTruncation.manim", "modGridFloat")
+	public var modGridFloat;
+
+	@:manim("test/examples/132-codegenIntTruncation/intTruncation.manim", "repeatCountParamTrunc")
+	public var repeatCountParamTrunc;
+
+	@:manim("test/examples/134-stringFloatConditional/stringFloatConditional.manim", "stringPipeSwitch")
+	public var stringPipeSwitch;
+
+	@:manim("test/examples/134-stringFloatConditional/stringFloatConditional.manim", "stringEqNumeric")
+	public var stringEqNumeric;
+
+	@:manim("test/examples/135-codegenTernaryEquality/ternaryEquality.manim", "ternaryEnumEq")
+	public var ternaryEnumEq;
+
+	@:manim("test/examples/135-codegenTernaryEquality/ternaryEquality.manim", "ternaryEnumNotEq")
+	public var ternaryEnumNotEq;
+
+	@:manim("test/examples/135-codegenTernaryEquality/ternaryEquality.manim", "ternaryStringEq")
+	public var ternaryStringEq;
+
+	@:manim("test/examples/136-codegenBatchUpdate/batchUpdate.manim", "batchTwoParams")
+	public var batchTwoParams;
+
+	@:manim("test/examples/137-codegenRepeatParamParity/repeatParamParity.manim", "stepParamOffsets")
+	public var stepParamOffsets;
+
+	@:manim("test/examples/137-codegenRepeatParamParity/repeatParamParity.manim", "stepParamOffsetsRt")
+	public var stepParamOffsetsRt;
+
+	@:manim("test/examples/137-codegenRepeatParamParity/repeatParamParity.manim", "rangeParamBounds")
+	public var rangeParamBounds;
+
+	@:manim("test/examples/137-codegenRepeatParamParity/repeatParamParity.manim", "flowRepeat")
+	public var flowRepeat;
+
+	@:manim("test/examples/138-codegenCtxSize/ctxSize.manim", "ctxSize")
+	public var ctxSize;
+
+	@:manim("test/examples/139-codegenSwitchDefaultOrder/switchDefaultOrder.manim", "switchDefaultOrder")
+	public var switchDefaultOrder;
+
+	@:manim("test/examples/140-codegenBatchTransition/batchTransition.manim", "batchTrans")
+	public var batchTrans;
+
+	@:manim("test/examples/140-codegenBatchTransition/batchTransition.manim", "batchSwitchKeep")
+	public var batchSwitchKeep;
+
+	@:manim("test/examples/141-codegenRepeatGate/repeatGate.manim", "condGate")
+	public var condGate;
+
+	@:manim("test/examples/141-codegenRepeatGate/repeatGate.manim", "dynRefLoopHost")
+	public var dynRefLoopHost;
+
+	@:manim("test/examples/142-codegenNodeIndex/nodeIndex.manim", "particlesRepeat")
+	public var particlesRepeat;
+
+	@:manim("test/examples/142-codegenNodeIndex/nodeIndex.manim", "tgCond")
+	public var tgCond;
+
+	@:manim("test/examples/143-codegenPaletteIdx/paletteIdx.manim", "palIdx")
+	public var palIdx;
+
+	@:manim("test/examples/144-codegenExprRefire/exprRefire.manim", "exprRefire")
+	public var exprRefire;
+
+	@:manim("test/examples/144-codegenExprRefire/exprRefire.manim", "cbFloat")
+	public var cbFloat;
+
+	@:manim("test/examples/145-codegenLayerAdd/layerAdd.manim", "layerRepeat")
+	public var layerRepeat;
+
+	@:manim("test/examples/146-codegenRepeat2dParity/repeat2dParity.manim", "r2dLayoutAxis")
+	public var r2dLayoutAxis;
+
+	@:manim("test/examples/146-codegenRepeat2dParity/repeat2dParity.manim", "r2dParamOffsets")
+	public var r2dParamOffsets;
+
+	@:manim("test/examples/146-codegenRepeat2dParity/repeat2dParity.manim", "r2dRangeValues")
+	public var r2dRangeValues;
+
+	@:manim("test/examples/147-codegenTileSource/tileSource.manim", "tileMisbind")
+	public var tileMisbind;
+
+	@:manim("test/examples/147-codegenTileSource/tileSource.manim", "crossGen")
+	public var crossGen;
+
+	@:manim("test/examples/147-codegenTileSource/tileSource.manim", "genTrunc")
+	public var genTrunc;
+
+	@:manim("test/examples/148-codegenHexNamed/hexNamed.manim", "hexNamed")
+	public var hexNamed;
+
+	@:manim("test/examples/149-codegenTextWidth/textWidth.manim", "tScale")
+	public var tScale;
+
+	@:manim("test/examples/149-codegenTextWidth/textWidth.manim", "tGrid")
+	public var tGrid;
+
+	@:manim("test/examples/150-codegenLayoutParamPts/layoutParamPts.manim", "layoutParam")
+	public var layoutParam;
+
+	@:manim("test/examples/151-codegenForwardConcat/forwardConcat.manim", "concatHost")
+	public var concatHost;
 }

@@ -128,6 +128,44 @@ class DynamicRefTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testApplyUpdatesDoesNotAllocateChangedParamsIterators():Void {
+		// applyUpdates() walks the changed-param set twice per call: once to mark relevant
+		// tracked expressions, once to collect dynamicRef forwarding bindings. Both walks
+		// must iterate a flat array, NOT changedParams.keys() — on HashLink each .keys()
+		// call heap-allocates a Map iterator object, so iterating it leaks two transient
+		// allocations on every setParameter (a UI hover/press/drag hot path).
+		final result = buildFromSource("
+			#widgetA programmable(val:uint=100) {
+				bitmap(generated(color($val, 10, #ff0000))): 0, 0
+			}
+			#parent programmable(hp:uint=100) {
+				dynamicRef($widgetA, val=>$hp): 0, 0
+			}
+		", "parent", null, Incremental);
+
+		Assert.notNull(result.incrementalContext);
+		final ctx = result.incrementalContext;
+		if (ctx == null) return;
+
+		// Warm up — first call may grow lazy structures.
+		result.setParameter("hp", 90);
+		result.setParameter("hp", 80);
+
+		final baseline = ctx.changedParamsKeysIterCount;
+
+		for (i in 0...20) {
+			result.setParameter("hp", 50 + (i % 10));
+		}
+
+		final delta = ctx.changedParamsKeysIterCount - baseline;
+		// Expected: zero. The two changed-param walks must iterate a reusable Array<String>
+		// kept in sync with changedParams, not changedParams.keys(). Pre-fix code allocates
+		// two iterators per setParameter, so 20 calls leak ~40 transient iterator objects.
+		Assert.equals(0, delta,
+			"applyUpdates iterates changedParams.keys() (allocates Map iterators) (got " + delta + " across 20 calls)");
+	}
+
+	@Test
 	public function testDynamicRefSetParameterOnSubResult():Void {
 		final result = buildFromSource("
 			#inner programmable(color:[red,green]=red) {
@@ -310,6 +348,43 @@ class DynamicRefTest extends BuilderTestBase {
 		", "test", null, Incremental);
 		Assert.notNull(result);
 		Assert.isTrue(result.object.numChildren > 0);
+	}
+
+	@Test
+	public function testDynamicRefForwardingEnumParamUpdatesChildOnSetParameter():Void {
+		// Forwarding a parent enum into a child's enum param must keep working after a
+		// runtime setParameter on the parent. The forwarding switch resolves the value by
+		// the CHILD param type; for an enum child the resolver must produce the enum's
+		// NAME (so setParameter's PPTEnum string path accepts it). Pre-fix, the enum case
+		// fell into the default branch (resolveAsInteger), which cannot resolve an
+		// enum-valued reference (stored as Index(...)) and threw "is not a value but Index(...)".
+		final result = buildFromSource("
+			#inner programmable(mode:[a,b,c]=a) {
+				@(mode => a) bitmap(generated(color(11, 5, #ff0000))): 0, 0
+				@(mode => b) bitmap(generated(color(22, 5, #00ff00))): 0, 0
+				@(mode => c) bitmap(generated(color(33, 5, #0000ff))): 0, 0
+			}
+			#test programmable(m:[a,b,c]=a) {
+				dynamicRef($inner, mode=>$m): 0, 0
+			}
+		", "test", null, Incremental);
+
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(11, Std.int(bitmaps[0].tile.width), "initial: m=a forwards to child mode=a (width 11)");
+
+		// Changing the parent enum must propagate the new value (by name) into the child.
+		result.setParameter("m", "b");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(22, Std.int(bitmaps[0].tile.width),
+			"after setParameter('m','b'): forwarded enum must update child to mode=b (width 22)");
+
+		result.setParameter("m", "c");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(33, Std.int(bitmaps[0].tile.width),
+			"after setParameter('m','c'): forwarded enum must update child to mode=c (width 33)");
 	}
 
 	@Test
@@ -966,6 +1041,71 @@ class DynamicRefTest extends BuilderTestBase {
 		Assert.equals(1, bitmaps.length);
 		Assert.equals(15, Std.int(bitmaps[0].tile.height),
 			"armOff must reflect v=15 after becoming visible again (no stale state)");
+	}
+
+	@Test
+	public function testDynamicRefInInitiallyHiddenArmForwardsParamsAfterMaterialization():Void {
+		// A dynamicRef inside an initially-FALSE conditional arm is deferred at build time and
+		// only materialized when the conditional first flips true. Materialization must register
+		// the same param-forwarding bindings an initially-VISIBLE dynamicRef gets — otherwise
+		// later setParameter calls on the forwarded parent param silently stop propagating into
+		// the materialized child, which keeps rendering whatever value it was materialized with.
+		//
+		// Note the sibling test above does NOT catch this: it changes `v` BEFORE flipping the
+		// conditional, and materialization itself builds with the then-current values, so the
+		// child looks fresh. The bug only shows when the forwarded param changes AFTER
+		// materialization while the arm stays visible. Re-flipping the arm also masks it
+		// (re-materialization picks up fresh values again).
+		final result = buildFromSource("
+			#X programmable(v:uint=1) {
+				bitmap(generated(color(10, $v, #ff0000))): 0, 0
+			}
+			#host programmable(a:int=0, v:uint=5) {
+				@(a=>1) #armOn  dynamicRef($X, v=>$v): 0, 0
+				@else   #armOff dynamicRef($X, v=>$v): 0, 0
+			}
+		", "host", null, Incremental);
+
+		// a=0 → armOn's arm is hidden (deferred), armOff visible with forwarded v=5.
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(5, Std.int(bitmaps[0].tile.height));
+
+		// Flip to a=1 → armOn materializes. It is built with the CURRENT v=5, so this sanity
+		// check passes regardless of whether forwarding got registered.
+		result.setParameter("a", 1);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(5, Std.int(bitmaps[0].tile.height),
+			"materialized armOn must render the current v=5");
+
+		// Change the forwarded param while armOn stays visible. The materialized dynamicRef
+		// must receive the update exactly like an initially-visible one would.
+		result.setParameter("v", 12);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(12, Std.int(bitmaps[0].tile.height),
+			"materialized armOn must reflect v=12 after setParameter on the forwarded param (a stale value means forwarding was never registered at materialization)");
+
+		// The named sub-result must agree with the scene graph.
+		final armOn = result.getDynamicRef("armOn");
+		Assert.notNull(armOn);
+		if (armOn != null) {
+			final armOnBitmaps = findVisibleBitmapDescendants(armOn.object);
+			Assert.equals(1, armOnBitmaps.length);
+			Assert.equals(12, Std.int(armOnBitmaps[0].tile.height),
+				"armOn sub-result must reflect the forwarded v=12");
+		}
+
+		// Guard against the masking path: flipping away and back re-materializes with fresh
+		// values, so armOn must still render 12. (This alone would pass even without proper
+		// forwarding registration — the assertions above are the real signal.)
+		result.setParameter("a", 0);
+		result.setParameter("a", 1);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(12, Std.int(bitmaps[0].tile.height),
+			"armOn must still render v=12 after a re-flip of the conditional");
 	}
 
 	@Test

@@ -58,6 +58,7 @@ Hot-path classes carry static `creationCount` counters (incremented in their con
 | `bh.paths.AnimatedPathState` | `src/bh/paths/AnimatedPath.hx` | should be 0 per update — pinned by test |
 | `bh.ui.UICardHandTypes.CardLayoutPosition` | `src/bh/ui/UICardHandTypes.hx` | hover hit-test on hand |
 | `bh.ui.UICardHandLayout.scratchArrayAllocationCount` | `src/bh/ui/UICardHandLayout.hx` | path-layout sample buffers |
+| `bh.ui.UIMultiAnimGridTypes.CellCoord` | `src/bh/ui/UIMultiAnimGridTypes.hx` | grid hit-test per mouse-move / drag-tick |
 
 **Convention for adding a new counter:**
 
@@ -129,7 +130,7 @@ throw builderErrorAt(node, 'invalid param types ${a}, ${b}');
 throw BuilderError.of('Slot "$name" not found in BuilderResult');
 ```
 
-- `MultiAnimBuilder.hx` is fully migrated — all 256 string throws converted (the only remaining `throw '...'` strings are inside docstring comments showing the OLD pattern).
+- `MultiAnimBuilder.hx` is almost fully migrated — the bulk of string throws were converted to `BuilderError`. A few plain `throw '...'` strings still remain in live code paths (e.g. `buildWithParameters`'s missing-element guard); convert these opportunistically when editing nearby.
 - `code:String` is for programmatic filtering at catch sites (e.g. `resolveAsString` RVParenthesis catches `"not_a_number"` to fall back to string concat). Leave null when no catcher filters. Established codes: `"not_a_number"`, `"missing_ref"`.
 - Catch sites that surface builder errors structurally (file/line/col) all branch on `BuilderError` and call `err.parsedPos()`: `ScreenManager.rebuildAll()`, `ScreenManager.makeHotReloadFailError()` (powers DevBridge `hot_reload` + SSE notifications), `ScreenManager.strictFail()` (under `MULTIANIM_STRICT`), and `DevBridge.handleEvalManim()` (powers MCP `eval_manim`). Any new builder-error catch site that emits structured diagnostics should follow the same pattern. `parsedPos()` returns null in non-DEV builds (Node has no parserPos field), so callers must handle null.
 - Consumer catches (`catch (e)`, `catch (e:Dynamic)`, `catch (e:haxe.Exception)`) all continue to match. `'$e'` formatting preserved via `toString()` override.
@@ -141,6 +142,7 @@ throw BuilderError.of('Slot "$name" not found in BuilderResult');
 - **No named argument syntax.** Haxe does NOT support `fn(name: value)`. Must pass positional args: `fn(arg1, null, null, true)` to reach later optional params.
 - **String interpolation uses SINGLE quotes, not double.** `'hello $name'` interpolates; `"hello $name"` is literal. In test code, use `"..."` (double quotes) for manim source strings to avoid Haxe interpolation of `$`.
 - **Map has no `.count()` method.** Use a separate counter variable to track size.
+- **`Null<Bool> == false` is false when the value is null.** Optional Bool fields (`var ?flag:Bool`) default to null, so a check like `if (x.visited == false) error(...)` can never fire for never-written entries — this made AnimParser's reachability validation dead code for years. Flag-style checks on nullable Bools must use `!= true` (or `== true`).
 
 ## Environment Notes
 

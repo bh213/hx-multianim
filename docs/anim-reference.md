@@ -25,6 +25,10 @@ Free-form layout — newlines are whitespace. Comments: `//` line, `/* */` block
 
 **Ordering rule:** `sheet`, `states`, `fps`, `loop`, `allowedExtraPoints`, `@final`, and `metadata` must all appear before any `animation` or `anim` declaration.
 
+**Strings:** quoted strings must be closed before end of file — an unclosed
+string is a positioned `Unterminated string` error at the opening quote.
+Embedded newlines are legal string content and count toward line numbers.
+
 ---
 
 ## @final Constants
@@ -70,6 +74,10 @@ metadata {
 | Float | number with `.` | `speed: 1.5` |
 | String | quoted | `description: "Marine unit"` |
 | Color | `#RGB`, `#RRGGBB`, `#RRGGBBAA` | `tint: #FF0000` |
+
+Color literals follow the same strict-D semantics as `.manim`: `#RGB` and
+`#RRGGBB` bake opaque alpha (`#FF0000` is stored as `0xFFFF0000`); `#RRGGBBAA`
+keeps its explicit alpha (`#FF000080` → `0x80FF0000`).
 
 ### Metadata API (`AnimMetadata`)
 
@@ -147,6 +155,9 @@ Creates a full animation with a single sheet playlist entry. `fps`, `loop`, `fli
 | Event (metadata) | `event name { key:type => val, ... }` | Fire event with typed payload |
 | Filter (per-frame) | `filter tint: #FF0000` | Set per-frame filter |
 | Filter (clear) | `filter none` | Revert to animation-level filter |
+
+An event carries EITHER a point/random spec OR a metadata block, not both —
+`event name x,y { meta }` is a parse error (the payload cannot hold both).
 
 ### State Interpolation in Sheet Names
 
@@ -257,7 +268,20 @@ Multiple per-frame filters accumulate. `filter none` reverts to animation-level 
 | Metadata | `@(level >= 3) damage: 50` |
 | Filters | `@(level >= 3) outline: 2.0, #FFFF00` |
 
-Multiple `@()` on the same animation are combined with AND logic.
+Multiple `@()` on the same animation are combined with AND logic. `@else` /
+`@default` cannot follow a `@()` in the same header (parse error — the
+combination has no defined meaning).
+
+Comparison (`>=`, `<=`, `>`, `<`) and range (`min..max`) conditionals are
+validated at parse time: the operands must be numeric, and the compared state
+must declare at least one numeric value — otherwise the arm could never match
+and the file is rejected.
+
+Reachability is also validated at parse time: every animation, playlist, and
+extra point must be selectable for at least one combination of declared state
+values. An entry fully shadowed by a more specific sibling (e.g. an
+unconditional `playlist { }` after a `playlist @(direction=>[l, r])` that wins
+for every state) is rejected with a `... not reachable` error.
 
 ---
 
@@ -305,7 +329,7 @@ scene.addChild(animSM);
 | `paused` | `Bool` | Pause/resume playback |
 | `externallyDriven` | `Bool` | If true, must call `update(dt)` manually. Also settable from `.manim` via the `stateanim construct("state", externallyDriven, ...)` flag — see `docs/manim.md` "stateanim construct" |
 | `playWhenHidden` | `Bool` | Continue animating when not visible |
-| `onFinished` | `() -> Void` | Callback when animation finishes |
+| `onFinished` | `() -> Void` | Callback when animation finishes (fires once per completed playback) |
 | `onAnimationEvent` | `(AnimationEvent) -> Void` | Callback for playlist events |
 
 ### AnimationEvent Enum

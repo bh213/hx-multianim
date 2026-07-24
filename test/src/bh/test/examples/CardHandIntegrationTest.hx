@@ -175,6 +175,39 @@ class CardHandIntegrationTest extends BuilderTestBase {
 		Assert.floatEquals(500.0, h.helper.anchorY);
 	}
 
+	// ==================== Default Interactive Prefix Uniqueness ====================
+
+	@Test
+	public function testTwoDefaultHelpersOnSameScreenProduceDistinctInteractiveIds():Void {
+		// Two card hands on the same screen must not collide in screen.interactiveMap.
+		// With a fixed default prefix and a per-helper sequence counter starting at 0,
+		// both helpers produce "card_0.card" for their first card, and the screen's
+		// interactiveMap.set() silently overwrites — routing events and autoStatus to
+		// only the second helper.
+		var builder1 = BuilderTestBase.builderFromSource(CARD_MANIM);
+		var builder2 = BuilderTestBase.builderFromSource(CARD_MANIM);
+		var screen = new UITestScreen();
+		var helper1 = new UICardHandHelper(screen, builder1);
+		var helper2 = new UICardHandHelper(screen, builder2);
+
+		helper1.setHand([desc("a")]);
+		helper2.setHand([desc("a")]);
+
+		final id1 = helper1.cards[0].interactiveId;
+		final id2 = helper2.cards[0].interactiveId;
+		Assert.notEquals(id1, id2,
+			'two helpers with default config must produce distinct card interactive prefixes '
+			+ '(got "$id1" and "$id2" — collision would silently overwrite in screen.interactiveMap)');
+
+		final wrapper1 = screen.getInteractive('$id1.card');
+		final wrapper2 = screen.getInteractive('$id2.card');
+		Assert.notNull(wrapper1, 'helper1\'s card wrapper "$id1.card" should be registered on the screen');
+		Assert.notNull(wrapper2, 'helper2\'s card wrapper "$id2.card" should be registered on the screen');
+		Assert.notEquals(wrapper1, wrapper2,
+			"both helpers' wrappers must be distinct registrations — same wrapper means one helper "
+			+ "overwrote the other in screen.interactiveMap");
+	}
+
 	// ==================== Multiple Draw/Discard Operations ====================
 
 	@Test

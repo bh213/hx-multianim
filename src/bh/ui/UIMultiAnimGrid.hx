@@ -140,6 +140,13 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 	// those two would let cellAtPoint clobber the drag-target local point.
 	static final _scratchSceneToLocalFP:FPoint = new FPoint(0, 0);
 
+	// Allocation-free hit-test output. `cellAtPointInto` writes the cell coords here and
+	// returns whether a cell exists; the hover path (onMouseMove) reads them to detect a
+	// same-cell move without allocating a CellCoord per event. Instance-scoped: the result
+	// is consumed inside the same call before any nested cellAtPoint(Into) runs.
+	var _hitTestCol:Int = 0;
+	var _hitTestRow:Int = 0;
+
 	// --- Config ---
 	final builder:MultiAnimBuilder;
 	final gridType:GridType;
@@ -168,14 +175,14 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 	// --- Scene graph ---
 	final root:h2d.Layers;
 
-	// --- Cell storage: Map<"col_row", CellEntry<T>> ---
-	final cells:Map<String, CellEntry<T>> = new Map();
+	// --- Cell storage: Map<packed(col,row), CellEntry<T>> (see cellKey) ---
+	final cells:Map<Int, CellEntry<T>> = new Map();
 	var _cellCount:Int = 0;
 
 	// --- Grid layers: named overlays rendered per-cell ---
 	final layerConfigs:Map<String, GridLayerConfig> = new Map();
-	// layerEntries: Map<"layerName", Map<"col_row", CellVisual<T>>>
-	final layerEntries:Map<String, Map<String, CellVisual<T>>> = new Map();
+	// layerEntries: Map<"layerName", Map<packed(col,row), CellVisual<T>>>
+	final layerEntries:Map<String, Map<Int, CellVisual<T>>> = new Map();
 
 	// --- Hover state ---
 	var hoveredCell:Null<CellCoord> = null;
@@ -897,14 +904,22 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 	// Coordinate queries
 	// ============================================================
 
-	/** Find which cell is at the given scene coordinates. Returns null if no cell. */
+	/** Find which cell is at the given scene coordinates. Returns null if no cell.
+	 *  Allocates a CellCoord on a hit — callers that only need to compare against an
+	 *  existing coord (the hover path) should use cellAtPointInto to stay alloc-free. */
 	public function cellAtPoint(sceneX:Float, sceneY:Float):Null<CellCoord> {
+		return cellAtPointInto(sceneX, sceneY) ? ({col: _hitTestCol, row: _hitTestRow} : CellCoord) : null;
+	}
+
+	/** Allocation-free hit test: writes the cell coords into _hitTestCol/_hitTestRow and
+	 *  returns whether a cell exists there. Backing for cellAtPoint and the hover path. */
+	function cellAtPointInto(sceneX:Float, sceneY:Float):Bool {
 		_scratchPoint.x = sceneX;
 		_scratchPoint.y = sceneY;
 		final local = root.globalToLocal(_scratchPoint);
 		return switch gridType {
-			case Rect(_, _, _): hitTestRect(local.x, local.y);
-			case Hex(_, _, _): hitTestHex(local.x, local.y);
+			case Rect(_, _, _): hitTestRectInto(local.x, local.y);
+			case Hex(_, _, _): hitTestHexInto(local.x, local.y);
 		};
 	}
 
@@ -980,22 +995,27 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 			return true;
 		}
 
-		final hit = cellAtPoint(sceneX, sceneY);
+		// Alloc-free hit test: compare against the current hover by col/row so a move that
+		// stays within the same cell (the common per-frame case) allocates no CellCoord.
+		final hasHit = cellAtPointInto(sceneX, sceneY);
+		final sameAsHovered = hasHit && hoveredCell != null
+			&& hoveredCell.col == _hitTestCol && hoveredCell.row == _hitTestRow;
+		if (sameAsHovered || (!hasHit && hoveredCell == null))
+			return hoveredCell != null;
 
-		if (!cellCoordsEqual(hit, hoveredCell)) {
-			if (hoveredCell != null) {
-				final entry = cells.get(cellKey(hoveredCell.col, hoveredCell.row));
-				if (entry != null)
-					entry.visual.setStatus("normal");
-				emitEvent(CellTargetLeave(hoveredCell, Mouse));
-			}
-			hoveredCell = hit;
-			if (hoveredCell != null) {
-				final entry = cells.get(cellKey(hoveredCell.col, hoveredCell.row));
-				if (entry != null)
-					entry.visual.setStatus("hover");
-				emitEvent(CellTargetEnter(hoveredCell, Mouse));
-			}
+		// Hover changed — leave the old cell, enter the new one (the only CellCoord alloc).
+		if (hoveredCell != null) {
+			final entry = cells.get(cellKey(hoveredCell.col, hoveredCell.row));
+			if (entry != null)
+				entry.visual.setStatus("normal");
+			emitEvent(CellTargetLeave(hoveredCell, Mouse));
+		}
+		hoveredCell = hasHit ? ({col: _hitTestCol, row: _hitTestRow} : CellCoord) : null;
+		if (hoveredCell != null) {
+			final entry = cells.get(cellKey(hoveredCell.col, hoveredCell.row));
+			if (entry != null)
+				entry.visual.setStatus("hover");
+			emitEvent(CellTargetEnter(hoveredCell, Mouse));
 		}
 
 		return hoveredCell != null;
@@ -1589,8 +1609,11 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 	// Internal: cell key
 	// ============================================================
 
-	inline function cellKey(col:Int, row:Int):String {
-		return '${col}_${row}';
+	// Packs (col, row) into a single Int so cells can be stored in an Int-keyed map —
+	// no per-call String allocation on the hover hit-test hot path. Collision-free for
+	// col/row in [-32768, 32767], which covers negative hex axial coords.
+	inline function cellKey(col:Int, row:Int):Int {
+		return ((col & 0xFFFF) << 16) | (row & 0xFFFF);
 	}
 
 	function getEntry(col:Int, row:Int):CellEntry<T> {
@@ -1648,7 +1671,7 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 	// Internal: hit testing
 	// ============================================================
 
-	function hitTestRect(localX:Float, localY:Float):Null<CellCoord> {
+	function hitTestRectInto(localX:Float, localY:Float):Bool {
 		final stride = rectCellW + rectGap;
 		final strideY = rectCellH + rectGap;
 
@@ -1663,20 +1686,27 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 		final cellLocalX = testX - col * stride;
 		final cellLocalY = testY - row * strideY;
 		if (cellLocalX > rectCellW || cellLocalY > rectCellH)
-			return null;
+			return false;
 
-		final key = cellKey(col, row);
-		return cells.exists(key) ? ({col: col, row: row} : CellCoord) : null;
+		if (!cells.exists(cellKey(col, row)))
+			return false;
+		_hitTestCol = col;
+		_hitTestRow = row;
+		return true;
 	}
 
-	function hitTestHex(localX:Float, localY:Float):Null<CellCoord> {
+	function hitTestHexInto(localX:Float, localY:Float):Bool {
 		_scratchFPoint.x = localX;
 		_scratchFPoint.y = localY;
 		hexLayout.pixelToHexInto(_scratchFPoint, _scratchFractionalHex);
 		_scratchFractionalHex.roundInto(_scratchHex);
-		final coord = fromHex(_scratchHex);
-		final key = cellKey(coord.col, coord.row);
-		return cells.exists(key) ? coord : null;
+		final col = _scratchHex.q;
+		final row = _scratchHex.r;
+		if (!cells.exists(cellKey(col, row)))
+			return false;
+		_hitTestCol = col;
+		_hitTestRow = row;
+		return true;
 	}
 
 	// ============================================================
@@ -1766,7 +1796,8 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 					final srcCell:Null<CellCoord> = binding.draggable.sourceCellCoord;
 
 					// Check for swap: swapEnabled + has source cell + swapAccepts (or default isOccupied)
-					if (swapEnabled  && (swapAccepts != null ? swapAccepts(coord, binding.draggable) : isOccupied(coord.col, coord.row))) {
+					if (swapEnabled && srcCell != null
+						&& (swapAccepts != null ? swapAccepts(coord, binding.draggable) : isOccupied(coord.col, coord.row))) {
 						return handleSwapDrop(binding, coord, srcGrid, srcCell);
 					}
 

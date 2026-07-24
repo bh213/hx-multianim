@@ -1,0 +1,21 @@
+version: 1.0
+
+// bitmap($iconParam) inside a tiles-iterator repeat must bind the tile
+// parameter, not the iterator's tile variable ($bmp).
+#tileMisbind programmable(icon:tile) {
+  repeatable($i, tiles($bmp, "crew2", "Arrow_dir0")) {
+    bitmap($icon): $i * 20, 0
+  }
+}
+
+// generated(cross(...)) must draw a real cross (rect border + diagonals with
+// the given thickness), not a solid-rectangle approximation.
+#crossGen programmable() {
+  bitmap(generated(cross(32, 32, #FF0000, 2))): 0, 0
+}
+
+// Integer truncation parity for generated tile dimensions: per-node
+// truncation like the builder ($n / 2 * 2 with n=7 -> 6, not Std.int(7.0)=7).
+#genTrunc programmable(n:int=7) {
+  bitmap(generated(color($n / 2 * 2, 10, #FF0000))): 0, 0
+}

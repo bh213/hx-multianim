@@ -401,9 +401,11 @@ animation @(level < 3) {
 		// Regression: comparison conditionals used expectIdentifier() which
 		// rejected a leading minus, so @(level >= -1) failed to parse.
 		// expectSignedIdentifier() now accepts an optional leading APMinus.
+		// -2 keeps the @(level < -1) arm reachable — the reachability validation
+		// rejects animations that can never be selected for any declared state.
 		var result = parseAnimExpectingSuccess('
 sheet: testSheet
-states: level(-1, 0, 1, 2)
+states: level(-2, -1, 0, 1, 2)
 animation @(level >= -1) {
     name: idle
     fps: 4
@@ -1221,7 +1223,8 @@ animation {
     }
 }
 ');
-		Assert.equals(0xFF0000, meta.getColorOrDefault("tint", 0));
+		// #FF0000 bakes opaque alpha (strict-D parity) → 0xFFFF0000.
+		Assert.equals(0xFFFF0000, meta.getColorOrDefault("tint", 0));
 		Assert.equals(0xFFFFFF, meta.getColorOrDefault("missing", 0xFFFFFF));
 	}
 
@@ -1241,7 +1244,8 @@ animation {
     }
 }
 ');
-		Assert.equals(0x00FF00, meta.getColorOrException("tint"));
+		// #00FF00 bakes opaque alpha (strict-D parity) → 0xFF00FF00.
+		Assert.equals(0xFF00FF00, meta.getColorOrException("tint"));
 		var threw = false;
 		try {
 			meta.getColorOrException("missing");
@@ -1640,8 +1644,9 @@ animation {
 		var result = AnimParser.parseFile(input, "test-input", loader);
 		var meta = result.metadata;
 		Assert.notNull(meta);
-		Assert.equals(0xFF0000, meta.getColorOrDefault("tint", 0, ["type" => "fire"]));
-		Assert.equals(0x0000FF, meta.getColorOrDefault("tint", 0, ["type" => "ice"]));
+		// Color literals bake opaque alpha (strict-D parity).
+		Assert.equals(0xFFFF0000, meta.getColorOrDefault("tint", 0, ["type" => "fire"]));
+		Assert.equals(0xFF0000FF, meta.getColorOrDefault("tint", 0, ["type" => "ice"]));
 		Assert.equals(0xFFFFFF, meta.getColorOrDefault("missing", 0xFFFFFF));
 	}
 
@@ -2093,9 +2098,10 @@ animation {
 		var loader = new bh.base.ResourceLoader.CachingResourceLoader();
 		var result = AnimParser.parseFile(input, "test-input", loader);
 		Assert.notNull(result.metadata, "Should have metadata");
-		Assert.equals(0xFF0000, result.metadata.getColorOrDefault("tint", 0, ["team" => "red"]));
-		Assert.equals(0x0000FF, result.metadata.getColorOrDefault("tint", 0, ["team" => "blue"]));
-		Assert.equals(0xFFFFFF, result.metadata.getColorOrDefault("tint", 0, ["team" => "green"]));
+		// Color literals bake opaque alpha (strict-D parity).
+		Assert.equals(0xFFFF0000, result.metadata.getColorOrDefault("tint", 0, ["team" => "red"]));
+		Assert.equals(0xFF0000FF, result.metadata.getColorOrDefault("tint", 0, ["team" => "blue"]));
+		Assert.equals(0xFFFFFFFF, result.metadata.getColorOrDefault("tint", 0, ["team" => "green"]));
 		Assert.equals(10, result.metadata.getIntOrDefault("speed", 0));
 	}
 
@@ -2165,23 +2171,10 @@ animation {
 		Assert.equals("hit", d.animations[0].name);
 	}
 
-	@Test
-	public function testEventMetadataPoint() {
-		var result = parseAnimExpectingSuccess('
-sheet: testSheet
-animation {
-    name: hit
-    fps: 10
-    playlist {
-        sheet: "test_hit"
-        event spark 10, -5 { intensity:float => 0.8, color => "red" }
-    }
-}
-');
-		Assert.notNull(result, "point event with typed metadata should parse");
-		var d:Dynamic = result;
-		Assert.equals("hit", d.animations[0].name);
-	}
+	// Note: `event name x,y { meta }` and `event name random x,y,r { meta }`
+	// are rejected at parse time — the runtime event payload cannot carry both,
+	// and the point/random spec used to be silently dropped. Covered by
+	// testEventWithPointSpecAndMetadataBlockIsRejected.
 
 	@Test
 	public function testEventMetadataAllTypes() {
@@ -2199,24 +2192,6 @@ animation {
 		Assert.notNull(result, "event metadata with int, float, string, color, bool types should parse");
 		var d:Dynamic = result;
 		Assert.equals("hit", d.animations[0].name);
-	}
-
-	@Test
-	public function testEventMetadataRandomPoint() {
-		var result = parseAnimExpectingSuccess('
-sheet: testSheet
-animation {
-    name: explode
-    fps: 10
-    playlist {
-        sheet: "test_explode"
-        event debris random 0, 0, 50 { count:int => 3, size:float => 0.5 }
-    }
-}
-');
-		Assert.notNull(result, "random point event with metadata should parse");
-		var d:Dynamic = result;
-		Assert.equals("explode", d.animations[0].name);
 	}
 
 	// ===== Playlist reachability validation (bug 1.1) =====
@@ -2299,6 +2274,270 @@ animation idle {
 ');
 		Assert.notNull(error, "Should throw error for unterminated block comment at EOF");
 		Assert.stringContains("Unterminated block comment", error);
+	}
+
+	// ===== Color literal alpha semantics (strict-D parity with .manim) =====
+
+	@Test
+	public function testAnimColorLiteralsBakeOpaqueAlpha() {
+		// .manim strict-D bakes 0xFF alpha on 3- and 6-digit CSS color forms.
+		// .anim color literals must match — otherwise replaceColor writes fully
+		// transparent pixels and getColorOr* returns alpha-0 ints.
+		var meta = parseAnimWithMetadata('
+sheet: testSheet
+metadata {
+    tint: #FF0000
+    shade: #F00
+}
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+    }
+}
+');
+		Assert.equals(0xFF, meta.getColorOrException("tint") >>> 24,
+			'#FF0000 must carry baked opaque alpha (0xFFFF0000), got 0x${StringTools.hex(meta.getColorOrException("tint"), 8)}');
+		Assert.equals(0xFF, meta.getColorOrException("shade") >>> 24,
+			'#F00 must carry baked opaque alpha (0xFFFF0000), got 0x${StringTools.hex(meta.getColorOrException("shade"), 8)}');
+	}
+
+	@Test
+	public function testAnimEightDigitColorKeepsExplicitAlpha() {
+		// Pin: the 8-digit #RRGGBBAA form already stores explicit alpha — the
+		// opaque-alpha bake for short forms must not disturb it.
+		var meta = parseAnimWithMetadata('
+sheet: testSheet
+metadata {
+    glow: #FF000080
+}
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+    }
+}
+');
+		Assert.equals(0x80, meta.getColorOrException("glow") >>> 24,
+			'#FF000080 must keep its explicit alpha 0x80, got 0x${StringTools.hex(meta.getColorOrException("glow"), 8)}');
+	}
+
+	// ===== Per-instance extraPoints / filters (load cache must not share mutable state) =====
+
+	@Test
+	public function testCreateAnimSMInstancesDoNotShareExtraPointsOrFilters() {
+		// The load() cache may share immutable parse data, but each AnimationSM
+		// must get its own extraPoints IPoint map and its own filter instance —
+		// otherwise mutating one SM corrupts every SM built from the same cache.
+		var input = byte.ByteData.ofString('
+sheet: crew2
+allowedExtraPoints: [pt]
+states: direction(l, r)
+fps: 4
+animation walk {
+    fps: 4
+    loop: yes
+    playlist { sheet: "marine_${"${direction}"}_idle" }
+    extrapoints { pt: 3, 4 }
+    filters { brightness: 0.8 }
+}
+');
+		var loader:bh.base.ResourceLoader = bh.test.TestResourceLoader.createLoader(false);
+		var parsed = AnimParser.parseFile(input, "test-input", loader);
+		var sm1 = parsed.createAnimSM(["direction" => "l"]);
+		var sm2 = parsed.createAnimSM(["direction" => "l"]);
+
+		var p1 = sm1.getExtraPointForAnim("pt", "walk");
+		var p2 = sm2.getExtraPointForAnim("pt", "walk");
+		Assert.notNull(p1);
+		Assert.notNull(p2);
+		p1.x = 999;
+		Assert.equals(3, p2.x,
+			"mutating one AnimationSM's extra point must not corrupt another SM built from the same parse result");
+
+		@:privateAccess var f1 = sm1.animationStates.get("walk").filter;
+		@:privateAccess var f2 = sm2.animationStates.get("walk").filter;
+		Assert.notNull(f1);
+		Assert.isFalse(f1 == f2, "each AnimationSM must receive its own filter instance, not a shared cached one");
+	}
+
+	// ===== Event point/random spec combined with metadata block =====
+
+	@Test
+	public function testEventWithPointSpecAndMetadataBlockIsRejected() {
+		// `event name x,y { meta }` parses today but silently DROPS the point
+		// spec — the event is delivered with metadata only. Until the event
+		// payload can carry both, this must be a parse error, not silent data loss.
+		var error = parseAnimExpectingError('
+sheet: testSheet
+states: direction(l, r)
+animation idle {
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+        event boom 5,6 { power => 2 }
+    }
+}
+');
+		Assert.notNull(error, "event with BOTH a point spec and a metadata block must be rejected — the point is silently dropped today");
+
+		var errorRandom = parseAnimExpectingError('
+sheet: testSheet
+states: direction(l, r)
+animation idle {
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+        event boom random 5,6,10 { power => 2 }
+    }
+}
+');
+		Assert.notNull(errorRandom, "event with BOTH a random spec and a metadata block must be rejected — the random spec is silently dropped today");
+	}
+
+	// ===== Stacked condition + @else in one animation header =====
+
+	@Test
+	public function testConditionFollowedByElseInOneHeaderIsRejected() {
+		// `animation name @(x=>a) @else(y=>b)` silently DISCARDS the first
+		// condition today (parseStates returns only the @else selector). The
+		// combination has no defined meaning and must be a parse error.
+		// The @default sibling keeps state coverage complete, so nothing else
+		// errors — today this parses fine with @(direction=>l) silently dropped.
+		var error = parseAnimExpectingError('
+sheet: testSheet
+states: direction(l, r)
+animation idle @(direction=>l) @else(direction=>r) {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+}
+animation idle @default {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle_default" }
+}
+');
+		Assert.notNull(error, "a condition followed by @else in the same animation header must be a parse error — the first condition is silently discarded today");
+	}
+
+	@Test
+	public function testAmbiguousAnimationSelectorErrorIsStructured() {
+		// When two animations tie for the best state match, parse-time
+		// validation throws. That error must be a structured parser error
+		// (positioned, typed) — not a raw string that catch sites (strict mode,
+		// hot reload, DevBridge) cannot classify or position.
+		// The multi-value arm and the single-value arm both match direction=l
+		// with equal score.
+		var caught:Dynamic = null;
+		try {
+			var input = byte.ByteData.ofString('
+sheet: testSheet
+states: direction(l, r)
+animation idle @(direction=>[l, r]) {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+}
+animation idle @(direction=>l) {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+}
+');
+			var loader = new bh.base.ResourceLoader.CachingResourceLoader();
+			AnimParser.parseFile(input, "test-input", loader);
+		} catch (e:Dynamic) {
+			caught = e;
+		}
+		Assert.notNull(caught, "ambiguous selectors must throw");
+		Assert.isTrue(Std.isOfType(caught, bh.base.ParseError),
+			'ambiguity error must be a structured ParseError, got: $caught');
+	}
+
+	// ===== Comparison/range conditionals require numeric state values =====
+
+	@Test
+	public function testComparisonConditionalOnNonNumericStatesIsRejected() {
+		// `@(level >= 3)` against `states: level(low, high)` can never match —
+		// every declared value parses to NaN. That arm is silently dead today;
+		// it must be a parse error.
+		var error = parseAnimExpectingError('
+sheet: testSheet
+states: level(low, high)
+animation idle @(level >= 3) {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+}
+animation idle @default {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+}
+');
+		Assert.notNull(error, "comparison conditional on a state with only non-numeric declared values must be a parse error — the arm is silently dead today");
+
+		var errorRange = parseAnimExpectingError('
+sheet: testSheet
+states: level(low, high)
+animation idle @(level => 1..5) {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+}
+animation idle @default {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+}
+');
+		Assert.notNull(errorRange, "range conditional on a state with only non-numeric declared values must be a parse error — the arm is silently dead today");
+	}
+
+	// ===== Long comment runs must lex iteratively =====
+
+	@Test
+	public function testManyConsecutiveCommentsParse() {
+		// The lexer used to recurse once per comment — a long run of comments in
+		// a generated file was a stack-overflow risk. Pin the iterative version.
+		var buf = new StringBuf();
+		buf.add('sheet: testSheet\n');
+		for (i in 0...5000) {
+			buf.add('// filler comment $i\n');
+			buf.add('/* block $i */\n');
+		}
+		buf.add('animation idle {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+}
+');
+		var result = parseAnimExpectingSuccess(buf.toString());
+		Assert.notNull(result, "a file with 10k consecutive comments must lex without recursion issues");
+	}
+
+	// ===== Unknown characters must not be silently skipped =====
+
+	@Test
+	public function testAnimLexerRejectsUnknownCharacters() {
+		// The lexer silently skips characters it does not recognize, so typos
+		// like a stray backtick vanish without a diagnostic.
+		var error = parseAnimExpectingError('
+sheet: testSheet
+animation idle {
+    fps: 4 `
+    loop: yes
+    playlist { sheet: "test_idle" }
+}
+');
+		Assert.notNull(error, "an unknown character (backtick) must produce a lexer error, not be silently skipped");
 	}
 
 	// ===== flipX / flipY tests (#13) =====
@@ -2406,5 +2645,78 @@ flipX: yes
 ');
 		Assert.notNull(error, "file-level flipX after animations should error");
 		Assert.stringContains("flipX", error);
+	}
+
+	// ===== Reachability: fully-shadowed animations/playlists must be rejected =====
+	// The validation pass marks visited animations/extra points but compares
+	// `visited == false` on a null-default optional field (`null == false` is false),
+	// and never sets `visited` on playlists at all — so a selector that is shadowed
+	// by a more specific sibling for every state parses silently.
+
+	@Test
+	public function testFullyShadowedAnimationIsRejected() {
+		// The multi-value selector scores 1 for both states, the unconditional
+		// `idle` scores 0 — it can never be selected.
+		var error = parseAnimExpectingError('
+sheet: testSheet
+states: direction(l, r)
+animation idle @(direction=>[l, r]) {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+}
+animation idle {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle2" }
+}
+');
+		Assert.notNull(error, "fully-shadowed animation must be a parse error");
+		Assert.stringContains("not reachable", error);
+	}
+
+	@Test
+	public function testFullyShadowedPlaylistIsRejected() {
+		var error = parseAnimExpectingError('
+sheet: testSheet
+states: direction(l, r)
+animation idle {
+    fps: 4
+    loop: yes
+    playlist @(direction=>[l, r]) { sheet: "test_a" }
+    playlist { sheet: "test_b" }
+}
+');
+		Assert.notNull(error, "fully-shadowed playlist must be a parse error");
+		Assert.stringContains("not reachable", error);
+	}
+
+	// ===== Lexer: unterminated strings must error at the opening quote =====
+	// The quoted-string loop falls out at EOF without an error, swallowing the rest
+	// of the file into one token; the parser then fails far away (or not at all).
+
+	@Test
+	public function testUnterminatedStringIsRejected() {
+		var error = parseAnimExpectingError('
+sheet: testSheet
+states: direction(l)
+animation idle {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle }
+}
+');
+		Assert.notNull(error, "unterminated string must be a parse error");
+		Assert.stringContains("Unterminated string", error);
+	}
+
+	@Test
+	public function testNewlineInsideStringKeepsLineNumbersInSync() {
+		// An embedded newline inside a quoted string must bump the lexer line
+		// counter; the unknown-character error below sits on source line 5.
+		var error = parseAnimExpectingError('sheet: testSheet\nstates: direction(l)\nmetadata { note: "two\nline" }\n`\n');
+		Assert.notNull(error, "unknown character should produce a parse error");
+		Assert.isTrue(error.indexOf("test-input:5:") >= 0,
+			'Error must be reported on line 5 (the stray backtick), got: $error');
 	}
 }

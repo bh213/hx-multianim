@@ -1,0 +1,13 @@
+version: 1.0
+
+// bitmap($tileParam) inside a param-dependent repeat: the codegen fast path
+// matches any TSReference and emits _rt_tiles[_rt_i], but this repeat kind
+// declares no _rt_tiles local -> unknown identifier in the generated class.
+// This file is intentionally NOT registered in MultiProgrammable — it is
+// compiled by the isolated compile-error check until the fix lands.
+
+#tileParamRepeat programmable(icon:tile, n:int=3) {
+  repeatable($i, range(0, $n)) {
+    bitmap($icon): $i * 20, 0
+  }
+}

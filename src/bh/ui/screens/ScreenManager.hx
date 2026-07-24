@@ -644,9 +644,11 @@ class ScreenManager {
 				}
 
 			case Dialog(oldDialog, caller, previousMode, dialogName):
-				removeModalOverlay();
+				// The overlay is removed per-branch below: the same-dialog refresh
+				// (reload with a dialog open) must keep it alive.
 				switch newScreenMode {
 					case None:
+						removeModalOverlay();
 						removedScreens = [oldDialog];
 						// Also remove underlying screens that were kept in scene while dialog was open
 						switch previousMode {
@@ -656,6 +658,7 @@ class ScreenManager {
 						}
 
 					case Single(single):
+						removeModalOverlay();
 						removedScreens = [oldDialog];
 						if (!activeScreens.contains(single))
 							addedScreens = [single => layerContent];
@@ -671,6 +674,7 @@ class ScreenManager {
 							default:
 						}
 					case MasterAndSingle(master, single):
+						removeModalOverlay();
 						removedScreens = [oldDialog];
 						addedScreens = [];
 						if (!activeScreens.contains(single))
@@ -690,11 +694,36 @@ class ScreenManager {
 						}
 
 					case Dialog(newDialog, newCaller, newPreviousMode, newDialogName):
-						removedScreens = [oldDialog];
-						addedScreens = [newDialog => layerDialog];
-						overrideActiveScreenControllers = [newDialog];
-						final result = oldDialog.getController().exitResponse;
-						caller.onScreenEvent(UIOnControllerEvent(OnDialogResult(dialogName, result)), null);
+						if (newDialog == oldDialog) {
+							// Same-dialog refresh — what reload() triggers via
+							// updateScreenMode(mode) with a dialog open. The dialog is
+							// not closing or being covered: keep it in scene (no
+							// UILeaving/UIEntering round trip), keep the modal overlay,
+							// keep controllers, and deliver no OnDialogResult.
+						} else {
+							removeModalOverlay();
+							removedScreens = [oldDialog];
+							addedScreens = [newDialog => layerDialog];
+							overrideActiveScreenControllers = [newDialog];
+							// Distinguish closing back to an underlying dialog from
+							// opening a new dialog over this one: when returning, the
+							// target dialog is the one captured as this dialog's
+							// previousMode — and closeDialogWithTransition has already
+							// delivered OnDialogResult for the closing dialog. Firing
+							// again here double-delivered it (a purchase-confirm
+							// handler ran twice).
+							final returningToUnderlying = switch previousMode {
+								case Dialog(prevDialog, _, _, _): prevDialog == newDialog;
+								default: false;
+							};
+							if (!returningToUnderlying) {
+								// Opening a new dialog over this one: the covered
+								// dialog's OnDialogResult fires now (documented in
+								// runtime-systems.md "Dialog over dialog").
+								final result = oldDialog.getController().exitResponse;
+								caller.onScreenEvent(UIOnControllerEvent(OnDialogResult(dialogName, result)), null);
+							}
+						}
 				}
 		}
 		if (removedScreens != null)
@@ -892,6 +921,20 @@ class ScreenManager {
 							activeScreenControllers.push(master);
 						if (!activeScreenControllers.contains(single))
 							activeScreenControllers.push(single);
+					case Dialog(prevDialog, _, _, _):
+						// Unlike Single/MasterAndSingle (whose screens stay in scene
+						// while a dialog is open), a previous dialog was removed from the
+						// scene when this dialog opened over it — so it must be re-added,
+						// not just have its controller restored. Mirrors the instant-close
+						// path, which routes through updateScreenMode's Dialog -> Dialog branch.
+						if (!activeScreens.contains(prevDialog)) {
+							app.s2d.add(prevDialog.getSceneRoot(), sceneLayers.dialog);
+							activeScreens.push(prevDialog);
+							prevDialog.onScreenEvent(UIEntering(null), null);
+							prevDialog.onScreenEvent(UIOnControllerEvent(Entering), null);
+							prevDialog.getController().lifecycleEvent(LifecycleControllerStarted);
+						}
+						activeScreenControllers = [prevDialog];
 					default:
 				}
 
@@ -1298,6 +1341,10 @@ class ScreenManager {
 
 			if (oldBuilder != null) {
 				for (handle in handles) {
+					// reloadable=false handles never rebuild, so their signature
+					// compatibility must not block the reload of everything else.
+					if (!handle.result.reloadable)
+						continue;
 					final oldDefs = oldBuilder.getParameterDefinitions(handle.programmableName);
 					final newDefs = newBuilder.getParameterDefinitions(handle.programmableName);
 					final restartReason = bh.multianim.dev.HotReload.SignatureChecker.check(oldDefs, newDefs);
@@ -1425,6 +1472,13 @@ class ScreenManager {
 
 			for (handle in handles) {
 				final oldResult = handle.result;
+
+				// result.reloadable = false is the documented opt-out
+				// (docs/hot-reload.md): callers set it after buildWithParameters
+				// returns, so it must be honored here, per reload. The handle stays
+				// registered — flipping the flag back to true re-enables reload.
+				if (!oldResult.reloadable)
+					continue;
 
 				// Snapshot state
 				final snapshot = bh.multianim.dev.HotReload.StateSnapshotter.capture(oldResult);

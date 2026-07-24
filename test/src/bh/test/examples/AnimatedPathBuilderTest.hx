@@ -6,6 +6,7 @@ import bh.test.BuilderTestBase.builderFromSource;
 import bh.test.BuilderTestBase.builderFromFile;
 import bh.paths.AnimatedPath;
 import bh.paths.MultiAnimPaths.PathNormalization;
+import bh.multianim.MultiAnimParser.ResolvedIndexParameters;
 import bh.base.FPoint;
 
 /**
@@ -14,6 +15,7 @@ import bh.base.FPoint;
  * Tests createAnimatedPath / createProjectilePath through the builder,
  * path normalization modes, error handling, and builder-vs-codegen equivalence.
  */
+@:access(bh.multianim.MultiAnimBuilder)
 class AnimatedPathBuilderTest extends BuilderTestBase {
 	// Shared .manim source for most tests
 	static final ANIM_PATH_SOURCE = "
@@ -104,6 +106,56 @@ class AnimatedPathBuilderTest extends BuilderTestBase {
 		}
 		#dummy programmable() { bitmap(generated(color(1, 1, #000))): 0,0 }
 	";
+
+	// ==================== Wave segment continuity ====================
+
+	@Test
+	public function testWaveWithFractionalCountJoinsNextSegmentContinuously():Void {
+		// A wave with count 1.25 ends mid-crest: at the segment's end the trace
+		// carries a residual lateral offset of amplitude * sin(count * 2π) = 10.
+		// The segment's recorded endpoint (where the next segment starts, and
+		// what Stretch normalization scales against) must include that offset —
+		// otherwise the traced position jumps by ~amplitude at the boundary.
+		// Note: count 1.25 is written as (5 / 4) — bare float literals are not
+		// accepted in these argument positions (parseAtomInt), but parenthesized
+		// expressions are, and `/` resolves as float division at build time.
+		final builder = builderFromSource("
+			paths {
+				#wavy path { wave(10, 40, (5 / 4)) lineTo(50, 0) }
+			}
+			#wavyAnim animatedPath {
+				path: wavy
+				type: time
+				duration: 1.0
+			}
+			#dummy programmable() { bitmap(generated(color(1, 1, #000))): 0,0 }
+		");
+		final ap = builder.createAnimatedPath("wavyAnim");
+		Assert.notNull(ap);
+
+		// Scan the whole path with a fine step: consecutive positions must never
+		// jump by more than the distance the trace can cover in one step.
+		var prev = new FPoint(0, 0);
+		var state = ap.seek(0.0);
+		prev.x = state.position.x;
+		prev.y = state.position.y;
+		var maxJump = 0.0;
+		var i = 1;
+		while (i <= 1000) {
+			state = ap.seek(i / 1000.0);
+			final dx = state.position.x - prev.x;
+			final dy = state.position.y - prev.y;
+			final d = Math.sqrt(dx * dx + dy * dy);
+			if (d > maxJump) maxJump = d;
+			prev.x = state.position.x;
+			prev.y = state.position.y;
+			i++;
+		}
+		// Total path length ~100px over 1000 steps → smooth steps are well under
+		// 1px; the missing lateral offset shows up as a ~10px discontinuity.
+		Assert.isTrue(maxJump < 2.0,
+			'path trace must be continuous across the wave->line boundary; largest step jump was ${maxJump}px (a ~10px jump means the wave endpoint ignored its residual lateral offset)');
+	}
 
 	// ==================== Builder: Basic Creation ====================
 
@@ -324,6 +376,66 @@ class AnimatedPathBuilderTest extends BuilderTestBase {
 		} catch (e:Dynamic) {
 			Assert.pass();
 		}
+	}
+
+	@Test
+	public function testGetPathThrowLeavesBuilderParamsIntact():Void {
+		// getPath() temporarily swaps builder.indexedParams for an empty map while
+		// it resolves path commands. When the requested path does not exist, the
+		// throw fires inside that window — the builder must still hold its original
+		// parameter map afterwards (the restore has to survive the throw), or every
+		// later $ref resolution on this builder session runs against an empty map.
+		final builder = builderFromSource(ANIM_PATH_SOURCE);
+		final before = builder.indexedParams;
+		before.set("sentinelKey", ResolvedIndexParameters.Value(42));
+
+		try {
+			builder.getPaths().getPath("nonexistentPath");
+			Assert.fail("Should throw for missing path name");
+		} catch (e:Dynamic) {
+			Assert.pass();
+		}
+
+		// The live map must still contain the entry seeded before the throw...
+		Assert.isTrue(builder.indexedParams.exists("sentinelKey"),
+			"builder.indexedParams must keep pre-existing entries after getPath throws");
+		// ...and must be the very same map instance: a write through the captured
+		// reference must be visible through the builder (not a leaked temporary).
+		before.set("postThrowProbe", ResolvedIndexParameters.Value(7));
+		Assert.isTrue(builder.indexedParams.exists("postThrowProbe"),
+			"builder.indexedParams must be the same map instance it held before getPath threw");
+	}
+
+	@Test
+	public function testGetPathMidResolutionThrowLeavesBuilderParamsIntact():Void {
+		// Same restore guarantee when the throw fires mid-resolution rather than at
+		// the up-front name lookup: forward($missing) resolves its distance while
+		// the swapped-in empty map is active, so resolveAsNumber throws a
+		// missing_ref error partway through building the path segments.
+		final builder = builderFromSource("
+			paths {
+				#needsRef path {
+					lineTo(10, 0)
+					forward($missing)
+				}
+			}
+			#dummy programmable() { bitmap(generated(color(1, 1, #000))): 0,0 }
+		");
+		final before = builder.indexedParams;
+		before.set("sentinelKey", ResolvedIndexParameters.StringValue("keepMe"));
+
+		try {
+			builder.getPaths().getPath("needsRef");
+			Assert.fail("Should throw for unresolvable reference in path command");
+		} catch (e:Dynamic) {
+			Assert.pass();
+		}
+
+		Assert.isTrue(builder.indexedParams.exists("sentinelKey"),
+			"builder.indexedParams must keep pre-existing entries after a mid-resolution throw in getPath");
+		before.set("postThrowProbe", ResolvedIndexParameters.Value(7));
+		Assert.isTrue(builder.indexedParams.exists("postThrowProbe"),
+			"builder.indexedParams must be the same map instance it held before getPath threw");
 	}
 
 	// ==================== Codegen: createAnimatedPath_ Parity ====================

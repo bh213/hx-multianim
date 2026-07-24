@@ -47,7 +47,7 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `flow(params)` | Layout container (horizontal, vertical, stack) with padding, spacing, overflow |
 | `layers()` | Z-ordering container for explicit depth stacking |
 | `mask(w, h)` | Clipping rectangle that hides overflow |
-| `tilegroup` | Optimized tile grouping (GPU batching for bitmaps, ninepatch, pixels, point). Children are baked once at build time, so conditionals on programmable parameters are **rejected up front** — both at runtime (`BuilderError code="tilegroup_conditional"`) and at `@:manim` macro compile time (same message, raised at the `@:manim` field position). Use conditionals outside the tileGroup, or key them on a `repeatable` loop variable inside it |
+| `tilegroup` | Optimized tile grouping (GPU batching for bitmaps, ninepatch, pixels, point). Children are baked once at build time, so conditionals on programmable parameters are **rejected up front** — both at runtime (`BuilderError code="tilegroup_conditional"`) and at `@:manim` macro compile time (same message, raised at the `@:manim` field position). The root form `#name programmable tileGroup(...)` runs the same validation as the nested `tilegroup {}` element. Use conditionals outside the tileGroup, or key them on a `repeatable` loop variable inside it |
 | `spacer(w, h)` | Empty spacing element inside flow containers |
 | `point` | Positioning anchor/marker point |
 | `apply(...)` | Apply properties to parent element |
@@ -59,7 +59,7 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | Element | Description |
 |---------|-------------|
 | `placeholder(type, source)` | Dynamic content slot resolved at build time |
-| `staticRef($ref, params)` | Static embed of another programmable |
+| `staticRef($ref, params)` | Static embed of another programmable. `$ref` may name the target literally or via a string/enum parameter (`staticRef($which)`) — the parameter value resolves the target programmable at build time in both builder and codegen |
 | `staticRef(external("importName"), $ref, params)` | Static embed from imported .manim file |
 | `dynamicRef($ref, params)` | Dynamic embed with runtime `setParameter()` support |
 | `#name dynamicRef($ref, params)` | Named dynamic embed — `BuilderResult.getDynamicRef("name")` returns this specific site |
@@ -69,9 +69,10 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 
 **Builder API:**
 - `result.getDynamicRef("name")` — returns the `BuilderResult` for the named site; throws if the name is unknown or multiple unnamed sites collide on the key
-- `result.hasDynamicRef("name")` — existence check that never throws; returns true when at least one site is registered under the key. Reports presence only — does not detect colliding unnamed sites (a subsequent `getDynamicRef` may still throw)
+- `result.hasDynamicRef("name")` — existence check that never throws; returns true when at least one site is registered under the key. Reports presence only — does not detect colliding unnamed sites (a subsequent `getDynamicRef` may still throw). Also generated on `@:manim` codegen instances (`instance.hasDynamicRef(name)`) — consults the same sources as the codegen `getDynamicRef` dispatcher, including dynamicRefs declared inside `@switch` arms
+- `result.getDynamicRefByIndex("name", index)` — convenience for indexed `#name[$i] dynamicRef(...)`; resolves the `"name idx"` key the builder stores per `repeatable` iteration. Also generated on codegen instances (`instance.getDynamicRefByIndex(name, index)`); works for both static-count (unrolled at macro time) and param-dependent repeats
 
-**Disambiguating sibling dynamicRef sites** — `dynamicRefs` is a map keyed by the site's name. Unnamed sites fall back to the referenced programmable name, so two unnamed `dynamicRef($X)` siblings (e.g. `@(cond) dynamicRef($X)` + `@else dynamicRef($X)`, or N iterations of `repeatable { dynamicRef($X) }`) collide on key `"X"`. In that case `getDynamicRef("X")` throws with a hint to add `#name` — the last-writer-wins result is arbitrary with respect to which sibling is attached to the scene graph. Prefix each site with a distinct `#name`, or use `#name[$i]` inside a `repeatable` to key by iteration. Two explicit `#name` sites sharing the same name throw at build time.
+**Disambiguating sibling dynamicRef sites** — `dynamicRefs` is a map keyed by the site's name. Unnamed sites fall back to the referenced programmable name, so two unnamed `dynamicRef($X)` siblings (e.g. `@(cond) dynamicRef($X)` + `@else dynamicRef($X)`, or N iterations of `repeatable { dynamicRef($X) }`) collide on key `"X"`. In that case `getDynamicRef("X")` throws with a hint to add `#name` — the last-writer-wins result is arbitrary with respect to which sibling is attached to the scene graph. Prefix each site with a distinct `#name`, or use `#name[$i]` inside a `repeatable` to key by iteration. Two explicit `#name` sites sharing the same name throw at build time. `@:manim` codegen instances enforce the same contract: `getDynamicRef` on a collided unnamed key throws at lookup, and a duplicate explicit `#name` is a compile-time error. The explicit `#name` is also the stable key for the dynamic-name form — `#panel dynamicRef($tpl)` stays addressable as `"panel"` across template swaps in both builder and codegen.
 
 **Circular references** — a `staticRef`/`dynamicRef` chain that re-enters a programmable already being resolved (`A → A`, `A → B → A`, …) is rejected with `BuilderError code="circular_reference"` instead of recursing to a native stack overflow. The message names the offending programmable. The guard is maintained across nested builds even if an inner `startBuild` throws, so callers that catch a build error and retry are not falsely rejected.
 | `#name slot` | Swappable content container |
@@ -88,7 +89,7 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | Element | Description |
 |---------|-------------|
 | `repeatable($var, iterator)` | Repeat child elements over an iterator |
-| `repeatable2d($x, $y, iterX, iterY)` | 2D grid repetition with two iterators |
+| `repeatable2d($x, $y, iterX, iterY)` | 2D grid repetition with two iterators. Axis kinds: `step`/`range` on both backends; `layout(...)` axes work in the builder and in codegen (codegen unrolls the layout points at macro time and composes the other axis inside each — a param-dependent linear axis combined with a layout axis is a codegen macro error); `array(...)` axes are builder-only (codegen macro error); `tiles(...)`/`stateanim(...)` axes are rejected on both backends |
 
 **Loop variable naming** — loop vars and iterator-output vars (`$v` in `array($v, …)`, `$b`/`$t` in `tiles(...)`, `$b` in `stateanim(...)`) must not share a name with a programmable parameter, an outer loop var, or any `@final` constant in scope. `repeatable2d`'s two loop vars must be distinct, and `tiles($b, $t, …)`'s two outputs must be distinct. Violations are parse errors.
 
@@ -316,6 +317,10 @@ A bare `@else` or `@default` is **terminal** — it closes the chain. Any `@else
 
 **`@final` constants cannot be conditional or `@switch` keys.** `@final` is a compile-time-only alias with no runtime value slot, so both the runtime matcher and codegen's condition emitter would fail on a reference to its name. Using a `@final` as a key in `@(MY_CONST=>…)`, `@if(…)`, `@any(…)`, `@all(…)`, `@else(…)`, or `@switch(MY_CONST)` is rejected at parse time with a message naming the offending `@final`. Use a programmable parameter (`param:type=default`) as the conditional key instead. The rule applies regardless of whether the `@final`'s RHS is a literal or a derived expression.
 
+**Unknown enum members in a conditional are rejected at parse time.** Multi-value (`@(p => [a, b])`), negated multi-value (`@(p != [a, b])`), and `@switch` pipe arms (`a | b { ... }`) build their match set from raw lexemes; a value not present in the parameter's declared enum is rejected with a message naming the offending value and listing the valid members. (String params accept any value; loop variables have no declared type to validate against.) This prevents the silent divergence where a typo never matched in the builder but matched enum index 0 in codegen.
+
+**Type-aware equality.** `@(param => value)` and `@(param != value)` match by the parameter's declared type. On a `string` param the value is compared as a string — `@(version => 2)` means `version == "2"` (an integer-parseable value does **not** become a numeric match). **Float params reject equality:** `@(floatParam => N)` / `@(floatParam != N)` is a parse error (float equality is unreliable and diverged between backends — consistent with `@switch` rejecting float params). Use a comparison (`>=`, `<=`, `>`, `<`) or a range (`a..b`) on float params instead. **Numeric params reject non-numeric values:** `@(intParam => foo)` / `uint` / `range` / hex- & grid-direction params reject a non-integer-parseable value at parse time (these only match numeric values, not strings). **Bool params reject non-boolean values:** `@(boolParam => maybe)` is a parse error — only `true`/`false` (or `yes`/`no`, `1`/`0`) are accepted. Both guards apply to single-value, quoted, bracket multi-value, and `@switch` arms, and exist because the previous string fallthrough silently never matched in the builder and was an `Int == String` compile error in codegen.
+
 Conditionals also work with **repeatable loop variables** (e.g., `@($i => 0)`, `@($i >= 3)`, `@($i != 1)`) inside `repeatable` bodies.
 
 **Comparison and range values support `$param` references** — e.g., `@($i < $level)`, `@(hp >= $threshold)`, `@(param => $from..$to)`, `between $min..$max`. The reference is resolved at build time from current parameter values.
@@ -369,7 +374,7 @@ Works with `@()`, `@if()`, `@any()`, `@all()`, `@else`, `@else(cond)`, `@default
 | `N..M` | Range match, inclusive (numeric params only) |
 | `default` | Fallback when no arm matches |
 
-**Parameter type support:** `@switch` works on discrete types — `enum`, `int`, `uint`, `range`, `string`, `color`, `bool`. Single-value arms route through the same type-aware converter as `@(param => value)`, so a color arm like `#FF0000` produces an integer match and `true`/`false` arms on a `bool` param work as expected. `@switch` rejects `float`, `tile`, and `flags` parameters at parse time (use `@(param => bit[N])` for flag tests). Range/comparison arms (`<= N`, `N..M`, etc.) are rejected on non-numeric parameters.
+**Parameter type support:** `@switch` works on discrete types — `enum`, `int`, `uint`, `range`, `string`, `color`, `bool`. Single-value arms route through the same type-aware converter as `@(param => value)`, so a color arm like `#FF0000` produces an integer match and `true`/`false` arms on a `bool` param work as expected. Pipe arms on a `string` param (`"alpha" | "beta": …`) match as strings (OR of string equalities) on both backends. `@switch` rejects `float`, `tile`, and `flags` parameters at parse time (use `@(param => bit[N])` for flag tests). Range/comparison arms (`<= N`, `N..M`, etc.) are rejected on non-numeric parameters.
 
 **Block arms** for multiple elements per case:
 
@@ -408,6 +413,7 @@ Works with `@()`, `@if()`, `@any()`, `@all()`, `@else`, `@else(cond)`, `@default
 
 **Notes:**
 - `@switch` cannot be combined with other `@` modifiers (`@alpha`, `@scale`, etc.)
+- `#name` cannot be applied to `@switch` (parse error) — name the elements inside the arms instead
 - Cannot be used at root level (must be inside a programmable body)
 - Only one `default` arm per `@switch` block (duplicate rejected at parse time)
 - **Incremental mode:** `setParameter()` triggers full arm rebuild (teardown + rebuild of active arm). All param refs inside all arms are collected — changing any referenced param (not just the switch param) triggers rebuild. Supports nested `@switch`, `@()` conditionals, repeatables, and `$param` expressions inside arms
@@ -461,6 +467,8 @@ All binary operators are **left-associative** (`a - b - c` parses as `(a - b) - 
 | `[val1, val2, ...]` | Array literal |
 | `$ref[index]` | Array element access |
 
+**Callback result typing** — the context the callback appears in determines the accepted `CallbackResult`: string contexts (text content) stringify `CBRInteger`/`CBRFloat`/`CBRString`; float contexts (positions, alpha, scale) accept `CBRInteger`/`CBRFloat` and throw on `CBRString`/`CBRObject`; integer contexts (grid/hex coordinates, repeat counts) accept only `CBRInteger` and throw on `CBRFloat` — identical in builder and codegen. The optional `= default` after the callback is applied on `CBRNoResult` (and when no callback is installed); a numeric-literal default in a numeric context resolves numerically.
+
 ---
 
 ## Coordinate Systems
@@ -473,7 +481,7 @@ Define with `grid: spacingX, spacingY` (or named: `grid: #name spacingX, spacing
 
 | Method | Description |
 |--------|-------------|
-| `$grid.pos(x, y)` | Position at grid cell (use `.offset(x, y)` for pixel offsets) |
+| `$grid.pos(x, y)` | Position at grid cell (use `.offset(x, y)` for pixel offsets). Cell coordinates resolve as integers — fractional expressions truncate (`$grid.pos($i/2, 0)` with `$i=3` is cell 1), identically in builder and codegen |
 | `$grid.width` | Cell width |
 | `$grid.height` | Cell height |
 
@@ -541,6 +549,8 @@ Note: coordinates are static — resolved from the initial animation state at bu
 | `$ctx.font("name").lineHeight` | Font line height |
 | `$ctx.font("name").baseLine` | Font baseline |
 
+`$ctx.width`/`$ctx.height` need a scene to resolve. Runtime builder: pass it via `BuilderParameters.scene` (a missing scene throws a `BuilderError`). Codegen (`@:manim`): the generated constructor resolves through the live scene when the instance is already attached, else through the injectable `ProgrammableBuilder.scene` field (set it on the factory like `tweenManager`), else throws the same structured `BuilderError`.
+
 ---
 
 ## Element Properties
@@ -555,7 +565,7 @@ Applied to any element via long-form body or inline syntax.
 | `scale: value` | Scale factor |
 | `rotate: angle` | Rotation angle (supports `deg`, `rad`, `turn`, direction constants) |
 | `alpha: value` | Opacity (0.0-1.0) |
-| `tint: color` | Color tint overlay |
+| `tint: color` | Color tint overlay (maps to `h2d.Drawable.color`). Requires a Drawable target — a root-level/container `tint:` (programmable root is an `h2d.Layers`; `flow`/`layers`/`mask` are non-Drawable) throws a `BuilderError` (`code="tint_requires_drawable"`) in builder and codegen instead of silently no-oping. Put it on a Drawable child or `apply { tint: }` onto one. |
 | `layer: index` | Z-order index within layers/programmable |
 | `filter: filterType(...)` | Visual filter |
 | `blendMode: mode` | Blend mode |
@@ -578,6 +588,8 @@ Applied to any element via long-form body or inline syntax.
 - `result.getUpdatable("name")` / `result.getUpdatableByIndex("name", index)`
 - `result.hasName("name")` / `result.hasNameByIndex("name", index)` — check existence without throwing
 
+**Indexed names must resolve to a unique index.** A 1-D `#name[$i]` whose index recurs — e.g. `#tile[$j]` inside `repeatable($i) { repeatable($j) { … } }` (the inner index repeats once per outer iteration), or a duplicate-value array iterator — collides on the `"name idx"` key. This is rejected loudly on both backends: the builder throws `BuilderError` (`code="indexed_name_collision"`); codegen fails at macro time with a clear `Context.error`. Give the inner loop a unique index, or use a 2-D indexed name `#name[$x, $y]`. The same applies to indexed slots (`#name[$i] slot`, `code="indexed_slot_collision"`).
+
 ---
 
 ## Parameterized Slots
@@ -598,9 +610,11 @@ Slots with parameters support visual states via conditionals. `slotContent` mark
 
 **Body features:** Conditionals (`@()`, `@else`, `@default`), expressions (`$param`), all standard elements.
 
+**Scope:** The slot body is an isolated *parameter* scope — it sees the slot's own params, but NOT the enclosing programmable's params or `repeatable` loop vars (a slot rebuild only receives slot params). Enclosing `@final` constants declared before the slot ARE in scope (`bitmap(...): $OFF, 0` with a body-level `@final OFF = 7` works), on initial build, `slot.setParameter()` rebuilds, and the codegen `buildSlotContent` path alike. A slot param with the same name shadows the constant.
+
 **Runtime API:**
 - `result.getSlot("name", ?index, ?indexY)` — returns a `SlotHandle`; throws when the slot is not registered or kind/index doesn't match
-- `result.hasSlot("name", ?index, ?indexY)` — existence check that never throws. Useful when an indexed slot's iteration may shrink (`repeatable` count dropping under `setParameter`) and the caller wants to skip absent indices instead of wrapping `getSlot` in try/catch
+- `result.hasSlot("name", ?index, ?indexY)` — existence check that never throws. Useful when an indexed slot's iteration may shrink (`repeatable` count dropping under `setParameter`) and the caller wants to skip absent indices instead of wrapping `getSlot` in try/catch. Also generated on `@:manim` codegen instances (`instance.hasSlot(name, index, indexY)`) with identical never-throw semantics — including for slots declared inside `@switch` arms or param-dependent `repeatable` bodies
 - `slot.setParameter("status", "active")` — update visual state (incremental)
 - `slot.setContent(obj)` / `slot.clear()` — content independent of decorations
 - `slot.getInteractives()` — interactives declared inside the slot decoration body (returns a fresh copy each call). Empty for slots built via the runtime `BuilderResult` path
@@ -742,7 +756,7 @@ Read color settings with `BuilderResolvedSettings.getColorOrDefault(key, default
 | Type | Description |
 |------|-------------|
 | `palette { colors... }` | Indexed color list |
-| `palette(2d, width) { colors... }` | 2D color grid |
+| `palette(2d: width) { colors... }` | 2D color grid (`width` colors per row) |
 | `palette(file: "image.png")` | Colors from image file |
 | `palette(external)` | External palette reference |
 
@@ -934,7 +948,9 @@ emit: circle(r: 50, rRand: 10, angle: 0deg, angleSpread: 180deg)
 | `speedRandom` | `speedRand` | Speed variance |
 | `speedIncrease` | `speedIncr`, `acceleration` | Acceleration |
 | `gravity` | | Gravity strength |
-| `gravityAngle` | | Gravity direction (angle) |
+| `gravityAngle` | | Gravity direction (angle; standard convention `0°`=right, `90°`=down; unset default = down) |
+
+`maxLife` must be greater than 0 (build error otherwise).
 
 ### Size & Rotation
 
@@ -993,6 +1009,13 @@ Each stop: `rate color [curve]`. Curve specifies interpolation to next stop (def
 bounds: kill, box(x: 0, y: 0, w: 800, h: 600)
 bounds: bounce(0.6), box(x: -50, y: -50, w: 250, h: 250), line(0, 0, 100, 0)
 ```
+
+Without a `box(...)`, the box defaults to infinite — line-only bounds are
+judged by the lines alone.
+
+Coordinate space: force fields, bounds, and sub-emitter offsets operate on
+particle positions — emitter-local for `relative: true` groups, scene space
+(or `worldAnchor`-local when set) for non-relative groups.
 
 ### Force Fields
 
@@ -1303,6 +1326,8 @@ When enabled, elements support efficient runtime updates without full rebuild:
 
 Used by: dynamic refs, slider, scrollbar, parameterized slots, button, checkbox, tab button.
 
+**Batch API on codegen instances.** `@:manim` codegen instances mirror `BuilderResult`'s batch API — `beginUpdate()` / `endUpdate()` / `batchMode` (a `(get, never)` flag). Between `beginUpdate()` and `endUpdate()`, typed setters (`setStatus`, `setDisabled`, …) update their backing field immediately but record the changed param NAME; `endUpdate()` replays the rebuild pass per changed param — the changed-param identity stays alive, so declared `transition {}` animations still fire, `@switch` arms rebuild only when a param they reference changed, and forced repeat rebuilds stay gated — then fires the rebuild listeners ONCE (matching the builder's changed-param set). Nesting `beginUpdate()` or an unbalanced `endUpdate()` throws. Outside a batch, setters apply immediately (non-batched behavior unchanged).
+
 ### Per-element tracked properties
 
 The builder (incremental mode) and codegen paths both re-fire the listed properties on `setParameter`. Properties not listed are resolved once at construction.
@@ -1332,7 +1357,7 @@ rendered state inconsistent. Either rebuild the programmable or avoid
 runtime mutation of this param.
 ```
 
-Builder throws `BuilderError` with `code == "untracked_param"`; codegen throws a plain `String` from the generated setter. Params that appear in both tracked and frozen slots are also rejected (the tracked effect would apply while the frozen one would silently drift). Reasons surface the slot kind so the message is greppable: `interactive id`, `interactive metadata key`, `interactive metadata value`, `stateanim selector "<name>"`, `stateanim_construct animName "<key>"`, `stateanim_construct fps "<key>"`. Applies to param-dependent `repeatable` / `repeatable2d` bodies as well — the walker `markUntrackedParamsInSubtree` (builder) / `recordUntrackedParamsInSubtree` (codegen) seeds `untrackedParamRefs` before the repeat body is built non-incrementally, so the param-dep case is identical to the static-count case.
+Builder throws `BuilderError` with `code == "untracked_param"`; codegen throws a plain `String` from the generated setter. Params that appear in both tracked and frozen slots are also rejected (the tracked effect would apply while the frozen one would silently drift). Reasons surface the slot kind so the message is greppable: `interactive id`, `interactive metadata key`, `interactive metadata value`, `stateanim selector "<name>"`, `stateanim_construct animName "<key>"`, `stateanim_construct fps "<key>"`. Applies to param-dependent `repeatable` / `repeatable2d` bodies as well — the walker `markUntrackedParamsInSubtree` (builder) / `recordUntrackedParamsInSubtree` (codegen) seeds `untrackedParamRefs` before the repeat body is built non-incrementally, so the param-dep case is identical to the static-count case. **Exception: conditional gates.** A param referenced only by `@()`/`@else`/`@default` gates inside a param-dependent repeat body is NOT untracked on either backend — it is a rebuild trigger: changing it rebuilds the repeat body (builder folds it into `repeatParamRefs`; codegen forces the `_rebuildRepeat_*` method past its scalar early-out), and the gates re-evaluate during the rebuild.
 
 ### Other `BuilderError` codes from `setParameter` / `beginUpdate` / `endUpdate`
 
@@ -1349,6 +1374,8 @@ Builder throws `BuilderError` with `code == "untracked_param"`; codegen throws a
 ## Transition Declarations
 
 Declare animated transitions for parameter changes inside programmable elements. When a parameter with a transition is changed via `setParameter()`, visibility changes are animated instead of instant.
+
+The `transition { }` block is declarative and unconditional — `@` modifiers (conditionals, `@alpha`, `@scale`, …) on it are parse errors. The same applies to `settings { }` and `@final` declarations (a `@final` is always unconditional).
 
 ```manim
 #button programmable(status:[normal,hover,pressed]=normal) {

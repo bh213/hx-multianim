@@ -199,8 +199,22 @@ Type.enumEq = function(a,b) {
 };
 var bh_base_ColorUtils = function() { };
 bh_base_ColorUtils.__name__ = true;
+bh_base_ColorUtils.rgb = function(rgb) {
+	return -16777216 | rgb & 16777215;
+};
+bh_base_ColorUtils.rgba = function(rgb,alpha) {
+	var a = alpha <= 0 ? 0 : alpha >= 1 ? 255 : alpha * 255 + 0.5 | 0;
+	return a << 24 | rgb & 16777215;
+};
+bh_base_ColorUtils.withAlpha = function(argb,alpha) {
+	var a = alpha <= 0 ? 0 : alpha >= 1 ? 255 : alpha * 255 + 0.5 | 0;
+	return a << 24 | argb & 16777215;
+};
 bh_base_ColorUtils.getAlpha = function(color) {
 	return (color >>> 24) / 255.0;
+};
+bh_base_ColorUtils.getRgb = function(color) {
+	return color & 16777215;
 };
 var bh_base_FPoint = function(x,y) {
 	this.x = x;
@@ -322,6 +336,61 @@ bh_base_Hex.rotateLeft = function(a) {
 bh_base_Hex.rotateRight = function(a) {
 	return new bh_base_Hex(-a.r,-a.s,-a.q);
 };
+bh_base_Hex.addInto = function(a,b,out) {
+	var q = a.q + b.q;
+	var r = a.r + b.r;
+	var s = a.s + b.s;
+	out.q = q;
+	out.r = r;
+	out.s = s;
+	if(q + r + s != 0) {
+		throw haxe_Exception.thrown("q + r + s must be 0");
+	}
+};
+bh_base_Hex.subtractInto = function(a,b,out) {
+	var q = a.q - b.q;
+	var r = a.r - b.r;
+	var s = a.s - b.s;
+	out.q = q;
+	out.r = r;
+	out.s = s;
+	if(q + r + s != 0) {
+		throw haxe_Exception.thrown("q + r + s must be 0");
+	}
+};
+bh_base_Hex.scaleInto = function(a,k,out) {
+	var q = a.q * k;
+	var r = a.r * k;
+	var s = a.s * k;
+	out.q = q;
+	out.r = r;
+	out.s = s;
+	if(q + r + s != 0) {
+		throw haxe_Exception.thrown("q + r + s must be 0");
+	}
+};
+bh_base_Hex.rotateLeftInto = function(a,out) {
+	var q = -a.s;
+	var r = -a.q;
+	var s = -a.r;
+	out.q = q;
+	out.r = r;
+	out.s = s;
+	if(q + r + s != 0) {
+		throw haxe_Exception.thrown("q + r + s must be 0");
+	}
+};
+bh_base_Hex.rotateRightInto = function(a,out) {
+	var q = -a.r;
+	var r = -a.s;
+	var s = -a.q;
+	out.q = q;
+	out.r = r;
+	out.s = s;
+	if(q + r + s != 0) {
+		throw haxe_Exception.thrown("q + r + s must be 0");
+	}
+};
 bh_base_Hex.isNeighbor = function(a,b) {
 	var q = a.q - b.q;
 	var r = a.r - b.r;
@@ -394,11 +463,19 @@ bh_base_Hex.prototype = {
 			return false;
 		}
 	}
+	,setCoords: function(q,r,s) {
+		this.q = q;
+		this.r = r;
+		this.s = s;
+		if(q + r + s != 0) {
+			throw haxe_Exception.thrown("q + r + s must be 0");
+		}
+	}
 	,toString: function() {
 		return "" + this.q + "," + this.r + "," + this.s;
 	}
 	,toOffsetCoordinates: function() {
-		return bh_base_OffsetCoord.qoffsetFromCube(0,this);
+		return bh_base_OffsetCoord.qoffsetFromCube(bh_base_OffsetCoord.ODD,this);
 	}
 	,__class__: bh_base_Hex
 };
@@ -625,6 +702,27 @@ bh_base_FractionalHex.prototype = {
 		}
 		return new bh_base_Hex(qi,ri,si);
 	}
+	,roundInto: function(out) {
+		var qi = Math.round(this.q);
+		var ri = Math.round(this.r);
+		var si = Math.round(this.s);
+		var q_diff = Math.abs(qi - this.q);
+		var r_diff = Math.abs(ri - this.r);
+		var s_diff = Math.abs(si - this.s);
+		if(q_diff > r_diff && q_diff > s_diff) {
+			qi = -ri - si;
+		} else if(r_diff > s_diff) {
+			ri = -qi - si;
+		} else {
+			si = -qi - ri;
+		}
+		out.q = qi;
+		out.r = ri;
+		out.s = si;
+		if(qi + ri + si != 0) {
+			throw haxe_Exception.thrown("q + r + s must be 0");
+		}
+	}
 	,__class__: bh_base_FractionalHex
 };
 var bh_base_OffsetCoord = function(col,row) {
@@ -733,10 +831,6 @@ bh_base_HexLayout.createFromFloats = function(orientation,sizeX,sizeY,originX,or
 	}
 	return new bh_base_HexLayout(orientation,new bh_base_FPoint(sizeX,sizeY),new bh_base_FPoint(originX,originY));
 };
-bh_base_HexLayout.directionToAngle = function(gridDirection) {
-	var deg = 60 * (bh_base_GridDirection.totalDirections - bh_base_GridDirection.toInt(gridDirection));
-	return deg % 360;
-};
 bh_base_HexLayout.prototype = {
 	createDrawableHexLayout: function(size,origin) {
 		return new bh_base_HexLayout(this.orientation,size,origin);
@@ -752,6 +846,19 @@ bh_base_HexLayout.prototype = {
 		var q = this.orientationData.b0 * ptX + this.orientationData.b1 * ptY;
 		var r = this.orientationData.b2 * ptX + this.orientationData.b3 * ptY;
 		return new bh_base_FractionalHex(q,r,-q - r);
+	}
+	,pixelToHexInto: function(p,out) {
+		var ptX = (p.x - this.origin.x) / this.size.x;
+		var ptY = (p.y - this.origin.y) / this.size.y;
+		var q = this.orientationData.b0 * ptX + this.orientationData.b1 * ptY;
+		var r = this.orientationData.b2 * ptX + this.orientationData.b3 * ptY;
+		out.q = q;
+		out.r = r;
+		out.s = -q - r;
+	}
+	,directionToAngle: function(gridDirection) {
+		var deg = 60 * (bh_base_GridDirection.totalDirections - bh_base_GridDirection.toInt(gridDirection)) + 60 * this.orientationData.start_angle;
+		return deg % 360;
 	}
 	,getStartAngleRad: function() {
 		return this.orientationData.start_angle;
@@ -1431,6 +1538,9 @@ bh_multianim__$MacroManimParser_MacroLexer.prototype = {
 								--depth;
 							} else if(bc == 39) {
 								throw haxe_Exception.thrown("" + this.sourceName + ":" + interpLine + ":" + interpCol + ": Unclosed string interpolation, expected }");
+							} else if(bc == 10) {
+								this.line++;
+								this.lineStart = this.pos + 1;
 							}
 							if(depth > 0) {
 								this.pos++;
@@ -1489,7 +1599,7 @@ bh_multianim__$MacroManimParser_MacroLexer.prototype = {
 							var ct = codeTokens[_g1];
 							++_g1;
 							ct.line = part.codeLine;
-							ct.col = part.codeCol + ct.col;
+							ct.col = part.codeCol + 1 + ct.col;
 						}
 						var _g2 = 0;
 						var _g3 = codeTokens.length;
@@ -1581,7 +1691,11 @@ bh_multianim__$MacroManimParser_MacroLexer.prototype = {
 				}
 				return new bh_multianim__$MacroManimParser_Token(bh_multianim__$MacroManimParser_MacroTokenType.TIdentifier(this.src.substring(idStart2,this.pos)),startLine,startCol);
 			}
-			this.pos++;
+			if(c == 65279) {
+				this.pos++;
+				continue;
+			}
+			throw haxe_Exception.thrown("" + this.sourceName + ":" + startLine + ":" + startCol + ": Unknown character \"" + String.fromCodePoint(c) + "\" (code " + c + ")");
 		}
 		return new bh_multianim__$MacroManimParser_Token(bh_multianim__$MacroManimParser_MacroTokenType.TEof,this.line,this.pos - this.lineStart + 1);
 	}
@@ -1600,6 +1714,8 @@ var bh_multianim_MacroManimParser = function(tokens,sourceName,resourceLoader) {
 	this.uniqueCounter = 654321;
 	this.activeDefs = null;
 	this.scopeVars = null;
+	this.activeFinals = null;
+	this.activeFinalNames = null;
 	this.customFilterRefs = [];
 };
 bh_multianim_MacroManimParser.__name__ = true;
@@ -1738,6 +1854,155 @@ bh_multianim_MacroManimParser.tryStringToColor = function(s) {
 	}
 	return Std.parseInt(s);
 };
+bh_multianim_MacroManimParser.inferFinalLiteralType = function(expr) {
+	switch(expr._hx_index) {
+	case 1:
+		var s = expr.s;
+		if(s.toLowerCase() == "true" || s.toLowerCase() == "false") {
+			return bh_multianim_SettingValueType.SVTBool;
+		} else {
+			return bh_multianim_SettingValueType.SVTString;
+		}
+		break;
+	case 2:
+		var _g = expr.i;
+		return bh_multianim_SettingValueType.SVTInt;
+	case 5:
+		var _g = expr.f;
+		return bh_multianim_SettingValueType.SVTFloat;
+	default:
+		return null;
+	}
+};
+bh_multianim_MacroManimParser.isMetaTypeCompatibleWithFinalType = function(metaType,finalType) {
+	switch(metaType._hx_index) {
+	case 0:
+		return true;
+	case 2:
+		switch(finalType._hx_index) {
+		case 1:case 2:case 3:case 4:
+			return true;
+		default:
+			return false;
+		}
+		break;
+	case 3:
+		switch(finalType._hx_index) {
+		case 1:case 3:case 4:
+			return true;
+		default:
+			return false;
+		}
+		break;
+	case 1:case 4:
+		switch(finalType._hx_index) {
+		case 1:case 3:case 4:
+			return true;
+		default:
+			return false;
+		}
+		break;
+	}
+};
+bh_multianim_MacroManimParser.isMetaTypeCompatibleWithParam = function(metaType,paramType) {
+	switch(metaType._hx_index) {
+	case 0:
+		switch(paramType._hx_index) {
+		case 2:
+			var _g = paramType.bits;
+			return false;
+		case 11:case 12:
+			return false;
+		default:
+			return true;
+		}
+		break;
+	case 2:
+		switch(paramType._hx_index) {
+		case 0:case 1:case 5:case 6:case 7:case 8:case 10:
+			return true;
+		case 4:
+			var _g = paramType.from;
+			var _g = paramType.to;
+			return true;
+		default:
+			return false;
+		}
+		break;
+	case 3:
+		switch(paramType._hx_index) {
+		case 0:case 1:case 5:case 7:case 8:
+			return true;
+		case 4:
+			var _g = paramType.from;
+			var _g = paramType.to;
+			return true;
+		default:
+			return false;
+		}
+		break;
+	case 1:case 4:
+		switch(paramType._hx_index) {
+		case 0:case 1:case 5:case 7:case 8:case 10:
+			return true;
+		case 4:
+			var _g = paramType.from;
+			var _g = paramType.to;
+			return true;
+		default:
+			return false;
+		}
+		break;
+	}
+};
+bh_multianim_MacroManimParser.settingValueTypeName = function(t) {
+	switch(t._hx_index) {
+	case 0:
+		return "string";
+	case 1:
+		return "int";
+	case 2:
+		return "float";
+	case 3:
+		return "bool";
+	case 4:
+		return "color";
+	}
+};
+bh_multianim_MacroManimParser.definitionTypeName = function(t) {
+	switch(t._hx_index) {
+	case 0:
+		return "hexDirection";
+	case 1:
+		return "gridDirection";
+	case 2:
+		var _g = t.bits;
+		return "flags";
+	case 3:
+		var _g = t.values;
+		return "enum";
+	case 4:
+		var _g = t.from;
+		var _g = t.to;
+		return "range";
+	case 5:
+		return "int";
+	case 6:
+		return "float";
+	case 7:
+		return "bool";
+	case 8:
+		return "uint";
+	case 9:
+		return "string";
+	case 10:
+		return "color";
+	case 11:
+		return "array";
+	case 12:
+		return "tile";
+	}
+};
 bh_multianim_MacroManimParser.tryMatchEasingName = function(s) {
 	switch(s.toLowerCase()) {
 	case "easeinback":
@@ -1816,6 +2081,41 @@ bh_multianim_MacroManimParser.prototype = {
 		var available = allVars.length > 0 ? allVars.join(", ") : "(none)";
 		this.error("unknown variable $" + name + ". Available: " + available);
 	}
+	,validateLoopVarName: function(name,currentDefs,kind) {
+		if(currentDefs != null && Object.prototype.hasOwnProperty.call(currentDefs.h,name)) {
+			this.error("" + kind + " loop variable $" + name + " shadows parameter $" + name + " of the enclosing programmable — pick a different name");
+		}
+		if(this.scopeVars != null && this.scopeVars.indexOf(name) >= 0) {
+			this.error("" + kind + " loop variable $" + name + " shadows an outer $" + name + " already in scope — pick a different name");
+		}
+	}
+	,iteratorOutputVars: function(rt) {
+		switch(rt._hx_index) {
+		case 2:
+			var _g = rt.arrayName;
+			var valueVar = rt.valueVariableName;
+			return [valueVar];
+		case 4:
+			var _g = rt.animFilename;
+			var _g = rt.animationName;
+			var _g = rt.selector;
+			var bitmapVar = rt.bitmapVarName;
+			return [bitmapVar];
+		case 5:
+			var _g = rt.sheetName;
+			var _g = rt.tileFilter;
+			var bitmapVar = rt.bitmapVarName;
+			var tilenameVar = rt.tilenameVarName;
+			if(tilenameVar != null) {
+				return [bitmapVar,tilenameVar];
+			} else {
+				return [bitmapVar];
+			}
+			break;
+		default:
+			return [];
+		}
+	}
 	,peek: function() {
 		return this.tokens[this.tpos].type;
 	}
@@ -1890,302 +2190,141 @@ bh_multianim_MacroManimParser.prototype = {
 		}
 		return f;
 	}
-	,parseExpr: function(t) {
-		switch(t._hx_index) {
-		case 0:
-			return this.parseIntegerOrReference();
-		case 1:
-			return this.parseFloatOrReference();
-		case 2:
-			return this.parseStringOrReference();
-		case 3:
-			return this.parseAnything();
-		}
-	}
-	,parseNextExpression: function(e1,t) {
-		var _g = this.tokens[this.tpos].type;
-		switch(_g._hx_index) {
+	,infixBp: function(token) {
+		switch(token._hx_index) {
 		case 16:
-			this.advance();
-			var tmp;
-			switch(t._hx_index) {
-			case 0:
-				tmp = this.parseIntegerOrReference();
-				break;
-			case 1:
-				tmp = this.parseFloatOrReference();
-				break;
-			case 2:
-				tmp = this.parseStringOrReference();
-				break;
-			case 3:
-				tmp = this.parseAnything();
-				break;
-			}
-			return this.binop(e1,bh_multianim_RvOp.OpMul,tmp);
+			return { lbp : 30, rbp : 31, op : bh_multianim_RvOp.OpMul};
 		case 17:
-			this.advance();
-			var tmp;
-			switch(t._hx_index) {
-			case 0:
-				tmp = this.parseIntegerOrReference();
-				break;
-			case 1:
-				tmp = this.parseFloatOrReference();
-				break;
-			case 2:
-				tmp = this.parseStringOrReference();
-				break;
-			case 3:
-				tmp = this.parseAnything();
-				break;
-			}
-			return this.binop(e1,bh_multianim_RvOp.OpMod,tmp);
+			return { lbp : 30, rbp : 31, op : bh_multianim_RvOp.OpMod};
 		case 18:
-			this.advance();
-			var tmp;
-			switch(t._hx_index) {
-			case 0:
-				tmp = this.parseIntegerOrReference();
-				break;
-			case 1:
-				tmp = this.parseFloatOrReference();
-				break;
-			case 2:
-				tmp = this.parseStringOrReference();
-				break;
-			case 3:
-				tmp = this.parseAnything();
-				break;
-			}
-			return this.binop(e1,bh_multianim_RvOp.OpAdd,tmp);
+			return { lbp : 20, rbp : 21, op : bh_multianim_RvOp.OpAdd};
 		case 19:
-			this.advance();
-			var tmp;
-			switch(t._hx_index) {
-			case 0:
-				tmp = this.parseIntegerOrReference();
-				break;
-			case 1:
-				tmp = this.parseFloatOrReference();
-				break;
-			case 2:
-				tmp = this.parseStringOrReference();
-				break;
-			case 3:
-				tmp = this.parseAnything();
-				break;
-			}
-			return this.binop(e1,bh_multianim_RvOp.OpDiv,tmp);
+			return { lbp : 30, rbp : 31, op : bh_multianim_RvOp.OpDiv};
 		case 20:
-			this.advance();
-			var tmp;
-			switch(t._hx_index) {
-			case 0:
-				tmp = this.parseIntegerOrReference();
-				break;
-			case 1:
-				tmp = this.parseFloatOrReference();
-				break;
-			case 2:
-				tmp = this.parseStringOrReference();
-				break;
-			case 3:
-				tmp = this.parseAnything();
-				break;
-			}
-			return this.binop(e1,bh_multianim_RvOp.OpSub,tmp);
+			return { lbp : 20, rbp : 21, op : bh_multianim_RvOp.OpSub};
 		case 22:
-			this.advance();
-			var tmp;
-			switch(t._hx_index) {
-			case 0:
-				tmp = this.parseIntegerOrReference();
-				break;
-			case 1:
-				tmp = this.parseFloatOrReference();
-				break;
-			case 2:
-				tmp = this.parseStringOrReference();
-				break;
-			case 3:
-				tmp = this.parseAnything();
-				break;
-			}
-			return this.binop(e1,bh_multianim_RvOp.OpLess,tmp);
+			return { lbp : 10, rbp : 11, op : bh_multianim_RvOp.OpLess};
 		case 23:
-			this.advance();
-			var tmp;
-			switch(t._hx_index) {
-			case 0:
-				tmp = this.parseIntegerOrReference();
-				break;
-			case 1:
-				tmp = this.parseFloatOrReference();
-				break;
-			case 2:
-				tmp = this.parseStringOrReference();
-				break;
-			case 3:
-				tmp = this.parseAnything();
-				break;
-			}
-			return this.binop(e1,bh_multianim_RvOp.OpGreater,tmp);
+			return { lbp : 10, rbp : 11, op : bh_multianim_RvOp.OpGreater};
 		case 24:
-			this.advance();
-			var tmp;
-			switch(t._hx_index) {
-			case 0:
-				tmp = this.parseIntegerOrReference();
-				break;
-			case 1:
-				tmp = this.parseFloatOrReference();
-				break;
-			case 2:
-				tmp = this.parseStringOrReference();
-				break;
-			case 3:
-				tmp = this.parseAnything();
-				break;
-			}
-			return this.binop(e1,bh_multianim_RvOp.OpLessEq,tmp);
+			return { lbp : 10, rbp : 11, op : bh_multianim_RvOp.OpLessEq};
 		case 25:
-			this.advance();
-			var tmp;
-			switch(t._hx_index) {
-			case 0:
-				tmp = this.parseIntegerOrReference();
-				break;
-			case 1:
-				tmp = this.parseFloatOrReference();
-				break;
-			case 2:
-				tmp = this.parseStringOrReference();
-				break;
-			case 3:
-				tmp = this.parseAnything();
-				break;
-			}
-			return this.binop(e1,bh_multianim_RvOp.OpGreaterEq,tmp);
+			return { lbp : 10, rbp : 11, op : bh_multianim_RvOp.OpGreaterEq};
 		case 26:
-			this.advance();
-			var tmp;
-			switch(t._hx_index) {
-			case 0:
-				tmp = this.parseIntegerOrReference();
-				break;
-			case 1:
-				tmp = this.parseFloatOrReference();
-				break;
-			case 2:
-				tmp = this.parseStringOrReference();
-				break;
-			case 3:
-				tmp = this.parseAnything();
-				break;
-			}
-			return this.binop(e1,bh_multianim_RvOp.OpNotEq,tmp);
+			return { lbp : 10, rbp : 11, op : bh_multianim_RvOp.OpNotEq};
 		case 27:
-			this.advance();
-			var tmp;
-			switch(t._hx_index) {
-			case 0:
-				tmp = this.parseIntegerOrReference();
-				break;
-			case 1:
-				tmp = this.parseFloatOrReference();
-				break;
-			case 2:
-				tmp = this.parseStringOrReference();
-				break;
-			case 3:
-				tmp = this.parseAnything();
-				break;
-			}
-			return this.binop(e1,bh_multianim_RvOp.OpEq,tmp);
+			return { lbp : 10, rbp : 11, op : bh_multianim_RvOp.OpEq};
 		case 32:
-			var s = _g.s;
+			var s = token.s;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"div")) {
-				this.advance();
-				var tmp;
-				switch(t._hx_index) {
-				case 0:
-					tmp = this.parseIntegerOrReference();
-					break;
-				case 1:
-					tmp = this.parseFloatOrReference();
-					break;
-				case 2:
-					tmp = this.parseStringOrReference();
-					break;
-				case 3:
-					tmp = this.parseAnything();
-					break;
-				}
-				return this.binop(e1,bh_multianim_RvOp.OpIntegerDiv,tmp);
+				return { lbp : 30, rbp : 31, op : bh_multianim_RvOp.OpIntegerDiv};
 			} else {
-				return e1;
+				return null;
 			}
 			break;
 		default:
-			return e1;
+			return null;
+		}
+	}
+	,parseExpr: function(t) {
+		return this.parseExpression(0,t);
+	}
+	,parseExpression: function(minBp,t) {
+		var tmp;
+		switch(t._hx_index) {
+		case 0:
+			tmp = this.parseAtomInt();
+			break;
+		case 1:
+			tmp = this.parseAtomFloat();
+			break;
+		case 2:
+			tmp = this.parseAtomString();
+			break;
+		case 3:
+			tmp = this.parseAtomAny();
+			break;
+		}
+		return this.parseExpressionFromAtom(tmp,minBp,t);
+	}
+	,parseExpressionFromAtom: function(lhs,minBp,t) {
+		while(true) {
+			var token = this.tokens[this.tpos].type;
+			var bp;
+			switch(token._hx_index) {
+			case 16:
+				bp = { lbp : 30, rbp : 31, op : bh_multianim_RvOp.OpMul};
+				break;
+			case 17:
+				bp = { lbp : 30, rbp : 31, op : bh_multianim_RvOp.OpMod};
+				break;
+			case 18:
+				bp = { lbp : 20, rbp : 21, op : bh_multianim_RvOp.OpAdd};
+				break;
+			case 19:
+				bp = { lbp : 30, rbp : 31, op : bh_multianim_RvOp.OpDiv};
+				break;
+			case 20:
+				bp = { lbp : 20, rbp : 21, op : bh_multianim_RvOp.OpSub};
+				break;
+			case 22:
+				bp = { lbp : 10, rbp : 11, op : bh_multianim_RvOp.OpLess};
+				break;
+			case 23:
+				bp = { lbp : 10, rbp : 11, op : bh_multianim_RvOp.OpGreater};
+				break;
+			case 24:
+				bp = { lbp : 10, rbp : 11, op : bh_multianim_RvOp.OpLessEq};
+				break;
+			case 25:
+				bp = { lbp : 10, rbp : 11, op : bh_multianim_RvOp.OpGreaterEq};
+				break;
+			case 26:
+				bp = { lbp : 10, rbp : 11, op : bh_multianim_RvOp.OpNotEq};
+				break;
+			case 27:
+				bp = { lbp : 10, rbp : 11, op : bh_multianim_RvOp.OpEq};
+				break;
+			case 32:
+				var s = token.s;
+				bp = bh_multianim_MacroManimParser.isKeyword(s,"div") ? { lbp : 30, rbp : 31, op : bh_multianim_RvOp.OpIntegerDiv} : null;
+				break;
+			default:
+				bp = null;
+			}
+			if(bp == null || bp.lbp < minBp) {
+				return lhs;
+			}
+			this.advance();
+			var rhs = this.parseExpression(bp.rbp,t);
+			lhs = bh_multianim_ReferenceableValue.EBinop(bp.op,lhs,rhs);
+		}
+	}
+	,parseAtom: function(t) {
+		switch(t._hx_index) {
+		case 0:
+			return this.parseAtomInt();
+		case 1:
+			return this.parseAtomFloat();
+		case 2:
+			return this.parseAtomString();
+		case 3:
+			return this.parseAtomAny();
 		}
 	}
 	,parseTernaryExpr: function(t) {
 		this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
 		var cond = this.parseAnything();
 		this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
-		var ifTrue;
-		switch(t._hx_index) {
-		case 0:
-			ifTrue = this.parseIntegerOrReference();
-			break;
-		case 1:
-			ifTrue = this.parseFloatOrReference();
-			break;
-		case 2:
-			ifTrue = this.parseStringOrReference();
-			break;
-		case 3:
-			ifTrue = this.parseAnything();
-			break;
-		}
+		var ifTrue = this.parseExpression(0,t);
 		this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
-		var ifFalse;
-		switch(t._hx_index) {
-		case 0:
-			ifFalse = this.parseIntegerOrReference();
-			break;
-		case 1:
-			ifFalse = this.parseFloatOrReference();
-			break;
-		case 2:
-			ifFalse = this.parseStringOrReference();
-			break;
-		case 3:
-			ifFalse = this.parseAnything();
-			break;
-		}
+		var ifFalse = this.parseExpression(0,t);
 		return bh_multianim_ReferenceableValue.RVTernary(cond,ifTrue,ifFalse);
 	}
 	,parseRefExpr: function(s,idxType) {
 		this.validateRef(s);
 		if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TBracketOpen)) {
-			var idx;
-			switch(idxType._hx_index) {
-			case 0:
-				idx = this.parseIntegerOrReference();
-				break;
-			case 1:
-				idx = this.parseFloatOrReference();
-				break;
-			case 2:
-				idx = this.parseStringOrReference();
-				break;
-			case 3:
-				idx = this.parseAnything();
-				break;
-			}
+			var idx = this.parseExpression(0,idxType);
 			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TBracketClosed);
 			return bh_multianim_ReferenceableValue.RVElementOfArray(s,idx);
 		}
@@ -2197,21 +2336,7 @@ bh_multianim_MacroManimParser.prototype = {
 	,parseUnaryMinusRef: function(s,idxType) {
 		this.validateRef(s);
 		if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TBracketOpen)) {
-			var idx;
-			switch(idxType._hx_index) {
-			case 0:
-				idx = this.parseIntegerOrReference();
-				break;
-			case 1:
-				idx = this.parseFloatOrReference();
-				break;
-			case 2:
-				idx = this.parseStringOrReference();
-				break;
-			case 3:
-				idx = this.parseAnything();
-				break;
-			}
+			var idx = this.parseExpression(0,idxType);
 			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TBracketClosed);
 			return bh_multianim_ReferenceableValue.EUnaryOp(bh_multianim_RvUnaryOp.OpNeg,bh_multianim_ReferenceableValue.RVElementOfArray(s,idx));
 		}
@@ -2220,38 +2345,38 @@ bh_multianim_MacroManimParser.prototype = {
 		}
 		return bh_multianim_ReferenceableValue.EUnaryOp(bh_multianim_RvUnaryOp.OpNeg,bh_multianim_ReferenceableValue.RVReference(s));
 	}
-	,parseIntegerOrReference: function() {
+	,parseAtomInt: function() {
 		var _g = this.tokens[this.tpos].type;
 		switch(_g._hx_index) {
 		case 1:
 			this.advance();
-			var e = this.parseIntegerOrReference();
+			var e = this.parseExpression(0,bh_multianim__$MacroManimParser_ExprType.EInt);
 			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
-			return this.parseNextExpression(bh_multianim_ReferenceableValue.RVParenthesis(e),bh_multianim__$MacroManimParser_ExprType.EInt);
+			return bh_multianim_ReferenceableValue.RVParenthesis(e);
 		case 10:
 			this.advance();
-			return this.parseNextExpression(this.parseTernaryExpr(bh_multianim__$MacroManimParser_ExprType.EInt),bh_multianim__$MacroManimParser_ExprType.EInt);
+			return this.parseTernaryExpr(bh_multianim__$MacroManimParser_ExprType.EInt);
 		case 20:
 			this.advance();
 			var _g1 = this.tokens[this.tpos].type;
 			switch(_g1._hx_index) {
 			case 1:
 				this.advance();
-				var e = this.parseIntegerOrReference();
+				var e = this.parseExpression(0,bh_multianim__$MacroManimParser_ExprType.EInt);
 				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
-				return this.parseNextExpression(bh_multianim_ReferenceableValue.EUnaryOp(bh_multianim_RvUnaryOp.OpNeg,bh_multianim_ReferenceableValue.RVParenthesis(e)),bh_multianim__$MacroManimParser_ExprType.EInt);
+				return bh_multianim_ReferenceableValue.EUnaryOp(bh_multianim_RvUnaryOp.OpNeg,bh_multianim_ReferenceableValue.RVParenthesis(e));
 			case 29:
 				var n = _g1.s;
 				this.advance();
-				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVInteger(-this.stringToInt(n)),bh_multianim__$MacroManimParser_ExprType.EInt);
+				return bh_multianim_ReferenceableValue.RVInteger(-this.stringToInt(n));
 			case 31:
 				var n = _g1.s;
 				this.advance();
-				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVInteger(-this.stringToInt("0x" + n)),bh_multianim__$MacroManimParser_ExprType.EInt);
+				return bh_multianim_ReferenceableValue.RVInteger(-this.stringToInt("0x" + n));
 			case 34:
 				var s = _g1.s;
 				this.advance();
-				return this.parseNextExpression(this.parseUnaryMinusRef(s,bh_multianim__$MacroManimParser_ExprType.EInt),bh_multianim__$MacroManimParser_ExprType.EInt);
+				return this.parseUnaryMinusRef(s,bh_multianim__$MacroManimParser_ExprType.EInt);
 			default:
 				return this.error("expected value after unary minus");
 			}
@@ -2259,11 +2384,11 @@ bh_multianim_MacroManimParser.prototype = {
 		case 29:
 			var n = _g.s;
 			this.advance();
-			return this.parseNextExpression(bh_multianim_ReferenceableValue.RVInteger(this.stringToInt(n)),bh_multianim__$MacroManimParser_ExprType.EInt);
+			return bh_multianim_ReferenceableValue.RVInteger(this.stringToInt(n));
 		case 31:
 			var n = _g.s;
 			this.advance();
-			return this.parseNextExpression(bh_multianim_ReferenceableValue.RVInteger(this.stringToInt("0x" + n)),bh_multianim__$MacroManimParser_ExprType.EInt);
+			return bh_multianim_ReferenceableValue.RVInteger(this.stringToInt("0x" + n));
 		case 32:
 			var s = _g.s;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"callback")) {
@@ -2276,43 +2401,43 @@ bh_multianim_MacroManimParser.prototype = {
 		case 34:
 			var s = _g.s;
 			this.advance();
-			return this.parseNextExpression(this.parseRefExpr(s,bh_multianim__$MacroManimParser_ExprType.EInt),bh_multianim__$MacroManimParser_ExprType.EInt);
+			return this.parseRefExpr(s,bh_multianim__$MacroManimParser_ExprType.EInt);
 		default:
 			return this.error("expected integer or expression, got " + Std.string(this.tokens[this.tpos].type));
 		}
 	}
-	,parseFloatOrReference: function() {
+	,parseAtomFloat: function() {
 		var _g = this.tokens[this.tpos].type;
 		switch(_g._hx_index) {
 		case 1:
 			this.advance();
-			var e = this.parseFloatOrReference();
+			var e = this.parseExpression(0,bh_multianim__$MacroManimParser_ExprType.EFloat);
 			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
-			return this.parseNextExpression(bh_multianim_ReferenceableValue.RVParenthesis(e),bh_multianim__$MacroManimParser_ExprType.EFloat);
+			return bh_multianim_ReferenceableValue.RVParenthesis(e);
 		case 10:
 			this.advance();
-			return this.parseNextExpression(this.parseTernaryExpr(bh_multianim__$MacroManimParser_ExprType.EFloat),bh_multianim__$MacroManimParser_ExprType.EFloat);
+			return this.parseTernaryExpr(bh_multianim__$MacroManimParser_ExprType.EFloat);
 		case 20:
 			this.advance();
 			var _g1 = this.tokens[this.tpos].type;
 			switch(_g1._hx_index) {
 			case 1:
 				this.advance();
-				var e = this.parseFloatOrReference();
+				var e = this.parseExpression(0,bh_multianim__$MacroManimParser_ExprType.EFloat);
 				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
-				return this.parseNextExpression(bh_multianim_ReferenceableValue.EUnaryOp(bh_multianim_RvUnaryOp.OpNeg,bh_multianim_ReferenceableValue.RVParenthesis(e)),bh_multianim__$MacroManimParser_ExprType.EFloat);
+				return bh_multianim_ReferenceableValue.EUnaryOp(bh_multianim_RvUnaryOp.OpNeg,bh_multianim_ReferenceableValue.RVParenthesis(e));
 			case 29:
 				var n = _g1.s;
 				this.advance();
-				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVFloat(-this.stringToFloat(n)),bh_multianim__$MacroManimParser_ExprType.EFloat);
+				return bh_multianim_ReferenceableValue.RVFloat(-this.stringToFloat(n));
 			case 30:
 				var n = _g1.s;
 				this.advance();
-				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVFloat(-this.stringToFloat(n)),bh_multianim__$MacroManimParser_ExprType.EFloat);
+				return bh_multianim_ReferenceableValue.RVFloat(-this.stringToFloat(n));
 			case 34:
 				var s = _g1.s;
 				this.advance();
-				return this.parseNextExpression(this.parseUnaryMinusRef(s,bh_multianim__$MacroManimParser_ExprType.EInt),bh_multianim__$MacroManimParser_ExprType.EFloat);
+				return this.parseUnaryMinusRef(s,bh_multianim__$MacroManimParser_ExprType.EInt);
 			default:
 				return this.error("expected value after unary minus");
 			}
@@ -2320,11 +2445,11 @@ bh_multianim_MacroManimParser.prototype = {
 		case 29:
 			var n = _g.s;
 			this.advance();
-			return this.parseNextExpression(bh_multianim_ReferenceableValue.RVFloat(this.stringToFloat(n)),bh_multianim__$MacroManimParser_ExprType.EFloat);
+			return bh_multianim_ReferenceableValue.RVFloat(this.stringToFloat(n));
 		case 30:
 			var n = _g.s;
 			this.advance();
-			return this.parseNextExpression(bh_multianim_ReferenceableValue.RVFloat(this.stringToFloat(n)),bh_multianim__$MacroManimParser_ExprType.EFloat);
+			return bh_multianim_ReferenceableValue.RVFloat(this.stringToFloat(n));
 		case 32:
 			var s = _g.s;
 			if(bh_multianim_MacroManimParser.isKeyword(s,"callback")) {
@@ -2337,7 +2462,7 @@ bh_multianim_MacroManimParser.prototype = {
 		case 34:
 			var s = _g.s;
 			this.advance();
-			return this.parseNextExpression(this.parseRefExpr(s,bh_multianim__$MacroManimParser_ExprType.EInt),bh_multianim__$MacroManimParser_ExprType.EFloat);
+			return this.parseRefExpr(s,bh_multianim__$MacroManimParser_ExprType.EInt);
 		default:
 			return this.error("expected float or expression, got " + Std.string(this.tokens[this.tpos].type));
 		}
@@ -2402,17 +2527,17 @@ bh_multianim_MacroManimParser.prototype = {
 			return value;
 		}
 	}
-	,parseStringOrReference: function() {
+	,parseAtomString: function() {
 		var _g = this.tokens[this.tpos].type;
 		switch(_g._hx_index) {
 		case 1:
 			this.advance();
 			var e = this.parseAnything();
 			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
-			return this.parseNextExpression(bh_multianim_ReferenceableValue.RVParenthesis(e),bh_multianim__$MacroManimParser_ExprType.EString);
+			return bh_multianim_ReferenceableValue.RVParenthesis(e);
 		case 10:
 			this.advance();
-			return this.parseNextExpression(this.parseTernaryExpr(bh_multianim__$MacroManimParser_ExprType.EString),bh_multianim__$MacroManimParser_ExprType.EString);
+			return this.parseTernaryExpr(bh_multianim__$MacroManimParser_ExprType.EString);
 		case 20:
 			this.advance();
 			var _g1 = this.tokens[this.tpos].type;
@@ -2420,11 +2545,11 @@ bh_multianim_MacroManimParser.prototype = {
 			case 29:
 				var n = _g1.s;
 				this.advance();
-				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVString("-" + n),bh_multianim__$MacroManimParser_ExprType.EString);
+				return bh_multianim_ReferenceableValue.RVString("-" + n);
 			case 30:
 				var n = _g1.s;
 				this.advance();
-				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVString("-" + n),bh_multianim__$MacroManimParser_ExprType.EString);
+				return bh_multianim_ReferenceableValue.RVString("-" + n);
 			default:
 				return this.error("expected number after minus in string context");
 			}
@@ -2436,9 +2561,9 @@ bh_multianim_MacroManimParser.prototype = {
 			if(_g1._hx_index == 32) {
 				var s2 = _g1.s;
 				this.advance();
-				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVString(n + s2),bh_multianim__$MacroManimParser_ExprType.EString);
+				return bh_multianim_ReferenceableValue.RVString(n + s2);
 			} else {
-				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVString(n),bh_multianim__$MacroManimParser_ExprType.EString);
+				return bh_multianim_ReferenceableValue.RVString(n);
 			}
 			break;
 		case 30:
@@ -2448,15 +2573,15 @@ bh_multianim_MacroManimParser.prototype = {
 			if(_g1._hx_index == 32) {
 				var s2 = _g1.s;
 				this.advance();
-				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVString(n + s2),bh_multianim__$MacroManimParser_ExprType.EString);
+				return bh_multianim_ReferenceableValue.RVString(n + s2);
 			} else {
-				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVString(n),bh_multianim__$MacroManimParser_ExprType.EString);
+				return bh_multianim_ReferenceableValue.RVString(n);
 			}
 			break;
 		case 31:
 			var n = _g.s;
 			this.advance();
-			return this.parseNextExpression(bh_multianim_ReferenceableValue.RVString("0x" + n),bh_multianim__$MacroManimParser_ExprType.EString);
+			return bh_multianim_ReferenceableValue.RVString("0x" + n);
 		case 32:
 			var _g1 = _g.s;
 			var s = _g1;
@@ -2466,13 +2591,13 @@ bh_multianim_MacroManimParser.prototype = {
 			} else {
 				var s = _g1;
 				this.advance();
-				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVString(s),bh_multianim__$MacroManimParser_ExprType.EString);
+				return bh_multianim_ReferenceableValue.RVString(s);
 			}
 			break;
 		case 33:
 			var s = _g.s;
 			this.advance();
-			return this.parseNextExpression(bh_multianim_ReferenceableValue.RVString(s),bh_multianim__$MacroManimParser_ExprType.EString);
+			return bh_multianim_ReferenceableValue.RVString(s);
 		case 34:
 			var s = _g.s;
 			this.advance();
@@ -2480,25 +2605,25 @@ bh_multianim_MacroManimParser.prototype = {
 			if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TBracketOpen)) {
 				var idx = this.parseIntegerOrReference();
 				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TBracketClosed);
-				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVElementOfArray(s,idx),bh_multianim__$MacroManimParser_ExprType.EString);
+				return bh_multianim_ReferenceableValue.RVElementOfArray(s,idx);
 			}
-			return this.parseNextExpression(bh_multianim_ReferenceableValue.RVReference(s),bh_multianim__$MacroManimParser_ExprType.EString);
+			return bh_multianim_ReferenceableValue.RVReference(s);
 		case 35:
 			var s = _g.s;
 			this.advance();
-			return this.parseNextExpression(bh_multianim_ReferenceableValue.RVString(s),bh_multianim__$MacroManimParser_ExprType.EString);
+			return bh_multianim_ReferenceableValue.RVString(s);
 		default:
 			return this.error("expected string or reference, got " + Std.string(this.tokens[this.tpos].type));
 		}
 	}
-	,parseAnything: function() {
+	,parseAtomAny: function() {
 		var _g = this.tokens[this.tpos].type;
 		switch(_g._hx_index) {
 		case 1:
 			this.advance();
 			var e = this.parseAnything();
 			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
-			return this.parseNextExpression(bh_multianim_ReferenceableValue.RVParenthesis(e),bh_multianim__$MacroManimParser_ExprType.EAny);
+			return bh_multianim_ReferenceableValue.RVParenthesis(e);
 		case 3:
 			this.advance();
 			var arr = [];
@@ -2511,7 +2636,7 @@ bh_multianim_MacroManimParser.prototype = {
 			return bh_multianim_ReferenceableValue.RVArray(arr);
 		case 10:
 			this.advance();
-			return this.parseNextExpression(this.parseTernaryExpr(bh_multianim__$MacroManimParser_ExprType.EAny),bh_multianim__$MacroManimParser_ExprType.EAny);
+			return this.parseTernaryExpr(bh_multianim__$MacroManimParser_ExprType.EAny);
 		case 20:
 			this.advance();
 			var _g1 = this.tokens[this.tpos].type;
@@ -2520,23 +2645,23 @@ bh_multianim_MacroManimParser.prototype = {
 				this.advance();
 				var e = this.parseAnything();
 				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
-				return this.parseNextExpression(bh_multianim_ReferenceableValue.EUnaryOp(bh_multianim_RvUnaryOp.OpNeg,bh_multianim_ReferenceableValue.RVParenthesis(e)),bh_multianim__$MacroManimParser_ExprType.EAny);
+				return bh_multianim_ReferenceableValue.EUnaryOp(bh_multianim_RvUnaryOp.OpNeg,bh_multianim_ReferenceableValue.RVParenthesis(e));
 			case 29:
 				var n = _g1.s;
 				this.advance();
-				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVInteger(-this.stringToInt(n)),bh_multianim__$MacroManimParser_ExprType.EAny);
+				return bh_multianim_ReferenceableValue.RVInteger(-this.stringToInt(n));
 			case 30:
 				var n = _g1.s;
 				this.advance();
-				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVFloat(-this.stringToFloat(n)),bh_multianim__$MacroManimParser_ExprType.EAny);
+				return bh_multianim_ReferenceableValue.RVFloat(-this.stringToFloat(n));
 			case 31:
 				var n = _g1.s;
 				this.advance();
-				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVInteger(-this.stringToInt("0x" + n)),bh_multianim__$MacroManimParser_ExprType.EAny);
+				return bh_multianim_ReferenceableValue.RVInteger(-this.stringToInt("0x" + n));
 			case 34:
 				var s = _g1.s;
 				this.advance();
-				return this.parseNextExpression(this.parseUnaryMinusRef(s,bh_multianim__$MacroManimParser_ExprType.EAny),bh_multianim__$MacroManimParser_ExprType.EAny);
+				return this.parseUnaryMinusRef(s,bh_multianim__$MacroManimParser_ExprType.EAny);
 			default:
 				return this.error("expected value after unary minus");
 			}
@@ -2544,15 +2669,15 @@ bh_multianim_MacroManimParser.prototype = {
 		case 29:
 			var n = _g.s;
 			this.advance();
-			return this.parseNextExpression(bh_multianim_ReferenceableValue.RVInteger(this.stringToInt(n)),bh_multianim__$MacroManimParser_ExprType.EAny);
+			return bh_multianim_ReferenceableValue.RVInteger(this.stringToInt(n));
 		case 30:
 			var n = _g.s;
 			this.advance();
-			return this.parseNextExpression(bh_multianim_ReferenceableValue.RVFloat(this.stringToFloat(n)),bh_multianim__$MacroManimParser_ExprType.EAny);
+			return bh_multianim_ReferenceableValue.RVFloat(this.stringToFloat(n));
 		case 31:
 			var n = _g.s;
 			this.advance();
-			return this.parseNextExpression(bh_multianim_ReferenceableValue.RVInteger(this.stringToInt("0x" + n)),bh_multianim__$MacroManimParser_ExprType.EAny);
+			return bh_multianim_ReferenceableValue.RVInteger(this.stringToInt("0x" + n));
 		case 32:
 			var _g1 = _g.s;
 			var s = _g1;
@@ -2562,7 +2687,7 @@ bh_multianim_MacroManimParser.prototype = {
 			} else {
 				var s = _g1;
 				this.advance();
-				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVString(s),bh_multianim__$MacroManimParser_ExprType.EAny);
+				return bh_multianim_ReferenceableValue.RVString(s);
 			}
 			break;
 		case 33:
@@ -2570,60 +2695,32 @@ bh_multianim_MacroManimParser.prototype = {
 			var c = bh_multianim_MacroManimParser.tryStringToColor("#" + s);
 			this.advance();
 			if(c != null) {
-				return this.parseNextExpression(bh_multianim_ReferenceableValue.RVInteger(c),bh_multianim__$MacroManimParser_ExprType.EAny);
+				return bh_multianim_ReferenceableValue.RVInteger(c);
 			}
-			return this.parseNextExpression(bh_multianim_ReferenceableValue.RVString(s),bh_multianim__$MacroManimParser_ExprType.EAny);
+			return bh_multianim_ReferenceableValue.RVString(s);
 		case 34:
 			var s = _g.s;
 			this.advance();
-			return this.parseNextExpression(this.parseRefExpr(s,bh_multianim__$MacroManimParser_ExprType.EAny),bh_multianim__$MacroManimParser_ExprType.EAny);
+			return this.parseRefExpr(s,bh_multianim__$MacroManimParser_ExprType.EAny);
 		case 35:
 			var s = _g.s;
 			this.advance();
-			return this.parseNextExpression(bh_multianim_ReferenceableValue.RVString(s),bh_multianim__$MacroManimParser_ExprType.EAny);
+			return bh_multianim_ReferenceableValue.RVString(s);
 		default:
 			return this.error("expected value or expression, got " + Std.string(this.tokens[this.tpos].type));
 		}
 	}
-	,binop: function(e1,op,e2) {
-		if(e2._hx_index == 16) {
-			var _g = e2.op;
-			var _g1 = e2.e1;
-			var _g2 = e2.e2;
-			switch(_g._hx_index) {
-			case 0:case 2:
-				switch(op._hx_index) {
-				case 0:case 2:
-					var op2 = _g;
-					var e4 = _g2;
-					var e3 = _g1;
-					return bh_multianim_ReferenceableValue.EBinop(op2,this.binop(e1,op,e3),e4);
-				case 1:case 3:case 4:case 5:
-					var op2 = _g;
-					var e4 = _g2;
-					var e3 = _g1;
-					return bh_multianim_ReferenceableValue.EBinop(op2,this.binop(e1,op,e3),e4);
-				default:
-					return bh_multianim_ReferenceableValue.EBinop(op,e1,e2);
-				}
-				break;
-			case 1:case 3:case 4:case 5:
-				switch(op._hx_index) {
-				case 1:case 3:case 4:case 5:
-					var op2 = _g;
-					var e4 = _g2;
-					var e3 = _g1;
-					return bh_multianim_ReferenceableValue.EBinop(op2,this.binop(e1,op,e3),e4);
-				default:
-					return bh_multianim_ReferenceableValue.EBinop(op,e1,e2);
-				}
-				break;
-			default:
-				return bh_multianim_ReferenceableValue.EBinop(op,e1,e2);
-			}
-		} else {
-			return bh_multianim_ReferenceableValue.EBinop(op,e1,e2);
-		}
+	,parseIntegerOrReference: function() {
+		return this.parseExpression(0,bh_multianim__$MacroManimParser_ExprType.EInt);
+	}
+	,parseFloatOrReference: function() {
+		return this.parseExpression(0,bh_multianim__$MacroManimParser_ExprType.EFloat);
+	}
+	,parseStringOrReference: function() {
+		return this.parseExpression(0,bh_multianim__$MacroManimParser_ExprType.EString);
+	}
+	,parseAnything: function() {
+		return this.parseExpression(0,bh_multianim__$MacroManimParser_ExprType.EAny);
 	}
 	,parseCallback: function() {
 		this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
@@ -2802,10 +2899,25 @@ bh_multianim_MacroManimParser.prototype = {
 			this.advance();
 			if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TDot)) {
 				this.validateRef(s);
-				coord = this.parseCoordinateMethodChain(s);
+				var isCoordChain;
+				var _g = this.tokens[this.tpos].type;
+				if(_g._hx_index == 32) {
+					var m = _g.s;
+					isCoordChain = bh_multianim_MacroManimParser.isKeyword(m,"extrapoint") ? true : s == "ctx" && (m == "hex" || m == "grid") ? true : this.tpos + 1 < this.tokens.length && this.tokens[this.tpos + 1].type._hx_index == 1;
+				} else {
+					isCoordChain = false;
+				}
+				if(isCoordChain) {
+					coord = this.parseCoordinateMethodChain(s);
+				} else {
+					var x = this.parseExpressionFromAtom(this.parsePropertyOrMethodChain(s),0,bh_multianim__$MacroManimParser_ExprType.EInt);
+					this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
+					var y = this.parseIntegerOrReference();
+					coord = bh_multianim_Coordinates.OFFSET(x,y);
+				}
 			} else {
 				this.validateRef(s);
-				var x = this.parseNextExpression(bh_multianim_ReferenceableValue.RVReference(s),bh_multianim__$MacroManimParser_ExprType.EInt);
+				var x = this.parseExpressionFromAtom(bh_multianim_ReferenceableValue.RVReference(s),0,bh_multianim__$MacroManimParser_ExprType.EInt);
 				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 				var y = this.parseIntegerOrReference();
 				coord = bh_multianim_Coordinates.OFFSET(x,y);
@@ -3795,6 +3907,24 @@ bh_multianim_MacroManimParser.prototype = {
 		}
 		return arr;
 	}
+	,validateConditionalEnumValues: function(paramName,defs,values) {
+		var def = defs.h[paramName];
+		if(def == null) {
+			return;
+		}
+		var _g = def.type;
+		if(_g._hx_index == 3) {
+			var members = _g.values;
+			var _g = 0;
+			while(_g < values.length) {
+				var v = values[_g];
+				++_g;
+				if(members.indexOf(v) == -1) {
+					this.error("conditional value \"" + v + "\" is not a valid value for enum parameter \"" + paramName + "\", expected one of: " + members.join(", "));
+				}
+			}
+		}
+	}
 	,parseConditionalParameters: function(defs) {
 		var result = new haxe_ds_StringMap();
 		while(true) {
@@ -3821,6 +3951,9 @@ bh_multianim_MacroManimParser.prototype = {
 			if(!Object.prototype.hasOwnProperty.call(defs.h,paramName) && (this.scopeVars == null || this.scopeVars.indexOf(paramName) == -1)) {
 				this.error("conditional parameter \"" + paramName + "\" does not have definition");
 			}
+			if(this.activeFinalNames != null && this.activeFinalNames.indexOf(paramName) != -1) {
+				this.error("conditional key \"" + paramName + "\" is a @final constant — @final cannot be used as a conditional key (no runtime value slot). Use a programmable parameter instead.");
+			}
 			if(Object.prototype.hasOwnProperty.call(result.h,paramName)) {
 				this.error("conditional parameter \"" + paramName + "\" already defined");
 			}
@@ -3835,13 +3968,15 @@ bh_multianim_MacroManimParser.prototype = {
 						if(enums.length > 0) {
 							this.eatComma();
 						}
-						enums.push(this.expectIdentifierOrString());
+						enums.push(this.parseConditionalValue());
 					}
-					result.h[paramName] = bh_multianim_ConditionalValues.CoEnums(enums);
+					var value = this.makeBracketMultiValue(paramName,defs,enums);
+					result.h[paramName] = value;
 					break;
 				case 9:
 					this.advance();
 					var val = this.parseConditionalValue();
+					this.validateConditionalEnumValues(paramName,defs,[val]);
 					var paramDef = defs.h[paramName];
 					var cv = paramDef != null ? this.stringToConditional(val,paramDef.type) : this.stringToConditionalGeneric(val);
 					result.h[paramName] = bh_multianim_ConditionalValues.CoNot(cv);
@@ -3888,6 +4023,7 @@ bh_multianim_MacroManimParser.prototype = {
 											result.h[paramName] = bh_multianim_ConditionalValues.CoRange(val3,to1,false,false);
 										} else {
 											var valStr = this.rvToCondString(val3);
+											this.validateConditionalEnumValues(paramName,defs,[valStr]);
 											var paramDef1 = defs.h[paramName];
 											if(paramDef1 != null) {
 												var cv1 = this.stringToConditional(valStr,paramDef1.type);
@@ -3908,6 +4044,7 @@ bh_multianim_MacroManimParser.prototype = {
 							result.h[paramName] = bh_multianim_ConditionalValues.CoRange(val4,to2,false,false);
 						} else {
 							var valStr1 = this.rvToCondString(val4);
+							this.validateConditionalEnumValues(paramName,defs,[valStr1]);
 							var paramDef2 = defs.h[paramName];
 							if(paramDef2 != null) {
 								var cv3 = this.stringToConditional(valStr1,paramDef2.type);
@@ -3949,11 +4086,13 @@ bh_multianim_MacroManimParser.prototype = {
 						if(enums1.length > 0) {
 							this.eatComma();
 						}
-						enums1.push(this.expectIdentifierOrString());
+						enums1.push(this.parseConditionalValue());
 					}
-					result.h[paramName] = bh_multianim_ConditionalValues.CoNot(bh_multianim_ConditionalValues.CoEnums(enums1));
+					var value1 = bh_multianim_ConditionalValues.CoNot(this.makeBracketMultiValue(paramName,defs,enums1));
+					result.h[paramName] = value1;
 				} else {
 					var val9 = this.parseConditionalValue();
+					this.validateConditionalEnumValues(paramName,defs,[val9]);
 					var paramDef3 = defs.h[paramName];
 					var cv4 = paramDef3 != null ? this.stringToConditional(val9,paramDef3.type) : this.stringToConditionalGeneric(val9);
 					result.h[paramName] = bh_multianim_ConditionalValues.CoNot(cv4);
@@ -4009,13 +4148,21 @@ bh_multianim_MacroManimParser.prototype = {
 	}
 	,stringToConditional: function(val,type) {
 		switch(type._hx_index) {
+		case 0:case 1:case 5:case 8:
+			var n = Std.parseInt(val);
+			if(n != null) {
+				return bh_multianim_ConditionalValues.CoValue(n);
+			} else {
+				return this.error("non-numeric conditional value \"" + val + "\" for a numeric parameter — int/uint/range/direction parameters only match numeric values, not strings");
+			}
+			break;
 		case 2:
 			var bits = type.bits;
 			var n = Std.parseInt(val);
 			if(n != null) {
 				return bh_multianim_ConditionalValues.CoFlag(n);
 			} else {
-				return bh_multianim_ConditionalValues.CoStringValue(val);
+				return this.error("non-numeric conditional value \"" + val + "\" for a flags parameter — flags parameters only match numeric values or bit[N] tests");
 			}
 			break;
 		case 3:
@@ -4026,6 +4173,18 @@ bh_multianim_MacroManimParser.prototype = {
 				return bh_multianim_ConditionalValues.CoStringValue(val);
 			}
 			break;
+		case 4:
+			var _g = type.from;
+			var _g = type.to;
+			var n = Std.parseInt(val);
+			if(n != null) {
+				return bh_multianim_ConditionalValues.CoValue(n);
+			} else {
+				return this.error("non-numeric conditional value \"" + val + "\" for a numeric parameter — int/uint/range/direction parameters only match numeric values, not strings");
+			}
+			break;
+		case 6:
+			return this.error("float parameters do not support equality conditionals (=> / !=) — float equality is unreliable; use a comparison (>=, <=, >, <) or a range (a..b) instead");
 		case 7:
 			switch(val.toLowerCase()) {
 			case "0":case "false":case "no":
@@ -4033,9 +4192,11 @@ bh_multianim_MacroManimParser.prototype = {
 			case "1":case "true":case "yes":
 				return bh_multianim_ConditionalValues.CoValue(1);
 			default:
-				return bh_multianim_ConditionalValues.CoStringValue(val);
+				return this.error("non-boolean conditional value \"" + val + "\" for a bool parameter — use true/false (or yes/no, 1/0)");
 			}
 			break;
+		case 9:
+			return bh_multianim_ConditionalValues.CoStringValue(val);
 		case 10:
 			var c = bh_multianim_MacroManimParser.tryStringToColor(val);
 			if(c != null) {
@@ -4066,6 +4227,34 @@ bh_multianim_MacroManimParser.prototype = {
 			return bh_multianim_ConditionalValues.CoValue(n);
 		} else {
 			return bh_multianim_ConditionalValues.CoStringValue(val);
+		}
+	}
+	,makeBracketMultiValue: function(paramName,defs,values) {
+		this.validateConditionalEnumValues(paramName,defs,values);
+		var paramDef = defs.h[paramName];
+		if(paramDef == null) {
+			var _g = [];
+			var _g1 = 0;
+			while(_g1 < values.length) {
+				var v = values[_g1];
+				++_g1;
+				_g.push(this.stringToConditionalGeneric(v));
+			}
+			return bh_multianim_ConditionalValues.CoAnyOf(_g);
+		}
+		var _g = paramDef.type;
+		if(_g._hx_index == 3) {
+			var _g1 = _g.values;
+			return bh_multianim_ConditionalValues.CoEnums(values);
+		} else {
+			var _g = [];
+			var _g1 = 0;
+			while(_g1 < values.length) {
+				var v = values[_g1];
+				++_g1;
+				_g.push(this.stringToConditional(v,paramDef.type));
+			}
+			return bh_multianim_ConditionalValues.CoAnyOf(_g);
 		}
 	}
 	,rvToCondString: function(rv) {
@@ -4888,6 +5077,9 @@ bh_multianim_MacroManimParser.prototype = {
 			}
 			var align = this.parseLayoutAlign();
 			this.eatSemicolon();
+			if(Object.prototype.hasOwnProperty.call(layouts.h,name)) {
+				this.error("layout \"" + name + "\" already defined — duplicate names silently shadow each other");
+			}
 			var value = { name : name, type : layoutType, grid : grid, hex : hex, offset : this.foldOffsets(offsets), alignX : align.alignX, alignY : align.alignY};
 			layouts.h[name] = value;
 		} else {
@@ -5028,12 +5220,22 @@ bh_multianim_MacroManimParser.prototype = {
 			nameStr = n;
 			break;
 		}
-		return { pos : bh_multianim_Coordinates.ZERO, scale : scale, rotation : rotation, alpha : alpha, tint : tint, layer : layerIndex, gridCoordinateSystem : null, hexCoordinateSystem : null, namedCoordinateSystems : null, blendMode : null, filter : null, parent : parent, updatableName : updatableName, type : type, children : [], conditionals : conditional, uniqueNodeName : this.generateUniqueName(this.uniqueCounter,nameStr,Std.string(type)), settings : null, transitions : null, flowProperties : null};
+		var tmp;
+		if(type._hx_index == 34) {
+			var _g = type.paramName;
+			var _g = type.arms;
+			tmp = $hxEnums[type.__enum__].__constructs__[type._hx_index]._hx_name;
+		} else {
+			tmp = Std.string(type);
+		}
+		return { pos : bh_multianim_Coordinates.ZERO, scale : scale, rotation : rotation, alpha : alpha, tint : tint, layer : layerIndex, gridCoordinateSystem : null, hexCoordinateSystem : null, namedCoordinateSystems : null, blendMode : null, filter : null, parent : parent, updatableName : updatableName, type : type, children : [], conditionals : conditional, uniqueNodeName : this.generateUniqueName(this.uniqueCounter,nameStr,tmp), settings : null, transitions : null, flowProperties : null, cachedRelevantParamRefs : null};
 	}
 	,parseNode: function(updatableName,parent,currentDefs) {
 		if(parent == null) {
 			this.activeDefs = null;
 			this.scopeVars = null;
+			this.activeFinals = null;
+			this.activeFinalNames = null;
 			this.namedElements = null;
 			this.namedCoordSystems = null;
 		}
@@ -5053,6 +5255,8 @@ bh_multianim_MacroManimParser.prototype = {
 		var slotSavedCurrentDefs = null;
 		var slotSavedActiveDefs = null;
 		var slotSavedScopeVars = null;
+		var slotSavedActiveFinals = null;
+		var slotSavedActiveFinalNames = null;
 		var slotSavedNamedElements = null;
 		if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TAt)) {
 			var atCount = 0;
@@ -5156,9 +5360,15 @@ bh_multianim_MacroManimParser.prototype = {
 															if(parent == null) {
 																this.error("@switch cannot be used at root level");
 															}
+															if(!(updatableName._hx_index == 0 && updatableName.name == null)) {
+																this.error("#name cannot be applied to @switch — name the elements inside the arms instead");
+															}
 															this.advance();
 															this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
 															var switchParam = this.expectIdentifierOrString();
+															if(this.activeFinalNames != null && this.activeFinalNames.indexOf(switchParam) != -1) {
+																this.error("@switch key \"" + switchParam + "\" is a @final constant — @final cannot be used as a @switch key (no runtime value slot). Use a programmable parameter instead.");
+															}
 															var switchDef = currentDefs.h[switchParam];
 															if(switchDef == null) {
 																this.error("@switch parameter \"" + switchParam + "\" does not have definition");
@@ -5219,12 +5429,22 @@ bh_multianim_MacroManimParser.prototype = {
 															} else {
 																var s11 = _g1;
 																if(bh_multianim_MacroManimParser.isKeyword(s11,"final")) {
+																	if(atCount > 0) {
+																		this.error("@final cannot be combined with other @ modifiers or conditionals — a @final is always unconditional");
+																	}
 																	this.advance();
 																	var name = this.expectIdentifierOrString();
 																	this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TEquals);
 																	var expr = this.parseAnything();
 																	if(this.scopeVars != null) {
 																		this.scopeVars.push(name);
+																	}
+																	if(this.activeFinalNames != null) {
+																		this.activeFinalNames.push(name);
+																	}
+																	var finalLiteralType = bh_multianim_MacroManimParser.inferFinalLiteralType(expr);
+																	if(finalLiteralType != null && this.activeFinals != null) {
+																		this.activeFinals.h[name] = finalLiteralType;
 																	}
 																	return this.createNode(bh_multianim_NodeType.FINAL_VAR(name,expr),parent,bh_multianim_NodeConditionalValues.NoConditional,null,null,null,null,-1,bh_multianim_UpdatableNameType.UNTObject(name));
 																} else {
@@ -5259,8 +5479,20 @@ bh_multianim_MacroManimParser.prototype = {
 			if(parent.children.length == 0) {
 				this.error("@else/@default requires a preceding sibling with a @() conditional");
 			}
-			if(parent.children[parent.children.length - 1].conditionals._hx_index == 3) {
+			var _g = parent.children[parent.children.length - 1].conditionals;
+			switch(_g._hx_index) {
+			case 1:
+				if(_g.values == null) {
+					this.error("@else/@default cannot follow a terminal @else or @default — the preceding arm is unconditional");
+				}
+				break;
+			case 2:
+				this.error("@else/@default cannot follow a terminal @else or @default — the preceding arm is unconditional");
+				break;
+			case 3:
 				this.error("@else/@default: previous sibling has no conditional");
+				break;
+			default:
 			}
 			break;
 		case 2:
@@ -5270,8 +5502,20 @@ bh_multianim_MacroManimParser.prototype = {
 			if(parent.children.length == 0) {
 				this.error("@else/@default requires a preceding sibling with a @() conditional");
 			}
-			if(parent.children[parent.children.length - 1].conditionals._hx_index == 3) {
+			var _g = parent.children[parent.children.length - 1].conditionals;
+			switch(_g._hx_index) {
+			case 1:
+				if(_g.values == null) {
+					this.error("@else/@default cannot follow a terminal @else or @default — the preceding arm is unconditional");
+				}
+				break;
+			case 2:
+				this.error("@else/@default cannot follow a terminal @else or @default — the preceding arm is unconditional");
+				break;
+			case 3:
 				this.error("@else/@default: previous sibling has no conditional");
+				break;
+			default:
 			}
 			break;
 		default:
@@ -5818,11 +6062,30 @@ bh_multianim_MacroManimParser.prototype = {
 														slotSavedCurrentDefs = currentDefs;
 														slotSavedActiveDefs = this.activeDefs;
 														slotSavedScopeVars = this.scopeVars;
+														slotSavedActiveFinals = this.activeFinals;
+														slotSavedActiveFinalNames = this.activeFinalNames;
 														slotSavedNamedElements = this.namedElements;
 														slotScopeSaved = true;
 														currentDefs = parsed.defs;
 														this.activeDefs = parsed.defs;
-														this.scopeVars = [];
+														this.scopeVars = slotSavedActiveFinalNames != null ? slotSavedActiveFinalNames.slice() : [];
+														this.activeFinals = new haxe_ds_StringMap();
+														if(slotSavedActiveFinals != null) {
+															var h = slotSavedActiveFinals.h;
+															var _g_h = h;
+															var _g_keys = Object.keys(h);
+															var _g_length = _g_keys.length;
+															var _g_current = 0;
+															while(_g_current < _g_length) {
+																var key = _g_keys[_g_current++];
+																var _g_key = key;
+																var _g_value = _g_h[key];
+																var k = _g_key;
+																var v = _g_value;
+																this.activeFinals.h[k] = v;
+															}
+														}
+														this.activeFinalNames = slotSavedActiveFinalNames != null ? slotSavedActiveFinalNames.slice() : [];
 														this.namedElements = [];
 														node = this.createNode(bh_multianim_NodeType.SLOT(parsed.defs,parsed.order),parent,conditional,scale,rotation,alpha,tint,layerIndex,updatableName);
 													} else {
@@ -6008,6 +6271,9 @@ bh_multianim_MacroManimParser.prototype = {
 																var s = _g1;
 																if(bh_multianim_MacroManimParser.isKeyword(s,"programmable")) {
 																	this.advance();
+																	if(parent != null) {
+																		this.error("programmable must be a root node — programmables cannot be nested; embed one via staticRef/dynamicRef instead");
+																	}
 																	var isTileGroup = false;
 																	var _g = this.tokens[this.tpos].type;
 																	if(_g._hx_index == 32) {
@@ -6025,6 +6291,8 @@ bh_multianim_MacroManimParser.prototype = {
 																	currentDefs = parsed.defs;
 																	this.activeDefs = parsed.defs;
 																	this.scopeVars = [];
+																	this.activeFinals = new haxe_ds_StringMap();
+																	this.activeFinalNames = [];
 																	this.namedElements = [];
 																	node = this.createNode(bh_multianim_NodeType.PROGRAMMABLE(isTileGroup,parsed.defs,parsed.order),parent,conditional,scale,rotation,alpha,tint,layerIndex,updatableName);
 																} else {
@@ -6187,6 +6455,40 @@ bh_multianim_MacroManimParser.prototype = {
 																							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 																							var repeatTypeY = this.parseRepeatIterator(currentDefs);
 																							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
+																							this.validateLoopVarName(varNameX,currentDefs,"repeatable2d");
+																							this.validateLoopVarName(varNameY,currentDefs,"repeatable2d");
+																							if(varNameX == varNameY) {
+																								this.error("repeatable2d loop variables must be distinct, got $" + varNameX + " twice");
+																							}
+																							var iterVarsX = this.iteratorOutputVars(repeatTypeX);
+																							var iterVarsY = this.iteratorOutputVars(repeatTypeY);
+																							var _g = 0;
+																							while(_g < iterVarsX.length) {
+																								var v = iterVarsX[_g];
+																								++_g;
+																								this.validateLoopVarName(v,currentDefs,"repeatable2d iterator");
+																								if(v == varNameX || v == varNameY) {
+																									this.error("repeatable2d iterator output $" + v + " collides with loop variable $" + v);
+																								}
+																							}
+																							var _g = 0;
+																							while(_g < iterVarsY.length) {
+																								var v = iterVarsY[_g];
+																								++_g;
+																								this.validateLoopVarName(v,currentDefs,"repeatable2d iterator");
+																								if(v == varNameX || v == varNameY) {
+																									this.error("repeatable2d iterator output $" + v + " collides with loop variable $" + v);
+																								}
+																								if(iterVarsX.indexOf(v) >= 0) {
+																									this.error("repeatable2d iterator outputs collide on $" + v);
+																								}
+																							}
+																							if(iterVarsX.length == 2 && iterVarsX[0] == iterVarsX[1]) {
+																								this.error("repeatable2d X iterator outputs collide on $" + iterVarsX[0]);
+																							}
+																							if(iterVarsY.length == 2 && iterVarsY[0] == iterVarsY[1]) {
+																								this.error("repeatable2d Y iterator outputs collide on $" + iterVarsY[0]);
+																							}
 																							node = this.createNode(bh_multianim_NodeType.REPEAT2D(varNameX,varNameY,repeatTypeX,repeatTypeY),parent,conditional,scale,rotation,alpha,tint,layerIndex,updatableName);
 																						} else {
 																							var s = _g1;
@@ -6197,6 +6499,20 @@ bh_multianim_MacroManimParser.prototype = {
 																								this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 																								var repeatType = this.parseRepeatIterator(currentDefs);
 																								this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
+																								this.validateLoopVarName(varName,currentDefs,"repeatable");
+																								var iterVars = this.iteratorOutputVars(repeatType);
+																								var _g = 0;
+																								while(_g < iterVars.length) {
+																									var v = iterVars[_g];
+																									++_g;
+																									this.validateLoopVarName(v,currentDefs,"repeatable iterator");
+																									if(v == varName) {
+																										this.error("repeatable iterator output $" + v + " collides with loop variable $" + varName);
+																									}
+																								}
+																								if(iterVars.length == 2 && iterVars[0] == iterVars[1]) {
+																									this.error("repeatable iterator outputs collide on $" + iterVars[0]);
+																								}
 																								node = this.createNode(bh_multianim_NodeType.REPEAT(varName,repeatType),parent,conditional,scale,rotation,alpha,tint,layerIndex,updatableName);
 																							} else {
 																								var s = _g1;
@@ -6279,11 +6595,21 @@ bh_multianim_MacroManimParser.prototype = {
 																												case 1:
 																													this.advance();
 																													var _g = this.tokens[this.tpos].type;
-																													if(_g._hx_index == 32) {
-																														var _g2 = _g.s;
-																														var s2 = _g2;
-																														if(bh_multianim_MacroManimParser.isKeyword(s2,"2d")) {
+																													switch(_g._hx_index) {
+																													case 29:
+																														if(_g.s == "2") {
 																															this.advance();
+																															var _g2 = this.tokens[this.tpos].type;
+																															if(_g2._hx_index == 32) {
+																																var d = _g2.s;
+																																if(d.toLowerCase() == "d") {
+																																	this.advance();
+																																} else {
+																																	this.error("expected 2d or file in palette()");
+																																}
+																															} else {
+																																this.error("expected 2d or file in palette()");
+																															}
 																															this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
 																															var width = this.parseInteger();
 																															this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
@@ -6291,18 +6617,22 @@ bh_multianim_MacroManimParser.prototype = {
 																															var colors = this.parseColorsList(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed);
 																															paletteNode = this.createNode(bh_multianim_NodeType.PALETTE(bh_multianim_PaletteType.PaletteColors2D(colors,width)),parent,conditional,scale,rotation,alpha,tint,layerIndex,updatableName);
 																														} else {
-																															var s2 = _g2;
-																															if(bh_multianim_MacroManimParser.isKeyword(s2,"file")) {
-																																this.advance();
-																																this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
-																																var filename = this.parseStringOrReference();
-																																this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
-																																paletteNode = this.createNode(bh_multianim_NodeType.PALETTE(bh_multianim_PaletteType.PaletteImageFile(filename)),parent,conditional,scale,rotation,alpha,tint,layerIndex,updatableName);
-																															} else {
-																																paletteNode = this.error("expected 2d or file in palette()");
-																															}
+																															paletteNode = this.error("expected 2d or file in palette()");
 																														}
-																													} else {
+																														break;
+																													case 32:
+																														var s2 = _g.s;
+																														if(bh_multianim_MacroManimParser.isKeyword(s2,"file")) {
+																															this.advance();
+																															this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+																															var filename = this.parseStringOrReference();
+																															this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
+																															paletteNode = this.createNode(bh_multianim_NodeType.PALETTE(bh_multianim_PaletteType.PaletteImageFile(filename)),parent,conditional,scale,rotation,alpha,tint,layerIndex,updatableName);
+																														} else {
+																															paletteNode = this.error("expected 2d or file in palette()");
+																														}
+																														break;
+																													default:
 																														paletteNode = this.error("expected 2d or file in palette()");
 																													}
 																													break;
@@ -6492,6 +6822,9 @@ bh_multianim_MacroManimParser.prototype = {
 																																				var s = _g1;
 																																				if(bh_multianim_MacroManimParser.isKeyword(s,"transition")) {
 																																					this.advance();
+																																					if(conditional._hx_index != 3 || alpha != null || scale != null || rotation != null || tint != null || layerIndex != -1 || hasFlowProps) {
+																																						this.error("@ modifiers are not supported on transition {} — transition declarations are unconditional");
+																																					}
 																																					this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyOpen);
 																																					if(parent == null) {
 																																						this.error("transition must be inside a programmable");
@@ -6565,6 +6898,9 @@ bh_multianim_MacroManimParser.prototype = {
 																																					var s = _g1;
 																																					if(bh_multianim_MacroManimParser.isKeyword(s,"settings")) {
 																																						this.advance();
+																																						if(conditional._hx_index != 3 || alpha != null || scale != null || rotation != null || tint != null || layerIndex != -1 || hasFlowProps) {
+																																							this.error("@ modifiers are not supported on settings {} — settings are static and unconditional");
+																																						}
 																																						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyOpen);
 																																						if(parent == null) {
 																																							this.error("settings must have a parent");
@@ -6693,13 +7029,29 @@ bh_multianim_MacroManimParser.prototype = {
 					}
 					break;
 				case 20:
-					var _g1 = _g.repeatTypeX;
-					var _g1 = _g.repeatTypeY;
 					var varNameX = _g.varNameX;
 					var varNameY = _g.varNameY;
+					var repeatTypeX = _g.repeatTypeX;
+					var repeatTypeY = _g.repeatTypeY;
 					this.scopeVars.push(varNameX);
 					this.scopeVars.push(varNameY);
 					loopVarsToPop = 2;
+					var _g = 0;
+					var _g1 = this.iteratorOutputVars(repeatTypeX);
+					while(_g < _g1.length) {
+						var v = _g1[_g];
+						++_g;
+						this.scopeVars.push(v);
+						++loopVarsToPop;
+					}
+					var _g = 0;
+					var _g1 = this.iteratorOutputVars(repeatTypeY);
+					while(_g < _g1.length) {
+						var v = _g1[_g];
+						++_g;
+						this.scopeVars.push(v);
+						++loopVarsToPop;
+					}
 					break;
 				default:
 				}
@@ -6710,13 +7062,6 @@ bh_multianim_MacroManimParser.prototype = {
 			while(_g < _g1) {
 				var _ = _g++;
 				this.scopeVars.pop();
-			}
-			if(slotScopeSaved) {
-				currentDefs = slotSavedCurrentDefs;
-				this.activeDefs = slotSavedActiveDefs;
-				this.scopeVars = slotSavedScopeVars;
-				this.namedElements = slotSavedNamedElements;
-				slotScopeSaved = false;
 			}
 			break;
 		case 11:
@@ -6730,6 +7075,15 @@ bh_multianim_MacroManimParser.prototype = {
 			break;
 		default:
 			this.error("expected : or { or ;, got " + Std.string(this.tokens[this.tpos].type));
+		}
+		if(slotScopeSaved) {
+			currentDefs = slotSavedCurrentDefs;
+			this.activeDefs = slotSavedActiveDefs;
+			this.scopeVars = slotSavedScopeVars;
+			this.activeFinals = slotSavedActiveFinals;
+			this.activeFinalNames = slotSavedActiveFinalNames;
+			this.namedElements = slotSavedNamedElements;
+			slotScopeSaved = false;
 		}
 		return node;
 	}
@@ -7917,6 +8271,7 @@ bh_multianim_MacroManimParser.prototype = {
 		case 11:
 			this.advance();
 			var tv = this.parseTypedSettingValue();
+			this.validateTypedMetadataRef(key,tv.type,tv.value);
 			return { key : key, type : tv.type, value : tv.value};
 		case 15:
 			this.advance();
@@ -7924,6 +8279,50 @@ bh_multianim_MacroManimParser.prototype = {
 			return { key : key, type : this.inferSettingType(value), value : value};
 		default:
 			return this.error("expected :type=> or => after metadata key");
+		}
+	}
+	,validateTypedMetadataRef: function(key,metaType,value) {
+		if(value._hx_index == 6) {
+			var name = value.ref;
+			if(this.activeDefs == null) {
+				return;
+			}
+			var keyName;
+			switch(key._hx_index) {
+			case 1:
+				var s = key.s;
+				keyName = s;
+				break;
+			case 6:
+				var r = key.ref;
+				keyName = "$" + r;
+				break;
+			default:
+				keyName = Std.string(key);
+			}
+			if(Object.prototype.hasOwnProperty.call(this.activeDefs.h,name)) {
+				var def = this.activeDefs.h[name];
+				if(def == null) {
+					return;
+				}
+				if(bh_multianim_MacroManimParser.isMetaTypeCompatibleWithParam(metaType,def.type)) {
+					return;
+				}
+				var metaName = bh_multianim_MacroManimParser.settingValueTypeName(metaType);
+				var paramName = bh_multianim_MacroManimParser.definitionTypeName(def.type);
+				this.error("metadata \"" + keyName + "\" declared as :" + metaName + " cannot reference param \"" + name + "\" of type :" + paramName + " — " + ("runtime and codegen resolve this incompatibly. Use an untyped \"" + keyName + " => $" + name + "\" or match the param type."));
+			}
+			if(this.activeFinals != null) {
+				var finalType = this.activeFinals.h[name];
+				if(finalType != null) {
+					if(bh_multianim_MacroManimParser.isMetaTypeCompatibleWithFinalType(metaType,finalType)) {
+						return;
+					}
+					var metaName = bh_multianim_MacroManimParser.settingValueTypeName(metaType);
+					var finalName = bh_multianim_MacroManimParser.settingValueTypeName(finalType);
+					this.error("metadata \"" + keyName + "\" declared as :" + metaName + " cannot reference @final \"" + name + "\" of type :" + finalName + " — " + ("runtime and codegen resolve this incompatibly. Use an untyped \"" + keyName + " => $" + name + "\" or match the @final literal type."));
+				}
+			}
 		}
 	}
 	,parseFlowOrientation: function() {
@@ -8497,15 +8896,11 @@ bh_multianim_MacroManimParser.prototype = {
 						pattern = bh_multianim_ConditionalValues.CoRange(this.parseRV(values[0]),this.parseRV(toStr),false,false);
 					} else if(Type.enumEq(this.tokens[this.tpos].type,bh_multianim__$MacroManimParser_MacroTokenType.TPipe)) {
 						while(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TPipe)) values.push(this.parseSwitchArmValue());
-						switch(paramType._hx_index) {
-						case 3:
+						if(paramType._hx_index == 3) {
 							var _g1 = paramType.values;
+							this.validateConditionalEnumValues(paramName,defs,values);
 							pattern = bh_multianim_ConditionalValues.CoEnums(values);
-							break;
-						case 9:
-							pattern = bh_multianim_ConditionalValues.CoEnums(values);
-							break;
-						default:
+						} else {
 							var inner = [];
 							var _g2 = 0;
 							while(_g2 < values.length) {
@@ -8516,6 +8911,7 @@ bh_multianim_MacroManimParser.prototype = {
 							pattern = bh_multianim_ConditionalValues.CoAnyOf(inner);
 						}
 					} else {
+						this.validateConditionalEnumValues(paramName,defs,[values[0]]);
 						pattern = this.stringToConditional(values[0],paramType);
 					}
 				}
@@ -8531,15 +8927,11 @@ bh_multianim_MacroManimParser.prototype = {
 					pattern = bh_multianim_ConditionalValues.CoRange(this.parseRV(values1[0]),this.parseRV(toStr1),false,false);
 				} else if(Type.enumEq(this.tokens[this.tpos].type,bh_multianim__$MacroManimParser_MacroTokenType.TPipe)) {
 					while(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TPipe)) values1.push(this.parseSwitchArmValue());
-					switch(paramType._hx_index) {
-					case 3:
+					if(paramType._hx_index == 3) {
 						var _g3 = paramType.values;
+						this.validateConditionalEnumValues(paramName,defs,values1);
 						pattern = bh_multianim_ConditionalValues.CoEnums(values1);
-						break;
-					case 9:
-						pattern = bh_multianim_ConditionalValues.CoEnums(values1);
-						break;
-					default:
+					} else {
 						var inner1 = [];
 						var _g4 = 0;
 						while(_g4 < values1.length) {
@@ -8550,6 +8942,7 @@ bh_multianim_MacroManimParser.prototype = {
 						pattern = bh_multianim_ConditionalValues.CoAnyOf(inner1);
 					}
 				} else {
+					this.validateConditionalEnumValues(paramName,defs,[values1[0]]);
 					pattern = this.stringToConditional(values1[0],paramType);
 				}
 			}
@@ -8996,6 +9389,9 @@ bh_multianim_MacroManimParser.prototype = {
 					break;
 				}
 			}
+			if(Object.prototype.hasOwnProperty.call(constructs.h,stateName)) {
+				this.error("stateanim construct \"" + stateName + "\" already defined — duplicate names silently shadow each other");
+			}
 			constructs.h[stateName] = bh_multianim_StateAnimConstruct.IndexedSheet(sheet,name,fps,loop,center);
 		}
 		return constructs;
@@ -9229,6 +9625,9 @@ bh_multianim_MacroManimParser.prototype = {
 				} else {
 					this.error("unexpected path element: " + Std.string(this.tokens[this.tpos].type));
 				}
+			}
+			if(Object.prototype.hasOwnProperty.call(paths.h,pathName)) {
+				this.error("path \"" + pathName + "\" already defined — duplicate names silently shadow each other");
 			}
 			paths.h[pathName] = pathElements;
 		}
@@ -9938,6 +10337,9 @@ bh_multianim_MacroManimParser.prototype = {
 						segments[i].valueEnd = bh_multianim_ReferenceableValue.RVFloat((i + 1) / n);
 					}
 				}
+			}
+			if(Object.prototype.hasOwnProperty.call(curves.h,curveName)) {
+				this.error("curve \"" + curveName + "\" already defined — duplicate names silently shadow each other");
 			}
 			curves.h[curveName] = { easing : easing, points : points, segments : segments, operation : operation};
 		}
@@ -11164,7 +11566,7 @@ bh_multianim_ManimKeywordInfo.pathName = function(type) {
 		var _g = type.control;
 		var _g = type.mode;
 		var _g = type.smoothing;
-		return "quadratic";
+		return "bezier";
 	case 5:
 		var _g = type.end;
 		var _g = type.control1;
@@ -11214,14 +11616,14 @@ bh_multianim_ManimKeywordInfo.pathDescription = function(type) {
 		var _g = type.control;
 		var _g = type.mode;
 		var _g = type.smoothing;
-		return "Quadratic curve: quadratic(cpx, cpy, endx, endy)";
+		return "Quadratic bezier: bezier(endX, endY, cpX, cpY)";
 	case 5:
 		var _g = type.end;
 		var _g = type.control1;
 		var _g = type.control2;
 		var _g = type.mode;
 		var _g = type.smoothing;
-		return "Cubic bezier: bezier(cp1x, cp1y, cp2x, cp2y[, ex, ey])";
+		return "Bezier curve: bezier(endX, endY, cp1X, cp1Y[, cp2X, cp2Y]) — one control point = quadratic, two = cubic";
 	case 6:
 		var _g = type.radius;
 		var _g = type.angleDelta;
@@ -12161,6 +12563,39 @@ bh_stateanim__$AnimParser_AnimLexerHC.prototype = {
 				this.line++;
 				this.col = 1;
 				this.lineStart = this.pos;
+			} else if(c == 65279) {
+				this.pos++;
+				this.col++;
+			} else if(c == 47 && this.pos + 1 < this.len && HxOverrides.cca(this.src,this.pos + 1) == 47) {
+				while(this.pos < this.len && (this.pos < this.len ? HxOverrides.cca(this.src,this.pos) : -1) != 10 && (this.pos < this.len ? HxOverrides.cca(this.src,this.pos) : -1) != 13) {
+					this.pos++;
+					this.col++;
+				}
+			} else if(c == 47 && this.pos + 1 < this.len && HxOverrides.cca(this.src,this.pos + 1) == 42) {
+				var commentLine = this.line;
+				var commentCol = this.col;
+				this.pos += 2;
+				this.col += 2;
+				var blockClosed = false;
+				while(this.pos < this.len) {
+					if((this.pos < this.len ? HxOverrides.cca(this.src,this.pos) : -1) == 42 && this.pos + 1 < this.len && HxOverrides.cca(this.src,this.pos + 1) == 47) {
+						this.pos += 2;
+						this.col += 2;
+						blockClosed = true;
+						break;
+					}
+					if((this.pos < this.len ? HxOverrides.cca(this.src,this.pos) : -1) == 10) {
+						this.line++;
+						this.col = 1;
+						this.lineStart = this.pos + 1;
+					} else {
+						this.col++;
+					}
+					this.pos++;
+				}
+				if(!blockClosed) {
+					throw haxe_Exception.thrown("" + this.sourceName + ":" + commentLine + ":" + commentCol + ": Unterminated block comment, missing closing */");
+				}
 			} else {
 				break;
 			}
@@ -12171,38 +12606,6 @@ bh_stateanim__$AnimParser_AnimLexerHC.prototype = {
 			return new bh_stateanim__$AnimParser_AnimToken(bh_stateanim_APToken.APEof,startLine,startCol);
 		}
 		var c = this.pos < this.len ? HxOverrides.cca(this.src,this.pos) : -1;
-		if(c == 47 && this.pos + 1 < this.len && HxOverrides.cca(this.src,this.pos + 1) == 47) {
-			while(this.pos < this.len && (this.pos < this.len ? HxOverrides.cca(this.src,this.pos) : -1) != 10 && (this.pos < this.len ? HxOverrides.cca(this.src,this.pos) : -1) != 13) {
-				this.pos++;
-				this.col++;
-			}
-			return this.nextToken();
-		}
-		if(c == 47 && this.pos + 1 < this.len && HxOverrides.cca(this.src,this.pos + 1) == 42) {
-			this.pos += 2;
-			this.col += 2;
-			var blockClosed = false;
-			while(this.pos < this.len) {
-				if((this.pos < this.len ? HxOverrides.cca(this.src,this.pos) : -1) == 42 && this.pos + 1 < this.len && HxOverrides.cca(this.src,this.pos + 1) == 47) {
-					this.pos += 2;
-					this.col += 2;
-					blockClosed = true;
-					break;
-				}
-				if((this.pos < this.len ? HxOverrides.cca(this.src,this.pos) : -1) == 10) {
-					this.line++;
-					this.col = 1;
-					this.lineStart = this.pos + 1;
-				} else {
-					this.col++;
-				}
-				this.pos++;
-			}
-			if(!blockClosed) {
-				throw haxe_Exception.thrown("" + this.sourceName + ":" + startLine + ":" + startCol + ": Unterminated block comment, missing closing */");
-			}
-			return this.nextToken();
-		}
 		if(c == 33 && this.pos + 1 < this.len && HxOverrides.cca(this.src,this.pos + 1) == 61) {
 			this.pos += 2;
 			this.col += 2;
@@ -12287,6 +12690,7 @@ bh_stateanim__$AnimParser_AnimLexerHC.prototype = {
 			this.pos++;
 			this.col++;
 			var buf_b = "";
+			var closed = false;
 			while(this.pos < this.len) {
 				var sc = this.pos < this.len ? HxOverrides.cca(this.src,this.pos) : -1;
 				if(sc == 92 && this.pos + 1 < this.len) {
@@ -12315,11 +12719,21 @@ bh_stateanim__$AnimParser_AnimLexerHC.prototype = {
 				if(sc == 34) {
 					this.pos++;
 					this.col++;
+					closed = true;
 					break;
+				}
+				if(sc == 10) {
+					this.line++;
+					this.col = 1;
+					this.lineStart = this.pos + 1;
+				} else {
+					this.col++;
 				}
 				buf_b += String.fromCodePoint(sc);
 				this.pos++;
-				this.col++;
+			}
+			if(!closed) {
+				throw haxe_Exception.thrown("" + this.sourceName + ":" + startLine + ":" + startCol + ": Unterminated string, missing closing double quote");
 			}
 			return new bh_stateanim__$AnimParser_AnimToken(bh_stateanim_APToken.APIdentifier(buf_b,null,bh_stateanim_APIdentifierType.AITQuotedString),startLine,startCol);
 		}
@@ -12394,7 +12808,7 @@ bh_stateanim__$AnimParser_AnimLexerHC.prototype = {
 				} else {
 					throw haxe_Exception.thrown("expected integer, got \"" + s + "\"");
 				}
-				return new bh_stateanim__$AnimParser_AnimToken(bh_stateanim_APToken.APColor(r << 16 | g << 8 | b),startLine,startCol);
+				return new bh_stateanim__$AnimParser_AnimToken(bh_stateanim_APToken.APColor(-16777216 | r << 16 | g << 8 | b),startLine,startCol);
 			} else if(hexStr.length == 6) {
 				var s = "0x" + hexStr;
 				var tmp;
@@ -12404,7 +12818,7 @@ bh_stateanim__$AnimParser_AnimLexerHC.prototype = {
 				} else {
 					throw haxe_Exception.thrown("expected integer, got \"" + s + "\"");
 				}
-				return new bh_stateanim__$AnimParser_AnimToken(bh_stateanim_APToken.APColor(tmp),startLine,startCol);
+				return new bh_stateanim__$AnimParser_AnimToken(bh_stateanim_APToken.APColor(-16777216 | tmp),startLine,startCol);
 			} else if(hexStr.length == 8) {
 				var s = "0x" + hexStr.substring(0,2);
 				var rr;
@@ -12450,8 +12864,8 @@ bh_stateanim__$AnimParser_AnimLexerHC.prototype = {
 			while(true) {
 				var tmp;
 				if(this.pos < this.len) {
-					var c = this.pos < this.len ? HxOverrides.cca(this.src,this.pos) : -1;
-					tmp = c >= 97 && c <= 122 || c >= 65 && c <= 90 || c >= 48 && c <= 57 || c == 95 || c == 45 || c == 36;
+					var c1 = this.pos < this.len ? HxOverrides.cca(this.src,this.pos) : -1;
+					tmp = c1 >= 97 && c1 <= 122 || c1 >= 65 && c1 <= 90 || c1 >= 48 && c1 <= 57 || c1 == 95 || c1 == 45 || c1 == 36;
 				} else {
 					tmp = false;
 				}
@@ -12465,9 +12879,7 @@ bh_stateanim__$AnimParser_AnimLexerHC.prototype = {
 			var kw = bh_stateanim__$AnimParser_AnimLexerHC.keywordMap.h[s.toLowerCase()];
 			return new bh_stateanim__$AnimParser_AnimToken(bh_stateanim_APToken.APIdentifier(s,kw,bh_stateanim_APIdentifierType.AITString),startLine,startCol);
 		}
-		this.pos++;
-		this.col++;
-		return this.nextToken();
+		throw haxe_Exception.thrown("" + this.sourceName + ":" + startLine + ":" + startCol + ": Unknown character \"" + String.fromCodePoint(c) + "\" (code " + c + ")");
 	}
 	,__class__: bh_stateanim__$AnimParser_AnimLexerHC
 };
@@ -13918,7 +14330,7 @@ manim_lsp_CompletionProvider.referenceCompletions = function(paramNames,prefix) 
 	while(_g < paramNames.length) {
 		var name = paramNames[_g];
 		++_g;
-		items.push({ label : "$" + "name", kind : 6, detail : "Parameter reference"});
+		items.push({ label : "$" + name, kind : 6, detail : "Parameter reference"});
 	}
 	items.push({ label : "$grid", kind : 9, detail : "Grid coordinate system"});
 	items.push({ label : "$hex", kind : 9, detail : "Hex coordinate system"});
@@ -14471,12 +14883,20 @@ manim_lsp_LspTransport.prototype = {
 			var body = bodyBytes;
 			var consumedChars = Buffer.from(HxOverrides.substr(this.buffer,bodyStart,null), 'utf8').slice(0, contentLength).toString('utf8').length;
 			this.buffer = HxOverrides.substr(this.buffer,bodyStart + consumedChars,null);
+			var msg = null;
 			try {
-				var msg = JSON.parse(body);
-				this.onMessage(msg);
+				msg = JSON.parse(body);
 			} catch( _g2 ) {
 				var e = haxe_Exception.caught(_g2).unwrap();
 				manim_lsp_LspTransport.logError("Failed to parse JSON-RPC message: " + Std.string(e));
+			}
+			if(msg != null) {
+				try {
+					this.onMessage(msg);
+				} catch( _g3 ) {
+					var e1 = haxe_Exception.caught(_g3).unwrap();
+					manim_lsp_LspTransport.logError("Unhandled error while processing \"" + Std.string(msg.method) + "\": " + Std.string(e1));
+				}
 			}
 		}
 	}
@@ -15109,6 +15529,7 @@ manim_lsp_ManimLanguageServer.prototype = {
 		this.transport.start();
 	}
 	,onMessage: function(msg) {
+		var _gthis = this;
 		var method = msg.method;
 		var id = msg.id;
 		if(method == null && id != null) {
@@ -15124,7 +15545,9 @@ manim_lsp_ManimLanguageServer.prototype = {
 				process.exit(0);
 				break;
 			case "initialize":
-				this.handleInitialize(id,msg.params);
+				this.safeRequest(id,method,function() {
+					_gthis.handleInitialize(id,msg.params);
+				});
 				break;
 			case "initialized":
 				this.initialized = true;
@@ -15134,10 +15557,14 @@ manim_lsp_ManimLanguageServer.prototype = {
 				this.transport.sendResponse(id,null);
 				break;
 			case "textDocument/completion":
-				this.handleCompletion(id,msg.params);
+				this.safeRequest(id,method,function() {
+					_gthis.handleCompletion(id,msg.params);
+				});
 				break;
 			case "textDocument/definition":
-				this.handleDefinition(id,msg.params);
+				this.safeRequest(id,method,function() {
+					_gthis.handleDefinition(id,msg.params);
+				});
 				break;
 			case "textDocument/didChange":
 				this.handleDidChange(msg.params);
@@ -15153,15 +15580,30 @@ manim_lsp_ManimLanguageServer.prototype = {
 				this.validateDocument(uri);
 				break;
 			case "textDocument/documentSymbol":
-				this.handleDocumentSymbol(id,msg.params);
+				this.safeRequest(id,method,function() {
+					_gthis.handleDocumentSymbol(id,msg.params);
+				});
 				break;
 			case "textDocument/hover":
-				this.handleHover(id,msg.params);
+				this.safeRequest(id,method,function() {
+					_gthis.handleHover(id,msg.params);
+				});
 				break;
 			default:
 				if(id != null) {
 					this.transport.sendError(id,-32601,"Method not found: " + method);
 				}
+			}
+		}
+	}
+	,safeRequest: function(id,method,fn) {
+		try {
+			fn();
+		} catch( _g ) {
+			var e = haxe_Exception.caught(_g).unwrap();
+			manim_lsp_LspTransport.logError("" + method + " handler failed: " + Std.string(e));
+			if(id != null) {
+				this.transport.sendError(id,-32603,"Internal error in " + method + ": " + Std.string(e));
 			}
 		}
 	}
@@ -15395,7 +15837,7 @@ bh_multianim_ManimKeywordInfo.simpleParamTypes = [bh_multianim_DefinitionType.PP
 bh_multianim_ManimKeywordInfo.completableFilters = [bh_multianim_FilterType.FilterOutline(null,null),bh_multianim_FilterType.FilterGlow(null,null,null,null,null,false,false),bh_multianim_FilterType.FilterBlur(null,null,null,null),bh_multianim_FilterType.FilterSaturate(null),bh_multianim_FilterType.FilterBrightness(null),bh_multianim_FilterType.FilterGrayscale(null),bh_multianim_FilterType.FilterHue(null),bh_multianim_FilterType.FilterDropShadow(null,null,null,null,null,null,null,false),bh_multianim_FilterType.FilterPixelOutline(null,false),bh_multianim_FilterType.FilterPaletteReplace("",null,null),bh_multianim_FilterType.FilterColorListReplace(null,null),bh_multianim_FilterType.FilterGroup(null),bh_multianim_FilterType.FilterNone];
 bh_multianim_ManimKeywordInfo.allTransitions = [bh_multianim_TransitionType.TransNone,bh_multianim_TransitionType.TransFade(0,null),bh_multianim_TransitionType.TransCrossfade(0,null),bh_multianim_TransitionType.TransFlipX(0,null),bh_multianim_TransitionType.TransFlipY(0,null),bh_multianim_TransitionType.TransSlide(bh_multianim_TransitionDirection.TDLeft,0,null,null)];
 bh_multianim_ManimKeywordInfo.allEasings = [bh_multianim_EasingType.Linear,bh_multianim_EasingType.EaseInQuad,bh_multianim_EasingType.EaseOutQuad,bh_multianim_EasingType.EaseInOutQuad,bh_multianim_EasingType.EaseInCubic,bh_multianim_EasingType.EaseOutCubic,bh_multianim_EasingType.EaseInOutCubic,bh_multianim_EasingType.EaseInBack,bh_multianim_EasingType.EaseOutBack,bh_multianim_EasingType.EaseInOutBack,bh_multianim_EasingType.EaseOutBounce,bh_multianim_EasingType.EaseOutElastic];
-bh_multianim_ManimKeywordInfo.allPathCommands = [bh_multianim_ParsedPaths.MoveTo(null,null),bh_multianim_ParsedPaths.LineTo(null,null),bh_multianim_ParsedPaths.Forward(null),bh_multianim_ParsedPaths.TurnDegrees(null),bh_multianim_ParsedPaths.Checkpoint(""),bh_multianim_ParsedPaths.Bezier2To(null,null,null,null),bh_multianim_ParsedPaths.Bezier3To(null,null,null,null,null),bh_multianim_ParsedPaths.Arc(null,null),bh_multianim_ParsedPaths.Close,bh_multianim_ParsedPaths.Spiral(null,null,null),bh_multianim_ParsedPaths.Wave(null,null,null)];
+bh_multianim_ManimKeywordInfo.allPathCommands = [bh_multianim_ParsedPaths.MoveTo(null,null),bh_multianim_ParsedPaths.LineTo(null,null),bh_multianim_ParsedPaths.Forward(null),bh_multianim_ParsedPaths.TurnDegrees(null),bh_multianim_ParsedPaths.Checkpoint(""),bh_multianim_ParsedPaths.Bezier3To(null,null,null,null,null),bh_multianim_ParsedPaths.Arc(null,null),bh_multianim_ParsedPaths.Close,bh_multianim_ParsedPaths.Spiral(null,null,null),bh_multianim_ParsedPaths.Wave(null,null,null)];
 bh_multianim_ManimKeywordInfo.allCurveOps = [bh_multianim_CurveOperation.Multiply(null),bh_multianim_CurveOperation.Compose("",""),bh_multianim_CurveOperation.Invert(""),bh_multianim_CurveOperation.Scale("",null)];
 bh_stateanim_AnimKeywordInfo.all = [new bh_stateanim_AnimKeywordInfo("sheet",bh_stateanim_AnimKeywordContext.AKTopLevel,"Sprite sheet name","sheet: "),new bh_stateanim_AnimKeywordInfo("states",bh_stateanim_AnimKeywordContext.AKTopLevel,"State variable declaration: `states: stateName(value1, value2)`","states: "),new bh_stateanim_AnimKeywordInfo("center",bh_stateanim_AnimKeywordContext.AKTopLevel,"Default center point: `center: x,y`","center: "),new bh_stateanim_AnimKeywordInfo("fps",bh_stateanim_AnimKeywordContext.AKTopLevel,"Default frames per second","fps: "),new bh_stateanim_AnimKeywordInfo("loop",bh_stateanim_AnimKeywordContext.AKTopLevel,"Default loop count. `yes` = forever, number = N times","loop: "),new bh_stateanim_AnimKeywordInfo("flipX",bh_stateanim_AnimKeywordContext.AKTopLevel,"Default horizontal flip (yes/no)","flipX: yes"),new bh_stateanim_AnimKeywordInfo("flipY",bh_stateanim_AnimKeywordContext.AKTopLevel,"Default vertical flip (yes/no)","flipY: yes"),new bh_stateanim_AnimKeywordInfo("allowedExtraPoints",bh_stateanim_AnimKeywordContext.AKTopLevel,"Declare valid extra point names for validation"),new bh_stateanim_AnimKeywordInfo("animation",bh_stateanim_AnimKeywordContext.AKTopLevel,"Named animation definition with playlist, extrapoints, and filters","animation ${1:name} {\n\t$0\n}",true),new bh_stateanim_AnimKeywordInfo("anim",bh_stateanim_AnimKeywordContext.AKTopLevel,"One-liner animation shorthand: `anim name(fps:N, loop:yes): \"sheetName\"`","anim ${1:name}(fps:${2:20}): \"${3:sheetName}\""),new bh_stateanim_AnimKeywordInfo("metadata",bh_stateanim_AnimKeywordContext.AKTopLevel,"Typed key-value pairs (int, float, string, color). Supports state conditionals","metadata {\n\t$0\n}",true),new bh_stateanim_AnimKeywordInfo("fps",bh_stateanim_AnimKeywordContext.AKAnimationBody,"Frames per second","fps: "),new bh_stateanim_AnimKeywordInfo("loop",bh_stateanim_AnimKeywordContext.AKAnimationBody,"Loop count (yes = forever)","loop: "),new bh_stateanim_AnimKeywordInfo("playlist",bh_stateanim_AnimKeywordContext.AKAnimationBody,"Frame playlist","playlist {\n\tsheet: \"${1:name}\"\n\t$0\n}",true),new bh_stateanim_AnimKeywordInfo("extrapoints",bh_stateanim_AnimKeywordContext.AKAnimationBody,"Named points for effects/interactions. Supports state conditionals","extrapoints {\n\t$0\n}",true),new bh_stateanim_AnimKeywordInfo("filters",bh_stateanim_AnimKeywordContext.AKAnimationBody,"Per-animation filter block with state conditionals","filters {\n\t$0\n}",true),new bh_stateanim_AnimKeywordInfo("flipX",bh_stateanim_AnimKeywordContext.AKAnimationBody,"Horizontal flip (yes/no)","flipX: yes"),new bh_stateanim_AnimKeywordInfo("flipY",bh_stateanim_AnimKeywordContext.AKAnimationBody,"Vertical flip (yes/no)","flipY: yes"),new bh_stateanim_AnimKeywordInfo("sheet",bh_stateanim_AnimKeywordContext.AKPlaylistBody,"Sheet name. Supports `${stateName}` interpolation","sheet: \""),new bh_stateanim_AnimKeywordInfo("event",bh_stateanim_AnimKeywordContext.AKPlaylistBody,"Trigger event: `event <name> trigger | random x,y,radius | x,y`"),new bh_stateanim_AnimKeywordInfo("filter",bh_stateanim_AnimKeywordContext.AKPlaylistBody,"Per-frame filter change"),new bh_stateanim_AnimKeywordInfo("tint",bh_stateanim_AnimKeywordContext.AKFilterBody,"Tint filter: `tint: #RRGGBB`","tint: "),new bh_stateanim_AnimKeywordInfo("brightness",bh_stateanim_AnimKeywordContext.AKFilterBody,"Brightness filter: `brightness: 0.0-1.0`","brightness: "),new bh_stateanim_AnimKeywordInfo("saturate",bh_stateanim_AnimKeywordContext.AKFilterBody,"Saturation filter","saturate: "),new bh_stateanim_AnimKeywordInfo("grayscale",bh_stateanim_AnimKeywordContext.AKFilterBody,"Grayscale filter","grayscale: "),new bh_stateanim_AnimKeywordInfo("hue",bh_stateanim_AnimKeywordContext.AKFilterBody,"Hue rotation filter","hue: "),new bh_stateanim_AnimKeywordInfo("outline",bh_stateanim_AnimKeywordContext.AKFilterBody,"Outline filter: `outline: size, #color`","outline: "),new bh_stateanim_AnimKeywordInfo("pixelOutline",bh_stateanim_AnimKeywordContext.AKFilterBody,"Pixel outline filter: `pixelOutline: #color`","pixelOutline: "),new bh_stateanim_AnimKeywordInfo("replaceColor",bh_stateanim_AnimKeywordContext.AKFilterBody,"Color replacement: `replaceColor: [#src] => [#dst]`","replaceColor: "),new bh_stateanim_AnimKeywordInfo("none",bh_stateanim_AnimKeywordContext.AKFilterBody,"Clear filters"),new bh_stateanim_AnimKeywordInfo("@(",bh_stateanim_AnimKeywordContext.AKConditional,"Conditional: `@(state=>value)`","@(${1:state}=>${2:value}) "),new bh_stateanim_AnimKeywordInfo("@else",bh_stateanim_AnimKeywordContext.AKConditional,"Else branch"),new bh_stateanim_AnimKeywordInfo("@else(",bh_stateanim_AnimKeywordContext.AKConditional,"Else-if with condition","@else(${1:state}=>${2:value}) "),new bh_stateanim_AnimKeywordInfo("@default",bh_stateanim_AnimKeywordContext.AKConditional,"Default fallback"),new bh_stateanim_AnimKeywordInfo("@final",bh_stateanim_AnimKeywordContext.AKConditional,"Named constant","@final ${1:NAME} = ${2:value}")];
 bh_stateanim__$AnimParser_AnimLexerHC.keywordMap = (function($this) {

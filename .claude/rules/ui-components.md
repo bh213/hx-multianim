@@ -5,7 +5,7 @@
 - **Generic settings pass-through**: Any setting not recognized as control or behavioral is automatically forwarded to the underlying programmable as an extra parameter. The programmable must declare a matching parameter; mismatches throw with programmable name + available params.
 - **Prefixed settings**: `item.fontColor`, `scrollbar.thickness` — dotted keys route to sub-builders in multi-programmable components (dropdown, scrollableList). Registered prefixes: dropdown has `dropdown`, `item`, `scrollbar` (main=panel); scrollableList has `item`, `scrollbar` (main=panel).
 - **Multi-forward settings**: Unprefixed `font`/`fontColor` on dropdown/scrollableList forward to ALL relevant sub-builders for backwards compatibility.
-- **Button**: `buildName` and `text` are control settings; everything else (e.g. `width`, `height`, `font`, `fontColor`) passes through to `#button` programmable. Uses incremental `BuilderResult` with `setParameter("status", ...)` for state changes.
+- **Button**: `buildName` and `text` are control settings; everything else (e.g. `width`, `height`, `font`, `fontColor`) passes through to `#button` programmable. Uses incremental `BuilderResult` with `setParameter("status", ...)` for state changes. `setStyleParameter(name, value):Bool` drives design-specific parameters at runtime — returns `false` (no-op) when the design doesn't declare the parameter; throws `BuilderError` (`code="widget_managed_param"`) for the widget-managed `status`/`buttonText`/`disabled` (use `setText()` / `disabled` instead).
 - **Checkbox**: Same incremental approach as button; uses `beginUpdate()`/`endUpdate()` when toggling both `status` and `checked` parameters.
 - **TabButton**: Same incremental approach; `selected`/`disabled` via `setParameter("checked"/"disabled", ...)`.
 - **Scrollable list / Dropdown**: `font`, `fontColor` forwarded to both item builder and dropdown button builder. The `#dropdown` programmable accepts `font`/`fontColor` params for the selected item text.
@@ -90,6 +90,7 @@ Metadata supports typed values matching the settings system: `key => val` (strin
 **Parameterized slots** — `#name slot(param:type=default, ...)` for visual state management:
 - Same parameter types as `programmable()`: `uint`, `int`, `float`, `bool`, `string`, `color`, enum, range, flags
 - Conditionals (`@()`, `@else`, `@default`) and expressions (`$param`) work inside the slot body
+- Scope: slot bodies see the slot's own params plus enclosing `@final` constants declared before the slot (works on build, `setParameter` rebuilds, and the codegen `buildSlotContent` path). Enclosing programmable params and loop vars are NOT visible — a slot rebuild only receives slot params
 - `SlotHandle.setParameter("name", value)` updates visuals via `IncrementalUpdateContext`
 - Content goes into a separate `contentRoot` (decoration always visible, not hidden by `setContent`)
 - Codegen: `setParameter()` supported — parameterized slots built via `buildParameterizedSlot()` at runtime with full incremental support
@@ -294,11 +295,11 @@ var grid = new UIMultiAnimGrid(builder, {
 
 **Cell animations** (require `tweenManager` in config):
 - `tweenCell(col, row, duration, properties, ?easing)` — animate cell object properties (e.g. shake, pulse). Non-destructive — cell stays in grid
-- `addCellAnimated(col, row, duration, properties, ?easing, ?data, ?params)` — add cell with entrance animation. Properties are FROM values (e.g. `[Scale(0.0), Alpha(0.0)]` → cell scales/fades in from 0)
-- `removeCellAnimated(col, row, duration, properties, ?easing)` — animate cell then remove. Properties are TO values (e.g. `[Scale(0.0), Alpha(0.0)]` → cell shrinks/fades out)
+- `addCellAnimated(col, row, ?data, ?params, duration=0.3, ?initProperties, ?easing)` — add cell with entrance animation. `initProperties` are FROM values (e.g. `[Scale(0.0), Alpha(0.0)]` → cell scales/fades in from 0). Note `data`/`params` precede `duration`
+- `removeCellAnimated(col, row, duration, properties, ?easing, ?onComplete)` — animate cell then remove. Properties are TO values (e.g. `[Scale(0.0), Alpha(0.0)]` → cell shrinks/fades out)
 
 **Detach/reattach cell visual:**
-- `detachCellVisual(col, row) -> h2d.Object` — remove visual from cell for free animation (e.g. fly to another location). Cell data preserved but shows empty
+- `detachCellVisual(col, row) -> Null<{object:h2d.Object, data, sceneX, sceneY}>` — remove visual from cell for free animation (e.g. fly to another location). Returns the detached object plus its data and scene position, or null if the cell doesn't exist. Cell data preserved but shows empty
 - `reattachCellVisual(col, row)` — rebuild cell visual from existing data
 
 **Lifecycle:**
@@ -407,8 +408,8 @@ override public function onMouseClick(pos, button, release) {
 - Builder: `result.getDynamicRef("name").setParameter("param", value)`
 - Existence check: `result.hasDynamicRef("name")` — never throws, returns `false` when unknown. Reports presence only; a subsequent `getDynamicRef` may still throw if multiple unnamed sibling sites collide on the same key (disambiguate with `#name` / `#name[$i]`)
 - Batch updates: `beginUpdate()` / `endUpdate()` defers re-evaluation
-- Codegen: generates runtime builder call, returns `BuilderResult`
-- **Dynamic programmable references**: `dynamicRef($paramName, params)` where `$paramName` is a string/enum parameter of the enclosing programmable. The parameter value names the target programmable. Template change triggers full rebuild; forwarded params propagate incrementally. `getDynamicRef()` returns the current result (name changes at runtime)
+- Codegen: generates runtime builder call, returns `BuilderResult`. Lookup contract matches the builder: `getDynamicRef` on a collided unnamed key throws at lookup; a duplicate explicit `#name` is a compile-time error
+- **Dynamic programmable references**: `dynamicRef($paramName, params)` where `$paramName` is a string/enum parameter of the enclosing programmable. The parameter value names the target programmable. Template change triggers full rebuild; forwarded params propagate incrementally. `getDynamicRef()` returns the current result. With an explicit `#name`, the name is the stable lookup key across template swaps (builder and codegen); only unnamed sites are looked up by the live template name
 
 **Flow improvements** — new optional params on `flow()`:
 - `overflow: expand|limit|scroll|hidden`, `fillWidth: true`, `fillHeight: true`, `reverse: true`

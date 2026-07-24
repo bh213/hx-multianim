@@ -46,6 +46,11 @@ class MultiAnimPaths {
 	}
 
 	public function getPath(name:String, ?normalization:PathNormalization):Path {
+		// Look up before touching builder state — the not-found throw must not leak the scratch map
+		final def = pathDefs.get(name);
+		if (def == null)
+			throw 'path not found: $name';
+
 		final oldIndexed = builder.indexedParams;
 		builder.indexedParams = [];
 
@@ -60,15 +65,11 @@ class MultiAnimPaths {
 			return builder.resolveAsNumber(value);
 		}
 
-		final def = pathDefs.get(name);
-		if (def == null)
-			throw 'path not found: $name';
-
 		var singlePaths:Array<SinglePath> = [];
 		var point = new FPoint(0, 0);
 		var angle:Float = 0.;
 
-		for (path in def) {
+		try for (path in def) {
 			switch path {
 				case LineTo(end, mode):
 					var end = resolveCoordinate(end);
@@ -230,14 +231,25 @@ class MultiAnimPaths {
 					var cnt = resolveNumber(count);
 					var totalLength = wl * cnt;
 
+					// A fractional cycle count ends mid-oscillation: the trace at
+					// rate 1.0 carries a residual lateral offset of
+					// amp * sin(cnt * 2π). The recorded endpoint (next segment's
+					// start, Stretch normalization anchor) must include it or the
+					// trace jumps at the segment boundary.
+					var residualLateral = amp * Math.sin(cnt * 2 * Math.PI);
 					var endPt = new FPoint(
-						point.x + totalLength * Math.cos(angle),
-						point.y + totalLength * Math.sin(angle)
+						point.x + totalLength * Math.cos(angle) - residualLateral * Math.sin(angle),
+						point.y + totalLength * Math.sin(angle) + residualLateral * Math.cos(angle)
 					);
 					singlePaths.push(new SinglePath(point, endPt, Wave(amp, wl, cnt, angle)));
 					// Wave ends in same direction, angle doesn't change
 					point = endPt;
 			}
+		} catch (e:Dynamic) {
+			// A throwing $ref resolution must not leave the scratch map installed on the
+			// builder — that would corrupt every later build in the session
+			builder.indexedParams = oldIndexed;
+			throw e;
 		}
 
 		builder.indexedParams = oldIndexed;

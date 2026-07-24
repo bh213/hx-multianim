@@ -35,6 +35,109 @@ class AnimatedPathTest extends BuilderTestBase {
 		return new Curve(null, Linear);
 	}
 
+	// ==================== PingPong reversed-cycle consistency ====================
+
+	@Test
+	public function testPingPongDistanceModeSpeedCurveFollowsPathPosition():Void {
+		// The speed curve maps PATH RATE -> speed multiplier, exactly like the
+		// scale/alpha/rotation slots, which are all evaluated at the mirrored
+		// (position) rate during reversed cycles. The speed curve must follow the
+		// same convention: entering the reversed cycle at path position ~1.0 must
+		// use the multiplier at rate ~1.0, not the multiplier at forward progress ~0.
+		var path = createLinePath(); // 100 px
+		var ap = new AnimatedPath(path, Distance(100.0));
+		ap.pingPong = true;
+		// Asymmetric speed curve: 0.5 at rate 0 -> 1.0 at rate 1.
+		ap.addCurveSegment(Speed, 0.0, new Curve([{time: 0.0, value: 0.5}, {time: 1.0, value: 1.0}], null, null));
+
+		// Drive to the end of the forward cycle (100 px at avg <1.0 multiplier).
+		var state = ap.update(0.0001);
+		var guard = 0;
+		while (state.cycle == 0 && guard < 10000) {
+			state = ap.update(0.016);
+			guard++;
+		}
+		Assert.equals(1, state.cycle, "sanity: reached the reversed cycle");
+
+		// One small step into the reversed cycle: the object sits near path
+		// position 1.0, where the multiplier is ~1.0 -> speed ~100 px/s.
+		state = ap.update(0.001);
+		Assert.isTrue(state.speed > 75.0,
+			'speed at the start of the reversed cycle must reflect the curve at path position ~1.0 (multiplier ~1.0, speed ~100); got ${state.speed} — evaluating at forward progress ~0 gives ~50');
+	}
+
+	@Test
+	public function testPingPongEventFiresAtPathPositionInReversedCycle():Void {
+		// An event registered at rate R marks a POSITION on the path. In a
+		// reversed cycle the object passes position R when its mirrored progress
+		// reaches R — the event state must carry position ≈ R and the event must
+		// fire at the matching time, not simply when forward progress hits R.
+		var path = createLinePath(); // (0,0) -> (100,0), 100 px
+		var ap = new AnimatedPath(path, Time(1.0));
+		ap.pingPong = true;
+		ap.addEvent(0.75, "mark");
+
+		var positions:Array<Float> = [];
+		var times:Array<Float> = [];
+		var elapsed = 0.0;
+		ap.onEvent = (name, state) -> {
+			if (name == "mark") {
+				positions.push(state.position.x);
+				times.push(elapsed);
+			}
+		};
+
+		final step = 0.01;
+		while (elapsed < 2.0) {
+			elapsed += step;
+			ap.update(step);
+		}
+
+		Assert.equals(2, positions.length, 'event at 0.75 must fire once per cycle over 2 cycles; fired ${positions.length} times');
+		if (positions.length == 2) {
+			// Forward cycle: fires at position 75 around t=0.75.
+			Assert.floatEquals(75.0, positions[0], 2.0, 'forward-cycle event must fire at position 75, got ${positions[0]}');
+			// Reversed cycle: the object starts at 100 and moves back — it passes
+			// position 75 at ~25% of the cycle (t ≈ 1.25), not at 75% (t ≈ 1.75).
+			Assert.floatEquals(75.0, positions[1], 2.0, 'reversed-cycle event must fire AT path position 75, got ${positions[1]}');
+			Assert.isTrue(times[1] < 1.5,
+				'reversed-cycle event at path position 75 must fire when the object passes it (~t=1.25), got t=${times[1]}');
+		}
+	}
+
+	@Test
+	public function testCycleStartEventCarriesNewCycleState():Void {
+		// cycleStart announces the START of the new cycle: its state must carry
+		// the new cycle index and the new cycle's starting position — not the
+		// end state of the cycle that just finished.
+		var path = createLinePath(); // (0,0) -> (100,0)
+		var ap = new AnimatedPath(path, Time(0.5));
+		ap.loop = true; // plain loop: every cycle starts at position 0
+
+		var startCycles:Array<Int> = [];
+		var startPositions:Array<Float> = [];
+		ap.onEvent = (name, state) -> {
+			if (name == "cycleStart") {
+				startCycles.push(state.cycle);
+				startPositions.push(state.position.x);
+			}
+		};
+
+		var elapsed = 0.0;
+		final step = 0.01;
+		while (elapsed < 0.7) {
+			elapsed += step;
+			ap.update(step);
+		}
+
+		Assert.equals(1, startCycles.length, 'expected exactly one cycleStart in 0.7s of a 0.5s loop; got ${startCycles.length}');
+		if (startCycles.length == 1) {
+			Assert.equals(1, startCycles[0], 'cycleStart must carry the NEW cycle index (1), got ${startCycles[0]}');
+			Assert.isTrue(startPositions[0] < 10.0,
+				'cycleStart of a loop must carry the new cycle\'s start position (~0), got ${startPositions[0]} — the previous cycle\'s end state is 100');
+		}
+	}
+
 	// ==================== Construction ====================
 
 	@Test

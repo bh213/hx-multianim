@@ -1355,6 +1355,56 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 	// ============== swapEnabled drop behavior ==============
 
 	@Test
+	public function testAcceptDropsFallsBackToCellDropWhenSwapHasNoSourceCell():Void {
+		// External draggable (not built via makeDraggableFromCell) has a null sourceCellCoord.
+		// Dropping it on a swapEnabled grid's occupied cell must fall through to CellDrop
+		// instead of trying to swap with a null source cell.
+		var grid = createSwapGrid(2, 1);
+		grid.set(0, 0, "target");
+		grid.set(1, 0, "occupied");
+
+		var dragTarget = new h2d.Object();
+		var drag = UIMultiAnimDraggable.create(dragTarget);
+		drag.payload = "external";
+		// Note: sourceCellCoord is intentionally NOT set — this is what triggers the bug.
+		grid.acceptDrops(drag);
+
+		var swapFired = false;
+		var dropFired = false;
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellSwap(_, _, _, _): swapFired = true;
+				case CellDrop(_, _, _, _, _): dropFired = true;
+				default:
+			}
+		};
+
+		final zone:bh.ui.UIMultiAnimDraggable.DropZone = {
+			id: GridCell(grid, 1, 0),
+			bounds: h2d.col.Bounds.fromValues(50, 0, 50, 50),
+		};
+		final result:bh.ui.UIMultiAnimDraggable.DragDropResult = {
+			zone: zone,
+			pos: new h2d.col.Point(75, 25),
+		};
+
+		final cb = drag.onDragDrop;
+		Assert.notNull(cb, "acceptDrops should wire onDragDrop");
+		if (cb == null) return;
+
+		var threw:Null<Dynamic> = null;
+		try {
+			cb(result, null);
+		} catch (e:Dynamic) {
+			threw = e;
+		}
+
+		Assert.isNull(threw, "Drop should not throw NRE when external draggable has no source cell");
+		Assert.isFalse(swapFired, "Must not fire CellSwap when draggable has no source cell");
+		Assert.isTrue(dropFired, "Must fall through to CellDrop instead");
+	}
+
+	@Test
 	public function testSwapEnabledConfigStored():Void {
 		var grid = createSwapGrid(2, 1);
 		@:privateAccess Assert.isTrue(grid.swapEnabled);
@@ -2603,6 +2653,63 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 			+ "should write into a scratch FPoint on the hot path. Allocated "
 			+ delta + " fresh FPoints across 20 drag-move events.");
 
+		grid.dispose();
+	}
+
+	// The hover hit-test (onMouseMove -> cellAtPointInto -> hitTestRectInto ->
+	// cells.exists(cellKey)) runs cellKey on every move. When cells was String-keyed,
+	// the membership check built one '${col}_${row}' String per move even when the
+	// cursor stayed in the same cell. The invariant that prevents that allocation is
+	// "cells (and the layerEntries inner map) are Int-keyed" — a String-keyed regression
+	// makes the underlying map a haxe.ds.StringMap, so cells.exists() must build a String.
+	// Assert the concrete map type directly: an active guard that fails the instant the
+	// map type is reverted to String, independent of any voluntary allocation counter.
+	@:access(bh.ui.UIMultiAnimGrid)
+	@Test
+	public function testCellHoverHitTestUsesIntKeyedMapNotStringKey():Void {
+		var rect = createRectGrid(3, 3);
+		// Exercise the hover path so the lookup map is actually used.
+		rect.onMouseMove(25, 25);
+		Assert.isTrue(Std.isOfType(rect.cells, haxe.ds.IntMap),
+			"rect grid hover-path map must be Int-keyed (haxe.ds.IntMap) so cells.exists() "
+			+ "allocates no cell-key String per move; got " + Type.getClassName(Type.getClass(rect.cells)));
+
+		var hex = createHexGrid(2);
+		hex.onMouseMove(0, 0);
+		Assert.isTrue(Std.isOfType(hex.cells, haxe.ds.IntMap),
+			"hex grid hover-path map must be Int-keyed (haxe.ds.IntMap); got "
+			+ Type.getClassName(Type.getClass(hex.cells)));
+
+		// The per-cell layer overlays share the same packed-Int key scheme and the same
+		// regression risk, so guard their inner map type too.
+		var layered = createRectGridWithLayers(2, 2);
+		layered.addLayer("overlay", {buildName: "overlay", zOrder: 1});
+		for (_ => inner in layered.layerEntries)
+			Assert.isTrue(Std.isOfType(inner, haxe.ds.IntMap),
+				"layerEntries inner map must be Int-keyed (haxe.ds.IntMap); got "
+				+ Type.getClassName(Type.getClass(inner)));
+
+		rect.dispose();
+		hex.dispose();
+		layered.dispose();
+	}
+
+	// Int-packed cell keys must stay collision-free, including negative hex axial
+	// coords (q/r can be negative). Distinct (col,row) pairs must not alias.
+	@Test
+	public function testCellKeysAreCollisionFreeIncludingNegativeCoords():Void {
+		var grid = createHexGrid();
+		// Coords that a naive pack could collide; includes negatives and swapped pairs.
+		final coords = [[0, 0], [1, 0], [0, 1], [-1, 0], [0, -1], [1, -1], [-1, 1], [2, -3], [-3, 2]];
+		for (c in coords)
+			grid.addCell(c[0], c[1], {tag: c[0] + ":" + c[1]});
+
+		Assert.equals(coords.length, grid.cellCount());
+		for (c in coords) {
+			Assert.isTrue(grid.hasCell(c[0], c[1]), 'cell (${c[0]}, ${c[1]}) should exist');
+			Assert.equals(c[0] + ":" + c[1], grid.get(c[0], c[1]).tag,
+				'cell (${c[0]}, ${c[1]}) returned the wrong data — key collision');
+		}
 		grid.dispose();
 	}
 }

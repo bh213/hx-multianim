@@ -38,6 +38,11 @@ class ProgrammableBuilder {
 	var _builder:Null<Dynamic> = null;
 	public var tweenManager:Null<bh.base.TweenManager> = null;
 
+	/** Scene used to resolve $ctx.width / $ctx.height in generated constructors,
+	 *  where the instance is not yet attached (getScene() is null). Injectable like
+	 *  tweenManager; the runtime builder gets the same via BuilderParameters.scene. */
+	public var scene:Null<h2d.Scene> = null;
+
 	public function new(resourceLoader:ResourceLoader) {
 		this.resourceLoader = resourceLoader;
 	}
@@ -57,6 +62,26 @@ class ProgrammableBuilder {
 		final out:Array<bh.base.MAObject> = [];
 		collectInteractivesInto(obj, out);
 		return out;
+	}
+
+	/** Resolve $ctx.width for a codegen instance: prefer the live scene when the
+	 *  instance is attached, else the scene injected on the factory, else fail
+	 *  structurally like the builder does when BuilderParameters.scene is missing. */
+	public static function ctxSceneWidth(obj:h2d.Object, pb:ProgrammableBuilder):Float {
+		final live = obj.getScene();
+		if (live != null) return live.width;
+		final injected = pb.scene;
+		if (injected != null) return injected.width;
+		throw BuilderError.of("$ctx.width requires a scene: attach the instance first or set scene on the ProgrammableBuilder factory");
+	}
+
+	/** Resolve $ctx.height for a codegen instance. Same contract as ctxSceneWidth. */
+	public static function ctxSceneHeight(obj:h2d.Object, pb:ProgrammableBuilder):Float {
+		final live = obj.getScene();
+		if (live != null) return live.height;
+		final injected = pb.scene;
+		if (injected != null) return injected.height;
+		throw BuilderError.of("$ctx.height requires a scene: attach the instance first or set scene on the ProgrammableBuilder factory");
 	}
 
 	static function collectInteractivesInto(obj:h2d.Object, out:Array<bh.base.MAObject>):Void {
@@ -184,7 +209,7 @@ class ProgrammableBuilder {
 
 	/** Build a particle system via the builder (for PARTICLES nodes).
 	 *  Searches the named programmable's children for a PARTICLES node. */
-	public function buildParticles(programmableName:String, index:Int = 0):bh.base.Particles {
+	public function buildParticles(programmableName:String, index:Int = 0, ?params:Map<String, Dynamic>):bh.base.Particles {
 		final builder = getBuilder();
 		final progNode = builder.multiParserResult.nodes.get(programmableName);
 		if (progNode == null)
@@ -198,7 +223,9 @@ class ProgrammableBuilder {
 		final particlesNode = allParticles[index];
 		return switch particlesNode.type {
 			case PARTICLES(particlesDef):
-				builder.createParticleFromDef(particlesDef, particlesNode.uniqueNodeName);
+				// Resolve with the instance's parameters in scope so `$param` refs inside
+				// the particles block use the instance values, not an empty/default scope.
+				builder.buildParticleWithParams(particlesDef, particlesNode.uniqueNodeName, programmableName, params);
 			default:
 				throw new BuilderError('unexpected node type in $programmableName', particlesNode);
 		};
@@ -212,6 +239,7 @@ class ProgrammableBuilder {
 			}
 		}
 	}
+
 
 	/** Build a state animation from a .anim file.
 	 *  Used by generated code for STATEANIM nodes. */
@@ -247,13 +275,15 @@ class ProgrammableBuilder {
 	/** Build a TileGroup by finding the Nth one in the programmable's node tree.
 	 *  Used by generated code for TILEGROUP nodes.
 	 *  Delegates to the builder which handles TileGroup's special child-add mechanism. */
-	public function buildTileGroupFromProgrammable(programmableName:String, index:Int = 0):h2d.Object {
+	public function buildTileGroupFromProgrammable(programmableName:String, index:Int = 0, ?params:Map<String, Dynamic>):h2d.Object {
 		final builder = getBuilder();
 		final progNode = builder.multiParserResult.nodes.get(programmableName);
 		if (progNode == null)
 			throw BuilderError.of('could not find programmable node: $programmableName');
-		// Build the tilegroup via the builder — it handles TileGroupMode for children
-		final result = builder.buildWithParameters(programmableName, new Map());
+		// Build the tilegroup via the builder — it handles TileGroupMode for children.
+		// Pass the instance's parameters so `$param` refs in the baked content resolve
+		// against the instance values, not the parameter defaults.
+		final result = builder.buildWithParameters(programmableName, params != null ? params : new Map());
 		// Find all TileGroups in the result's object tree
 		final tileGroups:Array<h2d.Object> = [];
 		findAllTileGroupsInTree(result.object, tileGroups);
@@ -271,6 +301,19 @@ class ProgrammableBuilder {
 		while (it.hasNext()) {
 			findAllTileGroupsInTree(it.next(), result);
 		}
+	}
+
+	/** Build the TileGroup identified by its parse node's uniqueNodeName.
+	 *  Used by generated code: the positional variant indexed document order over
+	 *  ALL tilegroup nodes while collecting from the conditional-filtered built
+	 *  tree — conditional siblings shifted the spaces apart (wrong content or
+	 *  out-of-range). Building the identified subtree directly also avoids the
+	 *  full-programmable build per tilegroup field. */
+	public function buildTileGroupByNode(programmableName:String, uniqueNodeName:String, ?params:Map<String, Dynamic>):h2d.Object {
+		final obj = buildNodeByUniqueNameWithParams(programmableName, uniqueNodeName, params != null ? params : new Map());
+		if (obj == null)
+			throw BuilderError.of('could not build tileGroup node "$uniqueNodeName" in programmable: $programmableName');
+		return obj;
 	}
 
 	/** Get all tiles from a sheet, optionally filtered by tile name prefix.
@@ -398,7 +441,10 @@ class ProgrammableBuilder {
 	}
 
 	/** Resolve a callback by name, returning an integer result.
-	 *  Used by generated code for RVCallbacks in numeric expressions. */
+	 *  Used by generated code for RVCallbacks in integer expressions.
+	 *  Mirrors MultiAnimBuilder.resolveAsInteger's handleCallback: wrong-typed
+	 *  results (CBRFloat/CBRString/CBRObject) throw instead of being silently
+	 *  replaced by the default. */
 	public function resolveCallbackInt(name:String, defaultValue:Int):Int {
 		final builder = getBuilder();
 		final callback = builder.builderParams.callback;
@@ -408,12 +454,13 @@ class ProgrammableBuilder {
 			case CBRInteger(val): val;
 			case CBRNoResult: defaultValue;
 			case null: defaultValue;
-			default: defaultValue;
+			default: throw new BuilderError('callback should return int but was $result for $name');
 		};
 	}
 
 	/** Resolve a callback by name and index, returning an integer result.
-	 *  Used by generated code for RVCallbacksWithIndex in numeric expressions. */
+	 *  Used by generated code for RVCallbacksWithIndex in integer expressions.
+	 *  Wrong-typed results throw (builder parity), see resolveCallbackInt. */
 	public function resolveCallbackWithIndexInt(name:String, index:Int, defaultValue:Int):Int {
 		final builder = getBuilder();
 		final callback = builder.builderParams.callback;
@@ -423,7 +470,41 @@ class ProgrammableBuilder {
 			case CBRInteger(val): val;
 			case CBRNoResult: defaultValue;
 			case null: defaultValue;
-			default: defaultValue;
+			default: throw new BuilderError('callback should return int but was $result for $name($index)');
+		};
+	}
+
+	/** Resolve a callback by name, returning a float result.
+	 *  Used by generated code for RVCallbacks in float expressions (positions,
+	 *  alpha, scale, ...). Mirrors MultiAnimBuilder.resolveAsNumber: CBRFloat
+	 *  and CBRInteger are used, CBRString/CBRObject throw. */
+	public function resolveCallbackFloat(name:String, defaultValue:Float):Float {
+		final builder = getBuilder();
+		final callback = builder.builderParams.callback;
+		if (callback == null) return defaultValue;
+		final result = callback(Name(name));
+		return switch result {
+			case CBRInteger(val): val;
+			case CBRFloat(val): val;
+			case CBRNoResult: defaultValue;
+			case null: defaultValue;
+			default: throw new BuilderError('callback should return number but was $result for $name', null, "not_a_number");
+		};
+	}
+
+	/** Resolve a callback by name and index, returning a float result.
+	 *  See resolveCallbackFloat. */
+	public function resolveCallbackWithIndexFloat(name:String, index:Int, defaultValue:Float):Float {
+		final builder = getBuilder();
+		final callback = builder.builderParams.callback;
+		if (callback == null) return defaultValue;
+		final result = callback(NameWithIndex(name, index));
+		return switch result {
+			case CBRInteger(val): val;
+			case CBRFloat(val): val;
+			case CBRNoResult: defaultValue;
+			case null: defaultValue;
+			default: throw new BuilderError('callback should return number but was $result for $name($index)', null, "not_a_number");
 		};
 	}
 
@@ -501,14 +582,22 @@ class ProgrammableBuilder {
 	 *  `$param` and loop-var refs inside the subtree resolve correctly. Used by the codegen
 	 *  runtime-rebuild fallback for param-dependent repeatable bodies. */
 	public function buildNodeByUniqueNameWithParams(programmableName:String, uniqueNodeName:String,
-			parentParams:Map<String, Dynamic>):Null<h2d.Object> {
+			parentParams:Map<String, Dynamic>, ?sink:bh.multianim.MultiAnimBuilder.SwitchArmResults):Null<h2d.Object> {
 		final builder = getBuilder();
 		if (builder == null) return null;
 		final progNode = builder.multiParserResult.nodes.get(programmableName);
 		if (progNode == null) return null;
 		final targetNode = findNodeByUniqueName(progNode, uniqueNodeName);
 		if (targetNode == null) return null;
-		return builder.buildSingleNodeWithParams(targetNode, progNode, parentParams);
+		return builder.buildSingleNodeWithParams(targetNode, progNode, parentParams, sink);
+	}
+
+	/** Reset a param-dependent repeat body's sink before the body is rebuilt at a new count.
+	 *  Called by codegen's _rebuildRepeat_X. No-op when the builder is unavailable. */
+	public function resetRepeatSink(sink:bh.multianim.MultiAnimBuilder.SwitchArmResults, container:h2d.Object):Void {
+		final builder = getBuilder();
+		if (builder == null) return;
+		builder.resetRepeatSink(sink, container);
 	}
 
 	public static function findNodeByUniqueName(node:MultiAnimParser.Node, name:String):Null<MultiAnimParser.Node> {

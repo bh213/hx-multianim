@@ -4,6 +4,13 @@ on:
   push:
     branches: [ main ]
   pull_request:
+  workflow_call:
+    inputs:
+      skip-report-deploy:
+        description: 'Skip the GitHub Pages report deploy (used when called from the release workflow)'
+        type: boolean
+        default: false
+        required: false
 
 permissions:
   contents: write
@@ -45,6 +52,44 @@ jobs:
 
     - name: Build library (JavaScript)
       run: haxe hx-multianim.hxml -js build/js-manim.js -D message.reporting=pretty -D resourcesPath=test/res
+
+    - name: Codegen compile checks
+      # Each host class in test/examples/152-codegenCompileErrors/hosts registers a
+      # .manim fixture that used to break compilation OF THE GENERATED CLASS
+      # (rvToExprInt / callback-default / hex-layout lowering bugs). They cannot live
+      # in the main test binary's MultiProgrammable.hx while red — one macro-breaking
+      # fixture takes down the whole build — so this gate compiles each host in
+      # isolation. Green = every host compiles. Local equivalent:
+      # test/examples/152-codegenCompileErrors/run-compile-checks.ps1
+      run: |
+        set -e
+        for f in test/examples/152-codegenCompileErrors/hosts/*.hx; do
+          host=$(basename "$f" .hx)
+          echo "== $host =="
+          haxe -lib heaps -cp src -cp test/examples/152-codegenCompileErrors/hosts \
+            -D resourcesPath=test/res --macro "bh.base.AtlasMacroInit.init()" \
+            -D message.reporting=pretty --no-output "$host"
+        done
+        echo "codegen compile checks: OK"
+
+    - name: LSP server drift gate
+      # vscode/server/server.js is a committed build artifact of lsp/lsp-server.hxml
+      # (the VS Code extension loads it directly). Rebuild and byte-compare so a
+      # parser/LSP source change can't ship diagnostics that disagree with the real
+      # parser. Regenerate with `npm run build` in vscode/ and commit the result.
+      run: |
+        haxe lsp/lsp-server.hxml
+        if ! cmp -s lsp/bin/server.js vscode/server/server.js; then
+          echo "ERROR: vscode/server/server.js is stale — parser/LSP sources changed without rebuilding the packaged server."
+          echo "Fix: run 'npm run build' in vscode/ (rebuilds and copies lsp/bin/server.js) and commit vscode/server/server.js."
+          exit 1
+        fi
+        echo "LSP server in sync"
+
+    - name: LSP unit tests
+      run: |
+        haxe lsp/test-lsp.hxml
+        node lsp/bin/test.js
 
     - name: Verify build output
       run: |
@@ -164,7 +209,7 @@ jobs:
         touch _report/.nojekyll
 
     - name: Deploy test report to GitHub Pages (main)
-      if: always() && github.event_name == 'push' && matrix.mode == 'standard'
+      if: always() && github.event_name == 'push' && matrix.mode == 'standard' && !inputs.skip-report-deploy
       uses: peaceiris/actions-gh-pages@v3
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}

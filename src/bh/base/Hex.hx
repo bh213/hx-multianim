@@ -249,8 +249,11 @@ class Hex
         return '$q,$r,$s';
     }
 
+    /** Convert to odd-q offset coordinates (odd columns shoved down —
+     *  `OffsetCoord.ODD` parity). Use `OffsetCoord.qoffsetToCube(OffsetCoord.ODD, oc)`
+     *  to convert back. */
     public function toOffsetCoordinates() {
-		return OffsetCoord.qoffsetFromCube(0, this);
+		return OffsetCoord.qoffsetFromCube(OffsetCoord.ODD, this);
 	}
 
 }
@@ -547,10 +550,13 @@ class HexLayout
     }
 
 
-    public static function directionToAngle(gridDirection:GridDirection):Degree
+    public function directionToAngle(gridDirection:GridDirection):Degree
     {
-        final deg = 60 * (GridDirection.totalDirections - gridDirection.toInt());
-        return new Degree(deg % 360);// + orientationData.start_angle; 
+        // start_angle is in 1/6-turn units (0.5 = pointy = 30°), the same
+        // convention hexCornerOffset uses — without it FLAT and POINTY layouts
+        // would report identical direction angles.
+        final deg = 60 * (GridDirection.totalDirections - gridDirection.toInt()) + 60 * orientationData.start_angle;
+        return new Degree(deg % 360);
     }
 
     public function getStartAngleRad():Radian

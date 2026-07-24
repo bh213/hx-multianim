@@ -11,6 +11,8 @@ class ManimAnalyzerTest {
 		testInvalidFileDiagnostics();
 		testSymbols();
 		testCompletions();
+		testReferenceCompletionLabels();
+		testPathCompletionsSuggestOnlyParserKeywords();
 		testHover();
 		testDefinition();
 		testDataEnumSymbols();
@@ -57,6 +59,46 @@ class ManimAnalyzerTest {
 			if (item.label == "programmable") hasProgrammable = true;
 		}
 		LspTestRunner.assert(hasProgrammable, "Top-level completions include 'programmable'");
+	}
+
+	static function testReferenceCompletionLabels():Void {
+		// Each declared parameter must complete as "$<paramName>". A string-
+		// interpolation escape bug ('$$name' == literal "$name") once labeled
+		// every parameter completion with the same literal string.
+		final text = "version: 1.0\n#w programmable(hp:int=0, mode:[a,b]=a) {\n\tbitmap(generated(color($";
+		final lines = text.split("\n");
+		final items = ManimAnalyzer.getCompletions(text, 2, lines[2].length);
+		LspTestRunner.assertGreater(items.length, 0, "Reference completions returned after '$'");
+
+		var hasHp = false;
+		var hasMode = false;
+		var hasLiteralName = false;
+		for (item in items) {
+			if (item.label == "$hp") hasHp = true;
+			if (item.label == "$mode") hasMode = true;
+			if (item.label == "$name") hasLiteralName = true;
+		}
+		LspTestRunner.assert(hasHp, "Reference completions include '$hp' for param hp");
+		LspTestRunner.assert(hasMode, "Reference completions include '$mode' for param mode");
+		LspTestRunner.assert(!hasLiteralName, "No completion may carry the literal label '$name'");
+	}
+
+	static function testPathCompletionsSuggestOnlyParserKeywords():Void {
+		// Every suggested path command must be accepted by the parser.
+		// "quadratic" is not a parser keyword — quadratic curves are the
+		// 2-point form of bezier(...).
+		final text = "version: 1.0\npaths {\n\t\n}";
+		final items = ManimAnalyzer.getCompletions(text, 2, 1);
+		LspTestRunner.assertGreater(items.length, 0, "Path completions returned inside paths block");
+
+		var hasQuadratic = false;
+		var hasBezier = false;
+		for (item in items) {
+			if (item.label == "quadratic") hasQuadratic = true;
+			if (item.label == "bezier") hasBezier = true;
+		}
+		LspTestRunner.assert(hasBezier, "Path completions include 'bezier'");
+		LspTestRunner.assert(!hasQuadratic, "'quadratic' is not parseable and must not be suggested");
 	}
 
 	static function testHover():Void {
