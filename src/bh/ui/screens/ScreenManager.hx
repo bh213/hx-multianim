@@ -1341,6 +1341,10 @@ class ScreenManager {
 
 			if (oldBuilder != null) {
 				for (handle in handles) {
+					// reloadable=false handles never rebuild, so their signature
+					// compatibility must not block the reload of everything else.
+					if (!handle.result.reloadable)
+						continue;
 					final oldDefs = oldBuilder.getParameterDefinitions(handle.programmableName);
 					final newDefs = newBuilder.getParameterDefinitions(handle.programmableName);
 					final restartReason = bh.multianim.dev.HotReload.SignatureChecker.check(oldDefs, newDefs);
@@ -1468,6 +1472,13 @@ class ScreenManager {
 
 			for (handle in handles) {
 				final oldResult = handle.result;
+
+				// result.reloadable = false is the documented opt-out
+				// (docs/hot-reload.md): callers set it after buildWithParameters
+				// returns, so it must be honored here, per reload. The handle stays
+				// registered — flipping the flag back to true re-enables reload.
+				if (!oldResult.reloadable)
+					continue;
 
 				// Snapshot state
 				final snapshot = bh.multianim.dev.HotReload.StateSnapshotter.capture(oldResult);

@@ -610,6 +610,8 @@ Slots with parameters support visual states via conditionals. `slotContent` mark
 
 **Body features:** Conditionals (`@()`, `@else`, `@default`), expressions (`$param`), all standard elements.
 
+**Scope:** The slot body is an isolated *parameter* scope — it sees the slot's own params, but NOT the enclosing programmable's params or `repeatable` loop vars (a slot rebuild only receives slot params). Enclosing `@final` constants declared before the slot ARE in scope (`bitmap(...): $OFF, 0` with a body-level `@final OFF = 7` works), on initial build, `slot.setParameter()` rebuilds, and the codegen `buildSlotContent` path alike. A slot param with the same name shadows the constant.
+
 **Runtime API:**
 - `result.getSlot("name", ?index, ?indexY)` — returns a `SlotHandle`; throws when the slot is not registered or kind/index doesn't match
 - `result.hasSlot("name", ?index, ?indexY)` — existence check that never throws. Useful when an indexed slot's iteration may shrink (`repeatable` count dropping under `setParameter`) and the caller wants to skip absent indices instead of wrapping `getSlot` in try/catch. Also generated on `@:manim` codegen instances (`instance.hasSlot(name, index, indexY)`) with identical never-throw semantics — including for slots declared inside `@switch` arms or param-dependent `repeatable` bodies

@@ -297,7 +297,7 @@ class ManimKeywordInfo {
 			case Forward(_): "forward";
 			case TurnDegrees(_): "turn";
 			case Checkpoint(_): "checkpoint";
-			case Bezier2To(_, _, _, _): "quadratic";
+			case Bezier2To(_, _, _, _): "bezier"; // 2-point form of bezier() — "quadratic" is not a parser keyword
 			case Bezier3To(_, _, _, _, _): "bezier";
 			case Arc(_, _): "arc";
 			case Close: "close";
@@ -313,8 +313,8 @@ class ManimKeywordInfo {
 			case Forward(_): "Move forward: forward(distance)";
 			case TurnDegrees(_): "Turn angle: turn(degrees)";
 			case Checkpoint(_): "Named checkpoint: checkpoint(\"name\")";
-			case Bezier2To(_, _, _, _): "Quadratic curve: quadratic(cpx, cpy, endx, endy)";
-			case Bezier3To(_, _, _, _, _): "Cubic bezier: bezier(cp1x, cp1y, cp2x, cp2y[, ex, ey])";
+			case Bezier2To(_, _, _, _): "Quadratic bezier: bezier(endX, endY, cpX, cpY)";
+			case Bezier3To(_, _, _, _, _): "Bezier curve: bezier(endX, endY, cp1X, cp1Y[, cp2X, cp2Y]) — one control point = quadratic, two = cubic";
 			case Arc(_, _): "Arc segment: arc(radius, angleDelta)";
 			case Close: "Close path back to start";
 			case Spiral(_, _, _): "Spiral: spiral(radiusStart, radiusEnd, angleDelta)";
@@ -322,9 +322,12 @@ class ManimKeywordInfo {
 		};
 	}
 
+	// Completion source. Bezier2To is intentionally absent: both bezier forms share
+	// the "bezier" keyword, so the Bezier3To entry (whose description covers the
+	// quadratic 2-point form) is the single completion for it.
 	public static final allPathCommands:Array<ParsedPaths> = [
 		MoveTo(null, null), LineTo(null, null), Forward(null), TurnDegrees(null),
-		Checkpoint(""), Bezier2To(null, null, null, null), Bezier3To(null, null, null, null, null),
+		Checkpoint(""), Bezier3To(null, null, null, null, null),
 		Arc(null, null), Close, Spiral(null, null, null), Wave(null, null, null),
 	];
 

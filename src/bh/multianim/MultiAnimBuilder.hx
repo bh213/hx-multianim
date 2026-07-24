@@ -8625,6 +8625,34 @@ class MultiAnimBuilder {
 				if (def.defaultValue != null && !mergedParams.exists(key))
 					mergedParams.set(key, def.defaultValue);
 			}
+			// Enclosing @final constants are in scope inside slot bodies. This path
+			// builds only the slot subtree, so the finals that precede the slot along
+			// its ancestor chain must be replayed here — stored lazily as
+			// ExpressionAlias (same as evaluateAndStoreFinal), so param-dependent
+			// finals resolve against the merged params at reference time. Finals
+			// declared after the slot were rejected at parse time and are skipped.
+			var chainWalk = slotNode;
+			final ancestorChain:Array<Node> = [];
+			while (chainWalk != null && chainWalk != progNode) {
+				ancestorChain.unshift(chainWalk);
+				chainWalk = chainWalk.parent;
+			}
+			if (chainWalk == progNode) {
+				var finalScope = progNode;
+				for (next in ancestorChain) {
+					for (child in finalScope.children) {
+						if (child == next)
+							break;
+						switch child.type {
+							case FINAL_VAR(fname, fexpr):
+								if (!mergedParams.exists(fname))
+									mergedParams.set(fname, ExpressionAlias(fexpr));
+							default:
+						}
+					}
+					finalScope = next;
+				}
+			}
 			this.indexedParams = mergedParams;
 
 			// Create incremental context for the slot

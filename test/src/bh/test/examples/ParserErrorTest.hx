@@ -5097,6 +5097,41 @@ class ParserErrorTest extends utest.Test {
 			'Error should name the offending value "hbover", got: $error');
 	}
 
+	// ===== Parameterized slot bodies: enclosing @final constants stay in scope =====
+	// @final is an immutable named constant of the enclosing programmable body. Slot
+	// bodies are an isolated PARAMETER scope (enclosing params stay invisible — a slot
+	// rebuild only receives its own params), but constants are safe to share and the
+	// builder already merges them into the slot's param map at build time.
+
+	@Test
+	public function testSlotBodyCanReferenceEnclosingFinal() {
+		var success = parseExpectingSuccess("
+			#test programmable(x:uint=5) {
+				@final OFF = 7
+				#s slot(v:int=0) {
+					bitmap(generated(color(10, 10, #f00))): $OFF, 0
+				}
+			}
+		");
+		Assert.isTrue(success, "enclosing @final constant should be referenceable inside a parameterized slot body");
+	}
+
+	@Test
+	public function testSlotBodyStillRejectsEnclosingParam() {
+		// Guard: the param isolation is intentional (slot rebuilds only carry slot
+		// params) and must survive the @final scope change.
+		var error = parseExpectingError("
+			#test programmable(x:uint=5) {
+				#s slot(v:int=0) {
+					bitmap(generated(color(10, 10, #f00))): $x, 0
+				}
+			}
+		");
+		Assert.notNull(error, "enclosing programmable params must stay invisible inside a parameterized slot body");
+		Assert.isTrue(error.indexOf("unknown variable") >= 0,
+			'Error should mention unknown variable, got: $error');
+	}
+
 	@Test
 	public function testMultiValueNegatedConditionalRejectsUnknownEnumValue() {
 		var error = parseExpectingError('

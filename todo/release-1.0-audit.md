@@ -19,379 +19,42 @@ section it lives in: `P0` blockers · `BLD` builder · `CG` codegen parity · `U
 `/bug-review todo/release-1.0-audit.md CG-16`. IDs are permanent — never renumber or reuse; new
 items take the next free number in their prefix. (1.1 roadmap bullets are features, not bugs — no IDs.)
 
----
-
-## P0 — Release blockers
-
-- [x] `P0-1` **haxelib packaging: missing `extraParams.hxml`.** The library requires
-  `--macro bh.base.AtlasMacroInit.init()` (hx-multianim.hxml:3, AtlasMacroInit.hx:5) to register the
-  `.atlas2` extension. A haxelib consumer using `-lib hx-multianim` never gets it → every `.manim`
-  using atlas resources fails at load. Ship `extraParams.hxml` with the macro line (haxelib applies
-  it automatically) and add it to README's hxml snippet. *(2026-07-12: `extraParams.hxml` added;
-  README quick-start notes the `-cp` case.)*
-- [x] `P0-2` **Release workflow publishes without running tests.** `release-and-publish.yml` builds, tags,
-  and `haxelib submit`s with no test step/gate; failing tests still ship. Add the test suite (or a
-  gate on the Tests workflow) to the release job. *(2026-07-12: restructured into
-  check-version → tests → build-and-publish; tests job reuses `tests.yml` via `workflow_call` with
-  `skip-report-deploy: true`.)*
-- [x] `P0-3` **Version/tag state will silently skip the next publish.** Tag `v1.0.0-rc.5` already exists on
-  origin while `haxelib.json` still says `1.0.0-rc.5` and ~12 newer commits sit under the dated
-  `[1.0.0-rc.5] - 2026-05-15` CHANGELOG section (entries committed through 2026-06-22). Merging
-  dev→main as-is hits the tag-exists guard and **publishes nothing**. Bump version + new CHANGELOG
-  section before merge. Also: rc.4 *was* released (haxelib bump commit 2394795) but has no CHANGELOG
-  section — its entries are folded into rc.5; `[0.4]` header is undated. *(2026-07-12: bumped to
-  `1.0.0-rc.6`; all post-tag entries moved into a new `[1.0.0-rc.6] - 2026-07-12` section (rc.5
-  section restored to its tagged content, verified byte-identical); rc.4 note added under the rc.5
-  header. `[0.4]` header left undated.)*
-- [x] `P0-4` **DevBridge binds `0.0.0.0` with `Access-Control-Allow-Origin: *`, no auth** (DevBridge.hx:101,
-  :483-490, SSE :180-185). Any LAN host — or any website via DNS rebinding — can screenshot, inject
-  input, `eval_manim`, `quit`. Default to `127.0.0.1` with opt-in `HX_DEV_BIND`; cheap extra: Host
-  header check. (Dev-only flag, but 1.0 users will run it.) *(2026-07-12: `HX_DEV_BIND` env var +
-  constructor override implemented. **Decision: default stays `0.0.0.0`** so LAN MCP clients keep
-  working out of the box; security note documented in docs/devbridge.md. No Host-header check —
-  it would break legitimate by-IP LAN access. Post-1.0 candidate: auth token.)*
-- [x] `P0-5` **README code samples are broken** (first-contact surface):
-  - `animSM.addCommand(SwitchState("idle"), ExecuteNow)` — API doesn't exist; use `animSM.play("idle")` (AnimationSM.hx:131). README:104.
-  - `showScreen` → `switchTo` (ScreenManager.hx:843). README:123.
-  - `showDialog` → `modalDialog` (ScreenManager.hx:532). README:238.
-  - `public override function load()/onScreenEvent()` — `override` on **abstract** methods = compile error (UIScreen.hx:70,228,231; verified with `haxe --interp`). README:147,161,241.
-  - `addCheckbox(builder, true)` / `addSlider(builder, 50)` / `addRadio(builder, items, true, 0)` — missing required `settings:ResolvedSettings` arg (UIScreen.hx:583/563/652). README:193,196,213.
-
-  *(2026-07-12: all five fixed; also added haxelib/lix install commands, the `.atlas2` macro note,
-  and an ATTRIBUTION.md link.)*
-- [x] `P0-6` **`AllocationSmokeTest` has never run.** Fully written, advertised in CHANGELOG rc.5 and
-  `.claude/rules/testing-and-debugging.md`, but never added to the `addCase` list
-  (TestApp.hx:83-150). One-line fix — then it must actually pass. *(2026-07-12: registered; passes
-  in both Standard and Dev runs — +6 unit assertions.)*
+**Pruned 2026-07-15:** completed items are removed from this file — their resolution notes live in
+`CHANGELOG.md` and git history (`git log -S <ID> -- todo/release-1.0-audit.md`). Removed IDs stay
+retired. Done to date: all `P0-*`, all `BLD-*`, `CG-1..12`/`14..20`/`22` (+ most of `CG-23`;
+`CG-9` was not-a-bug), `UI-1..2`, `VFX-1..13`/`15`, all `FLT-*`, `PRS-1..8`, `DEC-2..3`, `DOC-1`,
+`TST-1..2`, `PERF-9`, `HR-1`, `LSP-1..4` (PRS-8 resolved as "allow enclosing finals in slot
+bodies"; LSP-2 resolved with a build.js rebuild step + CI drift gate + LSP tests in CI).
 
 ---
 
 ## P1 — High-severity code bugs
 
-### Builder (MultiAnimBuilder)
-
-- [x] `BLD-1` **REPEAT2D has no incremental-mode handling at all** (MultiAnimBuilder.hx:6437-6578). REPEAT
-  collects `repeatParamRefs`, registers a structural rebuild, and sets `suppressConditionalTracking`
-  (:6186-6243, :6300-6428); REPEAT2D does none of it. Consequences in incremental builds:
-  `@()` arms AND their `@else` siblings all render simultaneously per iteration; last-writer-wins
-  conditional registry corrupts state; param-dependent counts silently freeze. Port the REPEAT machinery.
-  *(2026-07-12: ported — full REPEAT machinery (refs from both axes + child conditionals, untracked
-  marking, conditional-tracking suppression, structural rebuild closure). Count freeze reproduced and
-  fixed; the "both arms render simultaneously" claim did NOT reproduce in loop-var or param+`@else`
-  shapes — those rendered correctly even before the port; kept as parity anchors in
-  `Repeat2DIncrementalTest`.)*
-- [x] `BLD-2` **`collectParamRefs` misses six `ReferenceableValue` classes** (:4174-4185):
-  `RVElementOfArray.arrayRef`, `RVMethodCall` args, `RVChainedMethodCall`, `RVCallbacks(WithIndex)`,
-  `RVColor`/`RVColorXY` index refs, `RVArray` elements. Result: tracked expressions / rebuild
-  triggers / dynamicRef forwarding silently never fire — e.g. `tint: palette(pal, $idx)` frozen forever.
-  *(2026-07-12: all six classes added; `PaletteIndexTrackingTest` pins the `tint: palette(pal, $idx)`
-  repro. Side-find while testing: 2D palette declarations can't parse at all — filed as `PRS-7`.)*
-
-### Codegen parity (ProgrammableCodeGen vs builder) — each has a mechanical repro
-
-- [x] `CG-1` **`step($dx, $dy, N)` param-dependent offsets become 0** (CG:2291-2311 static-resolve
-  fallback → 0; builder resolves at build MB:6140). Elements stack at origin.
-  *(2026-07-12: fixed with CG-2 — param-dependent scalars route through the runtime rebuild path;
-  rebuild method takes (count, start, step, dx, dy) and guards on all five. `CodegenRepeatParamParityTest`.)*
-- [x] `CG-2` **`range($start..$end, $step)` param-dependent start/step → loop values start 0, step 1**
-  (count is right, values wrong; CG:2303-2305, 2464-2467 vs MB:6151-6155).
-  *(2026-07-12: fixed — `_rt_val = _rt_start + _rt_i * _rt_step` from runtime `rvToExprInt` args; the
-  trigger refs now include start/step (previously only `end`), and a start shift with unchanged count
-  rebuilds via the extended guard.)*
-- [x] `CG-3` **`repeatable` inside `flow` always wrapped in one container** (CG:2338-2354 etc. vs
-  builder's `needsWrapper` logic MB:6207-6213) → flow sees one child; iterations overlap.
-  *(2026-07-12: fixed — fully static, zero-offset, non-conditional repeats with no own position
-  (`ZERO`) unroll directly into the parent field; conditional/positioned/param-dependent repeats keep
-  the container for visibility toggling and `removeChildren`.)*
-- [x] `CG-4` **`$ctx.width/height` crashes in codegen constructor** — emits `this.getScene().width`,
-  null before scene attach (CG:7055-7058). Builder uses `builderParams.scene` (MB:2947).
-  *(2026-07-12: fixed — emits `ProgrammableBuilder.ctxSceneWidth/Height(this, this._pb)`: live scene
-  when attached, else new injectable `ProgrammableBuilder.scene` field, else structured `BuilderError`
-  matching the builder. `CodegenCtxSizeTest`; docs note in manim-reference.md Context Properties.)*
-
-### UI / screen stack
-
-- [x] `UI-1` **Double `OnDialogResult` when closing dialog-over-dialog** — fired at ScreenManager.hx:871 AND
-  again in the Dialog→Dialog branch :696-697 (second may carry `null`). A purchase-confirm handler
-  runs twice. *(2026-07-12: Dialog→Dialog branch now distinguishes close-return (no re-fire; the
-  close path already fired it) from open-over (documented fire kept). `ScreenManagerDialogTransitionTest`.)*
-- [x] `UI-2` **`reload()`/hot-reload with a dialog open** → Dialog→Dialog branch destroys the modal overlay
-  (never recreated, :647), fires spurious `UILeaving`/`UIEntering`, and delivers a **phantom
-  `OnDialogResult`** to the caller (:696-697). *(2026-07-12: same-dialog refresh is now a no-op —
-  overlay, scene presence, and controllers preserved; no lifecycle round trip, no result.
-  `removeModalOverlay()` moved into the branches that actually leave the dialog.)*
-
-### VFX / animation runtime
-
-- [x] `VFX-1` **`gravityAngle` direction convention is swapped** — gravity applied as
-  `vx += g·sin(θ), vy += g·cos(θ)` (Heaps legacy 0°=down; Particles.hx:231-232) while the parser's
-  constants use 0°=right/90°=down (MacroManimParser.hx:806-815) and builder passes degrees→radians
-  verbatim (MB:7169). `gravityAngle: down` pushes particles **right**. The unset default masks it.
-  Independently confirmed by two audits. Fix the sin/cos (or add 90°−θ in builder) and audit content.
-  *(2026-07-12: sin/cos swapped to the standard (cos, sin) vector; default moved to π/2 so unset
-  gravity still falls down. Resolves DEC-3. `ParticleRuntimeTest`; ref 51-codegenParticles regenerated.
-  In-repo content audit: only test example 51 used gravityAngle — sibling repos should grep for it.)*
-- [x] `VFX-2` **`.anim` color literals never bake alpha** (AnimParser.hx:374-379 → `0x00RRGGBB`; `.manim`
-  lexer bakes `0xFF` per strict-D). `AFTint` is guard-patched but `.anim` `replaceColor` writes
-  **fully transparent** pixels (via `ReplacePaletteShader.setColor` → alpha 0), and
-  `getColorOrDefault/OrException` return alpha-0 ints. Fix at the lexer; keep the `>>>24==0` guards.
-  *(2026-07-12: 3/6-digit forms bake 0xFF at the lexer; 8-digit keeps explicit alpha; guards kept.
-  Existing color pins updated. `AnimParserTest` + anim-reference.md note.)*
-- [x] `VFX-3` **`AnimationSM.onFinished()` fires every frame after completion** (AnimationSM.hx:213-223 — no
-  finished latch). Handlers that spawn/free objects execute once per frame. *(2026-07-12: latched per
-  playback, reset in `play()`. `AnimFilterRuntimeTest`.)*
-- [x] `VFX-4` **`spawnCurve` + `maxLife: 0` hard-hangs the game** — `emissionAccumulator = +Inf` →
-  `while (>= 1.0)` never terminates (Particles.hx:1438-1443; `life=0` is legal + unvalidated).
-  *(2026-07-12: builder rejects `maxLife <= 0` with a BuilderError. `BuilderUnitTest`.)*
-- [x] `VFX-5` **`emitBurstAt()` before first render → permanent double-draw** — sets `batch.visible = true`
-  (Particles.hx:835-839) but batches are drawn explicitly in `Particles.draw()`; child-draw kicks in
-  too (double alpha / wrong transform for non-relative). Delete the line. *(2026-07-12: deleted.
-  `ParticleRuntimeTest`.)*
-- [x] `VFX-6` **Line-only `bounds:` silently enforces a hidden 800×600 box** (defaults at Particles.hx:660-672;
-  builder overrides only when `box(...)` present, MB:7281-7294). Default box should be ±infinity.
-  *(2026-07-12: defaults are ±infinity. `ParticleRuntimeTest`; manim-reference.md bounds note.)*
-
-### Filter semantics (code contradicts documented intent, all three backends)
-
-- [x] `FLT-1` **`brightness(v)` is additive**, not a multiplier — Heaps `colorLightness` does `_41 += v`
-  (MB:6938-6941, AnimParser.hx:2123-2127, codegen ~8350). The documented disabled-button pattern
-  `group(brightness(0.5), grayscale(0.8))` actually **brightens**. Parser default `RVFloat(1.)`
-  shows multiplier intent. *(2026-07-12: fixed as multiplier (diagonal scale) in all three backends.)*
-- [x] `FLT-2` **`saturate(v)` scale off by one** — Heaps adds 1 internally, so `saturate(0)` = normal,
-  `saturate(-1)` = gray (MB:6933-6937). Doc says 0=gray/1=normal. (`grayscale` is correct.)
-  *(2026-07-12: fixed — `colorSaturate(v - 1)` in all three backends.)*
-- [x] `FLT-3` **`hue(v)` takes radians**, documented as degrees; no angle-suffix support (MB:6949-6953 vs
-  `dropShadow` which does deg→rad, MB:6961).
-  → Decide: fix code (breaking for existing content — better now than post-1.0) or fix docs. Either
-  way add tests pinning the chosen semantics. (Decision tracked as `DEC-2`.)
-  *(2026-07-12: fixed — degToRad in all three backends; angle-suffix support left for the parser
-  roadmap. DEC-2 resolved as "fix code". Matrix-level pins in `BuilderUnitTest` +
-  `AnimFilterStateConditionalTest`; refs 32/68 regenerated.)*
-
-### Parsers (empirically reproduced)
-
-- [x] `PRS-1` **Parameterized slot without `{}` body permanently leaks slot param scope** — restore code only
-  in the `TCurlyOpen` branch (MacroManimParser.hx:3403-3426 vs :4019-4027). *(2026-07-12: restore
-  hoisted after the terminator switch — all three terminators (`: x,y`, `;`, `{}`) restore.
-  `ParserErrorTest`.)*
-- [x] `PRS-2` **Multi-line `${…}` interpolation desyncs all subsequent line numbers** (:299-308 never bumps
-  `line` on `\n`); interpolation column off-by-1/2 (:352). *(2026-07-12: code scan counts newlines;
-  col remap +1 (code starts past `${`). `ParserErrorTest`.)*
-- [x] `PRS-3` **`@` modifiers silently dropped** on `@final` / `settings{}` / `transition{}` (conditional
-  parsed then discarded — :3032, :3934-3962, :3895-3932); `#name` silently dropped on `@switch`
-  (:5452). Should be parse errors. *(2026-07-12: all four sites now parse errors. `ParserErrorTest`
-  ×4.)*
-- [x] `PRS-4` **Nested `programmable` not rejected** — clobbers outer scope with no restore (:3549-3569).
-  Add the root-only guard the other block types have. *(2026-07-12: root-only guard added.
-  `ParserErrorTest`.)*
-- [x] `PRS-5` **AnimParser "not reachable" validation is dead code** — checks `visited == false` on a
-  null-default optional field (`null == false` is false); `Playlist.visited` never set
-  (AnimParser.hx:990-1000, :619,:638,:673). Fully-shadowed animations parse silently.
-  CHANGELOG:288 claims these errors fire — they cannot. *(2026-07-12: playlist.visited now set;
-  all three checks flipped to `!= true`. One in-repo test fixture had a genuinely dead arm —
-  adjusted. Playground + proto-game scanned: all 70 `.anim` files parse clean under the enforced
-  validation. `AnimParserTest` ×2.)*
-- [x] `PRS-6` **`.anim` lexer accepts unterminated strings** — swallows the rest of the file into one token,
-  errors far away (AnimParser.hx:323-341); embedded `\n` doesn't bump line numbers. *(2026-07-12:
-  positioned "Unterminated string" error at the opening quote; embedded newlines advance the line
-  counter (mirrors the `.manim` lexer). `AnimParserTest` ×2.)*
-- [x] `PRS-7` **2D palette declaration cannot be parsed** — the parser branch expects `TIdentifier("2d")`
-  (MacroManimParser.hx:3775) but the lexer tokenizes `2d` as `TInteger(2)` + `d`, so
-  `palette(2d:width) { … }` can never parse ("expected 2d or file in palette()"). Docs show a third
-  spelling, `palette(2d, 4)` (manim.md:1419, manim-reference.md:752), which also fails. 2D palettes
-  are only reachable via `palette(file:...)` today; `PaletteColors2D` is dead. Fix the lexer/parser
-  to accept one spelling and align the docs. *(Found 2026-07-12 during the BLD-2 bug review.)*
-  *(2026-07-12: parser matches the `TInteger("2")`+`TIdentifier("d")` pair — canonical spelling
-  `palette(2d: width)` parses. Doc spellings in manim.md + manim-reference.md corrected to
-  `palette(2d: width)` (the palette sub-items of DOC-10/DOC-13 are done). `ParserErrorTest`.)*
-- [ ] `PRS-8` (low) **Slot-body ref validation excludes enclosing-programmable `@final`s** — the parser
-  rejects `$OFF` inside a parameterized slot body when `OFF` is declared in the enclosing
-  programmable body ("unknown variable $OFF. Available: <slot params>"), yet the builder merges
-  enclosing finals into the slot's param map (`mergedParams`), so that build-time support is dead
-  code from `.manim` source. Decide: add enclosing finals to slot-body parse scope, or drop the
-  builder-side merge. *(Found 2026-07-13 during the BLD-4 bug review.)*
-
 ### Hot reload / LSP
 
-- [ ] `HR-1` **`result.reloadable = false` opt-out is a no-op** — read exactly once inside
-  `buildWithParameters` *before* the result is returned (MB:8318 — only read in the codebase);
-  reload loop never consults it (ScreenManager.hx:1440). Implement the reload-loop check or delete
-  the doc claim (hot-reload.md:294-296 documents fiction; its own missing-tests list shows the intent).
-- [ ] `LSP-1` **LSP: every `$param` reference completion is labeled the literal string `"$name"`** —
-  `'$$name'` escapes to a literal `$` (CompletionProvider.hx:177). Intended `'$' + name`.
-- [ ] `LSP-2` **Packaged `vscode/server/server.js` is 11 parser commits stale** (last built 2026-04-16),
-  including the Pratt-precedence **breaking change** — shipped diagnostics disagree with the real
-  parser. `npm run build`/`package` never rebuild the Haxe server. Add a prebuild step + CI drift gate.
-- [ ] `LSP-3` **LSP suggests invalid syntax**: `quadratic` path-command completion isn't a parser keyword
-  (ManimKeywordInfo.hx:300 `pathName(Bezier2To)`).
-- [ ] `LSP-4` **LSP request handlers not individually try/caught** (ManimLanguageServer.hx:151-208) — a
-  provider throw means the JSON-RPC request never gets a response; client promise hangs forever.
+- [ ] `LSP-5` **Path-command completions never fire inside `#name path { … }` bodies** — `path` is
+  missing from `ContextAnalyzer.isContextKeyword` (ContextAnalyzer.hx:332), so the inner block pushes
+  an empty context → Unknown → element completions. Path commands are only offered one level up,
+  directly inside `paths {}`, where `#name path {}` declarations (not commands) belong. Add `path`
+  as a context keyword + a PathBody context mapping to `pathCompletions()`, and give `PathsBody` a
+  `#name path {}` snippet instead (mirroring `curves`/`curve`). *(Found 2026-07-15 during the
+  PRS-8 + hot-reload/LSP bug review.)*
 
 ---
 
 ## P2 — Medium bugs (fix before 1.0 where cheap)
 
-### Builder
-- [x] `BLD-3` Conditional sentinels not `isAbsolute` → phantom `horizontalSpacing` slot per conditional child
-  inside `flow()` (MB:6660-6663; heaps Flow.hx:1452-1456). Incremental layout ≠ full layout.
-  *(2026-07-13 verify: also affects codegen — all 5 sentinel sites funnel through
-  `createSentinelIfConditional` (CG:6674).)* *(2026-07-13: sentinels now `visible = false` at all
-  three creation sites (MB main + deferred paths, CG helper) — Flow skips invisible children in
-  every layout loop. `BuilderUnitTest`.)*
-- [x] `BLD-4` `@final` inside parameterized slot bodies lost from slot ctx → `slot.setParameter` throws
-  `missing_ref` (`syncFinalsFromBuilder` called for roots :8306, neither slot path: :6787-6801, :8413-8423).
-  *(2026-07-13: both slot paths (runtime SLOT case + `buildSlotContent`) now call
-  `syncFinalsFromBuilder` before `cleanupFinalVars` strips the finals from the live map.
-  `ParameterizedSlotTest`. See also `PRS-8` for the parse-scope asymmetry found alongside.)*
-- [x] `BLD-5` Initially-hidden conditional arm `dynamicRef` gets no param forwarding after materialization
-  (deferred path builds with `incrementalMode=false`, :1558-1605). Same layout initially-visible works.
-  *(2026-07-13: `rebuildDeferredContent` exposes its owning ctx via a new `deferredForwardingCtx`
-  builder field; the DYNAMIC_REF case registers `trackDynamicRef` against it; each re-materialization
-  prunes the prior cycle's bindings via the new `pruneDiscardedDynamicRefChildren` helper.
-  `DynamicRefTest`.)*
-- [x] `BLD-6` `programmable tilegroup` root skips `validateTileGroupSubtree` (:7036-7049) → param conditionals
-  silently freeze (full) or double-bake both arms (incremental). *(2026-07-13: `startBuild`'s
-  isTileGroup branch now runs the same `validateTileGroupSubtree` walk as the nested TILEGROUP case;
-  loop-var conditionals still allowed. `BuilderUnitTest` ×3. Codegen side tracked as `CG-24`.)*
-- [x] `BLD-7` Tracked expressions skipped while invisible never re-fired on `setVisibility(true)`
-  (:1781-1793) → stale text/tint on reshow. *(2026-07-13 verify: narrowed — conditional hide/show has
-  been safe since 320df45 (`addToGraph` → `refreshTrackedExpressionsFor` replay); only the
-  `visible`-flag path (`setVisibility`, DevBridge, raw writes) lost updates.)* *(2026-07-13: gate
-  narrowed to `obj.parent == null` (detached roots are provably replayed on re-attach);
-  `isEffectivelyVisible` deleted — flag-hidden objects keep receiving updates, and the per-tracked
-  O(ancestor-depth) walk on the setParameter hot path became O(1). `BuilderUnitTest`.)*
-- [x] `BLD-8` `MultiAnimPaths.getPath` / `MultiAnimLayouts.resolve` swap `builder.indexedParams` with **no
-  try/finally** (MultiAnimPaths.hx:49-50/:243; MultiAnimLayouts.hx:59-71) — any throw corrupts the
-  builder's param map for the rest of the session. Add a `withParams(map, fn)` helper.
-  *(2026-07-13 verify: broader — `buildSlotContent` / `rebuildSwitchArmByOrdinal` /
-  `buildSingleNodeWithParams` had the same defect plus a `stateStack` leak.)* *(2026-07-13: `getPath`
-  hoists the not-found check above the swap + restores on throw; `resolve` restores on throw; the
-  three codegen entries got the `buildWithParameters` push/try/pop/rethrow unwind. Went with inline
-  try/catch-rethrow instead of a `withParams` closure helper — `getPath` runs per mouse move during
-  card targeting and a closure per call would allocate. `AnimatedPathBuilderTest` ×2 +
-  `BuilderUnitTest`.)*
-- [x] `BLD-9` `repeatable($i, array($val, arr))` leaks `$val` into enclosing scope after the loop
-  (cleanup misses `valueVariableName` at :6291-6298, :6417-6423, :6575-6576, :5267-5270).
-  *(2026-07-13 verify: 6 leak sites, not 4 — tilegroup REPEAT2D and the REPEAT2D incremental-rebuild
-  closure also leaked, both axes; codegen path clean.)* *(2026-07-13: `ArrayIterator` value var now
-  removed at all six sites — both REPEAT cleanup switches, `cleanupTileGroupRepeatExtraVars`
-  (+ now called by the tilegroup REPEAT2D branch for both axes), and the end of REPEAT2D
-  `buildIterations` (covers full-build + incremental closure at once). `BuilderUnitTest` ×2.)*
-- [x] `BLD-10` Eager pre-build of losing conditional arms evaluates expressions with out-of-guard values →
-  incremental build throws where full mode is fine (tile fallback exists :3826-3859; array bounds /
-  div-by-zero don't). *(2026-07-13 verify: narrowed — losing `@()` arms have been deferred since
-  ef8936b; the residual was `@else`/`@default` chain arms, which `shouldBuildInFullMode` reports as
-  visible so they bypassed the deferral gate.)* *(2026-07-13: new `computeLosingChainArms` chain walk
-  in the incremental sibling loops flags losing chain arms; `build()` routes them into the existing
-  deferral gate via a consumed-on-entry `pendingChainArmLosing` flag. Nodes with per-element
-  `@flow.*` props are excluded from deferral (the wrapper can't relay FlowProperties — deferring
-  them was also a latent materialize crash for `@()` arms) and keep building eagerly.
-  `BuilderUnitTest` ×2.)*
-- [x] `BLD-11` REPEAT loop-var shadow guard checks the element `#name` instead of the loop var (:6215-6216,
-  :5318-5319; REPEAT2D does it right). *(2026-07-13 verify: the shadow half is already caught at
-  parse time (5d8a3ca); the live symptom was a false positive — an element `#name` colliding with a
-  param threw the bogus "cannot use repeatable index param" error.)* *(2026-07-13: both guards now
-  test `varName`. `BuilderUnitTest` ×2.)*
-- [x] `BLD-12` DEV: hot-reload registry handles leak when dynamicRef subtrees rebuild while detached (sentinel
-  `onRemove` never fires, HotReload.hx:138-166); old child contexts' transition tweens not cancelled.
-  *(2026-07-13 verify: broader — any `cleanupDestroyedSubtree` caller discarding a detached subtree
-  with dynamicRef children leaked identically.)* *(2026-07-13: the new
-  `pruneDiscardedDynamicRefChildren` (run by `cleanupDestroyedSubtree` and deferred
-  re-materialization) cancels the discarded child ctx's transition tweens and unregisters its reload
-  handle via a new `registry` back-pointer on `ReloadableHandle`. `HotReloadTest` ×2, DEV build.)*
-
 ### Codegen parity
-- [x] `CG-5` `generated(cross(...))` renders a solid rectangle (CG:7382 — "approximate as solid color").
-  *(2026-07-13: shared `HeapsUtils.crossTile` helper — builder + codegen draw the same PixelLines cross,
-  thickness honored, dims via rvToExprInt. `CodegenTileSourceParityTest`.)*
-- [x] `CG-6` `@switch` non-last `default:` arm swallows later arms in the mixed-arm path (CG:2164-2182,
-  reverse-build discards accumulated chain; all-enum path is correct).
-  *(2026-07-13: default extracted as the fold BASE before the reverse fold — position-independent
-  fallback, builder parity. `CodegenSwitchDefaultOrderTest`. Note exposure was wider than filed:
-  since the single-value-arm fix, ordinary enum switches also took the mixed path.)*
-- [x] `CG-7` `beginUpdate()/endUpdate()` batches suppress transitions AND force-rebuild every `@switch` arm
-  (`_changedParam == null`; CG:720,746,781-790,967-976). Builder batches animate + gate per-ref.
-  *(2026-07-13: `_batchDirty:Bool` → `_batchChanged:Array<String>`; endUpdate replays
-  _applyVisibility/_updateExpressions per changed name, listeners fire once.
-  `CodegenBatchTransitionParityTest`.)*
-- [x] `CG-8` Conditional params inside a param-dependent repeat: codegen throws `untracked`, builder rebuilds
-  (CG:3523-3543 vs MB:6199-6204).
-  *(2026-07-13: body conditional-gate refs are FORCED rebuild triggers (`_rt_force` past the scalar
-  early-out); untracked marking dropped for them. 1D + 2D paths. `CodegenRepeatGateTest`;
-  `CodegenRepeatFallbackUntrackedTest`'s old fail-loud pin updated to the rebuild contract.)*
-- [x] `CG-9` `graphics { polygon(...) }` with grid/hex coordinate points collapses to 0,0 (CG:4534-4551).
-  *(2026-07-13: NOT A BUG — unreachable: `parseGraphicsPolygon` only ever emits OFFSET points, the
-  zero-collapsing arm is dead code. Residual: docs overstate polygon coordinate support.)*
-- [x] `CG-10` `particles {}` inside a static-unrolled `repeatable` throws index-out-of-range at `create()`
-  (macro counter per unrolled iteration vs PB:187-207 counting parse nodes).
-  *(2026-07-13: macro bakes the PARSE-NODE ordinal (same DFS as findAllParticlesChildren) instead of a
-  per-field counter — unrolled iterations share their node's index. uniqueNodeName was NOT usable:
-  PARTICLES names embed the def map's Std.string, unstable across macro-subprocess/runtime parses.
-  `CodegenNodeIndexContractTest`.)*
-- [x] `CG-11` Conditional `tilegroup` siblings: macro doc-order index vs built-tree order mismatch → wrong
-  content or out-of-range throw (CG:5787-5807 vs PB:252-267).
-  *(2026-07-13: keyed by `uniqueNodeName` (stable for payload-free TILEGROUP); new
-  `PB.buildTileGroupByNode` builds the identified subtree via buildNodeByUniqueNameWithParams — also
-  removes the full-programmable build per tilegroup field. `CodegenNodeIndexContractTest`.)*
-- [x] `CG-12` `$array[$idx]`: index refs untracked (no `RVElementOfArray` case in `collectParamRefsImpl`
-  CG:7158-7193) → stale content on `setIdx`.
-  *(2026-07-13: RVElementOfArray/RVColor/RVColorXY/RVArray arms added to the codegen's collector
-  (BLD-2 had fixed only the builder copy). `CodegenPaletteIndexTrackingTest`. Side-find still open:
-  `collectRVParamRefs` (dynamicRef forwarding tracker) also under-recurses.)*
 - [ ] `CG-13` Inline text/richText in runtime-iterated repeats loses `styles:`/`images:`/`autoFit`/hyperlinks
   (fast path CG:3049-3134; named elements are forwarded and fine). *(2026-07-13 verify: VALID, fix
   deferred — route styled/imaged inline text through emitRuntimeChildViaBuilder or port the feature
   layers; also drops grid/hex positions of inline text in runtime repeats.)*
-- [x] `CG-14` `layers()` layer ignored for repeat/`@switch` containers (bare `addChild` CG:2354,2097,2834,2529).
-  *(2026-07-13: shared `emitAddToParent` helper at all container sites. Corrections: the `@switch`
-  site is moot (parser forbids `@layer` on `@switch`); builder has a shared no-wrapper layer drop
-  (zero-offset static repeat with `@layer` — parity, not fixed). `CodegenContainerLayerTest`.)*
-- [x] `CG-15` Flow scalars / `spacer` / `@flow.offset` use `rvToExpr` (Float) where builder uses
-  `resolveAsInteger` → generated-code compile errors + truncation divergence (CG:6512-6544,1884-1896).
-  Violates the established `rvToExprInt` invariant.
-  *(2026-07-13: all 12 trackScalar sinks + inline runtime-repeat flow + spacer + @flow.offset (+restore)
-  → rvToExprInt. Pinned by test/examples/152-codegenCompileErrors/run-compile-checks.ps1 (green = all
-  hosts compile).)*
-- [x] `CG-16` `_updateExpressions()` re-fires ALL updates → behavioral: game callbacks re-invoked, stateanim
-  `play()` restarted, filters re-allocated on unrelated `setParameter` (CG:801-808).
-  *(2026-07-13: `_updateExpressions(?changed)` with per-entry paramRefs gates (entries with no refs run
-  unconditionally); setters pass their name. Also resolves the behavioral half of PERF-8.
-  `CodegenExprRefireScopeTest`.)*
-- [x] `CG-17` `CBRFloat` callback result in int context silently replaced by default (PB:406-432; builder
-  throws in int contexts, accepts in float contexts).
-  *(2026-07-13: PB int shims now THROW on wrong-typed results (builder parity); new
-  `resolveCallback(WithIndex)Float` accept CBRFloat/CBRInteger; rvToExpr numeric contexts route through
-  the float shims, rvToExprInt through the int shims. Side-find fixed with it: a LITERAL callback
-  default in a numeric coordinate took the string branch → String-into-Float generated-code compile
-  error (defaults parse via parseStringOrReference) — numeric-literal defaults now lower numerically.
-  `CodegenExprRefireScopeTest` + CgCallbackHost compile check.)*
-- [x] `CG-18` REPEAT2D non-step/range axes silently render **nothing** (CG:3562-3578) — should be
-  `Context.error("not supported in codegen")`.
-  *(2026-07-13: layout axes IMPLEMENTED (macro-time point unroll composing with the other axis, incl.
-  param-dependent linear inner axis); tiles/stateanim axes Context.error (builder throws too); array
-  axes Context.error (honest fail-fast, builder supports them — documented divergence).
-  `CodegenRepeat2DParityTest`.)*
-- [x] `CG-19` `bitmap($tileParam)` in runtime repeats mis-binds to the iterator tile / undefined `_rt_tiles`
-  compile error (CG:2971-2976 matches any `TSReference`).
-  *(2026-07-13: `_rt_tiles[_rt_i]` only when the ref names the iterator's tile var; everything else via
-  tileSourceToExpr. `CodegenTileSourceParityTest` + Cg19bHost compile check.)*
-- [x] `CG-20` `dynamicRef($loopVar)` treated as literal programmable name "i" (CG:3926-3939; STATIC_REF handles it).
-  *(2026-07-13: loopVarSubstitutions guard added to the DYNAMIC_REF create + registration arms,
-  mirroring STATIC_REF. `CodegenRepeatGateTest`.)*
 - [ ] `CG-21` `setParameter` value-contract divergences — enum Int (codegen: unvalidated index; builder:
   throws), tile String (builder accepts filename; codegen throws), string non-String (builder
   stringifies; codegen throws). **Pick one contract** (decision tracked as `DEC-4`).
   *(2026-07-13 verify: all three confirmed on HEAD + a fourth: bool-from-Int (codegen `!=0` accepts,
   builder throws). Also same family: codegen full-build handoffs (buildTileGroupByNode/buildParticles)
   forward enum params as raw Int index → builder `enum "x" does not contain value "0"` throw.)*
-- [x] `CG-22` `.offset()`/named-coord around runtime hex coords → `unknown identifier _hexLayout` compile
-  error (CG:7995-8022, no WITH_OFFSET/NAMED_COORD recursion).
-  *(2026-07-13: ensureHexLayoutIfNeeded recurses into WITH_OFFSET/NAMED_COORD with a named-system
-  layout override; coordsToXYExprs' NamedHex recursion carries the NAMED layout (was: ambient);
-  generatePositionExpr's runtime NAMED_COORD now emits the position (was: silent 0,0). Corrections:
-  `.offset()` doesn't parse after `$hex.cube()` — only corner/edge chains reach WITH_OFFSET;
-  bare runtime NAMED_COORD was silent-0,0, not a compile error. `CodegenNamedHexCoordTest` +
-  Cg22Host compile check.)*
 - [ ] `CG-23` Misc: ~~maxWidth-with-param-scale bake~~, ~~`TAWGrid` skipped~~, ~~`$ctx.random` no truncation~~,
   hyperlink exception propagation asymmetry, SWITCH-node tint/filter/blendMode never applied,
   ~~LayoutIterator `$param` points → 0,0~~, ~~generated tile w/h single-truncation~~, ~~dynamicRef forwarded
@@ -451,43 +114,11 @@ items take the next free number in their prefix. (1.1 roadmap bullets are featur
   `cancelDrag()`/`clear()` outside event dispatch don't release mouse capture + no `DragCancel`.
 
 ### VFX / paths (lower severity)
-- [x] `VFX-7` Wave segment endpoint ignores residual lateral offset for fractional `count` → position jump
-  into next segment + wrong Stretch scaling (MultiAnimPaths.hx:227-239 vs :723-731).
-  *(2026-07-12: endpoint includes `amp·sin(count·2π)` lateral term. Continuity scan in
-  `AnimatedPathBuilderTest`. Note: only counts that aren't multiples of 0.5 exhibited it.)*
-- [x] `VFX-8` AnimatedPath pingPong: distance-mode speed curve un-mirrored vs other slots; events fire at
-  forward progress (not mirrored position) in reversed cycles; `cycleStart` delivered with previous
-  cycle's end state (AnimatedPath.hx:266-269, :289-318, :345). *(2026-07-12: all three fixed —
-  speed curve mirrored; events fire by path position (descending atRate) in reversed cycles;
-  cycleStart carries the new cycle's index + start position. `AnimatedPathTest` ×3.)*
-- [x] `VFX-9` `AnimParser.load()` cache shares one filter instance + one extraPoints IPoint map across all
-  AnimationSM instances per selector (AnimParser.hx:2210-2266) — mutation corrupts every SM.
-  *(2026-07-12: cache stores filter DEFINITIONS (resolved per SM); extraPoints copied per SM.
-  Also fixed `parseString`'s typed rethrow wrapping errors in haxe.ValueException. `AnimParserTest`.)*
-- [x] `VFX-10` Force-field/bounds/sub-emitter coordinates are in different spaces for relative vs non-relative
-  groups — undocumented (Particles.hx:1154-1225, :1318-1324). *(2026-07-12: documented in
-  manim-reference.md Bounds section — emitter-local for relative, scene/worldAnchor space otherwise.)*
-- [x] `VFX-11` `Curve` with duplicate time values → NaN (Curve.hx:40-45), unvalidated. *(2026-07-12: NOT
-  REPRODUCIBLE — the zero-width division is unreachable: endpoint clamps catch t == firstTime, and
-  the first-match scan always hits the earlier non-degenerate segment for duplicates at i>0.
-  Duplicate-time points behave as step curves. No fix needed; optional hardening left out.)*
-- [x] `VFX-12` `Hex.toOffsetCoordinates()` uses invalid offset=0; `HexLayout.directionToAngle` ignores
-  `start_angle` (Hex.hx:252-254, :550-554). (Both unused in-library.) *(2026-07-12:
-  toOffsetCoordinates commits to odd-q parity (ODD); directionToAngle became an instance method
-  adding 60°·start_angle. New `HexApiTest`.)*
-- [x] `VFX-13` `event name x,y { meta }` / `event name random ... { meta }` parse OK but **silently drop the
-  point/random spec** (AnimParser.hx:1491-1505). Document or reject. *(2026-07-12: REJECTED at parse
-  time (payload can't carry both). Two pre-existing tests pinning the lossy form replaced by the
-  rejection test. Carrying both = post-1.0 feature if wanted.)*
 - [ ] `VFX-14` `.anim` `@else(cond)` doesn't encode chain negation (best-score approximation); ambiguity throws
   a raw unpositioned string from `parse()` (:1916); `@(x=>a) @else(y=>b)` in one header silently
   discards the first condition. *(2026-07-12: PARTIAL — ambiguity now throws positioned
   InvalidSyntax; `@()` + `@else`/`@default` stacking in one header is a parse error. Chain-negation
   SEMANTICS deliberately deferred — matcher redesign, couples with DEC-7.)*
-- [x] `VFX-15` `.anim` comparison/range conditionals accept non-numeric operands → NaN → arm silently dead.
-  *(2026-07-12: post-parse validation rejects non-numeric operands and comparisons against states
-  with no numeric declared values (animation/playlist/extra-point/filter selectors). Runtime matcher
-  keeps silent-false for genuinely mixed states (pinned by existing test). `AnimParserTest`.)*
 - [ ] `VFX-16` Silent duplicate-name overwrites: paths (:5974), curves (:6404), layouts (:2759), data fields,
   stateanim constructs; `.anim` duplicate `loop:`. *(2026-07-12: PARTIAL — paths/curves/layouts/
   stateanim constructs now duplicate-error (`ParserErrorTest`). Data record fields already had a
@@ -509,13 +140,6 @@ items take the next free number in their prefix. (1.1 roadmap bullets are featur
   (CoordinateSystems.hx:97-108 + builder + 6 codegen sites: POINTY→qoffsetToCube; standard is
   q-offset=flat, r-offset=pointy). Consistent across builder/codegen so tests can't catch it, and
   existing content encodes the inverted behavior. Fix + migrate, or document as library convention.
-- [x] `DEC-2` **brightness/saturate/hue semantics** (see `FLT-1`–`FLT-3`): fix code to documented intent
-  (breaking visuals for content that compensated) or re-document Heaps semantics. Recommend fixing
-  code — the docs, the parser default, and user intuition all agree on multiplier/degrees.
-  *(2026-07-12: RESOLVED as "fix code" — all three backends now match the docs. See FLT-1..3.)*
-- [x] `DEC-3` **`gravityAngle`**: fix convention + audit existing `.manim` content (see `VFX-1`).
-  *(2026-07-12: RESOLVED — convention fixed, default preserved as "down". In-repo content audited
-  (only test example 51); sibling repos (proto-game, playground) should grep `gravityAngle`.)*
 - [ ] `DEC-4` **`setParameter` value contract** (enum-by-int, tile-by-filename, stringify non-strings):
   builder and codegen disagree in both directions. Define once, generate/validate both paths
   (see `CG-21`).
@@ -533,10 +157,6 @@ items take the next free number in their prefix. (1.1 roadmap bullets are featur
 ---
 
 ## Documentation fixes for 1.0
-
-### README.md
-- [x] `DOC-1` All `P0-5` sample fixes above; add lix install command; consider linking ATTRIBUTION.md.
-  *(2026-07-12: all done — see `P0-5` above.)*
 
 ### docs/manim-cookbook.md (worst offender — recipes that throw or don't compile)
 - [ ] `DOC-2` **Data Blocks Haxe API is fictional** — `getDataBlock`/`getInt`/`getRecordArray`/`getString`
@@ -579,7 +199,8 @@ items take the next free number in their prefix. (1.1 roadmap bullets are featur
   need manual removal — false, non-looping groups auto-remove via default `onEnd` (Particles.hx:1604-1609).
 
 ### docs/manim-reference.md
-- [ ] `DOC-13` Filter semantics rows (brightness/saturate/hue — pending `DEC-2`); layout `align:`
+- [ ] `DOC-13` Filter semantics rows (brightness/saturate/hue — `DEC-2` resolved as fix-code 2026-07-12:
+  verify the rows now match the multiplier/degrees semantics); layout `align:`
   `left`/`top` are not accepted tokens and the doc's own example fails to parse; `palette(2d, width)`
   → `palette(2d: width)`; `palette(external)` misplaced; autotile `source` row totally wrong shape;
   `cubicBezier` is not a bare curve style and not usable as a curve-slot easing name; bezier
@@ -596,7 +217,8 @@ items take the next free number in their prefix. (1.1 roadmap bullets are featur
 - [ ] `DOC-15` Per-animation `center:` override doesn't exist (parse error).
 - [ ] `DOC-16` Playlist per-frame filters **replace**, don't accumulate (pinned by AnimFilterRuntimeTest).
 - [ ] `DOC-17` `$$state$$` "migration hint error" doesn't exist; `LoadedAnimation` in example is dead code;
-  color metadata alpha semantics (pending `VFX-2` fix); flipX/flipY size check is load-time not parse-time.
+  color metadata alpha semantics (`VFX-2` fixed 2026-07-12: short forms bake 0xFF — update the text
+  to the new semantics); flipX/flipY size check is load-time not parse-time.
 - [ ] `DOC-18` Structural: anim.md and anim-reference.md share the same H1 title; anim.md + animpaths.md are
   README-linked but missing from the CLAUDE.md doc index (the drift source). Adopt into the index
   (or fold) + retitle.
@@ -617,7 +239,8 @@ items take the next free number in their prefix. (1.1 roadmap bullets are featur
   `list_active_programmables`** (DevBridge.hx:1998) — fix the in-code string too; `x`/`y` not
   actually required on find_element_at/coordinate_transform; `wait_for_idle` also requires !paused;
   `list_interactives` button-by-text entries undocumented; `click_interactive` alias undocumented.
-- [ ] `DOC-22` hot-reload.md: `reloadable=false` claim (pending `HR-1`); registration no longer gated on
+- [ ] `DOC-22` hot-reload.md: ~~`reloadable=false` claim~~ (resolved with `HR-1` 2026-07-15 — behavior
+  implemented + doc expanded); registration no longer gated on
   `incremental` (commit 5491588); dynamicRef snapshot is one level deep, not recursive; `adoptFrom`
   field list incomplete; missing-test premise at :540 contradicts actual (correct) behavior.
 - [ ] `DOC-23` vscode-extension.md: materially stale pre-implementation spec — in-repo location, language ids
@@ -633,17 +256,16 @@ items take the next free number in their prefix. (1.1 roadmap bullets are featur
 
 ## Test & CI for 1.0
 
-- [x] `TST-1` Register `AllocationSmokeTest` (`P0-6` above). *(2026-07-12)*
-- [x] `TST-2` Gate release workflow on tests (`P0-2` above). *(2026-07-12)*
 - [ ] `TST-3` **VisualTestBase swallow-path**: an exception in a `waitForUpdate` callback makes the test
   silently vanish from stats — run reports OK with a test missing (VisualTestBase.hx:52-64). Fail loudly.
 - [ ] `TST-4` **Add an LSP CI job** (`haxe lsp/test-lsp.hxml && node lsp/bin/test.js` + `haxe lsp/lsp-server.hxml`)
   — also the only JS-target *execution* gate (JS is compile-only today) and the server.js drift gate.
 - [ ] `TST-5` Tests for `sceneToHex` (advertised rc.5 feature, zero tests) and the grid cell-animation/detach
   family (`tweenCell`/`addCellAnimated`/`removeCellAnimated`/`detachCellVisual`/`reattachCellVisual`).
-- [ ] `TST-6` Tests pinning whatever brightness/saturate/hue/gravityAngle semantics are decided
-  (`DEC-2`/`DEC-3`); a `.anim` replaceColor **visual** test (currently parse-only); a
-  `event x,y {meta}` behavior test.
+- [ ] `TST-6` A `.anim` replaceColor **visual** test (currently parse-only). *(The other two original
+  sub-items are done/obsolete: DEC-2/DEC-3 semantics are pinned by matrix-level tests in
+  `BuilderUnitTest`/`AnimFilterStateConditionalTest`/`ParticleRuntimeTest`, and `event x,y {meta}`
+  became a parse error under VFX-13 — pinned by its rejection test.)*
 - [ ] `TST-7` Confirm branch protection requires Compile + Test (Standard) + Test (Dev).
 - [ ] `TST-8` Hygiene: `test.bat run` overwrites standard results with DEV results in `build/test_result.txt`
   (test.ps1:163,167); PR-comment step is template-injection fragile (tests.yml:196); lix cache path
@@ -717,10 +339,6 @@ items take the next free number in their prefix. (1.1 roadmap bullets are featur
   *(2026-07-13: the `_updateExpressions` half is DONE — per-entry paramRefs gating via
   `_updateExpressions(?changed)`, CG-16 resolved. Remaining: per-param `_applyVisibility` gating
   (visibility conditions still all re-evaluate per setter — cheap, but O(entries)).)*
-- [x] `PERF-9` `buildTileGroupFromProgrammable` performs K throwaway **full builds** for K tilegroups per `create()`.
-  *(2026-07-13: resolved by the CG-11 fix — codegen now calls `buildTileGroupByNode`, which builds
-  only the identified TILEGROUP subtree via `buildNodeByUniqueNameWithParams`. The old positional
-  `buildTileGroupFromProgrammable` remains for any external callers but is no longer emitted.)*
 
 **UI:**
 - [ ] `PERF-10` `getBounds()`-allocating `containsPoint` for every widget on every mouse move (only
@@ -772,9 +390,9 @@ arc-length LUT on Path; widget bounds caching; grid batching.
 - Declarative tooltip/panel system (todo-suggestions #9) + Auto positioning with overflow (#1) —
   the two High-impact items already triaged.
 - `blockUnderlying:Bool` per dialog (resolves the documented routing asymmetry + `UI-4`).
-- Lazy building of inactive conditional arms (kills the out-of-guard evaluation class `BLD-10` + the
-  deferred dynamicRef asymmetry `BLD-5` structurally).
-- REPEAT2D full incremental parity port (`BLD-1`).
+- Lazy building of inactive conditional arms (the tactical fixes landed 2026-07-13 — losing chain
+  arms now defer, deferred dynamicRef forwards — but full lazy-arm building remains the structural
+  simplification that would delete that machinery).
 - `.anim` hot reload (top item in hot-reload.md TODO; ReloadFileType.Anim plumbing already exists —
   only the ScreenManager loop is missing).
 - `.anim` strict-D alpha migration + `#RRGGBBAA` round-trip consistency.
@@ -784,10 +402,11 @@ arc-length LUT on Path; widget bounds caching; grid batching.
 - `PlayAnimComplete` card-hand event (can't currently sequence effects after a played card leaves).
 - Parser: float literals in int coordinate contexts; `.offset()` after bare `x, y`; scientific
   notation; conditionals inside `settings{}`; `@switch` on loop variables; root-level `@final`
-  visible inside programmables; strict particle keys; duplicate-name diagnostics; `.anim` `@final`
-  expressions; unknown-character diagnostics.
+  visible inside programmables; strict particle keys; `.anim` duplicate `loop:` diagnostic
+  (the rest of the duplicate-name family landed with VFX-16); `.anim` `@final` expressions.
 - Text input codegen (`createTextInput()` factory — already triaged post-1.0).
-- Exception-safe param-scope swaps (`withParams` helper) across MultiAnimPaths/Layouts/particles.
+- Exception-safe param-scope swaps as a systematic pattern (BLD-8 fixed the known sites with inline
+  try/catch unwind; a zero-alloc `withParams` helper would make new sites safe by construction).
 
 **Tooling:**
 - Generate tmLanguage keyword alternations from ManimKeywordInfo + case-sensitive sync-check.

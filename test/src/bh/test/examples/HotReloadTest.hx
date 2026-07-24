@@ -23,6 +23,7 @@ import bh.multianim.dev.HotReload;
  * NOTE: Use double-quoted strings ("...") for .manim source — single-quoted strings
  * trigger Haxe string interpolation which conflicts with .manim $ references.
  */
+@:access(bh.ui.screens.ScreenManager)
 class HotReloadTest extends BuilderTestBase {
 	// ===== Helper: simulate hot-reload cycle =====
 
@@ -1187,6 +1188,65 @@ class HotReloadTest extends BuilderTestBase {
 			if (subtreeHasTweens(tm, root.getChildAt(i))) return true;
 		}
 		return false;
+	}
+
+	// ==================== reloadable=false opt-out ====================
+
+	@Test
+	public function testReloadableFalseSkipsInPlaceReload():Void {
+		// docs/hot-reload.md ("Controlling Reloadability") documents
+		// `result.reloadable = false` as an opt-out. The flag is set by callers
+		// AFTER buildWithParameters returns, so the reload loop itself must
+		// consult it — registration-time reads can never see the opt-out.
+		// Drives the real ScreenManager.hotReload() loop against a temp file.
+		final fileName = "hotreload-optout-tmp.manim";
+		final filePath = "test/res/" + fileName;
+		final v1 = "version: 1.0\n"
+			+ "#optout programmable() {\n"
+			+ "	bitmap(generated(color(10, 10, #ff0000))): 0, 0\n"
+			+ "}\n"
+			+ "#normal programmable() {\n"
+			+ "	bitmap(generated(color(10, 10, #00ff00))): 0, 0\n"
+			+ "}\n";
+		final v2 = "version: 1.0\n"
+			+ "#optout programmable() {\n"
+			+ "	bitmap(generated(color(99, 10, #ff0000))): 0, 0\n"
+			+ "}\n"
+			+ "#normal programmable() {\n"
+			+ "	bitmap(generated(color(99, 10, #00ff00))): 0, 0\n"
+			+ "}\n";
+		sys.io.File.saveContent(filePath, v1);
+		var caught:Null<Dynamic> = null;
+		try {
+			final sm = new bh.ui.screens.ScreenManager(bh.test.VisualTestBase.appInstance);
+			final builder = sm.buildFromResourceName(fileName, false);
+			final rOpt = builder.buildWithParameters("optout", new Map(), null, null, true);
+			final rNorm = builder.buildWithParameters("normal", new Map(), null, null, true);
+
+			Assert.equals(2, sm.hotReloadRegistry.getHandles(fileName).length,
+				"sanity: both incremental results register reload handles");
+			Assert.equals(10, Std.int(findVisibleBitmapDescendants(rOpt.object)[0].tile.width));
+
+			// The documented opt-out — set after build, as any real caller would.
+			rOpt.reloadable = false;
+
+			sys.io.File.saveContent(filePath, v2);
+			sm.hotReload();
+
+			final normBitmaps = findVisibleBitmapDescendants(rNorm.object);
+			Assert.equals(99, Std.int(normBitmaps[0].tile.width),
+				"control: a reloadable result must be rebuilt in place by hotReload()");
+
+			final optBitmaps = findVisibleBitmapDescendants(rOpt.object);
+			Assert.equals(10, Std.int(optBitmaps[0].tile.width),
+				"a result with reloadable=false must be skipped by the reload loop");
+		} catch (e:Dynamic) {
+			caught = e;
+		}
+		if (sys.FileSystem.exists(filePath))
+			sys.FileSystem.deleteFile(filePath);
+		if (caught != null)
+			throw caught;
 	}
 }
 #end

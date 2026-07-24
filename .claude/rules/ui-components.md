@@ -90,6 +90,7 @@ Metadata supports typed values matching the settings system: `key => val` (strin
 **Parameterized slots** — `#name slot(param:type=default, ...)` for visual state management:
 - Same parameter types as `programmable()`: `uint`, `int`, `float`, `bool`, `string`, `color`, enum, range, flags
 - Conditionals (`@()`, `@else`, `@default`) and expressions (`$param`) work inside the slot body
+- Scope: slot bodies see the slot's own params plus enclosing `@final` constants declared before the slot (works on build, `setParameter` rebuilds, and the codegen `buildSlotContent` path). Enclosing programmable params and loop vars are NOT visible — a slot rebuild only receives slot params
 - `SlotHandle.setParameter("name", value)` updates visuals via `IncrementalUpdateContext`
 - Content goes into a separate `contentRoot` (decoration always visible, not hidden by `setContent`)
 - Codegen: `setParameter()` supported — parameterized slots built via `buildParameterizedSlot()` at runtime with full incremental support

@@ -558,4 +558,59 @@ class ParameterizedSlotTest extends BuilderTestBase {
 		final frame = slot.getUpdatable("frame");
 		Assert.notNull(frame, "expected #frame named element from slot decoration to be reachable via SlotHandle");
 	}
+
+	// ==================== Enclosing @final constants inside slot bodies ====================
+	// @final constants of the enclosing programmable body are usable inside a
+	// parameterized slot body (params stay isolated — constants don't). The
+	// builder must resolve them on initial build AND on setParameter rebuilds.
+
+	@Test
+	public function testSlotBodyResolvesEnclosingFinal():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				@final OFF = 7
+				#mySlot slot(v:int=0) {
+					bitmap(generated(color(10, 10, #f00))): ($OFF + $v), 0
+				}
+			}
+		", "test");
+		Assert.notNull(result);
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(7.0, bitmaps[0].x, "slot decoration position should resolve enclosing @final OFF=7");
+
+		// setParameter rebuild must keep the constant in scope
+		final slot = result.getSlot("mySlot");
+		slot.setParameter("v", 3);
+		final after = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, after.length);
+		Assert.equals(10.0, after[0].x, "after setParameter(v=3) position should be OFF(7) + v(3) = 10");
+	}
+
+	@Test
+	public function testBuildSlotContentResolvesEnclosingFinal():Void {
+		// buildSlotContent is the codegen delegation path (ProgrammableBuilder.
+		// buildParameterizedSlot) — it builds only the slot subtree, so it must
+		// evaluate the enclosing body's @final constants itself.
+		final builder = bh.test.BuilderTestBase.builderFromSource("
+			#test programmable() {
+				@final OFF = 7
+				#mySlot slot(v:int=0) {
+					bitmap(generated(color(10, 10, #f00))): ($OFF + $v), 0
+				}
+			}
+		");
+		final container = new h2d.Object();
+		final slot = builder.buildSlotContent("test", "mySlot", new Map(), container);
+		Assert.notNull(slot);
+
+		final bitmaps = findVisibleBitmapDescendants(container);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(7.0, bitmaps[0].x, "buildSlotContent should resolve enclosing @final OFF=7");
+
+		slot.setParameter("v", 3);
+		final after = findVisibleBitmapDescendants(container);
+		Assert.equals(1, after.length);
+		Assert.equals(10.0, after[0].x, "after setParameter(v=3) position should be OFF(7) + v(3) = 10");
+	}
 }

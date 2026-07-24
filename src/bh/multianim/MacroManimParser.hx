@@ -3470,9 +3470,17 @@ class MacroManimParser {
 					slotScopeSaved = true;
 					currentDefs = parsed.defs;
 					activeDefs = parsed.defs;
-					scopeVars = [];
+					// Enclosing @final constants stay visible inside the slot body —
+					// the builder merges them into the slot's param map, and
+					// buildSlotContent replays them for setParameter rebuilds.
+					// Enclosing params and loop vars stay hidden: a slot rebuild
+					// only receives the slot's own parameters.
+					scopeVars = slotSavedActiveFinalNames != null ? slotSavedActiveFinalNames.copy() : [];
 					activeFinals = new Map();
-					activeFinalNames = [];
+					if (slotSavedActiveFinals != null)
+						for (k => v in slotSavedActiveFinals)
+							activeFinals.set(k, v);
+					activeFinalNames = slotSavedActiveFinalNames != null ? slotSavedActiveFinalNames.copy() : [];
 					namedElements = [];
 					createNode(SLOT(parsed.defs, parsed.order), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 				} else {
