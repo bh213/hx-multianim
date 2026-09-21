@@ -3952,6 +3952,11 @@ class MultiAnimBuilder {
 			default: false;
 		};
 
+		// Start from the declared font, not whatever font an earlier fit left on the text:
+		// an incremental update re-runs this, and a text that once fell back to a smaller
+		// font has to be able to grow back when it gets shorter again.
+		t.font = resourceLoader.loadFont(resolveAsString(textDef.fontName));
+
 		// Build full font candidate list: primary font + fallback fonts
 		var allFonts = new Array<h2d.Font>();
 		allFonts.push(t.font);
