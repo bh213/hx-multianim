@@ -319,6 +319,8 @@ Development-only JSON-RPC server exposing runtime inspection and manipulation (`
 
 Serves 37 JSON-RPC tools over HTTP plus SSE streaming for lifecycle events (screen changes, hot reload, parameter changes, custom events, debugger hits, game events). Default port 9001, configurable via `HX_DEV_PORT` env var; bind address defaults to `0.0.0.0`, configurable via `HX_DEV_BIND`. Consumed by the MCP server documented in `docs/devbridge.md`. Powers hot-reload triggers, runtime inspection (`scene_graph`, `inspect_element`, `list_interactives`, ...), input injection (`click_button`, `send_event`), and screenshot capture.
 
+The bridge is split from how it is reached. `DevBridge` owns `dispatch(method, params)`, the game ops and the event buffers, and implements `IDevBridgeHost` (`handleRequestJson`, `handleCall`). Transports in `src/bh/multianim/dev/transport/` carry requests in and events out: `HttpServerTransport` (HashLink HTTP + SSE), and in a browser build `PageTransport` (`window.hxDevBridge`) and `WebSocketTransport` (dials a relay such as the MCP server in `--listen` mode). Settings go through `DevBridgeConfig` (environment, or `window.HX_DEV` / query string in a page). `HX_DEV_TOKEN` gates every HTTP request and travels in the relay hello.
+
 ### Hot Reload
 
 Development-only live `.manim`/`.anim` file reloading (`-D MULTIANIM_DEV`). File: `src/bh/multianim/dev/HotReload.hx`.

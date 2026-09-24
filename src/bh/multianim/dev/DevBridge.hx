@@ -1,11 +1,12 @@
 package bh.multianim.dev;
 
-// MCP DevBridge — HTTP server for AI tool integration.
-// Provides inspection and manipulation of running hx-multianim applications.
+// MCP DevBridge — inspection and manipulation of running hx-multianim applications, for AI tools.
+// What it does (every op, the game's own ops, the event buffers) lives here; how it is reached
+// lives in bh.multianim.dev.transport: an HTTP server on HashLink, window.hxDevBridge and a
+// WebSocket to a relay in a browser page.
 // Only compiles when -D MULTIANIM_DEV is set.
 
 #if MULTIANIM_DEV
-import hxd.net.Socket;
 import haxe.Json;
 import bh.ui.screens.ScreenManager;
 import bh.multianim.MultiAnimBuilder;
@@ -16,6 +17,7 @@ import bh.multianim.MultiAnimParser.Definition;
 import bh.multianim.MultiAnimParser.ParametersDefinitions;
 import bh.multianim.MultiAnimParser.ResolvedIndexParameters;
 import bh.multianim.dev.HotReload;
+import bh.multianim.dev.transport.IDevBridgeTransport;
 import bh.base.TweenManager;
 
 @:access(bh.ui.screens.ScreenManager)
@@ -24,13 +26,31 @@ import bh.base.TweenManager;
 @:access(bh.base.TweenManager)
 @:access(hxd.Window)
 @:access(bh.base.CachingResourceLoader)
-class DevBridge {
+class DevBridge implements IDevBridgeHost {
 	public static var autoStart:Bool = true;
+
+	/** Every method `dispatch` answers, for discovery (`window.hxDevBridge.info()`, a relay's hello). */
+	public static final METHODS:Array<String> = [
+		"ping", "performance", "list_screens", "list_builders", "scene_graph", "screenshot", "inspect_element",
+		"set_parameter", "set_visibility", "reload", "eval_manim", "list_resources", "send_event", "send_events",
+		"pause", "step", "quit", "get_traces", "get_errors", "get_debugger_hits", "get_parameters",
+		"list_interactives", "list_slots", "get_tween_state", "get_screen_state", "find_element_at",
+		"inspect_programmable", "list_fonts", "list_atlases", "coordinate_transform", "wait_for_idle",
+		"check_overlaps", "click_interactive", "click_button", "list_active_programmables", "list_game_ops",
+		"game_op", "get_game_events",
+	];
 
 	final screenManager:ScreenManager;
 	final port:Int;
 	final bindAddress:String;
-	var serverSocket:Null<Socket>;
+	final token:Null<String>;
+	/** Identifies this run of the game to a relay; a page that reconnects keeps it. */
+	public final session:String;
+
+	// ---- Transports ----
+	var transports:Array<IDevBridgeTransport> = [];
+	var started:Bool = false;
+	var eventBroadcasting:Bool = false;
 
 	// ---- Startup ----
 	var startTime:Float = 0;
@@ -64,21 +84,24 @@ class DevBridge {
 	var gameEventDropped:Int = 0;
 	var nextGameEventId:Int = 1;
 
-	// ---- SSE clients ----
-	var sseClients:Array<Socket> = [];
-	var sseBroadcasting:Bool = false;
-
-	// ---- Pending HTTP connections (still receiving headers/body) ----
-	var pendingConnections:Array<HttpConnection> = [];
+	#if (js && !hxnodejs)
+	// ---- Browser error capture ----
+	var browserErrorListener:Null<js.html.Event -> Void>;
+	var browserRejectionListener:Null<js.html.Event -> Void>;
+	var contextLostListener:Null<js.html.Event -> Void>;
+	#end
 
 	public function new(screenManager:ScreenManager, port:Int = 0, ?bindAddress:String) {
 		this.screenManager = screenManager;
 		this.port = if (port != 0) port else resolvePort();
 		this.bindAddress = if (bindAddress != null) bindAddress else resolveBindAddress();
+		final configuredToken = DevBridgeConfig.get("HX_DEV_TOKEN");
+		this.token = configuredToken != null && configuredToken != "" ? configuredToken : null;
+		this.session = newSessionId();
 	}
 
 	static function resolvePort():Int {
-		var envPort = Sys.getEnv("HX_DEV_PORT");
+		var envPort = DevBridgeConfig.get("HX_DEV_PORT");
 		if (envPort != null) {
 			var parsed = Std.parseInt(envPort);
 			if (parsed != null && parsed > 0 && parsed < 65536) return parsed;
@@ -89,70 +112,153 @@ class DevBridge {
 
 	// Bind address for the HTTP server. Default is 0.0.0.0 (all interfaces) so
 	// MCP clients on other LAN machines can connect; set HX_DEV_BIND=127.0.0.1
-	// to restrict the bridge to the local machine. There is no authentication —
-	// anything that can reach the port can inspect/manipulate the app.
+	// to restrict the bridge to the local machine. Without HX_DEV_TOKEN there is
+	// no authentication — anything that can reach the port can inspect/manipulate the app.
 	static function resolveBindAddress():String {
-		var envBind = Sys.getEnv("HX_DEV_BIND");
+		var envBind = DevBridgeConfig.get("HX_DEV_BIND");
 		if (envBind != null && envBind != "") return envBind;
 		return "0.0.0.0";
 	}
 
+	static function newSessionId():String {
+		final chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+		final buf = new StringBuf();
+		for (_ in 0...12)
+			buf.add(chars.charAt(Std.random(chars.length)));
+		return buf.toString();
+	}
+
 	public function start():Void {
-		if (serverSocket != null) {
+		if (started) {
 			trace('[DevBridge] Error, Already started on port $actualPort');
 			return;
 		}
 		startTime = haxe.Timer.stamp();
 		installTraceCapture();
-		serverSocket = new Socket();
 
-		var bound = false;
-		var tryPort = port;
-		for (_ in 0...10) {
-			try {
-				serverSocket.bind(bindAddress, tryPort, onClientConnected);
-				actualPort = tryPort;
-				bound = true;
-				trace('[DevBridge] Listening on port $tryPort (bind $bindAddress)');
-				break;
-			} catch (e:Dynamic) {
-				trace('[DevBridge] Port $tryPort busy, trying next...');
-				tryPort++;
-			}
+		#if (sys || hxnodejs)
+		final http = new bh.multianim.dev.transport.HttpServerTransport(port, bindAddress);
+		if (!http.start(this))
+			return;
+		actualPort = http.actualPort;
+		transports.push(http);
+		#elseif js
+		final relay = DevBridgeConfig.get("HX_DEV_RELAY");
+		final hasRelay = relay != null && relay != "";
+		if (hasRelay) {
+			final ws = new bh.multianim.dev.transport.WebSocketTransport(relay);
+			if (ws.start(this)) transports.push(ws);
 		}
-
-		if (!bound) {
-			trace('[DevBridge] Failed to bind after 10 attempts (tried ports $port-${port + 9})');
-			serverSocket = null;
+		// window.hxDevBridge: on unless a relay is named, and then on request (HX_DEV_PAGE=1).
+		final pageSetting = DevBridgeConfig.get("HX_DEV_PAGE");
+		final wantPage = pageSetting != null && pageSetting != "" ? pageSetting != "0" && pageSetting != "false" : !hasRelay;
+		if (wantPage) {
+			final page = new bh.multianim.dev.transport.PageTransport();
+			if (page.start(this)) transports.push(page);
+		}
+		if (transports.length == 0) {
+			trace('[DevBridge] No transport started (relay "$relay" rejected, page API off)');
 			return;
 		}
-
-		// Write ready file if env var set
-		var readyFilePath = Sys.getEnv("HX_DEV_READY_FILE");
-		if (readyFilePath != null && readyFilePath != "") {
-			try {
-				var json = haxe.Json.stringify({
-					port: actualPort,
-					timestamp: Date.now().getTime() / 1000,
-				});
-				sys.io.File.saveContent(readyFilePath, json);
-				trace('[DevBridge] Ready file written to $readyFilePath');
-			} catch (e:Dynamic) {
-				trace('[DevBridge] Failed to write ready file: $e');
-			}
-		}
+		installBrowserErrorCapture();
+		trace('[DevBridge] Ready: ${[for (t in transports) t.describe].join(", ")}');
+		#else
+		trace('[DevBridge] No transport for this target');
+		return;
+		#end
+		started = true;
 		registerListeners();
 	}
 
 	public function stop():Void {
 		unregisterListeners();
-		closeSseClients();
-		if (serverSocket != null) {
-			serverSocket.close();
-			serverSocket = null;
-			trace("[DevBridge] Stopped");
-		}
+		#if (js && !hxnodejs)
+		removeBrowserErrorCapture();
+		#end
+		for (t in transports)
+			t.stop();
+		transports = [];
+		started = false;
 		restoreTrace();
+	}
+
+	/** Called from ScreenManager.update: lets each transport pump what it needs to (the HTTP
+	 *  transport closes pending connections that exceeded the idle deadline). */
+	public function tick():Void {
+		for (t in transports)
+			t.tick();
+	}
+
+	// ---- IDevBridgeHost: what the transports call ----
+
+	public function getToken():Null<String> {
+		return token;
+	}
+
+	/** Who this game is: a relay's `hello` and `window.hxDevBridge.info()` carry this. */
+	public function describeInstance():Dynamic {
+		final info:Dynamic = {
+			app: resolveAppName(),
+			session: session,
+			frame: hxd.Timer.frameCount,
+			paused: paused,
+			transports: [for (t in transports) t.describe],
+			ops: METHODS.copy(),
+			gameOps: [for (op in queryRegistry.keys()) op].concat([for (op in commandRegistry.keys()) op]),
+		};
+		#if (js && !hxnodejs)
+		info.title = js.Browser.document.title;
+		info.url = js.Browser.location.href;
+		#end
+		return info;
+	}
+
+	function resolveAppName():String {
+		final configured = DevBridgeConfig.get("HX_DEV_APP");
+		if (configured != null && configured != "") return configured;
+		final app = screenManager.app;
+		return app != null ? Type.getClassName(Type.getClass(app)) : "unknown";
+	}
+
+	/** A request body `{"method": ..., "params": ...}`: parse, dispatch, reply. */
+	public function handleRequestJson(body:String):DevBridgeReply {
+		var request:Dynamic = null;
+		try {
+			request = Json.parse(body);
+		} catch (e:Dynamic) {
+			return {status: 400, body: {ok: false, error: "Invalid JSON"}};
+		}
+		if (request == null || !Std.isOfType(request.method, String))
+			return {status: 400, body: {ok: false, error: "Invalid request: expected {method, params}", code: "invalid_params"}};
+		return handleCall(request.method, request.params);
+	}
+
+	/** An already-parsed call: dispatch it and shape the reply the same way for every transport. */
+	public function handleCall(method:String, params:Dynamic):DevBridgeReply {
+		if (!Std.isOfType(method, String))
+			return {status: 400, body: {ok: false, error: "Invalid request: method must be a string", code: "invalid_params"}};
+		if (params == null) params = {};
+
+		trace('[DevBridge] << $method');
+		try {
+			var result = dispatch(method, params);
+			trace('[DevBridge] >> $method OK');
+			return {status: 200, body: {ok: true, result: result}};
+		} catch (e:haxe.Exception) {
+			var code = "internal";
+			var httpStatus = 500;
+			if (Std.isOfType(e, DevBridgeError)) {
+				var de:DevBridgeError = cast e;
+				code = de.code;
+				httpStatus = de.httpStatus;
+			}
+			trace('[DevBridge] >> $method ERROR [$code]: ${e.message}');
+			if (code == "internal") trace('[DevBridge]    Stack: ${e.stack}');
+			return {status: httpStatus, body: {ok: false, error: e.message, code: code}};
+		} catch (e:Dynamic) {
+			trace('[DevBridge] >> $method ERROR (dynamic): $e');
+			return {status: 500, body: {ok: false, error: '$e', code: "internal"}};
+		}
 	}
 
 	// ---- Trace capture ----
@@ -174,8 +280,8 @@ class DevBridge {
 				self.traceDropped++;
 			}
 			self.traceBuffer.push(msg);
-			// Push to SSE clients
-			self.broadcastSseEvent("trace", {message: msg, timestamp: haxe.Timer.stamp()});
+			// Push to connected clients
+			self.pushEvent("trace", {message: msg, timestamp: haxe.Timer.stamp()});
 		};
 	}
 
@@ -186,60 +292,78 @@ class DevBridge {
 		}
 	}
 
-	// ---- SSE broadcast ----
+	#if (js && !hxnodejs)
+	// ---- Browser error capture ----
+	// Failures the Haxe side never sees (an uncaught exception from a callback, a failed promise, a
+	// lost WebGL context, a resource that failed to load) go into the error buffer, prefixed
+	// "[browser]" so get_errors tells them apart.
 
-	function handleSseConnect(clientSocket:Socket):Void {
-		var header = 'HTTP/1.1 200 OK\r\n'
-			+ 'Content-Type: text/event-stream\r\n'
-			+ 'Cache-Control: no-cache\r\n'
-			+ 'Connection: keep-alive\r\n'
-			+ 'Access-Control-Allow-Origin: *\r\n'
-			+ '\r\n';
-		var headerBytes = haxe.io.Bytes.ofString(header);
-		clientSocket.out.writeBytes(headerBytes, 0, headerBytes.length);
-		clientSocket.out.flush();
-		sseClients.push(clientSocket);
-		clientSocket.onError = (msg) -> {
-			sseClients.remove(clientSocket);
-			try clientSocket.close() catch (_:Dynamic) {};
+	function installBrowserErrorCapture():Void {
+		final window = js.Browser.window;
+		browserErrorListener = (event:js.html.Event) -> {
+			final e:Dynamic = event;
+			final target:Dynamic = event.target;
+			if (e.message == null && target != null && target != window) {
+				// A resource that failed to load (seen in the capture phase: img, script, link).
+				final src:Dynamic = target.src != null ? target.src : target.href;
+				reportError('[browser] failed to load ${target.tagName} $src', "");
+				return;
+			}
+			final where = e.filename != null && e.filename != "" ? ' (${e.filename}:${e.lineno}:${e.colno})' : "";
+			final err:Dynamic = e.error;
+			final stack:String = err != null && err.stack != null ? Std.string(err.stack) : "";
+			reportError('[browser] ${e.message}$where', stack);
 		};
-		trace('[DevBridge] SSE client connected (${sseClients.length} total)');
+		browserRejectionListener = (event:js.html.Event) -> {
+			final reason:Dynamic = (event : Dynamic).reason;
+			final message = reason != null && reason.message != null ? Std.string(reason.message) : Std.string(reason);
+			final stack:String = reason != null && reason.stack != null ? Std.string(reason.stack) : "";
+			reportError('[browser] unhandled promise rejection: $message', stack);
+		};
+		window.addEventListener("error", browserErrorListener, true);
+		window.addEventListener("unhandledrejection", browserRejectionListener);
+		final canvas:Null<js.html.CanvasElement> = @:privateAccess hxd.Window.getInstance().canvas;
+		if (canvas != null) {
+			contextLostListener = (_) -> reportError("[browser] WebGL context lost", "");
+			canvas.addEventListener("webglcontextlost", contextLostListener);
+		}
 	}
 
-	function broadcastSseEvent(event:String, data:Dynamic):Void {
-		if (sseBroadcasting || sseClients.length == 0) return;
-		sseBroadcasting = true;
+	function removeBrowserErrorCapture():Void {
+		final window = js.Browser.window;
+		if (browserErrorListener != null) {
+			window.removeEventListener("error", browserErrorListener, true);
+			browserErrorListener = null;
+		}
+		if (browserRejectionListener != null) {
+			window.removeEventListener("unhandledrejection", browserRejectionListener);
+			browserRejectionListener = null;
+		}
+		if (contextLostListener != null) {
+			final canvas:Null<js.html.CanvasElement> = @:privateAccess hxd.Window.getInstance().canvas;
+			if (canvas != null) canvas.removeEventListener("webglcontextlost", contextLostListener);
+			contextLostListener = null;
+		}
+	}
+	#end
+
+	// ---- Event push ----
+
+	/** Sends an event to every transport: `/sse` subscribers, a relay socket, the page's event ring.
+	 *  Guarded against re-entry, since a transport that fails traces, and a trace is an event. */
+	function pushEvent(event:String, data:Dynamic):Void {
+		if (eventBroadcasting || transports.length == 0) return;
+		eventBroadcasting = true;
 		try {
-			var json = Json.stringify(data);
-			var payload = 'event: $event\ndata: $json\n\n';
-			var bytes = haxe.io.Bytes.ofString(payload);
-			var dead:Array<Socket> = [];
-			for (client in sseClients) {
-				try {
-					client.out.writeBytes(bytes, 0, bytes.length);
-					client.out.flush();
-				} catch (e:Dynamic) {
-					dead.push(client);
-				}
-			}
-			for (d in dead) {
-				sseClients.remove(d);
-				try d.close() catch (_:Dynamic) {};
-			}
+			for (t in transports)
+				t.pushEvent(event, data);
 		} catch (e:Dynamic) {
-			trace('[DevBridge] SSE broadcast failed ($event): $e');
+			trace('[DevBridge] Event push failed ($event): $e');
 		}
-		sseBroadcasting = false;
+		eventBroadcasting = false;
 	}
 
-	function closeSseClients():Void {
-		for (client in sseClients) {
-			try client.close() catch (_:Dynamic) {};
-		}
-		sseClients = [];
-	}
-
-	// ---- SSE event sources ----
+	// ---- Event sources ----
 
 	var screenChangeListener:Null<bh.ui.screens.ScreenChangeListener> = null;
 	var reloadListener:Null<HotReload.ReloadListener> = null;
@@ -263,7 +387,7 @@ class DevBridge {
 	}
 
 	function onScreenChange(event:bh.ui.screens.ScreenChangeEvent):Void {
-		broadcastSseEvent("screen_change", {
+		pushEvent("screen_change", {
 			action: event.action,
 			mode: event.mode,
 			previousMode: event.previousMode,
@@ -277,7 +401,7 @@ class DevBridge {
 	function onReloadEvent(event:HotReload.ReloadEvent):Void {
 		switch event {
 			case ReloadStarted(file, fileType):
-				broadcastSseEvent("reload", {
+				pushEvent("reload", {
 					status: "started",
 					file: file,
 					fileType: switch fileType {
@@ -290,24 +414,24 @@ class DevBridge {
 				var payload = reloadReportToPayload(report);
 				payload.status = "succeeded";
 				payload.timestamp = haxe.Timer.stamp();
-				broadcastSseEvent("reload", payload);
+				pushEvent("reload", payload);
 			case ReloadFailed(report):
 				var payload = reloadReportToPayload(report);
 				payload.status = "failed";
 				payload.timestamp = haxe.Timer.stamp();
-				broadcastSseEvent("reload", payload);
+				pushEvent("reload", payload);
 			case ReloadNeedsRestart(report):
 				var payload = reloadReportToPayload(report);
 				payload.status = "needs_restart";
 				payload.timestamp = haxe.Timer.stamp();
-				broadcastSseEvent("reload", payload);
+				pushEvent("reload", payload);
 		}
 	}
 
 	/** Broadcast a custom debug event to all connected MCP clients.
 	 *  Use from game code for debugging: `screenManager.devBridge.broadcastCustomEvent("myEvent", {key: "value"})` */
 	public function broadcastCustomEvent(name:String, data:Dynamic):Void {
-		broadcastSseEvent("custom", {name: name, data: data, timestamp: haxe.Timer.stamp()});
+		pushEvent("custom", {name: name, data: data, timestamp: haxe.Timer.stamp()});
 	}
 
 	// ---- Custom game ops: registration API ----
@@ -351,7 +475,7 @@ class DevBridge {
 			gameEventDropped++;
 		}
 		gameEventBuffer.push(entry);
-		broadcastSseEvent("game_event", entry);
+		pushEvent("game_event", entry);
 	}
 
 	function assertOpNameFree(op:String):Void {
@@ -378,136 +502,8 @@ class DevBridge {
 			debuggerDropped++;
 		}
 		debuggerBuffer.push(entry);
-		broadcastSseEvent("debugger", entry);
+		pushEvent("debugger", entry);
 		if (pause) setPaused(true);
-	}
-
-	// ---- HTTP handling ----
-
-	function onClientConnected(clientSocket:Socket):Void {
-		var conn = new HttpConnection(clientSocket);
-		pendingConnections.push(conn);
-		clientSocket.onData = () -> {
-			try {
-				if (conn.processIncoming()) {
-					pendingConnections.remove(conn);
-					if (conn.headerOversized) {
-						sendJsonResponse(clientSocket, 431, {ok: false, error: "Request header fields too large"});
-						return;
-					}
-					if (conn.bodyOversized) {
-						sendJsonResponse(clientSocket, 413, {ok: false, error: "Payload too large"});
-						return;
-					}
-					var httpMethod = conn.getHttpMethod();
-					if (httpMethod == "OPTIONS") {
-						sendResponse(clientSocket, 204, "");
-					} else if (httpMethod == "GET" && conn.getPath() == "/sse") {
-						handleSseConnect(clientSocket);
-					} else if (httpMethod == "POST") {
-						handleRequest(conn.getBody(), clientSocket);
-					} else {
-						sendJsonResponse(clientSocket, 405, {ok: false, error: "Method not allowed. Use POST."});
-					}
-				}
-			} catch (e:Dynamic) {
-				pendingConnections.remove(conn);
-				sendJsonResponse(clientSocket, 400, {ok: false, error: 'Bad request: $e'});
-			}
-		};
-		clientSocket.onError = (msg) -> {
-			pendingConnections.remove(conn);
-		};
-	}
-
-	/** Called from ScreenManager.update — closes pending connections that
-	 *  exceeded the idle deadline so half-open clients can't park sockets. */
-	public function tick():Void {
-		if (pendingConnections.length == 0) return;
-		var now = haxe.Timer.stamp();
-		var i = pendingConnections.length;
-		while (i-- > 0) {
-			var conn = pendingConnections[i];
-			if (conn.isExpired(now)) {
-				pendingConnections.splice(i, 1);
-				try {
-					sendJsonResponse(conn.socket, 408, {ok: false, error: "Request timeout"});
-				} catch (_:Dynamic) {
-					try conn.socket.close() catch (_:Dynamic) {};
-				}
-			}
-		}
-	}
-
-	function handleRequest(body:String, clientSocket:Socket):Void {
-		var request:Dynamic = null;
-		try {
-			request = Json.parse(body);
-		} catch (e:Dynamic) {
-			sendJsonResponse(clientSocket, 400, {ok: false, error: "Invalid JSON"});
-			return;
-		}
-
-		var method:String = request.method;
-		var params:Dynamic = request.params;
-		if (params == null) params = {};
-
-		trace('[DevBridge] << $method');
-		try {
-			var result = dispatch(method, params);
-			trace('[DevBridge] >> $method OK');
-			sendJsonResponse(clientSocket, 200, {ok: true, result: result});
-		} catch (e:haxe.Exception) {
-			var code = "internal";
-			var httpStatus = 500;
-			if (Std.isOfType(e, DevBridgeError)) {
-				var de:DevBridgeError = cast e;
-				code = de.code;
-				httpStatus = de.httpStatus;
-			}
-			trace('[DevBridge] >> $method ERROR [$code]: ${e.message}');
-			if (code == "internal") trace('[DevBridge]    Stack: ${e.stack}');
-			sendJsonResponse(clientSocket, httpStatus, {ok: false, error: e.message, code: code});
-		} catch (e:Dynamic) {
-			trace('[DevBridge] >> $method ERROR (dynamic): $e');
-			sendJsonResponse(clientSocket, 500, {ok: false, error: '$e', code: "internal"});
-		}
-	}
-
-	function sendJsonResponse(clientSocket:Socket, statusCode:Int, body:Dynamic):Void {
-		sendResponse(clientSocket, statusCode, Json.stringify(body));
-	}
-
-	function sendResponse(clientSocket:Socket, statusCode:Int, body:String):Void {
-		var statusText = switch statusCode {
-			case 200: "OK";
-			case 204: "No Content";
-			case 400: "Bad Request";
-			case 405: "Method Not Allowed";
-			case 408: "Request Timeout";
-			case 413: "Payload Too Large";
-			case 431: "Request Header Fields Too Large";
-			case 500: "Internal Server Error";
-			default: "Unknown";
-		};
-
-		var bodyBytes = haxe.io.Bytes.ofString(body);
-		var header = 'HTTP/1.1 $statusCode $statusText\r\n'
-			+ 'Content-Type: application/json\r\n'
-			+ 'Access-Control-Allow-Origin: *\r\n'
-			+ 'Access-Control-Allow-Methods: POST, OPTIONS\r\n'
-			+ 'Access-Control-Allow-Headers: Content-Type\r\n'
-			+ 'Connection: close\r\n'
-			+ 'Content-Length: ${bodyBytes.length}\r\n'
-			+ '\r\n';
-
-		var headerBytes = haxe.io.Bytes.ofString(header);
-		clientSocket.out.writeBytes(headerBytes, 0, headerBytes.length);
-		if (bodyBytes.length > 0)
-			clientSocket.out.writeBytes(bodyBytes, 0, bodyBytes.length);
-
-		// Close after a short delay to allow data to flush
-		haxe.Timer.delay(() -> clientSocket.close(), 50);
 	}
 
 	// ---- Command dispatch ----
@@ -654,6 +650,15 @@ class DevBridge {
 		engine.popTarget();
 		renderTexture.dispose();
 
+		#if (js && !hxnodejs)
+		// format.png needs haxe.zip.Compress, which the browser target lacks; the browser has its own
+		// PNG encoder. The size is the render target's, so device pixel ratio does not change it.
+		return {
+			base64: encodePngInBrowser(pixels),
+			width: pixels.width,
+			height: pixels.height,
+		};
+		#else
 		pixels.convert(BGRA);
 		var rawLen = pixels.width * pixels.height * 4;
 		var rawBytes:haxe.io.Bytes;
@@ -677,7 +682,28 @@ class DevBridge {
 			width: w,
 			height: h,
 		};
+		#end
 	}
+
+	#if (js && !hxnodejs)
+	/** PNG-encodes captured pixels with a 2D canvas and returns the base64 payload. */
+	static function encodePngInBrowser(pixels:hxd.Pixels):String {
+		pixels.convert(RGBA);
+		final w = pixels.width;
+		final h = pixels.height;
+		final canvas = js.Browser.document.createCanvasElement();
+		canvas.width = w;
+		canvas.height = h;
+		final ctx = canvas.getContext2d();
+		final image = ctx.createImageData(w, h);
+		final src = new js.lib.Uint8Array(pixels.bytes.getData(), pixels.offset, w * h * 4);
+		image.data.set(cast src);
+		pixels.dispose();
+		ctx.putImageData(image, 0, 0);
+		final url = canvas.toDataURL("image/png");
+		return url.substr(url.indexOf(",") + 1);
+	}
+	#end
 
 	function handleInspectElement(params:Dynamic):Dynamic {
 		var screenName:String = params.screen;
@@ -728,7 +754,7 @@ class DevBridge {
 			throw DevBridgeError.notFound('No live BuilderResult found for programmable: $programmable');
 
 		found.setParameter(paramName, paramValue);
-		broadcastSseEvent("parameter_change", {
+		pushEvent("parameter_change", {
 			programmable: programmable,
 			param: paramName,
 			value: paramValue,
@@ -759,6 +785,20 @@ class DevBridge {
 
 	function handleReload(params:Dynamic):Dynamic {
 		var file:String = params.file;
+		var content:Null<String> = params.content;
+		if (content != null) {
+			// Reload from text the caller supplies. On JS this is the only way: a page cannot
+			// read the file, so the host (the MCP server, a test) sends what is on disk.
+			if (file == null)
+				throw DevBridgeError.invalidParams("reload with content needs file: the resource path it replaces (e.g. \"ui/menu.manim\")");
+			var contentReport = screenManager.hotReloadContent(file, content);
+			if (contentReport == null)
+				throw DevBridgeError.notFound('No loaded .manim with resource path "$file". Loaded: ${screenManager.loadedManimPaths().join(", ")}');
+			return reloadReportToPayload(contentReport);
+		}
+		#if (js && !hxnodejs)
+		throw DevBridgeError.notSupported("reload needs {file, content} on JS: a browser page cannot read the file itself");
+		#else
 		var resource:Null<hxd.res.Resource> = null;
 		if (file != null) {
 			try {
@@ -782,6 +822,7 @@ class DevBridge {
 			};
 		}
 		return reloadReportToPayload(report);
+		#end
 	}
 
 	static function reloadReportToPayload(report:HotReload.ReloadReport):Dynamic {
@@ -1047,6 +1088,10 @@ class DevBridge {
 	}
 
 	function handleQuit(params:Dynamic):Dynamic {
+		#if (js && !hxnodejs)
+		// The host page owns the game; closing it is the host's business, never hxd.System.exit().
+		throw DevBridgeError.notSupported("quit is not supported in a browser page: the page owns the game. Close the tab instead");
+		#end
 		trace("[DevBridge] Quit requested — exiting in 100ms");
 		// Delay exit so HTTP response can be sent
 		haxe.Timer.delay(() -> {
@@ -1202,7 +1247,7 @@ class DevBridge {
 		// Cap buffer size
 		if (errorBuffer.length > 100) errorBuffer.shift();
 		// Push to SSE clients
-		broadcastSseEvent("error", {message: message, stack: stackStr, timestamp: timestamp});
+		pushEvent("error", {message: message, stack: stackStr, timestamp: timestamp});
 	}
 
 	// ---- v2: Deep inspection ----
@@ -2198,145 +2243,9 @@ private class DevBridgeError extends haxe.Exception {
 
 	public static inline function unknownMethod(message:String):DevBridgeError
 		return new DevBridgeError("unknown_method", message, 404);
-}
 
-// ---- HTTP connection state ----
-
-private class HttpConnection {
-	public static final MAX_HEADER_BYTES = 64 * 1024;
-	public static final MAX_BODY_BYTES = 16 * 1024 * 1024;
-	public static final IDLE_TIMEOUT_SEC = 30.0;
-
-	public final socket:Socket;
-	public final connectedAt:Float;
-	public var lastActivityAt:Float;
-	public var headerOversized(default, null):Bool = false;
-	public var bodyOversized(default, null):Bool = false;
-
-	var headerBytes:haxe.io.Bytes;
-	var headerLength:Int = 0;
-	var headerSearchFrom:Int = 0;
-	var headersDone:Bool = false;
-	var contentLength:Int = 0;
-	var bodyBuf:haxe.io.BytesBuffer;
-	var bodyReceived:Int = 0;
-	var httpMethod:String = "";
-	var httpPath:String = "/";
-
-	public function new(socket:Socket) {
-		this.socket = socket;
-		this.headerBytes = haxe.io.Bytes.alloc(MAX_HEADER_BYTES);
-		this.bodyBuf = new haxe.io.BytesBuffer();
-		this.connectedAt = haxe.Timer.stamp();
-		this.lastActivityAt = this.connectedAt;
-	}
-
-	public inline function isExpired(now:Float):Bool {
-		return (now - lastActivityAt) > IDLE_TIMEOUT_SEC;
-	}
-
-	/** Returns true when the request is complete OR when an error flag
-	 *  (`headerOversized` / `bodyOversized`) is set — caller must inspect
-	 *  the flags and send the appropriate error response. */
-	public function processIncoming():Bool {
-		var input = socket.input;
-		var avail = input.available;
-		if (avail <= 0) return headersDone && bodyReceived >= contentLength;
-		lastActivityAt = haxe.Timer.stamp();
-
-		if (!headersDone) {
-			var room = MAX_HEADER_BYTES - headerLength;
-			var toRead = avail < room ? avail : room;
-			if (toRead > 0) {
-				headerLength += input.readBytes(headerBytes, headerLength, toRead);
-			}
-
-			// Search only the unscanned tail (back up needle.length-1 to catch a straddling boundary).
-			// Headers are ASCII per RFC 7230, so byte offsets match string indices when decoded as UTF-8.
-			var headers = headerBytes.getString(0, headerLength);
-			var startSearch = headerSearchFrom - 3;
-			if (startSearch < 0) startSearch = 0;
-			var endIdx = headers.indexOf("\r\n\r\n", startSearch);
-			if (endIdx >= 0) {
-				headersDone = true;
-				httpMethod = parseHttpMethod(headers);
-				httpPath = parseRequestPath(headers);
-				contentLength = parseContentLength(headers);
-				if (contentLength < 0) contentLength = 0;
-				if (contentLength > MAX_BODY_BYTES) {
-					bodyOversized = true;
-					return true;
-				}
-				var bodyStartOffset = endIdx + 4;
-				var bodyStartLen = headerLength - bodyStartOffset;
-				if (bodyStartLen > 0) {
-					bodyBuf.addBytes(headerBytes, bodyStartOffset, bodyStartLen);
-					bodyReceived += bodyStartLen;
-				}
-			} else {
-				headerSearchFrom = headerLength;
-				if (headerLength >= MAX_HEADER_BYTES) {
-					headerOversized = true;
-					return true;
-				}
-				return false;
-			}
-		}
-
-		if (headersDone) {
-			var available = input.available;
-			var remaining = contentLength - bodyReceived;
-			var toRead = available < remaining ? available : remaining;
-			if (toRead > 0) {
-				var buf = haxe.io.Bytes.alloc(toRead);
-				var read = input.readBytes(buf, 0, toRead);
-				bodyBuf.addBytes(buf, 0, read);
-				bodyReceived += read;
-			}
-		}
-		return headersDone && bodyReceived >= contentLength;
-	}
-
-	public function getHttpMethod():String {
-		return httpMethod;
-	}
-
-	public function getPath():String {
-		return httpPath;
-	}
-
-	public function getBody():String {
-		return bodyBuf.getBytes().toString();
-	}
-
-	static function parseHttpMethod(headers:String):String {
-		var spaceIdx = headers.indexOf(" ");
-		if (spaceIdx < 0) return "GET";
-		return headers.substr(0, spaceIdx);
-	}
-
-	static function parseRequestPath(headers:String):String {
-		var firstSpace = headers.indexOf(" ");
-		if (firstSpace < 0) return "/";
-		var secondSpace = headers.indexOf(" ", firstSpace + 1);
-		if (secondSpace < 0) secondSpace = headers.indexOf("\r", firstSpace + 1);
-		if (secondSpace < 0) return "/";
-		var path = headers.substring(firstSpace + 1, secondSpace);
-		var queryIdx = path.indexOf("?");
-		if (queryIdx >= 0) path = path.substr(0, queryIdx);
-		return path;
-	}
-
-	static function parseContentLength(headers:String):Int {
-		var lower = headers.toLowerCase();
-		var idx = lower.indexOf("content-length:");
-		if (idx < 0) return 0;
-		var valueStart = idx + 15;
-		var lineEnd = headers.indexOf("\r\n", valueStart);
-		if (lineEnd < 0) lineEnd = headers.length;
-		var value = StringTools.trim(headers.substring(valueStart, lineEnd));
-		var parsed = Std.parseInt(value);
-		return parsed != null ? parsed : 0;
-	}
+	/** An op this target cannot do (on JS: `quit`, `reload` without `content`). */
+	public static inline function notSupported(message:String):DevBridgeError
+		return new DevBridgeError("not_supported", message, 501);
 }
 #end
