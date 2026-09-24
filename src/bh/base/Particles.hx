@@ -825,6 +825,12 @@ class ParticleGroup {
 					p.visible = true;
 					triggerSubEmitters(p, OnBirth);
 				}
+			} else {
+				// Not born yet: no tile until init() runs, so it must not be drawn. update()
+				// hides a waiting particle too, but an externally driven group's update()
+				// returns before that until its next advanceTime(), and a group started by
+				// Particles.sync() is drawn before then (a second render in the same frame).
+				p.visible = false;
 			}
 			batch.add(p);
 		}

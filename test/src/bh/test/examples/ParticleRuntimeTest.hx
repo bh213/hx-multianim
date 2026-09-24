@@ -899,6 +899,35 @@ class ParticleRuntimeTest extends utest.Test {
 	}
 
 	@Test
+	public function testExternallyDrivenParticlesNotYetBornStayHidden():Void {
+		// A group started by Particles.sync() rather than advanceTime() parks its
+		// not-yet-born particles in the batch before init() has given them a tile. An
+		// externally driven group's update() returns early until the next advanceTime(),
+		// so if start() left them visible, a draw before that advance (a second render
+		// in the same frame) handed SpriteBatch.flush a visible element with no tile.
+		var p = createParticles();
+		var g = createGroup("main", p, true);
+		g.externallyDriven = true;
+		var dg:Dynamic = g;
+		dg.emitSync = 0;
+		dg.emitDelay = 5.0; // every particle is still waiting to be born
+
+		g.start();
+		var e = g.batch.first;
+		Assert.notNull(e);
+		var seen = 0;
+		while (e != null) {
+			Assert.isFalse(e.visible, "a particle that has not been born yet must not be drawn");
+			// no advanceTime since start: update() returns early and must leave it hidden
+			Assert.isTrue(e.update(0.016));
+			Assert.isFalse(e.visible, "still not born, still not drawn");
+			seen++;
+			e = e.next;
+		}
+		Assert.equals(20, seen);
+	}
+
+	@Test
 	public function testExternallyDrivenAdvanceTimeMovesParticles():Void {
 		var p = createParticles();
 		var g = createGroup("main", p, true);
