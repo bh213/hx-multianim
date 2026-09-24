@@ -50,6 +50,7 @@
 | `@final name = expr` | Immutable named constant |
 | `#name data {...}` | Static typed data block |
 | `#name atlas2("file") {...}` | Inline sprite atlas |
+| `#name autotile {...}` | Terrain tileset: `format: corner` (16, dual grid) / `blob47` / `cross`; source `file:`+`region:` / `sheet:`+`prefix:` / `tiles:` / `demo:`; `mapping:` autotile index -> source index. Build with `builder.buildAutotile(name, grid)`; single tile `generated(autotile(name, index))` |
 | `curves {...}` | 1D curve definitions |
 | `paths {...}` | Path definitions |
 | `#name animatedPath {...}` | Animated path with curves/events |

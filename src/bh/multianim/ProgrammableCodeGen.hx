@@ -8005,16 +8005,11 @@ class ProgrammableCodeGen {
 							if (tc >>> 24 == 0) tc |= 0xFF000000;
 							this._pb.generateColorWithTextTile($wExpr, $hExpr, c, "" + $textExpr, tc, $fontExpr);
 						};
-					case AutotileRef(autotileName, selector):
+					case AutotileRef(autotileName, index):
 						final nameExpr = rvToExpr(autotileName);
-						switch (selector) {
-							case ByIndex(index):
-								final indexExpr = rvToExpr(index);
-								macro this._pb.getAutotileTileByIndex($nameExpr, $indexExpr);
-							case ByEdges(edges):
-								final edgesExpr:Expr = macro $v{edges};
-								macro this._pb.getAutotileTileByIndex($nameExpr, $edgesExpr);
-						};
+						// Integer context: mirror the builder's resolveAsInteger truncation.
+						final indexExpr = rvToExprInt(index);
+						macro this._pb.getAutotileTileByIndex($nameExpr, $indexExpr);
 					case AutotileRegionSheet(autotileName, scale, font, fontColor):
 						final nameExpr = rvToExpr(autotileName);
 						final scaleExpr = rvToExpr(scale);

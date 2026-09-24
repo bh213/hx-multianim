@@ -161,6 +161,9 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/30-blob47Fallback/blob47Fallback.manim", "blob47Fallback")
 	public var blob47Fallback;
 
+	@:manim("test/examples/153-autotileCorner/autotileCorner.manim", "autotileCorner")
+	public var autotileCorner;
+
 	@:manim("test/examples/54-codegenPaletteReplace/codegenPaletteReplace.manim", "codegenPaletteReplace")
 	public var paletteReplace;
 

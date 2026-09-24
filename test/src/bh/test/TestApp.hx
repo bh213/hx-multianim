@@ -83,6 +83,7 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.ParserErrorTest());
 		testRunner.addCase(new bh.test.examples.AnimParserTest());
 		testRunner.addCase(new bh.test.examples.BuilderUnitTest());
+		testRunner.addCase(new bh.test.examples.AutotileTest());
 		testRunner.addCase(new bh.test.examples.UIComponentTest());
 		testRunner.addCase(new bh.test.examples.UITooltipHelperTest());
 		testRunner.addCase(new bh.test.examples.UIPanelHelperTest());

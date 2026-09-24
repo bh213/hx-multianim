@@ -18,7 +18,7 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `#name layouts { ... }` | Define named coordinate layouts for positioning |
 | `#name atlas2("file") { ... }` | Define inline sprite atlas from image file |
 | `#name palette { ... }` | Define color palette |
-| `#name autotile { ... }` | Define procedural auto-tile set |
+| `#name autotile { ... }` | Autotile terrain set (`corner` / `blob47` / `cross`) |
 | `@final name = expr` | Declare immutable named constant |
 
 ---
@@ -120,8 +120,8 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `generated(color(w, h, #color))` | Solid color rectangle |
 | `generated(cross(w, h, color, thickness))` | Cross/X marker |
 | `generated(colorwithtext(w, h, color, text, textColor, font))` | Colored rect with text label |
-| `generated(autotile(name, selector))` | Tile from autotile definition |
-| `generated(autotileregionsheet(name, scale, font, color))` | Autotile debug visualization |
+| `generated(autotile(name, index))` | Resolved tile of an autotile definition |
+| `generated(autotileRegionSheet(name, scale, font, color))` | `file:` autotile region with source indices overlaid (debug) |
 | `$variable` | Tile from parameter or iterator variable |
 | `center(source)` | Set tile pivot to center (0.5, 0.5) — shorthand for `pivot(0.5, 0.5, source)`. Nested pivot/center rejected at parse time |
 | `pivot(x, y, source)` | Set tile pivot point (0–1 ratio, validated at parse time). Overrides bitmap's hAlign/vAlign. Nested pivot/center rejected at parse time |
@@ -766,14 +766,18 @@ Access: `palette(name, index)` or `palette(name, x, y)` for 2D.
 
 ## Autotile
 
+`#name autotile { ... }` (root level). Build terrain with `builder.buildAutotile(name, grid)` (`grid[y][x]`, non-zero = terrain); single tiles with `builder.getAutotileTile(name, index)` or `generated(autotile(name, index))`.
+
 | Property | Description |
 |----------|-------------|
-| `format` | Tile format: `cross` (13 tiles) or `blob47` (47 tiles) |
-| `tileSize` | Size of each tile in pixels |
-| `source` | Tile source: `sheet(...)`, `file(...)`, `tiles: [...]`, or `demo(edgeColor, fillColor)` |
-| `depth` | Isometric elevation depth (cross format) |
-| `mapping` | Custom index-to-tile mapping (blob47) |
-| `allowPartialMapping` | Allow incomplete tile mappings with fallback |
+| `format` | `corner` (16 tiles, dual grid: one tile per grid corner, index `NW 1 + NE 2 + SW 4 + SE 8`, 0 never drawn), `blob47` (47 tiles, one per cell, 8 neighbours), `cross` (13 tiles, one per cell) |
+| `tileSize` | Tile size in pixels |
+| source (exactly one) | `file: "img.png"` (tiles of `region:`, row-major), `sheet: "atlas", prefix: "p"` (atlas tile `p<j>`), `tiles: <src> <src> ...` (listed tile sources), `demo: edgeColor, fillColor` (generated placeholders) |
+| `region` | `[x, y, w, h]`, `file:` source only; must fit the image and be whole tiles. Default: whole image |
+| `mapping` | Autotile index -> source index: `[a, b, ...]` (position = index) or `[i:j, ...]`. Keys validated per format; duplicates rejected; not allowed with `demo:` |
+| `allowPartialMapping` | `blob47` only: unmapped indices use the closest mapped tile instead of a build error |
+
+Every index must resolve to a tile (build-time `BuilderError` codes `autotile_missing_tile`, `autotile_index`, `autotile_region`), except corner index 0 and blob47 with `allowPartialMapping`. Removed: `depth:` / `buildAutotileElevation`, `sheet: ..., region: [...]` (use `file:` + `region:`).
 
 ---
 

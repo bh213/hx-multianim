@@ -1720,9 +1720,9 @@ class MacroManimParser {
 				expect(TOpen);
 				final name = parseStringOrReference();
 				expect(TComma);
-				final selector = parseAutotileTileSelector();
+				final index = parseIntegerOrReference();
 				expect(TClosed);
-				return AutotileRef(name, selector);
+				return AutotileRef(name, index);
 			case TIdentifier(s) if (isKeyword(s, "autotileregionsheet")):
 				advance();
 				expect(TOpen);
@@ -1738,10 +1738,6 @@ class MacroManimParser {
 			default:
 				return error("unknown generated tile type");
 		}
-	}
-
-	function parseAutotileTileSelector():AutotileTileSelector {
-		return ByIndex(parseIntegerOrReference());
 	}
 
 	// ===================== Parameter Definitions =====================
@@ -6528,10 +6524,15 @@ class MacroManimParser {
 		var format:Null<AutotileFormat> = null;
 		var source:Null<AutotileSource> = null;
 		var tileSize:Null<ReferenceableValue> = null;
-		var depth:Null<ReferenceableValue> = null;
 		var mapping:Null<Map<Int, Int>> = null;
 		var region:Null<Array<ReferenceableValue>> = null;
 		var allowPartialMapping:Bool = false;
+
+		function setSource(s:AutotileSource) {
+			if (source != null)
+				error("autotile has more than one source (use exactly one of sheet:, file:, tiles:, demo:)");
+			source = s;
+		}
 
 		while (!match(TCurlyClosed)) {
 			switch (peek()) {
@@ -6545,8 +6546,11 @@ class MacroManimParser {
 						case TIdentifier(s2) if (isKeyword(s2, "blob47")):
 							advance();
 							format = Blob47;
+						case TIdentifier(s2) if (isKeyword(s2, "corner")):
+							advance();
+							format = Corner;
 						default:
-							error("expected cross or blob47");
+							error("expected cross, blob47 or corner");
 					}
 				case TIdentifier(s) if (isKeyword(s, "sheet")):
 					advance();
@@ -6558,46 +6562,37 @@ class MacroManimParser {
 							advance();
 							expect(TColon);
 							final prefix = parseStringOrReference();
-							source = ATSAtlas(sheet, prefix);
+							setSource(ATSAtlas(sheet, prefix));
 						case TIdentifier(s2) if (isKeyword(s2, "region")):
-							advance();
-							expect(TColon);
-							expect(TBracketOpen);
-							var regionVals:Array<ReferenceableValue> = [];
-							while (!match(TBracketClosed)) {
-								eatComma();
-								if (match(TBracketClosed)) break;
-								regionVals.push(parseIntegerOrReference());
-							}
-							source = ATSAtlasRegion(sheet, regionVals);
+							error('autotile "sheet: ..., region: [...]" is not supported - use file: "image.png" with region: [x, y, w, h]');
 						default:
-							error("expected prefix or region after sheet");
+							error("expected prefix: after sheet");
 					}
 				case TIdentifier(s) if (isKeyword(s, "file")):
 					advance();
 					expect(TColon);
 					final filename = parseStringOrReference();
-					source = ATSFile(filename);
+					setSource(ATSFile(filename));
 				case TIdentifier(s) if (isKeyword(s, "tiles")):
 					advance();
 					expect(TColon);
 					final tiles = parseTileSources();
-					source = ATSTiles(tiles);
+					if (tiles.length == 0)
+						error("autotile tiles: needs at least one tile source");
+					setSource(ATSTiles(tiles));
 				case TIdentifier(s) if (isKeyword(s, "demo")):
 					advance();
 					expect(TColon);
 					final edgeColor = parseColorOrReference();
 					expect(TComma);
 					final fillColor = parseColorOrReference();
-					source = ATSDemo(edgeColor, fillColor);
+					setSource(ATSDemo(edgeColor, fillColor));
 				case TIdentifier(s) if (isKeyword(s, "tilesize")):
 					advance();
 					expect(TColon);
 					tileSize = parseIntegerOrReference();
 				case TIdentifier(s) if (isKeyword(s, "depth")):
-					advance();
-					expect(TColon);
-					depth = parseIntegerOrReference();
+					error("autotile depth: was removed (elevation rendering is not supported)");
 				case TIdentifier(s) if (isKeyword(s, "mapping")):
 					advance();
 					expect(TColon);
@@ -6617,20 +6612,49 @@ class MacroManimParser {
 						if (match(TBracketClosed)) break;
 						region.push(parseIntegerOrReference());
 					}
+					if (region.length != 4)
+						error('autotile region: expects [x, y, width, height], got ${region.length} values');
 				default:
 					error('unexpected autotile property: ${peek()}');
 			}
 		}
 
 		if (format == null) { error("autotile requires format"); return cast null; }
-		if (source == null) { error("autotile requires source"); return cast null; }
+		if (source == null) { error("autotile requires a source (sheet:, file:, tiles: or demo:)"); return cast null; }
 		if (tileSize == null) { error("autotile requires tileSize"); return cast null; }
 
+		final fmt:AutotileFormat = cast format;
+		final src:AutotileSource = cast source;
+		if (region != null) {
+			switch (src) {
+				case ATSFile(_):
+				default: error("autotile region: only applies to a file: source");
+			}
+		}
+		if (allowPartialMapping && fmt != Blob47)
+			error("autotile allowPartialMapping: only applies to format: blob47");
+		if (mapping != null) {
+			switch (src) {
+				case ATSDemo(_, _): error("autotile demo: source generates its own tiles and does not take mapping:");
+				default:
+			}
+			final indexCount = switch (fmt) {
+				case Cross: bh.base.Autotile.CROSS_TILE_COUNT;
+				case Blob47: bh.base.Autotile.BLOB47_TILE_COUNT;
+				case Corner: bh.base.Autotile.CORNER_TILE_COUNT;
+			};
+			for (key => target in mapping) {
+				if (key < 0 || key >= indexCount)
+					error('autotile mapping key $key is not a valid index for this format (0-${indexCount - 1})');
+				if (target < 0)
+					error('autotile mapping $key:$target - source index must be >= 0');
+			}
+		}
+
 		return {
-			format: cast format,
-			source: cast source,
+			format: fmt,
+			source: src,
 			tileSize: cast tileSize,
-			depth: depth,
 			mapping: mapping,
 			region: region,
 			allowPartialMapping: allowPartialMapping
@@ -6638,18 +6662,22 @@ class MacroManimParser {
 	}
 
 	function parseAutotileMapping():Map<Int, Int> {
+		// Two entry forms, may be mixed: `target` (key = position in the list) or `key:target`.
 		var map:Map<Int, Int> = new Map();
 		var seqIdx = 0;
 		while (!match(TBracketClosed)) {
 			eatComma();
 			if (match(TBracketClosed)) break;
 			final idx = parseInteger();
+			var key = seqIdx;
+			var target = idx;
 			if (match(TColon)) {
-				final target = parseInteger();
-				map.set(idx, target);
-			} else {
-				map.set(seqIdx, idx);
+				key = idx;
+				target = parseInteger();
 			}
+			if (map.exists(key))
+				error('autotile mapping has more than one entry for index $key');
+			map.set(key, target);
 			seqIdx++;
 		}
 		return map;

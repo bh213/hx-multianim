@@ -1433,159 +1433,155 @@ Collections of colors accessed by index.
 
 ## Autotile
 
-Root-level element for procedural terrain/tileset generation. Autotiles automatically select the correct tile variant based on neighboring tiles.
+Root-level element for procedural terrain. An autotile names a tileset and an index scheme; `builder.buildAutotile(name, grid)` then picks the right tile for every cell (or grid corner) from its neighbours and returns an `h2d.TileGroup`.
 
 ### Basic Syntax
 
 ```
 #name autotile {
-    format: cross | blob47
+    format: corner | blob47 | cross
     tileSize: <int>
     <source>
-    [optional properties]
+    [mapping: [...]]
+    [region: [x, y, w, h]]          // file: source only
+    [allowPartialMapping: true]     // blob47 only
 }
 ```
 
 ### Formats
 
-| Format | Tiles | Description |
-|--------|-------|-------------|
-| `cross` | 13 | Cardinal directions + corners (N, E, S, W, C, outer corners, inner corners) |
-| `blob47` | 47 | Full 8-directional coverage with all edge/corner combinations |
+| Format | Tiles | Placement | Use when |
+|--------|-------|-----------|----------|
+| `corner` | 16 | One tile per grid **corner** (dual grid, offset by half a tile). Index = which of the 4 cells around the corner are terrain: `NW 1 + NE 2 + SW 4 + SE 8`. Index 0 is never drawn. | Your tileset is a 3x3 patch + 4 inner corners + 2 diagonals (15 tiles, the 16th is the plain background) - the most common two-terrain layout. Covers **every** grid configuration, including isolated cells, 1-wide strips and diagonal touches. |
+| `blob47` | 47 | One tile per filled cell, chosen from all 8 neighbours (a diagonal only counts when both adjacent sides are present). | Your tileset has the full 47-tile blob layout. With fewer tiles, see [Partial mapping](#partial-mapping-blob47). |
+| `cross` | 13 | One tile per filled cell: 4 edges, center, 4 outer + 4 inner corners (`0=N 1=W 2=C 3=E 4=S`, `5-8` = NW/NE/SW/SE outer, `9-12` = NE/NW/SE/SW inner). | Legacy 13-tile sets. Cannot express isolated cells, 1-wide strips or two missing diagonals (they render as the center tile). |
+
+Edge tiles are named after the side that **borders empty space**: the `N edge` tile is used for a cell with no terrain to its north. Inner corners are named after the missing diagonal.
+
+The `corner` format draws `(w + 1) x (h + 1)` tiles for a `w x h` grid, so the TileGroup extends half a tile past the grid on every side; the terrain itself still lines up with the cells. Use an even `tileSize`.
 
 ### Source Types
 
-One source type is required:
+Exactly one source is required. Every source is addressed by a **source index** `j`; `mapping:` maps autotile index -> source index (identity when absent).
 
-**Atlas with prefix:**
-```
-sheet: "sheetName", prefix: "tile_"
-```
-Loads tiles named `tile_0`, `tile_1`, etc. from atlas.
-
-**Atlas with region:**
-```
-sheet: "sheetName", region: [x, y, width, height]
-```
-Extracts tiles from a rectangular region of the atlas. **Requires `mapping:`** since region tiles are rarely in autotile index order.
-
-**Image file:**
-```
-file: "filename.png"
-```
-Loads tiles from an image file. Use with `region:` to specify tile area. **Requires `mapping:`** when using a region.
-
-**Explicit tiles:**
-```
-tiles: sheet("atlas", "tile1") sheet("atlas", "tile2") generated(color(16,16,red)) ...
-```
-List of explicit tile sources for full control.
-
-**Demo (auto-generated):**
-```
-demo: edgeColor, fillColor
-```
-Generates placeholder tiles for prototyping. Shows edge/fill colors to visualize tile variants.
-
-### Optional Properties
-
-| Property | Description |
-|----------|-------------|
-| `region: [x, y, w, h]` | For file source: extract tiles from this region only |
-| `depth: <int>` | Isometric elevation depth |
-| `mapping: [...]` | Remap tile indices (see below) |
-| `allowPartialMapping: true` | For blob47: missing tiles use fallback instead of error |
+| Source | Source index `j` |
+|--------|-----------------|
+| `file: "tileset.png"` | `j`-th tile (row-major) of `region: [x, y, w, h]`, or of the whole image without `region:`. The region must fit the image and be a whole number of tiles. |
+| `sheet: "atlasName", prefix: "tile_"` | atlas tile named `tile_<j>` (works with inline `atlas2` blocks). |
+| `tiles: <tile source> <tile source> ...` | `j`-th listed tile source (`sheet(...)`, `file(...)`, `generated(...)`, ...). |
+| `demo: edgeColor, fillColor` | Generated placeholder tiles, one per autotile index (all in one texture). Takes no `mapping:`. |
 
 ### Mapping
 
-Maps autotile indices to tileset indices. **Required for region-based sources** because tileset artists rarely arrange tiles in autotile index order.
+`mapping:` maps autotile indices to source indices. Keys must be valid indices for the format (checked at parse time); duplicate keys are an error.
 
-Autotile indices encode which neighbors are present:
-- **cross format**: 0-12, encoding cardinal directions and corners
-- **blob47 format**: 0-46, encoding all 8-directional neighbor combinations
-
-Two mapping formats:
-
-**Sequential:** Position in array = autotile index, value = tileset index
+**Sequential:** position in the list = autotile index
 ```
 mapping: [4, 7, 3, 6]  // autotile 0->4, 1->7, 2->3, 3->6
 ```
 
-**Explicit:** `autotileIndex:tilesetIndex` pairs (recommended for partial mapping)
+**Explicit:** `autotileIndex:sourceIndex` pairs (recommended when not every index is mapped)
 ```
 mapping: [0:4, 1:7, 5:1, 13:5]
 ```
 
+Every autotile index needs a tile, otherwise building fails with a `BuilderError` naming the index - with two exceptions: `corner` index 0 (never drawn) and `blob47` with `allowPartialMapping: true`. A mapping target outside the source (e.g. past the end of the region) is an error too.
+
+Use `generated(autotileRegionSheet(...))` (below) to see the source indices of a `file:` region.
+
 ### Partial Mapping (blob47)
 
-Full blob47 coverage requires 47 distinct tiles, but many tilesets only provide a subset (typically 13-20 tiles for basic terrain). Use `allowPartialMapping: true` to enable automatic fallback:
+Many tilesets only provide a subset of the 47 blob tiles. With `allowPartialMapping: true`, an unmapped blob47 index uses the closest mapped tile: same sides with the closest diagonal combination first (fewest mismatched diagonals), then fewer sides, then the full tile (46), then the isolated tile (0). The same applies to a `tiles:` list shorter than 47 without a mapping.
 
-```
-allowPartialMapping: true
-mapping: [
-    0:4,    // isolated tile
-    1:7,    // N neighbor only
-    // ... only map tiles that exist in your tileset
-]
-```
-
-**Fallback behavior:** When a blob47 index isn't mapped, the system finds a simpler tile that still looks correct:
-- Unmapped corner combinations fall back to edge-only tiles
-- Complex patterns fall back to simpler patterns with the same cardinal edges
-- This allows a 15-tile tileset to work with the full 47-tile system
-
-See [test/examples/32-blob47Fallback/](../test/examples/32-blob47Fallback/) for a working example with the Forgotten Plains tileset.
+Fallback can only approximate: a 15-tile patch has no tiles for isolated cells or 1-wide strips, so those render as plain center tiles. Many packs ship the missing pieces elsewhere on the sheet (single blob, strip caps, 1-wide paths, T-junctions) - point `region:` at the whole area and map them; [test/examples/30-blob47Fallback/](../test/examples/30-blob47Fallback/) maps 35 of the 47 indices from the Forgotten Plains dirt tiles this way. If your tileset is only a 3x3 patch + inner corners + diagonals, use `format: corner` instead - it needs no fallback.
 
 ### Examples
+
+**Corner set from a tileset region** (the Forgotten Plains dirt patch, see [test/examples/153-autotileCorner/](../test/examples/153-autotileCorner/)):
+```
+#dirt autotile {
+    format: corner
+    tileSize: 8
+    file: "Tileset/Minifantasy_ForgottenPlainsTiles.png"
+    region: [56, 24, 24, 40]    // 3x5 tiles: 3x3 patch, then inner corners + diagonals
+    mapping: [
+        1:8, 2:6, 3:7, 4:2, 5:5, 6:11, 7:13, 8:0,
+        9:14, 10:3, 11:12, 12:1, 13:10, 14:9, 15:4
+    ]
+}
+```
+
+**Corner set named by index in an inline atlas** (no mapping needed):
+```
+#fp atlas2("Tileset/Minifantasy_ForgottenPlainsTiles.png") {
+    dirt1: 72, 40, 8, 8     // dirt in the NW corner only
+    dirt2: 56, 40, 8, 8     // NE only
+    // ... dirt3 .. dirt15
+}
+#dirt autotile { format: corner  tileSize: 8  sheet: "fp", prefix: "dirt" }
+```
 
 **Demo autotile for prototyping:**
 ```
 #terrainDemo autotile {
     format: blob47
     tileSize: 16
-    demo: 0x66AA44, 0x886644    // green edges, brown fill
+    demo: #66AA44, #886644    // green edges, brown fill
 }
 ```
-See [test/examples/31-autotile/](../test/examples/31-autotile/) for cross and blob47 demo examples.
+See [test/examples/24-autotileCross/](../test/examples/24-autotileCross/), [25-autotileBlob47/](../test/examples/25-autotileBlob47/) and [28-autotileDemoSyntax/](../test/examples/28-autotileDemoSyntax/).
 
-**Tileset with region and partial mapping:**
+**Blob47 with partial mapping** (minimal sketch; [test/examples/30-blob47Fallback/](../test/examples/30-blob47Fallback/) has a full 35-tile mapping):
 ```
-#grassTerrain autotile {
+#dirtBlob autotile {
     format: blob47
     tileSize: 8
     file: "tileset.png"
     region: [56, 24, 24, 40]
     allowPartialMapping: true
     mapping: [
-        0:4,    // isolated tile
-        1:7,    // N neighbor
-        5:1,    // S neighbor
-        13:5,   // W neighbor
-        21:4    // all neighbors (center)
-        // unmapped tiles use fallback
+        0:4,    // isolated
+        1:7,    // dirt to the N -> S edge tile
+        5:1,    // dirt to the S -> N edge tile
+        46:4    // all neighbours -> center
+        // unmapped indices use the fallback
     ]
 }
 ```
-See [test/examples/32-blob47Fallback/](../test/examples/32-blob47Fallback/) for a complete partial mapping example.
+
+### Building terrain from code
+
+```haxe
+// grid[y][x], any non-zero value = terrain
+var grid = [
+    [0, 1, 1, 0],
+    [1, 1, 1, 1],
+    [0, 1, 1, 0]
+];
+var terrain:h2d.TileGroup = builder.buildAutotile("dirt", grid);
+scene.addChild(terrain);
+
+// Single resolved tile (after mapping / fallback):
+var tile:h2d.Tile = builder.getAutotileTile("dirt", 15);
+```
+
+Tiles are resolved once per builder and cached, so rebuilding the TileGroup on every edit is cheap. Index math (`getNeighborMask8`, `getCornerIndex`, `getBlob47Index`, `getCrossIndex`, `getBlob47FallbackChain`) is available in `bh.base.Autotile`.
 
 ### Using Autotile Tiles
 
-Reference autotile tiles in `generated()` expressions:
+Reference a resolved autotile tile in `generated()` expressions by index (0-12 cross, 0-46 blob47, 0-15 corner):
 
 ```
-// By index (0-12 for cross, 0-46 for blob47)
 bitmap(generated(autotile("terrainDemo", 0)))
-
-// By edge flags (N, E, S, W, NE, SE, SW, NW)
-bitmap(generated(autotile("terrainDemo", N|E|S|W)))
+bitmap(generated(autotile("dirt", $i)))
 ```
 
 ### Debugging with Region Sheet
 
-Visualize the tileset region with numbered grid:
+Visualize a `file:` source's region with each tile's source index overlaid:
 
 ```
-bitmap(generated(autotileRegionSheet("grassTerrain", 4, "f3x5", white)))
+bitmap(generated(autotileRegionSheet("dirt", 4, "f3x5", white)))
 ```
 
 ---
@@ -2496,16 +2492,12 @@ updatable.setObject(particles);
 * `generated(cross(width, height, color[, thickness]))` - generated cross (thickness default: 1)
 * `generated(color(width, height, color))` - solid color
 * `generated(colorWithText(width, height, color, text, textColor, font))` - solid color with text
-* `generated(autotile("name", selector))` - demo tile from autotile definition
-  - By index: `autotile("grassTerrain", 0)` - select tile by index (0-12 for cross, 0-46 for blob47)
-  - By edges: `autotile("grassTerrain", N+E+S+W)` - select tile by neighbor flags
-  - Edge flags: `N`, `E`, `S`, `W` (cardinals), `NE`, `SE`, `SW`, `NW` (corners)
-  - Requires autotile with `demo: edgeColor, fillColor` defined
-* `generated(autotileRegionSheet("name", scale, "font", fontColor))` - visualization of autotile region with numbered grid
-  - Displays the complete region of an autotile with tile indices overlaid
-  - Useful for debugging and identifying which tile index corresponds to which visual
+* `generated(autotile("name", index))` - resolved tile of an autotile definition (after mapping / fallback), any source
+  - Index range: 0-12 for cross, 0-46 for blob47, 0-15 for corner (corner 0 is transparent unless the source provides it)
+* `generated(autotileRegionSheet("name", scale, "font", fontColor))` - visualization of an autotile's image region with numbered grid
+  - Displays the region of a `file:` autotile with each tile's source index (the numbers `mapping:` targets) overlaid
   - `scale` - scale factor for tiles (font remains at original size for readability)
-  - Requires autotile with `region` defined (file source or atlas region)
+  - Requires a `file:` source (whole image when no `region:` is set)
 
 ### Tile Source Modifiers
 

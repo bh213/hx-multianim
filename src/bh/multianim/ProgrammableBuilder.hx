@@ -527,15 +527,10 @@ class ProgrammableBuilder {
 		return builder.generatePlaceholderBitmap(resolved);
 	}
 
-	/** Generate an autotile tile by name and index.
-	 *  Looks up the autotile definition and resolves the tile from the appropriate source. */
+	/** Resolved autotile tile by name and index (same tile the builder uses; cached per builder).
+	 *  Used by generated code for generated(autotile(name, index)). */
 	public function getAutotileTileByIndex(autotileName:String, tileIndex:Int):Tile {
-		final builder = getBuilder();
-		final resolved = builder.resolveAutotileRef(
-			MultiAnimParser.ReferenceableValue.RVString(autotileName),
-			MultiAnimParser.AutotileTileSelector.ByIndex(MultiAnimParser.ReferenceableValue.RVInteger(tileIndex))
-		);
-		return builder.generatePlaceholderBitmap(resolved);
+		return getBuilder().getAutotileTile(autotileName, tileIndex);
 	}
 
 	/** Build a named path via the builder.

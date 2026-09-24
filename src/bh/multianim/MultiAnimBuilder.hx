@@ -2651,6 +2651,11 @@ class MultiAnimBuilder {
 	 *  `resolving` map used by `getCurves()` for the same purpose. */
 	var buildingRefs:Array<String> = [];
 	var inlineAtlases:Map<String, IAtlas2> = [];
+	/** Resolved tiles per autotile name (index -> tile, null = corner index 0 without a tile).
+	 *  Built once per builder so repeated buildAutotile() / generated(autotile()) calls neither
+	 *  regenerate demo textures nor redo the blob47 fallback search. Safe to keep for the builder's
+	 *  lifetime: multiParserResult never changes (hot reload creates a new builder). */
+	var autotileTileCache:Map<String, Array<Null<h2d.Tile>>> = [];
 	var incrementalMode:Bool = false;
 	/** Set true while iterating a constant-count repeatable body in incremental mode (the loop has
 	 *  no settable-param dependency, so `hasIncrementalRepeat` is false but `incrementalMode` stays
@@ -3542,146 +3547,16 @@ class MultiAnimBuilder {
 				// Create a solid color tile with centered text using font rendering
 				generateTileWithText(w, h, bgColor, text, textColor, fontName);
 
-			case AutotileRef(format, tileIndex, tileSize, edgeColor, fillColor):
-				// Generate autotile demo tile with diagonal corners
-				generateAutotileDemoTile(format, tileIndex, tileSize, edgeColor, fillColor);
-
 			case AutotileRegionSheet(baseTile, regionX, regionY, regionW, regionH, tileSize, tileCount, scale, font, fontColor):
 				// Generate a visual tile sheet showing the region with numbered grid overlay
 				generateAutotileRegionSheetTile(baseTile, regionX, regionY, regionW, regionH, tileSize, tileCount, scale, font, fontColor);
 
-			case PreloadedTile(tile):
-				// Return the pre-loaded tile directly
-				tile;
 		}
 	}
 
 	/**
-	 * Resolve an autotile reference by looking up the autotile definition.
-	 * For demo: source - gets format, tileSize, edgeColor, fillColor from the definition.
-	 * For tiles: source - loads the tile at the specified index.
-	 * Converts the selector (index or edges) to a tile index.
-	 */
-	function resolveAutotileRef(autotileName:ReferenceableValue, selector:AutotileTileSelector):ResolvedGeneratedTileType {
-		final name = resolveAsString(autotileName);
-		final node = multiParserResult.nodes.get(name);
-		if (node == null)
-			throw builderError('autotile reference: could not find autotile "$name"');
-
-		final autotileDef:AutotileDef = switch node.type {
-			case AUTOTILE(def): def;
-			default: throw builderErrorAt(node, 'autotile reference: "$name" is not an autotile definition');
-		};
-
-		final format = autotileDef.format;
-
-		// Convert selector to tile index (and keep edge mask for potential fallback)
-		var edgeMask:Null<Int> = null;
-		final tileIndex = switch selector {
-			case ByIndex(index): resolveAsInteger(index);
-			case ByEdges(edges):
-				edgeMask = edges;
-				// Convert edge mask to tile index using the appropriate format
-				switch format {
-					case Cross: bh.base.Autotile.getCrossIndex(edges);
-					case Blob47: bh.base.Autotile.getBlob47Index(edges);
-				};
-		};
-
-		// Handle different source types
-		return switch autotileDef.source {
-			case ATSDemo(edgeColor, fillColor):
-				final tileSize = resolveAsInteger(autotileDef.tileSize);
-				final edgeColorInt = resolveAsColorInteger(edgeColor);
-				final fillColorInt = resolveAsColorInteger(fillColor);
-				AutotileRef(format, tileIndex, tileSize, edgeColorInt, fillColorInt);
-
-			case ATSTiles(tiles):
-				// Use fallback for blob47 if tile is missing
-				var actualIndex = tileIndex;
-				if (format == Blob47 && actualIndex >= tiles.length) {
-					actualIndex = bh.base.Autotile.applyBlob47Fallback(tileIndex, tiles.length);
-				}
-				if (actualIndex < 0 || actualIndex >= tiles.length)
-					throw builderErrorAt(node, 'autotile reference: tile index $tileIndex out of bounds for "$name" (has ${tiles.length} tiles)');
-				final tile = loadTileSource(tiles[actualIndex]);
-				PreloadedTile(tile);
-
-			case ATSFile(filename):
-				// Load tile from file, apply region and mapping if present
-				final tileSize = resolveAsInteger(autotileDef.tileSize);
-				final baseTile = resourceLoader.loadTile(resolveAsString(filename));
-
-				// Apply region if present (extract sub-region from the tileset)
-				var regionTile = baseTile;
-				var regionX = 0;
-				var regionY = 0;
-				final region = autotileDef.region;
-				if (region != null) {
-					regionX = resolveAsInteger(region[0]);
-					regionY = resolveAsInteger(region[1]);
-					final regionW = resolveAsInteger(region[2]);
-					final regionH = resolveAsInteger(region[3]);
-					regionTile = baseTile.sub(regionX, regionY, regionW, regionH);
-				}
-
-				// Apply mapping if present (remap the tile index)
-				var mappedIndex = tileIndex;
-				final mapping = autotileDef.mapping;
-				if (mapping != null) {
-					var actualIndex = tileIndex;
-					// For blob47 with allowPartialMapping, apply fallback for missing tiles
-					if (format == Blob47 && autotileDef.allowPartialMapping && !mapping.exists(actualIndex)) {
-						actualIndex = bh.base.Autotile.applyBlob47FallbackWithMap(tileIndex, mapping);
-					}
-					if (!mapping.exists(actualIndex))
-						throw builderErrorAt(node, 'autotile reference: tile index $tileIndex not found in mapping');
-					mappedIndex = cast mapping.get(actualIndex);
-				}
-
-				// Calculate tile position within the region
-				final cols = Std.int(regionTile.width / tileSize);
-				final tileX = (mappedIndex % cols) * tileSize;
-				final tileY = Std.int(mappedIndex / cols) * tileSize;
-
-				// Extract the specific tile
-				final tile = regionTile.sub(tileX, tileY, tileSize, tileSize);
-				PreloadedTile(tile);
-
-			case ATSAtlas(sheet, prefix):
-				// Load tile from atlas using sheet and prefix
-				final tileSize = resolveAsInteger(autotileDef.tileSize);
-				final sheetName = resolveAsString(sheet);
-				final prefixStr = resolveAsString(prefix);
-
-				// Apply mapping if present
-				var mappedIndex = tileIndex;
-				final mapping2 = autotileDef.mapping;
-				if (mapping2 != null) {
-					var actualIndex = tileIndex;
-					// For blob47 with allowPartialMapping, apply fallback for missing tiles
-					if (format == Blob47 && autotileDef.allowPartialMapping && !mapping2.exists(actualIndex)) {
-						actualIndex = bh.base.Autotile.applyBlob47FallbackWithMap(tileIndex, mapping2);
-					}
-					if (!mapping2.exists(actualIndex))
-						throw builderErrorAt(node, 'autotile reference: tile index $tileIndex not found in mapping');
-					mappedIndex = cast mapping2.get(actualIndex);
-				}
-
-				// Load tile from atlas with prefix and index
-				final tileName = prefixStr + mappedIndex;
-				final tile = loadTileImpl(sheetName, tileName).tile;
-				PreloadedTile(tile);
-
-			case ATSAtlasRegion(sheet, region):
-				// Atlas region-based autotiles not yet supported for generated(autotile(...)) syntax
-				throw builderErrorAt(node, 'autotile reference: "$name" uses sheet region - use tiles: or demo: syntax instead');
-		};
-	}
-
-	/**
-	 * Resolve autotileRegionSheet - displays the entire region of an autotile with numbered grid overlay.
-	 * Only works with autotiles that have a region defined.
+	 * Resolve autotileRegionSheet - displays the source region of a file: autotile with a numbered
+	 * grid overlay (numbers are the source indices that `mapping:` targets).
 	 * @param scale Scale factor for the tiles (font is not scaled)
 	 * @param font Font name for the tile numbers
 	 * @param fontColor Color for the tile numbers
@@ -3692,50 +3567,17 @@ class MultiAnimBuilder {
 		final fontName = resolveAsString(font);
 		final fontColorVal = resolveAsColorInteger(fontColor);
 
-		final node = multiParserResult.nodes.get(name);
-		if (node == null)
-			throw builderError('autotileRegionSheet: could not find autotile "$name"');
+		final at = getAutotileDef(name);
+		final tileSize = resolveAsInteger(at.def.tileSize);
+		final tileCount = autotileTileCount(at.def.format);
 
-		final autotileDef:AutotileDef = switch node.type {
-			case AUTOTILE(def): def;
-			default: throw builderErrorAt(node, 'autotileRegionSheet: "$name" is not an autotile definition');
-		};
-
-		final tileSize = resolveAsInteger(autotileDef.tileSize);
-		final tileCount = switch autotileDef.format {
-			case Cross: 13;
-			case Blob47: 47;
-		};
-
-		// Handle different source types to get the base tile and region
-		return switch autotileDef.source {
+		return switch at.def.source {
 			case ATSFile(filename):
 				final baseTile = resourceLoader.loadTile(resolveAsString(filename));
-				if (autotileDef.region == null)
-					throw builderErrorAt(node, 'autotileRegionSheet: autotile "$name" has no region defined');
-				final r = autotileDef.region;
-				final regionX = resolveAsInteger(r[0]);
-				final regionY = resolveAsInteger(r[1]);
-				final regionW = resolveAsInteger(r[2]);
-				final regionH = resolveAsInteger(r[3]);
-				AutotileRegionSheet(baseTile, regionX, regionY, regionW, regionH, tileSize, tileCount, scaleVal, fontName, fontColorVal);
-
-			case ATSAtlasRegion(sheet, region):
-				final baseTile = resourceLoader.loadTile(resolveAsString(sheet));
-				final regionX = resolveAsInteger(region[0]);
-				final regionY = resolveAsInteger(region[1]);
-				final regionW = resolveAsInteger(region[2]);
-				final regionH = resolveAsInteger(region[3]);
-				AutotileRegionSheet(baseTile, regionX, regionY, regionW, regionH, tileSize, tileCount, scaleVal, fontName, fontColorVal);
-
-			case ATSDemo(_, _):
-				throw builderErrorAt(node, 'autotileRegionSheet: autotile "$name" uses demo source - no region to display');
-
-			case ATSTiles(_):
-				throw builderErrorAt(node, 'autotileRegionSheet: autotile "$name" uses explicit tiles - no region to display');
-
-			case ATSAtlas(_, _):
-				throw builderErrorAt(node, 'autotileRegionSheet: autotile "$name" uses atlas prefix - no region to display');
+				final r = resolveAutotileRegion(name, at.node, at.def, baseTile, tileSize);
+				AutotileRegionSheet(baseTile, r.x, r.y, r.w, r.h, tileSize, tileCount, scaleVal, fontName, fontColorVal);
+			case ATSDemo(_, _) | ATSTiles(_) | ATSAtlas(_, _):
+				throw builderErrorAt(at.node, 'autotileRegionSheet: autotile "$name" has no image region to display (only file: sources do)');
 		};
 	}
 
@@ -3884,12 +3726,15 @@ class MultiAnimBuilder {
 					resourceLoader.loadTile(resolved);
 			case TSSheet(sheet, name): loadTileImpl(resolveAsString(sheet), resolveAsString(name)).tile;
 			case TSSheetWithIndex(sheet, name, index): loadTileImpl(resolveAsString(sheet), resolveAsString(name), resolveAsInteger(index)).tile;
+			case TSGenerated(AutotileRef(autotileName, index)):
+				// Autotile tiles are cached per builder by getAutotileTiles — no placeholder cache.
+				getAutotileTile(resolveAsString(autotileName), resolveAsInteger(index));
 			case TSGenerated(type):
 				var resolvedType:ResolvedGeneratedTileType = switch type {
 					case Cross(width, height, color, thickness): Cross(resolveAsInteger(width), resolveAsInteger(height), resolveAsColorInteger(color), resolveAsInteger(thickness));
 					case SolidColor(width, height, color): SolidColor(resolveAsInteger(width), resolveAsInteger(height), resolveAsColorInteger(color));
 					case SolidColorWithText(width, height, color, text, textColor, font): SolidColorWithText(resolveAsInteger(width), resolveAsInteger(height), resolveAsColorInteger(color), resolveAsString(text), resolveAsColorInteger(textColor), resolveAsString(font));
-					case AutotileRef(autotileName, selector): resolveAutotileRef(autotileName, selector);
+					case AutotileRef(_, _): throw builderError('unreachable: autotile ref handled above');
 					case AutotileRegionSheet(autotileName, scale, font, fontColor): resolveAutotileRegionSheet(autotileName, scale, font, fontColor);
 				}
 
@@ -7999,400 +7844,378 @@ class MultiAnimBuilder {
 		throw builderError('curve reference must have either curveName or inlineEasing');
 	}
 
+	// ===================== Autotile =====================
+
 	/**
-	 * Build a TileGroup from autotile definition based on a binary grid.
+	 * Build a TileGroup from an autotile definition over a grid.
 	 * @param name The name of the autotile definition in the .manim file
-	 * @param grid 2D array of 0/1 values where 1 = terrain present
-	 * @return h2d.TileGroup populated with the correct autotiles
+	 * @param grid `grid[y][x]`, any non-zero value = terrain present
+	 * @return h2d.TileGroup in cell space: cell (x, y) covers (x * tileSize, y * tileSize).
+	 *   cross/blob47 draw one tile per filled cell. corner draws one tile per grid corner, offset by
+	 *   half a tile, so its tiles extend half a tile past the grid edge.
 	 */
 	public function buildAutotile(name:String, grid:Array<Array<Int>>):h2d.TileGroup {
-		var node = multiParserResult.nodes.get(name);
-		if (node == null)
-			throw builderError('could not get autotile node #${name}');
-		switch node.type {
-			case AUTOTILE(autotileDef):
-				return buildAutotileImpl(autotileDef, grid, null);
-			default:
-				throw builderErrorAt(node, '$name has to be autotile');
-		}
-	}
-
-	/**
-	 * Build a TileGroup from autotile definition with elevation data.
-	 * @param name The name of the autotile definition in the .manim file
-	 * @param grid 2D array of elevation levels (0 = empty, 1+ = terrain at that elevation)
-	 * @param baseY Base Y position for rendering
-	 * @return h2d.TileGroup populated with the correct autotiles and depth
-	 */
-	public function buildAutotileElevation(name:String, grid:Array<Array<Int>>, baseY:Float):h2d.TileGroup {
-		var node = multiParserResult.nodes.get(name);
-		if (node == null)
-			throw builderError('could not get autotile node #${name}');
-		switch node.type {
-			case AUTOTILE(autotileDef):
-				return buildAutotileImpl(autotileDef, grid, baseY);
-			default:
-				throw builderErrorAt(node, '$name has to be autotile');
-		}
-	}
-
-	private function buildAutotileImpl(autotileDef:AutotileDef, grid:Array<Array<Int>>, ?elevationBaseY:Null<Float>):h2d.TileGroup {
+		final at = getAutotileDef(name);
+		final tiles = getAutotileTiles(name, at.node, at.def);
+		final tileSize = resolveAsInteger(at.def.tileSize);
 		final tileGroup = new h2d.TileGroup();
-		final tiles = loadAutotileTiles(autotileDef);
-		final tileSize = resolveAsInteger(autotileDef.tileSize);
-		final _depth = autotileDef.depth; final depth = _depth != null ? resolveAsInteger(_depth) : 0;
-		// For ATSFile with mapping, the mapping is applied during tile loading, so don't apply it here
-		final mappingAppliedDuringLoading = switch autotileDef.source {
-			case ATSFile(_): autotileDef.mapping != null;
-			default: false;
-		};
-		final mapping = mappingAppliedDuringLoading ? null : autotileDef.mapping;
 
-		final height = grid.length;
-		if (height == 0)
-			return tileGroup;
-		final width = grid[0].length;
-
-		for (y in 0...height) {
-			for (x in 0...width) {
-				if (grid[y][x] == 0)
-					continue;
-
-				final mask8 = bh.base.Autotile.getNeighborMask8(grid, x, y);
-				var tileIndex = switch autotileDef.format {
-					case Cross: bh.base.Autotile.getCrossIndex(mask8);
-					case Blob47: bh.base.Autotile.getBlob47IndexWithFallback(mask8, tiles.length);
-				};
-
-				// Apply custom mapping if provided (Map<Int, Int>)
-				if (mapping != null) {
-					var actualIndex = tileIndex;
-					// For blob47 with allowPartialMapping, apply fallback for missing tiles
-					if (autotileDef.format == Blob47 && autotileDef.allowPartialMapping && !mapping.exists(actualIndex)) {
-						actualIndex = bh.base.Autotile.applyBlob47FallbackWithMap(tileIndex, mapping);
+		switch at.def.format {
+			case Corner:
+				final half = Std.int(tileSize / 2);
+				final width = bh.base.Autotile.gridWidth(grid);
+				for (cy in 0...grid.length + 1)
+					for (cx in 0...width + 1) {
+						final index = bh.base.Autotile.getCornerIndex(grid, cx, cy);
+						if (index == 0)
+							continue; // no filled cell around this corner
+						final tile = tiles[index];
+						if (tile != null)
+							tileGroup.add(cx * tileSize - half, cy * tileSize - half, tile);
 					}
-					final mapped = mapping.get(actualIndex);
-					if (mapped != null) {
-						tileIndex = mapped;
+			case Cross | Blob47:
+				final isCross = at.def.format == AutotileFormat.Cross;
+				for (y in 0...grid.length)
+					for (x in 0...grid[y].length) {
+						if (grid[y][x] == 0)
+							continue;
+						final mask8 = bh.base.Autotile.getNeighborMask8(grid, x, y);
+						final index = isCross ? bh.base.Autotile.getCrossIndex(mask8) : bh.base.Autotile.getBlob47Index(mask8);
+						final tile = tiles[index];
+						if (tile != null)
+							tileGroup.add(x * tileSize, y * tileSize, tile);
 					}
-				}
-
-				if (tileIndex >= 0 && tileIndex < tiles.length) {
-					final tile = tiles[tileIndex];
-					final renderX = x * tileSize;
-					var renderY = y * tileSize;
-
-					// Handle elevation depth rendering
-					if (elevationBaseY != null && depth > 0) {
-						// Render depth/wall below the tile for edge tiles
-						final hasS = (mask8 & bh.base.Autotile.S) == 0;
-						if (hasS && tileIndex < tiles.length) {
-							// This is a south-facing edge, render wall depth below
-							for (d in 0...Std.int(depth / tileSize) + 1) {
-								tileGroup.add(renderX, renderY + tileSize + d * tileSize, tile);
-							}
-						}
-					}
-
-					tileGroup.add(renderX, renderY, tile);
-				}
-			}
 		}
-
 		return tileGroup;
 	}
 
-	private function loadAutotileTiles(autotileDef:AutotileDef):Array<h2d.Tile> {
-		final tileSize = resolveAsInteger(autotileDef.tileSize);
+	/**
+	 * Resolved tile for one autotile index (after mapping and blob47 fallback) — the same tile
+	 * `buildAutotile` places. Corner index 0 (no filled cell) returns a transparent tile unless the
+	 * source provides one.
+	 */
+	public function getAutotileTile(name:String, index:Int):h2d.Tile {
+		final at = getAutotileDef(name);
+		final tiles = getAutotileTiles(name, at.node, at.def);
+		if (index < 0 || index >= tiles.length)
+			throw builderErrorAt(at.node, 'autotile "$name": index $index is out of range for ${autotileFormatName(at.def.format)} (0-${tiles.length - 1})', "autotile_index");
+		final tile = tiles[index];
+		if (tile != null)
+			return tile;
+		final tileSize = resolveAsInteger(at.def.tileSize);
+		return h2d.Tile.fromColor(0, tileSize, tileSize, 0.0);
+	}
 
-		return switch autotileDef.source {
-			case ATSAtlas(sheet, prefix):
-				final atlas = getOrLoadSheet(resolveAsString(sheet));
-				final prefixStr = resolveAsString(prefix);
-				final tileCount = switch autotileDef.format {
-					case Cross: 13;
-					case Blob47: 47;
-				};
-				[for (i in 0...tileCount) atlas.get(prefixStr + Std.string(i)).tile];
+	function getAutotileDef(name:String):{node:Node, def:AutotileDef} {
+		final node = multiParserResult.nodes.get(name);
+		if (node == null)
+			throw builderError('autotile "$name" not found', "missing_ref");
+		return switch node.type {
+			case AUTOTILE(def): {node: node, def: def};
+			default: throw builderErrorAt(node, '"$name" is not an autotile definition');
+		};
+	}
 
-			case ATSAtlasRegion(sheet, region):
-				// For region-based loading, we need to load the sheet's image file directly
-				// This requires the sheet to have a loadable tile resource
-				final sheetName = resolveAsString(sheet);
-				final baseTile = resourceLoader.loadTile(sheetName);
-				final rx = resolveAsInteger(region[0]);
-				final ry = resolveAsInteger(region[1]);
-				final rw = resolveAsInteger(region[2]);
-				final rh = resolveAsInteger(region[3]);
-				final tilesPerRow = Std.int(rw / tileSize);
-				final tileCount = switch autotileDef.format {
-					case Cross: 13;
-					case Blob47: 47;
-				};
-				[
-					for (i in 0...tileCount)
-						baseTile.sub(rx + (i % tilesPerRow) * tileSize, ry + Std.int(i / tilesPerRow) * tileSize, tileSize, tileSize)
-				];
+	static function autotileTileCount(format:AutotileFormat):Int {
+		return switch format {
+			case Cross: bh.base.Autotile.CROSS_TILE_COUNT;
+			case Blob47: bh.base.Autotile.BLOB47_TILE_COUNT;
+			case Corner: bh.base.Autotile.CORNER_TILE_COUNT;
+		};
+	}
 
-			case ATSFile(filename):
-				final baseTile = resourceLoader.loadTile(resolveAsString(filename));
-				final tileCount = switch autotileDef.format {
-					case Cross: 13;
-					case Blob47: 47;
-				};
-
-				// If region is provided, extract tiles from that region only
-				// Region format: [offsetX, offsetY, width, height]
-				// Tile indices in mapping are relative to the region
-				final _region = autotileDef.region;
-				final regionX = _region != null ? resolveAsInteger(_region[0]) : 0;
-				final regionY = _region != null ? resolveAsInteger(_region[1]) : 0;
-				final regionW = _region != null ? resolveAsInteger(_region[2]) : Std.int(baseTile.width);
-				final tilesPerRow = Std.int(regionW / tileSize);
-
-				// If mapping is provided (Map<Int, Int>), load tiles from mapped positions
-				// For allowPartialMapping, missing tiles will be filled with a placeholder and resolved at render time
-				final _mapping = autotileDef.mapping;
-				if (_mapping != null) {
-					final result = new Array<h2d.Tile>();
-					for (i in 0...tileCount) {
-						// Get the mapped tileset index, using fallback for missing blob47 tiles
-						var mappedIdx = 0;
-						final mv = _mapping.get(i);
-						if (mv != null) {
-							mappedIdx = mv;
-						} else if (autotileDef.format == Blob47 && autotileDef.allowPartialMapping) {
-							// Find fallback tile and use its mapping
-							final fallbackIdx = bh.base.Autotile.applyBlob47FallbackWithMap(i, _mapping);
-							final fv = _mapping.get(fallbackIdx);
-							mappedIdx = fv != null ? fv : 0;
-						} else {
-							throw builderError('autotile: tile index $i not found in mapping');
-						}
-						result.push(baseTile.sub(
-							regionX + (mappedIdx % tilesPerRow) * tileSize,
-							regionY + Std.int(mappedIdx / tilesPerRow) * tileSize,
-							tileSize, tileSize
-						));
-					}
-					result;
-				}
-				else {
-					// Sequential tile extraction from the region
-					[for (i in 0...tileCount) baseTile.sub(
-						regionX + (i % tilesPerRow) * tileSize,
-						regionY + Std.int(i / tilesPerRow) * tileSize,
-						tileSize, tileSize
-					)];
-				}
-
-			case ATSTiles(tiles):
-				// Explicit tile list - load each tile source directly
-				[for (ts in tiles) loadTileSource(ts)];
-
-			case ATSDemo(edgeColor, fillColor):
-				// Auto-generated demo tiles based on format
-				final edge = resolveAsColorInteger(edgeColor);
-				final fill = resolveAsColorInteger(fillColor);
-				final tileCount = switch autotileDef.format {
-					case Cross: 13;
-					case Blob47: 47;
-				};
-				[for (i in 0...tileCount) generateAutotileDemoTile(autotileDef.format, i, tileSize, edge, fill)];
+	static function autotileFormatName(format:AutotileFormat):String {
+		return switch format {
+			case Cross: "cross";
+			case Blob47: "blob47";
+			case Corner: "corner";
 		};
 	}
 
 	/**
-	 * Generate a single demo tile for autotiling visualization.
-	 * Draws tiles with edge/fill colors showing which edges connect to neighbors.
-	 * Outer corners get diagonal triangles for smoother appearance.
+	 * Resolve every index of an autotile to a tile, once per builder (cached by name).
+	 *
+	 * Same rules for every source: `mapping:` maps autotile index -> source index, identity when
+	 * absent. An index with no source tile is an error, except:
+	 * - blob47 with `allowPartialMapping: true` uses the closest mapped tile
+	 *   (`Autotile.applyBlob47FallbackWithMap`);
+	 * - corner index 0 (no filled cell) is optional — it is never drawn.
 	 */
-	private function generateAutotileDemoTile(format:AutotileFormat, tileIndex:Int, tileSize:Int, edgeColor:Int, fillColor:Int):h2d.Tile {
+	function getAutotileTiles(name:String, node:Node, def:AutotileDef):Array<Null<h2d.Tile>> {
+		final cached = autotileTileCache.get(name);
+		if (cached != null)
+			return cached;
+
+		final format = def.format;
+		final count = autotileTileCount(format);
+		final formatName = autotileFormatName(format);
+		final tileSize = resolveAsInteger(def.tileSize);
+		if (tileSize <= 0)
+			throw builderErrorAt(node, 'autotile "$name": tileSize must be > 0, got $tileSize');
+
+		final source = resolveAutotileSource(name, node, def, tileSize);
+
+		var mapping:Map<Int, Int>;
+		final explicitMapping = def.mapping;
+		if (explicitMapping != null) {
+			mapping = explicitMapping;
+		} else {
+			if (source.exact && source.count > count)
+				throw builderErrorAt(node, 'autotile "$name": ${source.desc} lists ${source.count} tiles but $formatName has only $count indices (0-${count - 1}) - add a mapping: to pick tiles', "autotile_index");
+			mapping = new Map();
+			final n = source.count < 0 ? count : Std.int(Math.min(count, source.count));
+			for (i in 0...n)
+				mapping.set(i, i);
+		}
+
+		final optionalIndex = format == AutotileFormat.Corner ? 0 : -1;
+		final partial = format == AutotileFormat.Blob47 && def.allowPartialMapping == true;
+		final tiles:Array<Null<h2d.Tile>> = [];
+		for (i in 0...count) {
+			var sourceIndex = mapping.get(i);
+			if (sourceIndex == null && partial)
+				sourceIndex = mapping.get(bh.base.Autotile.applyBlob47FallbackWithMap(i, mapping));
+			if (sourceIndex == null) {
+				if (i == optionalIndex) {
+					tiles.push(null);
+					continue;
+				}
+				final where = explicitMapping != null ? "mapping: has no entry for it" : '${source.desc} does not provide it';
+				final hint = format == AutotileFormat.Blob47 ? " (or set allowPartialMapping: true to use the closest mapped tile)" : "";
+				throw builderErrorAt(node, 'autotile "$name": no tile for $formatName index $i - $where$hint', "autotile_missing_tile");
+			}
+			final j:Int = sourceIndex;
+			if (source.count >= 0 && j >= source.count)
+				throw builderErrorAt(node, 'autotile "$name": $formatName index $i maps to source tile $j, but ${source.desc} has only ${source.count} tiles (0-${source.count - 1})', "autotile_index");
+			final tile = source.get(j);
+			if (tile == null) {
+				if (i == optionalIndex) {
+					tiles.push(null);
+					continue;
+				}
+				throw builderErrorAt(node, 'autotile "$name": ${source.desc} has no source tile $j (needed for $formatName index $i)', "autotile_missing_tile");
+			}
+			tiles.push(tile);
+		}
+		autotileTileCache.set(name, tiles);
+		return tiles;
+	}
+
+	/**
+	 * Tiles addressed by source index. `count` < 0 = open-ended (atlas prefix: probed by name).
+	 * `exact` = the source is an explicit list, so surplus tiles without a mapping are a mistake
+	 * (a file region may legitimately hold more tiles than the format uses).
+	 */
+	function resolveAutotileSource(name:String, node:Node, def:AutotileDef, tileSize:Int):{count:Int, exact:Bool, desc:String, get:Int->Null<h2d.Tile>} {
+		return switch def.source {
+			case ATSDemo(edgeColor, fillColor):
+				final demo = generateAutotileDemoTiles(def.format, tileSize, resolveAsColorInteger(edgeColor), resolveAsColorInteger(fillColor));
+				{count: demo.length, exact: true, desc: "demo:", get: j -> demo[j]};
+			case ATSTiles(list):
+				final loaded = [for (ts in list) loadTileSource(ts)];
+				{count: loaded.length, exact: true, desc: 'tiles: (${loaded.length} tiles)', get: j -> loaded[j]};
+			case ATSFile(filename):
+				final file = resolveAsString(filename);
+				final base = resourceLoader.loadTile(file);
+				final r = resolveAutotileRegion(name, node, def, base, tileSize);
+				final cols = Std.int(r.w / tileSize);
+				final regionCount = cols * Std.int(r.h / tileSize);
+				{
+					count: regionCount,
+					exact: false,
+					desc: 'file: "$file" region [${r.x}, ${r.y}, ${r.w}, ${r.h}]',
+					get: j -> base.sub(r.x + (j % cols) * tileSize, r.y + Std.int(j / cols) * tileSize, tileSize, tileSize)
+				};
+			case ATSAtlas(sheet, prefix):
+				final sheetName = resolveAsString(sheet);
+				final prefixStr = resolveAsString(prefix);
+				final atlas = getOrLoadSheet(sheetName);
+				{
+					count: -1,
+					exact: false,
+					desc: 'sheet: "$sheetName" prefix: "$prefixStr"',
+					get: j -> {
+						final frame = atlas.get(prefixStr + j);
+						frame == null ? null : frame.tile;
+					}
+				};
+		};
+	}
+
+	/**
+	 * Pixel region of a file: source. Explicit `region:` must lie inside the image and be a whole
+	 * number of tiles; without one the whole image is used (rounded down to whole tiles).
+	 */
+	function resolveAutotileRegion(name:String, node:Node, def:AutotileDef, base:h2d.Tile, tileSize:Int):{x:Int, y:Int, w:Int, h:Int} {
+		final imageW = Std.int(base.width);
+		final imageH = Std.int(base.height);
+		final region = def.region;
+		if (region == null)
+			return {x: 0, y: 0, w: imageW - imageW % tileSize, h: imageH - imageH % tileSize};
+
+		final r = {
+			x: resolveAsInteger(region[0]),
+			y: resolveAsInteger(region[1]),
+			w: resolveAsInteger(region[2]),
+			h: resolveAsInteger(region[3])
+		};
+		if (r.x < 0 || r.y < 0 || r.w <= 0 || r.h <= 0 || r.x + r.w > imageW || r.y + r.h > imageH)
+			throw builderErrorAt(node, 'autotile "$name": region [${r.x}, ${r.y}, ${r.w}, ${r.h}] does not fit the ${imageW}x${imageH} image', "autotile_region");
+		if (r.w % tileSize != 0 || r.h % tileSize != 0)
+			throw builderErrorAt(node, 'autotile "$name": region size ${r.w}x${r.h} is not a whole number of ${tileSize}px tiles', "autotile_region");
+		return r;
+	}
+
+	/**
+	 * Demo tiles for every index of a format, drawn into ONE texture (8 tiles per row) and
+	 * returned as sub-tiles, so a demo terrain is a single TileGroup draw call.
+	 */
+	function generateAutotileDemoTiles(format:AutotileFormat, tileSize:Int, edgeColor:Int, fillColor:Int):Array<h2d.Tile> {
+		final count = autotileTileCount(format);
+		final perRow = 8;
+		final rows = Std.int((count + perRow - 1) / perRow);
+		final pl = new PixelLines(perRow * tileSize, rows * tileSize);
+		pl.clear();
+		for (i in 0...count)
+			drawAutotileDemoTile(pl, (i % perRow) * tileSize, Std.int(i / perRow) * tileSize, format, i, tileSize, edgeColor, fillColor);
+		pl.updateBitmap();
+		final sheet = pl.tile;
+		return [
+			for (i in 0...count)
+				sheet.sub((i % perRow) * tileSize, Std.int(i / perRow) * tileSize, tileSize, tileSize)
+		];
+	}
+
+	/**
+	 * Draw one demo tile at (ox, oy).
+	 * cross/blob47: filled tile, edge-coloured border on every side without a neighbour, diagonal
+	 * cut where two border sides meet (outer corner), small notch where both cardinals are present
+	 * but the diagonal between them is missing (inner corner).
+	 * corner: filled quadrants for the filled cells, border along the terrain boundary through the
+	 * tile centre, transparent elsewhere.
+	 */
+	function drawAutotileDemoTile(pl:PixelLines, ox:Int, oy:Int, format:AutotileFormat, tileIndex:Int, tileSize:Int, edgeColor:Int, fillColor:Int):Void {
 		final borderWidth = Std.int(Math.max(1, tileSize / 8));
+		if (format == AutotileFormat.Corner) {
+			final half = Std.int(tileSize / 2);
+			final nw = (tileIndex & bh.base.Autotile.CORNER_NW) != 0;
+			final ne = (tileIndex & bh.base.Autotile.CORNER_NE) != 0;
+			final sw = (tileIndex & bh.base.Autotile.CORNER_SW) != 0;
+			final se = (tileIndex & bh.base.Autotile.CORNER_SE) != 0;
+			if (nw) pl.filledRect(ox, oy, half, half, fillColor);
+			if (ne) pl.filledRect(ox + half, oy, tileSize - half, half, fillColor);
+			if (sw) pl.filledRect(ox, oy + half, half, tileSize - half, fillColor);
+			if (se) pl.filledRect(ox + half, oy + half, tileSize - half, tileSize - half, fillColor);
+			// The boundary between a filled and an empty quadrant runs through the tile centre;
+			// draw it on the filled side so neighbouring tiles join into one outline.
+			if (nw != ne) pl.filledRect(nw ? ox + half - borderWidth : ox + half, oy, borderWidth, half, edgeColor);
+			if (sw != se) pl.filledRect(sw ? ox + half - borderWidth : ox + half, oy + half, borderWidth, tileSize - half, edgeColor);
+			if (nw != sw) pl.filledRect(ox, nw ? oy + half - borderWidth : oy + half, half, borderWidth, edgeColor);
+			if (ne != se) pl.filledRect(ox + half, ne ? oy + half - borderWidth : oy + half, tileSize - half, borderWidth, edgeColor);
+			return;
+		}
+
 		final cornerSize = Std.int(Math.max(2, tileSize / 2)); // Size of diagonal corner cut
-		final pl = new PixelLines(tileSize, tileSize);
+		final edges = getAutotileDemoEdges(format, tileIndex);
 
 		// Fill entire tile with fill color
-		pl.filledRect(0, 0, tileSize, tileSize, fillColor);
-
-		// Get edge configuration for this tile index
-		final edges = getAutotileEdges(format, tileIndex);
+		pl.filledRect(ox, oy, tileSize, tileSize, fillColor);
 
 		// Draw borders on edges where there's no neighbor (edge = true means draw border)
 		if (edges.n)
-			pl.filledRect(0, 0, tileSize, borderWidth, edgeColor);
+			pl.filledRect(ox, oy, tileSize, borderWidth, edgeColor);
 		if (edges.s)
-			pl.filledRect(0, tileSize - borderWidth, tileSize, borderWidth, edgeColor);
+			pl.filledRect(ox, oy + tileSize - borderWidth, tileSize, borderWidth, edgeColor);
 		if (edges.w)
-			pl.filledRect(0, 0, borderWidth, tileSize, edgeColor);
+			pl.filledRect(ox, oy, borderWidth, tileSize, edgeColor);
 		if (edges.e)
-			pl.filledRect(tileSize - borderWidth, 0, borderWidth, tileSize, edgeColor);
+			pl.filledRect(ox + tileSize - borderWidth, oy, borderWidth, tileSize, edgeColor);
 
-		// Draw outer corner triangles (diagonal cut) where two adjacent edges meet
-		if (edges.n && edges.w) {
-			// NW outer corner - triangle from (0,cornerSize) to (cornerSize,0)
-			for (i in 0...cornerSize) {
-				final lineLen = cornerSize - i;
-				pl.filledRect(0, i, lineLen, 1, edgeColor);
-			}
-		}
-		if (edges.n && edges.e) {
-			// NE outer corner - triangle from (tileSize-cornerSize,0) to (tileSize,cornerSize)
-			for (i in 0...cornerSize) {
-				final lineLen = cornerSize - i;
-				pl.filledRect(tileSize - lineLen, i, lineLen, 1, edgeColor);
-			}
-		}
-		if (edges.s && edges.w) {
-			// SW outer corner - triangle from (0,tileSize-cornerSize) to (cornerSize,tileSize)
-			for (i in 0...cornerSize) {
-				final lineLen = cornerSize - i;
-				pl.filledRect(0, tileSize - 1 - i, lineLen, 1, edgeColor);
-			}
-		}
-		if (edges.s && edges.e) {
-			// SE outer corner - triangle from (tileSize-cornerSize,tileSize) to (tileSize,tileSize-cornerSize)
-			for (i in 0...cornerSize) {
-				final lineLen = cornerSize - i;
-				pl.filledRect(tileSize - lineLen, tileSize - 1 - i, lineLen, 1, edgeColor);
-			}
+		// Outer corner triangles (diagonal cut) where two adjacent border sides meet
+		for (i in 0...cornerSize) {
+			final lineLen = cornerSize - i;
+			if (edges.n && edges.w)
+				pl.filledRect(ox, oy + i, lineLen, 1, edgeColor);
+			if (edges.n && edges.e)
+				pl.filledRect(ox + tileSize - lineLen, oy + i, lineLen, 1, edgeColor);
+			if (edges.s && edges.w)
+				pl.filledRect(ox, oy + tileSize - 1 - i, lineLen, 1, edgeColor);
+			if (edges.s && edges.e)
+				pl.filledRect(ox + tileSize - lineLen, oy + tileSize - 1 - i, lineLen, 1, edgeColor);
 		}
 
-		// Draw inner corners (triangular notches for diagonal-missing tiles)
-		// Inner corners are the opposite of outer corners - they cut into the fill
-		final innerCornerSize = Std.int(Math.max(2, tileSize / 4)); // Smaller than outer corners
-		if (edges.innerNE) {
-			// Inner NE corner - triangle at top-right cutting into fill
-			for (i in 0...innerCornerSize) {
-				final lineLen = innerCornerSize - i;
-				pl.filledRect(tileSize - lineLen, i, lineLen, 1, edgeColor);
-			}
+		// Inner corner notches (both cardinals present, diagonal between them missing)
+		final innerCornerSize = Std.int(Math.max(2, tileSize / 4));
+		for (i in 0...innerCornerSize) {
+			final lineLen = innerCornerSize - i;
+			if (edges.innerNE)
+				pl.filledRect(ox + tileSize - lineLen, oy + i, lineLen, 1, edgeColor);
+			if (edges.innerNW)
+				pl.filledRect(ox, oy + i, lineLen, 1, edgeColor);
+			if (edges.innerSE)
+				pl.filledRect(ox + tileSize - lineLen, oy + tileSize - 1 - i, lineLen, 1, edgeColor);
+			if (edges.innerSW)
+				pl.filledRect(ox, oy + tileSize - 1 - i, lineLen, 1, edgeColor);
 		}
-		if (edges.innerNW) {
-			// Inner NW corner - triangle at top-left cutting into fill
-			for (i in 0...innerCornerSize) {
-				final lineLen = innerCornerSize - i;
-				pl.filledRect(0, i, lineLen, 1, edgeColor);
-			}
-		}
-		if (edges.innerSE) {
-			// Inner SE corner - triangle at bottom-right cutting into fill
-			for (i in 0...innerCornerSize) {
-				final lineLen = innerCornerSize - i;
-				pl.filledRect(tileSize - lineLen, tileSize - 1 - i, lineLen, 1, edgeColor);
-			}
-		}
-		if (edges.innerSW) {
-			// Inner SW corner - triangle at bottom-left cutting into fill
-			for (i in 0...innerCornerSize) {
-				final lineLen = innerCornerSize - i;
-				pl.filledRect(0, tileSize - 1 - i, lineLen, 1, edgeColor);
-			}
-		}
-
-		pl.updateBitmap();
-		return pl.tile;
 	}
 
 	/**
-	 * Get edge configuration for a tile index in a given format.
-	 * Returns which edges/corners should have borders drawn.
+	 * Which sides of a cross/blob47 demo tile get a border (no neighbour there) and which inner
+	 * corners get a notch (both adjacent cardinals present, diagonal missing).
 	 */
-	private function getAutotileEdges(format:AutotileFormat, tileIndex:Int):{n:Bool, s:Bool, e:Bool, w:Bool, innerNE:Bool, innerNW:Bool, innerSE:Bool, innerSW:Bool} {
-		return switch format {
-			case Cross: getCrossEdges(tileIndex);
-			case Blob47: getBlob47Edges(tileIndex);
+	static function getAutotileDemoEdges(format:AutotileFormat, tileIndex:Int):{n:Bool, s:Bool, e:Bool, w:Bool, innerNE:Bool, innerNW:Bool, innerSE:Bool, innerSW:Bool} {
+		// Equivalent reduced neighbour mask for the tile
+		final mask = switch format {
+			case Blob47: bh.base.Autotile.getBlob47Mask(tileIndex);
+			case Cross: crossDemoMask(tileIndex);
+			case Corner: 0; // not used — corner demo tiles are drawn by quadrant
+		};
+		final hasN = (mask & bh.base.Autotile.N) != 0;
+		final hasE = (mask & bh.base.Autotile.E) != 0;
+		final hasS = (mask & bh.base.Autotile.S) != 0;
+		final hasW = (mask & bh.base.Autotile.W) != 0;
+		return {
+			n: !hasN,
+			s: !hasS,
+			e: !hasE,
+			w: !hasW,
+			innerNE: hasN && hasE && (mask & bh.base.Autotile.NE) == 0,
+			innerNW: hasN && hasW && (mask & bh.base.Autotile.NW) == 0,
+			innerSE: hasS && hasE && (mask & bh.base.Autotile.SE) == 0,
+			innerSW: hasS && hasW && (mask & bh.base.Autotile.SW) == 0
 		};
 	}
 
 	/**
-	 * Cross format edge configuration.
-	 * Layout: 0=N 1=W 2=C 3=E 4=S / 5=NW 6=NE 7=SW 8=SE outer / 9-12=inner corners
+	 * Representative neighbour mask for a cross tile (0=N 1=W 2=C 3=E 4=S edge, 5-8 NW/NE/SW/SE
+	 * outer, 9-12 inner NE/NW/SE/SW). Edge/outer tiles carry the diagonals between the sides they
+	 * have, so only the inner tiles show a notch.
 	 */
-	private function getCrossEdges(idx:Int):{n:Bool, s:Bool, e:Bool, w:Bool, innerNE:Bool, innerNW:Bool, innerSE:Bool, innerSW:Bool} {
-		return switch idx {
-			case 0: {n: true, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N edge
-			case 1: {n: false, s: false, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // W edge
-			case 2: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // Center
-			case 3: {n: false, s: false, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // E edge
-			case 4: {n: false, s: true, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // S edge
-			case 5: {n: true, s: false, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // NW outer corner
-			case 6: {n: true, s: false, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // NE outer corner
-			case 7: {n: false, s: true, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // SW outer corner
-			case 8: {n: false, s: true, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // SE outer corner
-			case 9: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: false, innerSE: false, innerSW: false}; // inner-NE
-			case 10: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: true, innerSE: false, innerSW: false}; // inner-NW
-			case 11: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: true, innerSW: false}; // inner-SE
-			case 12: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: true}; // inner-SW
-			default: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};
-		};
-	}
-
-	/**
-	 * Blob47 edge configuration based on the reduced mask mapping.
-	 * Maps each of the 47 tiles to its edge/corner configuration.
-	 * Inner corners are drawn where diagonal is MISSING (not present).
-	 * Comments show which neighbors ARE present.
-	 */
-	private function getBlob47Edges(idx:Int):{n:Bool, s:Bool, e:Bool, w:Bool, innerNE:Bool, innerNW:Bool, innerSE:Bool, innerSW:Bool} {
-		return switch idx {
-			// No cardinals - isolated or single edges (no inner corners possible)
-			case 0: {n: true, s: true, e: true, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};     // isolated
-			case 1: {n: false, s: true, e: true, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};    // N only
-			case 2: {n: true, s: true, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};    // E only
-			case 5: {n: true, s: false, e: true, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};    // S only
-			case 13: {n: true, s: true, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};   // W only
-
-			// Two adjacent cardinals - outer corners (no inner corners)
-			case 3: {n: false, s: true, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};   // N+E (corner)
-			case 4: {n: false, s: true, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};   // N+NE+E
-			case 7: {n: true, s: false, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};   // E+S (corner)
-			case 10: {n: true, s: false, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // E+SE+S
-			case 14: {n: false, s: true, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // N+W (corner)
-			case 18: {n: true, s: false, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // S+W (corner)
-			case 26: {n: true, s: false, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // S+SW+W
-			case 34: {n: false, s: true, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // N+W+NW
-
-			// Two opposite cardinals - edges (no inner corners)
-			case 6: {n: false, s: false, e: true, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};   // N+S
-			case 15: {n: true, s: true, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // E+W
-			case 19: {n: false, s: false, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+S+W
-			case 27: {n: false, s: false, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+S+SW+W
-			case 37: {n: false, s: false, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+S+W+NW
-			case 42: {n: false, s: false, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+S+SW+W+NW
-
-			// Three cardinals - T-shapes (no inner corners in missing direction)
-			case 8: {n: false, s: false, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // N+E+S
-			case 9: {n: false, s: false, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // N+NE+E+S
-			case 11: {n: false, s: false, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+E+SE+S
-			case 12: {n: false, s: false, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+NE+E+SE+S
-			case 16: {n: false, s: true, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+E+W
-			case 17: {n: false, s: true, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+NE+E+W
-			case 20: {n: true, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // E+S+W
-			case 23: {n: true, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // E+SE+S+W
-			case 28: {n: true, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // E+S+SW+W
-			case 31: {n: true, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // E+SE+S+SW+W
-			case 35: {n: false, s: true, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+E+W+NW
-			case 36: {n: false, s: true, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+NE+E+W+NW
-
-			// All four cardinals - inner corners where diagonals are MISSING
-			case 21: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: true, innerSE: true, innerSW: true};    // N+E+S+W (all diagonals missing)
-			case 22: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: true, innerSE: true, innerSW: true};   // N+NE+E+S+W (NE present)
-			case 24: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: true, innerSE: false, innerSW: true};   // N+E+SE+S+W (SE present)
-			case 25: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: true, innerSE: false, innerSW: true};  // N+NE+E+SE+S+W (NE+SE present)
-			case 29: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: true, innerSE: true, innerSW: false};   // N+E+S+SW+W (SW present)
-			case 30: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: true, innerSE: true, innerSW: false};  // N+NE+E+S+SW+W (NE+SW present)
-			case 32: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: true, innerSE: false, innerSW: false};  // N+E+SE+S+SW+W (SE+SW present)
-			case 33: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: true, innerSE: false, innerSW: false}; // N+NE+E+SE+S+SW+W (NE+SE+SW present)
-			case 38: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: false, innerSE: true, innerSW: true};   // N+E+S+W+NW (NW present)
-			case 39: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: true, innerSW: true};  // N+NE+E+S+W+NW (NE+NW present)
-			case 40: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: false, innerSE: false, innerSW: true};  // N+E+SE+S+W+NW (SE+NW present)
-			case 41: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: true}; // N+NE+E+SE+S+W+NW (NE+SE+NW present)
-			case 43: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: false, innerSE: true, innerSW: false};  // N+E+S+SW+W+NW (SW+NW present)
-			case 44: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: true, innerSW: false}; // N+NE+E+S+SW+W+NW (NE+SW+NW present)
-			case 45: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: false, innerSE: false, innerSW: false}; // N+E+SE+S+SW+W+NW (SE+SW+NW present)
-			case 46: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // all neighbors (none missing)
-			default: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};
+	static function crossDemoMask(tileIndex:Int):Int {
+		final n = bh.base.Autotile.N;
+		final ne = bh.base.Autotile.NE;
+		final e = bh.base.Autotile.E;
+		final se = bh.base.Autotile.SE;
+		final s = bh.base.Autotile.S;
+		final sw = bh.base.Autotile.SW;
+		final w = bh.base.Autotile.W;
+		final nw = bh.base.Autotile.NW;
+		final all = n | ne | e | se | s | sw | w | nw;
+		return switch tileIndex {
+			case 0: all & ~(n | ne | nw); // N edge
+			case 1: all & ~(w | nw | sw); // W edge
+			case 2: all; // center
+			case 3: all & ~(e | ne | se); // E edge
+			case 4: all & ~(s | se | sw); // S edge
+			case 5: e | se | s; // NW outer
+			case 6: w | sw | s; // NE outer
+			case 7: n | ne | e; // SW outer
+			case 8: n | nw | w; // SE outer
+			case 9: all & ~ne; // inner NE
+			case 10: all & ~nw; // inner NW
+			case 11: all & ~se; // inner SE
+			case 12: all & ~sw; // inner SW
+			default: all;
 		};
 	}
 

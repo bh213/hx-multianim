@@ -1377,8 +1377,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		final scale = 2.0;
 		final threshold = 1.0;
 		final autotileConfigs:Array<{name:String, grid:Array<Array<Int>>, x:Float, y:Float, background:Bool}> = [
-			{name: "blob47Colored", grid: AutotileTestHelper.LARGE_SEA_GRID, x: 40.0, y: 326.0, background: false},
-			{name: "blob47Water", grid: AutotileTestHelper.LARGE_SEA_GRID, x: 684.0, y: 326.0, background: true}
+			{name: "blob47Colored", grid: AutotileTestHelper.BLOB47_ALL_TILES_GRID, x: 40.0, y: 326.0, background: false},
+			{name: "blob47Water", grid: AutotileTestHelper.BLOB47_ALL_TILES_GRID, x: 684.0, y: 326.0, background: true}
 		];
 
 		// Phase 1: builder + autotile grids
@@ -1466,8 +1466,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		final scale = 4.0;
 		final threshold = 1.0;
 		final autotileConfigs:Array<{name:String, grid:Array<Array<Int>>, x:Float, y:Float, background:Bool}> = [
-			{name: "grassTerrain", grid: AutotileTestHelper.CROSS_HOLE_GRID, x: 40.0, y: 360.0, background: false},
-			{name: "grassDemo", grid: AutotileTestHelper.CROSS_HOLE_GRID, x: 320.0, y: 360.0, background: false}
+			{name: "dirtTerrain", grid: AutotileTestHelper.CROSS_HOLE_GRID, x: 40.0, y: 360.0, background: false},
+			{name: "dirtDemo", grid: AutotileTestHelper.CROSS_HOLE_GRID, x: 320.0, y: 360.0, background: false}
 		];
 
 		// Phase 1: builder + autotile grids
@@ -1511,8 +1511,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		final scale = 2.0;
 		final threshold = 1.0;
 		final autotileConfigs:Array<{name:String, grid:Array<Array<Int>>, x:Float, y:Float, background:Bool}> = [
-			{name: "blob47Demo", grid: AutotileTestHelper.LARGE_SEA_GRID, x: 20.0, y: 304.0, background: false},
-			{name: "blob47Grass", grid: AutotileTestHelper.LARGE_SEA_GRID, x: 320.0, y: 304.0, background: false}
+			{name: "blob47Demo", grid: AutotileTestHelper.BLOB47_ALL_TILES_GRID, x: 20.0, y: 304.0, background: false},
+			{name: "blob47Dirt", grid: AutotileTestHelper.BLOB47_ALL_TILES_GRID, x: 320.0, y: 304.0, background: false}
 		];
 
 		// Phase 1: builder + autotile grids
@@ -1532,6 +1532,53 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		// Phase 2: macro + autotile grids
 		clearScene();
 		var macroRoot = createMp().blob47Fallback.create();
+		macroRoot.setScale(scale);
+		s2d.addChild(macroRoot);
+		addAutotileOverlays(animFilePath, autotileConfigs, scale);
+		if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+
+		var macroRaw = captureScreenshotRaw(1280, 720);
+		Assert.pass();
+		enqueueBuilderAndMacro(builderRaw, macroRaw, threshold, threshold, orderIdx);
+
+		VisualTestBase.pendingVisualTests--;
+		async.done();
+	}
+
+	// ==================== AutotileCorner: macro comparison ====================
+
+	@Test
+	public function test153_AutotileCorner(async:utest.Async):Void {
+		setupTest(153, "autotileCorner");
+		VisualTestBase.pendingVisualTests++;
+		async.setTimeout(15000);
+		final animFilePath = "test/examples/153-autotileCorner/autotileCorner.manim";
+		final scale = 2.0;
+		final threshold = 1.0;
+		// Terrain sits 4px (.manim units) inside each background so the half-tile overhang shows.
+		final autotileConfigs:Array<{name:String, grid:Array<Array<Int>>, x:Float, y:Float, background:Bool}> = [
+			{name: "cornerDemo", grid: AutotileTestHelper.EDGE_CASES_GRID, x: 28.0, y: 168.0, background: false},
+			{name: "dirtCorner", grid: AutotileTestHelper.EDGE_CASES_GRID, x: 328.0, y: 168.0, background: false},
+			{name: "dirtCorner", grid: AutotileTestHelper.BLOB47_ALL_TILES_GRID, x: 628.0, y: 168.0, background: false}
+		];
+
+		// Phase 1: builder + autotile grids
+		clearScene();
+		var result = buildAndAddToScene(animFilePath, "autotileCorner", scale);
+		if (result == null) {
+			Assert.fail('Failed to build "autotileCorner"');
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
+		addAutotileOverlays(animFilePath, autotileConfigs, scale);
+
+		var orderIdx = HtmlReportGenerator.reserveOrderIndex();
+		var builderRaw = captureScreenshotRaw(1280, 720);
+
+		// Phase 2: macro + autotile grids
+		clearScene();
+		var macroRoot = createMp().autotileCorner.create();
 		macroRoot.setScale(scale);
 		s2d.addChild(macroRoot);
 		addAutotileOverlays(animFilePath, autotileConfigs, scale);

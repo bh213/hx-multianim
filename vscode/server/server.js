@@ -197,6 +197,374 @@ Type.enumEq = function(a,b) {
 	}
 	return true;
 };
+var bh_base_Autotile = function() { };
+bh_base_Autotile.__name__ = true;
+bh_base_Autotile.isFilled = function(grid,x,y) {
+	if(y >= 0 && y < grid.length && x >= 0 && x < grid[y].length) {
+		return grid[y][x] != 0;
+	} else {
+		return false;
+	}
+};
+bh_base_Autotile.gridWidth = function(grid) {
+	var w = 0;
+	var _g = 0;
+	while(_g < grid.length) {
+		var row = grid[_g];
+		++_g;
+		if(row.length > w) {
+			w = row.length;
+		}
+	}
+	return w;
+};
+bh_base_Autotile.getNeighborMask8 = function(grid,x,y) {
+	var mask = 0;
+	var y1 = y - 1;
+	if(y1 >= 0 && y1 < grid.length && x >= 0 && x < grid[y1].length && grid[y1][x] != 0) {
+		mask |= 1;
+	}
+	var x1 = x + 1;
+	var y1 = y - 1;
+	if(y1 >= 0 && y1 < grid.length && x1 >= 0 && x1 < grid[y1].length && grid[y1][x1] != 0) {
+		mask |= 2;
+	}
+	var x1 = x + 1;
+	if(y >= 0 && y < grid.length && x1 >= 0 && x1 < grid[y].length && grid[y][x1] != 0) {
+		mask |= 4;
+	}
+	var x1 = x + 1;
+	var y1 = y + 1;
+	if(y1 >= 0 && y1 < grid.length && x1 >= 0 && x1 < grid[y1].length && grid[y1][x1] != 0) {
+		mask |= 8;
+	}
+	var y1 = y + 1;
+	if(y1 >= 0 && y1 < grid.length && x >= 0 && x < grid[y1].length && grid[y1][x] != 0) {
+		mask |= 16;
+	}
+	var x1 = x - 1;
+	var y1 = y + 1;
+	if(y1 >= 0 && y1 < grid.length && x1 >= 0 && x1 < grid[y1].length && grid[y1][x1] != 0) {
+		mask |= 32;
+	}
+	var x1 = x - 1;
+	if(y >= 0 && y < grid.length && x1 >= 0 && x1 < grid[y].length && grid[y][x1] != 0) {
+		mask |= 64;
+	}
+	var x1 = x - 1;
+	var y1 = y - 1;
+	if(y1 >= 0 && y1 < grid.length && x1 >= 0 && x1 < grid[y1].length && grid[y1][x1] != 0) {
+		mask |= 128;
+	}
+	return mask;
+};
+bh_base_Autotile.getNeighborMask4 = function(grid,x,y) {
+	var mask = 0;
+	var y1 = y - 1;
+	if(y1 >= 0 && y1 < grid.length && x >= 0 && x < grid[y1].length && grid[y1][x] != 0) {
+		mask |= 1;
+	}
+	var x1 = x + 1;
+	if(y >= 0 && y < grid.length && x1 >= 0 && x1 < grid[y].length && grid[y][x1] != 0) {
+		mask |= 2;
+	}
+	var y1 = y + 1;
+	if(y1 >= 0 && y1 < grid.length && x >= 0 && x < grid[y1].length && grid[y1][x] != 0) {
+		mask |= 4;
+	}
+	var x1 = x - 1;
+	if(y >= 0 && y < grid.length && x1 >= 0 && x1 < grid[y].length && grid[y][x1] != 0) {
+		mask |= 8;
+	}
+	return mask;
+};
+bh_base_Autotile.getCornerIndex = function(grid,cornerX,cornerY) {
+	var index = 0;
+	var x = cornerX - 1;
+	var y = cornerY - 1;
+	if(y >= 0 && y < grid.length && x >= 0 && x < grid[y].length && grid[y][x] != 0) {
+		index |= 1;
+	}
+	var y = cornerY - 1;
+	if(y >= 0 && y < grid.length && cornerX >= 0 && cornerX < grid[y].length && grid[y][cornerX] != 0) {
+		index |= 2;
+	}
+	var x = cornerX - 1;
+	if(cornerY >= 0 && cornerY < grid.length && x >= 0 && x < grid[cornerY].length && grid[cornerY][x] != 0) {
+		index |= 4;
+	}
+	if(cornerY >= 0 && cornerY < grid.length && cornerX >= 0 && cornerX < grid[cornerY].length && grid[cornerY][cornerX] != 0) {
+		index |= 8;
+	}
+	return index;
+};
+bh_base_Autotile.getCrossIndex = function(mask8) {
+	var hasN = (mask8 & 1) != 0;
+	var hasE = (mask8 & 4) != 0;
+	var hasS = (mask8 & 16) != 0;
+	var hasW = (mask8 & 64) != 0;
+	var hasNE = (mask8 & 2) != 0;
+	var hasSE = (mask8 & 8) != 0;
+	var hasSW = (mask8 & 32) != 0;
+	var hasNW = (mask8 & 128) != 0;
+	if(hasN && hasE && hasS && hasW) {
+		if(!hasNE) {
+			return 9;
+		}
+		if(!hasNW) {
+			return 10;
+		}
+		if(!hasSE) {
+			return 11;
+		}
+		if(!hasSW) {
+			return 12;
+		}
+		return 2;
+	}
+	if(!hasN && !hasW && hasS && hasE) {
+		return 5;
+	}
+	if(!hasN && !hasE && hasS && hasW) {
+		return 6;
+	}
+	if(!hasS && !hasW && hasN && hasE) {
+		return 7;
+	}
+	if(!hasS && !hasE && hasN && hasW) {
+		return 8;
+	}
+	if(!hasN && hasS) {
+		return 0;
+	}
+	if(!hasW && hasE) {
+		return 1;
+	}
+	if(!hasE && hasW) {
+		return 3;
+	}
+	if(!hasS && hasN) {
+		return 4;
+	}
+	return 2;
+};
+bh_base_Autotile.getBlob47Index = function(mask8) {
+	if(bh_base_Autotile.blob47LUT == null) {
+		bh_base_Autotile.initBlob47LUT();
+	}
+	return bh_base_Autotile.blob47LUT[mask8];
+};
+bh_base_Autotile.getBlob47Mask = function(tileIndex) {
+	return bh_base_Autotile.blob47ReverseLUT[tileIndex];
+};
+bh_base_Autotile.applyBlob47FallbackWithMap = function(tileIndex,mapping) {
+	return bh_base_Autotile.getBlob47FallbackChain(tileIndex,mapping).result;
+};
+bh_base_Autotile.getBlob47FallbackChain = function(tileIndex,mapping) {
+	if(bh_base_Autotile.blob47LUT == null) {
+		bh_base_Autotile.initBlob47LUT();
+	}
+	if(mapping.h.hasOwnProperty(tileIndex)) {
+		return { result : tileIndex, skipped : []};
+	}
+	var skipped = [];
+	var mask = bh_base_Autotile.blob47ReverseLUT[tileIndex];
+	var allCardinals = mask & 85;
+	var cardinalBits = [];
+	if((allCardinals & 1) != 0) {
+		cardinalBits.push(1);
+	}
+	if((allCardinals & 4) != 0) {
+		cardinalBits.push(4);
+	}
+	if((allCardinals & 16) != 0) {
+		cardinalBits.push(16);
+	}
+	if((allCardinals & 64) != 0) {
+		cardinalBits.push(64);
+	}
+	var phase1 = [];
+	bh_base_Autotile.addCornerCandidates(allCardinals,mask,tileIndex,phase1,new haxe_ds_IntMap());
+	var _g = 0;
+	var _g1 = bh_base_Autotile.sortCandidates(phase1);
+	while(_g < _g1.length) {
+		var candidate = _g1[_g];
+		++_g;
+		if(mapping.h.hasOwnProperty(candidate)) {
+			return { result : candidate, skipped : skipped};
+		}
+		skipped.push(candidate);
+	}
+	var _g = 1;
+	var _g1 = cardinalBits.length;
+	while(_g < _g1) {
+		var removeCount = _g++;
+		var phase2 = [[]];
+		var seen = [new haxe_ds_IntMap()];
+		bh_base_Autotile.combineRemovals(cardinalBits,cardinalBits.length,removeCount,0,0,(function(seen,phase2) {
+			return function(removeMask) {
+				bh_base_Autotile.addCornerCandidates(allCardinals & ~removeMask,mask,tileIndex,phase2[0],seen[0]);
+			};
+		})(seen,phase2));
+		var _g2 = 0;
+		var _g3 = bh_base_Autotile.sortCandidates(phase2[0]);
+		while(_g2 < _g3.length) {
+			var candidate = _g3[_g2];
+			++_g2;
+			if(mapping.h.hasOwnProperty(candidate)) {
+				return { result : candidate, skipped : skipped};
+			}
+			if(skipped.indexOf(candidate) < 0) {
+				skipped.push(candidate);
+			}
+		}
+	}
+	if(tileIndex != 46) {
+		if(mapping.h.hasOwnProperty(46)) {
+			return { result : 46, skipped : skipped};
+		}
+		if(skipped.indexOf(46) < 0) {
+			skipped.push(46);
+		}
+	}
+	if(tileIndex != 0) {
+		if(mapping.h.hasOwnProperty(0)) {
+			return { result : 0, skipped : skipped};
+		}
+		if(skipped.indexOf(0) < 0) {
+			skipped.push(0);
+		}
+	}
+	return { result : tileIndex, skipped : skipped};
+};
+bh_base_Autotile.addCornerCandidates = function(cardinals,wantedMask,skipTile,out,seen) {
+	var cornerBits = [];
+	if((cardinals & 1) != 0 && (cardinals & 4) != 0) {
+		cornerBits.push(2);
+	}
+	if((cardinals & 16) != 0 && (cardinals & 4) != 0) {
+		cornerBits.push(8);
+	}
+	if((cardinals & 16) != 0 && (cardinals & 64) != 0) {
+		cornerBits.push(32);
+	}
+	if((cardinals & 1) != 0 && (cardinals & 64) != 0) {
+		cornerBits.push(128);
+	}
+	var wantedCorners = wantedMask & 170;
+	var _g = 0;
+	var _g1 = 1 << cornerBits.length;
+	while(_g < _g1) {
+		var subset = _g++;
+		var tryMask = cardinals;
+		var _g2 = 0;
+		var _g3 = cornerBits.length;
+		while(_g2 < _g3) {
+			var ci = _g2++;
+			if((subset & 1 << ci) != 0) {
+				tryMask |= cornerBits[ci];
+			}
+		}
+		var tryTile = bh_base_Autotile.blob47LUT[tryMask];
+		if(tryTile == skipTile || seen.h.hasOwnProperty(tryTile)) {
+			continue;
+		}
+		seen.h[tryTile] = true;
+		var corners = tryMask & 170;
+		var count = 0;
+		var x = cardinals;
+		while(x != 0) {
+			count += x & 1;
+			x >>>= 1;
+		}
+		var tmp = count;
+		var count1 = 0;
+		var x1 = corners ^ wantedCorners;
+		while(x1 != 0) {
+			count1 += x1 & 1;
+			x1 >>>= 1;
+		}
+		var tmp1 = count1;
+		var count2 = 0;
+		var x2 = corners;
+		while(x2 != 0) {
+			count2 += x2 & 1;
+			x2 >>>= 1;
+		}
+		out.push({ tile : tryTile, cardinals : tmp, mismatch : tmp1, corners : count2, order : out.length});
+	}
+};
+bh_base_Autotile.sortCandidates = function(candidates) {
+	candidates.sort(function(a,b) {
+		if(a.cardinals != b.cardinals) {
+			return b.cardinals - a.cardinals;
+		}
+		if(a.mismatch != b.mismatch) {
+			return a.mismatch - b.mismatch;
+		}
+		if(a.corners != b.corners) {
+			return b.corners - a.corners;
+		}
+		return a.order - b.order;
+	});
+	var _g = [];
+	var _g1 = 0;
+	while(_g1 < candidates.length) {
+		var c = candidates[_g1];
+		++_g1;
+		_g.push(c.tile);
+	}
+	return _g;
+};
+bh_base_Autotile.bitCount = function(v) {
+	var count = 0;
+	var x = v;
+	while(x != 0) {
+		count += x & 1;
+		x >>>= 1;
+	}
+	return count;
+};
+bh_base_Autotile.combineRemovals = function(bits,n,k,start,mask,cb) {
+	if(k == 0) {
+		cb(mask);
+		return;
+	}
+	var _g = start;
+	var _g1 = n;
+	while(_g < _g1) {
+		var i = _g++;
+		bh_base_Autotile.combineRemovals(bits,n,k - 1,i + 1,mask | bits[i],cb);
+	}
+};
+bh_base_Autotile.initBlob47LUT = function() {
+	var _g = [];
+	var _g1 = 0;
+	while(_g1 < 256) {
+		var mask = _g1++;
+		_g.push(bh_base_Autotile.blob47ReverseLUT.indexOf(bh_base_Autotile.reduceBlob47Mask(mask)));
+	}
+	bh_base_Autotile.blob47LUT = _g;
+};
+bh_base_Autotile.reduceBlob47Mask = function(mask) {
+	var reduced = mask & 85;
+	if((mask & 2) != 0 && (mask & 1) != 0 && (mask & 4) != 0) {
+		reduced |= 2;
+	}
+	if((mask & 8) != 0 && (mask & 16) != 0 && (mask & 4) != 0) {
+		reduced |= 8;
+	}
+	if((mask & 32) != 0 && (mask & 16) != 0 && (mask & 64) != 0) {
+		reduced |= 32;
+	}
+	if((mask & 128) != 0 && (mask & 1) != 0 && (mask & 64) != 0) {
+		reduced |= 128;
+	}
+	return reduced;
+};
+bh_base_Autotile.hasDirection = function(mask,dir) {
+	return (mask & dir) != 0;
+};
 var bh_base_ColorUtils = function() { };
 bh_base_ColorUtils.__name__ = true;
 bh_base_ColorUtils.rgb = function(rgb) {
@@ -3497,9 +3865,9 @@ bh_multianim_MacroManimParser.prototype = {
 							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
 							var name = this.parseStringOrReference();
 							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
-							var selector = this.parseAutotileTileSelector();
+							var index = this.parseIntegerOrReference();
 							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
-							return bh_multianim_GeneratedTileType.AutotileRef(name,selector);
+							return bh_multianim_GeneratedTileType.AutotileRef(name,index);
 						} else {
 							var s = _g1;
 							if(bh_multianim_MacroManimParser.isKeyword(s,"autotileregionsheet")) {
@@ -3524,9 +3892,6 @@ bh_multianim_MacroManimParser.prototype = {
 		} else {
 			return this.error("unknown generated tile type");
 		}
-	}
-	,parseAutotileTileSelector: function() {
-		return bh_multianim_AutotileTileSelector.ByIndex(this.parseIntegerOrReference());
 	}
 	,parseDefines: function() {
 		var defines = new haxe_ds_StringMap();
@@ -10364,13 +10729,19 @@ bh_multianim_MacroManimParser.prototype = {
 		return { timeStart : timeStart, timeEnd : timeEnd, easing : easing, valueStart : valueStart, valueEnd : valueEnd};
 	}
 	,parseAutotile: function() {
+		var _gthis = this;
 		var format = null;
 		var source = null;
 		var tileSize = null;
-		var depth = null;
 		var mapping = null;
 		var region = null;
 		var allowPartialMapping = false;
+		var setSource = function(s) {
+			if(source != null) {
+				_gthis.error("autotile has more than one source (use exactly one of sheet:, file:, tiles:, demo:)");
+			}
+			source = s;
+		};
 		while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed)) {
 			var _g = this.tokens[this.tpos].type;
 			if(_g._hx_index == 32) {
@@ -10392,11 +10763,17 @@ bh_multianim_MacroManimParser.prototype = {
 								this.advance();
 								format = bh_multianim_AutotileFormat.Blob47;
 							} else {
-								this.error("expected cross or blob47");
+								var s22 = _g3;
+								if(bh_multianim_MacroManimParser.isKeyword(s22,"corner")) {
+									this.advance();
+									format = bh_multianim_AutotileFormat.Corner;
+								} else {
+									this.error("expected cross, blob47 or corner");
+								}
 							}
 						}
 					} else {
-						this.error("expected cross or blob47");
+						this.error("expected cross, blob47 or corner");
 					}
 				} else {
 					var s1 = _g1;
@@ -10408,33 +10785,22 @@ bh_multianim_MacroManimParser.prototype = {
 						var _g4 = this.tokens[this.tpos].type;
 						if(_g4._hx_index == 32) {
 							var _g5 = _g4.s;
-							var s22 = _g5;
-							if(bh_multianim_MacroManimParser.isKeyword(s22,"prefix")) {
+							var s23 = _g5;
+							if(bh_multianim_MacroManimParser.isKeyword(s23,"prefix")) {
 								this.advance();
 								this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
 								var prefix = this.parseStringOrReference();
-								source = bh_multianim_AutotileSource.ATSAtlas(sheet,prefix);
+								setSource(bh_multianim_AutotileSource.ATSAtlas(sheet,prefix));
 							} else {
-								var s23 = _g5;
-								if(bh_multianim_MacroManimParser.isKeyword(s23,"region")) {
-									this.advance();
-									this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
-									this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TBracketOpen);
-									var regionVals = [];
-									while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TBracketClosed)) {
-										this.eatComma();
-										if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TBracketClosed)) {
-											break;
-										}
-										regionVals.push(this.parseIntegerOrReference());
-									}
-									source = bh_multianim_AutotileSource.ATSAtlasRegion(sheet,regionVals);
+								var s24 = _g5;
+								if(bh_multianim_MacroManimParser.isKeyword(s24,"region")) {
+									this.error("autotile \"sheet: ..., region: [...]\" is not supported - use file: \"image.png\" with region: [x, y, w, h]");
 								} else {
-									this.error("expected prefix or region after sheet");
+									this.error("expected prefix: after sheet");
 								}
 							}
 						} else {
-							this.error("expected prefix or region after sheet");
+							this.error("expected prefix: after sheet");
 						}
 					} else {
 						var s3 = _g1;
@@ -10442,14 +10808,17 @@ bh_multianim_MacroManimParser.prototype = {
 							this.advance();
 							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
 							var filename = this.parseStringOrReference();
-							source = bh_multianim_AutotileSource.ATSFile(filename);
+							setSource(bh_multianim_AutotileSource.ATSFile(filename));
 						} else {
 							var s4 = _g1;
 							if(bh_multianim_MacroManimParser.isKeyword(s4,"tiles")) {
 								this.advance();
 								this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
 								var tiles = this.parseTileSources();
-								source = bh_multianim_AutotileSource.ATSTiles(tiles);
+								if(tiles.length == 0) {
+									this.error("autotile tiles: needs at least one tile source");
+								}
+								setSource(bh_multianim_AutotileSource.ATSTiles(tiles));
 							} else {
 								var s5 = _g1;
 								if(bh_multianim_MacroManimParser.isKeyword(s5,"demo")) {
@@ -10458,7 +10827,7 @@ bh_multianim_MacroManimParser.prototype = {
 									var edgeColor = this.parseColorOrReference();
 									this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 									var fillColor = this.parseColorOrReference();
-									source = bh_multianim_AutotileSource.ATSDemo(edgeColor,fillColor);
+									setSource(bh_multianim_AutotileSource.ATSDemo(edgeColor,fillColor));
 								} else {
 									var s6 = _g1;
 									if(bh_multianim_MacroManimParser.isKeyword(s6,"tilesize")) {
@@ -10468,9 +10837,7 @@ bh_multianim_MacroManimParser.prototype = {
 									} else {
 										var s7 = _g1;
 										if(bh_multianim_MacroManimParser.isKeyword(s7,"depth")) {
-											this.advance();
-											this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
-											depth = this.parseIntegerOrReference();
+											this.error("autotile depth: was removed (elevation rendering is not supported)");
 										} else {
 											var s8 = _g1;
 											if(bh_multianim_MacroManimParser.isKeyword(s8,"mapping")) {
@@ -10498,6 +10865,9 @@ bh_multianim_MacroManimParser.prototype = {
 															}
 															region.push(this.parseIntegerOrReference());
 														}
+														if(region.length != 4) {
+															this.error("autotile region: expects [x, y, width, height], got " + region.length + " values");
+														}
 													} else {
 														this.error("unexpected autotile property: " + Std.string(this.tokens[this.tpos].type));
 													}
@@ -10519,14 +10889,61 @@ bh_multianim_MacroManimParser.prototype = {
 			return null;
 		}
 		if(source == null) {
-			this.error("autotile requires source");
+			this.error("autotile requires a source (sheet:, file:, tiles: or demo:)");
 			return null;
 		}
 		if(tileSize == null) {
 			this.error("autotile requires tileSize");
 			return null;
 		}
-		return { format : format, source : source, tileSize : tileSize, depth : depth, mapping : mapping, region : region, allowPartialMapping : allowPartialMapping};
+		var fmt = format;
+		var src = source;
+		if(region != null) {
+			if(src._hx_index == 1) {
+				var _g = src.filename;
+			} else {
+				this.error("autotile region: only applies to a file: source");
+			}
+		}
+		if(allowPartialMapping && fmt != bh_multianim_AutotileFormat.Blob47) {
+			this.error("autotile allowPartialMapping: only applies to format: blob47");
+		}
+		if(mapping != null) {
+			if(src._hx_index == 3) {
+				var _g = src.edgeColor;
+				var _g = src.fillColor;
+				this.error("autotile demo: source generates its own tiles and does not take mapping:");
+			}
+			var indexCount;
+			switch(fmt._hx_index) {
+			case 0:
+				indexCount = 13;
+				break;
+			case 1:
+				indexCount = 47;
+				break;
+			case 2:
+				indexCount = 16;
+				break;
+			}
+			var map = mapping;
+			var _g_map = map;
+			var _g_keys = map.keys();
+			while(_g_keys.hasNext()) {
+				var key = _g_keys.next();
+				var _g_value = _g_map.get(key);
+				var _g_key = key;
+				var key1 = _g_key;
+				var target = _g_value;
+				if(key1 < 0 || key1 >= indexCount) {
+					this.error("autotile mapping key " + key1 + " is not a valid index for this format (0-" + (indexCount - 1) + ")");
+				}
+				if(target < 0) {
+					this.error("autotile mapping " + key1 + ":" + target + " - source index must be >= 0");
+				}
+			}
+		}
+		return { format : fmt, source : src, tileSize : tileSize, mapping : mapping, region : region, allowPartialMapping : allowPartialMapping};
 	}
 	,parseAutotileMapping: function() {
 		var map = new haxe_ds_IntMap();
@@ -10537,12 +10954,16 @@ bh_multianim_MacroManimParser.prototype = {
 				break;
 			}
 			var idx = this.parseInteger();
+			var key = seqIdx;
+			var target = idx;
 			if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TColon)) {
-				var target = this.parseInteger();
-				map.h[idx] = target;
-			} else {
-				map.h[seqIdx] = idx;
+				key = idx;
+				target = this.parseInteger();
 			}
+			if(map.h.hasOwnProperty(key)) {
+				this.error("autotile mapping has more than one entry for index " + key);
+			}
+			map.h[key] = target;
 			++seqIdx;
 		}
 		return map;
@@ -11966,16 +12387,11 @@ var bh_multianim_RepeatType = $hxEnums["bh.multianim.RepeatType"] = { __ename__:
 	,TilesIterator: ($_=function(bitmapVarName,tilenameVarName,sheetName,tileFilter) { return {_hx_index:5,bitmapVarName:bitmapVarName,tilenameVarName:tilenameVarName,sheetName:sheetName,tileFilter:tileFilter,__enum__:"bh.multianim.RepeatType",toString:$estr}; },$_._hx_name="TilesIterator",$_.__params__ = ["bitmapVarName","tilenameVarName","sheetName","tileFilter"],$_)
 };
 bh_multianim_RepeatType.__constructs__ = [bh_multianim_RepeatType.StepIterator,bh_multianim_RepeatType.LayoutIterator,bh_multianim_RepeatType.ArrayIterator,bh_multianim_RepeatType.RangeIterator,bh_multianim_RepeatType.StateAnimIterator,bh_multianim_RepeatType.TilesIterator];
-var bh_multianim_AutotileTileSelector = $hxEnums["bh.multianim.AutotileTileSelector"] = { __ename__:true,__constructs__:null
-	,ByIndex: ($_=function(index) { return {_hx_index:0,index:index,__enum__:"bh.multianim.AutotileTileSelector",toString:$estr}; },$_._hx_name="ByIndex",$_.__params__ = ["index"],$_)
-	,ByEdges: ($_=function(edges) { return {_hx_index:1,edges:edges,__enum__:"bh.multianim.AutotileTileSelector",toString:$estr}; },$_._hx_name="ByEdges",$_.__params__ = ["edges"],$_)
-};
-bh_multianim_AutotileTileSelector.__constructs__ = [bh_multianim_AutotileTileSelector.ByIndex,bh_multianim_AutotileTileSelector.ByEdges];
 var bh_multianim_GeneratedTileType = $hxEnums["bh.multianim.GeneratedTileType"] = { __ename__:true,__constructs__:null
 	,Cross: ($_=function(width,height,color,thickness) { return {_hx_index:0,width:width,height:height,color:color,thickness:thickness,__enum__:"bh.multianim.GeneratedTileType",toString:$estr}; },$_._hx_name="Cross",$_.__params__ = ["width","height","color","thickness"],$_)
 	,SolidColor: ($_=function(width,height,color) { return {_hx_index:1,width:width,height:height,color:color,__enum__:"bh.multianim.GeneratedTileType",toString:$estr}; },$_._hx_name="SolidColor",$_.__params__ = ["width","height","color"],$_)
 	,SolidColorWithText: ($_=function(width,height,color,text,textColor,font) { return {_hx_index:2,width:width,height:height,color:color,text:text,textColor:textColor,font:font,__enum__:"bh.multianim.GeneratedTileType",toString:$estr}; },$_._hx_name="SolidColorWithText",$_.__params__ = ["width","height","color","text","textColor","font"],$_)
-	,AutotileRef: ($_=function(autotileName,selector) { return {_hx_index:3,autotileName:autotileName,selector:selector,__enum__:"bh.multianim.GeneratedTileType",toString:$estr}; },$_._hx_name="AutotileRef",$_.__params__ = ["autotileName","selector"],$_)
+	,AutotileRef: ($_=function(autotileName,index) { return {_hx_index:3,autotileName:autotileName,index:index,__enum__:"bh.multianim.GeneratedTileType",toString:$estr}; },$_._hx_name="AutotileRef",$_.__params__ = ["autotileName","index"],$_)
 	,AutotileRegionSheet: ($_=function(autotileName,scale,font,fontColor) { return {_hx_index:4,autotileName:autotileName,scale:scale,font:font,fontColor:fontColor,__enum__:"bh.multianim.GeneratedTileType",toString:$estr}; },$_._hx_name="AutotileRegionSheet",$_.__params__ = ["autotileName","scale","font","fontColor"],$_)
 };
 bh_multianim_GeneratedTileType.__constructs__ = [bh_multianim_GeneratedTileType.Cross,bh_multianim_GeneratedTileType.SolidColor,bh_multianim_GeneratedTileType.SolidColorWithText,bh_multianim_GeneratedTileType.AutotileRef,bh_multianim_GeneratedTileType.AutotileRegionSheet];
@@ -11997,16 +12413,16 @@ bh_multianim_PaletteType.__constructs__ = [bh_multianim_PaletteType.PaletteColor
 var bh_multianim_AutotileFormat = $hxEnums["bh.multianim.AutotileFormat"] = { __ename__:true,__constructs__:null
 	,Cross: {_hx_name:"Cross",_hx_index:0,__enum__:"bh.multianim.AutotileFormat",toString:$estr}
 	,Blob47: {_hx_name:"Blob47",_hx_index:1,__enum__:"bh.multianim.AutotileFormat",toString:$estr}
+	,Corner: {_hx_name:"Corner",_hx_index:2,__enum__:"bh.multianim.AutotileFormat",toString:$estr}
 };
-bh_multianim_AutotileFormat.__constructs__ = [bh_multianim_AutotileFormat.Cross,bh_multianim_AutotileFormat.Blob47];
+bh_multianim_AutotileFormat.__constructs__ = [bh_multianim_AutotileFormat.Cross,bh_multianim_AutotileFormat.Blob47,bh_multianim_AutotileFormat.Corner];
 var bh_multianim_AutotileSource = $hxEnums["bh.multianim.AutotileSource"] = { __ename__:true,__constructs__:null
 	,ATSAtlas: ($_=function(sheet,prefix) { return {_hx_index:0,sheet:sheet,prefix:prefix,__enum__:"bh.multianim.AutotileSource",toString:$estr}; },$_._hx_name="ATSAtlas",$_.__params__ = ["sheet","prefix"],$_)
-	,ATSAtlasRegion: ($_=function(sheet,region) { return {_hx_index:1,sheet:sheet,region:region,__enum__:"bh.multianim.AutotileSource",toString:$estr}; },$_._hx_name="ATSAtlasRegion",$_.__params__ = ["sheet","region"],$_)
-	,ATSFile: ($_=function(filename) { return {_hx_index:2,filename:filename,__enum__:"bh.multianim.AutotileSource",toString:$estr}; },$_._hx_name="ATSFile",$_.__params__ = ["filename"],$_)
-	,ATSTiles: ($_=function(tiles) { return {_hx_index:3,tiles:tiles,__enum__:"bh.multianim.AutotileSource",toString:$estr}; },$_._hx_name="ATSTiles",$_.__params__ = ["tiles"],$_)
-	,ATSDemo: ($_=function(edgeColor,fillColor) { return {_hx_index:4,edgeColor:edgeColor,fillColor:fillColor,__enum__:"bh.multianim.AutotileSource",toString:$estr}; },$_._hx_name="ATSDemo",$_.__params__ = ["edgeColor","fillColor"],$_)
+	,ATSFile: ($_=function(filename) { return {_hx_index:1,filename:filename,__enum__:"bh.multianim.AutotileSource",toString:$estr}; },$_._hx_name="ATSFile",$_.__params__ = ["filename"],$_)
+	,ATSTiles: ($_=function(tiles) { return {_hx_index:2,tiles:tiles,__enum__:"bh.multianim.AutotileSource",toString:$estr}; },$_._hx_name="ATSTiles",$_.__params__ = ["tiles"],$_)
+	,ATSDemo: ($_=function(edgeColor,fillColor) { return {_hx_index:3,edgeColor:edgeColor,fillColor:fillColor,__enum__:"bh.multianim.AutotileSource",toString:$estr}; },$_._hx_name="ATSDemo",$_.__params__ = ["edgeColor","fillColor"],$_)
 };
-bh_multianim_AutotileSource.__constructs__ = [bh_multianim_AutotileSource.ATSAtlas,bh_multianim_AutotileSource.ATSAtlasRegion,bh_multianim_AutotileSource.ATSFile,bh_multianim_AutotileSource.ATSTiles,bh_multianim_AutotileSource.ATSDemo];
+bh_multianim_AutotileSource.__constructs__ = [bh_multianim_AutotileSource.ATSAtlas,bh_multianim_AutotileSource.ATSFile,bh_multianim_AutotileSource.ATSTiles,bh_multianim_AutotileSource.ATSDemo];
 var bh_multianim_Atlas2Source = $hxEnums["bh.multianim.Atlas2Source"] = { __ename__:true,__constructs__:null
 	,A2SFile: ($_=function(filename) { return {_hx_index:0,filename:filename,__enum__:"bh.multianim.Atlas2Source",toString:$estr}; },$_._hx_name="A2SFile",$_.__params__ = ["filename"],$_)
 	,A2SSheet: ($_=function(sheetName) { return {_hx_index:1,sheetName:sheetName,__enum__:"bh.multianim.Atlas2Source",toString:$estr}; },$_._hx_name="A2SSheet",$_.__params__ = ["sheetName"],$_)
@@ -15709,6 +16125,26 @@ var Bool = Boolean;
 var Class = { };
 var Enum = { };
 js_Boot.__toStr = ({ }).toString;
+bh_base_Autotile.N = 1;
+bh_base_Autotile.NE = 2;
+bh_base_Autotile.E = 4;
+bh_base_Autotile.SE = 8;
+bh_base_Autotile.S = 16;
+bh_base_Autotile.SW = 32;
+bh_base_Autotile.W = 64;
+bh_base_Autotile.NW = 128;
+bh_base_Autotile.N4 = 1;
+bh_base_Autotile.E4 = 2;
+bh_base_Autotile.S4 = 4;
+bh_base_Autotile.W4 = 8;
+bh_base_Autotile.CORNER_NW = 1;
+bh_base_Autotile.CORNER_NE = 2;
+bh_base_Autotile.CORNER_SW = 4;
+bh_base_Autotile.CORNER_SE = 8;
+bh_base_Autotile.CROSS_TILE_COUNT = 13;
+bh_base_Autotile.BLOB47_TILE_COUNT = 47;
+bh_base_Autotile.CORNER_TILE_COUNT = 16;
+bh_base_Autotile.blob47ReverseLUT = [0,1,4,5,7,16,17,20,21,23,28,29,31,64,65,68,69,71,80,81,84,85,87,92,93,95,112,113,116,117,119,124,125,127,193,197,199,209,213,215,221,223,241,245,247,253,255];
 bh_base_GridDirection.DIRECTION_RIGHT = 0;
 bh_base_GridDirection.DIRECTION_TOP_RIGHT = 1;
 bh_base_GridDirection.DIRECTION_TOP_LEFT = 2;

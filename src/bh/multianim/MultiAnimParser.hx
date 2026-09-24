@@ -700,19 +700,12 @@ enum RepeatType {
 	TilesIterator(bitmapVarName:String, tilenameVarName:Null<String>, sheetName:String, tileFilter:Null<String>);
 }
 
-// Selector for which tile to get from an autotile
-@:nullSafety
-enum AutotileTileSelector {
-	ByIndex(index:ReferenceableValue);     // Select by tile index (0-46 for blob47)
-	ByEdges(edges:Int);                    // Select by edge bitmask (N|E|S|W|NE|SE|SW|NW)
-}
-
 @:nullSafety
 enum GeneratedTileType {
 	Cross(width:ReferenceableValue, height:ReferenceableValue, color:ReferenceableValue, thickness:ReferenceableValue);
 	SolidColor(width:ReferenceableValue, height:ReferenceableValue, color:ReferenceableValue);
 	SolidColorWithText(width:ReferenceableValue, height:ReferenceableValue, color:ReferenceableValue, text:ReferenceableValue, textColor:ReferenceableValue, font:ReferenceableValue);
-	AutotileRef(autotileName:ReferenceableValue, selector:AutotileTileSelector);
+	AutotileRef(autotileName:ReferenceableValue, index:ReferenceableValue);  // Resolved tile for autotile index (0-12 cross, 0-46 blob47, 0-15 corner)
 	AutotileRegionSheet(autotileName:ReferenceableValue, scale:ReferenceableValue, font:ReferenceableValue, fontColor:ReferenceableValue);  // Shows entire region with numbered grid overlay
 }
 
@@ -736,20 +729,22 @@ enum PaletteType {
 	PaletteImageFile(filename:ReferenceableValue);
 }
 
-// Autotile formats for terrain generation
+// Autotile formats for terrain generation (index math in bh.base.Autotile)
 @:nullSafety
 enum AutotileFormat {
-	Cross;      // Cross layout + corners for elevation (with depth)
-	Blob47;     // Full 47-tile autotile with all edge/corner combinations
+	Cross;      // 13 tiles, one per filled cell: edges, center, outer + inner corners
+	Blob47;     // 47 tiles, one per filled cell: every 8-neighbour edge/corner combination
+	Corner;     // 16 tiles, dual grid: one per grid corner, index = filled cells NW=1|NE=2|SW=4|SE=8
 }
 
+// Where an autotile's tiles come from. Every source is addressed by a *source index*; `mapping:`
+// maps autotile index -> source index (identity when absent).
 @:nullSafety
 enum AutotileSource {
-	ATSAtlas(sheet:ReferenceableValue, prefix:ReferenceableValue);
-	ATSAtlasRegion(sheet:ReferenceableValue, region:Array<ReferenceableValue>);
-	ATSFile(filename:ReferenceableValue);
-	ATSTiles(tiles:Array<TileSource>);  // explicit tile list for full control
-	ATSDemo(edgeColor:ReferenceableValue, fillColor:ReferenceableValue);  // auto-generated demo tiles
+	ATSAtlas(sheet:ReferenceableValue, prefix:ReferenceableValue);  // source index j -> atlas tile "<prefix><j>"
+	ATSFile(filename:ReferenceableValue);  // source index j -> j-th tile (row-major) of `region:` (default: whole image)
+	ATSTiles(tiles:Array<TileSource>);  // source index j -> j-th listed tile
+	ATSDemo(edgeColor:ReferenceableValue, fillColor:ReferenceableValue);  // auto-generated demo tiles, one per autotile index
 }
 
 @:nullSafety
@@ -757,10 +752,9 @@ typedef AutotileDef = {
 	var format:AutotileFormat;
 	var source:AutotileSource;
 	var tileSize:ReferenceableValue;
-	var ?depth:Null<ReferenceableValue>;  // for isometric elevation
-	var ?mapping:Null<Map<Int, Int>>;     // custom index mapping: blob47Index -> tilesetIndex
-	var ?region:Null<Array<ReferenceableValue>>;  // optional region [x, y, w, h] for file source
-	var ?allowPartialMapping:Bool;        // blob47 only: if true, missing tiles use fallback instead of error
+	var ?mapping:Null<Map<Int, Int>>;     // autotile index -> source index (validated against the format at parse time)
+	var ?region:Null<Array<ReferenceableValue>>;  // file source only: [x, y, w, h] in pixels
+	var ?allowPartialMapping:Bool;        // blob47 only: indices with no tile use the closest mapped tile instead of an error
 }
 
 @:nullSafety

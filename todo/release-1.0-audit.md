@@ -150,9 +150,11 @@ bodies"; LSP-2 resolved with a build.js rebuild step + CI drift gate + LSP tests
   Decide the 1.x policy (accept `1.x`? warn?) before files with `version: 1.1` exist.
 - [ ] `DEC-7` **`.manim` vs `.anim` conditional syntax divergence** (comma-form vs stacking; different `@else`
   semantics): align or document explicitly.
-- [ ] `DEC-8` **Autotile edge-flag selectors**: `ByEdges` enum + builder/codegen support exist but no parser
+- [x] `DEC-8` **Autotile edge-flag selectors**: `ByEdges` enum + builder/codegen support exist but no parser
   path produces it; docs show `autotile("x", N|E|S|W)` (two doc sites disagree `|` vs `+`). Wire the
-  parser or cut the docs.
+  parser or cut the docs. **RESOLVED 2026-09-23 as "cut"**: `ByEdges`/`AutotileTileSelector` removed
+  (codegen also passed the mask as an index), `generated(autotile(name, index))` is index-only, docs
+  fixed. Done as part of the autotile rework (corner format, unified tile resolution — see CHANGELOG).
 
 ---
 
@@ -202,7 +204,7 @@ bodies"; LSP-2 resolved with a build.js rebuild step + CI drift gate + LSP tests
 - [ ] `DOC-13` Filter semantics rows (brightness/saturate/hue — `DEC-2` resolved as fix-code 2026-07-12:
   verify the rows now match the multiplier/degrees semantics); layout `align:`
   `left`/`top` are not accepted tokens and the doc's own example fails to parse; `palette(2d, width)`
-  → `palette(2d: width)`; `palette(external)` misplaced; autotile `source` row totally wrong shape;
+  → `palette(2d: width)`; `palette(external)` misplaced; ~~autotile `source` row totally wrong shape~~ (fixed 2026-09-23);
   `cubicBezier` is not a bare curve style and not usable as a curve-slot easing name; bezier
   smoothing is `smoothing: auto|none|<float>`; `$index`/`$indexX`/`$bitmap` are author-chosen loop
   var names, not implicit refs; glow/dropShadow `smoothColor`/`knockout` reachable only via

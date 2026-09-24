@@ -424,56 +424,42 @@ Curve slots accept either named curves from `curves{}` or inline easing names (e
 
 ## Autotile
 
-Autotile is a root-level manim element for procedural terrain generation. It defines a tileset that can be automatically placed based on neighbor relationships.
+Autotile is a root-level manim element for procedural terrain generation: a tileset plus an index scheme. Language reference: `docs/manim.md` "Autotile".
 
-### Supported Formats
+### Formats
 
-- **cross**: Cross layout for standard terrain (13 tiles). Tile indices: 0=N, 1=W, 2=C, 3=E, 4=S, 5-8=outer corners, 9-12=inner corners
-- **blob47**: Full 47-tile autotile with all edge/corner combinations using 8-direction neighbor detection
+- **corner** (16 tiles): dual grid. One tile per grid-cell corner, offset by half a tile; index = filled cells around the corner, `NW 1 | NE 2 | SW 4 | SE 8`. Index 0 is never drawn. Matches the common "3x3 patch + inner corners + diagonals" tileset exactly and covers every configuration.
+- **blob47** (47 tiles): one tile per filled cell from 8-direction neighbours (diagonals only count when both adjacent cardinals are present). Tile indices are the 47 reduced masks in ascending order, so real tilesets need a `mapping:`.
+- **cross** (13 tiles): one tile per filled cell. 0=N, 1=W, 2=C, 3=E, 4=S edges, 5-8 outer, 9-12 inner corners.
 
-### DSL Syntax
+### Pipeline
 
-```
-#myTerrain autotile {
-    format: cross             // cross | blob47
-    sheet: "terrain"          // atlas name
-    prefix: "grass_"          // tile prefix (tiles named grass_0 to grass_12)
-    tileSize: 16              // tile size in pixels
-}
+1. **Parse** (`MacroManimParser.parseAutotile`) -> `AUTOTILE(AutotileDef)`: format, one `AutotileSource` (`ATSFile`, `ATSAtlas`, `ATSTiles`, `ATSDemo`), `tileSize`, optional `mapping` / `region` / `allowPartialMapping`. Parse-time validation: mapping keys per format, duplicate keys, `region:` only with `file:`, `allowPartialMapping` only with blob47, no `mapping:` with `demo:`, exactly one source.
+2. **Resolve** (`MultiAnimBuilder.getAutotileTiles`, cached per builder by name): for every autotile index `i`, source index `j = mapping[i]` (identity mapping when absent), with blob47 fallback (`Autotile.applyBlob47FallbackWithMap`) under `allowPartialMapping`; `j` is range-checked against the source and turned into a tile. Missing tiles throw `BuilderError` (`autotile_missing_tile` / `autotile_index` / `autotile_region`). Demo tiles are drawn into one `PixelLines` texture.
+3. **Place** (`buildAutotile`): index math from `bh.base.Autotile`, one `h2d.TileGroup`.
 
-// Or with image file instead of atlas:
-#myTerrain autotile {
-    format: cross
-    file: "terrain.png"       // image file with tiles in grid layout
-    tileSize: 16
-    depth: 8                  // optional: isometric depth for elevation
-    mapping: [0, 1, 2, ...]   // optional: custom index mapping
-}
-```
+`generated(autotile(name, index))` (builder: `loadTileSource`; codegen: `ProgrammableBuilder.getAutotileTileByIndex`) returns the same cached tile. `generated(autotileRegionSheet(...))` renders a `file:` region with source indices for authoring mappings.
 
 ### Usage
 
 ```haxe
 var builder = MultiAnimBuilder.load(content, resourceLoader, "terrain.manim");
 
-// Binary grid: 1 = terrain present, 0 = empty
+// grid[y][x], non-zero = terrain present
 var grid = [
     [0, 1, 1, 0],
     [1, 1, 1, 1],
     [0, 1, 1, 0]
 ];
 
-// Build terrain TileGroup
 var terrain = builder.buildAutotile("myTerrain", grid);
 scene.addChild(terrain);
-
-// For elevation with depth:
-var elevation = builder.buildAutotileElevation("elevation", grid, 0);
 ```
 
-### Tile Index Calculation
+### Index Math
 
 The `bh.base.Autotile` utility class provides:
-- `getNeighborMask8(grid, x, y)` - 8-direction neighbor bitmask (N=1, NE=2, E=4, SE=8, S=16, SW=32, W=64, NW=128)
-- `getCrossIndex(mask)` - Map neighbor mask to cross format tile index
-- `getBlob47Index(mask)` - Map neighbor mask to blob47 tile index
+- `getNeighborMask8(grid, x, y)` - 8-direction neighbour bitmask (N=1, NE=2, E=4, SE=8, S=16, SW=32, W=64, NW=128)
+- `getCornerIndex(grid, cornerX, cornerY)` - corner format index (corners run 0..width x 0..height)
+- `getCrossIndex(mask)` / `getBlob47Index(mask)` / `getBlob47Mask(index)` - per-cell formats
+- `getBlob47FallbackChain(index, mapping)` / `applyBlob47FallbackWithMap(index, mapping)` - partial-mapping fallback (one algorithm: same cardinals with the closest diagonals, then fewer cardinals, then tile 46, then 0; the chain form is what the hx-multianim-utils autotile mapper displays)
