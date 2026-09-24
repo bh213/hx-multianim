@@ -1561,6 +1561,49 @@ animation {
 		}
 	}
 
+	@Test
+	public function testAnimSMEventOpensPlaylist() {
+		// An event before the first frame: fired as the animation starts, then the frame shows.
+		// It used to be read over and over until the loop guard threw "animation loop detected".
+		var sm = new bh.stateanim.AnimationSM([], true);
+		var dummyTile = h2d.Tile.fromColor(0xFF0000, 8, 8);
+		var frame = new bh.stateanim.AnimationFrame(dummyTile, 0.1, 0, 0, 8, 8);
+		var events:Array<bh.stateanim.AnimationSM.AnimationEvent> = [];
+		sm.onAnimationEvent = function(e) { events.push(e); };
+		sm.addAnimationState("fire", [
+			Event(PointEvent("muzzle", new h2d.col.IPoint(48, -1))),
+			Frame(frame),
+			Event(PointEvent("muzzle", new h2d.col.IPoint(35, -1))),
+			Frame(frame)
+		], 0, []);
+		sm.play("fire");
+		Assert.equals(1, events.length, "the opening event fires as the animation starts");
+		Assert.notNull(sm.getCurrentFrame(), "and the first frame shows");
+		sm.update(0.15);
+		Assert.equals(2, events.length, "the next frame's event fires as it comes up");
+		switch events[1] {
+			case PointEvent(name, pt):
+				Assert.equals("muzzle", name);
+				Assert.equals(35, pt.x);
+			default: Assert.fail("Expected PointEvent");
+		}
+	}
+
+	@Test
+	public function testAnimSMLoopingEventOpensPlaylist() {
+		// Looping back to an opening event goes through it again, once per loop.
+		var sm = new bh.stateanim.AnimationSM([], true);
+		var dummyTile = h2d.Tile.fromColor(0xFF0000, 8, 8);
+		var frame = new bh.stateanim.AnimationFrame(dummyTile, 0.1, 0, 0, 8, 8);
+		var ticks = 0;
+		sm.onAnimationEvent = function(e) { ticks++; };
+		sm.addAnimationState("idle", [Event(Trigger("tick")), Frame(frame)], -1, []);
+		sm.play("idle");
+		Assert.equals(1, ticks);
+		sm.update(0.25);
+		Assert.equals(3, ticks, "one tick per pass through the playlist");
+	}
+
 	// ===== Full integration: parse .anim and create AnimSM =====
 
 	@Test

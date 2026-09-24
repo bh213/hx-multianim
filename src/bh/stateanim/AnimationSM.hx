@@ -258,6 +258,11 @@ class AnimationSM extends h2d.Object {
 							randomPoint.y += Std.int(r * Math.sin(randomAngle));
 							onAnimationEvent(PointEvent(name, randomPoint));
 					}
+					// Advance past an event when no frame is showing yet (an event that opens the
+					// playlist): the top of the loop only advances from a frame, so it would be
+					// read again until the loop guard threw
+					if (currentFrame == null)
+						currentStateIndex++;
 
 				case SetFilter(filter, tintColor): // (#12) per-frame filter change
 					@:nullSafety(Off) {
