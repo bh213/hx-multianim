@@ -77,11 +77,14 @@ jobs:
       # (the VS Code extension loads it directly). Rebuild and byte-compare so a
       # parser/LSP source change can't ship diagnostics that disagree with the real
       # parser. Regenerate with `npm run build` in vscode/ and commit the result.
+      # A float constant the compiler folds (`-1.0 / 3.0`) prints differently on Windows
+      # and Linux: write such constants as literals, or this gate fails on a Windows build.
       run: |
         haxe lsp/lsp-server.hxml
         if ! cmp -s lsp/bin/server.js vscode/server/server.js; then
           echo "ERROR: vscode/server/server.js is stale — parser/LSP sources changed without rebuilding the packaged server."
           echo "Fix: run 'npm run build' in vscode/ (rebuilds and copies lsp/bin/server.js) and commit vscode/server/server.js."
+          diff vscode/server/server.js lsp/bin/server.js | head -20 | cut -c1-300 || true
           exit 1
         fi
         echo "LSP server in sync"

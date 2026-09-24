@@ -847,8 +847,11 @@ class MacroManimParser {
 						return value; // already degrees
 					case "rad":
 						advance();
-						// Convert radians to degrees: value * (180 / PI)
-						return EBinop(OpMul, value, RVFloat(180.0 / 3.14159265358979323));
+						// Convert radians to degrees: value * (180 / PI). Written as a literal, not
+						// `180.0 / PI`: the compiler prints a folded float differently on Windows and
+						// Linux, and the packaged LSP server (vscode/server/server.js) must build the
+						// same on both for the CI drift gate.
+						return EBinop(OpMul, value, RVFloat(57.29577951308232));
 					case "turn" | "turns":
 						advance();
 						// Convert turns to degrees: value * 360

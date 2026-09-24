@@ -495,8 +495,10 @@ class HexLayout
     public var orientation(default, null):HexOrientation;
     public var size(default, null):FPoint;
     public var origin(default, null):FPoint;
-    static public var pointy:HexOrientationData = new HexOrientationData(Math.sqrt(3.0), Math.sqrt(3.0) / 2.0, 0.0, 3.0 / 2.0, Math.sqrt(3.0) / 3.0, -1.0 / 3.0, 0.0, 2.0 / 3.0, 0.5);
-    static public var flat:HexOrientationData = new HexOrientationData(3.0 / 2.0, 0.0, Math.sqrt(3.0) / 2.0, Math.sqrt(3.0), 2.0 / 3.0, 0.0, -1.0 / 3.0, Math.sqrt(3.0) / 3.0, 0.0);
+    // 1.5, -1/3 and 2/3 are written as literals: the compiler prints a folded constant (`-1.0 / 3.0`)
+    // differently on Windows and Linux, and the packaged LSP server must build the same on both.
+    static public var pointy:HexOrientationData = new HexOrientationData(Math.sqrt(3.0), Math.sqrt(3.0) / 2.0, 0.0, 1.5, Math.sqrt(3.0) / 3.0, -0.3333333333333333, 0.0, 0.6666666666666666, 0.5);
+    static public var flat:HexOrientationData = new HexOrientationData(1.5, 0.0, Math.sqrt(3.0) / 2.0, Math.sqrt(3.0), 0.6666666666666666, 0.0, -0.3333333333333333, Math.sqrt(3.0) / 3.0, 0.0);
 
     public function new(orientation:HexOrientation, size:FPoint, origin:FPoint)
     {

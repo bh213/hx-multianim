@@ -2870,7 +2870,7 @@ bh_multianim_MacroManimParser.prototype = {
 				return value;
 			case "rad":
 				this.advance();
-				return bh_multianim_ReferenceableValue.EBinop(bh_multianim_RvOp.OpMul,value,bh_multianim_ReferenceableValue.RVFloat(57.295779513082323));
+				return bh_multianim_ReferenceableValue.EBinop(bh_multianim_RvOp.OpMul,value,bh_multianim_ReferenceableValue.RVFloat(57.29577951308232));
 			case "turn":case "turns":
 				this.advance();
 				return bh_multianim_ReferenceableValue.EBinop(bh_multianim_RvOp.OpMul,value,bh_multianim_ReferenceableValue.RVFloat(360.0));
@@ -16156,8 +16156,8 @@ bh_base_GridDirection.directions = [new bh_base_Hex(1,0,-1),new bh_base_Hex(1,-1
 bh_base_GridDirection.allEnumDirections = [0,1,2,3,4,5];
 bh_base_OffsetCoord.EVEN = 1;
 bh_base_OffsetCoord.ODD = -1;
-bh_base_HexLayout.pointy = new bh_base_HexOrientationData(Math.sqrt(3.0),Math.sqrt(3.0) / 2.0,0.0,1.5,Math.sqrt(3.0) / 3.0,-0.33333333333333331,0.0,0.66666666666666663,0.5);
-bh_base_HexLayout.flat = new bh_base_HexOrientationData(1.5,0.0,Math.sqrt(3.0) / 2.0,Math.sqrt(3.0),0.66666666666666663,0.0,-0.33333333333333331,Math.sqrt(3.0) / 3.0,0.0);
+bh_base_HexLayout.pointy = new bh_base_HexOrientationData(Math.sqrt(3.0),Math.sqrt(3.0) / 2.0,0.0,1.5,Math.sqrt(3.0) / 3.0,-0.3333333333333333,0.0,0.6666666666666666,0.5);
+bh_base_HexLayout.flat = new bh_base_HexOrientationData(1.5,0.0,Math.sqrt(3.0) / 2.0,Math.sqrt(3.0),0.6666666666666666,0.0,-0.3333333333333333,Math.sqrt(3.0) / 3.0,0.0);
 bh_multianim__$MacroManimParser_MacroLexer.interpolationKeywords = ["callback","function","div","true","false","yes","no"];
 bh_multianim_MacroManimParser.defaultLayoutNodeName = "#defaultLayout";
 bh_multianim_MacroManimParser.defaultPathNodeName = "#defaultPaths";
