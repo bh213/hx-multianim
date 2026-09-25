@@ -111,4 +111,29 @@ class CodegenTileSourceParityTest extends BuilderTestBase {
 			Assert.equals(6, Std.int(bitmaps[0].tile.width),
 				"codegen: generated width $n / 2 * 2 with n=7 must truncate per node (6), not once at the end (7)");
 	}
+
+	// ==================== pivot() on a cached autotile tile ====================
+	// A bitmap re-subs its tile, so the bitmaps themselves look right; what pivot() changed was
+	// the tile the autotile caches, which buildAutotile() terrain and getAutotileTile() hand out.
+
+	/** Builder: pivot() on an autotile tile must leave the cached tile unshifted. */
+	@Test
+	public function testAutotilePivot_Builder_LeavesCachedTileUnchanged():Void {
+		final builder = BuilderTestBase.builderFromFile(FIXTURE);
+		builder.buildWithParameters("autotilePivot", new Map());
+		Assert.equals(0.0, builder.getAutotileTile("pivotTerrain", 3).dx,
+			"builder: the cached autotile tile (drawn by buildAutotile) must not be re-centered by pivot()");
+		Assert.equals(0.0, builder.getAutotileTile("pivotTerrain", 3).dy);
+	}
+
+	/** Codegen: same guarantee for the generated code path. */
+	@Test
+	public function testAutotilePivot_Codegen_LeavesCachedTileUnchanged():Void {
+		final factory:Dynamic = createMp().autotilePivot;
+		factory.create();
+		final builder:bh.multianim.MultiAnimBuilder = factory._builder;
+		Assert.equals(0.0, builder.getAutotileTile("pivotTerrain", 3).dx,
+			"codegen: the cached autotile tile (drawn by buildAutotile) must not be re-centered by pivot()");
+		Assert.equals(0.0, builder.getAutotileTile("pivotTerrain", 3).dy);
+	}
 }

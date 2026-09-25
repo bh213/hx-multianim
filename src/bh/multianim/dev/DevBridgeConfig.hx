@@ -6,7 +6,7 @@ package bh.multianim.dev;
 	`HX_DEV_PORT`, `HX_DEV_BIND`, `HX_DEV_READY_FILE`, `HX_DEV_TOKEN`, `HX_DEV_ORIGIN`,
 	`HX_DEV_RELAY`, `HX_DEV_PAGE`, `HX_DEV_APP`.
 
-	- System targets read the environment (`Sys.getEnv`).
+	- System targets read the environment (`Sys.getEnv`), and so does Node (`process.env`).
 	- A browser page has no environment. There, a setting comes from a `window.HX_DEV` object the
 	  host page writes before the game's script runs (`window.HX_DEV = {HX_DEV_TOKEN: "abc"}`, the
 	  short key `token` works too), or else from the page's query string under its short key: the
@@ -19,6 +19,9 @@ class DevBridgeConfig {
 	public static function get(name:String):Null<String> {
 		#if sys
 		return Sys.getEnv(name);
+		#elseif hxnodejs
+		// Node is a js target without `sys`: its environment is process.env
+		return js.Node.process.env.get(name);
 		#elseif js
 		return getInPage(name);
 		#else

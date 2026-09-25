@@ -447,8 +447,10 @@ class IncrementalUpdateContext {
 	// reverse-direction cancellation doesn't leave a mid-flight interpolated value in place
 	// — that value would otherwise be re-captured as the next transition's baseline,
 	// permanently shifting the element away from its natural state. Mirrors
-	// CodegenTransitionHelper.activeTransitionTweens.
-	var activeTransitionTweens:Array<{obj:h2d.Object, tween:Null<Tween>, sequence:Null<TweenSequence>, target:Bool, restore:Null<Void -> Void>}> = [];
+	// CodegenTransitionHelper.activeTransitionTweens. `gen` is the tween's generation when the
+	// transition started: the TweenManager can cancel it from outside (cancelAll / clear), and
+	// then the pooled Tween may already run another animation.
+	var activeTransitionTweens:Array<{obj:h2d.Object, tween:Null<Tween>, gen:Int, sequence:Null<TweenSequence>, target:Bool, restore:Null<Void -> Void>}> = [];
 	var rebuildListeners:Array<Void -> Void> = [];
 	// Params that appear in slots whose incremental updates are intentionally unsupported
 	// (interactive id/metadata, stateanim selectors, ...). setParameter on one of these
@@ -830,9 +832,10 @@ class IncrementalUpdateContext {
 			final isUnder = obj == container || isDescendantOf(obj, container);
 			if (isUnder) {
 				final entry = activeTransitionTweens[twi];
-				if (entry.tween != null) {
-					entry.tween.onComplete = null;
-					entry.tween.cancel();
+				final t = entry.tween;
+				if (t != null && t.generation == entry.gen) {
+					t.onComplete = null;
+					t.cancel();
 				}
 				if (entry.sequence != null) {
 					entry.sequence.onComplete = null;
@@ -1221,9 +1224,10 @@ class IncrementalUpdateContext {
 			// kind so user-set values on properties this transition wasn't writing are
 			// preserved (e.g. user-set X under fade survives — fade only restores alpha).
 			if (entry.restore != null) entry.restore();
-			if (entry.tween != null) {
-				entry.tween.onComplete = null;
-				entry.tween.cancel();
+			final t = entry.tween;
+			if (t != null && t.generation == entry.gen) {
+				t.onComplete = null;
+				t.cancel();
 			}
 			if (entry.sequence != null) {
 				entry.sequence.onComplete = null;
@@ -1325,9 +1329,10 @@ class IncrementalUpdateContext {
 				// (TransFade restores only alpha; TransSlide restores {x,y,alpha}; etc.) so
 				// user mutations on properties this transition wasn't writing are preserved.
 				if (entry.restore != null) entry.restore();
-				if (entry.tween != null) {
-					entry.tween.onComplete = null; // Prevent delayed onComplete from TweenManager
-					entry.tween.cancel();
+				final t = entry.tween;
+				if (t != null && t.generation == entry.gen) {
+					t.onComplete = null; // Prevent delayed onComplete from TweenManager
+					t.cancel();
 				}
 				if (entry.sequence != null) {
 					entry.sequence.onComplete = null;
@@ -1341,11 +1346,12 @@ class IncrementalUpdateContext {
 	}
 
 	function trackTransitionTween(obj:h2d.Object, tween:Tween, target:Bool, restore:Null<Void -> Void>):Void {
-		activeTransitionTweens.push({obj: obj, tween: tween, sequence: null, target: target, restore: restore});
+		final gen = tween.generation;
+		activeTransitionTweens.push({obj: obj, tween: tween, gen: gen, sequence: null, target: target, restore: restore});
 		tween.onComplete = () -> {
 			var i = 0;
 			while (i < activeTransitionTweens.length) {
-				if (activeTransitionTweens[i].tween == tween) {
+				if (activeTransitionTweens[i].tween == tween && activeTransitionTweens[i].gen == gen) {
 					activeTransitionTweens.splice(i, 1);
 					break;
 				}
@@ -1357,7 +1363,7 @@ class IncrementalUpdateContext {
 	}
 
 	function trackTransitionSequence(obj:h2d.Object, seq:TweenSequence, target:Bool, restore:Null<Void -> Void>):Void {
-		activeTransitionTweens.push({obj: obj, tween: null, sequence: seq, target: target, restore: restore});
+		activeTransitionTweens.push({obj: obj, tween: null, gen: 0, sequence: seq, target: target, restore: restore});
 		seq.onComplete = () -> {
 			var i = 0;
 			while (i < activeTransitionTweens.length) {
@@ -1377,6 +1383,24 @@ class IncrementalUpdateContext {
 		return false;
 	}
 
+	/** Drop `obj`'s transitions that the TweenManager cancelled from outside (cancelAll, clear):
+	 *  they never complete, and their pooled Tween may already run another animation. Their
+	 *  restore still runs, so obj lands on the transition's endpoint as a completed one would. */
+	function dropCancelledTransitions(obj:h2d.Object):Void {
+		var i = 0;
+		while (i < activeTransitionTweens.length) {
+			final entry = activeTransitionTweens[i];
+			final t = entry.tween;
+			final seq = entry.sequence;
+			final live = if (t != null) t.generation == entry.gen && !t.cancelled else seq != null && !seq.cancelled;
+			if (entry.obj == obj && !live) {
+				activeTransitionTweens.splice(i, 1);
+				if (entry.restore != null) entry.restore();
+			} else
+				i++;
+		}
+	}
+
 	/** Returns the visibility target of the active transition for `obj`, or null if none.
 	 *  A direction-aware check: an in-flight transition whose target equals the requested
 	 *  newVisible already converges to the right state, so it must not be cancelled or
@@ -1393,6 +1417,7 @@ class IncrementalUpdateContext {
 	function setPresenceWithTransition(entry:{object:h2d.Object, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
 			?savedFlowProps:Null<SavedFlowProperties>}, newVisible:Bool, node:Node):Void {
 		final obj = entry.object;
+		dropCancelledTransitions(obj); // before reading presence: their restore may change it
 		final inGraph = isInGraph(obj);
 		// Skip when the requested state matches what's already in flight: either no
 		// transition active and presence already matches, or a transition active whose
@@ -3757,7 +3782,8 @@ class MultiAnimBuilder {
 					case _: throw builderError('TileSource reference "$varName" is not a TileSourceValue, got: $param');
 				}
 			case TSPivot(px, py, inner):
-				var t = loadTileSource(inner);
+				// Re-center a copy: sheet, generated and autotile sources hand out shared cached tiles
+				var t = loadTileSource(inner).clone();
 				t.setCenterRatio(px, py);
 				t;
 		}
@@ -7965,7 +7991,10 @@ class MultiAnimBuilder {
 			mapping = new Map();
 			final n = source.count < 0 ? count : Std.int(Math.min(count, source.count));
 			for (i in 0...n)
-				mapping.set(i, i);
+				// An open-ended source (sheet: + prefix:) maps only the frames it has, so a
+				// missing frame reaches the blob47 fallback / missing-tile error below
+				if (source.count >= 0 || source.get(i) != null)
+					mapping.set(i, i);
 		}
 
 		final optionalIndex = format == AutotileFormat.Corner ? 0 : -1;

@@ -2161,6 +2161,141 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 		grid.dispose();
 	}
 
+	// ============== cellDragEnabled: input while the drop settles ==============
+
+	@Test
+	public function testCellDragSecondReleaseDuringSnapDoesNotDropAgain():Void {
+		var grid = createCellDragGridWithPaths(3, 1);
+		grid.set(0, 0, "item");
+
+		var drops = 0;
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellDrop(_, _, _, _, ctx):
+					drops++;
+					ctx.accept();
+				default:
+			}
+		};
+
+		grid.onMouseClick(25, 25, 0);
+		grid.onMouseRelease(104 + 25, 25); // drop on (2,0); the snap animation starts
+		Assert.equals(1, drops);
+
+		// A click lands while the dropped item is still snapping into place
+		grid.onMouseMove(52 + 25, 25);
+		grid.onMouseClick(104 + 25, 25, 0);
+		grid.onMouseRelease(104 + 25, 25);
+		Assert.equals(1, drops, "a release while the drop settles must not drop the item again");
+
+		grid.update(2.0);
+		Assert.equals(1, drops);
+		grid.dispose();
+	}
+
+	@Test
+	public function testCellDragSecondReleaseDuringSwapDoesNotSwapBack():Void {
+		var grid = createCellDragGridWithPaths(3, 1);
+		grid.set(0, 0, "A");
+		grid.set(1, 0, "B");
+
+		var swaps = 0;
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellSwap(_, _, _, ctx):
+					swaps++;
+					ctx.accept();
+				default:
+			}
+		};
+
+		grid.onMouseClick(25, 25, 0);
+		grid.onMouseRelease(52 + 25, 25); // swap (0,0) <-> (1,0); both items animate
+		Assert.equals(1, swaps);
+
+		grid.onMouseClick(52 + 25, 25, 0);
+		grid.onMouseRelease(52 + 25, 25);
+		Assert.equals(1, swaps, "a release while the swap settles must not swap again");
+		Assert.equals("B", grid.get(0, 0), "the swap stays done");
+		Assert.equals("A", grid.get(1, 0), "the swap stays done");
+
+		grid.update(2.0);
+		grid.dispose();
+	}
+
+	@Test
+	public function testCellDragOtherButtonReleaseDoesNotDrop():Void {
+		// Screen-routed, as a real controller delivers it: the release carries its button.
+		var grid = createCellDragGrid(3, 1);
+		grid.set(0, 0, "item");
+		var screen = new UITestScreen();
+		@:privateAccess screen.registerComponent(grid);
+
+		var drops = 0;
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellDrop(_, _, _, _, ctx):
+					drops++;
+					ctx.accept();
+				default:
+			}
+		};
+
+		screen.dispatchMouseClick(new h2d.col.Point(25, 25), 0, false);
+		@:privateAccess Assert.notNull(grid.cellDragObj, "precondition: a left push drags the cell");
+		screen.dispatchMouseClick(new h2d.col.Point(104 + 25, 25), 1, true);
+		Assert.equals(0, drops, "a right-button release does not drop a left-button drag");
+		@:privateAccess Assert.notNull(grid.cellDragObj, "the drag goes on");
+
+		screen.dispatchMouseClick(new h2d.col.Point(104 + 25, 25), 0, true);
+		Assert.equals(1, drops, "the left-button release drops it");
+		grid.dispose();
+	}
+
+	// ============== Cell tweens: dispose / rebuild ==============
+
+	function createTweenGrid(tm:bh.base.TweenManager):UIMultiAnimGrid<Dynamic> {
+		var builder = BuilderTestBase.builderFromSource(CELL_MANIM);
+		var grid = new UIMultiAnimGrid(builder, {
+			gridType: Rect(50, 50, 2),
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
+			originX: 0,
+			originY: 0,
+			tweenManager: tm,
+		});
+		grid.addRectRegion(2, 1);
+		return grid;
+	}
+
+	@Test
+	public function testDisposeDoesNotRunRemoveCellAnimatedCallbackLater():Void {
+		var tm = new bh.base.TweenManager();
+		var grid = createTweenGrid(tm);
+		grid.set(0, 0, "item");
+
+		var removed = 0;
+		grid.removeCellAnimated(0, 0, 0.5, [bh.base.TweenManager.TweenProperty.Alpha(0.0)], null, () -> removed++);
+		grid.dispose();
+		final atDispose = removed;
+
+		tm.update(1.0);
+		Assert.equals(atDispose, removed, "no removeCellAnimated callback may run after dispose()");
+		Assert.equals(1, removed, "the pending removal completes (once) as the grid is disposed, like swap animations");
+	}
+
+	@Test
+	public function testRebuildCellStopsEntranceTweenOnReplacedVisual():Void {
+		var tm = new bh.base.TweenManager();
+		var grid = createTweenGrid(tm);
+		grid.addCellAnimated(2, 0, "item", null, 0.5, [bh.base.TweenManager.TweenProperty.Alpha(0.0)]);
+		final oldVisual = grid.getCellVisual(2, 0).object;
+		Assert.isTrue(tm.hasTweens(oldVisual), "precondition: the entrance tween runs");
+
+		grid.rebuildCell(2, 0);
+		Assert.isFalse(tm.hasTweens(oldVisual), "rebuildCell must stop tweens on the visual it replaces");
+		grid.dispose();
+	}
+
 	// ============== cellDragEnabled: right click does not drag ==============
 
 	@Test

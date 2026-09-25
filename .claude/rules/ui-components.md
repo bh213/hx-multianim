@@ -113,7 +113,7 @@ Metadata supports typed values matching the settings system: `key => val` (strin
 
 `UIHigherOrderComponent` interface (`src/bh/ui/UIHigherOrderComponent.hx`) — lifecycle auto-wiring for complex UI components (Grid, CardHand) that manage their own scene graph and span multiple layers.
 
-**Interface methods:** `update(dt)`, `onMouseMove(x, y):Bool`, `onMouseClick(x, y, button):Bool`, `onMouseRelease(x, y):Bool`, `handleScreenEvent(event):Bool`, `getObject():h2d.Object`, `dispose()`.
+**Interface methods:** `update(dt)`, `onMouseMove(x, y):Bool`, `onMouseClick(x, y, button):Bool`, `onMouseRelease(x, y, ?button):Bool` (`button` null = left; drags end on a left-button release only), `handleScreenEvent(event):Bool`, `getObject():h2d.Object`, `dispose()`.
 
 **Implementors:** `UIMultiAnimGrid`, `UICardHandHelper`
 
@@ -134,7 +134,7 @@ Metadata supports typed values matching the settings system: `key => val` (strin
 
 **Dispatch pattern:** `UIControllerScreenIntegration` uses `dispatchMouseMove()` / `dispatchMouseClick()` instead of direct `onMouseMove()` / `onMouseClick()` — enables component event interception before screen handlers. Key coexistence semantics:
 - `dispatchMouseMove()` — notifies components but always returns true (never blocks interactive processing)
-- `dispatchMouseClick()` — push (non-release) notifies components but never blocks; only release can block (returns false when consumed, e.g. card hand drag end). Controller preserves outside-click tracking even when consumed.
+- `dispatchMouseClick()` — push (non-release) notifies components but never blocks; only release can block (returns false when consumed, e.g. card hand drag end). The release is forwarded with its button (`onMouseRelease(x, y, button)`). Controller preserves outside-click tracking even when consumed.
 - `dispatchScreenEvent()` — runs autoStatus + panelHelpers first, then tries components. Skips `onScreenEvent()` when a component consumed the event.
 
 **UIComponentHost interface** (`src/bh/ui/UIComponentHost.hx`): Decouples CardHand, UIRichInteractiveHelper, UIPanelHelper, and UITooltipHelper from concrete UIScreenBase. Methods: `addObjectToLayer`, `addInteractives`, `removeInteractives`, `getInteractive`, `getAutoInteractiveHelper`, `onScreenEvent`. UIScreenBase implements it. `onScreenEvent` on the interface is used by `UIPanelHelper` to push its `EVENT_PANEL_CLOSE` notification back into the host.
@@ -294,9 +294,10 @@ var grid = new UIMultiAnimGrid(builder, {
 - `removeExternalObject(obj)` — remove it
 
 **Cell animations** (require `tweenManager` in config):
-- `tweenCell(col, row, duration, properties, ?easing)` — animate cell object properties (e.g. shake, pulse). Non-destructive — cell stays in grid
+- `tweenCell(col, row, duration, properties, ?easing)` — animate cell object properties (e.g. shake, pulse). Non-destructive — cell stays in grid. The returned `Tween` is pooled: to cancel it later keep `tween.generation` and use `Tween.cancelIfCurrent(tween, generation)`
 - `addCellAnimated(col, row, ?data, ?params, duration=0.3, ?initProperties, ?easing)` — add cell with entrance animation. `initProperties` are FROM values (e.g. `[Scale(0.0), Alpha(0.0)]` → cell scales/fades in from 0). Note `data`/`params` precede `duration`
 - `removeCellAnimated(col, row, duration, properties, ?easing, ?onComplete)` — animate cell then remove. Properties are TO values (e.g. `[Scale(0.0), Alpha(0.0)]` → cell shrinks/fades out)
+- `dispose()` cancels every cell tween and completes pending `removeCellAnimated` exits at once (object removed, `onComplete` called once, like swap animations); `rebuildCell()` cancels tweens on the visual it replaces
 
 **Detach/reattach cell visual:**
 - `detachCellVisual(col, row) -> Null<{object:h2d.Object, data, sceneX, sceneY}>` — remove visual from cell for free animation (e.g. fly to another location). Returns the detached object plus its data and scene position, or null if the cell doesn't exist. Cell data preserved but shows empty
@@ -398,7 +399,7 @@ override public function onMouseMove(pos) {
     return super.onMouseMove(pos);
 }
 override public function onMouseClick(pos, button, release) {
-    if (release && cardHand.onMouseRelease(pos.x, pos.y)) return false;
+    if (release && cardHand.onMouseRelease(pos.x, pos.y, button)) return false;
     if (release) hexGrid.onMouseClick(pos.x, pos.y, button);
     return super.onMouseClick(pos, button, release);
 }

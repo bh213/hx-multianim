@@ -1380,6 +1380,131 @@ class CardHandIntegrationTest extends BuilderTestBase {
 			"containsPoint must miss a global point whose preimage is outside the rect");
 	}
 
+	// ==================== Hover / drag lifecycle ====================
+
+	static function countEvents(events:Array<CardHandEvent>, predicate:(CardHandEvent) -> Bool):Int {
+		var n = 0;
+		for (e in events)
+			if (predicate(e))
+				n++;
+		return n;
+	}
+
+	static function pushOn(h:{helper:UICardHandHelper, screen:UITestScreen}, entry:Dynamic):Bool {
+		return h.helper.handleScreenEvent(UIInteractiveEvent(UIPush, entry.interactiveId, new BuilderResolvedSettings(null)));
+	}
+
+	@Test
+	public function testDisablingHoveredCardEndsHoverAndRestoresZOrder():Void {
+		var h = createHelper();
+		var events:Array<CardHandEvent> = [];
+		h.helper.onCardEvent = (event) -> events.push(event);
+		h.helper.setHand([desc("a"), desc("b"), desc("c")]);
+		final entryA = h.helper.cards[0];
+		h.helper.setHoveredEntry(entryA);
+		Assert.equals(1, countEvents(events, e -> e.match(CardHoverStart("a"))), "precondition: a is hovered");
+
+		h.helper.setCardEnabled("a", false);
+		h.helper.setHoveredEntry(null); // the cursor leaves the hand
+
+		Assert.equals(1, countEvents(events, e -> e.match(CardHoverEnd("a"))), "the hover that started on a ends (once)");
+		Assert.equals(0, h.helper.handContainer.getChildLayer(entryA.container),
+			"a goes back to its own layer instead of staying on top of the hand");
+	}
+
+	@Test
+	public function testStartingDragEndsHover():Void {
+		var h = createHelper();
+		var events:Array<CardHandEvent> = [];
+		h.helper.onCardEvent = (event) -> events.push(event);
+		h.helper.setHand([desc("a"), desc("b")]);
+		final entryA = h.helper.cards[0];
+		h.helper.setHoveredEntry(entryA);
+		events.resize(0);
+
+		pushOn(h, entryA);
+		Assert.isTrue(h.helper.isDragging, "precondition: the push starts a drag");
+
+		var hoverEnd = -1;
+		var dragStart = -1;
+		for (i in 0...events.length) {
+			if (events[i].match(CardHoverEnd("a"))) hoverEnd = i;
+			if (events[i].match(CardDragStart("a"))) dragStart = i;
+		}
+		Assert.isTrue(hoverEnd >= 0, "the hover on a ends when its drag starts");
+		Assert.isTrue(hoverEnd < dragStart, "CardHoverEnd comes before CardDragStart");
+	}
+
+	@Test
+	public function testDiscardFromCardPlayedHandlerEndsDragOnce():Void {
+		var h = createHelper();
+		var events:Array<CardHandEvent> = [];
+		h.helper.onCardEvent = (event) -> {
+			events.push(event);
+			switch event {
+				case CardPlayed(id, _): h.helper.discardCard(id);
+				default:
+			}
+		};
+		h.helper.setHand([desc("a"), desc("b")]);
+		pushOn(h, h.helper.cards[0]);
+		h.helper.onMouseMove(400, 100); // up into the play zone (above anchorY - targetingThresholdY)
+		h.helper.onMouseRelease(400, 100);
+
+		Assert.equals(1, countEvents(events, e -> e.match(CardPlayed("a", _))), "precondition: a is played");
+		Assert.equals(1, countEvents(events, e -> e.match(CardDragEnd("a"))), "the drag of a ends once");
+		Assert.equals(1, h.helper.getCardCount(), "a left the hand");
+		Assert.isFalse(h.helper.isDragging);
+	}
+
+	@Test
+	public function testRightButtonPushDoesNotStartDrag():Void {
+		var h = createHelper();
+		h.helper.setHand([desc("a")]);
+		final entryA = h.helper.cards[0];
+
+		// Components get the raw push (with its button) before the interactive's UIPush
+		h.helper.onMouseClick(400, 680, 1);
+		Assert.isFalse(pushOn(h, entryA), "a right-button push is not taken as a drag");
+		Assert.isFalse(h.helper.isDragging, "a right-button push must not start a drag");
+
+		h.helper.onMouseClick(400, 680, 0);
+		Assert.isTrue(pushOn(h, entryA), "a left-button push still drags");
+		Assert.isTrue(h.helper.isDragging);
+	}
+
+	@Test
+	public function testOtherButtonReleaseDoesNotEndLeftDrag():Void {
+		// Screen-routed, as a real controller delivers it: the release carries its button.
+		var h = createHelper();
+		@:privateAccess h.screen.registerComponent(h.helper);
+		h.helper.setHand([desc("a")]);
+		h.screen.dispatchMouseClick(new h2d.col.Point(400, 680), 0, false);
+		pushOn(h, h.helper.cards[0]);
+		Assert.isTrue(h.helper.isDragging, "precondition: a left push drags");
+
+		h.screen.dispatchMouseClick(new h2d.col.Point(400, 100), 1, true);
+		Assert.isTrue(h.helper.isDragging, "a right-button release does not end a left-button drag");
+
+		h.screen.dispatchMouseClick(new h2d.col.Point(400, 100), 0, true);
+		Assert.isFalse(h.helper.isDragging, "the left-button release ends it");
+	}
+
+	@Test
+	public function testDrawCardAtIndexRendersBetweenItsNeighbours():Void {
+		var h = createHelper();
+		h.helper.setHand([desc("a"), desc("b"), desc("c")]);
+		h.helper.drawCard(desc("x"), 1);
+		Assert.equals("a,x,b,c", h.helper.getCardIds().join(","));
+
+		var prev = -1;
+		for (entry in h.helper.cards) {
+			final idx = h.helper.handContainer.getChildIndex(entry.container);
+			Assert.isTrue(idx > prev, 'card ${entry.descriptor.id} must render above the cards before it in the hand');
+			prev = idx;
+		}
+	}
+
 	// Allocation watchdog counters (FPoint.creationCount,
 	// UICardHandLayout.scratchArrayAllocationCount, CardLayoutPosition.creationCount)
 	// must be gated behind MULTIANIM_ALLOC_TRACK so they vanish from production builds.

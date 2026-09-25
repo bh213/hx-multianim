@@ -227,6 +227,27 @@ class AutotileTest extends BuilderTestBase {
 		assertBuilderError(() -> builder.buildAutotile("bad", [[1]]), "autotile_missing_tile");
 	}
 
+	@Test
+	public function testAtlasPrefixPartialMappingFallsBackForMissingFrames():Void {
+		// Open-ended sheet:+prefix: source with only the isolated (b0) and full (b46) blob47
+		// frames: with allowPartialMapping every other index uses the closest frame it has.
+		final builder = builderFromSource('
+			#bp atlas2("$TILESET") {
+				b0: 72, 40, 8, 8
+				b46: 64, 32, 8, 8
+			}
+			#t autotile { format: blob47 tileSize: 8 sheet: "bp", prefix: "b" allowPartialMapping: true }
+		');
+		var built:Null<h2d.TileGroup> = null;
+		try {
+			built = builder.buildAutotile("t", [[1, 1], [1, 1]]);
+		} catch (e:BuilderError) {
+			Assert.fail('allowPartialMapping must fall back for frames the atlas does not have: ${e.message}');
+		}
+		if (built != null)
+			Assert.equals(4, built.count(), "one tile per filled cell");
+	}
+
 	// ==================== Builder: validation ====================
 
 	@Test

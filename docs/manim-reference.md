@@ -1296,7 +1296,7 @@ When `tabPanel.contentRoot` is set, tab content coordinates are relative to the 
 
 **Cell swap:** `swapCells(col1, row1, col2, row2, ?animated)` — swap data and visuals between two cells. Animated mode uses `swapPathName` (fallback: `returnPathName`) for both items. Emits `CellSwap` with `ctx.programmatic=true`. Drag-drop swap: when `swapEnabled=true` and a draggable drops on a cell with a source cell, the `swapAccepts` delegate (or `isOccupied()` by default) decides whether to emit `CellSwap` or fall through to `CellDrop`.
 
-**Cell animations** (require `tweenManager`): `tweenCell(col, row, duration, props, ?easing)`, `addCellAnimated(col, row, ?data, ?params, duration, initProps, ?easing)`, `removeCellAnimated(col, row, duration, props, ?easing, ?onComplete)`. **Detach/reattach**: `detachCellVisual(col, row)` → `{object, data, sceneX, sceneY}`, `reattachCellVisual(col, row, ?obj)`.
+**Cell animations** (require `tweenManager`): `tweenCell(col, row, duration, props, ?easing)`, `addCellAnimated(col, row, ?data, ?params, duration, initProps, ?easing)`, `removeCellAnimated(col, row, duration, props, ?easing, ?onComplete)`. **Detach/reattach**: `detachCellVisual(col, row)` → `{object, data, sceneX, sceneY}`, `reattachCellVisual(col, row, ?obj)`. `tweenCell` returns a pooled `Tween` — keep `tween.generation` and cancel later with `Tween.cancelIfCurrent(tween, generation)`. `dispose()` cancels every cell tween and completes pending `removeCellAnimated` exits (object removed, `onComplete` called once).
 
 ### Common UI Settings
 

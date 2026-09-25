@@ -532,10 +532,29 @@ class AnimatedPathTest extends BuilderTestBase {
 
 	@Test
 	public function testDefaultColorWithoutCurve():Void {
+		// Opaque white in the library's 0xAARRGGBB convention (0xFFFFFF would be transparent white)
 		var path = createLinePath();
 		var ap = new AnimatedPath(path, Time(1.0));
 		var state = ap.seek(0.5);
-		Assert.equals(0xFFFFFF, state.color);
+		Assert.equals(0xFFFFFFFF, state.color);
+	}
+
+	@Test
+	public function testColorCurveKeepsAlpha():Void {
+		// Colors are 0xAARRGGBB: a curve between two opaque colors stays opaque, and alpha
+		// is interpolated like the other channels.
+		var path = createLinePath();
+		var ap = new AnimatedPath(path, Time(1.0));
+		ap.addColorCurveSegment(0.0, createLinearCurve(), 0xFFFF0000, 0xFF0000FF);
+
+		Assert.equals(0xFFFF0000, ap.seek(0.0).color);
+		Assert.equals(0xFF, (ap.seek(0.5).color >>> 24) & 0xFF, "midpoint stays opaque");
+		Assert.equals(0xFF0000FF, ap.seek(1.0).color);
+
+		var fading = new AnimatedPath(path, Time(1.0));
+		fading.addColorCurveSegment(0.0, createLinearCurve(), 0xFFFFFFFF, 0x00FFFFFF);
+		final alpha = (fading.seek(0.5).color >>> 24) & 0xFF;
+		Assert.isTrue(alpha > 100 && alpha < 160, 'alpha is interpolated (~127), got $alpha');
 	}
 
 	// ==================== Custom Curves ====================

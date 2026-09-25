@@ -3125,17 +3125,19 @@ class BuilderUnitTest extends BuilderTestBase {
 		");
 		final ap = builder.createAnimatedPath("test");
 
+		// Colors are 0xAARRGGBB: #RRGGBB stops are opaque (0xFF alpha) and stay opaque
+
 		// At t=0.0: start of first segment → color should be #FF0000
 		final state0 = ap.seek(0.0);
-		Assert.equals(0xFF0000, state0.color);
+		Assert.equals(0xFFFF0000, state0.color);
 
 		// At t=0.5: start of second segment → color should be #00FF00
 		final state1 = ap.seek(0.5);
-		Assert.equals(0x00FF00, state1.color);
+		Assert.equals(0xFF00FF00, state1.color);
 
 		// At t=1.0: end of second segment → color should be #0000FF
 		final state2 = ap.seek(1.0);
-		Assert.equals(0x0000FF, state2.color);
+		Assert.equals(0xFF0000FF, state2.color);
 	}
 
 	@Test
@@ -7016,6 +7018,25 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.equals(1, bitmaps.length);
 		Assert.equals(-20, Std.int(bitmaps[0].tile.dx));
 		Assert.equals(-20, Std.int(bitmaps[0].tile.dy));
+	}
+
+	@Test
+	public function testPivotLeavesCachedGeneratedTileUnshifted():Void {
+		// generated(color(...)) tiles are cached per resource loader and shared by every user of
+		// the same color/size (particles, rich text images, autotile tiles: lists use them as
+		// is); pivot() must re-center its own copy, not the cached tile.
+		final builder = builderFromSource("
+			#test programmable() {
+				bitmap(pivot(0.5, 1.0, generated(color(40, 20, #ff0000)))): 0, 0
+			}
+		");
+		builder.buildWithParameters("test", new Map());
+		final cached = @:privateAccess builder.resourceLoader.getOrCreatePlaceholder(bh.base.ResourceLoader.ResolvedGeneratedTileType.SolidColor(40, 20, 0xFFFF0000), _ -> null);
+		Assert.notNull(cached, "precondition: the generated tile is cached");
+		if (cached != null) {
+			Assert.equals(0, Std.int(cached.dx), "the cached tile keeps its origin");
+			Assert.equals(0, Std.int(cached.dy), "the cached tile keeps its origin");
+		}
 	}
 
 	// ==================== @any/@all with setParameter ====================

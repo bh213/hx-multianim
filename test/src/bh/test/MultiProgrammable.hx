@@ -638,6 +638,9 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/147-codegenTileSource/tileSource.manim", "genTrunc")
 	public var genTrunc;
 
+	@:manim("test/examples/147-codegenTileSource/tileSource.manim", "autotilePivot")
+	public var autotilePivot;
+
 	@:manim("test/examples/148-codegenHexNamed/hexNamed.manim", "hexNamed")
 	public var hexNamed;
 

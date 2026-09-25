@@ -759,6 +759,41 @@ class UIPanelHelperTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testCloseAfterFadeInWasCancelledElsewhereLeavesOtherTweensAlone():Void {
+		// The fade-in is cancelled from outside (e.g. a screen teardown cancelling every tween),
+		// so its Tween goes back to the pool and is reused. Closing the panel later must not
+		// cancel whatever tween reuses it.
+		var ctx = createHelperWithTweens(0.5, 0.0);
+		ctx.helper.open("btn1", "panel");
+		ctx.tweens.clear();
+
+		var others = [for (_ in 0...3) new h2d.Object()];
+		for (o in others)
+			ctx.tweens.tween(o, 0.2, [X(50.0)]);
+
+		ctx.helper.close();
+		ctx.tweens.update(0.3);
+		for (o in others)
+			Assert.floatEquals(50.0, o.x, "an unrelated tween must not be cancelled by the panel's stale fade-in");
+	}
+
+	@Test
+	public function testCloseNamedAfterFadeInWasCancelledElsewhereLeavesOtherTweensAlone():Void {
+		var ctx = createHelperWithTweens(0.5, 0.0);
+		ctx.helper.openNamed("slotA", "btn1", "panel");
+		ctx.tweens.clear();
+
+		var others = [for (_ in 0...3) new h2d.Object()];
+		for (o in others)
+			ctx.tweens.tween(o, 0.2, [X(50.0)]);
+
+		ctx.helper.closeNamed("slotA");
+		ctx.tweens.update(0.3);
+		for (o in others)
+			Assert.floatEquals(50.0, o.x, "an unrelated tween must not be cancelled by the named panel's stale fade-in");
+	}
+
+	@Test
 	public function testNamedPanelFadeOut():Void {
 		var ctx = createHelperWithTweens(0.0, 0.2);
 		ctx.helper.openNamed("slot1", "btn1", "panel");

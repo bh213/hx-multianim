@@ -8035,8 +8035,10 @@ class ProgrammableCodeGen {
 				final innerExpr = tileSourceToExpr(inner);
 				final pxExpr:Expr = macro $v{px};
 				final pyExpr:Expr = macro $v{py};
+				// Re-center a copy: autotile tiles are the builder's shared cached tiles
 				macro {
-					var _t = $innerExpr;
+					var _src:h2d.Tile = $innerExpr;
+					var _t = _src.clone();
 					_t.setCenterRatio($pxExpr, $pyExpr);
 					_t;
 				};

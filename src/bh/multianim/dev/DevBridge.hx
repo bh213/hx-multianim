@@ -55,6 +55,10 @@ class DevBridge implements IDevBridgeHost {
 	// ---- Startup ----
 	var startTime:Float = 0;
 	var actualPort:Int = 0;
+	#if hxnodejs
+	// On Node the transport can still move to the next port after start(); tick() follows it
+	var http:Null<bh.multianim.dev.transport.HttpServerTransport> = null;
+	#end
 
 	// ---- Pause state ----
 	var paused:Bool = false;
@@ -138,9 +142,14 @@ class DevBridge implements IDevBridgeHost {
 
 		#if (sys || hxnodejs)
 		final http = new bh.multianim.dev.transport.HttpServerTransport(port, bindAddress);
-		if (!http.start(this))
+		if (!http.start(this)) {
+			restoreTrace();
 			return;
+		}
 		actualPort = http.actualPort;
+		#if hxnodejs
+		this.http = http;
+		#end
 		transports.push(http);
 		#elseif js
 		final relay = DevBridgeConfig.get("HX_DEV_RELAY");
@@ -158,12 +167,14 @@ class DevBridge implements IDevBridgeHost {
 		}
 		if (transports.length == 0) {
 			trace('[DevBridge] No transport started (relay "$relay" rejected, page API off)');
+			restoreTrace();
 			return;
 		}
 		installBrowserErrorCapture();
 		trace('[DevBridge] Ready: ${[for (t in transports) t.describe].join(", ")}');
 		#else
 		trace('[DevBridge] No transport for this target');
+		restoreTrace();
 		return;
 		#end
 		started = true;
@@ -178,6 +189,9 @@ class DevBridge implements IDevBridgeHost {
 		for (t in transports)
 			t.stop();
 		transports = [];
+		#if hxnodejs
+		http = null;
+		#end
 		started = false;
 		restoreTrace();
 	}
@@ -185,6 +199,11 @@ class DevBridge implements IDevBridgeHost {
 	/** Called from ScreenManager.update: lets each transport pump what it needs to (the HTTP
 	 *  transport closes pending connections that exceeded the idle deadline). */
 	public function tick():Void {
+		#if hxnodejs
+		final h = http;
+		if (h != null)
+			actualPort = h.actualPort;
+		#end
 		for (t in transports)
 			t.tick();
 	}
@@ -264,6 +283,10 @@ class DevBridge implements IDevBridgeHost {
 	// ---- Trace capture ----
 
 	function installTraceCapture():Void {
+		// Once only: a second install would record the hook itself as the "original", and the
+		// hook would call itself on every trace
+		if (originalTrace != null)
+			return;
 		originalTrace = haxe.Log.trace;
 		var self = this;
 		haxe.Log.trace = (v:Dynamic, ?infos:haxe.PosInfos) -> {

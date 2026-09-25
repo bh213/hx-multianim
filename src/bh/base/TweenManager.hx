@@ -103,6 +103,10 @@ class Tween {
 	public var elapsed(default, null):Float = 0.0;
 	public var onComplete:Null<Void -> Void> = null;
 	public var cancelled(default, null):Bool = false;
+	/** Changes every time this instance goes back to the pool. A finished or cancelled Tween is
+	    reused for a later tween(), so code that keeps a Tween past its end records `generation`
+	    when it starts it and only touches it (cancel/finish) while the two still match. */
+	public var generation(default, null):Int = 0;
 	/** Guards against double-release into the shared pool. A completion callback
 	    that runs clear() recycles the still-completing handle, then control
 	    returns to update() which recycles it again — without this flag the same
@@ -162,6 +166,7 @@ class Tween {
 		if (tween.pooled)
 			return;
 		tween.pooled = true;
+		tween.generation++;
 		tween.recycleEntries();
 		// Drop callback so a pooled instance does not pin closure-captured state.
 		tween.onComplete = null;
@@ -212,6 +217,14 @@ class Tween {
 
 	public function cancel():Void {
 		cancelled = true;
+	}
+
+	/** Cancel `t` only while it is still the tween that had `generation` — a kept reference to a
+	    tween that has since finished (or been cancelled elsewhere) and gone back to the pool is
+	    left alone, instead of cancelling whatever animation now reuses the instance. */
+	public static function cancelIfCurrent(t:Null<Tween>, generation:Int):Void {
+		if (t != null && t.generation == generation)
+			t.cancel();
 	}
 
 	/** Fire onComplete and apply removeTargetOnComplete in that order. Called at
@@ -346,6 +359,16 @@ class TweenSequence {
 			tween.cancel();
 	}
 
+	/** The manager is done with this sequence and returns its tweens to the pool. A kept
+	    reference to the sequence then reaches none of them (they may run other animations). */
+	@:allow(bh.base.TweenManager)
+	function releaseTweens():Void {
+		for (tween in tweens)
+			Tween.release(tween);
+		tweens = [];
+		cancelled = true;
+	}
+
 	/** Advance the sequence. Returns true when all tweens are complete. */
 	public function step(dt:Float):Bool {
 		if (cancelled)
@@ -412,6 +435,15 @@ class TweenGroup {
 			tween.cancel();
 	}
 
+	/** See TweenSequence.releaseTweens. */
+	@:allow(bh.base.TweenManager)
+	function releaseTweens():Void {
+		for (tween in tweens)
+			Tween.release(tween);
+		tweens = [];
+		cancelled = true;
+	}
+
 	/** Advance all tweens. Returns true when all are complete. */
 	public function step(dt:Float):Bool {
 		if (cancelled)
@@ -453,11 +485,14 @@ class TweenGroup {
 @:nullSafety
 class TweenManager {
 	var handles:Array<TweenHandle> = [];
+	/** Bumped by clear(), so update() notices a clear() run from a completion callback. */
+	var clearCount:Int = 0;
 
 	public function new() {}
 
 	/** Step all active tweens. Call from ScreenManager.update(dt). */
 	public function update(dt:Float):Void {
+		final clears = clearCount;
 		var i = 0;
 		while (i < handles.length) {
 			var handle = handles[i];
@@ -489,6 +524,10 @@ class TweenManager {
 							cb();
 					}
 			}
+			// A callback ran clear(): every handle, this one included, is already recycled and
+			// the list may hold tweens started after it. They run from the next update().
+			if (clearCount != clears)
+				return;
 			if (done) {
 				recycleHandle(handle);
 				handles[i] = handles[handles.length - 1];
@@ -507,11 +546,9 @@ class TweenManager {
 			case HTween(tween):
 				Tween.release(tween);
 			case HSequence(seq):
-				for (tween in seq.tweens)
-					Tween.release(tween);
+				seq.releaseTweens();
 			case HGroup(group):
-				for (tween in group.tweens)
-					Tween.release(tween);
+				group.releaseTweens();
 		}
 	}
 
@@ -583,8 +620,10 @@ class TweenManager {
 		}
 	}
 
-	/** Cancel all active tweens. */
+	/** Cancel all active tweens. Safe from a completion callback: the list is emptied in place
+	    and the update() running the callback stops there. */
 	public function clear():Void {
+		clearCount++;
 		for (handle in handles) {
 			switch handle {
 				case HTween(tween):
@@ -596,7 +635,7 @@ class TweenManager {
 			}
 			recycleHandle(handle);
 		}
-		handles = [];
+		handles.resize(0);
 	}
 
 	/** Check if any tweens target this object. */

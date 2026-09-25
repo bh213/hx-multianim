@@ -1604,6 +1604,48 @@ animation {
 		Assert.equals(3, ticks, "one tick per pass through the playlist");
 	}
 
+	@Test
+	public function testAnimSMPlayFromOpeningEventShowsNewAnimFirstFrame() {
+		// A handler that switches animation on an opening event: the new animation starts at its
+		// own first frame, not one past it.
+		var sm = new bh.stateanim.AnimationSM([], true);
+		var first = new bh.stateanim.AnimationFrame(h2d.Tile.fromColor(0xFF0000, 8, 8), 0.1, 0, 0, 8, 8);
+		var second = new bh.stateanim.AnimationFrame(h2d.Tile.fromColor(0x00FF00, 8, 8), 0.1, 0, 0, 8, 8);
+		var opening = new bh.stateanim.AnimationFrame(h2d.Tile.fromColor(0x0000FF, 8, 8), 0.1, 0, 0, 8, 8);
+		sm.addAnimationState("start", [Event(Trigger("go")), Frame(opening)], 0, []);
+		sm.addAnimationState("next", [Frame(first), Frame(second)], 0, []);
+		sm.onAnimationEvent = function(e) {
+			if (sm.getCurrentAnimName() == "start")
+				sm.play("next");
+		};
+		sm.play("start");
+		Assert.equals("next", sm.getCurrentAnimName());
+		Assert.equals(0, sm.currentStateIndex, "the new animation is on its first state");
+		Assert.isTrue(sm.getCurrentFrame() != null && sm.getCurrentFrame().tile == first.tile, "and shows its first frame");
+	}
+
+	@Test
+	public function testAnimSMPlayFromOpeningEventDoesNotFinishOneFrameAnim() {
+		// Same switch into a one-frame, non-looping animation: it must show its frame for the
+		// frame's duration, not report finished straight away.
+		var sm = new bh.stateanim.AnimationSM([], true);
+		var only = new bh.stateanim.AnimationFrame(h2d.Tile.fromColor(0xFF0000, 8, 8), 0.1, 0, 0, 8, 8);
+		var opening = new bh.stateanim.AnimationFrame(h2d.Tile.fromColor(0x0000FF, 8, 8), 0.1, 0, 0, 8, 8);
+		sm.addAnimationState("start", [Event(Trigger("go")), Frame(opening)], 0, []);
+		sm.addAnimationState("single", [Frame(only)], 0, []);
+		var finished = 0;
+		sm.onFinished = function() finished++;
+		sm.onAnimationEvent = function(e) {
+			if (sm.getCurrentAnimName() == "start")
+				sm.play("single");
+		};
+		sm.play("start");
+		Assert.equals(0, finished, "a one-frame animation just started is not finished");
+		Assert.isFalse(sm.isFinished());
+		sm.update(0.15);
+		Assert.equals(1, finished, "it finishes once its frame has shown");
+	}
+
 	// ===== Full integration: parse .anim and create AnimSM =====
 
 	@Test

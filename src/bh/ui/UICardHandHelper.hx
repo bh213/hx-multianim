@@ -213,6 +213,9 @@ class UICardHandHelper implements UIHigherOrderComponent {
 	var cards:Array<CardEntry> = [];
 	var isDragging:Bool = false;
 	var isTargeting:Bool = false;
+	// Button of the latest push, from onMouseClick (which the screen dispatches before the
+	// interactive's UIPush). Drags are left-button only; right-click is the controllers' cancel.
+	var pushButton:Int = 0;
 	var hoveredEntry:Null<CardEntry> = null;
 	var draggedEntry:Null<CardEntry> = null;
 	var dragOffsetX:Float = 0;
@@ -360,11 +363,14 @@ class UICardHandHelper implements UIHigherOrderComponent {
 		var entry = buildCardEntry(descriptor);
 		entry.state = Animating;
 
-		if (insertIndex < 0 || insertIndex >= cards.length)
-			cards.push(entry)
-		else
+		if (insertIndex < 0 || insertIndex >= cards.length) {
+			cards.push(entry);
+			addToHandLayer(entry);
+		} else {
 			cards.insert(insertIndex, entry);
-		addToHandLayer(entry);
+			// Everything from the insert point on moved up one index: re-layer it all
+			restoreHandLayers(insertIndex);
+		}
 
 		// Compute layout so entry.layoutPos is set for all cards (including the new one)
 		var positions = computeLayout(-1);
@@ -459,6 +465,10 @@ class UICardHandHelper implements UIHigherOrderComponent {
 		// Cancel drag if disabling the dragged card
 		if (!enabled && draggedEntry == entry)
 			cancelDrag();
+
+		// Disabling the hovered card ends its hover (CardHoverEnd, own layer, no pop)
+		if (!enabled && hoveredEntry == entry)
+			setHoveredEntry(null);
 
 		// During animation or disabled-while-animating: defer state changes
 		if (entry.state == Animating) {
@@ -647,7 +657,7 @@ class UICardHandHelper implements UIHigherOrderComponent {
 
 				switch innerEvent {
 					case UIPush:
-						if (!isDragging) {
+						if (!isDragging && pushButton == 0) {
 							// Hover hit-test (getCardAtBasePosition) uses the base layout to
 							// avoid the popped card masking neighbors. Heaps routes UIPush to
 							// whichever Interactive physically contains the cursor — i.e.
@@ -695,8 +705,11 @@ class UICardHandHelper implements UIHigherOrderComponent {
 		return hoveredEntry != null;
 	}
 
-	/** Handle mouse release for ending drags. Call from screen's mouse handling. */
-	public function onMouseRelease(screenX:Float, screenY:Float):Bool {
+	/** Handle mouse release for ending drags. Call from screen's mouse handling.
+	 *  `button` (null = left): a drag is a left-button drag, so other buttons don't end it. */
+	public function onMouseRelease(screenX:Float, screenY:Float, ?button:Int):Bool {
+		if (button != null && button != 0)
+			return false;
 		sceneCursorX = screenX;
 		sceneCursorY = screenY;
 		scratchPoint.x = screenX;
@@ -711,8 +724,10 @@ class UICardHandHelper implements UIHigherOrderComponent {
 		return false;
 	}
 
-	/** Route mouse click events. Card hand does not consume raw click events. */
+	/** Route mouse click events. Card hand does not consume raw click events; it only notes the
+	 *  button, so the UIPush that follows starts a drag for the left button only. */
 	public function onMouseClick(sceneX:Float, sceneY:Float, button:Int):Bool {
+		pushButton = button;
 		return false;
 	}
 
@@ -1058,6 +1073,7 @@ class UICardHandHelper implements UIHigherOrderComponent {
 		if (canDragCard != null && !canDragCard(entry.descriptor.id))
 			return false;
 
+		final wasHovered = entry.state == Hovered;
 		draggedEntry = entry;
 		dragOffsetX = entry.container.x - cursorX;
 		dragOffsetY = entry.container.y - cursorY;
@@ -1072,6 +1088,8 @@ class UICardHandHelper implements UIHigherOrderComponent {
 
 		isDragging = true;
 		hoveredEntry = null;
+		if (wasHovered)
+			emitEvent(CardHoverEnd(entry.descriptor.id));
 		emitEvent(CardDragStart(entry.descriptor.id));
 
 		applyLayout(true);
@@ -1256,47 +1274,48 @@ class UICardHandHelper implements UIHigherOrderComponent {
 		restoreCardToCardEffects();
 
 		var result:TargetingResult = NoTarget;
-		var cardPlayed = false;
+		var playEvent:Null<CardHandEvent> = null;
 
 		if (cardToCardTarget != null) {
 			var targetId = cardToCardTarget.descriptor.id;
 			var canCombine = entry.descriptor.canCombineWith;
-			if (canCombine == null || canCombine(targetId)) {
-				emitEvent(CardCombined(cardId, targetId));
-				cardPlayed = true;
-			}
+			if (canCombine == null || canCombine(targetId))
+				playEvent = CardCombined(cardId, targetId);
 		} else if (wasTargeting) {
 			result = if (currentTargetId != null) TargetZone(currentTargetId) else NoTarget;
-			if (canPlayCard == null || canPlayCard(cardId, result)) {
-				emitEvent(CardPlayed(cardId, result));
-				cardPlayed = true;
-			}
+			if (canPlayCard == null || canPlayCard(cardId, result))
+				playEvent = CardPlayed(cardId, result);
 		} else {
 			// Direct drag mode (arrow disabled or card canTarget=false) — check drop target or threshold
 			var dropTarget = targeting.hitTestTargets(sceneCursorX, sceneCursorY, cardId);
 			if (dropTarget != null) {
 				result = TargetZone(dropTarget);
-				if (canPlayCard == null || canPlayCard(cardId, result)) {
-					emitEvent(CardPlayed(cardId, result));
-					cardPlayed = true;
-				}
+				if (canPlayCard == null || canPlayCard(cardId, result))
+					playEvent = CardPlayed(cardId, result);
 			} else if (isInTargetingZone(cursorX, cursorY)) {
 				// Card dragged past threshold without a specific target — play with NoTarget
 				result = NoTarget;
-				if (canPlayCard == null || canPlayCard(cardId, result)) {
-					emitEvent(CardPlayed(cardId, result));
-					cardPlayed = true;
-				}
+				if (canPlayCard == null || canPlayCard(cardId, result))
+					playEvent = CardPlayed(cardId, result);
 			}
 		}
+		final cardPlayed = playEvent != null;
 
+		// The drag is over before any handler runs: a CardPlayed / CardCombined handler may
+		// discard the card or reset the hand, and must not find it still being dragged
 		cardToCardTarget = null;
 		currentTargetId = null;
 		draggedEntry = null;
 		isDragging = false;
 		isTargeting = false;
 
+		if (playEvent != null)
+			emitEvent(playEvent);
 		emitEvent(CardDragEnd(cardId));
+
+		// A handler already took the card out of the hand (discardCard, setHand)
+		if (cards.indexOf(entry) < 0)
+			return true;
 
 		if (cardPlayed) {
 			entry.state = Animating;
@@ -1614,6 +1633,19 @@ class UICardHandHelper implements UIHigherOrderComponent {
 	 *  Uses h2d.Layers to maintain z-order: lower card index = lower layer = renders behind. */
 	function addToHandLayer(entry:CardEntry):Void {
 		handContainer.add(entry.container, cards.indexOf(entry));
+	}
+
+	/** Re-apply the layer of every card from `fromIndex` on, after their indices shifted. The
+	 *  hovered card and a card-to-card target go back on top; dragged cards (in dragContainer)
+	 *  are left where they are. */
+	function restoreHandLayers(fromIndex:Int):Void {
+		for (i in fromIndex...cards.length)
+			if (cards[i].container.parent == null || cards[i].container.parent == handContainer)
+				addToHandLayer(cards[i]);
+		if (hoveredEntry != null && hoveredEntry.state == Hovered)
+			handContainer.add(hoveredEntry.container, cards.length);
+		if (cardToCardTarget != null)
+			handContainer.add(cardToCardTarget.container, cards.length);
 	}
 
 	function findCardIndex(cardId:CardId):Int {

@@ -616,4 +616,6 @@ Type fields in tool responses use these formats:
 - **CORS:** `*` without a token; the configured origin, or none, with one (see [Token and origin](#token-and-origin))
 - **Listens on:** `0.0.0.0:port` (all interfaces) unless `HX_DEV_BIND` says otherwise
 - **HTTP server:** `HttpServerTransport`, on Heaps' `hxd.net.Socket` (libuv async); HashLink (and hxnodejs) only
+- **HTTP requests:** one request per connection — bytes after a complete request (a pipelined request, a trailing CRLF) are drained, never dispatched. A body needs `Content-Length`: `Transfer-Encoding` answers 411, a non-decimal `Content-Length` 400, a body over the limit 413, oversized headers 431
+- **Node (`hxnodejs`):** settings come from `process.env`; a busy port is reported asynchronously, so the next ports are tried from the socket's error callback and `actualPort` settles after `start()`
 - **Transports:** `IDevBridgeTransport` (`start`/`stop`/`tick`/`pushEvent`); `DevBridge` implements `IDevBridgeHost` (`handleRequestJson`, `handleCall`, `getToken`, `describeInstance`). `DevBridge.METHODS` lists every method `dispatch` answers

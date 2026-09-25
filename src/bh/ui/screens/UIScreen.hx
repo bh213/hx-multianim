@@ -266,7 +266,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	public function dispatchMouseClick(pos:h2d.col.Point, button:Int, release:Bool):Bool {
 		if (release) {
 			for (comp in higherOrderComponents)
-				if (comp.onMouseRelease(pos.x, pos.y))
+				if (comp.onMouseRelease(pos.x, pos.y, button))
 					return false;
 		} else {
 			for (comp in higherOrderComponents)

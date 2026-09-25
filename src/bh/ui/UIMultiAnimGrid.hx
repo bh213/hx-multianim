@@ -200,6 +200,9 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 	var cellDragSourceData:Null<T> = null;
 	var cellDragHoverGrid:Null<UIMultiAnimGrid<T>> = null;
 	var cellDragHoverCoord:Null<CellCoord> = null;
+	// Released: the item is snapping/returning into place, and input no longer moves or drops
+	// it (a second release would emit a second CellDrop/CellSwap). Cleared by cellDragFinish.
+	var cellDragSettling:Bool = false;
 
 	// --- Linked grids (cross-grid cell drag) ---
 	final linkedGrids:Array<LinkedGridBinding<T>> = [];
@@ -261,6 +264,9 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 
 	// --- Active swap animations ---
 	final activeSwapAnims:Array<SwapAnimEntry> = [];
+
+	// --- removeCellAnimated exits in flight (dispose() completes them) ---
+	final pendingCellRemovals:Array<{tween:Tween, gen:Int, obj:h2d.Object, onComplete:Null<Void -> Void>}> = [];
 
 	// --- Instance counter for unique card hand target IDs ---
 	static var cardTargetCounter:Int = 0;
@@ -596,6 +602,9 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 		if (oldEntry == null)
 			throw 'Cell ($col, $row) does not exist';
 
+		// Stop tweens (addCellAnimated entrance, tweenCell) on the visual being replaced
+		if (tweenManager != null)
+			tweenManager.cancelAllChildren(oldEntry.visual.object);
 		oldEntry.visual.object.remove();
 
 		final newEntry = buildCell(oldEntry.coord, oldEntry.data, null);
@@ -612,7 +621,9 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 	// ============================================================
 
 	/** Tween a cell's visual properties (position, alpha, scale, rotation).
-	 *  Requires TweenManager in GridConfig. Returns the Tween for chaining/cancellation, or null if no TweenManager. */
+	 *  Requires TweenManager in GridConfig. Returns the Tween for chaining/cancellation, or null if no TweenManager.
+	 *  The Tween is pooled: once it finishes (or is cancelled) the instance is reused, so to cancel it later keep
+	 *  `tween.generation` too and use `Tween.cancelIfCurrent(tween, generation)`. */
 	public function tweenCell(col:Int, row:Int, duration:Float, properties:Array<TweenProperty>, ?easing:EasingType):Null<Tween> {
 		if (tweenManager == null)
 			return null;
@@ -643,7 +654,10 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 			// Animate, then remove scene object
 			final obj = entry.visual.object;
 			final tween = tweenManager.tween(obj, duration, properties, easing);
+			final removal = {tween: tween, gen: tween.generation, obj: obj, onComplete: onComplete};
+			pendingCellRemovals.push(removal);
 			tween.onComplete = () -> {
+				pendingCellRemovals.remove(removal);
 				obj.remove();
 				if (onComplete != null)
 					onComplete();
@@ -990,7 +1004,7 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 	/** Route mouse move events. Call from game screen's onMouseMove. Returns true if over a cell. */
 	public function onMouseMove(sceneX:Float, sceneY:Float):Bool {
 		// Cell drag in progress — update position and hover tracking
-		if (cellDragObj != null) {
+		if (cellDragObj != null && !cellDragSettling) {
 			cellDragUpdateMove(sceneX, sceneY);
 			return true;
 		}
@@ -1042,9 +1056,10 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 		return false;
 	}
 
-	/** Route mouse release events. Returns true if consumed (cell drag drop). */
-	public function onMouseRelease(sceneX:Float, sceneY:Float):Bool {
-		if (cellDragObj != null) {
+	/** Route mouse release events. Returns true if consumed (cell drag drop).
+	 *  `button` (null = left) — a cell drag is a left-button drag, so other buttons don't drop it. */
+	public function onMouseRelease(sceneX:Float, sceneY:Float, ?button:Int):Bool {
+		if (cellDragObj != null && !cellDragSettling && (button == null || button == 0)) {
 			cellDragRelease(sceneX, sceneY);
 			return true;
 		}
@@ -1175,8 +1190,9 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 
 	/** Handle mouse release for cell drag. */
 	function cellDragRelease(sceneX:Float, sceneY:Float):Void {
-		if (cellDragObj == null)
+		if (cellDragObj == null || cellDragSettling)
 			return;
+		cellDragSettling = true;
 
 		// Clear hover visual
 		if (cellDragHoverCoord != null && cellDragHoverGrid != null) {
@@ -1383,6 +1399,7 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 		cellDragSourceData = null;
 		cellDragHoverGrid = null;
 		cellDragHoverCoord = null;
+		cellDragSettling = false;
 
 		if (sourceCoord != null)
 			emitEvent(CellDragEnd(sourceCoord));
@@ -1571,6 +1588,21 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 			cellDragSourceData = null;
 			cellDragHoverGrid = null;
 			cellDragHoverCoord = null;
+		}
+		cellDragSettling = false;
+
+		// Stop every cell tween (tweenCell, addCellAnimated, removeCellAnimated) so none runs
+		// on — or calls back into — the disposed grid. Pending removeCellAnimated exits complete
+		// now, like swap animations below.
+		final removals = pendingCellRemovals.copy();
+		pendingCellRemovals.resize(0);
+		if (tweenManager != null)
+			tweenManager.cancelAllChildren(root);
+		for (removal in removals) {
+			Tween.cancelIfCurrent(removal.tween, removal.gen);
+			removal.obj.remove();
+			if (removal.onComplete != null)
+				removal.onComplete();
 		}
 
 		// Cancel active swap animations — fire onComplete so game logic isn't left dangling

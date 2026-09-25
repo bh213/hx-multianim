@@ -23,7 +23,7 @@ items take the next free number in their prefix. (1.1 roadmap bullets are featur
 `CHANGELOG.md` and git history (`git log -S <ID> -- todo/release-1.0-audit.md`). Removed IDs stay
 retired. Done to date: all `P0-*`, all `BLD-*`, `CG-1..12`/`14..20`/`22` (+ most of `CG-23`;
 `CG-9` was not-a-bug), `UI-1..2`, `VFX-1..13`/`15`, all `FLT-*`, `PRS-1..8`, `DEC-2..3`, `DOC-1`,
-`TST-1..2`, `PERF-9`, `HR-1`, `LSP-1..4` (PRS-8 resolved as "allow enclosing finals in slot
+`TST-1..2`, `PERF-9`, `HR-1`, `LSP-1..4`, `API-8` (2026-09-25, `Tween.generation`) (PRS-8 resolved as "allow enclosing finals in slot
 bodies"; LSP-2 resolved with a build.js rebuild step + CI drift gate + LSP tests in CI).
 
 ---
@@ -264,6 +264,8 @@ bodies"; LSP-2 resolved with a build.js rebuild step + CI drift gate + LSP tests
   — also the only JS-target *execution* gate (JS is compile-only today) and the server.js drift gate.
 - [ ] `TST-5` Tests for `sceneToHex` (advertised rc.5 feature, zero tests) and the grid cell-animation/detach
   family (`tweenCell`/`addCellAnimated`/`removeCellAnimated`/`detachCellVisual`/`reattachCellVisual`).
+  *(2026-09-25: PARTIAL — `removeCellAnimated` (dispose completes it) and `addCellAnimated` (`rebuildCell`
+  cancels its tween) are pinned in `UIMultiAnimGridTest`; `sceneToHex`, `tweenCell`, detach/reattach still open.)*
 - [ ] `TST-6` A `.anim` replaceColor **visual** test (currently parse-only). *(The other two original
   sub-items are done/obsolete: DEC-2/DEC-3 semantics are pinned by matrix-level tests in
   `BuilderUnitTest`/`AnimFilterStateConditionalTest`/`ParticleRuntimeTest`, and `event x,y {meta}`
@@ -376,7 +378,6 @@ bodies"; LSP-2 resolved with a build.js rebuild step + CI drift gate + LSP tests
   tooltip helper auto-registers for dispose but **not** update (manual `update(dt)` still needed);
   `removeGroupElements` leaves group membership; `getLowerLayer` throws copy-paste 'no higher layer
   found'; `enableLinkEvents` not idempotent.
-- [ ] `API-8` TweenManager: generation tokens so stale `cancel(t)` can't hit a recycled tween.
 - [ ] `API-9` Particles: public `liveCount`, restart/reset; `ParticleGroup.enabled` setter (docstring
   describes a setter that no longer exists); `AnimationSM` speed accessor; fix
   `AnimatedPath.reset()` stale `currentState`; `currentSelector` mutable no-op.

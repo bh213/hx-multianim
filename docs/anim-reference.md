@@ -330,7 +330,7 @@ scene.addChild(animSM);
 | `externallyDriven` | `Bool` | If true, must call `update(dt)` manually. Also settable from `.manim` via the `stateanim construct("state", externallyDriven, ...)` flag — see `docs/manim.md` "stateanim construct" |
 | `playWhenHidden` | `Bool` | Continue animating when not visible |
 | `onFinished` | `() -> Void` | Callback when animation finishes (fires once per completed playback) |
-| `onAnimationEvent` | `(AnimationEvent) -> Void` | Callback for playlist events |
+| `onAnimationEvent` | `(AnimationEvent) -> Void` | Callback for playlist events. A handler may call `play()`; the new animation then starts at its own first frame |
 
 ### AnimationEvent Enum
 

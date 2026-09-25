@@ -55,6 +55,12 @@ class HttpServerTransport implements IDevBridgeTransport {
 		allowedOrigin = originSetting != null && originSetting != "" ? originSetting : null;
 		corsOrigin = allowedOrigin != null ? allowedOrigin : (token == null ? "*" : null);
 
+		#if hxnodejs
+		// Node reports a port in use later, through the socket's error callback — the next port
+		// is tried from there (bindNextPort), so start() can only report that binding began.
+		bindNextPort(port, 10);
+		return true;
+		#else
 		serverSocket = new Socket();
 
 		var bound = false;
@@ -82,7 +88,34 @@ class HttpServerTransport implements IDevBridgeTransport {
 
 		writeReadyFile();
 		return true;
+		#end
 	}
+
+	#if hxnodejs
+	function bindNextPort(tryPort:Int, attemptsLeft:Int):Void {
+		final socket = new Socket();
+		serverSocket = socket;
+		actualPort = tryPort;
+		socket.onError = (msg) -> {
+			if (serverSocket != socket)
+				return; // stopped, or already retried
+			if (attemptsLeft > 1) {
+				trace('[DevBridge] Port $tryPort busy, trying next...');
+				bindNextPort(tryPort + 1, attemptsLeft - 1);
+			} else {
+				trace('[DevBridge] Failed to bind after 10 attempts (tried ports $port-${port + 9}): $msg');
+				serverSocket = null;
+				actualPort = 0;
+			}
+		};
+		socket.bind(bindAddress, tryPort, onClientConnected);
+		@:privateAccess socket.srv.once(js.node.net.Server.ServerEvent.Listening, () -> {
+			trace('[DevBridge] Listening on port $tryPort (bind $bindAddress)');
+			if (token != null)
+				trace('[DevBridge] Token required on every request (HX_DEV_TOKEN)');
+		});
+	}
+	#end
 
 	function writeReadyFile():Void {
 		#if sys
@@ -171,12 +204,20 @@ class HttpServerTransport implements IDevBridgeTransport {
 			try {
 				if (conn.processIncoming()) {
 					pendingConnections.remove(conn);
+					// One request per connection: whatever else the client sends (a pipelined
+					// request, trailing bytes, SSE chatter) is read and dropped, never dispatched
+					clientSocket.onData = () -> drainInput(clientSocket);
+					drainInput(clientSocket);
 					if (conn.headerOversized) {
 						sendJsonResponse(clientSocket, 431, {ok: false, error: "Request header fields too large"});
 						return;
 					}
 					if (conn.bodyOversized) {
 						sendJsonResponse(clientSocket, 413, {ok: false, error: "Payload too large"});
+						return;
+					}
+					if (conn.badRequestStatus != 0) {
+						sendJsonResponse(clientSocket, conn.badRequestStatus, {ok: false, error: conn.badRequestReason});
 						return;
 					}
 					var httpMethod = conn.getHttpMethod();
@@ -208,12 +249,23 @@ class HttpServerTransport implements IDevBridgeTransport {
 				}
 			} catch (e:Dynamic) {
 				pendingConnections.remove(conn);
+				clientSocket.onData = () -> drainInput(clientSocket);
 				sendJsonResponse(clientSocket, 400, {ok: false, error: 'Bad request: $e'});
 			}
 		};
 		clientSocket.onError = (msg) -> {
 			pendingConnections.remove(conn);
 		};
+	}
+
+	static function drainInput(socket:Socket):Void {
+		final input = socket.input;
+		if (input == null) return;
+		final n = input.available;
+		if (n > 0) {
+			final discard = haxe.io.Bytes.alloc(n);
+			input.readBytes(discard, 0, n);
+		}
 	}
 
 	function tokenAccepted(conn:HttpConnection):Bool {
@@ -280,6 +332,7 @@ class HttpServerTransport implements IDevBridgeTransport {
 			case 403: "Forbidden";
 			case 405: "Method Not Allowed";
 			case 408: "Request Timeout";
+			case 411: "Length Required";
 			case 413: "Payload Too Large";
 			case 431: "Request Header Fields Too Large";
 			case 500: "Internal Server Error";
@@ -319,6 +372,10 @@ class HttpConnection {
 	public var lastActivityAt:Float;
 	public var headerOversized(default, null):Bool = false;
 	public var bodyOversized(default, null):Bool = false;
+	/** Non-zero when the request can't be read as sent: 400 (malformed Content-Length) or 411
+	 *  (a transfer-coded body — this server reads Content-Length bodies only). */
+	public var badRequestStatus(default, null):Int = 0;
+	public var badRequestReason(default, null):String = "";
 
 	var headerBytes:haxe.io.Bytes;
 	var headerLength:Int = 0;
@@ -372,8 +429,17 @@ class HttpConnection {
 				httpMethod = parseHttpMethod(headers);
 				httpPath = parseRequestPath(headers);
 				httpQuery = parseRequestQuery(headers);
-				contentLength = parseContentLength(headers);
-				if (contentLength < 0) contentLength = 0;
+				contentLength = parseContentLength(headerText);
+				if (contentLength == LENGTH_TRANSFER_CODED) {
+					badRequestStatus = 411;
+					badRequestReason = "Length required: send the body with Content-Length (Transfer-Encoding is not supported)";
+					return true;
+				}
+				if (contentLength == LENGTH_MALFORMED) {
+					badRequestStatus = 400;
+					badRequestReason = "Bad request: Content-Length must be a decimal number";
+					return true;
+				}
 				if (contentLength > MAX_BODY_BYTES) {
 					bodyOversized = true;
 					return true;
@@ -483,16 +549,30 @@ class HttpConnection {
 		return queryIdx >= 0 ? target.substr(queryIdx + 1) : "";
 	}
 
+	static inline final LENGTH_MALFORMED = -1;
+	static inline final LENGTH_TRANSFER_CODED = -2;
+
+	/** The body length from the `Content-Length` header (0 when there is none), or
+	 *  LENGTH_TRANSFER_CODED when the body is sent with a Transfer-Encoding, or
+	 *  LENGTH_MALFORMED when Content-Length is not a plain decimal number. */
 	static function parseContentLength(headers:String):Int {
-		var lower = headers.toLowerCase();
-		var idx = lower.indexOf("content-length:");
-		if (idx < 0) return 0;
-		var valueStart = idx + 15;
-		var lineEnd = headers.indexOf("\r\n", valueStart);
-		if (lineEnd < 0) lineEnd = headers.length;
-		var value = StringTools.trim(headers.substring(valueStart, lineEnd));
-		var parsed = Std.parseInt(value);
-		return parsed != null ? parsed : 0;
+		if (findHeader(headers, "transfer-encoding") != null)
+			return LENGTH_TRANSFER_CODED;
+		final value = findHeader(headers, "content-length");
+		if (value == null)
+			return 0;
+		if (value.length == 0)
+			return LENGTH_MALFORMED;
+		for (i in 0...value.length) {
+			final c = StringTools.fastCodeAt(value, i);
+			if (c < "0".code || c > "9".code)
+				return LENGTH_MALFORMED;
+		}
+		// Beyond 9 digits is past MAX_BODY_BYTES anyway (and past Int range at 10+)
+		if (value.length > 9)
+			return MAX_BODY_BYTES + 1;
+		final parsed = Std.parseInt(value);
+		return parsed != null ? parsed : LENGTH_MALFORMED;
 	}
 }
 #end

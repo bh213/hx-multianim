@@ -75,6 +75,52 @@ class CodegenBatchTransitionParityTest extends BuilderTestBase {
 			"codegen: batched status change must start the declared crossfade, not toggle instantly");
 	}
 
+	/** Tweens that start on unrelated objects right after the manager dropped every tween (so
+	 *  they reuse the pooled Tween instances the transition held). */
+	static function startUnrelatedTweens(tm:TweenManager):Array<h2d.Object> {
+		final others = [for (_ in 0...6) new h2d.Object()];
+		for (o in others)
+			tm.tween(o, 0.2, [X(50.0)]);
+		return others;
+	}
+
+	/** Builder: a transition cancelled from outside (TweenManager.cancelAllChildren) leaves its
+	 *  pooled Tween to be reused; the next parameter change must not cancel that reuse. */
+	@Test
+	public function testTransitionCancelledElsewhere_Builder_LeavesReusedTweensAlone():Void {
+		final tm = new TweenManager();
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "batchTrans", null, Incremental);
+		result.setTweenManager(tm);
+		result.setParameter("status", "hover");
+		Assert.isTrue(anyDescendantTweened(result.object, tm), "precondition: the crossfade is running");
+		tm.cancelAllChildren(result.object);
+		tm.update(0.0); // cancelled handles go back to the pool
+
+		final others = startUnrelatedTweens(tm);
+		result.setParameter("status", "normal");
+		tm.update(0.3);
+		for (o in others)
+			Assert.floatEquals(50.0, o.x, "builder: the next transition must not cancel a tween that reuses the old transition's instance");
+	}
+
+	/** Codegen: same guarantee for CodegenTransitionHelper. */
+	@Test
+	public function testTransitionCancelledElsewhere_Codegen_LeavesReusedTweensAlone():Void {
+		final tm = new TweenManager();
+		final inst:Dynamic = createMp().batchTrans.create();
+		inst.setTweenManager(tm);
+		inst.setParameter("status", "hover");
+		Assert.isTrue(anyDescendantTweened(cast inst, tm), "precondition: the crossfade is running");
+		tm.cancelAllChildren(cast inst);
+		tm.update(0.0);
+
+		final others = startUnrelatedTweens(tm);
+		inst.setParameter("status", "normal");
+		tm.update(0.3);
+		for (o in others)
+			Assert.floatEquals(50.0, o.x, "codegen: the next transition must not cancel a tween that reuses the old transition's instance");
+	}
+
 	/** Builder baseline: a batched unrelated-param change leaves the active
 	 *  @switch arm object untouched. */
 	@Test

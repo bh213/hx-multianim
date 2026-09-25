@@ -1186,6 +1186,67 @@ class TweenManagerTest extends utest.Test {
 			"Aliased tween instances share state — creating tB overwrote tA.target.");
 	}
 
+	// clear() from the onComplete of a tween that is not first in the manager's list: update()
+	// must not keep compacting its (now replaced) list, which left null handles behind that
+	// crashed the next update(). Tweens started after the clear() still run.
+	@Test
+	public function testClearFromOnCompleteOfLaterTweenKeepsManagerUsable():Void {
+		var mgr = new TweenManager();
+		mgr.tween(createObject(), 1.0, [Alpha(0.0)]);
+		mgr.tween(createObject(), 1.0, [Alpha(0.0)]);
+		var afterClear = createObject();
+		mgr.tween(createObject(), 0.1, [Alpha(0.0)]).setOnComplete(() -> {
+			mgr.clear();
+			mgr.tween(afterClear, 0.5, [X(100.0)]);
+		});
+
+		mgr.update(0.2); // third tween completes -> clear() -> a new tween starts
+
+		var error:Null<String> = null;
+		try {
+			mgr.update(0.25);
+			mgr.update(0.25);
+		} catch (e:Dynamic) {
+			error = Std.string(e);
+		}
+		Assert.isNull(error, 'update() after clear() in an onComplete must not fail: $error');
+		Assert.floatEquals(100.0, afterClear.x, "a tween started after clear() runs to its end");
+		Assert.isFalse(mgr.hasTweens(afterClear), "and is removed once finished");
+	}
+
+	// A finished (or cancelled) tween goes back to the pool and is handed out again. Code that
+	// keeps the Tween past its end (tweenCell's caller, a helper field) records its generation
+	// and must not be able to cancel the tween that now reuses the instance.
+	@Test
+	public function testCancelIfCurrentLeavesReusedTweenAlone():Void {
+		var mgr = new TweenManager();
+		var first = mgr.tween(createObject(), 0.1, [Alpha(0.0)]);
+		final firstGeneration = first.generation;
+		mgr.update(0.2); // finishes -> back to the pool
+
+		var other = createObject();
+		var reused = mgr.tween(other, 1.0, [X(100.0)]);
+		Assert.isTrue(reused == first, "precondition: the pooled instance is handed out again");
+		Assert.notEquals(firstGeneration, reused.generation, "a recycled tween has a new generation");
+
+		Tween.cancelIfCurrent(first, firstGeneration); // the old holder cancels "its" tween
+		mgr.update(1.0);
+		Assert.floatEquals(100.0, other.x, "the tween that reuses the instance runs to its end");
+	}
+
+	@Test
+	public function testCancellingAFinishedSequenceLeavesReusedTweensAlone():Void {
+		var mgr = new TweenManager();
+		var seq = mgr.sequence([mgr.createTween(createObject(), 0.1, [Alpha(0.0)])]);
+		mgr.update(0.2); // finishes -> its tween goes back to the pool
+
+		var other = createObject();
+		mgr.tween(other, 1.0, [X(100.0)]);
+		seq.cancel(); // through a kept reference to the finished sequence
+		mgr.update(1.0);
+		Assert.floatEquals(100.0, other.x, "a finished sequence no longer reaches the tweens it used to hold");
+	}
+
 	@Test
 	public function testZeroDurationTweenSnapsToFinalValue():Void {
 		var mgr = new TweenManager();

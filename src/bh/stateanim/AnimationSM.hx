@@ -79,6 +79,9 @@ class AnimationSM extends h2d.Object {
 	// Latch so onFinished fires once per completed playback, not every update.
 	var finishedFired:Bool = false;
 
+	// Bumped by play(), so handleCurrent can tell an event handler started a playback.
+	var playCount:Int = 0;
+
 	public function new(selector:AnimationStateSelector, ?externallyDriven:Bool = false) {
 		super(null);
 		currentSelector = selector;
@@ -137,6 +140,7 @@ class AnimationSM extends h2d.Object {
 			throw 'unknown animation ${name}';
 
 		current = state;
+		playCount++;
 		elapsedTime = 0;
 		paused = false;
 		finishedFired = false;
@@ -199,6 +203,9 @@ class AnimationSM extends h2d.Object {
 		elapsedTime += delta;
 
 		var currentFrame = clip.getCurrentFrame();
+		// An event handler may call play(): that starts the new playback itself, and this
+		// loop's locals (currentFrame, the index it advances) belong to the old one
+		final playback = playCount;
 		var iterations = 0;
 		final maxIterations = 1000;
 
@@ -258,6 +265,8 @@ class AnimationSM extends h2d.Object {
 							randomPoint.y += Std.int(r * Math.sin(randomAngle));
 							onAnimationEvent(PointEvent(name, randomPoint));
 					}
+					if (playCount != playback)
+						return;
 					// Advance past an event when no frame is showing yet (an event that opens the
 					// playlist): the top of the loop only advances from a frame, so it would be
 					// read again until the loop guard threw

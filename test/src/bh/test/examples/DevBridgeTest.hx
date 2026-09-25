@@ -1510,6 +1510,138 @@ class DevBridgeTest extends BuilderTestBase {
 		Assert.isNull(bh.multianim.dev.transport.HttpServerTransport.HttpConnection.findQueryParam("", "token"));
 	}
 
+	// ==================== HTTP transport over a loopback socket ====================
+
+	/** An HttpServerTransport on 127.0.0.1 whose host records every request body that reaches it. */
+	static function startHttp():{server:bh.multianim.dev.transport.HttpServerTransport, host:RecordingHost} {
+		final host = new RecordingHost();
+		final server = new bh.multianim.dev.transport.HttpServerTransport(19400 + Std.random(400), "127.0.0.1");
+		Assert.isTrue(server.start(host), "precondition: the HTTP transport binds a loopback port");
+		return {server: server, host: host};
+	}
+
+	/** Runs libuv, which carries both ends of these loopback sockets, until `done()` or `seconds`
+	 *  pass. Synchronous on purpose: the dev test build has no visual tests, so the test app does
+	 *  not wait for async unit tests before it exits. */
+	static function pumpSockets(done:() -> Bool, seconds:Float):Void {
+		final loop = hl.uv.Loop.getDefault();
+		final deadline = Sys.time() + seconds;
+		while (!done() && Sys.time() < deadline) {
+			loop.run(NoWait);
+			Sys.sleep(0.002);
+		}
+	}
+
+	/** Connect, send `request`, wait for the reply (up to 2 s), then keep the sockets running a
+	 *  little longer so anything the server does after replying shows up. `onFirstReply` runs the
+	 *  moment the first reply bytes arrive (inside the server's 50 ms close window) so a test can
+	 *  send more bytes then. The connection is left open; the caller closes it. */
+	static function exchange(port:Int, request:String, ?onFirstReply:hxd.net.Socket->Void):{reply:String, client:hxd.net.Socket} {
+		final client = new hxd.net.Socket();
+		final received = new StringBuf();
+		var replied = false;
+		client.onError = (_) -> {};
+		client.onData = () -> {
+			final n = client.input.available;
+			if (n > 0) {
+				final bytes = haxe.io.Bytes.alloc(n);
+				client.input.readBytes(bytes, 0, n);
+				received.add(bytes.toString());
+			}
+			if (!replied) {
+				replied = true;
+				if (onFirstReply != null)
+					onFirstReply(client);
+			}
+		};
+		client.connect("127.0.0.1", port, () -> sendRaw(client, request));
+		pumpSockets(() -> replied, 2.0);
+		pumpSockets(() -> false, 0.15);
+		return {reply: received.toString(), client: client};
+	}
+
+	static function sendRaw(client:hxd.net.Socket, text:String):Void {
+		final bytes = haxe.io.Bytes.ofString(text);
+		client.out.writeBytes(bytes, 0, bytes.length);
+	}
+
+	static function finishHttp(server:bh.multianim.dev.transport.HttpServerTransport, client:hxd.net.Socket):Void {
+		try client.close() catch (_:Dynamic) {}
+		server.stop();
+	}
+
+	@Test
+	public function testHttp_bytesAfterACompleteRequestDoNotDispatchItAgain():Void {
+		final ctx = startHttp();
+		final ex = exchange(ctx.server.actualPort, "POST / HTTP/1.1\r\nContent-Length: 2\r\n\r\n{}", (client) -> sendRaw(client, "\r\n"));
+		Assert.stringContains("HTTP/1.1 200", ex.reply, "precondition: the request is answered");
+		Assert.equals(1, ctx.host.requests.length, "a request is dispatched once, whatever bytes follow it on the connection");
+		finishHttp(ctx.server, ex.client);
+	}
+
+	@Test
+	public function testHttp_bytesAfterAnSseRequestDoNotAddTheClientTwice():Void {
+		final ctx = startHttp();
+		final ex = exchange(ctx.server.actualPort, "GET /sse HTTP/1.1\r\n\r\n", (client) -> sendRaw(client, "x"));
+		Assert.stringContains("text/event-stream", ex.reply, "precondition: the SSE stream opens");
+		Assert.equals(1, @:privateAccess ctx.server.sseClients.length, "one connection is one SSE client");
+		finishHttp(ctx.server, ex.client);
+	}
+
+	@Test
+	public function testHttp_contentLengthIsReadFromItsOwnHeaderOnly():Void {
+		// X-Original-Content-Length is not Content-Length: this request has no body.
+		final ctx = startHttp();
+		final ex = exchange(ctx.server.actualPort, "POST / HTTP/1.1\r\nX-Original-Content-Length: 5\r\n\r\n");
+		Assert.equals(1, ctx.host.requests.length, "the bodiless request is dispatched instead of waiting for 5 body bytes");
+		if (ctx.host.requests.length == 1)
+			Assert.equals("", ctx.host.requests[0]);
+		finishHttp(ctx.server, ex.client);
+	}
+
+	@Test
+	public function testHttp_malformedContentLengthIsA400():Void {
+		final ctx = startHttp();
+		final ex = exchange(ctx.server.actualPort, "POST / HTTP/1.1\r\nContent-Length: 2abc\r\n\r\n{}");
+		Assert.stringContains("HTTP/1.1 400", ex.reply, "a Content-Length that is not all digits is a bad request");
+		Assert.equals(0, ctx.host.requests.length, "and is not dispatched");
+		finishHttp(ctx.server, ex.client);
+	}
+
+	@Test
+	public function testHttp_chunkedBodyIsRefusedNotReadAsEmpty():Void {
+		final ctx = startHttp();
+		final ex = exchange(ctx.server.actualPort, "POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n2\r\n{}\r\n0\r\n\r\n");
+		Assert.stringContains("HTTP/1.1 411", ex.reply, "a chunked body is refused: the bridge needs a Content-Length");
+		Assert.equals(0, ctx.host.requests.length, "and is not dispatched as an empty body");
+		finishHttp(ctx.server, ex.client);
+	}
+
+	// ==================== start() failure ====================
+
+	@Test
+	public function testFailedStartLeavesTraceAsItWas():Void {
+		final before = haxe.Log.trace;
+		// 203.0.113.1 (TEST-NET-3) is not an address of this machine, so every bind fails.
+		final bridge = new DevBridge(new ScreenManager(bh.test.VisualTestBase.appInstance), 19399, "203.0.113.1");
+		try {
+			bridge.start();
+			bridge.start(); // and a second attempt
+			Assert.isFalse(bridge.started, "precondition: binding a foreign address fails");
+			final marker = "trace-after-failed-start-" + Std.random(1000000);
+			trace(marker);
+			var captured = 0;
+			for (line in bridge.traceBuffer)
+				if (line.indexOf(marker) >= 0)
+					captured++;
+			Assert.equals(0, captured, "a DevBridge that did not start does not capture traces");
+			Assert.isTrue(Reflect.compareMethods(haxe.Log.trace, before), "haxe.Log.trace is back to what it was");
+		} catch (e:Dynamic) {
+			Assert.fail('start() on an unbindable address must fail quietly: $e');
+		}
+		haxe.Log.trace = before; // never leave a hook behind for the tests that follow
+	}
+
 	@Test
 	public function testConfigShortKeys():Void {
 		Assert.equals("token", bh.multianim.dev.DevBridgeConfig.shortKey("HX_DEV_TOKEN"));
@@ -1598,6 +1730,28 @@ private class RecordingTransport implements bh.multianim.dev.transport.IDevBridg
 		events.push({name: name, data: data});
 		if (traceOnPush) trace('recording transport saw $name');
 	}
+}
+
+/** A DevBridge host for transport tests: answers 200 to everything and records each request body. */
+private class RecordingHost implements bh.multianim.dev.transport.IDevBridgeTransport.IDevBridgeHost {
+	public var requests:Array<String> = [];
+
+	public function new() {}
+
+	public function handleRequestJson(json:String):bh.multianim.dev.transport.IDevBridgeTransport.DevBridgeReply {
+		requests.push(json);
+		return {status: 200, body: {ok: true}};
+	}
+
+	public function handleCall(method:String, params:Dynamic):bh.multianim.dev.transport.IDevBridgeTransport.DevBridgeReply {
+		return {status: 200, body: {ok: true}};
+	}
+
+	public function getToken():Null<String>
+		return null;
+
+	public function describeInstance():Dynamic
+		return {};
 }
 
 private class DevTestScreen extends UIScreenBase {

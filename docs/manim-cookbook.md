@@ -702,7 +702,7 @@ cardHand.drawCard({id: "card1", params: ["cardName" => "Fireball", "cost" => 3]}
 // Or with manual wiring (if not using addCardHand):
 // onScreenEvent -> cardHand.handleScreenEvent(event)
 // onMouseMove -> cardHand.onMouseMove(x, y)
-// onMouseClick -> cardHand.onMouseRelease(x, y)
+// onMouseClick (release) -> cardHand.onMouseRelease(x, y, button)
 // update(dt) -> cardHand.update(dt)
 // onClear -> cardHand.dispose()
 ```
