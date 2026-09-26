@@ -5,7 +5,7 @@
 - **Generic settings pass-through**: Any setting not recognized as control or behavioral is automatically forwarded to the underlying programmable as an extra parameter. The programmable must declare a matching parameter; mismatches throw with programmable name + available params.
 - **Prefixed settings**: `item.fontColor`, `scrollbar.thickness` — dotted keys route to sub-builders in multi-programmable components (dropdown, scrollableList). Registered prefixes: dropdown has `dropdown`, `item`, `scrollbar` (main=panel); scrollableList has `item`, `scrollbar` (main=panel).
 - **Multi-forward settings**: Unprefixed `font`/`fontColor` on dropdown/scrollableList forward to ALL relevant sub-builders for backwards compatibility.
-- **Button**: `buildName` and `text` are control settings; everything else (e.g. `width`, `height`, `font`, `fontColor`) passes through to `#button` programmable. Uses incremental `BuilderResult` with `setParameter("status", ...)` for state changes.
+- **Button**: `buildName` and `text` are control settings; everything else (e.g. `width`, `height`, `font`, `fontColor`) passes through to `#button` programmable. Uses incremental `BuilderResult` with `setParameter("status", ...)` for state changes. `setStyleParameter(name, value):Bool` drives design-specific parameters at runtime — returns `false` (no-op) when the design doesn't declare the parameter; throws `BuilderError` (`code="widget_managed_param"`) for the widget-managed `status`/`buttonText`/`disabled` (use `setText()` / `disabled` instead).
 - **Checkbox**: Same incremental approach as button; uses `beginUpdate()`/`endUpdate()` when toggling both `status` and `checked` parameters.
 - **TabButton**: Same incremental approach; `selected`/`disabled` via `setParameter("checked"/"disabled", ...)`.
 - **Scrollable list / Dropdown**: `font`, `fontColor` forwarded to both item builder and dropdown button builder. The `#dropdown` programmable accepts `font`/`fontColor` params for the selected item text.
@@ -90,6 +90,7 @@ Metadata supports typed values matching the settings system: `key => val` (strin
 **Parameterized slots** — `#name slot(param:type=default, ...)` for visual state management:
 - Same parameter types as `programmable()`: `uint`, `int`, `float`, `bool`, `string`, `color`, enum, range, flags
 - Conditionals (`@()`, `@else`, `@default`) and expressions (`$param`) work inside the slot body
+- Scope: slot bodies see the slot's own params plus enclosing `@final` constants declared before the slot (works on build, `setParameter` rebuilds, and the codegen `buildSlotContent` path). Enclosing programmable params and loop vars are NOT visible — a slot rebuild only receives slot params
 - `SlotHandle.setParameter("name", value)` updates visuals via `IncrementalUpdateContext`
 - Content goes into a separate `contentRoot` (decoration always visible, not hidden by `setContent`)
 - Codegen: `setParameter()` supported — parameterized slots built via `buildParameterizedSlot()` at runtime with full incremental support
@@ -112,7 +113,7 @@ Metadata supports typed values matching the settings system: `key => val` (strin
 
 `UIHigherOrderComponent` interface (`src/bh/ui/UIHigherOrderComponent.hx`) — lifecycle auto-wiring for complex UI components (Grid, CardHand) that manage their own scene graph and span multiple layers.
 
-**Interface methods:** `update(dt)`, `onMouseMove(x, y):Bool`, `onMouseClick(x, y, button):Bool`, `onMouseRelease(x, y):Bool`, `handleScreenEvent(event):Bool`, `getObject():h2d.Object`, `dispose()`.
+**Interface methods:** `update(dt)`, `onMouseMove(x, y):Bool`, `onMouseClick(x, y, button):Bool`, `onMouseRelease(x, y, ?button):Bool` (`button` null = left; drags end on a left-button release only), `handleScreenEvent(event):Bool`, `getObject():h2d.Object`, `dispose()`.
 
 **Implementors:** `UIMultiAnimGrid`, `UICardHandHelper`
 
@@ -133,7 +134,7 @@ Metadata supports typed values matching the settings system: `key => val` (strin
 
 **Dispatch pattern:** `UIControllerScreenIntegration` uses `dispatchMouseMove()` / `dispatchMouseClick()` instead of direct `onMouseMove()` / `onMouseClick()` — enables component event interception before screen handlers. Key coexistence semantics:
 - `dispatchMouseMove()` — notifies components but always returns true (never blocks interactive processing)
-- `dispatchMouseClick()` — push (non-release) notifies components but never blocks; only release can block (returns false when consumed, e.g. card hand drag end). Controller preserves outside-click tracking even when consumed.
+- `dispatchMouseClick()` — push (non-release) notifies components but never blocks; only release can block (returns false when consumed, e.g. card hand drag end). The release is forwarded with its button (`onMouseRelease(x, y, button)`). Controller preserves outside-click tracking even when consumed.
 - `dispatchScreenEvent()` — runs autoStatus + panelHelpers first, then tries components. Skips `onScreenEvent()` when a component consumed the event.
 
 **UIComponentHost interface** (`src/bh/ui/UIComponentHost.hx`): Decouples CardHand, UIRichInteractiveHelper, UIPanelHelper, and UITooltipHelper from concrete UIScreenBase. Methods: `addObjectToLayer`, `addInteractives`, `removeInteractives`, `getInteractive`, `getAutoInteractiveHelper`, `onScreenEvent`. UIScreenBase implements it. `onScreenEvent` on the interface is used by `UIPanelHelper` to push its `EVENT_PANEL_CLOSE` notification back into the host.
@@ -293,12 +294,13 @@ var grid = new UIMultiAnimGrid(builder, {
 - `removeExternalObject(obj)` — remove it
 
 **Cell animations** (require `tweenManager` in config):
-- `tweenCell(col, row, duration, properties, ?easing)` — animate cell object properties (e.g. shake, pulse). Non-destructive — cell stays in grid
-- `addCellAnimated(col, row, duration, properties, ?easing, ?data, ?params)` — add cell with entrance animation. Properties are FROM values (e.g. `[Scale(0.0), Alpha(0.0)]` → cell scales/fades in from 0)
-- `removeCellAnimated(col, row, duration, properties, ?easing)` — animate cell then remove. Properties are TO values (e.g. `[Scale(0.0), Alpha(0.0)]` → cell shrinks/fades out)
+- `tweenCell(col, row, duration, properties, ?easing)` — animate cell object properties (e.g. shake, pulse). Non-destructive — cell stays in grid. The returned `Tween` is pooled: to cancel it later keep `tween.generation` and use `Tween.cancelIfCurrent(tween, generation)`
+- `addCellAnimated(col, row, ?data, ?params, duration=0.3, ?initProperties, ?easing)` — add cell with entrance animation. `initProperties` are FROM values (e.g. `[Scale(0.0), Alpha(0.0)]` → cell scales/fades in from 0). Note `data`/`params` precede `duration`
+- `removeCellAnimated(col, row, duration, properties, ?easing, ?onComplete)` — animate cell then remove. Properties are TO values (e.g. `[Scale(0.0), Alpha(0.0)]` → cell shrinks/fades out)
+- `dispose()` cancels every cell tween and completes pending `removeCellAnimated` exits at once (object removed, `onComplete` called once, like swap animations); `rebuildCell()` cancels tweens on the visual it replaces
 
 **Detach/reattach cell visual:**
-- `detachCellVisual(col, row) -> h2d.Object` — remove visual from cell for free animation (e.g. fly to another location). Cell data preserved but shows empty
+- `detachCellVisual(col, row) -> Null<{object:h2d.Object, data, sceneX, sceneY}>` — remove visual from cell for free animation (e.g. fly to another location). Returns the detached object plus its data and scene position, or null if the cell doesn't exist. Cell data preserved but shows empty
 - `reattachCellVisual(col, row)` — rebuild cell visual from existing data
 
 **Lifecycle:**
@@ -397,7 +399,8 @@ override public function onMouseMove(pos) {
     return super.onMouseMove(pos);
 }
 override public function onMouseClick(pos, button, release) {
-    if (release && cardHand.onMouseRelease(pos.x, pos.y)) return false;
+    if (!release) cardHand.onMouseClick(pos.x, pos.y, button); // notes the button: the UIPush that follows drags for left only
+    if (release && cardHand.onMouseRelease(pos.x, pos.y, button)) return false;
     if (release) hexGrid.onMouseClick(pos.x, pos.y, button);
     return super.onMouseClick(pos, button, release);
 }
@@ -407,8 +410,8 @@ override public function onMouseClick(pos, button, release) {
 - Builder: `result.getDynamicRef("name").setParameter("param", value)`
 - Existence check: `result.hasDynamicRef("name")` — never throws, returns `false` when unknown. Reports presence only; a subsequent `getDynamicRef` may still throw if multiple unnamed sibling sites collide on the same key (disambiguate with `#name` / `#name[$i]`)
 - Batch updates: `beginUpdate()` / `endUpdate()` defers re-evaluation
-- Codegen: generates runtime builder call, returns `BuilderResult`
-- **Dynamic programmable references**: `dynamicRef($paramName, params)` where `$paramName` is a string/enum parameter of the enclosing programmable. The parameter value names the target programmable. Template change triggers full rebuild; forwarded params propagate incrementally. `getDynamicRef()` returns the current result (name changes at runtime)
+- Codegen: generates runtime builder call, returns `BuilderResult`. Lookup contract matches the builder: `getDynamicRef` on a collided unnamed key throws at lookup; a duplicate explicit `#name` is a compile-time error
+- **Dynamic programmable references**: `dynamicRef($paramName, params)` where `$paramName` is a string/enum parameter of the enclosing programmable. The parameter value names the target programmable. Template change triggers full rebuild; forwarded params propagate incrementally. `getDynamicRef()` returns the current result. With an explicit `#name`, the name is the stable lookup key across template swaps (builder and codegen); only unnamed sites are looked up by the live template name
 
 **Flow improvements** — new optional params on `flow()`:
 - `overflow: expand|limit|scroll|hidden`, `fillWidth: true`, `fillHeight: true`, `reverse: true`

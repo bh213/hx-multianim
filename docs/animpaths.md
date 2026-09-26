@@ -340,7 +340,7 @@ Curve slots animate properties as the object traverses the path. Each slot assig
 | `scaleCurve` | rate → float | 1.0 | Scale value |
 | `alphaCurve` | rate → float | 1.0 | Alpha/opacity |
 | `rotationCurve` | rate → float | 0.0 | Additional rotation in radians (on top of path tangent) |
-| `colorCurve` | rate → color | 0xFFFFFF | Color interpolation (see multi-color below) |
+| `colorCurve` | rate → color | 0xFFFFFFFF | Color interpolation, `0xAARRGGBB` — alpha is interpolated like the other channels (see multi-color below) |
 | `custom("<name>")` | rate → float | 0.0 | User-defined named value |
 
 Multiple curve assignments at different rates create **piecewise curves**. The curve for a given slot is evaluated within the segment that starts at its rate. For example, with two `scaleCurve` assignments at `0.0` and `0.5`, the first curve runs from rate 0.0 to 0.5, the second from 0.5 to 1.0.
@@ -435,7 +435,7 @@ Every `update(dt)` and `seek(rate)` call returns an `AnimatedPathState` with the
 | `scale` | `Float` | 1.0 | Value from `scaleCurve` |
 | `alpha` | `Float` | 1.0 | Value from `alphaCurve` |
 | `rotation` | `Float` | 0.0 | Value from `rotationCurve` |
-| `color` | `Int` | 0xFFFFFF | Value from `colorCurve` (RGB) |
+| `color` | `Int` | 0xFFFFFFFF | Value from `colorCurve` (`0xAARRGGBB`; opaque white without one — `hasColorCurve()` tells whether a curve drives it) |
 | `cycle` | `Int` | 0 | Current loop cycle (0-indexed) |
 | `done` | `Bool` | false | `true` when a non-looping animation finishes |
 | `custom` | `Map<String, Float>` | — | Values from `custom("name")` slots |

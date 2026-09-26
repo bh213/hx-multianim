@@ -294,7 +294,12 @@ haxe lsp/lsp-server.hxml
 # Output: lsp/bin/server.js
 ```
 
-Copy `lsp/bin/server.js` into the VSCode extension's `server/` directory.
+`npm run build` (and therefore `npm run package`) in `vscode/` does this automatically:
+`vscode/build.js` rebuilds the server and copies `lsp/bin/server.js` into `vscode/server/server.js`
+before bundling the extension client. CI enforces the copy with the "LSP server drift gate" in
+`tests.yml` (rebuild + byte-compare against the committed `vscode/server/server.js`) and runs the
+LSP unit tests (`lsp/test-lsp.hxml` + `node lsp/bin/test.js`). If the gate fails, run
+`npm run build` in `vscode/` and commit the refreshed `server.js`.
 
 The build uses `-D noheaps` to exclude Heaps framework dependencies. The parser runs in pure-data mode (parsing only, no rendering).
 

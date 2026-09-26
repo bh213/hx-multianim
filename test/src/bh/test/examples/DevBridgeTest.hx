@@ -71,6 +71,36 @@ class DevBridgeTest extends BuilderTestBase {
 		Assert.isTrue(threw, "Should throw for unknown method");
 	}
 
+	@Test
+	public function testDispatch_clickButtonAliasRoutesToClickInteractive():Void {
+		// "click_button" is documented (docs/devbridge.md) and exposed as an MCP tool as an
+		// alias of "click_interactive". It must reach handleClickInteractive, not fall through
+		// to the unknown-method default. With no matching interactive registered, the handler
+		// throws "Interactive not found" — the same error the canonical name produces.
+		var bridge = createTestBridge();
+
+		var aliasError:String = null;
+		try {
+			bridge.dispatch("click_button", {id: "missingInteractive"});
+		} catch (e:haxe.Exception) {
+			aliasError = e.message;
+		}
+		Assert.notNull(aliasError, "click_button should route to a handler and throw for a missing interactive");
+		Assert.isTrue(aliasError.indexOf("Unknown method") < 0,
+			"click_button must not fall through to the unknown-method default. Got: " + aliasError);
+		Assert.isTrue(aliasError.indexOf("Interactive not found") >= 0,
+			"click_button should reach handleClickInteractive. Got: " + aliasError);
+
+		// Parity: the canonical name produces the same error for the same input.
+		var canonicalError:String = null;
+		try {
+			bridge.dispatch("click_interactive", {id: "missingInteractive"});
+		} catch (e:haxe.Exception) {
+			canonicalError = e.message;
+		}
+		Assert.equals(canonicalError, aliasError);
+	}
+
 	// ==================== Static Helpers ====================
 
 	@Test
@@ -1326,9 +1356,403 @@ class DevBridgeTest extends BuilderTestBase {
 		Assert.equals(0, result.dropped);
 		Assert.equals(0, result.lastId);
 	}
+
+	// ==================== Transport-independent request handling ====================
+
+	@Test
+	public function testHandleRequestJson_replyShapes():Void {
+		var bridge = createTestBridge();
+
+		var ok = bridge.handleRequestJson('{"method":"ping","params":{}}');
+		Assert.equals(200, ok.status);
+		Assert.isTrue(ok.body.ok);
+		Assert.isTrue(ok.body.result.ok);
+
+		var unknown = bridge.handleRequestJson('{"method":"no_such_method"}');
+		Assert.equals(404, unknown.status);
+		Assert.isFalse(unknown.body.ok);
+		Assert.equals("unknown_method", unknown.body.code);
+
+		var notFound = bridge.handleRequestJson('{"method":"inspect_element","params":{"screen":"nope","element":"x"}}');
+		Assert.equals(404, notFound.status);
+		Assert.equals("not_found", notFound.body.code);
+
+		// The HTTP transport's historical reply to a body that is not JSON: no code field.
+		var badJson = bridge.handleRequestJson("{not json");
+		Assert.equals(400, badJson.status);
+		Assert.equals("Invalid JSON", badJson.body.error);
+		Assert.isNull(badJson.body.code);
+
+		var noMethod = bridge.handleRequestJson('{"params":{}}');
+		Assert.equals(400, noMethod.status);
+		Assert.equals("invalid_params", noMethod.body.code);
+
+		var nullBody = bridge.handleRequestJson("null");
+		Assert.equals(400, nullBody.status);
+	}
+
+	@Test
+	public function testHandleCall_nullParamsAndSameShapeAsJson():Void {
+		var bridge = createTestBridge();
+		var direct = bridge.handleCall("list_fonts", null);
+		Assert.equals(200, direct.status);
+		Assert.isTrue(direct.body.ok);
+		Assert.notNull(direct.body.result.fonts);
+
+		var viaJson = bridge.handleRequestJson('{"method":"list_fonts"}');
+		Assert.equals(haxe.Json.stringify(direct.body), haxe.Json.stringify(viaJson.body));
+
+	}
+
+	@Test
+	public function testMethodsList_everyEntryRoutes():Void {
+		// METHODS is what window.hxDevBridge.info() and a relay's hello advertise; each entry must
+		// reach a handler. Methods with side effects on the test app (quitting, swapping the loop,
+		// injecting input, rendering, reloading) are left out of the call, not out of the list.
+		var bridge = createTestBridge();
+		final unsafe = ["quit", "pause", "step", "send_event", "send_events", "screenshot", "reload"];
+		for (method in DevBridge.METHODS) {
+			if (unsafe.contains(method)) continue;
+			var reply = bridge.handleCall(method, {});
+			Assert.isTrue(reply.body.code != "unknown_method", '$method is listed in METHODS but dispatch does not know it');
+		}
+		for (method in unsafe)
+			Assert.isTrue(DevBridge.METHODS.contains(method), '$method should be listed');
+		Assert.isTrue(bridge.handleCall("definitely_not_listed", {}).body.code == "unknown_method");
+	}
+
+	@Test
+	public function testDescribeInstance_fields():Void {
+		var bridge = createTestBridge();
+		bridge.registerQuery("state_get", "state", {}, (_) -> 1);
+		var info:Dynamic = bridge.describeInstance();
+		Assert.equals(bridge.session, info.session);
+		Assert.equals(12, (info.session : String).length);
+		Assert.isTrue((info.ops : Array<String>).contains("list_screens"));
+		Assert.isTrue((info.gameOps : Array<String>).contains("state_get"));
+		Assert.notNull(info.app);
+		Assert.isTrue(Std.isOfType(info.frame, Int));
+	}
+
+	// ==================== Event fan-out to transports ====================
+
+	@Test
+	public function testPushEvent_reachesEveryTransport():Void {
+		var bridge = createTestBridge();
+		var a = new RecordingTransport();
+		var b = new RecordingTransport();
+		bridge.transports.push(a);
+		bridge.transports.push(b);
+
+		bridge.emitEvent("scored", {points: 3});
+		bridge.broadcastCustomEvent("note", "hi");
+
+		Assert.equals(2, a.events.length);
+		Assert.equals("game_event", a.events[0].name);
+		Assert.equals("scored", a.events[0].data.name);
+		Assert.equals("custom", a.events[1].name);
+		Assert.equals(a.events.length, b.events.length);
+	}
+
+	@Test
+	public function testPushEvent_transportThatTracesDoesNotRecurse():Void {
+		// A trace is an event; a transport that traces while pushing must not loop.
+		var bridge = createTestBridge();
+		bridge.registerEvent("once", "test event", {});
+		var noisy = new RecordingTransport();
+		noisy.traceOnPush = true;
+		bridge.transports.push(noisy);
+		bridge.installTraceCapture();
+		try {
+			bridge.emitEvent("once", {});
+		} catch (e:Dynamic) {
+			bridge.restoreTrace();
+			throw e;
+		}
+		bridge.restoreTrace();
+		Assert.equals(1, noisy.events.length);
+		Assert.equals("game_event", noisy.events[0].name);
+	}
+
+	@Test
+	public function testTraceCapture_pushesTraceEvents():Void {
+		var bridge = createTestBridge();
+		var rec = new RecordingTransport();
+		bridge.transports.push(rec);
+		bridge.installTraceCapture();
+		trace("hello transport");
+		bridge.restoreTrace();
+		Assert.equals(1, rec.events.length);
+		Assert.equals("trace", rec.events[0].name);
+		Assert.isTrue((rec.events[0].data.message : String).indexOf("hello transport") >= 0);
+	}
+
+	// ==================== HTTP transport helpers (token, headers, query) ====================
+
+	@Test
+	public function testTokensEqual():Void {
+		Assert.isTrue(bh.multianim.dev.transport.HttpServerTransport.tokensEqual("abc123", "abc123"));
+		Assert.isFalse(bh.multianim.dev.transport.HttpServerTransport.tokensEqual("abc123", "abc124"));
+		Assert.isFalse(bh.multianim.dev.transport.HttpServerTransport.tokensEqual("abc", "abcd"));
+		Assert.isFalse(bh.multianim.dev.transport.HttpServerTransport.tokensEqual("", "x"));
+	}
+
+	@Test
+	public function testHttpConnection_headersAndQuery():Void {
+		final headers = "POST /sse?token=a%20b&x=1 HTTP/1.1\r\nHost: localhost\r\nX-HX-Dev-Token:  s3cret \r\nAuthorization: Bearer t0k\r\nOrigin: http://localhost:3000";
+		Assert.equals("s3cret", bh.multianim.dev.transport.HttpServerTransport.HttpConnection.findHeader(headers, "x-hx-dev-token"));
+		Assert.equals("Bearer t0k", bh.multianim.dev.transport.HttpServerTransport.HttpConnection.findHeader(headers, "AUTHORIZATION"));
+		Assert.equals("http://localhost:3000", bh.multianim.dev.transport.HttpServerTransport.HttpConnection.findHeader(headers, "origin"));
+		Assert.isNull(bh.multianim.dev.transport.HttpServerTransport.HttpConnection.findHeader(headers, "cookie"));
+		Assert.equals("a b", bh.multianim.dev.transport.HttpServerTransport.HttpConnection.findQueryParam("token=a%20b&x=1", "token"));
+		Assert.equals("1", bh.multianim.dev.transport.HttpServerTransport.HttpConnection.findQueryParam("token=a%20b&x=1", "x"));
+		Assert.isNull(bh.multianim.dev.transport.HttpServerTransport.HttpConnection.findQueryParam("token=a", "tok"));
+		Assert.isNull(bh.multianim.dev.transport.HttpServerTransport.HttpConnection.findQueryParam("", "token"));
+	}
+
+	// ==================== HTTP transport over a loopback socket ====================
+
+	/** An HttpServerTransport on 127.0.0.1 whose host records every request body that reaches it. */
+	static function startHttp():{server:bh.multianim.dev.transport.HttpServerTransport, host:RecordingHost} {
+		final host = new RecordingHost();
+		final server = new bh.multianim.dev.transport.HttpServerTransport(19400 + Std.random(400), "127.0.0.1");
+		Assert.isTrue(server.start(host), "precondition: the HTTP transport binds a loopback port");
+		return {server: server, host: host};
+	}
+
+	/** Runs libuv, which carries both ends of these loopback sockets, until `done()` or `seconds`
+	 *  pass. Synchronous on purpose: the dev test build has no visual tests, so the test app does
+	 *  not wait for async unit tests before it exits. */
+	static function pumpSockets(done:() -> Bool, seconds:Float):Void {
+		final loop = hl.uv.Loop.getDefault();
+		final deadline = Sys.time() + seconds;
+		while (!done() && Sys.time() < deadline) {
+			loop.run(NoWait);
+			Sys.sleep(0.002);
+		}
+	}
+
+	/** Connect, send `request`, wait for the reply (up to 2 s), then keep the sockets running a
+	 *  little longer so anything the server does after replying shows up. `onFirstReply` runs the
+	 *  moment the first reply bytes arrive (inside the server's 50 ms close window) so a test can
+	 *  send more bytes then. The connection is left open; the caller closes it. */
+	static function exchange(port:Int, request:String, ?onFirstReply:hxd.net.Socket->Void):{reply:String, client:hxd.net.Socket} {
+		final client = new hxd.net.Socket();
+		final received = new StringBuf();
+		var replied = false;
+		client.onError = (_) -> {};
+		client.onData = () -> {
+			final n = client.input.available;
+			if (n > 0) {
+				final bytes = haxe.io.Bytes.alloc(n);
+				client.input.readBytes(bytes, 0, n);
+				received.add(bytes.toString());
+			}
+			if (!replied) {
+				replied = true;
+				if (onFirstReply != null)
+					onFirstReply(client);
+			}
+		};
+		client.connect("127.0.0.1", port, () -> sendRaw(client, request));
+		pumpSockets(() -> replied, 2.0);
+		pumpSockets(() -> false, 0.15);
+		return {reply: received.toString(), client: client};
+	}
+
+	static function sendRaw(client:hxd.net.Socket, text:String):Void {
+		final bytes = haxe.io.Bytes.ofString(text);
+		client.out.writeBytes(bytes, 0, bytes.length);
+	}
+
+	static function finishHttp(server:bh.multianim.dev.transport.HttpServerTransport, client:hxd.net.Socket):Void {
+		try client.close() catch (_:Dynamic) {}
+		server.stop();
+	}
+
+	@Test
+	public function testHttp_bytesAfterACompleteRequestDoNotDispatchItAgain():Void {
+		final ctx = startHttp();
+		final ex = exchange(ctx.server.actualPort, "POST / HTTP/1.1\r\nContent-Length: 2\r\n\r\n{}", (client) -> sendRaw(client, "\r\n"));
+		Assert.stringContains("HTTP/1.1 200", ex.reply, "precondition: the request is answered");
+		Assert.equals(1, ctx.host.requests.length, "a request is dispatched once, whatever bytes follow it on the connection");
+		finishHttp(ctx.server, ex.client);
+	}
+
+	@Test
+	public function testHttp_bytesAfterAnSseRequestDoNotAddTheClientTwice():Void {
+		final ctx = startHttp();
+		final ex = exchange(ctx.server.actualPort, "GET /sse HTTP/1.1\r\n\r\n", (client) -> sendRaw(client, "x"));
+		Assert.stringContains("text/event-stream", ex.reply, "precondition: the SSE stream opens");
+		Assert.equals(1, @:privateAccess ctx.server.sseClients.length, "one connection is one SSE client");
+		finishHttp(ctx.server, ex.client);
+	}
+
+	@Test
+	public function testHttp_contentLengthIsReadFromItsOwnHeaderOnly():Void {
+		// X-Original-Content-Length is not Content-Length: this request has no body.
+		final ctx = startHttp();
+		final ex = exchange(ctx.server.actualPort, "POST / HTTP/1.1\r\nX-Original-Content-Length: 5\r\n\r\n");
+		Assert.equals(1, ctx.host.requests.length, "the bodiless request is dispatched instead of waiting for 5 body bytes");
+		if (ctx.host.requests.length == 1)
+			Assert.equals("", ctx.host.requests[0]);
+		finishHttp(ctx.server, ex.client);
+	}
+
+	@Test
+	public function testHttp_malformedContentLengthIsA400():Void {
+		final ctx = startHttp();
+		final ex = exchange(ctx.server.actualPort, "POST / HTTP/1.1\r\nContent-Length: 2abc\r\n\r\n{}");
+		Assert.stringContains("HTTP/1.1 400", ex.reply, "a Content-Length that is not all digits is a bad request");
+		Assert.equals(0, ctx.host.requests.length, "and is not dispatched");
+		finishHttp(ctx.server, ex.client);
+	}
+
+	@Test
+	public function testHttp_chunkedBodyIsRefusedNotReadAsEmpty():Void {
+		final ctx = startHttp();
+		final ex = exchange(ctx.server.actualPort, "POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n2\r\n{}\r\n0\r\n\r\n");
+		Assert.stringContains("HTTP/1.1 411", ex.reply, "a chunked body is refused: the bridge needs a Content-Length");
+		Assert.equals(0, ctx.host.requests.length, "and is not dispatched as an empty body");
+		finishHttp(ctx.server, ex.client);
+	}
+
+	// ==================== start() failure ====================
+
+	@Test
+	public function testFailedStartLeavesTraceAsItWas():Void {
+		final before = haxe.Log.trace;
+		// 203.0.113.1 (TEST-NET-3) is not an address of this machine, so every bind fails.
+		final bridge = new DevBridge(new ScreenManager(bh.test.VisualTestBase.appInstance), 19399, "203.0.113.1");
+		try {
+			bridge.start();
+			bridge.start(); // and a second attempt
+			Assert.isFalse(bridge.started, "precondition: binding a foreign address fails");
+			final marker = "trace-after-failed-start-" + Std.random(1000000);
+			trace(marker);
+			var captured = 0;
+			for (line in bridge.traceBuffer)
+				if (line.indexOf(marker) >= 0)
+					captured++;
+			Assert.equals(0, captured, "a DevBridge that did not start does not capture traces");
+			Assert.isTrue(Reflect.compareMethods(haxe.Log.trace, before), "haxe.Log.trace is back to what it was");
+		} catch (e:Dynamic) {
+			Assert.fail('start() on an unbindable address must fail quietly: $e');
+		}
+		haxe.Log.trace = before; // never leave a hook behind for the tests that follow
+	}
+
+	@Test
+	public function testConfigShortKeys():Void {
+		Assert.equals("token", bh.multianim.dev.DevBridgeConfig.shortKey("HX_DEV_TOKEN"));
+		Assert.equals("port", bh.multianim.dev.DevBridgeConfig.shortKey("HX_DEV_PORT"));
+		Assert.equals("devbridge", bh.multianim.dev.DevBridgeConfig.shortKey("HX_DEV_RELAY"));
+		Assert.equals("ready_file", bh.multianim.dev.DevBridgeConfig.shortKey("HX_DEV_READY_FILE"));
+	}
+
+	// ==================== reload from text ====================
+
+	static final RELOAD_V1 = "version: 1.0\n#box programmable(w:uint=4) {\n  bitmap(generated(color($w, 4, #FF0000))): 0, 0\n}\n";
+	static final RELOAD_V2 = "version: 1.0\n#box programmable(w:uint=8) {\n  bitmap(generated(color($w, 4, #00FF00))): 0, 0\n}\n";
+	static final RELOAD_BROKEN = "version: 1.0\n#box programmable(w:uint=8) {\n  bitmapp(generated(color($w, 4, #00FF00))): 0, 0\n}\n";
+
+	/** A bridge whose ScreenManager has `path` loaded from `content`, as a browser page would. */
+	static function bridgeWithLoadedManim(path:String, content:String):DevBridge {
+		var bridge = createTestBridge();
+		var sm = bridge.screenManager;
+		var resource = hxd.res.Any.fromBytes(path, haxe.io.Bytes.ofString(content));
+		var builder = MultiAnimBuilder.load(byte.ByteData.ofString(content), sm.loader, path);
+		sm.builders.set(resource, builder);
+		sm.fileChangeDetector.storeInitialHash(path, content);
+		return bridge;
+	}
+
+	@Test
+	public function testReloadWithContent_unchangedChangedAndMissing():Void {
+		var bridge = bridgeWithLoadedManim("devtest/reload-box.manim", RELOAD_V1);
+
+		var same:Dynamic = bridge.dispatch("reload", {file: "devtest/reload-box.manim", content: RELOAD_V1});
+		Assert.isTrue(same.success);
+		Assert.equals(0, same.rebuiltCount);
+		Assert.equals("devtest/reload-box.manim", same.file);
+
+		var changed:Dynamic = bridge.dispatch("reload", {file: "devtest/reload-box.manim", content: RELOAD_V2});
+		Assert.isTrue(changed.success, 'reload failed: ${haxe.Json.stringify(changed.errors)}');
+		var newBuilder:Null<MultiAnimBuilder> = null;
+		for (_ => b in bridge.screenManager.builders) newBuilder = b;
+		var rebuilt = newBuilder.buildWithParameters("box", new Map());
+		var bitmaps = findVisibleBitmapDescendants(rebuilt.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(8, Std.int(bitmaps[0].tile.width), "the reloaded text (w default 8) is what builds now");
+
+		var missing = bridge.handleCall("reload", {file: "devtest/other.manim", content: RELOAD_V1});
+		Assert.equals("not_found", missing.body.code);
+		Assert.isTrue((missing.body.error : String).indexOf("devtest/reload-box.manim") >= 0, "the error lists what is loaded");
+
+		var noFile = bridge.handleCall("reload", {content: RELOAD_V1});
+		Assert.equals("invalid_params", noFile.body.code);
+	}
+
+	@Test
+	public function testReloadWithContent_parseErrorIsPositioned():Void {
+		var bridge = bridgeWithLoadedManim("devtest/reload-broken.manim", RELOAD_V1);
+		var report:Dynamic = bridge.dispatch("reload", {file: "devtest/reload-broken.manim", content: RELOAD_BROKEN});
+		Assert.isFalse(report.success);
+		var errors:Array<Dynamic> = report.errors;
+		Assert.equals(1, errors.length);
+		Assert.equals("parse", errors[0].errorType, 'got ${haxe.Json.stringify(errors[0])}');
+		Assert.equals(3, errors[0].line);
+		Assert.equals("devtest/reload-broken.manim", errors[0].file);
+	}
 }
 
 // ---- Private inner class for test screens ----
+
+/** A transport that records what it is given. */
+private class RecordingTransport implements bh.multianim.dev.transport.IDevBridgeTransport {
+	public var events:Array<{name:String, data:Dynamic}> = [];
+	public var traceOnPush:Bool = false;
+	public var describe(get, never):String;
+
+	public function new() {}
+
+	function get_describe():String
+		return "recording";
+
+	public function start(host:bh.multianim.dev.transport.IDevBridgeTransport.IDevBridgeHost):Bool
+		return true;
+
+	public function stop():Void {}
+
+	public function tick():Void {}
+
+	public function pushEvent(name:String, data:Dynamic):Void {
+		events.push({name: name, data: data});
+		if (traceOnPush) trace('recording transport saw $name');
+	}
+}
+
+/** A DevBridge host for transport tests: answers 200 to everything and records each request body. */
+private class RecordingHost implements bh.multianim.dev.transport.IDevBridgeTransport.IDevBridgeHost {
+	public var requests:Array<String> = [];
+
+	public function new() {}
+
+	public function handleRequestJson(json:String):bh.multianim.dev.transport.IDevBridgeTransport.DevBridgeReply {
+		requests.push(json);
+		return {status: 200, body: {ok: true}};
+	}
+
+	public function handleCall(method:String, params:Dynamic):bh.multianim.dev.transport.IDevBridgeTransport.DevBridgeReply {
+		return {status: 200, body: {ok: true}};
+	}
+
+	public function getToken():Null<String>
+		return null;
+
+	public function describeInstance():Dynamic
+		return {};
+}
 
 private class DevTestScreen extends UIScreenBase {
 	public function new(sm:ScreenManager) {

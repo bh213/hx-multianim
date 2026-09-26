@@ -63,6 +63,18 @@ A groovy, round typeface with chunky '70s charm. Free for personal or commercial
 - **License**: CC0 (public domain)
 - **Usage**: `f3x5` font in tests
 
+### 04b-03
+- **Author**: Yuji Oshimoto
+- **Source**: http://www.04.jp.org/
+- **License**: Free
+- **Usage**: `o4b03` font in tests
+
+### Departure Mono
+- **Author**: Helena Zhang
+- **Source**: https://departuremono.com / https://github.com/rektdeckard/departure-mono
+- **License**: SIL Open Font License 1.1 (https://openfontlicense.org)
+- **Usage**: `departuremono` font in tests; provides Unicode box-drawing glyphs. Baked from the v1.500 OTF into a BMFont.
+
 ## Assets
 
 ### Some particle textures

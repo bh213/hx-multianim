@@ -52,7 +52,7 @@ paths {
 
 **Events:** `CardHandEvent` enum — `CardPlayed(id, TargetZone(targetId)|NoTarget)`, `CardCombined(source, target)`, `CardHoverStart/End`, `CardDragStart/End`, `DrawAnimComplete`, `DiscardAnimComplete`.
 
-**API:** `setHand(descriptors)`, `drawCard(descriptor)`, `discardCard(id)`, `updateCardParams(id, params)`, `setCardEnabled(id, bool)`, `getCardResult(id)`, `registerTargetInteractive(wrapper)`, `registerTargetInteractives(wrappers)`, `unregisterTargetInteractive(id)`, `setTargetHighlightCallback(cb)`, `setTargetAcceptsFilter(cb)`, `addTargetingZone(zone)`, `removeTargetingZone(id)`, `clearTargetingZones()`, `setArrowVisible(bool)`, `setArrowSnap(bool)`, `setArrowSnapPointProvider(cb)`, `getTargeting()`, `getTargetingObject()`, `invalidateLayoutCache()`, `handleScreenEvent(event)`, `onMouseMove(x,y)`, `onMouseRelease(x,y)`, `update(dt)`, `dispose()`.
+**API:** `setHand(descriptors)`, `drawCard(descriptor, ?insertIndex=-1)`, `discardCard(id)`, `updateCardParams(id, params)`, `setCardEnabled(id, bool)`, `getCardResult(id)`, `registerTargetInteractive(wrapper)`, `registerTargetInteractives(wrappers)`, `unregisterTargetInteractive(id)`, `setTargetHighlightCallback(cb)`, `setTargetAcceptsFilter(cb)`, `addTargetingZone(zone)`, `removeTargetingZone(id)`, `clearTargetingZones()`, `setArrowVisible(bool)`, `setArrowSnap(bool)`, `setArrowSnapPointProvider(cb)`, `getTargeting()`, `getTargetingObject()`, `invalidateLayoutCache()`, `handleScreenEvent(event)`, `onMouseMove(x,y)`, `onMouseRelease(x,y,?button)`, `update(dt)`, `dispose()`.
 
 **Construction validation:** Non-null `drawPathName`, `discardPathName`, `returnPathName`, `rearrangePathName` are validated against `builder.hasNode()` at construction time. Invalid names throw immediately instead of at first animation.
 
@@ -71,9 +71,9 @@ paths {
 **Tracking draw animation:** `drawCard()` uses a tracking animation that dynamically re-stretches the draw path toward the card's current `layoutPos` each frame. The `AnimatedPath` is created with no normalization (raw path coordinates); the stretch transform (`from` → `layoutPos`) is recomputed per frame in `update(dt)`. This means concurrent draws naturally handle shifting hand positions — no stale endpoints. Rotation also tracks `layoutPos.rotation`. Scale/alpha curves from the `.manim` `animatedPath` are applied normally.
 
 **Drag state machine:**
-1. `interactive()` emits `UIPush` → helper starts drag, reparents card to `dragContainer`
+1. `interactive()` emits `UIPush` → helper starts drag (left button only — it notes the button of the raw `onMouseClick` push the screen dispatches first, and forgets it on release, so a `UIPush` with no raw push in front of it counts as left), reparents card to `dragContainer`
 2. Mouse move: card-to-card check first → targeting zone check (bounds + target fallback) → normal drag
-3. Release: card-to-card hover → `CardCombined`; targeting mode + target → `CardPlayed(TargetZone)`; in zone no target → `CardPlayed(NoTarget)`; outside zones → return animation
+3. Release: card-to-card hover → `CardCombined`; targeting mode + target → `CardPlayed(TargetZone)`; in zone no target → `CardPlayed(NoTarget)`; outside zones → return animation. Left-button release only; the drag state is cleared before `CardPlayed`/`CardCombined` fire, so a handler may `discardCard()`/`setHand()`
 
 **Hover detection:** Position-based via `getCardAtBasePosition()` in `onMouseMove` — uses base layout (no hover pop) with nearest-center selection among overlapping OBBs. Does NOT rely on Interactive UIEntering/UILeaving events (which would be blocked by z-order changes). Hovered card is brought to top render layer; z-order restored on un-hover. Card-to-card targets also z-reordered during highlight.
 
@@ -184,6 +184,8 @@ mgr.hasTweens(obj);
 - Sequence overflow: when a tween finishes mid-step, leftover dt passes to the next tween
 - `finish()` jumps to final state immediately
 - Cancelled tweens do not fire `onComplete`
+- `Tween` instances are pooled: a finished or cancelled tween is reused by the next `tween()`. Code that keeps a `Tween` past its end records `tween.generation` when it starts and cancels through `Tween.cancelIfCurrent(tween, generation)` — a plain `cancel()` on a stale reference cancels whatever animation now reuses the instance. A finished `TweenSequence`/`TweenGroup` no longer reaches its tweens
+- `clear()` is safe from an `onComplete` callback: `update()` stops after that callback, and tweens started after the clear run from the next `update()`
 
 **`.manim` transition integration:**
 - `transition {}` block in programmable body declares animated transitions for parameter changes
@@ -235,7 +237,7 @@ screenManager.finalizeTransition(); // jump to end immediately
 
 ## Modal Dialog Overlay
 
-Configurable darkening/blur background behind modal dialogs. Overlay is an `h2d.Bitmap` at layer 5 (between master and dialog), animated via TweenManager.
+Configurable darkening/blur background behind modal dialogs. Overlay is an `h2d.Bitmap` at layer 5 (between master and dialog), sized to the scene (`sceneWidth` × `sceneHeight`) and animated via TweenManager. `ScreenManager.update()` refits it whenever the scene size changes (window resize, `scaleMode` change) — polled there rather than from a `hxd.Window` resize listener because that listener list is prepended to, so a late listener would read the scene size before the engine's own `s2d.checkResize()` ran.
 
 **Config typedef** (`UIScreen.hx`):
 ```haxe
@@ -282,9 +284,11 @@ if (overlayFromManim != null)
 
 **Priority:** `.manim` settings override code-set config (set `modalOverlayConfig` before `load()`, then `.manim` settings overwrite in `load()`).
 
-**Overlay lifecycle:** ScreenManager reads `modalOverlayConfig` after `dialog.load()` → creates overlay bitmap → tweens alpha in sync with transition → tweens alpha out on close → removes overlay in cleanup.
+**Overlay lifecycle:** ScreenManager reads `modalOverlayConfig` after `dialog.load()` → creates overlay bitmap at the current scene size → tweens alpha in sync with transition → refits to the scene size on every `update()` → tweens alpha out on close → removes overlay in cleanup.
 
 **Event routing while dialog is open** (known asymmetry): when a dialog opens over `MasterAndSingle`, `overrideActiveScreenControllers = [dialog, oldMaster]` — the dialog is first in the controller list but the underlying master still receives controller events. Opening a dialog over `Single` mode blocks instead (`overrideActiveScreenControllers = [dialog]`). There is no per-dialog `blockUnderlying:Bool` flag yet. If you need a fully input-blocking modal over a master/single layout, switch to `Single` before opening the dialog, or have the master screen gate its own input handlers. See the two `case Dialog(...)` branches under `Single(...)` vs `MasterAndSingle(...)` in `ScreenManager.updateScreenMode` for the asymmetry.
+
+**Dialog over dialog (close behavior):** opening a dialog over another dialog (`modalDialog` / `modalDialogWithTransition`) removes the underlying dialog from the scene but captures it as the new dialog's `previousMode`. Closing the top dialog re-attaches and re-activates that underlying dialog — both for instant close (via `updateScreenMode`'s `Dialog -> Dialog` branch) and animated close (`closeDialogWithTransition` with a transition, via the `case Dialog(...)` arm in its controller-restore switch). Note this *revives* a dialog whose `OnDialogResult` already fired when the top dialog opened, re-running its `UIEntering`/`Entering` lifecycle. The app-side close-first convention (close the underlying dialog before opening the next) avoids relying on this revival entirely.
 
 ## Tooltip/Panel Fade Transitions
 
@@ -377,7 +381,7 @@ helper.count;
 - `absolutePosition = false` (default): path position is offset from spawn (x, y). Use with `Anchor` normalization.
 - `absolutePosition = true`: path position IS world coordinates. Use with `Stretch(startPoint, endPoint)` normalization.
 
-**AnimatedPath state applied:** position, alpha, scale, rotation. Color applied to `h2d.Text` only when colorCurve is active.
+**AnimatedPath state applied:** position, alpha, scale, rotation. Color (RGB of the `0xAARRGGBB` state color) applied to `h2d.Text.textColor` whenever the path has a color curve (`hasColorCurve()`), white included; the object's alpha comes from the alpha curve.
 
 **Usage pattern:**
 ```haxe

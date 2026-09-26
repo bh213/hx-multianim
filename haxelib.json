@@ -4,9 +4,9 @@
     "license": "BSD",
     "tags": ["animation", "ui", "heaps", "pixel-art", "sprite", "manim"],
     "description": "animations and pixel art UI for Heaps framework",
-    "version": "1.0.0-rc.5",
+    "version": "1.0.0-rc.6",
     "classPath": "src/",
-    "releasenote": "RC5: zero per-frame allocs on hot paths (particles, grid, card hand, incremental rebuild), Particles.worldAnchor for world-space trails, allocation watchdog gated for production, plus codegen/lifecycle bug fixes.",
+    "releasenote": "RC6: large builder/codegen parity sweep (conditionals, dynamicRef/staticRef keying, int truncation, batch API), dialog-over-dialog close fixes, DevBridge bind address via HX_DEV_BIND, extraParams.hxml so -lib consumers get the atlas2 macro automatically.",
     "contributors": ["bh213"],
     "dependencies": { 
         "heaps":""

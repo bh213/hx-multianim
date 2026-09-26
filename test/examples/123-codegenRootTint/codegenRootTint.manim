@@ -1,0 +1,9 @@
+version: 1.0
+
+// Root-level tint: on a programmable targets the h2d.Layers root, which is not an
+// h2d.Drawable. Codegen must fail fast with a BuilderError at instantiation, matching
+// MultiAnimBuilder.applyExtendedFormProperties (no longer a silent no-op).
+#codegenRootTint programmable() {
+    tint: #FF0000
+    bitmap(generated(color(20, 20, #ffffff))): 0, 0
+}

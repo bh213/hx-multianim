@@ -34,6 +34,15 @@ private typedef PanelState = {
 	var closeMode:PanelCloseMode;
 	var pendingClose:Bool;
 	var fadeInTween:Null<Tween>;
+	var fadeInGen:Int; // fadeInTween.generation when started (see Tween.generation)
+}
+
+/** One in-flight fade-out of a named panel slot. */
+@:nullSafety
+private typedef NamedFadeOut = {
+	final tween:Tween;
+	final gen:Int; // tween.generation when started (see Tween.generation)
+	final obj:h2d.Object;
 }
 
 @:nullSafety
@@ -60,20 +69,24 @@ class UIPanelHelper {
 	var activePanelPrefix:Null<String> = null;
 	var activeCloseMode:PanelCloseMode;
 
-	// Single-panel fade state
+	// Single-panel fade state. The *Gen fields hold each tween's generation when it started: a
+	// fade cancelled elsewhere (TweenManager.clear / cancelAll) goes back to the pool, and the
+	// kept reference must not cancel whatever animation reuses it (see Tween.generation).
 	var activeFadeInTween:Null<Tween> = null;
+	var activeFadeInGen:Int = 0;
 	var fadingOutObj:Null<h2d.Object> = null;
 	var activeFadeOutTween:Null<Tween> = null;
+	var activeFadeOutGen:Int = 0;
 
 	// Named panel slots for multi-panel support
 	var namedPanels:Map<String, PanelState> = [];
-	// In-flight fade-out tweens for named panels (keyed by slot, survives panel removal from namedPanels)
-	var namedFadeOutTweens:Map<String, Tween> = [];
-	// h2d.Object paired with each in-flight named fade-out — kept so dispose()
-	// can detach the object directly. TweenManager.cancel() suppresses
-	// onComplete (which is the only path that normally calls obj.remove()),
-	// so without this tracking dispose() would leak the panel into the scene.
-	var namedFadeOutObjs:Map<String, h2d.Object> = [];
+	// In-flight fade-out per slot (survives the panel's removal from namedPanels). `gen` is the
+	// tween's generation when it started, so a fade cancelled elsewhere and reused from the pool is
+	// left alone. `obj` is kept so dispose() can detach the panel directly: TweenManager.cancel()
+	// suppresses onComplete, the only path that normally calls obj.remove(), so without it dispose()
+	// would leak the panel into the scene. One record per fade, so a fade's own completion callback
+	// can tell whether the slot still tracks it or a newer fade started in the meantime.
+	var namedFadeOuts:Map<String, NamedFadeOut> = [];
 
 	public function new(screen:UIComponentHost, builder:MultiAnimBuilder, ?defaults:PanelDefaults, ?tweens:TweenManager) {
 		this.screen = screen;
@@ -124,8 +137,10 @@ class UIPanelHelper {
 		// Apply fade-in
 		if (defaultFadeIn > 0 && tweens != null) {
 			result.object.alpha = 0;
-			activeFadeInTween = tweens.tween(result.object, defaultFadeIn, [Alpha(1.0)]);
-			activeFadeInTween.setOnComplete(() -> {
+			final fadeIn = tweens.tween(result.object, defaultFadeIn, [Alpha(1.0)]);
+			activeFadeInTween = fadeIn;
+			activeFadeInGen = fadeIn.generation;
+			fadeIn.setOnComplete(() -> {
 				activeFadeInTween = null;
 			});
 		}
@@ -153,8 +168,10 @@ class UIPanelHelper {
 		// Apply fade-in
 		if (defaultFadeIn > 0 && tweens != null) {
 			result.object.alpha = 0;
-			activeFadeInTween = tweens.tween(result.object, defaultFadeIn, [Alpha(1.0)]);
-			activeFadeInTween.setOnComplete(() -> {
+			final fadeIn = tweens.tween(result.object, defaultFadeIn, [Alpha(1.0)]);
+			activeFadeInTween = fadeIn;
+			activeFadeInGen = fadeIn.generation;
+			fadeIn.setOnComplete(() -> {
 				activeFadeInTween = null;
 			});
 		}
@@ -168,10 +185,8 @@ class UIPanelHelper {
 	/** Close the active panel. Pushes `UICustomEvent(EVENT_PANEL_CLOSE, interactiveId)` to the screen. */
 	public function close():Void {
 		// Cancel any in-progress fade-in
-		if (activeFadeInTween != null) {
-			activeFadeInTween.cancel();
-			activeFadeInTween = null;
-		}
+		Tween.cancelIfCurrent(activeFadeInTween, activeFadeInGen);
+		activeFadeInTween = null;
 		// Cancel any in-progress fade-out of previous panel
 		cancelActiveFadeOut();
 
@@ -183,8 +198,10 @@ class UIPanelHelper {
 			final obj = activeResult.object;
 			if (defaultFadeOut > 0 && tweens != null) {
 				fadingOutObj = obj;
-				activeFadeOutTween = tweens.tween(obj, defaultFadeOut, [Alpha(0.0)]);
-				activeFadeOutTween.setOnComplete(() -> {
+				final fadeOut = tweens.tween(obj, defaultFadeOut, [Alpha(0.0)]);
+				activeFadeOutTween = fadeOut;
+				activeFadeOutGen = fadeOut.generation;
+				fadeOut.setOnComplete(() -> {
 					obj.remove();
 					fadingOutObj = null;
 					activeFadeOutTween = null;
@@ -260,10 +277,13 @@ class UIPanelHelper {
 
 		// Apply fade-in (tracked so closeNamed can cancel it)
 		var fadeInTween:Null<Tween> = null;
+		var fadeInGen = 0;
 		if (defaultFadeIn > 0 && tweens != null) {
 			result.object.alpha = 0;
-			fadeInTween = tweens.tween(result.object, defaultFadeIn, [Alpha(1.0)]);
-			fadeInTween.setOnComplete(() -> {
+			final fadeIn = tweens.tween(result.object, defaultFadeIn, [Alpha(1.0)]);
+			fadeInTween = fadeIn;
+			fadeInGen = fadeIn.generation;
+			fadeIn.setOnComplete(() -> {
 				// Clear reference once complete so closeNamed doesn't cancel a finished tween
 				final panel = namedPanels.get(slot);
 				if (panel != null)
@@ -278,26 +298,27 @@ class UIPanelHelper {
 			closeMode: closeMode ?? defaultCloseMode,
 			pendingClose: false,
 			fadeInTween: fadeInTween,
+			fadeInGen: fadeInGen,
 		});
 	}
 
 	/** Close a specific named panel slot. */
 	public function closeNamed(slot:String):Void {
-		// Cancel any in-flight fade-out from a previous close of this slot
-		final prevFadeOut = namedFadeOutTweens.get(slot);
+		// Finish any in-flight fade-out from a previous close of this slot. finish() only snaps the
+		// tween to its end: its completion callback still runs on the next update(), and must then
+		// find the slot no longer tracking it (see the identity check below).
+		final prevFadeOut = namedFadeOuts.get(slot);
 		if (prevFadeOut != null) {
-			prevFadeOut.finish();
-			namedFadeOutTweens.remove(slot);
-			namedFadeOutObjs.remove(slot);
+			if (prevFadeOut.tween.generation == prevFadeOut.gen)
+				prevFadeOut.tween.finish();
+			namedFadeOuts.remove(slot);
 		}
 		final panel = namedPanels.get(slot);
 		if (panel == null)
 			return;
 		// Cancel any in-progress fade-in before starting fade-out
-		if (panel.fadeInTween != null) {
-			panel.fadeInTween.cancel();
-			panel.fadeInTween = null;
-		}
+		Tween.cancelIfCurrent(panel.fadeInTween, panel.fadeInGen);
+		panel.fadeInTween = null;
 		screen.removeInteractives(panel.prefix);
 		namedPanels.remove(slot);
 		screen.onScreenEvent(UICustomEvent(EVENT_PANEL_CLOSE, panel.interactiveId), null);
@@ -305,12 +326,15 @@ class UIPanelHelper {
 		final obj = panel.result.object;
 		if (defaultFadeOut > 0 && tweens != null) {
 			final fadeOut = tweens.tween(obj, defaultFadeOut, [Alpha(0.0)]);
-			namedFadeOutTweens.set(slot, fadeOut);
-			namedFadeOutObjs.set(slot, obj);
+			final entry:NamedFadeOut = {tween: fadeOut, gen: fadeOut.generation, obj: obj};
+			namedFadeOuts.set(slot, entry);
 			fadeOut.setOnComplete(() -> {
 				obj.remove();
-				namedFadeOutTweens.remove(slot);
-				namedFadeOutObjs.remove(slot);
+				// Only drop the slot's tracking while it is still this fade's. A close, reopen and
+				// close of the same slot within one fade finishes this tween (which still completes
+				// on the next update) and starts a newer fade whose tracking must survive.
+				if (namedFadeOuts.get(slot) == entry)
+					namedFadeOuts.remove(slot);
 			});
 		} else {
 			obj.remove();
@@ -415,10 +439,8 @@ class UIPanelHelper {
 	// IMPORTANT: This relies on TweenManager.cancel() only setting a flag without firing onComplete.
 	// If cancel() ever fires onComplete, the remove() below would double-remove with the tween's callback.
 	function cancelActiveFadeOut():Void {
-		if (activeFadeOutTween != null) {
-			activeFadeOutTween.cancel();
-			activeFadeOutTween = null;
-		}
+		Tween.cancelIfCurrent(activeFadeOutTween, activeFadeOutGen);
+		activeFadeOutTween = null;
 		if (fadingOutObj != null) {
 			fadingOutObj.remove();
 			fadingOutObj = null;
@@ -446,14 +468,10 @@ class UIPanelHelper {
 	    from holding h2d.Object references past the screen's lifetime. */
 	public function dispose():Void {
 		// Single-panel fade tweens
-		if (activeFadeInTween != null) {
-			activeFadeInTween.cancel();
-			activeFadeInTween = null;
-		}
-		if (activeFadeOutTween != null) {
-			activeFadeOutTween.cancel();
-			activeFadeOutTween = null;
-		}
+		Tween.cancelIfCurrent(activeFadeInTween, activeFadeInGen);
+		activeFadeInTween = null;
+		Tween.cancelIfCurrent(activeFadeOutTween, activeFadeOutGen);
+		activeFadeOutTween = null;
 		if (fadingOutObj != null) {
 			fadingOutObj.remove();
 			fadingOutObj = null;
@@ -471,23 +489,20 @@ class UIPanelHelper {
 		// Named-panel fades — both in-flight fade-in on open panels and
 		// orphaned fade-out tweens tracked in namedFadeOutTweens.
 		for (_ => panel in namedPanels) {
-			if (panel.fadeInTween != null) {
-				panel.fadeInTween.cancel();
-				panel.fadeInTween = null;
-			}
+			Tween.cancelIfCurrent(panel.fadeInTween, panel.fadeInGen);
+			panel.fadeInTween = null;
 			screen.removeInteractives(panel.prefix);
 			panel.result.object.remove();
 		}
 		namedPanels.clear();
-		// Detach fading-out objects BEFORE cancelling the tweens. Cancel
-		// suppresses the onComplete that owns obj.remove(), so without this
-		// the panel's h2d.Object would stay parented to the scene.
-		for (_ => obj in namedFadeOutObjs)
-			obj.remove();
-		namedFadeOutObjs.clear();
-		for (_ => tween in namedFadeOutTweens)
-			tween.cancel();
-		namedFadeOutTweens.clear();
+		// Detach each fading-out object and cancel its tween. Cancel suppresses the onComplete
+		// that owns obj.remove(), so without the detach the panel's h2d.Object would stay
+		// parented to the scene.
+		for (_ => fadeOut in namedFadeOuts) {
+			fadeOut.obj.remove();
+			Tween.cancelIfCurrent(fadeOut.tween, fadeOut.gen);
+		}
+		namedFadeOuts.clear();
 
 		positionOverrides.clear();
 		offsetOverrides.clear();

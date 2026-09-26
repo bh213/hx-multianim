@@ -1,0 +1,41 @@
+version: 1.0
+
+// Codegen/builder parity for param-dependent repeat iterators and flow embedding.
+//
+// - step() offsets referencing programmable params: the builder resolves them at
+//   build time; codegen's static resolve must not silently fall back to 0.
+// - range() with param-dependent start/step: loop values must be start + i*step
+//   (codegen currently gets the count right but bakes start=0, step=1).
+// - repeatable directly inside a flow with no step offsets: the builder adds the
+//   iteration children directly to the flow so it lays them out individually;
+//   codegen must not hide them all inside one wrapper container.
+
+// Static count, param-dependent dx (static-resolve path).
+#stepParamOffsets programmable(dx:int=20) {
+  repeatable($i, step(3, dx: $dx)) {
+    bitmap(generated(color(4, 4, #FF0000))): 0, 0
+  }
+}
+
+// Param-dependent count AND param-dependent dx (runtime rebuild path).
+#stepParamOffsetsRt programmable(n:int=3, dx:int=20) {
+  repeatable($i, step($n, dx: $dx)) {
+    bitmap(generated(color(4, 4, #00FF00))): 0, 0
+  }
+}
+
+// Param-dependent range start/step; the bitmap x mirrors the loop value.
+#rangeParamBounds programmable(start:int=5, stepv:int=2) {
+  repeatable($i, range($start, 11, $stepv)) {
+    bitmap(generated(color(4, 4, #0000FF))): $i, 0
+  }
+}
+
+// Zero-offset repeatable inside a flow: flow must see each iteration child.
+#flowRepeat programmable() {
+  flow(layout: horizontal) {
+    repeatable($i, step(3, dx: 0)) {
+      bitmap(generated(color(10, 10, #FFFF00))): 0, 0
+    }
+  }
+}

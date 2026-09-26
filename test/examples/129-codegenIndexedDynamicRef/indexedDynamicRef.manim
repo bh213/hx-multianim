@@ -1,0 +1,16 @@
+version: 1.0
+
+// Indexed #name[$i] dynamicRef inside a STATIC-count repeatable. Codegen unrolls the
+// loop at macro time; each iteration must register a distinct, addressable dynamicRef
+// keyed "seg 0", "seg 1", ... — matching the builder. (The param-dependent repeat case
+// is covered by 125-codegenRepeatSlot; this fixture pins the static-unroll path.)
+
+#indexedDynRefLeaf programmable(label:string="x") {
+  bitmap(generated(color(10, 10, #00ffff))): 0, 0
+}
+
+#indexedDynamicRef programmable() {
+  repeatable($i, range(0, 3)) {
+    #seg[$i] dynamicRef($indexedDynRefLeaf, label => "row"): 0, $i * 12
+  }
+}

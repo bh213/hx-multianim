@@ -322,6 +322,50 @@ private typedef DynamicNameBinding = {
 	internalResults:InternalBuilderResults,
 };
 
+// Promoted from an anonymous struct so applyUpdates can mark entries by generation
+// (fire-once dedup across the reverse-index walk) without a per-call allocation.
+// `gen` is the last applyUpdates cycle in which this tracked was marked relevant by
+// the reverse index `trackedByParam`. Mutable in place.
+@:nullSafety
+private class TrackedExpression {
+	public var updateFn:Void->Void;
+	public var paramRefs:Array<String>;
+	public var object:Null<h2d.Object>;
+	public var gen:Int = 0;
+	// Stable build/declaration sequence assigned in trackExpression(). applyUpdates fires
+	// relevant trackeds sorted by it so a batched multi-param update composes in declaration
+	// order (last write wins for two trackeds touching overlapping properties of the same
+	// object) instead of the reverse index's grouped-by-param order. Survives
+	// cleanupDestroyedSubtree splices — relative order of survivors is preserved.
+	public var declOrder:Int = 0;
+	public inline function new(updateFn:Void->Void, paramRefs:Array<String>, object:Null<h2d.Object>) {
+		this.updateFn = updateFn;
+		this.paramRefs = paramRefs;
+		this.object = object;
+	}
+}
+
+// Same shape as TrackedExpression: promoted from an anonymous struct so the
+// dynamicRef forwarding pass in applyUpdates can mark relevant bindings by
+// generation via the reverse-index walk over `dynamicRefBindingsByParam`.
+@:nullSafety
+private class DynamicRefBinding {
+	public var childContext:IncrementalUpdateContext;
+	public var childParam:String;
+	public var resolveFn:Void->Dynamic;
+	public var referencedParams:Array<String>;
+	public var object:Null<h2d.Object>;
+	public var gen:Int = 0;
+	public inline function new(childContext:IncrementalUpdateContext, childParam:String,
+			resolveFn:Void->Dynamic, referencedParams:Array<String>, object:Null<h2d.Object>) {
+		this.childContext = childContext;
+		this.childParam = childParam;
+		this.resolveFn = resolveFn;
+		this.referencedParams = referencedParams;
+		this.object = object;
+	}
+}
+
 @:nullSafety
 class IncrementalUpdateContext {
 	var builder:MultiAnimBuilder;
@@ -341,14 +385,43 @@ class IncrementalUpdateContext {
 	var conditionalApplyBaselines:haxe.ds.ObjectMap<h2d.Object, {
 		filter:Null<h2d.filter.Filter>, alpha:Float,
 		scaleX:Float, scaleY:Float, rotation:Float, x:Float, y:Float,
+		color:Int, blendMode:h2d.BlendMode,
 	}> = new haxe.ds.ObjectMap();
-	var trackedExpressions:Array<{updateFn:Void->Void, paramRefs:Array<String>, object:Null<h2d.Object>}> = [];
+	var trackedExpressions:Array<TrackedExpression> = [];
+	// Reverse index: paramName -> trackeds whose paramRefs include it. Populated alongside
+	// trackedExpressions in trackExpression(); pruned in cleanupDestroyedSubtree(). applyUpdates
+	// walks this map for the keys in changedParams to mark only relevant trackeds, instead of
+	// scanning every tracked's paramRefs on every setParameter (UI hover/press hot path).
+	var trackedByParam:Map<String, Array<TrackedExpression>> = new Map();
+	// Monotonic sequence handed to each tracked's declOrder in trackExpression(). Never
+	// reset across the context's life (splices in cleanupDestroyedSubtree must not reorder
+	// survivors), so it stably encodes build/declaration order.
+	var trackedSeq:Int = 0;
+	// Reusable scratch holding the relevant trackeds collected from the reverse index in an
+	// applyUpdates cycle. Sorted by declOrder before firing so a batched multi-param update
+	// composes in declaration order rather than grouped-by-param. Resized to 0 per cycle;
+	// capacity persists, keeping the sweep zero-alloc in steady state.
+	var trackedFireScratch:Array<TrackedExpression> = [];
 	var deferredEntries:Array<{
 		wrapper:h2d.Object, node:Node, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
 		gridCS:GridCoordinateSystem, hexCS:HexCoordinateSystem,
 		internalResults:InternalBuilderResults, builderParams:BuilderParameters,
 	}> = [];
-	var dynamicRefBindings:Array<{childContext:IncrementalUpdateContext, childParam:String, resolveFn:Void->Dynamic, referencedParams:Array<String>, object:Null<h2d.Object>}> = [];
+	var dynamicRefBindings:Array<DynamicRefBinding> = [];
+	// Reverse index: paramName -> bindings whose referencedParams include it. Populated alongside
+	// dynamicRefBindings in trackDynamicRef(); pruned in cleanupDestroyedSubtree(). Mirrors the
+	// trackedByParam optimization for the dynamicRef forwarding pass in applyUpdates.
+	var dynamicRefBindingsByParam:Map<String, Array<DynamicRefBinding>> = new Map();
+	// Reusable scratch list of bindings whose referencedParams intersect changedParams in this
+	// applyUpdates cycle. Filled in pass 1 via the reverse-index walk; consumed by pass 2 to
+	// dispatch per unique childContext. Resized to 0 on entry; capacity persists across calls.
+	var fwdBindingScratch:Array<DynamicRefBinding> = [];
+	// Monotonically incremented at the start of each applyUpdates() body. Tracked entries and
+	// dynamicRef bindings carry a `gen` field; setting `entry.gen = applyGen` during the
+	// reverse-index walk marks the entry as relevant for this cycle without per-call allocation.
+	// Wraps via Int overflow — safe because tests check equality with the freshly-incremented
+	// value, not historical generations.
+	var applyGen:Int = 0;
 	var dynamicNameBindings:Array<DynamicNameBinding> = [];
 	var rootNode:Node;
 	// Public read (via `(default, null)`) so callers like HotReload.restoreParams
@@ -359,6 +432,12 @@ class IncrementalUpdateContext {
 	// writes from within this class are still allowed.
 	public var batchMode(default, null):Bool = false;
 	var changedParams:Map<String, Bool> = new Map();
+	// Flat list of the keys in changedParams, kept in sync with it. applyUpdates() walks this
+	// instead of changedParams.keys() so the per-call changed-param sweeps stay zero-alloc on
+	// HashLink (each Map.keys() call heap-allocates an iterator). The Map is retained for the
+	// O(1) .exists() membership checks (findTransitionSpec, dynamicNameBindings). Resized to 0
+	// alongside every changedParams.clear(); capacity persists across calls.
+	var changedParamList:Array<String> = [];
 	var hasChanges:Bool = false;
 	var transitionsDef:Null<Map<String, TransitionType>>;
 	public var tweenManager:Null<TweenManager> = null;
@@ -368,8 +447,10 @@ class IncrementalUpdateContext {
 	// reverse-direction cancellation doesn't leave a mid-flight interpolated value in place
 	// — that value would otherwise be re-captured as the next transition's baseline,
 	// permanently shifting the element away from its natural state. Mirrors
-	// CodegenTransitionHelper.activeTransitionTweens.
-	var activeTransitionTweens:Array<{obj:h2d.Object, tween:Null<Tween>, sequence:Null<TweenSequence>, target:Bool, restore:Null<Void -> Void>}> = [];
+	// CodegenTransitionHelper.activeTransitionTweens. `gen` is the tween's generation when the
+	// transition started: the TweenManager can cancel it from outside (cancelAll / clear), and
+	// then the pooled Tween may already run another animation.
+	var activeTransitionTweens:Array<{obj:h2d.Object, tween:Null<Tween>, gen:Int, sequence:Null<TweenSequence>, target:Bool, restore:Null<Void -> Void>}> = [];
 	var rebuildListeners:Array<Void -> Void> = [];
 	// Params that appear in slots whose incremental updates are intentionally unsupported
 	// (interactive id/metadata, stateanim selectors, ...). setParameter on one of these
@@ -403,6 +484,24 @@ class IncrementalUpdateContext {
 	#if MULTIANIM_ALLOC_TRACK
 	public var dynamicRefForwardAllocCount:Int = 0;
 	#end
+	/** Counts how many times applyUpdates() allocates a Map iterator by iterating
+	 *  changedParams.keys(). On HashLink each .keys() call heap-allocates an iterator
+	 *  object; the changed-param set should be walked via a flat array so steady-state
+	 *  setParameter (UI hover/press/drag hot path) stays zero-alloc here. Pure
+	 *  instrumentation, gated so production builds skip the increments. */
+	#if MULTIANIM_ALLOC_TRACK
+	public var changedParamsKeysIterCount:Int = 0;
+	#end
+	/** Counts how many tracked expressions applyUpdates() examined (paramRef scan) in this
+	 *  call. Should equal the number of trackeds whose paramRefs intersect changedParams,
+	 *  not the total trackedExpressions length. Without a reverse index keyed by param name,
+	 *  setParameter on a single param (UI hover hot path) scans every tracked, which is
+	 *  O(T·R) per call where T = total trackeds, R = avg paramRefs each. Pure instrumentation. */
+	public var trackedRelevantScanCount:Int = 0;
+	/** Counts how many dynamicRef bindings applyUpdates() examined in this call. Should equal
+	 *  the number of bindings whose referencedParams intersect changedParams, not the total
+	 *  dynamicRefBindings length. Same shape as trackedRelevantScanCount. Pure instrumentation. */
+	public var dynamicRefBindingRelevantScanCount:Int = 0;
 	// Reusable scratch for dynamicRef forwarding dispatch in applyUpdates(). Holds unique
 	// child contexts of relevant bindings so dispatch can batch sibling params on the
 	// same child under a single beginUpdate/endUpdate. Resized to 0 on entry; capacity
@@ -523,12 +622,39 @@ class IncrementalUpdateContext {
 		props.paddingBottom = saved.paddingBottom;
 	}
 
+	/** True if `name` is among the params changed in the currently-dispatching applyUpdates cycle.
+	 *  Valid to call from inside a trackExpression update fn (changedParams is live until the end
+	 *  of applyUpdates). Used by the SWITCH rebuild gate to skip tearing down the active arm when
+	 *  the changed param is referenced only in an inactive sibling arm. */
+	public inline function isParamDirty(name:String):Bool {
+		return changedParams.exists(name);
+	}
+
 	public function trackExpression(updateFn:Void->Void, paramRefs:Array<String>, ?object:h2d.Object):Void {
-		trackedExpressions.push({updateFn: updateFn, paramRefs: paramRefs, object: object});
+		final tracked = new TrackedExpression(updateFn, paramRefs, object);
+		tracked.declOrder = trackedSeq++;
+		trackedExpressions.push(tracked);
+		for (ref in paramRefs) {
+			var arr = trackedByParam.get(ref);
+			if (arr == null) {
+				arr = [];
+				trackedByParam.set(ref, arr);
+			}
+			arr.push(tracked);
+		}
 	}
 
 	public function trackDynamicRef(childContext:IncrementalUpdateContext, childParam:String, resolveFn:Void->Dynamic, referencedParams:Array<String>, ?object:h2d.Object):Void {
-		dynamicRefBindings.push({childContext: childContext, childParam: childParam, resolveFn: resolveFn, referencedParams: referencedParams, object: object});
+		final binding = new DynamicRefBinding(childContext, childParam, resolveFn, referencedParams, object);
+		dynamicRefBindings.push(binding);
+		for (ref in referencedParams) {
+			var arr = dynamicRefBindingsByParam.get(ref);
+			if (arr == null) {
+				arr = [];
+				dynamicRefBindingsByParam.set(ref, arr);
+			}
+			arr.push(binding);
+		}
 	}
 
 	public function trackDynamicName(binding:DynamicNameBinding):Void {
@@ -562,32 +688,62 @@ class IncrementalUpdateContext {
 	 *  - conditionalEntries / conditionalApplyEntries / deferredEntries whose objects are under container
 	 *  - activeTransitionTweens on objects under container (cancelled to avoid completion callbacks on dead objs)
 	 */
-	public function cleanupDestroyedSubtree(ir:InternalBuilderResults, container:h2d.Object):Void {
-		// 1. Capture dynamicRef child contexts that will be removed, so we can drop their bindings afterwards.
-		//    Each per-key array may hold multiple writers (unnamed sites colliding on the same key);
-		//    walk every writer so a multi-writer arm cleanup drops all dependent dynamicRefBindings.
+	/** Reap the bookkeeping for dynamicRef children under `container` that are about to be
+	 *  discarded: cancel their in-flight transition tweens (they'd keep ticking against
+	 *  orphaned objects), release their DEV reload handles (the reload sentinel's onRemove
+	 *  only fires for scene-ALLOCATED objects, so a discard while detached would leak the
+	 *  handle permanently), and prune this context's forwarding bindings into them.
+	 *  Factored out of cleanupDestroyedSubtree so discard paths that must keep the
+	 *  conditional/deferred bookkeeping intact (deferred-arm re-materialization) can reap
+	 *  just the child-ref state. Must run BEFORE removeRegistrationsUnder — it walks
+	 *  ir.dynamicRefs, which that helper splices. */
+	public function pruneDiscardedDynamicRefChildren(ir:InternalBuilderResults, container:h2d.Object):Void {
+		// Each per-key array may hold multiple writers (unnamed sites colliding on the same key);
+		// walk every writer so a multi-writer arm cleanup drops all dependent dynamicRefBindings.
 		final removedChildContexts:Array<IncrementalUpdateContext> = [];
 		for (_ => arr in ir.dynamicRefs) {
 			for (result in arr) {
 				final obj = result.object;
 				final isUnder = obj == container || (obj.parent != null && isDescendantOf(obj, container));
-				if (isUnder && result.incrementalContext != null)
+				if (!isUnder) continue;
+				if (result.incrementalContext != null) {
 					removedChildContexts.push(result.incrementalContext);
+					result.incrementalContext.cancelAllTransitions();
+				}
+				#if MULTIANIM_DEV
+				if (result.reloadHandle != null) {
+					result.reloadHandle.registry.unregister(result.reloadHandle);
+					result.reloadHandle = null;
+				}
+				#end
 			}
 		}
 
-		// 2. Clean IR collections via the existing helper.
-		MultiAnimBuilder.removeRegistrationsUnder(ir, container);
-
-		// 3. Drop dynamicRefBindings whose childContext was just orphaned.
+		// Drop dynamicRefBindings whose childContext was just orphaned. Mirror the removal
+		// into dynamicRefBindingsByParam so the reverse-index walk in applyUpdates doesn't
+		// forward into a dead context.
 		if (removedChildContexts.length > 0) {
 			var i = 0;
 			while (i < dynamicRefBindings.length) {
-				if (removedChildContexts.indexOf(dynamicRefBindings[i].childContext) >= 0)
+				final binding = dynamicRefBindings[i];
+				if (removedChildContexts.indexOf(binding.childContext) >= 0) {
 					dynamicRefBindings.splice(i, 1);
-				else i++;
+					for (ref in binding.referencedParams) {
+						final arr = dynamicRefBindingsByParam.get(ref);
+						if (arr != null) arr.remove(binding);
+					}
+				} else i++;
 			}
 		}
+	}
+
+	public function cleanupDestroyedSubtree(ir:InternalBuilderResults, container:h2d.Object):Void {
+		// 1. Reap discarded dynamicRef children (transition tweens, DEV reload handles,
+		//    forwarding bindings) — must precede the IR cleanup below.
+		pruneDiscardedDynamicRefChildren(ir, container);
+
+		// 2. Clean IR collections via the existing helper.
+		MultiAnimBuilder.removeRegistrationsUnder(ir, container);
 
 		// 4. Drop dynamicNameBindings whose container is under the destroyed subtree.
 		var ni = 0;
@@ -599,13 +755,20 @@ class IncrementalUpdateContext {
 		}
 
 		// 5. Drop trackedExpressions whose object is a STRICT descendant of container.
-		//    The rebuild closure's own entry has object == container — keep it.
+		//    The rebuild closure's own entry has object == container — keep it. Mirror the
+		//    removal into trackedByParam so the reverse-index walk in applyUpdates doesn't
+		//    fire stale updateFns whose closures captured destroyed objects.
 		var ti = 0;
 		while (ti < trackedExpressions.length) {
-			final obj = trackedExpressions[ti].object;
-			if (obj != null && obj != container && isDescendantOf(obj, container))
+			final tracked = trackedExpressions[ti];
+			final obj = tracked.object;
+			if (obj != null && obj != container && isDescendantOf(obj, container)) {
 				trackedExpressions.splice(ti, 1);
-			else ti++;
+				for (ref in tracked.paramRefs) {
+					final arr = trackedByParam.get(ref);
+					if (arr != null) arr.remove(tracked);
+				}
+			} else ti++;
 		}
 
 		// 6. Drop conditionalEntries whose object is under container. An entry hidden by
@@ -669,9 +832,10 @@ class IncrementalUpdateContext {
 			final isUnder = obj == container || isDescendantOf(obj, container);
 			if (isUnder) {
 				final entry = activeTransitionTweens[twi];
-				if (entry.tween != null) {
-					entry.tween.onComplete = null;
-					entry.tween.cancel();
+				final t = entry.tween;
+				if (t != null && t.generation == entry.gen) {
+					t.onComplete = null;
+					t.cancel();
 				}
 				if (entry.sequence != null) {
 					entry.sequence.onComplete = null;
@@ -709,34 +873,82 @@ class IncrementalUpdateContext {
 	 *  no-ops so the baseline keeps the state as it was before ANY apply. */
 	public function captureApplyBaseline(parent:h2d.Object):Void {
 		if (conditionalApplyBaselines.exists(parent)) return;
+		final color = if (Std.isOfType(parent, h2d.Drawable)) {
+			final d:h2d.Drawable = cast parent;
+			d.color.toColor();
+		} else 0xFFFFFFFF;
 		conditionalApplyBaselines.set(parent, {
 			filter: parent.filter, alpha: parent.alpha,
 			scaleX: parent.scaleX, scaleY: parent.scaleY, rotation: parent.rotation,
 			x: parent.x, y: parent.y,
+			color: color, blendMode: parent.blendMode,
 		});
 	}
 
 	/** Reset a parent to its captured baseline and replay every currently-matched
 	 *  apply entry for that parent in declaration (push) order. Safe to call
-	 *  whenever an entry's match state flips; composes overlapping applies correctly. */
+	 *  whenever an entry's match state flips; composes overlapping applies correctly.
+	 *
+	 *  Property-scoped: only restores baseline values for properties that AT LEAST
+	 *  ONE apply entry on this parent actually mutates. This preserves external
+	 *  mutations to untouched properties (e.g. a grid widget positioning a cell
+	 *  via parent.x/parent.y must not be clobbered when an `@(status=>hover) apply
+	 *  { filter: ... }` activates — the baseline.x captured at build time is stale
+	 *  the moment external code moves the parent). Matches the property-scoped
+	 *  approach used by transitions in commit 8762218. */
 	function reconcileApplyParent(parent:h2d.Object):Void {
 		final baseline = conditionalApplyBaselines.get(parent);
 		if (baseline == null) return;
-		parent.filter = cast baseline.filter;
-		parent.alpha = baseline.alpha;
-		parent.scaleX = baseline.scaleX;
-		parent.scaleY = baseline.scaleY;
-		parent.rotation = baseline.rotation;
-		parent.x = baseline.x;
-		parent.y = baseline.y;
+		// Pass 1: determine which properties any apply entry on this parent touches.
+		// `node.pos` is a Coordinates enum (never null) — default for "no explicit
+		// pos" is ZERO. We treat ZERO as "does not touch position".
+		var anyTouchesFilter = false;
+		var anyTouchesAlpha = false;
+		var anyTouchesScale = false;
+		var anyTouchesRotation = false;
+		var anyTouchesPos = false;
+		var anyTouchesTint = false;
+		var anyTouchesBlendMode = false;
+		for (entry in conditionalApplyEntries) {
+			if (entry.parent != parent) continue;
+			final node = entry.node;
+			if (node.filter != null) anyTouchesFilter = true;
+			if (node.alpha != null) anyTouchesAlpha = true;
+			if (node.scale != null) anyTouchesScale = true;
+			if (node.rotation != null) anyTouchesRotation = true;
+			if (node.tint != null) anyTouchesTint = true;
+			if (node.blendMode != null) anyTouchesBlendMode = true;
+			switch (node.pos) {
+				case null | ZERO:
+				default: anyTouchesPos = true;
+			}
+		}
+		// Pass 2: reset ONLY those properties to baseline.
+		if (anyTouchesFilter) parent.filter = cast baseline.filter;
+		if (anyTouchesAlpha) parent.alpha = baseline.alpha;
+		if (anyTouchesScale) { parent.scaleX = baseline.scaleX; parent.scaleY = baseline.scaleY; }
+		if (anyTouchesRotation) parent.rotation = baseline.rotation;
+		if (anyTouchesPos) { parent.x = baseline.x; parent.y = baseline.y; }
+		if (anyTouchesBlendMode) parent.blendMode = baseline.blendMode;
+		// tint lives on h2d.Drawable.color — restore only when the parent is a
+		// Drawable (matches applyExtendedFormProperties' guard and codegen's
+		// _applyOrigTint revert). Pass 3 re-applies it for still-matched entries.
+		if (anyTouchesTint && Std.isOfType(parent, h2d.Drawable)) {
+			final d:h2d.Drawable = cast parent;
+			d.color.setColor(baseline.color);
+		}
+		// Pass 3: replay each currently-matched apply entry in declaration order.
 		for (entry in conditionalApplyEntries) {
 			if (entry.parent != parent) continue;
 			if (!entry.applied) continue;
 			final node = entry.node;
-			final pos = builder.calculatePosition(node.pos,
-				MultiAnimParser.getGridCoordinateSystem(node),
-				MultiAnimParser.getHexCoordinateSystem(node));
-			builder.addPosition(parent, pos.x, pos.y);
+			final hasPos = switch (node.pos) { case null | ZERO: false; default: true; };
+			if (hasPos) {
+				final pos = builder.calculatePosition(node.pos,
+					MultiAnimParser.getGridCoordinateSystem(node),
+					MultiAnimParser.getHexCoordinateSystem(node));
+				builder.addPosition(parent, pos.x, pos.y);
+			}
 			builder.applyExtendedFormProperties(parent, node);
 		}
 	}
@@ -934,6 +1146,10 @@ class IncrementalUpdateContext {
 			return;
 		}
 		indexedParams.set(name, converted);
+		// Guard the push so a param re-set within a batch (begin/set A/set A/end) appears
+		// once in changedParamList, matching the Map's dedup. The .exists() check is alloc-free.
+		if (!changedParams.exists(name))
+			changedParamList.push(name);
 		changedParams.set(name, true);
 		hasChanges = true;
 		if (!batchMode)
@@ -944,6 +1160,7 @@ class IncrementalUpdateContext {
 		if (batchMode) throw BuilderError.of("beginUpdate: already in batch; nesting is not supported", "nested_begin_update");
 		batchMode = true;
 		changedParams.clear();
+		changedParamList.resize(0);
 		hasChanges = false;
 	}
 
@@ -953,6 +1170,7 @@ class IncrementalUpdateContext {
 		if (hasChanges)
 			applyUpdates();
 		changedParams.clear();
+		changedParamList.resize(0);
 		hasChanges = false;
 	}
 
@@ -969,6 +1187,7 @@ class IncrementalUpdateContext {
 		if (!batchMode) return;
 		batchMode = false;
 		changedParams.clear();
+		changedParamList.resize(0);
 		hasChanges = false;
 	}
 
@@ -1005,9 +1224,10 @@ class IncrementalUpdateContext {
 			// kind so user-set values on properties this transition wasn't writing are
 			// preserved (e.g. user-set X under fade survives — fade only restores alpha).
 			if (entry.restore != null) entry.restore();
-			if (entry.tween != null) {
-				entry.tween.onComplete = null;
-				entry.tween.cancel();
+			final t = entry.tween;
+			if (t != null && t.generation == entry.gen) {
+				t.onComplete = null;
+				t.cancel();
 			}
 			if (entry.sequence != null) {
 				entry.sequence.onComplete = null;
@@ -1109,9 +1329,10 @@ class IncrementalUpdateContext {
 				// (TransFade restores only alpha; TransSlide restores {x,y,alpha}; etc.) so
 				// user mutations on properties this transition wasn't writing are preserved.
 				if (entry.restore != null) entry.restore();
-				if (entry.tween != null) {
-					entry.tween.onComplete = null; // Prevent delayed onComplete from TweenManager
-					entry.tween.cancel();
+				final t = entry.tween;
+				if (t != null && t.generation == entry.gen) {
+					t.onComplete = null; // Prevent delayed onComplete from TweenManager
+					t.cancel();
 				}
 				if (entry.sequence != null) {
 					entry.sequence.onComplete = null;
@@ -1125,11 +1346,12 @@ class IncrementalUpdateContext {
 	}
 
 	function trackTransitionTween(obj:h2d.Object, tween:Tween, target:Bool, restore:Null<Void -> Void>):Void {
-		activeTransitionTweens.push({obj: obj, tween: tween, sequence: null, target: target, restore: restore});
+		final gen = tween.generation;
+		activeTransitionTweens.push({obj: obj, tween: tween, gen: gen, sequence: null, target: target, restore: restore});
 		tween.onComplete = () -> {
 			var i = 0;
 			while (i < activeTransitionTweens.length) {
-				if (activeTransitionTweens[i].tween == tween) {
+				if (activeTransitionTweens[i].tween == tween && activeTransitionTweens[i].gen == gen) {
 					activeTransitionTweens.splice(i, 1);
 					break;
 				}
@@ -1141,7 +1363,7 @@ class IncrementalUpdateContext {
 	}
 
 	function trackTransitionSequence(obj:h2d.Object, seq:TweenSequence, target:Bool, restore:Null<Void -> Void>):Void {
-		activeTransitionTweens.push({obj: obj, tween: null, sequence: seq, target: target, restore: restore});
+		activeTransitionTweens.push({obj: obj, tween: null, gen: 0, sequence: seq, target: target, restore: restore});
 		seq.onComplete = () -> {
 			var i = 0;
 			while (i < activeTransitionTweens.length) {
@@ -1161,6 +1383,24 @@ class IncrementalUpdateContext {
 		return false;
 	}
 
+	/** Drop `obj`'s transitions that the TweenManager cancelled from outside (cancelAll, clear):
+	 *  they never complete, and their pooled Tween may already run another animation. Their
+	 *  restore still runs, so obj lands on the transition's endpoint as a completed one would. */
+	function dropCancelledTransitions(obj:h2d.Object):Void {
+		var i = 0;
+		while (i < activeTransitionTweens.length) {
+			final entry = activeTransitionTweens[i];
+			final t = entry.tween;
+			final seq = entry.sequence;
+			final live = if (t != null) t.generation == entry.gen && !t.cancelled else seq != null && !seq.cancelled;
+			if (entry.obj == obj && !live) {
+				activeTransitionTweens.splice(i, 1);
+				if (entry.restore != null) entry.restore();
+			} else
+				i++;
+		}
+	}
+
 	/** Returns the visibility target of the active transition for `obj`, or null if none.
 	 *  A direction-aware check: an in-flight transition whose target equals the requested
 	 *  newVisible already converges to the right state, so it must not be cancelled or
@@ -1174,20 +1414,10 @@ class IncrementalUpdateContext {
 		return null;
 	}
 
-	/** Check if an object is effectively visible: in the scene graph and all ancestors visible. */
-	static function isEffectivelyVisible(obj:h2d.Object):Bool {
-		if (obj.parent == null) return false; // Not in scene graph
-		var cur = obj;
-		while (cur != null) {
-			if (!cur.visible) return false;
-			cur = cur.parent;
-		}
-		return true;
-	}
-
 	function setPresenceWithTransition(entry:{object:h2d.Object, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
 			?savedFlowProps:Null<SavedFlowProperties>}, newVisible:Bool, node:Node):Void {
 		final obj = entry.object;
+		dropCancelledTransitions(obj); // before reading presence: their restore may change it
 		final inGraph = isInGraph(obj);
 		// Skip when the requested state matches what's already in flight: either no
 		// transition active and presence already matches, or a transition active whose
@@ -1371,7 +1601,10 @@ class IncrementalUpdateContext {
 		// Register a tracked expression to rebuild when referenced params change.
 		// Reap IR registrations under the wrapper before tearing down children — otherwise each
 		// hide→show cycle leaks the previous materialization's interactives/slots/dynamicRefs/
-		// names/htmlTextsWithLinks into the parent BuilderResult.
+		// names/htmlTextsWithLinks into the parent BuilderResult. Prune the previous cycle's
+		// dynamicRef forwarding bindings first (they'd otherwise accumulate and forward into
+		// dead child contexts).
+		pruneDiscardedDynamicRefChildren(entry.internalResults, entry.wrapper);
 		MultiAnimBuilder.removeRegistrationsUnder(entry.internalResults, entry.wrapper);
 		entry.wrapper.removeChildren(); // Clear stale children from previous materialization
 		rebuildDeferredContent(entry);
@@ -1379,18 +1612,22 @@ class IncrementalUpdateContext {
 		final paramRefs = MultiAnimBuilder.collectNodeParamRefs(entry.node);
 		if (paramRefs.length > 0) {
 			final capturedEntry = entry;
-			trackedExpressions.push({
-				updateFn: () -> {
+			// Route via trackExpression() so the reverse-index trackedByParam is populated too;
+			// a direct push to trackedExpressions would leave the new entry invisible to the
+			// reverse-index walk in applyUpdates and the rebuild would not fire on setParameter.
+			trackExpression(
+				() -> {
 					// Same cleanup as above — each tracked-expression rebuild must reap the previous
-					// build's IR registrations.
+					// build's IR registrations and forwarding bindings.
+					pruneDiscardedDynamicRefChildren(capturedEntry.internalResults, capturedEntry.wrapper);
 					MultiAnimBuilder.removeRegistrationsUnder(capturedEntry.internalResults, capturedEntry.wrapper);
 					capturedEntry.wrapper.removeChildren();
 					rebuildDeferredContent(capturedEntry);
 				},
-				paramRefs: paramRefs,
-				object: entry.wrapper,
-			});
-		// Remove from deferred list — tracked expression handles future rebuilds
+				paramRefs,
+				entry.wrapper
+			);
+			// Remove from deferred list — tracked expression handles future rebuilds
 			deferredEntries.remove(entry);
 		}
 		// If no tracked expression, keep in deferredEntries so future show cycles re-materialize
@@ -1404,7 +1641,17 @@ class IncrementalUpdateContext {
 		builder.incrementalMode = false;
 		builder.incrementalContext = null;
 		builder.builderParams = entry.builderParams;
-		builder.build(entry.node, ObjectMode(entry.wrapper), entry.gridCS, entry.hexCS, entry.internalResults, entry.builderParams);
+		// Expose the owning context so DYNAMIC_REF children register param forwarding against
+		// it — the non-incremental build would otherwise skip registration entirely and the
+		// materialized ref would never receive later setParameter values
+		builder.deferredForwardingCtx = this;
+		try {
+			builder.build(entry.node, ObjectMode(entry.wrapper), entry.gridCS, entry.hexCS, entry.internalResults, entry.builderParams);
+		} catch (e:Dynamic) {
+			builder.deferredForwardingCtx = null;
+			throw e;
+		}
+		builder.deferredForwardingCtx = null;
 		builder.incrementalMode = false;
 		builder.incrementalContext = null;
 	}
@@ -1476,6 +1723,10 @@ class IncrementalUpdateContext {
 						case PPTString: () -> builder.resolveAsString(capturedValue);
 						case PPTColor: () -> builder.resolveAsColorInteger(capturedValue);
 						case PPTFloat: () -> builder.resolveAsNumber(capturedValue);
+						// Enums forward by NAME: resolveAsInteger throws on an enum-valued
+						// reference (stored as Index(...)), and setParameter's enum path
+						// accepts the string name, not the index.
+						case PPTEnum(_): () -> builder.resolveAsString(capturedValue);
 						default: () -> builder.resolveAsInteger(capturedValue);
 					};
 					trackDynamicRef(result.incrementalContext, childParam, resolveFn, refs, result.object);
@@ -1546,20 +1797,54 @@ class IncrementalUpdateContext {
 			// — a visible flash of an element whose chain decision never changed.
 			applyConditionalChains();
 
-			// Re-evaluate tracked expressions (skip for hidden objects)
-			for (tracked in trackedExpressions) {
-				// Skip expression evaluation for objects that are not effectively visible
-				final obj = tracked.object;
-				if (obj != null && !isEffectivelyVisible(obj))
-					continue;
-				var relevant = false;
-				for (ref in tracked.paramRefs) {
-					if (changedParams.exists(ref)) {
-						relevant = true;
-						break;
+			// Re-evaluate tracked expressions. Walk the reverse index keyed by paramName so
+			// only trackeds whose paramRefs intersect changedParams are examined — instead of
+			// scanning every tracked on every setParameter (O(T·R) per call). Each tracked
+			// carries a `gen` field; setting `tracked.gen = gen` during the per-param sweep
+			// marks it as relevant and dedups across the multiple paramRefs that may all be
+			// in changedParams (batch update). Defensive `!hasChanges` fallback fires every
+			// tracked — currently unreachable since setParameter sets hasChanges=true before
+			// applyUpdates and endUpdate guards on hasChanges, but kept for safety symmetric
+			// with the pre-existing semantics.
+			final gen = ++applyGen;
+			if (hasChanges) {
+				// Collect the relevant trackeds (reverse-index walk; gen-dedup so a tracked
+				// referencing several changed params is gathered once), then fire them in
+				// declaration order. The reverse index groups by param, so firing inline here
+				// would run trackeds grouped-by-param (changedParamList order) for a batched
+				// multi-param update instead of build/declaration order — two trackeds writing
+				// overlapping properties of the same object would then compose by
+				// param-enumeration order rather than declaration order. Sorting the collected
+				// set by declOrder restores the stable contract. A single changed param collects
+				// an already-ordered subarray, so the sort is skipped (length <= 1) on that hot path.
+				trackedFireScratch.resize(0);
+				for (param in changedParamList) {
+					final arr = trackedByParam.get(param);
+					if (arr == null) continue;
+					for (tracked in arr) {
+						if (tracked.gen == gen) continue;
+						tracked.gen = gen;
+						trackedFireScratch.push(tracked);
 					}
 				}
-				if (relevant || !hasChanges) {
+				if (trackedFireScratch.length > 1)
+					trackedFireScratch.sort((a, b) -> a.declOrder - b.declOrder);
+				for (tracked in trackedFireScratch) {
+					final obj = tracked.object;
+					// Skip only DETACHED tracked roots — addToGraph replays them via
+					// refreshTrackedExpressionsFor on re-attach. Flag-hidden (visible=false)
+					// objects must keep firing: setVisibility(true) is a raw field write
+					// with no replay path, so skipping here would leave them stale forever.
+					if (obj != null && obj.parent == null) continue;
+					trackedRelevantScanCount++;
+					tracked.updateFn();
+				}
+			} else {
+				for (tracked in trackedExpressions) {
+					final obj = tracked.object;
+					// Detached-root skip only — see the fast-path loop above
+					if (obj != null && obj.parent == null) continue;
+					trackedRelevantScanCount++;
 					tracked.updateFn();
 				}
 			}
@@ -1587,31 +1872,30 @@ class IncrementalUpdateContext {
 			// churn the prior shape produced on UI hot paths (setParameter on a parent that
 			// forwards into dynamicRef decorations fires here per mouse move).
 			fwdCtxScratch.resize(0);
-			for (binding in dynamicRefBindings) {
-				var relevant = false;
-				for (ref in binding.referencedParams) {
-					if (changedParams.exists(ref)) {
-						relevant = true;
-						break;
-					}
+			fwdBindingScratch.resize(0);
+			// Pass 1: walk the reverse index keyed by paramName to collect bindings whose
+			// referencedParams intersect changedParams. Uses the same `gen` counter bumped
+			// above for the trackedExpressions sweep — DynamicRefBinding has its own gen
+			// field, so reuse is safe (no cross-collection collision). Collect into
+			// fwdBindingScratch so pass 2 can dispatch in O(unique-ctx × relevant-bindings)
+			// without re-scanning the full dynamicRefBindings array.
+			for (param in changedParamList) {
+				final arr = dynamicRefBindingsByParam.get(param);
+				if (arr == null) continue;
+				for (binding in arr) {
+					if (binding.gen == gen) continue;
+					binding.gen = gen;
+					dynamicRefBindingRelevantScanCount++;
+					fwdBindingScratch.push(binding);
+					if (fwdCtxScratch.indexOf(binding.childContext) < 0)
+						fwdCtxScratch.push(binding.childContext);
 				}
-				if (!relevant) continue;
-				if (fwdCtxScratch.indexOf(binding.childContext) < 0)
-					fwdCtxScratch.push(binding.childContext);
 			}
 			for (ctx in fwdCtxScratch) {
 				ctx.beginUpdate();
 				try {
-					for (binding in dynamicRefBindings) {
+					for (binding in fwdBindingScratch) {
 						if (binding.childContext != ctx) continue;
-						var relevant = false;
-						for (ref in binding.referencedParams) {
-							if (changedParams.exists(ref)) {
-								relevant = true;
-								break;
-							}
-						}
-						if (!relevant) continue;
 						ctx.setParameter(binding.childParam, binding.resolveFn());
 					}
 					ctx.endUpdate();
@@ -1642,6 +1926,7 @@ class IncrementalUpdateContext {
 
 		builder.popBuilderState();
 		changedParams.clear();
+		changedParamList.resize(0);
 		hasChanges = false;
 		// Unset the re-entry guard BEFORE both (a) rethrowing a caught exception and
 		// (b) dispatching rebuild listeners. Rethrow path: a future setParameter on
@@ -1978,10 +2263,29 @@ class BuilderResult implements bh.ui.UIInteractiveSource {
 		incrementalContext.setTweenManager(tm);
 	}
 
-	/** `UIInteractiveSource` implementation — returns a copy of the tracked interactives list.
-	 *  The copy protects callers from mutations that may happen during structural rebuilds. */
+	/** `UIInteractiveSource` implementation — returns the tracked interactives that are currently
+	 *  attached to this result's root. A runtime-builder conditional arm (`@(open=>true)`) eagerly
+	 *  builds its interactive and detaches the arm's subtree (`removeChild`) when hidden, but the
+	 *  registration stays in the static list. Returning detached ones would leave ghost click targets
+	 *  at stale coords — the screen's `syncInteractivesFrom` diff drops their wrappers once they
+	 *  disappear here. The reachability walk (not just `o.parent != null`) also catches interactives
+	 *  nested below the detached arm root, e.g. `@(open=>true) { layers() { interactive } }`, whose
+	 *  immediate parent stays non-null. Matches codegen, whose `getInteractives()` walks the live
+	 *  scene graph. The fresh array also protects callers from mutations during structural rebuilds. */
 	public function getInteractives():Array<bh.base.MAObject> {
-		return interactives.copy();
+		return [for (o in interactives) if (isAttachedToRoot(o)) o];
+	}
+
+	/** True when walking `o`'s parent chain reaches this result's root `object` — i.e. the interactive
+	 *  is still connected to the live subtree rather than dangling under a detached conditional arm. */
+	inline function isAttachedToRoot(o:h2d.Object):Bool {
+		var n:Null<h2d.Object> = o;
+		var attached = false;
+		while (n != null) {
+			if (n == object) { attached = true; break; }
+			n = n.parent;
+		}
+		return attached;
 	}
 
 	/** `UIInteractiveSource` — true when this BuilderResult was built with `incremental: true`.
@@ -2123,6 +2427,12 @@ class BuilderResult implements bh.ui.UIInteractiveSource {
 		return arr[0];
 	}
 
+	/** Convenience for indexed `#name[$i] dynamicRef(...)` — resolves the `"name idx"` key the
+	 *  builder stores per repeatable iteration. Mirrors getUpdatableByIndex. */
+	public function getDynamicRefByIndex(name:String, index:Int):BuilderResult {
+		return getDynamicRef('${name} ${index}');
+	}
+
 	public function getSlot(name:String, ?index:Null<Int>, ?indexY:Null<Int>):SlotHandle {
 		if (slots == null)
 			throw BuilderError.of('No slots in BuilderResult');
@@ -2217,6 +2527,21 @@ private enum InternalBuildMode {
 	TileGroupMode(tg:h2d.TileGroup);
 }
 
+/** Resolved iterator state for one axis of a REPEAT2D. Re-resolved by the
+ *  incremental rebuild closure so param-dependent values stay current. */
+@:nullSafety
+private typedef Repeat2DAxis = {
+	count:Int,
+	dx:Int,
+	dy:Int,
+	layoutName:Null<String>,
+	arrayIterator:Array<String>,
+	valueVariableName:Null<String>,
+	rangeStart:Int,
+	rangeStep:Int,
+	isRange:Bool
+}
+
 @:nullSafety
 typedef BuilderCallbackFunction = CallbackRequest->CallbackResult;
 
@@ -2234,9 +2559,11 @@ private typedef InternalBuilderResults = {
 	htmlTextsWithLinks:Array<h2d.HtmlText>
 }
 
-/** Persistent sink for results produced inside a @switch arm. One instance per switch ordinal in a codegen
- *  programmable instance; passed to rebuildSwitchArmByOrdinal so indexed names, slots, interactives, and
- *  dynamicRefs declared inside arms remain addressable after the initial build and after arm swaps. */
+/** Persistent sink for results produced inside a lazily/runtime-built subtree — a @switch arm
+ *  (one instance per switch ordinal) or a param-dependent repeatable body (one instance per
+ *  repeat). Passed to rebuildSwitchArmByOrdinal / buildSingleNodeWithParams so indexed names,
+ *  slots, interactives, and dynamicRefs declared inside the subtree remain addressable after the
+ *  initial build and after a rebuild (arm swap / repeat count change). */
 @:nullSafety
 class SwitchArmResults {
 	@:allow(bh.multianim.MultiAnimBuilder)
@@ -2271,6 +2598,40 @@ class SwitchArmResults {
 		}
 		return null;
 	}
+
+	/** Existence companion to `getSlot` — never throws. Mirrors BuilderResult.hasSlot so the
+	 *  codegen instance dispatcher can consult this sink without risking a throw on a miss. */
+	public function hasSlot(name:String, ?index:Null<Int>, ?indexY:Null<Int>):Bool {
+		for (entry in ir.slots) {
+			final match = switch entry.key {
+				case Named(n): index == null && indexY == null && n == name;
+				case Indexed(n, i): index != null && indexY == null && n == name && i == index;
+				case Indexed2D(n, ix, iy): index != null && indexY != null && n == name && ix == index && iy == indexY;
+			};
+			if (match) return true;
+		}
+		return false;
+	}
+
+	/** Returns the dynamicRef BuilderResult stored under `name` (key `"name idx"` for indexed
+	 *  sites), or null when no such writer exists in this sink. Throws when multiple unnamed sites
+	 *  collide on the key — mirrors BuilderResult.getDynamicRef so the disambiguation contract is
+	 *  identical whether the dynamicRef lives at the programmable root or inside a runtime-built body. */
+	public function getDynamicRef(name:String):Null<BuilderResult> {
+		final arr = ir.dynamicRefs.get(name);
+		if (arr == null || arr.length == 0) return null;
+		if (arr.length > 1)
+			throw BuilderError.of("getDynamicRef(\"" + name + "\"): " + arr.length + " unnamed dynamicRef sites collide on this key — use #name dynamicRef(...) or #name[$i] dynamicRef(...) to disambiguate.");
+		return arr[0];
+	}
+
+	/** Presence-only companion to `getDynamicRef` — never throws (unlike `getDynamicRef`, which
+	 *  throws on an unnamed-collision key). Lets the codegen instance hasDynamicRef dispatcher
+	 *  consult this sink without risking a throw, matching BuilderResult.hasDynamicRef. */
+	public function hasDynamicRef(name:String):Bool {
+		final arr = ir.dynamicRefs.get(name);
+		return arr != null && arr.length > 0;
+	}
 }
 
 @:nullSafety
@@ -2303,14 +2664,48 @@ class MultiAnimBuilder {
 	var builderParams:BuilderParameters = {};
 	var currentNode:Null<Node> = null;
 	var stateStack:Array<StoredBuilderState> = [];
+	/** Free list of recycled StoredBuilderState records. push variants drain this before
+	 *  allocating a fresh `{...}` literal; popBuilderState nulls the reference fields and
+	 *  returns the record here. setParameter hits applyUpdates which pushes/pops once per
+	 *  call — without the pool, every non-batched UI event (hover, drag, slider tick)
+	 *  burns a 6-field anon-struct allocation. */
+	var stateStackPool:Array<StoredBuilderState> = [];
 	/** Names of programmables currently being resolved by `buildWithParameters`. Used to
 	 *  detect circular staticRef/dynamicRef chains (A→A, A→B→A, …) and surface them as a
 	 *  structured BuilderError instead of recursing to stack-overflow. Mirrors the
 	 *  `resolving` map used by `getCurves()` for the same purpose. */
 	var buildingRefs:Array<String> = [];
 	var inlineAtlases:Map<String, IAtlas2> = [];
+	/** Resolved tiles per autotile name (index -> tile, null = corner index 0 without a tile).
+	 *  Built once per builder so repeated buildAutotile() / generated(autotile()) calls neither
+	 *  regenerate demo textures nor redo the blob47 fallback search. Safe to keep for the builder's
+	 *  lifetime: multiParserResult never changes (hot reload creates a new builder). */
+	var autotileTileCache:Map<String, Array<Null<h2d.Tile>>> = [];
 	var incrementalMode:Bool = false;
+	/** Set true while iterating a constant-count repeatable body in incremental mode (the loop has
+	 *  no settable-param dependency, so `hasIncrementalRepeat` is false but `incrementalMode` stays
+	 *  true). Any conditional in such a body references only the loop var, which is bound during
+	 *  iteration but absent afterwards. Tracking these as incremental conditionals is wrong: the N
+	 *  per-iteration entries collapse onto the single parse-time template `uniqueNodeName`, and the
+	 *  later `applyConditionalChains` re-evaluates the condition with the loop var gone, hiding the
+	 *  surviving iteration. While set, conditionals are resolved at build time (full-mode filtering)
+	 *  and not registered as incremental entries; expression tracking stays active. */
+	var suppressConditionalTracking:Bool = false;
 	var incrementalContext:Null<IncrementalUpdateContext> = null;
+	/** Set (only) while rebuildDeferredContent materializes an initially-hidden conditional
+	 *  arm. That build runs with incrementalMode=false, which would skip the DYNAMIC_REF
+	 *  param-forwarding registration entirely — leaving the materialized ref permanently
+	 *  stale on later setParameter calls. The DYNAMIC_REF case registers its forwarding
+	 *  bindings against this context instead when set. */
+	var deferredForwardingCtx:Null<IncrementalUpdateContext> = null;
+	/** Set by the incremental sibling loops immediately before build() on an @else/@default
+	 *  arm whose chain position currently LOSES. shouldBuildInFullMode has no single-node
+	 *  answer for chain arms (returns true), so without this flag a losing chain arm is
+	 *  eagerly built with params that satisfy the preceding arm's guard — evaluating
+	 *  expressions with out-of-guard values (div-by-zero, array OOB) where a full build
+	 *  (which filters losing arms in resolveConditionalChildren) is fine. build() consumes
+	 *  and resets the flag on entry. */
+	var pendingChainArmLosing:Bool = false;
 	var currentInternalResults:Null<InternalBuilderResults> = null;
 	/** When set, automatically injected into IncrementalUpdateContext for transition support. */
 	public var tweenManager:Null<TweenManager> = null;
@@ -2365,6 +2760,14 @@ class MultiAnimBuilder {
 		this.incrementalMode = state.incrementalMode;
 		this.incrementalContext = state.incrementalContext;
 		this.currentInternalResults = state.currentInternalResults;
+		// Release reference fields so the pooled record doesn't pin destroyed nodes,
+		// contexts, or InternalBuilderResults during long idle periods. indexedParams
+		// and builderParams are non-nullable in the typedef and get fully overwritten
+		// on the next push, so we leave them alone (next push clobbers them).
+		state.currentNode = null;
+		state.incrementalContext = null;
+		state.currentInternalResults = null;
+		stateStackPool.push(state);
 	}
 
 	// Allocation watchdog for tests. Gated behind MULTIANIM_ALLOC_TRACK so the
@@ -2373,17 +2776,33 @@ class MultiAnimBuilder {
 	// hot path (one applyUpdates per non-batched UI event) must not invoke it.
 	#if MULTIANIM_ALLOC_TRACK
 	public static var pushBuilderStateResetCount:Int = 0;
+	// Counts fresh `{...}` anon-struct allocations made by pushBuilderStateNoReset
+	// (pool miss). The setParameter hot path (one applyUpdates per non-batched UI
+	// event) goes through pushBuilderStateNoReset, so steady-state setParameter
+	// must allocate zero new states after warm-up.
+	public static var pushBuilderStateNoResetAllocCount:Int = 0;
 	#end
 
 	function pushBuilderState() {
-		stateStack.push({
-			indexedParams: this.indexedParams,
-			builderParams: this.builderParams,
-			currentNode: this.currentNode,
-			incrementalMode: this.incrementalMode,
-			incrementalContext: this.incrementalContext,
-			currentInternalResults: this.currentInternalResults,
-		});
+		final pooled = stateStackPool.length > 0 ? stateStackPool.pop() : null;
+		if (pooled != null) {
+			pooled.indexedParams = this.indexedParams;
+			pooled.builderParams = this.builderParams;
+			pooled.currentNode = this.currentNode;
+			pooled.incrementalMode = this.incrementalMode;
+			pooled.incrementalContext = this.incrementalContext;
+			pooled.currentInternalResults = this.currentInternalResults;
+			stateStack.push(pooled);
+		} else {
+			stateStack.push({
+				indexedParams: this.indexedParams,
+				builderParams: this.builderParams,
+				currentNode: this.currentNode,
+				incrementalMode: this.incrementalMode,
+				incrementalContext: this.incrementalContext,
+				currentInternalResults: this.currentInternalResults,
+			});
+		}
 		#if MULTIANIM_ALLOC_TRACK
 		pushBuilderStateResetCount++;
 		#end
@@ -2398,6 +2817,20 @@ class MultiAnimBuilder {
 	 *  anonymous-struct allocation per call. The setParameter hot path
 	 *  (applyUpdates, fired per non-batched UI event) goes through here. */
 	function pushBuilderStateNoReset() {
+		final pooled = stateStackPool.length > 0 ? stateStackPool.pop() : null;
+		if (pooled != null) {
+			pooled.indexedParams = this.indexedParams;
+			pooled.builderParams = this.builderParams;
+			pooled.currentNode = this.currentNode;
+			pooled.incrementalMode = this.incrementalMode;
+			pooled.incrementalContext = this.incrementalContext;
+			pooled.currentInternalResults = this.currentInternalResults;
+			stateStack.push(pooled);
+			return;
+		}
+		#if MULTIANIM_ALLOC_TRACK
+		pushBuilderStateNoResetAllocCount++;
+		#end
 		stateStack.push({
 			indexedParams: this.indexedParams,
 			builderParams: this.builderParams,
@@ -3130,17 +3563,7 @@ class MultiAnimBuilder {
 	function generatePlaceholderBitmap(type:ResolvedGeneratedTileType):h2d.Tile {
 		return switch type {
 			case Cross(w, h, color, thickness):
-				final c = color;
-				final pl = new PixelLines(w, h);
-				for (t in 0...thickness) {
-					pl.rect(t, t, w - 1 - t * 2, h - 1 - t * 2, c);
-					pl.line(t, 0, w - 1, h - 1 - t, c);
-					pl.line(0, t, w - 1 - t, h - 1, c);
-					pl.line(t, h - 1, w - 1, t, c);
-					pl.line(0, h - 1 - t, w - 1 - t, 0, c);
-				}
-				pl.updateBitmap();
-				pl.tile;
+				bh.base.HeapsUtils.crossTile(color, w, h, thickness);
 
 			case SolidColor(w, h, color):
 				solidTile(color, w, h);
@@ -3149,146 +3572,16 @@ class MultiAnimBuilder {
 				// Create a solid color tile with centered text using font rendering
 				generateTileWithText(w, h, bgColor, text, textColor, fontName);
 
-			case AutotileRef(format, tileIndex, tileSize, edgeColor, fillColor):
-				// Generate autotile demo tile with diagonal corners
-				generateAutotileDemoTile(format, tileIndex, tileSize, edgeColor, fillColor);
-
 			case AutotileRegionSheet(baseTile, regionX, regionY, regionW, regionH, tileSize, tileCount, scale, font, fontColor):
 				// Generate a visual tile sheet showing the region with numbered grid overlay
 				generateAutotileRegionSheetTile(baseTile, regionX, regionY, regionW, regionH, tileSize, tileCount, scale, font, fontColor);
 
-			case PreloadedTile(tile):
-				// Return the pre-loaded tile directly
-				tile;
 		}
 	}
 
 	/**
-	 * Resolve an autotile reference by looking up the autotile definition.
-	 * For demo: source - gets format, tileSize, edgeColor, fillColor from the definition.
-	 * For tiles: source - loads the tile at the specified index.
-	 * Converts the selector (index or edges) to a tile index.
-	 */
-	function resolveAutotileRef(autotileName:ReferenceableValue, selector:AutotileTileSelector):ResolvedGeneratedTileType {
-		final name = resolveAsString(autotileName);
-		final node = multiParserResult.nodes.get(name);
-		if (node == null)
-			throw builderError('autotile reference: could not find autotile "$name"');
-
-		final autotileDef:AutotileDef = switch node.type {
-			case AUTOTILE(def): def;
-			default: throw builderErrorAt(node, 'autotile reference: "$name" is not an autotile definition');
-		};
-
-		final format = autotileDef.format;
-
-		// Convert selector to tile index (and keep edge mask for potential fallback)
-		var edgeMask:Null<Int> = null;
-		final tileIndex = switch selector {
-			case ByIndex(index): resolveAsInteger(index);
-			case ByEdges(edges):
-				edgeMask = edges;
-				// Convert edge mask to tile index using the appropriate format
-				switch format {
-					case Cross: bh.base.Autotile.getCrossIndex(edges);
-					case Blob47: bh.base.Autotile.getBlob47Index(edges);
-				};
-		};
-
-		// Handle different source types
-		return switch autotileDef.source {
-			case ATSDemo(edgeColor, fillColor):
-				final tileSize = resolveAsInteger(autotileDef.tileSize);
-				final edgeColorInt = resolveAsColorInteger(edgeColor);
-				final fillColorInt = resolveAsColorInteger(fillColor);
-				AutotileRef(format, tileIndex, tileSize, edgeColorInt, fillColorInt);
-
-			case ATSTiles(tiles):
-				// Use fallback for blob47 if tile is missing
-				var actualIndex = tileIndex;
-				if (format == Blob47 && actualIndex >= tiles.length) {
-					actualIndex = bh.base.Autotile.applyBlob47Fallback(tileIndex, tiles.length);
-				}
-				if (actualIndex < 0 || actualIndex >= tiles.length)
-					throw builderErrorAt(node, 'autotile reference: tile index $tileIndex out of bounds for "$name" (has ${tiles.length} tiles)');
-				final tile = loadTileSource(tiles[actualIndex]);
-				PreloadedTile(tile);
-
-			case ATSFile(filename):
-				// Load tile from file, apply region and mapping if present
-				final tileSize = resolveAsInteger(autotileDef.tileSize);
-				final baseTile = resourceLoader.loadTile(resolveAsString(filename));
-
-				// Apply region if present (extract sub-region from the tileset)
-				var regionTile = baseTile;
-				var regionX = 0;
-				var regionY = 0;
-				final region = autotileDef.region;
-				if (region != null) {
-					regionX = resolveAsInteger(region[0]);
-					regionY = resolveAsInteger(region[1]);
-					final regionW = resolveAsInteger(region[2]);
-					final regionH = resolveAsInteger(region[3]);
-					regionTile = baseTile.sub(regionX, regionY, regionW, regionH);
-				}
-
-				// Apply mapping if present (remap the tile index)
-				var mappedIndex = tileIndex;
-				final mapping = autotileDef.mapping;
-				if (mapping != null) {
-					var actualIndex = tileIndex;
-					// For blob47 with allowPartialMapping, apply fallback for missing tiles
-					if (format == Blob47 && autotileDef.allowPartialMapping && !mapping.exists(actualIndex)) {
-						actualIndex = bh.base.Autotile.applyBlob47FallbackWithMap(tileIndex, mapping);
-					}
-					if (!mapping.exists(actualIndex))
-						throw builderErrorAt(node, 'autotile reference: tile index $tileIndex not found in mapping');
-					mappedIndex = cast mapping.get(actualIndex);
-				}
-
-				// Calculate tile position within the region
-				final cols = Std.int(regionTile.width / tileSize);
-				final tileX = (mappedIndex % cols) * tileSize;
-				final tileY = Std.int(mappedIndex / cols) * tileSize;
-
-				// Extract the specific tile
-				final tile = regionTile.sub(tileX, tileY, tileSize, tileSize);
-				PreloadedTile(tile);
-
-			case ATSAtlas(sheet, prefix):
-				// Load tile from atlas using sheet and prefix
-				final tileSize = resolveAsInteger(autotileDef.tileSize);
-				final sheetName = resolveAsString(sheet);
-				final prefixStr = resolveAsString(prefix);
-
-				// Apply mapping if present
-				var mappedIndex = tileIndex;
-				final mapping2 = autotileDef.mapping;
-				if (mapping2 != null) {
-					var actualIndex = tileIndex;
-					// For blob47 with allowPartialMapping, apply fallback for missing tiles
-					if (format == Blob47 && autotileDef.allowPartialMapping && !mapping2.exists(actualIndex)) {
-						actualIndex = bh.base.Autotile.applyBlob47FallbackWithMap(tileIndex, mapping2);
-					}
-					if (!mapping2.exists(actualIndex))
-						throw builderErrorAt(node, 'autotile reference: tile index $tileIndex not found in mapping');
-					mappedIndex = cast mapping2.get(actualIndex);
-				}
-
-				// Load tile from atlas with prefix and index
-				final tileName = prefixStr + mappedIndex;
-				final tile = loadTileImpl(sheetName, tileName).tile;
-				PreloadedTile(tile);
-
-			case ATSAtlasRegion(sheet, region):
-				// Atlas region-based autotiles not yet supported for generated(autotile(...)) syntax
-				throw builderErrorAt(node, 'autotile reference: "$name" uses sheet region - use tiles: or demo: syntax instead');
-		};
-	}
-
-	/**
-	 * Resolve autotileRegionSheet - displays the entire region of an autotile with numbered grid overlay.
-	 * Only works with autotiles that have a region defined.
+	 * Resolve autotileRegionSheet - displays the source region of a file: autotile with a numbered
+	 * grid overlay (numbers are the source indices that `mapping:` targets).
 	 * @param scale Scale factor for the tiles (font is not scaled)
 	 * @param font Font name for the tile numbers
 	 * @param fontColor Color for the tile numbers
@@ -3299,50 +3592,17 @@ class MultiAnimBuilder {
 		final fontName = resolveAsString(font);
 		final fontColorVal = resolveAsColorInteger(fontColor);
 
-		final node = multiParserResult.nodes.get(name);
-		if (node == null)
-			throw builderError('autotileRegionSheet: could not find autotile "$name"');
+		final at = getAutotileDef(name);
+		final tileSize = resolveAsInteger(at.def.tileSize);
+		final tileCount = autotileTileCount(at.def.format);
 
-		final autotileDef:AutotileDef = switch node.type {
-			case AUTOTILE(def): def;
-			default: throw builderErrorAt(node, 'autotileRegionSheet: "$name" is not an autotile definition');
-		};
-
-		final tileSize = resolveAsInteger(autotileDef.tileSize);
-		final tileCount = switch autotileDef.format {
-			case Cross: 13;
-			case Blob47: 47;
-		};
-
-		// Handle different source types to get the base tile and region
-		return switch autotileDef.source {
+		return switch at.def.source {
 			case ATSFile(filename):
 				final baseTile = resourceLoader.loadTile(resolveAsString(filename));
-				if (autotileDef.region == null)
-					throw builderErrorAt(node, 'autotileRegionSheet: autotile "$name" has no region defined');
-				final r = autotileDef.region;
-				final regionX = resolveAsInteger(r[0]);
-				final regionY = resolveAsInteger(r[1]);
-				final regionW = resolveAsInteger(r[2]);
-				final regionH = resolveAsInteger(r[3]);
-				AutotileRegionSheet(baseTile, regionX, regionY, regionW, regionH, tileSize, tileCount, scaleVal, fontName, fontColorVal);
-
-			case ATSAtlasRegion(sheet, region):
-				final baseTile = resourceLoader.loadTile(resolveAsString(sheet));
-				final regionX = resolveAsInteger(region[0]);
-				final regionY = resolveAsInteger(region[1]);
-				final regionW = resolveAsInteger(region[2]);
-				final regionH = resolveAsInteger(region[3]);
-				AutotileRegionSheet(baseTile, regionX, regionY, regionW, regionH, tileSize, tileCount, scaleVal, fontName, fontColorVal);
-
-			case ATSDemo(_, _):
-				throw builderErrorAt(node, 'autotileRegionSheet: autotile "$name" uses demo source - no region to display');
-
-			case ATSTiles(_):
-				throw builderErrorAt(node, 'autotileRegionSheet: autotile "$name" uses explicit tiles - no region to display');
-
-			case ATSAtlas(_, _):
-				throw builderErrorAt(node, 'autotileRegionSheet: autotile "$name" uses atlas prefix - no region to display');
+				final r = resolveAutotileRegion(name, at.node, at.def, baseTile, tileSize);
+				AutotileRegionSheet(baseTile, r.x, r.y, r.w, r.h, tileSize, tileCount, scaleVal, fontName, fontColorVal);
+			case ATSDemo(_, _) | ATSTiles(_) | ATSAtlas(_, _):
+				throw builderErrorAt(at.node, 'autotileRegionSheet: autotile "$name" has no image region to display (only file: sources do)');
 		};
 	}
 
@@ -3491,12 +3751,15 @@ class MultiAnimBuilder {
 					resourceLoader.loadTile(resolved);
 			case TSSheet(sheet, name): loadTileImpl(resolveAsString(sheet), resolveAsString(name)).tile;
 			case TSSheetWithIndex(sheet, name, index): loadTileImpl(resolveAsString(sheet), resolveAsString(name), resolveAsInteger(index)).tile;
+			case TSGenerated(AutotileRef(autotileName, index)):
+				// Autotile tiles are cached per builder by getAutotileTiles — no placeholder cache.
+				getAutotileTile(resolveAsString(autotileName), resolveAsInteger(index));
 			case TSGenerated(type):
 				var resolvedType:ResolvedGeneratedTileType = switch type {
 					case Cross(width, height, color, thickness): Cross(resolveAsInteger(width), resolveAsInteger(height), resolveAsColorInteger(color), resolveAsInteger(thickness));
 					case SolidColor(width, height, color): SolidColor(resolveAsInteger(width), resolveAsInteger(height), resolveAsColorInteger(color));
 					case SolidColorWithText(width, height, color, text, textColor, font): SolidColorWithText(resolveAsInteger(width), resolveAsInteger(height), resolveAsColorInteger(color), resolveAsString(text), resolveAsColorInteger(textColor), resolveAsString(font));
-					case AutotileRef(autotileName, selector): resolveAutotileRef(autotileName, selector);
+					case AutotileRef(_, _): throw builderError('unreachable: autotile ref handled above');
 					case AutotileRegionSheet(autotileName, scale, font, fontColor): resolveAutotileRegionSheet(autotileName, scale, font, fontColor);
 				}
 
@@ -3519,7 +3782,8 @@ class MultiAnimBuilder {
 					case _: throw builderError('TileSource reference "$varName" is not a TileSourceValue, got: $param');
 				}
 			case TSPivot(px, py, inner):
-				var t = loadTileSource(inner);
+				// Re-center a copy: sheet, generated and autotile sources hand out shared cached tiles
+				var t = loadTileSource(inner).clone();
 				t.setCenterRatio(px, py);
 				t;
 		}
@@ -3558,6 +3822,11 @@ class MultiAnimBuilder {
 			case AFFillWidth | AFFillBox(_, _): true;
 			default: false;
 		};
+
+		// Start from the declared font, not whatever font an earlier fit left on the text:
+		// an incremental update re-runs this, and a text that once fell back to a smaller
+		// font has to be able to grow back when it gets shorter again.
+		t.font = resourceLoader.loadFont(resolveAsString(textDef.fontName));
 
 		// Build full font candidate list: primary font + fallback fonts
 		var allFonts = new Array<h2d.Font>();
@@ -3719,13 +3988,63 @@ class MultiAnimBuilder {
 		}
 	}
 
+	/** Incremental-mode counterpart of resolveConditionalChildren's full-mode chain walk:
+	 *  instead of filtering, flags the @else/@default children whose chain position
+	 *  currently LOSES so the sibling loop can route them into build()'s deferred path
+	 *  (they must still exist for later chain flips, but must not eagerly evaluate their
+	 *  expressions with out-of-guard params). Returns null when no child loses — the
+	 *  common case, no allocation. Mirrors resolveVisibilityForChildren's chain logic. */
+	function computeLosingChainArms(children:Array<Node>):Null<Array<Bool>> {
+		var flags:Null<Array<Bool>> = null;
+		var prevSiblingMatched = false;
+		var anyConditionalSiblingMatched = false;
+		for (i in 0...children.length) {
+			var losing = false;
+			switch children[i].conditionals {
+				case Conditional(conditions, anyMode):
+					final matched = matchConditions(conditions, anyMode, indexedParams);
+					prevSiblingMatched = matched;
+					if (matched) anyConditionalSiblingMatched = true;
+				case ConditionalElse(extraConditions):
+					if (!prevSiblingMatched) {
+						if (extraConditions == null) {
+							prevSiblingMatched = true;
+							anyConditionalSiblingMatched = true;
+						} else {
+							final matched = matchConditions(extraConditions, false, indexedParams);
+							losing = !matched;
+							prevSiblingMatched = matched;
+							if (matched) anyConditionalSiblingMatched = true;
+						}
+					} else {
+						losing = true;
+						prevSiblingMatched = true;
+					}
+				case ConditionalDefault:
+					losing = anyConditionalSiblingMatched;
+					anyConditionalSiblingMatched = false;
+				case NoConditional:
+					prevSiblingMatched = false;
+					anyConditionalSiblingMatched = false;
+			}
+			if (losing) {
+				if (flags == null) flags = [for (_ in 0...children.length) false];
+				flags[i] = true;
+			}
+		}
+		return flags;
+	}
+
 	// Resolves @else/@default chains: returns only the children that should be built
 	// given the current indexedParams state. Regular Conditional and NoConditional nodes
 	// are always included (their shouldBuildInFullMode check happens later in build/buildTileGroup).
 	// ConditionalElse and ConditionalDefault are filtered here based on chain logic.
 	function resolveConditionalChildren(children:Array<Node>):Array<Node> {
-		// In incremental mode, return ALL children so they're all built (visibility handled later)
-		if (incrementalMode)
+		// In incremental mode, return ALL children so they're all built (visibility handled later).
+		// Exception: inside a constant-count repeatable body (suppressConditionalTracking), the
+		// loop-var conditionals are static once the loop var is bound, so fall through to build-time
+		// chain filtering instead of deferring to applyConditionalChains.
+		if (incrementalMode && !suppressConditionalTracking)
 			return children;
 
 		var result:Array<Node> = [];
@@ -3833,7 +4152,22 @@ class MultiAnimBuilder {
 			case RVParenthesis(e): collectParamRefs(e, result);
 			case RVTernary(cond, t, f): collectParamRefs(cond, result); collectParamRefs(t, result); collectParamRefs(f, result);
 			case EUnaryOp(_, e): collectParamRefs(e, result);
-			case RVElementOfArray(_, idx): collectParamRefs(idx, result);
+			// arrayRef may name an array-valued param; non-param names are dormant triggers.
+			case RVElementOfArray(arrayRef, idx): result.push(arrayRef); collectParamRefs(idx, result);
+			case RVMethodCall(_, _, args): for (a in args) collectParamRefs(a, result);
+			case RVChainedMethodCall(base, _, args):
+				collectParamRefs(base, result);
+				for (a in args) collectParamRefs(a, result);
+			case RVCallbacks(name, defaultValue):
+				collectParamRefs(name, result);
+				if (defaultValue != null) collectParamRefs(defaultValue, result);
+			case RVCallbacksWithIndex(name, index, defaultValue):
+				collectParamRefs(name, result);
+				collectParamRefs(index, result);
+				if (defaultValue != null) collectParamRefs(defaultValue, result);
+			case RVColor(_, _, index): collectParamRefs(index, result);
+			case RVColorXY(_, _, x, y): collectParamRefs(x, result); collectParamRefs(y, result);
+			case RVArray(refArr): for (e in refArr) collectParamRefs(e, result);
 			default:
 		}
 	}
@@ -4357,6 +4691,24 @@ class MultiAnimBuilder {
 		}
 
 		// Track scale/rotation/alpha/filter/tint if they reference params
+		trackExtendedFormExpressions(node, object);
+	}
+
+	/** Register a tracked expression so $param-driven extended-form properties
+	 *  (scale/rotation/alpha/tint/filter) re-apply on setParameter. Shared by
+	 *  trackIncrementalExpressions (child nodes) and the programmable root path in
+	 *  startBuild — root-level `scale:` / `alpha:` / ... on `programmable()` are applied
+	 *  once at build but, without this, never re-fire (the builder counterpart of the
+	 *  codegen root-tint refire). No-op outside incremental mode or when no refs.
+	 *
+	 *  `gateVisibility`: when true, the tracked is skipped during applyUpdates while its
+	 *  object is detached (parent == null — the per-child default; addToGraph replays on
+	 *  re-attach). The programmable root passes false: the root has no parent, and
+	 *  re-applying scale/alpha to the root is a harmless field write that should
+	 *  always reflect current params regardless of whether the result is in a scene. */
+	function trackExtendedFormExpressions(node:Node, object:h2d.Object, gateVisibility:Bool = true):Void {
+		final ctx = incrementalContext;
+		if (ctx == null) return;
 		final extRefs:Array<String> = [];
 		final _scale = node.scale; if (_scale != null) collectParamRefs(_scale, extRefs);
 		final _rotation = node.rotation; if (_rotation != null) collectParamRefs(_rotation, extRefs);
@@ -4366,7 +4718,7 @@ class MultiAnimBuilder {
 		if (extRefs.length > 0) {
 			ctx.trackExpression(() -> {
 				applyExtendedFormProperties(object, node);
-			}, extRefs, object);
+			}, extRefs, gateVisibility ? object : null);
 		}
 	}
 
@@ -4900,7 +5252,8 @@ class MultiAnimBuilder {
 			indexedParams.set(info.tilenameVarName, StringValue(info.tilenameIterator[count]));
 	}
 
-	private function cleanupTileGroupRepeatExtraVars(info:{bitmapVarName:Null<String>, tilenameVarName:Null<String>}):Void {
+	private function cleanupTileGroupRepeatExtraVars(info:{valueVariableName:Null<String>, bitmapVarName:Null<String>, tilenameVarName:Null<String>}):Void {
+		if (info.valueVariableName != null) indexedParams.remove(info.valueVariableName);
 		if (info.bitmapVarName != null) indexedParams.remove(info.bitmapVarName);
 		if (info.tilenameVarName != null) indexedParams.remove(info.tilenameVarName);
 	}
@@ -4951,7 +5304,7 @@ class MultiAnimBuilder {
 				final info = resolveTileGroupRepeatAxis(repeatType, node, true);
 				final iterator = info.layoutName == null ? null : getLayouts().getIterator(info.layoutName);
 
-				if (indexedParams.exists(node.updatableName.getNameString()))
+				if (indexedParams.exists(varName))
 					throw builderErrorAt(node, 'cannot use repeatable index param "$varName" as it is already defined');
 				for (count in 0...info.repeatCount) {
 					final gridCoordinateSystem = MultiAnimParser.getGridCoordinateSystem(node);
@@ -5024,6 +5377,8 @@ class MultiAnimBuilder {
 				}
 				indexedParams.remove(varNameX);
 				indexedParams.remove(varNameY);
+				cleanupTileGroupRepeatExtraVars(xInfo);
+				cleanupTileGroupRepeatExtraVars(yInfo);
 				skipChildren = true;
 				null;
 			case PIXELS(shapes):
@@ -5150,8 +5505,11 @@ class MultiAnimBuilder {
 	@:nullSafety(Off)
 	function build(node:Node, buildMode:InternalBuildMode, gridCoordinateSystem:GridCoordinateSystem, hexCoordinateSystem:HexCoordinateSystem,
 			internalResults:InternalBuilderResults, builderParams:BuilderParameters):h2d.Object {
+		// Consume unconditionally — the flag is only meaningful for the exact call it was set for
+		final chainArmLosing = pendingChainArmLosing;
+		pendingChainArmLosing = false;
 		final nodeVisible = shouldBuildInFullMode(node, indexedParams);
-		if (!nodeVisible && !incrementalMode)
+		if (!nodeVisible && (!incrementalMode || suppressConditionalTracking))
 			return null;
 		this.currentNode = node;
 		this.currentInternalResults = internalResults;
@@ -5184,11 +5542,18 @@ class MultiAnimBuilder {
 		}
 
 		// Deferred build: skip expression evaluation for non-visible conditional nodes (like repeatables).
+		// Losing @else/@default chain arms (chainArmLosing, flagged by the sibling loop) take the
+		// same path — their nodeVisible is a passthrough `true`, but eagerly building them would
+		// evaluate expressions with params that satisfy the PRECEDING arm's guard, not their own.
 		// APPLY and FINAL_VAR are excluded — APPLY modifies the parent (handled via conditionalApplyEntries),
-		// FINAL_VAR defines constants with no visual output.
-		if (!nodeVisible && incrementalMode && node.conditionals != NoConditional && incrementalContext != null
-				&& !node.type.match(APPLY) && !node.type.match(FINAL_VAR(_, _))) {
+		// FINAL_VAR defines constants with no visual output. Nodes with per-element @flow.*
+		// properties are excluded too: the deferred wrapper is a plain h2d.Object between the
+		// flow and the element, so materialization would apply the props outside a flow parent
+		// and throw — these build eagerly and toggle via remove/add with saved FlowProperties.
+		if ((!nodeVisible || chainArmLosing) && incrementalMode && !suppressConditionalTracking && node.conditionals != NoConditional && incrementalContext != null
+				&& !node.type.match(APPLY) && !node.type.match(FINAL_VAR(_, _)) && node.flowProperties == null) {
 			final sentinel = new h2d.Object();
+			sentinel.visible = false; // keep h2d.Flow from counting the anchor as a layout child
 			addChild(sentinel);
 			var wrapper = new h2d.Object();
 			addChild(wrapper);
@@ -5579,8 +5944,12 @@ class MultiAnimBuilder {
 				if (existingArr == null) internalResults.dynamicRefs.set(dynRefKey, [result]);
 				else existingArr.push(result);
 
-				// Register parameter bindings for incremental propagation
-				if (incrementalMode && incrementalContext != null && result.incrementalContext != null) {
+				// Register parameter bindings for incremental propagation. The deferred-materialize
+				// path (rebuildDeferredContent) runs with incrementalMode=false but exposes its
+				// owning context via deferredForwardingCtx — register against that instead, or the
+				// materialized ref never receives later setParameter values.
+				final forwardingCtx = (incrementalMode && incrementalContext != null) ? incrementalContext : deferredForwardingCtx;
+				if (forwardingCtx != null && result.incrementalContext != null) {
 					final childNode = builder.multiParserResult.nodes?.get(reference);
 					final childDefs = childNode != null ? builder.getProgrammableParameterDefinitions(childNode) : new Map();
 					for (childParam => value in parameters) {
@@ -5593,9 +5962,13 @@ class MultiAnimBuilder {
 								case PPTString: () -> resolveAsString(capturedValue);
 								case PPTColor: () -> resolveAsColorInteger(capturedValue);
 								case PPTFloat: () -> resolveAsNumber(capturedValue);
+								// Enums forward by NAME: resolveAsInteger throws on an enum-valued
+								// reference (stored as Index(...)), and setParameter's enum path
+								// accepts the string name, not the index.
+								case PPTEnum(_): () -> resolveAsString(capturedValue);
 								default: () -> resolveAsInteger(capturedValue);
 							};
-							incrementalContext.trackDynamicRef(result.incrementalContext, childParam, resolveFn, refs, result.object);
+							forwardingCtx.trackDynamicRef(result.incrementalContext, childParam, resolveFn, refs, result.object);
 						}
 					}
 				}
@@ -5647,14 +6020,21 @@ class MultiAnimBuilder {
 
 				if (savedIncMode) {
 					incrementalMode = savedIncMode;
-					// Collect all param refs from all arms (any param change inside any arm triggers rebuild)
+					// Collect param refs PER ARM. The union (switchParamRefs) registers the tracked
+					// expression so any in-arm ref change still gives the update fn a chance to run.
+					// The gate inside only rebuilds the active arm when the changed param is the switch
+					// key OR is referenced by the CURRENTLY-active arm's own refs — changing a param
+					// referenced only in an inactive sibling arm no longer tears down + rebuilds the
+					// active arm (which would restart its stateanim playheads / re-seed its particles).
+					final armRefs:Array<Array<String>> = [];
 					final switchParamRefs:Array<String> = [paramName];
 					for (arm in arms) {
-						collectChildConditionalParamRefs(arm.children, switchParamRefs);
+						final refs:Array<String> = [];
+						collectChildConditionalParamRefs(arm.children, refs);
 						for (child in arm.children) {
 							final childRefs = collectNodeParamRefs(child);
 							for (r in childRefs)
-								if (switchParamRefs.indexOf(r) < 0) switchParamRefs.push(r);
+								if (refs.indexOf(r) < 0) refs.push(r);
 							// Also collect refs that live in node-type payloads (DYNAMIC_REF params,
 							// INTERACTIVE id/metadata, STATEANIM selectors, STATEANIM_CONSTRUCT
 							// animName/fps). collectNodeParamRefs omits them because the deferred
@@ -5662,8 +6042,11 @@ class MultiAnimBuilder {
 							// don't handle repeat fire for dynamicRefs; the switch arm's rebuild path
 							// does clean up (cleanupDestroyedSubtree + removeChildren), so including
 							// these refs here is safe and correct.
-							collectSwitchArmExtraParamRefs(child, switchParamRefs);
+							collectSwitchArmExtraParamRefs(child, refs);
 						}
+						armRefs.push(refs);
+						for (r in refs)
+							if (switchParamRefs.indexOf(r) < 0) switchParamRefs.push(r);
 					}
 					final capturedArms = arms;
 					final capturedParamName = paramName;
@@ -5671,8 +6054,25 @@ class MultiAnimBuilder {
 					final capturedBP = builderParams;
 					final capturedIR = internalResults;
 					final capturedCtx = savedIncCtx;
+					final capturedArmRefs = armRefs;
+					// Index of the arm currently built into the container (-1 = none / default-null).
+					var currentArmIdx = matchedArm == null ? -1 : capturedArms.indexOf(matchedArm);
 					savedIncCtx.trackExpression(() -> {
 						final newArm = resolveMatchedSwitchArm(capturedParamName, capturedArms);
+						final newArmIdx = newArm == null ? -1 : capturedArms.indexOf(newArm);
+						// Gate: when the matched arm is unchanged, only rebuild if a changed param is the
+						// switch key OR is referenced by THIS arm's own refs. If neither, the change targets
+						// an inactive arm only — skip the needless teardown so the active arm's stateanim
+						// playheads / particles are preserved.
+						if (newArmIdx == currentArmIdx) {
+							var relevant = capturedCtx.isParamDirty(capturedParamName);
+							if (!relevant && newArmIdx >= 0) {
+								for (r in capturedArmRefs[newArmIdx])
+									if (capturedCtx.isParamDirty(r)) { relevant = true; break; }
+							}
+							if (!relevant) return;
+						}
+						currentArmIdx = newArmIdx;
 						// Drop registrations + per-element bookkeeping from the previous arm before tearing
 						// down its scene graph, then build the new arm into the parent internalResults so
 						// its registrations are visible via the parent BuilderResult.
@@ -5817,7 +6217,7 @@ class MultiAnimBuilder {
 				final buildTarget = needsWrapper ? object : current;
 				final ownPos = needsWrapper ? null : calculatePosition(node.pos, MultiAnimParser.getGridCoordinateSystem(node), MultiAnimParser.getHexCoordinateSystem(node));
 
-				if (indexedParams.exists(node.updatableName.getNameString()))
+				if (indexedParams.exists(varName))
 					throw builderErrorAt(node, 'cannot use repeatable index param "$varName" as it is already defined');
 
 				// Disable incremental tracking for children of param-dependent repeats
@@ -5836,6 +6236,16 @@ class MultiAnimBuilder {
 						markUntrackedParamsInSubtree(childNode, savedIncrementalCtx, varName, repeatParamRefs);
 					incrementalMode = false;
 				}
+
+				// Constant-count repeatable in incremental mode (no settable-param dependency, so
+				// the full-rebuild path above did not fire): any conditional in the body references
+				// only the loop var, which is bound now but gone afterwards. Resolve those at build
+				// time and skip incremental conditional tracking — otherwise the per-iteration entries
+				// collapse onto the shared template uniqueNodeName and applyConditionalChains hides the
+				// survivor. Expression tracking (trackIncrementalExpressions) stays active.
+				final savedSuppressConditionalTracking = suppressConditionalTracking;
+				if (incrementalMode && incrementalContext != null)
+					suppressConditionalTracking = true;
 
 				for (count in 0...repeatCount) {
 					final resolvedIndex = switch repeatType {
@@ -5880,9 +6290,12 @@ class MultiAnimBuilder {
 					}
 					cleanupFinalVars(resolvedChildren, indexedParams);
 				}
+				suppressConditionalTracking = savedSuppressConditionalTracking;
 
 				indexedParams.remove(varName);
 				switch repeatType {
+					case ArrayIterator(valueVariableName, _):
+						indexedParams.remove(valueVariableName);
 					case StateAnimIterator(bitmapVarName, _, _, _):
 						indexedParams.remove(bitmapVarName);
 					case TilesIterator(bitmapVarName, tilenameVarName, _, _):
@@ -6009,6 +6422,8 @@ class MultiAnimBuilder {
 						}
 						indexedParams.remove(capturedVarName);
 						switch capturedRepeatType {
+							case ArrayIterator(valueVariableName, _):
+								indexedParams.remove(valueVariableName);
 							case StateAnimIterator(bitmapVarName, _, _, _):
 								indexedParams.remove(bitmapVarName);
 							case TilesIterator(bitmapVarName, tilenameVarName, _, _):
@@ -6030,144 +6445,199 @@ class MultiAnimBuilder {
 
 			case REPEAT2D(varNameX, varNameY, repeatTypeX, repeatTypeY):
 				var object = new h2d.Object();
-				var xRepeatCount = 0;
-				var yRepeatCount = 0;
-				var xDx = 0;
-				var xDy = 0;
-				var yDx = 0;
-				var yDy = 0;
-				var xLayoutName:Null<String> = null;
-				var yLayoutName:Null<String> = null;
-				var xArrayIterator:Array<String> = [];
-				var yArrayIterator:Array<String> = [];
-				var xValueVariableName:Null<String> = null;
-				var yValueVariableName:Null<String> = null;
-				var xRangeStart = 0;
-				var xRangeStep = 1;
-				var yRangeStart = 0;
-				var yRangeStep = 1;
 				var layouts:Null<MultiAnimLayouts> = null;
 				function getLayoutsIfNeeded() {
 					if (layouts == null) layouts = getLayouts();
 					return layouts;
 				}
 
-				switch repeatTypeX {
-					case StepIterator(dirX, dirY, repeats):
-						xRepeatCount = resolveAsInteger(repeats);
-						xDx = dirX == null ? 0 : resolveAsInteger(dirX);
-						xDy = dirY == null ? 0 : resolveAsInteger(dirY);
-					case LayoutIterator(layoutName):
-						final l = getLayoutsIfNeeded();
-						xRepeatCount = l.getLayoutSequenceLengthByLayoutName(layoutName);
-						xLayoutName = layoutName;
-					case ArrayIterator(variableName, arrayName):
-						xArrayIterator = resolveAsArray(RVArrayReference(arrayName));
-						xRepeatCount = xArrayIterator.length;
-						xValueVariableName = variableName;
-					case RangeIterator(start, end, step):
-						xRangeStart = resolveAsInteger(start);
-						final rangeEnd = resolveAsInteger(end);
-						xRangeStep = resolveAsInteger(step);
-						xRepeatCount = Math.ceil((rangeEnd - xRangeStart) / xRangeStep);
-						xDx = 0;
-						xDy = 0;
-					case StateAnimIterator(_, _, _, _):
-						throw builderErrorAt(node, 'StateAnimIterator not supported in REPEAT2D');
-					case TilesIterator(_, _, _, _):
-						throw builderErrorAt(node, 'TilesIterator not supported in REPEAT2D');
+				// Resolve one axis of the 2D repeat. Also called by the incremental rebuild
+				// closure so param-dependent counts, offsets and range bounds re-resolve.
+				function resolveAxis(repeatType:RepeatType):Repeat2DAxis {
+					var count = 0;
+					var dx = 0;
+					var dy = 0;
+					var layoutName:Null<String> = null;
+					var arrayIterator:Array<String> = [];
+					var valueVariableName:Null<String> = null;
+					var rangeStart = 0;
+					var rangeStep = 1;
+					var isRange = false;
+					switch repeatType {
+						case StepIterator(dirX, dirY, repeats):
+							count = resolveAsInteger(repeats);
+							dx = dirX == null ? 0 : resolveAsInteger(dirX);
+							dy = dirY == null ? 0 : resolveAsInteger(dirY);
+						case LayoutIterator(name):
+							count = getLayoutsIfNeeded().getLayoutSequenceLengthByLayoutName(name);
+							layoutName = name;
+						case ArrayIterator(variableName, arrayName):
+							arrayIterator = resolveAsArray(RVArrayReference(arrayName));
+							count = arrayIterator.length;
+							valueVariableName = variableName;
+						case RangeIterator(start, end, step):
+							rangeStart = resolveAsInteger(start);
+							final rangeEnd = resolveAsInteger(end);
+							rangeStep = resolveAsInteger(step);
+							count = Math.ceil((rangeEnd - rangeStart) / rangeStep);
+							isRange = true;
+						case StateAnimIterator(_, _, _, _):
+							throw builderErrorAt(node, 'StateAnimIterator not supported in REPEAT2D');
+						case TilesIterator(_, _, _, _):
+							throw builderErrorAt(node, 'TilesIterator not supported in REPEAT2D');
+					}
+					return {
+						count: count, dx: dx, dy: dy, layoutName: layoutName, arrayIterator: arrayIterator,
+						valueVariableName: valueVariableName, rangeStart: rangeStart, rangeStep: rangeStep, isRange: isRange
+					};
 				}
 
-				switch repeatTypeY {
-					case StepIterator(dirX, dirY, repeats):
-						yRepeatCount = resolveAsInteger(repeats);
-						yDx = dirX == null ? 0 : resolveAsInteger(dirX);
-						yDy = dirY == null ? 0 : resolveAsInteger(dirY);
-					case LayoutIterator(layoutName):
-						final l = getLayoutsIfNeeded();
-						yRepeatCount = l.getLayoutSequenceLengthByLayoutName(layoutName);
-						yLayoutName = layoutName;
-					case ArrayIterator(variableName, arrayName):
-						yArrayIterator = resolveAsArray(RVArrayReference(arrayName));
-						yRepeatCount = yArrayIterator.length;
-						yValueVariableName = variableName;
-					case RangeIterator(start, end, step):
-						yRangeStart = resolveAsInteger(start);
-						final rangeEnd = resolveAsInteger(end);
-						yRangeStep = resolveAsInteger(step);
-						yRepeatCount = Math.ceil((rangeEnd - yRangeStart) / yRangeStep);
-						yDx = 0;
-						yDy = 0;
-					case StateAnimIterator(_, _, _, _):
-						throw builderErrorAt(node, 'StateAnimIterator not supported in REPEAT2D');
-					case TilesIterator(_, _, _, _):
-						throw builderErrorAt(node, 'TilesIterator not supported in REPEAT2D');
+				// Run the full 2D iteration into `target`. Shared between the initial build
+				// and the incremental rebuild closure.
+				function buildIterations(xAxis:Repeat2DAxis, yAxis:Repeat2DAxis, target:h2d.Object, ir:InternalBuilderResults, bp:BuilderParameters) {
+					final gridCoordinateSystem = MultiAnimParser.getGridCoordinateSystem(node);
+					final hexCoordinateSystem = MultiAnimParser.getHexCoordinateSystem(node);
+					final yLayoutName = yAxis.layoutName;
+					var yIterator = yLayoutName == null ? null : getLayoutsIfNeeded().getIterator(yLayoutName);
+					for (yCount in 0...yAxis.count) {
+						final resolvedY = yAxis.isRange ? yAxis.rangeStart + yCount * yAxis.rangeStep : yCount;
+						var yOffsetX = 0.0;
+						var yOffsetY = 0.0;
+						if (yIterator != null) {
+							final pt = yIterator.next();
+							yOffsetX = pt.x;
+							yOffsetY = pt.y;
+						} else {
+							yOffsetX = yAxis.dx * yCount;
+							yOffsetY = yAxis.dy * yCount;
+						}
+						final xLayoutName = xAxis.layoutName;
+						var xIterator = xLayoutName == null ? null : getLayoutsIfNeeded().getIterator(xLayoutName);
+						for (xCount in 0...xAxis.count) {
+							final resolvedX = xAxis.isRange ? xAxis.rangeStart + xCount * xAxis.rangeStep : xCount;
+							var xOffsetX = 0.0;
+							var xOffsetY = 0.0;
+							if (xIterator != null) {
+								final pt = xIterator.next();
+								xOffsetX = pt.x;
+								xOffsetY = pt.y;
+							} else {
+								xOffsetX = xAxis.dx * xCount;
+								xOffsetY = xAxis.dy * xCount;
+							}
+							// Set indexed params before resolving conditional children
+							indexedParams.set(varNameX, Value(resolvedX));
+							indexedParams.set(varNameY, Value(resolvedY));
+							final xValueVariableName = xAxis.valueVariableName;
+							final yValueVariableName = yAxis.valueVariableName;
+							if (xValueVariableName != null) indexedParams.set(xValueVariableName, StringValue(xAxis.arrayIterator[xCount]));
+							if (yValueVariableName != null) indexedParams.set(yValueVariableName, StringValue(yAxis.arrayIterator[yCount]));
+							final resolvedChildren = resolveConditionalChildren(node.children);
+							for (childNode in resolvedChildren) {
+								var obj = build(childNode, ObjectMode(target), gridCoordinateSystem, hexCoordinateSystem, ir, bp);
+								if (obj == null)
+									continue;
+								addPosition(obj, xOffsetX + yOffsetX, xOffsetY + yOffsetY);
+							}
+							cleanupFinalVars(resolvedChildren, indexedParams);
+						}
+					}
+					// Loop-scoped array value variables must not survive the loop (index vars are
+					// removed by the callers, which don't see the axis structs)
+					if (xAxis.valueVariableName != null) indexedParams.remove(xAxis.valueVariableName);
+					if (yAxis.valueVariableName != null) indexedParams.remove(yAxis.valueVariableName);
 				}
+
+				final xAxis = resolveAxis(repeatTypeX);
+				final yAxis = resolveAxis(repeatTypeY);
 
 				if (indexedParams.exists(varNameX) || indexedParams.exists(varNameY))
 					throw builderErrorAt(node, 'cannot use repeatable2d index param "$varNameX" or "$varNameY" as it is already defined');
-				var yIterator = yLayoutName == null ? null : getLayoutsIfNeeded().getIterator(yLayoutName);
-				for (yCount in 0...yRepeatCount) {
-					final resolvedY = switch repeatTypeY {
-						case RangeIterator(_, _, _): yRangeStart + yCount * yRangeStep;
-						case _: yCount;
-					};
-					final gridCoordinateSystem = MultiAnimParser.getGridCoordinateSystem(node);
-					final hexCoordinateSystem = MultiAnimParser.getHexCoordinateSystem(node);
-					var yOffsetX = 0.0;
-					var yOffsetY = 0.0;
-					switch repeatTypeY {
-						case StepIterator(_, _, _):
-							yOffsetX = yDx * yCount;
-							yOffsetY = yDy * yCount;
-						case LayoutIterator(_):
-							var pt = yIterator.next();
-							yOffsetX = pt.x;
-							yOffsetY = pt.y;
-						case RangeIterator(_, _, _):
-						case ArrayIterator(_, _):
-						case StateAnimIterator(_, _, _, _):
-						case TilesIterator(_, _, _, _):
-					}
-					var xIterator = xLayoutName == null ? null : getLayoutsIfNeeded().getIterator(xLayoutName);
-					for (xCount in 0...xRepeatCount) {
-						final resolvedX = switch repeatTypeX {
-							case RangeIterator(_, _, _): xRangeStart + xCount * xRangeStep;
-							case _: xCount;
-						};
-						var xOffsetX = 0.0;
-						var xOffsetY = 0.0;
-						switch repeatTypeX {
-							case StepIterator(_, _, _):
-								xOffsetX = xDx * xCount;
-								xOffsetY = xDy * xCount;
-							case LayoutIterator(_):
-								var pt = xIterator.next();
-								xOffsetX = pt.x;
-								xOffsetY = pt.y;
-							case RangeIterator(_, _, _):
-							case ArrayIterator(_, _):
-							case StateAnimIterator(_, _, _, _):
-							case TilesIterator(_, _, _, _):
-						}
-						// Set indexed params before resolving conditional children
-						indexedParams.set(varNameX, Value(resolvedX));
-						indexedParams.set(varNameY, Value(resolvedY));
-						if (xValueVariableName != null) indexedParams.set(xValueVariableName, StringValue(xArrayIterator[xCount]));
-						if (yValueVariableName != null) indexedParams.set(yValueVariableName, StringValue(yArrayIterator[yCount]));
-						final resolvedChildren = resolveConditionalChildren(node.children);
-						for (childNode in resolvedChildren) {
-							var obj = build(childNode, ObjectMode(object), gridCoordinateSystem, hexCoordinateSystem, internalResults, builderParams);
-							if (obj == null)
-								continue;
-							addPosition(obj, xOffsetX + yOffsetX, xOffsetY + yOffsetY);
-						}
-						cleanupFinalVars(resolvedChildren, indexedParams);
+
+				// Collect param refs for incremental tracking of param-dependent repeat
+				// counts/offsets/bounds on either axis (mirrors REPEAT).
+				final repeatParamRefs:Array<String> = [];
+				function collectIteratorRefs(repeatType:RepeatType) {
+					switch repeatType {
+						case StepIterator(dirX, dirY, repeats):
+							collectParamRefs(repeats, repeatParamRefs);
+							if (dirX != null) collectParamRefs(dirX, repeatParamRefs);
+							if (dirY != null) collectParamRefs(dirY, repeatParamRefs);
+						case RangeIterator(start, end, step):
+							collectParamRefs(start, repeatParamRefs);
+							collectParamRefs(end, repeatParamRefs);
+							collectParamRefs(step, repeatParamRefs);
+						default:
 					}
 				}
+				collectIteratorRefs(repeatTypeX);
+				collectIteratorRefs(repeatTypeY);
+				// Also collect param refs from conditions inside children (e.g. @($x < $level)
+				// references $level) so changing them triggers a rebuild even with constant counts.
+				if (incrementalMode && incrementalContext != null) {
+					collectChildConditionalParamRefs(node.children, repeatParamRefs);
+					repeatParamRefs.remove(varNameX); // exclude loop variables — not settable parameters
+					repeatParamRefs.remove(varNameY);
+				}
+				final hasIncrementalRepeat = incrementalMode && incrementalContext != null && repeatParamRefs.length > 0;
 
+				// Disable incremental tracking for children of param-dependent repeats
+				// (they will be fully rebuilt when the tracked params change). Untracked params
+				// must be marked up-front for the same reason as in REPEAT.
+				final savedIncrementalMode = incrementalMode;
+				final savedIncrementalCtx = incrementalContext;
+				if (hasIncrementalRepeat) {
+					// markUntrackedParamsInSubtree takes a single excludeVar, so the second
+					// loop variable rides along in the exclusion refs list.
+					final excludeRefs = repeatParamRefs.concat([varNameY]);
+					for (childNode in node.children)
+						markUntrackedParamsInSubtree(childNode, savedIncrementalCtx, varNameX, excludeRefs);
+					incrementalMode = false;
+				}
+
+				// Constant-count 2D repeatable in incremental mode: resolve loop-var conditionals
+				// at build time and skip incremental conditional tracking (same rationale as REPEAT).
+				final savedSuppressConditionalTracking = suppressConditionalTracking;
+				if (incrementalMode && incrementalContext != null)
+					suppressConditionalTracking = true;
+
+				buildIterations(xAxis, yAxis, object, internalResults, builderParams);
+
+				suppressConditionalTracking = savedSuppressConditionalTracking;
 				indexedParams.remove(varNameX);
 				indexedParams.remove(varNameY);
+
+				// Restore incremental mode and register structural rebuild
+				if (hasIncrementalRepeat) {
+					incrementalMode = savedIncrementalMode;
+					final capturedObject = object;
+					final capturedTypeX = repeatTypeX;
+					final capturedTypeY = repeatTypeY;
+					final capturedVarNameX = varNameX;
+					final capturedVarNameY = varNameY;
+					final capturedBP = builderParams;
+					final capturedIR = internalResults;
+					final capturedCtx = savedIncrementalCtx;
+					savedIncrementalCtx.trackExpression(() -> {
+						final newXAxis = resolveAxis(capturedTypeX);
+						final newYAxis = resolveAxis(capturedTypeY);
+						// Drop registrations + per-element bookkeeping from the previous iterations
+						// before tearing down their scene graph, then rebuild into the parent
+						// internalResults (mirrors REPEAT).
+						capturedCtx.cleanupDestroyedSubtree(capturedIR, capturedObject);
+						capturedObject.removeChildren();
+						final savedMode = incrementalMode;
+						final savedCtx = incrementalContext;
+						incrementalMode = false;
+						incrementalContext = null;
+						buildIterations(newXAxis, newYAxis, capturedObject, capturedIR, capturedBP);
+						indexedParams.remove(capturedVarNameX);
+						indexedParams.remove(capturedVarNameY);
+						incrementalMode = savedMode;
+						incrementalContext = savedCtx;
+					}, repeatParamRefs, capturedObject);
+				}
+
 				skipChildren = true;
 				HeapsObject(object);
 
@@ -6249,10 +6719,13 @@ class MultiAnimBuilder {
 
 		final object = builtObject.toh2dObject();
 
-		// In incremental mode: insert sentinel before conditional elements for position tracking
+		// In incremental mode: insert sentinel before conditional elements for position tracking.
+		// Invisible so layout containers (h2d.Flow) skip it — a visible zero-size child would
+		// consume a spacing slot and diverge from the full (sentinel-free) build.
 		var conditionalSentinel:Null<h2d.Object> = null;
-		if (incrementalMode && node.conditionals != NoConditional && incrementalContext != null && current != null) {
+		if (incrementalMode && !suppressConditionalTracking && node.conditionals != NoConditional && incrementalContext != null && current != null) {
 			conditionalSentinel = new h2d.Object();
+			conditionalSentinel.visible = false;
 			addChild(conditionalSentinel);
 		}
 
@@ -6307,10 +6780,15 @@ class MultiAnimBuilder {
 							default: 0;
 						};
 						final indexedKey = '${name} ${idx}';
+						// A 1-D indexed name must resolve to a unique index per build pass.
+						// When its index recurs (e.g. #name[$j] inside nested repeatables,
+						// or a duplicate-value array iterator), the key collides and the
+						// lookup would silently return only the first entry. Reject loudly
+						// instead — symmetric with codegen rejecting it at macro time.
 						if (names.exists(indexedKey))
-							names[indexedKey].push(toNamedResult(updatableName, builtObject, node));
-						else
-							names[indexedKey] = [toNamedResult(updatableName, builtObject, node)];
+							throw builderError('indexed name "${name}[${idx}]" is built more than once with the same index — a 1-D indexed name whose index recurs (nested loops, or a duplicate-value iterator) collides. Give the inner loop a unique index or use a 2-D indexed name (#name[indexX, indexY]).',
+								"indexed_name_collision");
+						names[indexedKey] = [toNamedResult(updatableName, builtObject, node)];
 					}
 				case UNTIndexed2D(name, indexVarX, indexVarY):
 					final indexValueX = indexedParams.get(indexVarX);
@@ -6320,9 +6798,9 @@ class MultiAnimBuilder {
 						final idxY = switch indexValueY { case Value(v): v; default: 0; };
 						final indexedKey = '${name} ${idxX} ${idxY}';
 						if (names.exists(indexedKey))
-							names[indexedKey].push(toNamedResult(updatableName, builtObject, node));
-						else
-							names[indexedKey] = [toNamedResult(updatableName, builtObject, node)];
+							throw builderError('indexed name "${name}[${idxX},${idxY}]" is built more than once with the same index pair — the indices collide. Ensure each (indexX, indexY) is unique.',
+								"indexed_name_collision");
+						names[indexedKey] = [toNamedResult(updatableName, builtObject, node)];
 					}
 				default:
 			}
@@ -6383,10 +6861,19 @@ class MultiAnimBuilder {
 
 		if (!skipChildren) { // for repeatable, as children were already processed
 			final resolvedChildren = resolveConditionalChildren(node.children);
-			for (childNode in resolvedChildren) {
+			final losingChainArms = (incrementalMode && !suppressConditionalTracking) ? computeLosingChainArms(resolvedChildren) : null;
+			for (i in 0...resolvedChildren.length) {
+				final childNode = resolvedChildren[i];
+				pendingChainArmLosing = losingChainArms != null && losingChainArms[i];
 				build(childNode, selectedBuildMode, MultiAnimParser.getGridCoordinateSystem(childNode), MultiAnimParser.getHexCoordinateSystem(childNode),
 					internalResults, builderParams);
 			}
+			// Slot-body @finals were evaluated after the slot ctx snapshotted its params —
+			// sync them (before cleanupFinalVars strips them from the live map) so
+			// SlotHandle.setParameter re-resolution can still see them (same convention
+			// as the root ctx in buildWithParameters)
+			if (slotIncrementalCtx != null)
+				slotIncrementalCtx.syncFinalsFromBuilder(indexedParams);
 			cleanupFinalVars(resolvedChildren, indexedParams);
 		}
 
@@ -6411,11 +6898,11 @@ class MultiAnimBuilder {
 				switch node.updatableName {
 					case UNTIndexed(baseName, indexVar):
 						final index = resolveAsString(RVReference(indexVar)).toInt();
-						internalResults.slots.push({key: Indexed(baseName, index), handle: new SlotHandle(object, slotIncrementalCtx, slotContentTarget)});
+						{ for (__se in internalResults.slots) switch __se.key { case Indexed(n, i) if (n == baseName && i == index): throw builderError('indexed slot "${baseName}[${index}]" is built more than once with the same index — a 1-D indexed slot whose index recurs (nested loops, or a duplicate-value iterator) collides. Give the inner loop a unique index or use a 2-D indexed slot (#name[indexX, indexY]).', "indexed_slot_collision"); default: } } internalResults.slots.push({key: Indexed(baseName, index), handle: new SlotHandle(object, slotIncrementalCtx, slotContentTarget)});
 					case UNTIndexed2D(baseName, indexVarX, indexVarY):
 						final indexX = resolveAsString(RVReference(indexVarX)).toInt();
 						final indexY = resolveAsString(RVReference(indexVarY)).toInt();
-						internalResults.slots.push({key: Indexed2D(baseName, indexX, indexY), handle: new SlotHandle(object, slotIncrementalCtx, slotContentTarget)});
+						{ for (__se in internalResults.slots) switch __se.key { case Indexed2D(n, ix, iy) if (n == baseName && ix == indexX && iy == indexY): throw builderError('indexed slot "${baseName}[${indexX},${indexY}]" is built more than once with the same index pair — the indices collide. Ensure each (indexX, indexY) is unique.', "indexed_slot_collision"); default: } } internalResults.slots.push({key: Indexed2D(baseName, indexX, indexY), handle: new SlotHandle(object, slotIncrementalCtx, slotContentTarget)});
 					case UNTObject(name) | UNTUpdatable(name):
 						internalResults.slots.push({key: Named(name), handle: new SlotHandle(object, slotIncrementalCtx, slotContentTarget)});
 					default:
@@ -6486,6 +6973,12 @@ class MultiAnimBuilder {
 			if (Std.isOfType(object, h2d.Drawable)) {
 				final d:h2d.Drawable = cast object;
 				d.color.setColor(resolveAsColorInteger(node.tint));
+			} else {
+				// tint maps to h2d.Drawable.color, which container objects (the
+				// h2d.Layers programmable root, flow/layers/mask, etc.) don't have.
+				// Silently dropping it hides the mistake — fail fast instead.
+				throw builderError('tint requires a Drawable target (bitmap/text/...); '
+					+ 'cannot apply to ${Std.string(Type.typeof(object))}', "tint_requires_drawable");
 			}
 		}
 	}
@@ -6516,13 +7009,19 @@ class MultiAnimBuilder {
 			case FilterSaturate(v):
 				var m = new h3d.Matrix();
 				m.identity();
-				m.colorSaturate(resolveAsNumber(v));
+				// Documented scale: 0 = grayscale, 1 = normal. Heaps'
+				// colorSaturate adds 1 internally, so shift by -1.
+				m.colorSaturate(resolveAsNumber(v) - 1.0);
 				new h2d.filter.ColorMatrix(m);
 			case FilterBrightness(v):
 				var m = new h3d.Matrix();
 				m.identity();
-				m.colorLightness(resolveAsNumber(v));
-
+				// Documented as a multiplier (0 = black, 1 = normal). Heaps'
+				// colorLightness is an additive offset — scale the diagonal instead.
+				final b = resolveAsNumber(v);
+				m._11 = b;
+				m._22 = b;
+				m._33 = b;
 				new h2d.filter.ColorMatrix(m);
 			case FilterGrayscale(v):
 				var m = new h3d.Matrix();
@@ -6532,7 +7031,8 @@ class MultiAnimBuilder {
 			case FilterHue(v):
 				var m = new h3d.Matrix();
 				m.identity();
-				m.colorHue(resolveAsNumber(v));
+				// Documented in degrees; colorHue expects radians.
+				m.colorHue(hxd.Math.degToRad(resolveAsNumber(v)));
 				new h2d.filter.ColorMatrix(m);
 			case FilterGlow(color, alpha, radius, gain, quality, smoothColor, knockout):
 				final f = new h2d.filter.Glow(resolveAsColorInteger(color), resolveAsNumber(alpha), resolveAsNumber(radius), resolveAsNumber(gain), resolveAsNumber(quality), smoothColor);
@@ -6627,6 +7127,10 @@ class MultiAnimBuilder {
 			final pos = calculatePosition(rootNode.pos, gridCoordinateSystem, hexCoordinateSystem);
 			addPosition(root, pos.x, pos.y);
 
+			// Baked-once content cannot re-evaluate param conditionals — same rejection as the nested TILEGROUP case
+			for (child in rootNode.children)
+				validateTileGroupSubtree(child, []);
+
 			for (child in resolveConditionalChildren(rootNode.children)) {
 				buildTileGroup(child, root, new Point(0, 0), gridCoordinateSystem, hexCoordinateSystem, builderParams);
 			}
@@ -6636,12 +7140,22 @@ class MultiAnimBuilder {
 			this.currentNode = rootNode;
 			root.setPosition(0, 0);
 			applyExtendedFormProperties(root, rootNode);
+			// Root-level scale/alpha/rotation/tint/filter on programmable() must re-fire on
+			// setParameter, same as child nodes (trackIncrementalExpressions). Position is
+			// intentionally NOT tracked here — root pos composes additively with runtime
+			// setPosition, so re-applying it would clobber a caller's setPosition offset.
+			// gateVisibility=false: the root has no parent, so a visibility gate would skip it.
+			if (incrementalMode)
+				trackExtendedFormExpressions(rootNode, root, false);
 
 			final pos = calculatePosition(rootNode.pos, gridCoordinateSystem, hexCoordinateSystem);
 			addPosition(root, pos.x, pos.y);
 
-			for (child in resolveConditionalChildren(rootNode.children)) {
-				build(child, LayersMode(root), gridCoordinateSystem, hexCoordinateSystem, internalResults, builderParams);
+			final rootChildren = resolveConditionalChildren(rootNode.children);
+			final losingChainArms = (incrementalMode && !suppressConditionalTracking) ? computeLosingChainArms(rootChildren) : null;
+			for (i in 0...rootChildren.length) {
+				pendingChainArmLosing = losingChainArms != null && losingChainArms[i];
+				build(rootChildren[i], LayersMode(root), gridCoordinateSystem, hexCoordinateSystem, internalResults, builderParams);
 			}
 		} else { // non-programmable
 			final root = build(rootNode, RootMode, gridCoordinateSystem, hexCoordinateSystem, internalResults, builderParams);
@@ -6649,12 +7163,18 @@ class MultiAnimBuilder {
 			this.currentNode = rootNode;
 			root.setPosition(0, 0);
 			applyExtendedFormProperties(root, rootNode);
+			// gateVisibility=false — see the programmable branch above for rationale.
+			if (incrementalMode)
+				trackExtendedFormExpressions(rootNode, root, false);
 
 			final pos = calculatePosition(rootNode.pos, gridCoordinateSystem, hexCoordinateSystem);
 			addPosition(root, pos.x, pos.y);
 
-			for (child in resolveConditionalChildren(rootNode.children)) {
-				build(child, ObjectMode(root), gridCoordinateSystem, hexCoordinateSystem, internalResults, builderParams);
+			final rootChildren = resolveConditionalChildren(rootNode.children);
+			final losingChainArms = (incrementalMode && !suppressConditionalTracking) ? computeLosingChainArms(rootChildren) : null;
+			for (i in 0...rootChildren.length) {
+				pendingChainArmLosing = losingChainArms != null && losingChainArms[i];
+				build(rootChildren[i], ObjectMode(root), gridCoordinateSystem, hexCoordinateSystem, internalResults, builderParams);
 			}
 		}
 
@@ -6723,8 +7243,15 @@ class MultiAnimBuilder {
 			group.emitDelay = resolveAsNumber(particlesDef.emitDelay);
 		if (particlesDef.emitSync != null)
 			group.emitSync = resolveAsNumber(particlesDef.emitSync);
-		if (particlesDef.maxLife != null)
-			group.life = resolveAsNumber(particlesDef.maxLife);
+		if (particlesDef.maxLife != null) {
+			final resolvedLife = resolveAsNumber(particlesDef.maxLife);
+			// life = 0 divides the lifetime normalization and the spawn-curve
+			// emission accumulator (rate * nparts * dt / life → +Inf → the
+			// emission while-loop never terminates and the game hangs).
+			if (resolvedLife <= 0)
+				throw builderError('maxLife must be greater than 0, got $resolvedLife');
+			group.life = resolvedLife;
+		}
 		if (particlesDef.lifeRandom != null)
 			group.lifeRand = resolveAsNumber(particlesDef.lifeRandom);
 		if (particlesDef.size != null)
@@ -7042,6 +7569,46 @@ class MultiAnimBuilder {
 		return createParticleImpl(particlesDef, name);
 	}
 
+	/** Build a particle system for a codegen (@:manim) instance with the instance's
+	 *  parameters pushed into scope, so `$param` references inside the particles block
+	 *  resolve against the instance values rather than an empty/default scope.
+	 *  Used by ProgrammableBuilder.buildParticles. */
+	public function buildParticleWithParams(particlesDef:ParticlesDef, name:String,
+			programmableName:String, params:Null<Map<String, Dynamic>>):bh.base.Particles {
+		final node = multiParserResult.nodes.get(programmableName);
+		if (node == null)
+			throw builderError('could not find programmable node: $programmableName');
+		pushBuilderState();
+		try {
+			this.indexedParams = resolveProgrammableParamsToScope(node, params);
+			final particles = createParticleImpl(particlesDef, name);
+			popBuilderState();
+			return particles;
+		} catch (e:Dynamic) {
+			popBuilderState();
+			throw e;
+		}
+	}
+
+	/** Convert a codegen instance's Dynamic parameter map into resolved index params,
+	 *  filling in any unsupplied parameter's default. */
+	function resolveProgrammableParamsToScope(node:Node, params:Null<Map<String, Dynamic>>):Map<String, ResolvedIndexParameters> {
+		final hasParams = params != null && params.count() > 0;
+		final defs = getProgrammableParameterDefinitions(node, hasParams);
+		final resolved:Map<String, ResolvedIndexParameters> = new Map();
+		if (params != null) {
+			for (key => value in params) {
+				final def = defs.get(key);
+				resolved.set(key, def != null ? dynamicToResolvedWithDef(def.type, value) : dynamicToResolvedInferred(value));
+			}
+		}
+		for (key => def in defs) {
+			if (!resolved.exists(key) && def.defaultValue != null)
+				resolved.set(key, def.defaultValue);
+		}
+		return resolved;
+	}
+
 	/** Get a data block by name, returning its fields as a Dynamic object. */
 	public function getData(name:String):Dynamic {
 		var node = multiParserResult.nodes.get(name);
@@ -7303,400 +7870,381 @@ class MultiAnimBuilder {
 		throw builderError('curve reference must have either curveName or inlineEasing');
 	}
 
+	// ===================== Autotile =====================
+
 	/**
-	 * Build a TileGroup from autotile definition based on a binary grid.
+	 * Build a TileGroup from an autotile definition over a grid.
 	 * @param name The name of the autotile definition in the .manim file
-	 * @param grid 2D array of 0/1 values where 1 = terrain present
-	 * @return h2d.TileGroup populated with the correct autotiles
+	 * @param grid `grid[y][x]`, any non-zero value = terrain present
+	 * @return h2d.TileGroup in cell space: cell (x, y) covers (x * tileSize, y * tileSize).
+	 *   cross/blob47 draw one tile per filled cell. corner draws one tile per grid corner, offset by
+	 *   half a tile, so its tiles extend half a tile past the grid edge.
 	 */
 	public function buildAutotile(name:String, grid:Array<Array<Int>>):h2d.TileGroup {
-		var node = multiParserResult.nodes.get(name);
-		if (node == null)
-			throw builderError('could not get autotile node #${name}');
-		switch node.type {
-			case AUTOTILE(autotileDef):
-				return buildAutotileImpl(autotileDef, grid, null);
-			default:
-				throw builderErrorAt(node, '$name has to be autotile');
-		}
-	}
-
-	/**
-	 * Build a TileGroup from autotile definition with elevation data.
-	 * @param name The name of the autotile definition in the .manim file
-	 * @param grid 2D array of elevation levels (0 = empty, 1+ = terrain at that elevation)
-	 * @param baseY Base Y position for rendering
-	 * @return h2d.TileGroup populated with the correct autotiles and depth
-	 */
-	public function buildAutotileElevation(name:String, grid:Array<Array<Int>>, baseY:Float):h2d.TileGroup {
-		var node = multiParserResult.nodes.get(name);
-		if (node == null)
-			throw builderError('could not get autotile node #${name}');
-		switch node.type {
-			case AUTOTILE(autotileDef):
-				return buildAutotileImpl(autotileDef, grid, baseY);
-			default:
-				throw builderErrorAt(node, '$name has to be autotile');
-		}
-	}
-
-	private function buildAutotileImpl(autotileDef:AutotileDef, grid:Array<Array<Int>>, ?elevationBaseY:Null<Float>):h2d.TileGroup {
+		final at = getAutotileDef(name);
+		final tiles = getAutotileTiles(name, at.node, at.def);
+		final tileSize = resolveAsInteger(at.def.tileSize);
 		final tileGroup = new h2d.TileGroup();
-		final tiles = loadAutotileTiles(autotileDef);
-		final tileSize = resolveAsInteger(autotileDef.tileSize);
-		final _depth = autotileDef.depth; final depth = _depth != null ? resolveAsInteger(_depth) : 0;
-		// For ATSFile with mapping, the mapping is applied during tile loading, so don't apply it here
-		final mappingAppliedDuringLoading = switch autotileDef.source {
-			case ATSFile(_): autotileDef.mapping != null;
-			default: false;
-		};
-		final mapping = mappingAppliedDuringLoading ? null : autotileDef.mapping;
 
-		final height = grid.length;
-		if (height == 0)
-			return tileGroup;
-		final width = grid[0].length;
-
-		for (y in 0...height) {
-			for (x in 0...width) {
-				if (grid[y][x] == 0)
-					continue;
-
-				final mask8 = bh.base.Autotile.getNeighborMask8(grid, x, y);
-				var tileIndex = switch autotileDef.format {
-					case Cross: bh.base.Autotile.getCrossIndex(mask8);
-					case Blob47: bh.base.Autotile.getBlob47IndexWithFallback(mask8, tiles.length);
-				};
-
-				// Apply custom mapping if provided (Map<Int, Int>)
-				if (mapping != null) {
-					var actualIndex = tileIndex;
-					// For blob47 with allowPartialMapping, apply fallback for missing tiles
-					if (autotileDef.format == Blob47 && autotileDef.allowPartialMapping && !mapping.exists(actualIndex)) {
-						actualIndex = bh.base.Autotile.applyBlob47FallbackWithMap(tileIndex, mapping);
+		switch at.def.format {
+			case Corner:
+				final half = Std.int(tileSize / 2);
+				final width = bh.base.Autotile.gridWidth(grid);
+				for (cy in 0...grid.length + 1)
+					for (cx in 0...width + 1) {
+						final index = bh.base.Autotile.getCornerIndex(grid, cx, cy);
+						if (index == 0)
+							continue; // no filled cell around this corner
+						final tile = tiles[index];
+						if (tile != null)
+							tileGroup.add(cx * tileSize - half, cy * tileSize - half, tile);
 					}
-					final mapped = mapping.get(actualIndex);
-					if (mapped != null) {
-						tileIndex = mapped;
+			case Cross | Blob47:
+				final isCross = at.def.format == AutotileFormat.Cross;
+				for (y in 0...grid.length)
+					for (x in 0...grid[y].length) {
+						if (grid[y][x] == 0)
+							continue;
+						final mask8 = bh.base.Autotile.getNeighborMask8(grid, x, y);
+						final index = isCross ? bh.base.Autotile.getCrossIndex(mask8) : bh.base.Autotile.getBlob47Index(mask8);
+						final tile = tiles[index];
+						if (tile != null)
+							tileGroup.add(x * tileSize, y * tileSize, tile);
 					}
-				}
-
-				if (tileIndex >= 0 && tileIndex < tiles.length) {
-					final tile = tiles[tileIndex];
-					final renderX = x * tileSize;
-					var renderY = y * tileSize;
-
-					// Handle elevation depth rendering
-					if (elevationBaseY != null && depth > 0) {
-						// Render depth/wall below the tile for edge tiles
-						final hasS = (mask8 & bh.base.Autotile.S) == 0;
-						if (hasS && tileIndex < tiles.length) {
-							// This is a south-facing edge, render wall depth below
-							for (d in 0...Std.int(depth / tileSize) + 1) {
-								tileGroup.add(renderX, renderY + tileSize + d * tileSize, tile);
-							}
-						}
-					}
-
-					tileGroup.add(renderX, renderY, tile);
-				}
-			}
 		}
-
 		return tileGroup;
 	}
 
-	private function loadAutotileTiles(autotileDef:AutotileDef):Array<h2d.Tile> {
-		final tileSize = resolveAsInteger(autotileDef.tileSize);
+	/**
+	 * Resolved tile for one autotile index (after mapping and blob47 fallback) — the same tile
+	 * `buildAutotile` places. Corner index 0 (no filled cell) returns a transparent tile unless the
+	 * source provides one.
+	 */
+	public function getAutotileTile(name:String, index:Int):h2d.Tile {
+		final at = getAutotileDef(name);
+		final tiles = getAutotileTiles(name, at.node, at.def);
+		if (index < 0 || index >= tiles.length)
+			throw builderErrorAt(at.node, 'autotile "$name": index $index is out of range for ${autotileFormatName(at.def.format)} (0-${tiles.length - 1})', "autotile_index");
+		final tile = tiles[index];
+		if (tile != null)
+			return tile;
+		final tileSize = resolveAsInteger(at.def.tileSize);
+		return h2d.Tile.fromColor(0, tileSize, tileSize, 0.0);
+	}
 
-		return switch autotileDef.source {
-			case ATSAtlas(sheet, prefix):
-				final atlas = getOrLoadSheet(resolveAsString(sheet));
-				final prefixStr = resolveAsString(prefix);
-				final tileCount = switch autotileDef.format {
-					case Cross: 13;
-					case Blob47: 47;
-				};
-				[for (i in 0...tileCount) atlas.get(prefixStr + Std.string(i)).tile];
+	function getAutotileDef(name:String):{node:Node, def:AutotileDef} {
+		final node = multiParserResult.nodes.get(name);
+		if (node == null)
+			throw builderError('autotile "$name" not found', "missing_ref");
+		return switch node.type {
+			case AUTOTILE(def): {node: node, def: def};
+			default: throw builderErrorAt(node, '"$name" is not an autotile definition');
+		};
+	}
 
-			case ATSAtlasRegion(sheet, region):
-				// For region-based loading, we need to load the sheet's image file directly
-				// This requires the sheet to have a loadable tile resource
-				final sheetName = resolveAsString(sheet);
-				final baseTile = resourceLoader.loadTile(sheetName);
-				final rx = resolveAsInteger(region[0]);
-				final ry = resolveAsInteger(region[1]);
-				final rw = resolveAsInteger(region[2]);
-				final rh = resolveAsInteger(region[3]);
-				final tilesPerRow = Std.int(rw / tileSize);
-				final tileCount = switch autotileDef.format {
-					case Cross: 13;
-					case Blob47: 47;
-				};
-				[
-					for (i in 0...tileCount)
-						baseTile.sub(rx + (i % tilesPerRow) * tileSize, ry + Std.int(i / tilesPerRow) * tileSize, tileSize, tileSize)
-				];
+	static function autotileTileCount(format:AutotileFormat):Int {
+		return switch format {
+			case Cross: bh.base.Autotile.CROSS_TILE_COUNT;
+			case Blob47: bh.base.Autotile.BLOB47_TILE_COUNT;
+			case Corner: bh.base.Autotile.CORNER_TILE_COUNT;
+		};
+	}
 
-			case ATSFile(filename):
-				final baseTile = resourceLoader.loadTile(resolveAsString(filename));
-				final tileCount = switch autotileDef.format {
-					case Cross: 13;
-					case Blob47: 47;
-				};
-
-				// If region is provided, extract tiles from that region only
-				// Region format: [offsetX, offsetY, width, height]
-				// Tile indices in mapping are relative to the region
-				final _region = autotileDef.region;
-				final regionX = _region != null ? resolveAsInteger(_region[0]) : 0;
-				final regionY = _region != null ? resolveAsInteger(_region[1]) : 0;
-				final regionW = _region != null ? resolveAsInteger(_region[2]) : Std.int(baseTile.width);
-				final tilesPerRow = Std.int(regionW / tileSize);
-
-				// If mapping is provided (Map<Int, Int>), load tiles from mapped positions
-				// For allowPartialMapping, missing tiles will be filled with a placeholder and resolved at render time
-				final _mapping = autotileDef.mapping;
-				if (_mapping != null) {
-					final result = new Array<h2d.Tile>();
-					for (i in 0...tileCount) {
-						// Get the mapped tileset index, using fallback for missing blob47 tiles
-						var mappedIdx = 0;
-						final mv = _mapping.get(i);
-						if (mv != null) {
-							mappedIdx = mv;
-						} else if (autotileDef.format == Blob47 && autotileDef.allowPartialMapping) {
-							// Find fallback tile and use its mapping
-							final fallbackIdx = bh.base.Autotile.applyBlob47FallbackWithMap(i, _mapping);
-							final fv = _mapping.get(fallbackIdx);
-							mappedIdx = fv != null ? fv : 0;
-						} else {
-							throw builderError('autotile: tile index $i not found in mapping');
-						}
-						result.push(baseTile.sub(
-							regionX + (mappedIdx % tilesPerRow) * tileSize,
-							regionY + Std.int(mappedIdx / tilesPerRow) * tileSize,
-							tileSize, tileSize
-						));
-					}
-					result;
-				}
-				else {
-					// Sequential tile extraction from the region
-					[for (i in 0...tileCount) baseTile.sub(
-						regionX + (i % tilesPerRow) * tileSize,
-						regionY + Std.int(i / tilesPerRow) * tileSize,
-						tileSize, tileSize
-					)];
-				}
-
-			case ATSTiles(tiles):
-				// Explicit tile list - load each tile source directly
-				[for (ts in tiles) loadTileSource(ts)];
-
-			case ATSDemo(edgeColor, fillColor):
-				// Auto-generated demo tiles based on format
-				final edge = resolveAsColorInteger(edgeColor);
-				final fill = resolveAsColorInteger(fillColor);
-				final tileCount = switch autotileDef.format {
-					case Cross: 13;
-					case Blob47: 47;
-				};
-				[for (i in 0...tileCount) generateAutotileDemoTile(autotileDef.format, i, tileSize, edge, fill)];
+	static function autotileFormatName(format:AutotileFormat):String {
+		return switch format {
+			case Cross: "cross";
+			case Blob47: "blob47";
+			case Corner: "corner";
 		};
 	}
 
 	/**
-	 * Generate a single demo tile for autotiling visualization.
-	 * Draws tiles with edge/fill colors showing which edges connect to neighbors.
-	 * Outer corners get diagonal triangles for smoother appearance.
+	 * Resolve every index of an autotile to a tile, once per builder (cached by name).
+	 *
+	 * Same rules for every source: `mapping:` maps autotile index -> source index, identity when
+	 * absent. An index with no source tile is an error, except:
+	 * - blob47 with `allowPartialMapping: true` uses the closest mapped tile
+	 *   (`Autotile.applyBlob47FallbackWithMap`);
+	 * - corner index 0 (no filled cell) is optional — it is never drawn.
 	 */
-	private function generateAutotileDemoTile(format:AutotileFormat, tileIndex:Int, tileSize:Int, edgeColor:Int, fillColor:Int):h2d.Tile {
+	function getAutotileTiles(name:String, node:Node, def:AutotileDef):Array<Null<h2d.Tile>> {
+		final cached = autotileTileCache.get(name);
+		if (cached != null)
+			return cached;
+
+		final format = def.format;
+		final count = autotileTileCount(format);
+		final formatName = autotileFormatName(format);
+		final tileSize = resolveAsInteger(def.tileSize);
+		if (tileSize <= 0)
+			throw builderErrorAt(node, 'autotile "$name": tileSize must be > 0, got $tileSize');
+
+		final source = resolveAutotileSource(name, node, def, tileSize);
+
+		var mapping:Map<Int, Int>;
+		final explicitMapping = def.mapping;
+		if (explicitMapping != null) {
+			mapping = explicitMapping;
+		} else {
+			if (source.exact && source.count > count)
+				throw builderErrorAt(node, 'autotile "$name": ${source.desc} lists ${source.count} tiles but $formatName has only $count indices (0-${count - 1}) - add a mapping: to pick tiles', "autotile_index");
+			mapping = new Map();
+			final n = source.count < 0 ? count : Std.int(Math.min(count, source.count));
+			for (i in 0...n)
+				// An open-ended source (sheet: + prefix:) maps only the frames it has, so a
+				// missing frame reaches the blob47 fallback / missing-tile error below
+				if (source.count >= 0 || source.get(i) != null)
+					mapping.set(i, i);
+		}
+
+		final optionalIndex = format == AutotileFormat.Corner ? 0 : -1;
+		final partial = format == AutotileFormat.Blob47 && def.allowPartialMapping == true;
+		final tiles:Array<Null<h2d.Tile>> = [];
+		for (i in 0...count) {
+			var sourceIndex = mapping.get(i);
+			if (sourceIndex == null && partial)
+				sourceIndex = mapping.get(bh.base.Autotile.applyBlob47FallbackWithMap(i, mapping));
+			if (sourceIndex == null) {
+				if (i == optionalIndex) {
+					tiles.push(null);
+					continue;
+				}
+				final where = explicitMapping != null ? "mapping: has no entry for it" : '${source.desc} does not provide it';
+				final hint = format == AutotileFormat.Blob47 ? " (or set allowPartialMapping: true to use the closest mapped tile)" : "";
+				throw builderErrorAt(node, 'autotile "$name": no tile for $formatName index $i - $where$hint', "autotile_missing_tile");
+			}
+			final j:Int = sourceIndex;
+			if (source.count >= 0 && j >= source.count)
+				throw builderErrorAt(node, 'autotile "$name": $formatName index $i maps to source tile $j, but ${source.desc} has only ${source.count} tiles (0-${source.count - 1})', "autotile_index");
+			final tile = source.get(j);
+			if (tile == null) {
+				if (i == optionalIndex) {
+					tiles.push(null);
+					continue;
+				}
+				throw builderErrorAt(node, 'autotile "$name": ${source.desc} has no source tile $j (needed for $formatName index $i)', "autotile_missing_tile");
+			}
+			tiles.push(tile);
+		}
+		autotileTileCache.set(name, tiles);
+		return tiles;
+	}
+
+	/**
+	 * Tiles addressed by source index. `count` < 0 = open-ended (atlas prefix: probed by name).
+	 * `exact` = the source is an explicit list, so surplus tiles without a mapping are a mistake
+	 * (a file region may legitimately hold more tiles than the format uses).
+	 */
+	function resolveAutotileSource(name:String, node:Node, def:AutotileDef, tileSize:Int):{count:Int, exact:Bool, desc:String, get:Int->Null<h2d.Tile>} {
+		return switch def.source {
+			case ATSDemo(edgeColor, fillColor):
+				final demo = generateAutotileDemoTiles(def.format, tileSize, resolveAsColorInteger(edgeColor), resolveAsColorInteger(fillColor));
+				{count: demo.length, exact: true, desc: "demo:", get: j -> demo[j]};
+			case ATSTiles(list):
+				final loaded = [for (ts in list) loadTileSource(ts)];
+				{count: loaded.length, exact: true, desc: 'tiles: (${loaded.length} tiles)', get: j -> loaded[j]};
+			case ATSFile(filename):
+				final file = resolveAsString(filename);
+				final base = resourceLoader.loadTile(file);
+				final r = resolveAutotileRegion(name, node, def, base, tileSize);
+				final cols = Std.int(r.w / tileSize);
+				final regionCount = cols * Std.int(r.h / tileSize);
+				{
+					count: regionCount,
+					exact: false,
+					desc: 'file: "$file" region [${r.x}, ${r.y}, ${r.w}, ${r.h}]',
+					get: j -> base.sub(r.x + (j % cols) * tileSize, r.y + Std.int(j / cols) * tileSize, tileSize, tileSize)
+				};
+			case ATSAtlas(sheet, prefix):
+				final sheetName = resolveAsString(sheet);
+				final prefixStr = resolveAsString(prefix);
+				final atlas = getOrLoadSheet(sheetName);
+				{
+					count: -1,
+					exact: false,
+					desc: 'sheet: "$sheetName" prefix: "$prefixStr"',
+					get: j -> {
+						final frame = atlas.get(prefixStr + j);
+						frame == null ? null : frame.tile;
+					}
+				};
+		};
+	}
+
+	/**
+	 * Pixel region of a file: source. Explicit `region:` must lie inside the image and be a whole
+	 * number of tiles; without one the whole image is used (rounded down to whole tiles).
+	 */
+	function resolveAutotileRegion(name:String, node:Node, def:AutotileDef, base:h2d.Tile, tileSize:Int):{x:Int, y:Int, w:Int, h:Int} {
+		final imageW = Std.int(base.width);
+		final imageH = Std.int(base.height);
+		final region = def.region;
+		if (region == null)
+			return {x: 0, y: 0, w: imageW - imageW % tileSize, h: imageH - imageH % tileSize};
+
+		final r = {
+			x: resolveAsInteger(region[0]),
+			y: resolveAsInteger(region[1]),
+			w: resolveAsInteger(region[2]),
+			h: resolveAsInteger(region[3])
+		};
+		if (r.x < 0 || r.y < 0 || r.w <= 0 || r.h <= 0 || r.x + r.w > imageW || r.y + r.h > imageH)
+			throw builderErrorAt(node, 'autotile "$name": region [${r.x}, ${r.y}, ${r.w}, ${r.h}] does not fit the ${imageW}x${imageH} image', "autotile_region");
+		if (r.w % tileSize != 0 || r.h % tileSize != 0)
+			throw builderErrorAt(node, 'autotile "$name": region size ${r.w}x${r.h} is not a whole number of ${tileSize}px tiles', "autotile_region");
+		return r;
+	}
+
+	/**
+	 * Demo tiles for every index of a format, drawn into ONE texture (8 tiles per row) and
+	 * returned as sub-tiles, so a demo terrain is a single TileGroup draw call.
+	 */
+	function generateAutotileDemoTiles(format:AutotileFormat, tileSize:Int, edgeColor:Int, fillColor:Int):Array<h2d.Tile> {
+		final count = autotileTileCount(format);
+		final perRow = 8;
+		final rows = Std.int((count + perRow - 1) / perRow);
+		final pl = new PixelLines(perRow * tileSize, rows * tileSize);
+		pl.clear();
+		for (i in 0...count)
+			drawAutotileDemoTile(pl, (i % perRow) * tileSize, Std.int(i / perRow) * tileSize, format, i, tileSize, edgeColor, fillColor);
+		pl.updateBitmap();
+		final sheet = pl.tile;
+		return [
+			for (i in 0...count)
+				sheet.sub((i % perRow) * tileSize, Std.int(i / perRow) * tileSize, tileSize, tileSize)
+		];
+	}
+
+	/**
+	 * Draw one demo tile at (ox, oy).
+	 * cross/blob47: filled tile, edge-coloured border on every side without a neighbour, diagonal
+	 * cut where two border sides meet (outer corner), small notch where both cardinals are present
+	 * but the diagonal between them is missing (inner corner).
+	 * corner: filled quadrants for the filled cells, border along the terrain boundary through the
+	 * tile centre, transparent elsewhere.
+	 */
+	function drawAutotileDemoTile(pl:PixelLines, ox:Int, oy:Int, format:AutotileFormat, tileIndex:Int, tileSize:Int, edgeColor:Int, fillColor:Int):Void {
 		final borderWidth = Std.int(Math.max(1, tileSize / 8));
+		if (format == AutotileFormat.Corner) {
+			final half = Std.int(tileSize / 2);
+			final nw = (tileIndex & bh.base.Autotile.CORNER_NW) != 0;
+			final ne = (tileIndex & bh.base.Autotile.CORNER_NE) != 0;
+			final sw = (tileIndex & bh.base.Autotile.CORNER_SW) != 0;
+			final se = (tileIndex & bh.base.Autotile.CORNER_SE) != 0;
+			if (nw) pl.filledRect(ox, oy, half, half, fillColor);
+			if (ne) pl.filledRect(ox + half, oy, tileSize - half, half, fillColor);
+			if (sw) pl.filledRect(ox, oy + half, half, tileSize - half, fillColor);
+			if (se) pl.filledRect(ox + half, oy + half, tileSize - half, tileSize - half, fillColor);
+			// The boundary between a filled and an empty quadrant runs through the tile centre;
+			// draw it on the filled side so neighbouring tiles join into one outline.
+			if (nw != ne) pl.filledRect(nw ? ox + half - borderWidth : ox + half, oy, borderWidth, half, edgeColor);
+			if (sw != se) pl.filledRect(sw ? ox + half - borderWidth : ox + half, oy + half, borderWidth, tileSize - half, edgeColor);
+			if (nw != sw) pl.filledRect(ox, nw ? oy + half - borderWidth : oy + half, half, borderWidth, edgeColor);
+			if (ne != se) pl.filledRect(ox + half, ne ? oy + half - borderWidth : oy + half, tileSize - half, borderWidth, edgeColor);
+			return;
+		}
+
 		final cornerSize = Std.int(Math.max(2, tileSize / 2)); // Size of diagonal corner cut
-		final pl = new PixelLines(tileSize, tileSize);
+		final edges = getAutotileDemoEdges(format, tileIndex);
 
 		// Fill entire tile with fill color
-		pl.filledRect(0, 0, tileSize, tileSize, fillColor);
-
-		// Get edge configuration for this tile index
-		final edges = getAutotileEdges(format, tileIndex);
+		pl.filledRect(ox, oy, tileSize, tileSize, fillColor);
 
 		// Draw borders on edges where there's no neighbor (edge = true means draw border)
 		if (edges.n)
-			pl.filledRect(0, 0, tileSize, borderWidth, edgeColor);
+			pl.filledRect(ox, oy, tileSize, borderWidth, edgeColor);
 		if (edges.s)
-			pl.filledRect(0, tileSize - borderWidth, tileSize, borderWidth, edgeColor);
+			pl.filledRect(ox, oy + tileSize - borderWidth, tileSize, borderWidth, edgeColor);
 		if (edges.w)
-			pl.filledRect(0, 0, borderWidth, tileSize, edgeColor);
+			pl.filledRect(ox, oy, borderWidth, tileSize, edgeColor);
 		if (edges.e)
-			pl.filledRect(tileSize - borderWidth, 0, borderWidth, tileSize, edgeColor);
+			pl.filledRect(ox + tileSize - borderWidth, oy, borderWidth, tileSize, edgeColor);
 
-		// Draw outer corner triangles (diagonal cut) where two adjacent edges meet
-		if (edges.n && edges.w) {
-			// NW outer corner - triangle from (0,cornerSize) to (cornerSize,0)
-			for (i in 0...cornerSize) {
-				final lineLen = cornerSize - i;
-				pl.filledRect(0, i, lineLen, 1, edgeColor);
-			}
-		}
-		if (edges.n && edges.e) {
-			// NE outer corner - triangle from (tileSize-cornerSize,0) to (tileSize,cornerSize)
-			for (i in 0...cornerSize) {
-				final lineLen = cornerSize - i;
-				pl.filledRect(tileSize - lineLen, i, lineLen, 1, edgeColor);
-			}
-		}
-		if (edges.s && edges.w) {
-			// SW outer corner - triangle from (0,tileSize-cornerSize) to (cornerSize,tileSize)
-			for (i in 0...cornerSize) {
-				final lineLen = cornerSize - i;
-				pl.filledRect(0, tileSize - 1 - i, lineLen, 1, edgeColor);
-			}
-		}
-		if (edges.s && edges.e) {
-			// SE outer corner - triangle from (tileSize-cornerSize,tileSize) to (tileSize,tileSize-cornerSize)
-			for (i in 0...cornerSize) {
-				final lineLen = cornerSize - i;
-				pl.filledRect(tileSize - lineLen, tileSize - 1 - i, lineLen, 1, edgeColor);
-			}
+		// Outer corner triangles (diagonal cut) where two adjacent border sides meet
+		for (i in 0...cornerSize) {
+			final lineLen = cornerSize - i;
+			if (edges.n && edges.w)
+				pl.filledRect(ox, oy + i, lineLen, 1, edgeColor);
+			if (edges.n && edges.e)
+				pl.filledRect(ox + tileSize - lineLen, oy + i, lineLen, 1, edgeColor);
+			if (edges.s && edges.w)
+				pl.filledRect(ox, oy + tileSize - 1 - i, lineLen, 1, edgeColor);
+			if (edges.s && edges.e)
+				pl.filledRect(ox + tileSize - lineLen, oy + tileSize - 1 - i, lineLen, 1, edgeColor);
 		}
 
-		// Draw inner corners (triangular notches for diagonal-missing tiles)
-		// Inner corners are the opposite of outer corners - they cut into the fill
-		final innerCornerSize = Std.int(Math.max(2, tileSize / 4)); // Smaller than outer corners
-		if (edges.innerNE) {
-			// Inner NE corner - triangle at top-right cutting into fill
-			for (i in 0...innerCornerSize) {
-				final lineLen = innerCornerSize - i;
-				pl.filledRect(tileSize - lineLen, i, lineLen, 1, edgeColor);
-			}
+		// Inner corner notches (both cardinals present, diagonal between them missing)
+		final innerCornerSize = Std.int(Math.max(2, tileSize / 4));
+		for (i in 0...innerCornerSize) {
+			final lineLen = innerCornerSize - i;
+			if (edges.innerNE)
+				pl.filledRect(ox + tileSize - lineLen, oy + i, lineLen, 1, edgeColor);
+			if (edges.innerNW)
+				pl.filledRect(ox, oy + i, lineLen, 1, edgeColor);
+			if (edges.innerSE)
+				pl.filledRect(ox + tileSize - lineLen, oy + tileSize - 1 - i, lineLen, 1, edgeColor);
+			if (edges.innerSW)
+				pl.filledRect(ox, oy + tileSize - 1 - i, lineLen, 1, edgeColor);
 		}
-		if (edges.innerNW) {
-			// Inner NW corner - triangle at top-left cutting into fill
-			for (i in 0...innerCornerSize) {
-				final lineLen = innerCornerSize - i;
-				pl.filledRect(0, i, lineLen, 1, edgeColor);
-			}
-		}
-		if (edges.innerSE) {
-			// Inner SE corner - triangle at bottom-right cutting into fill
-			for (i in 0...innerCornerSize) {
-				final lineLen = innerCornerSize - i;
-				pl.filledRect(tileSize - lineLen, tileSize - 1 - i, lineLen, 1, edgeColor);
-			}
-		}
-		if (edges.innerSW) {
-			// Inner SW corner - triangle at bottom-left cutting into fill
-			for (i in 0...innerCornerSize) {
-				final lineLen = innerCornerSize - i;
-				pl.filledRect(0, tileSize - 1 - i, lineLen, 1, edgeColor);
-			}
-		}
-
-		pl.updateBitmap();
-		return pl.tile;
 	}
 
 	/**
-	 * Get edge configuration for a tile index in a given format.
-	 * Returns which edges/corners should have borders drawn.
+	 * Which sides of a cross/blob47 demo tile get a border (no neighbour there) and which inner
+	 * corners get a notch (both adjacent cardinals present, diagonal missing).
 	 */
-	private function getAutotileEdges(format:AutotileFormat, tileIndex:Int):{n:Bool, s:Bool, e:Bool, w:Bool, innerNE:Bool, innerNW:Bool, innerSE:Bool, innerSW:Bool} {
-		return switch format {
-			case Cross: getCrossEdges(tileIndex);
-			case Blob47: getBlob47Edges(tileIndex);
+	static function getAutotileDemoEdges(format:AutotileFormat, tileIndex:Int):{n:Bool, s:Bool, e:Bool, w:Bool, innerNE:Bool, innerNW:Bool, innerSE:Bool, innerSW:Bool} {
+		// Equivalent reduced neighbour mask for the tile
+		final mask = switch format {
+			case Blob47: bh.base.Autotile.getBlob47Mask(tileIndex);
+			case Cross: crossDemoMask(tileIndex);
+			case Corner: 0; // not used — corner demo tiles are drawn by quadrant
+		};
+		final hasN = (mask & bh.base.Autotile.N) != 0;
+		final hasE = (mask & bh.base.Autotile.E) != 0;
+		final hasS = (mask & bh.base.Autotile.S) != 0;
+		final hasW = (mask & bh.base.Autotile.W) != 0;
+		return {
+			n: !hasN,
+			s: !hasS,
+			e: !hasE,
+			w: !hasW,
+			innerNE: hasN && hasE && (mask & bh.base.Autotile.NE) == 0,
+			innerNW: hasN && hasW && (mask & bh.base.Autotile.NW) == 0,
+			innerSE: hasS && hasE && (mask & bh.base.Autotile.SE) == 0,
+			innerSW: hasS && hasW && (mask & bh.base.Autotile.SW) == 0
 		};
 	}
 
 	/**
-	 * Cross format edge configuration.
-	 * Layout: 0=N 1=W 2=C 3=E 4=S / 5=NW 6=NE 7=SW 8=SE outer / 9-12=inner corners
+	 * Representative neighbour mask for a cross tile (0=N 1=W 2=C 3=E 4=S edge, 5-8 NW/NE/SW/SE
+	 * outer, 9-12 inner NE/NW/SE/SW). Edge/outer tiles carry the diagonals between the sides they
+	 * have, so only the inner tiles show a notch.
 	 */
-	private function getCrossEdges(idx:Int):{n:Bool, s:Bool, e:Bool, w:Bool, innerNE:Bool, innerNW:Bool, innerSE:Bool, innerSW:Bool} {
-		return switch idx {
-			case 0: {n: true, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N edge
-			case 1: {n: false, s: false, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // W edge
-			case 2: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // Center
-			case 3: {n: false, s: false, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // E edge
-			case 4: {n: false, s: true, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // S edge
-			case 5: {n: true, s: false, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // NW outer corner
-			case 6: {n: true, s: false, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // NE outer corner
-			case 7: {n: false, s: true, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // SW outer corner
-			case 8: {n: false, s: true, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // SE outer corner
-			case 9: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: false, innerSE: false, innerSW: false}; // inner-NE
-			case 10: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: true, innerSE: false, innerSW: false}; // inner-NW
-			case 11: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: true, innerSW: false}; // inner-SE
-			case 12: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: true}; // inner-SW
-			default: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};
-		};
-	}
-
-	/**
-	 * Blob47 edge configuration based on the reduced mask mapping.
-	 * Maps each of the 47 tiles to its edge/corner configuration.
-	 * Inner corners are drawn where diagonal is MISSING (not present).
-	 * Comments show which neighbors ARE present.
-	 */
-	private function getBlob47Edges(idx:Int):{n:Bool, s:Bool, e:Bool, w:Bool, innerNE:Bool, innerNW:Bool, innerSE:Bool, innerSW:Bool} {
-		return switch idx {
-			// No cardinals - isolated or single edges (no inner corners possible)
-			case 0: {n: true, s: true, e: true, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};     // isolated
-			case 1: {n: false, s: true, e: true, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};    // N only
-			case 2: {n: true, s: true, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};    // E only
-			case 5: {n: true, s: false, e: true, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};    // S only
-			case 13: {n: true, s: true, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};   // W only
-
-			// Two adjacent cardinals - outer corners (no inner corners)
-			case 3: {n: false, s: true, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};   // N+E (corner)
-			case 4: {n: false, s: true, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};   // N+NE+E
-			case 7: {n: true, s: false, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};   // E+S (corner)
-			case 10: {n: true, s: false, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // E+SE+S
-			case 14: {n: false, s: true, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // N+W (corner)
-			case 18: {n: true, s: false, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // S+W (corner)
-			case 26: {n: true, s: false, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // S+SW+W
-			case 34: {n: false, s: true, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // N+W+NW
-
-			// Two opposite cardinals - edges (no inner corners)
-			case 6: {n: false, s: false, e: true, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};   // N+S
-			case 15: {n: true, s: true, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // E+W
-			case 19: {n: false, s: false, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+S+W
-			case 27: {n: false, s: false, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+S+SW+W
-			case 37: {n: false, s: false, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+S+W+NW
-			case 42: {n: false, s: false, e: true, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+S+SW+W+NW
-
-			// Three cardinals - T-shapes (no inner corners in missing direction)
-			case 8: {n: false, s: false, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // N+E+S
-			case 9: {n: false, s: false, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false};  // N+NE+E+S
-			case 11: {n: false, s: false, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+E+SE+S
-			case 12: {n: false, s: false, e: false, w: true, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+NE+E+SE+S
-			case 16: {n: false, s: true, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+E+W
-			case 17: {n: false, s: true, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+NE+E+W
-			case 20: {n: true, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // E+S+W
-			case 23: {n: true, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // E+SE+S+W
-			case 28: {n: true, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // E+S+SW+W
-			case 31: {n: true, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // E+SE+S+SW+W
-			case 35: {n: false, s: true, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+E+W+NW
-			case 36: {n: false, s: true, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // N+NE+E+W+NW
-
-			// All four cardinals - inner corners where diagonals are MISSING
-			case 21: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: true, innerSE: true, innerSW: true};    // N+E+S+W (all diagonals missing)
-			case 22: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: true, innerSE: true, innerSW: true};   // N+NE+E+S+W (NE present)
-			case 24: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: true, innerSE: false, innerSW: true};   // N+E+SE+S+W (SE present)
-			case 25: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: true, innerSE: false, innerSW: true};  // N+NE+E+SE+S+W (NE+SE present)
-			case 29: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: true, innerSE: true, innerSW: false};   // N+E+S+SW+W (SW present)
-			case 30: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: true, innerSE: true, innerSW: false};  // N+NE+E+S+SW+W (NE+SW present)
-			case 32: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: true, innerSE: false, innerSW: false};  // N+E+SE+S+SW+W (SE+SW present)
-			case 33: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: true, innerSE: false, innerSW: false}; // N+NE+E+SE+S+SW+W (NE+SE+SW present)
-			case 38: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: false, innerSE: true, innerSW: true};   // N+E+S+W+NW (NW present)
-			case 39: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: true, innerSW: true};  // N+NE+E+S+W+NW (NE+NW present)
-			case 40: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: false, innerSE: false, innerSW: true};  // N+E+SE+S+W+NW (SE+NW present)
-			case 41: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: true}; // N+NE+E+SE+S+W+NW (NE+SE+NW present)
-			case 43: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: false, innerSE: true, innerSW: false};  // N+E+S+SW+W+NW (SW+NW present)
-			case 44: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: true, innerSW: false}; // N+NE+E+S+SW+W+NW (NE+SW+NW present)
-			case 45: {n: false, s: false, e: false, w: false, innerNE: true, innerNW: false, innerSE: false, innerSW: false}; // N+E+SE+S+SW+W+NW (SE+SW+NW present)
-			case 46: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false}; // all neighbors (none missing)
-			default: {n: false, s: false, e: false, w: false, innerNE: false, innerNW: false, innerSE: false, innerSW: false};
+	static function crossDemoMask(tileIndex:Int):Int {
+		final n = bh.base.Autotile.N;
+		final ne = bh.base.Autotile.NE;
+		final e = bh.base.Autotile.E;
+		final se = bh.base.Autotile.SE;
+		final s = bh.base.Autotile.S;
+		final sw = bh.base.Autotile.SW;
+		final w = bh.base.Autotile.W;
+		final nw = bh.base.Autotile.NW;
+		final all = n | ne | e | se | s | sw | w | nw;
+		return switch tileIndex {
+			case 0: all & ~(n | ne | nw); // N edge
+			case 1: all & ~(w | nw | sw); // W edge
+			case 2: all; // center
+			case 3: all & ~(e | ne | se); // E edge
+			case 4: all & ~(s | se | sw); // S edge
+			case 5: e | se | s; // NW outer
+			case 6: w | sw | s; // NE outer
+			case 7: n | ne | e; // SW outer
+			case 8: n | nw | w; // SE outer
+			case 9: all & ~ne; // inner NE
+			case 10: all & ~nw; // inner NW
+			case 11: all & ~se; // inner SE
+			case 12: all & ~sw; // inner SW
+			default: all;
 		};
 	}
 
@@ -7807,7 +8355,7 @@ class MultiAnimBuilder {
 				builderParams.callback = defaultCallback;
 			var node = multiParserResult.nodes.get(name);
 			if (node == null) {
-				throw 'buildWithParameters ${inputParameters}: could find element "$name" to build';
+				throw 'buildWithParameters ${inputParameters}: could not find element "$name" to build';
 			}
 
 			final hasParams = inputParameters != null && inputParameters.count() > 0;
@@ -7915,63 +8463,104 @@ class MultiAnimBuilder {
 		final gridCS = MultiAnimParser.getGridCoordinateSystem(slotNode);
 		final hexCS = MultiAnimParser.getHexCoordinateSystem(slotNode);
 		pushBuilderState();
-
-		// Build merged params: parent params converted to resolved + slot defaults
-		final mergedParams:Map<String, ResolvedIndexParameters> = new Map();
-		if (parentParams != null) {
-			final progDefs = getProgrammableParameterDefinitions(progNode, false);
-			for (key => value in parentParams) {
-				final def = progDefs.get(key);
-				if (def != null) {
-					mergedParams.set(key, dynamicToResolvedWithDef(def.type, value));
-				} else {
-					mergedParams.set(key, dynamicToResolvedInferred(value));
+		try {
+			// Build merged params: parent params converted to resolved + slot defaults
+			final mergedParams:Map<String, ResolvedIndexParameters> = new Map();
+			if (parentParams != null) {
+				final progDefs = getProgrammableParameterDefinitions(progNode, false);
+				for (key => value in parentParams) {
+					final def = progDefs.get(key);
+					if (def != null) {
+						mergedParams.set(key, dynamicToResolvedWithDef(def.type, value));
+					} else {
+						mergedParams.set(key, dynamicToResolvedInferred(value));
+					}
 				}
 			}
-		}
-		// Merge slot parameter defaults
-		for (key => def in slotParams) {
-			if (def.defaultValue != null && !mergedParams.exists(key))
-				mergedParams.set(key, def.defaultValue);
-		}
-		this.indexedParams = mergedParams;
-
-		// Create incremental context for the slot
-		final builderParams:BuilderParameters = {
-			callback: (parentBP != null && parentBP.callback != null) ? parentBP.callback : defaultCallback,
-			placeholderObjects: parentBP != null ? parentBP.placeholderObjects : null,
-			scene: parentBP != null ? parentBP.scene : null,
-		};
-		this.builderParams = builderParams;
-		final slotCtx = new IncrementalUpdateContext(this, mergedParams, builderParams, slotNode);
-		if (tweenManager != null)
-			slotCtx.setTweenManager(tweenManager);
-		this.incrementalMode = true;
-		this.incrementalContext = slotCtx;
-
-		// Build slot children into container
-		final internalResults:InternalBuilderResults = {names: new Map(), interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
-		for (childNode in resolveConditionalChildren(slotNode.children)) {
-			build(childNode, ObjectMode(container), cast gridCS, cast hexCS, internalResults, builderParams);
-		}
-
-		popBuilderState();
-
-		// Find slotContent child if present
-		var slotContentTarget:Null<h2d.Object> = null;
-		for (i in 0...container.numChildren) {
-			if (Std.downcast(container.getChildAt(i), SlotContentRoot) != null) {
-				slotContentTarget = container.getChildAt(i);
-				break;
+			// Merge slot parameter defaults
+			for (key => def in slotParams) {
+				if (def.defaultValue != null && !mergedParams.exists(key))
+					mergedParams.set(key, def.defaultValue);
 			}
+			// Enclosing @final constants are in scope inside slot bodies. This path
+			// builds only the slot subtree, so the finals that precede the slot along
+			// its ancestor chain must be replayed here — stored lazily as
+			// ExpressionAlias (same as evaluateAndStoreFinal), so param-dependent
+			// finals resolve against the merged params at reference time. Finals
+			// declared after the slot were rejected at parse time and are skipped.
+			var chainWalk = slotNode;
+			final ancestorChain:Array<Node> = [];
+			while (chainWalk != null && chainWalk != progNode) {
+				ancestorChain.unshift(chainWalk);
+				chainWalk = chainWalk.parent;
+			}
+			if (chainWalk == progNode) {
+				var finalScope = progNode;
+				for (next in ancestorChain) {
+					for (child in finalScope.children) {
+						if (child == next)
+							break;
+						switch child.type {
+							case FINAL_VAR(fname, fexpr):
+								if (!mergedParams.exists(fname))
+									mergedParams.set(fname, ExpressionAlias(fexpr));
+							default:
+						}
+					}
+					finalScope = next;
+				}
+			}
+			this.indexedParams = mergedParams;
+
+			// Create incremental context for the slot
+			final builderParams:BuilderParameters = {
+				callback: (parentBP != null && parentBP.callback != null) ? parentBP.callback : defaultCallback,
+				placeholderObjects: parentBP != null ? parentBP.placeholderObjects : null,
+				scene: parentBP != null ? parentBP.scene : null,
+			};
+			this.builderParams = builderParams;
+			final slotCtx = new IncrementalUpdateContext(this, mergedParams, builderParams, slotNode);
+			if (tweenManager != null)
+				slotCtx.setTweenManager(tweenManager);
+			this.incrementalMode = true;
+			this.incrementalContext = slotCtx;
+
+			// Build slot children into container
+			final internalResults:InternalBuilderResults = {names: new Map(), interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
+			final slotChildren = resolveConditionalChildren(slotNode.children);
+			final losingChainArms = computeLosingChainArms(slotChildren);
+			for (i in 0...slotChildren.length) {
+				pendingChainArmLosing = losingChainArms != null && losingChainArms[i];
+				build(slotChildren[i], ObjectMode(container), cast gridCS, cast hexCS, internalResults, builderParams);
+			}
+
+			// Slot-body @finals were evaluated after slotCtx snapshotted its params — sync so
+			// SlotHandle.setParameter re-resolution can still see them (mirrors the runtime slot path)
+			slotCtx.syncFinalsFromBuilder(indexedParams);
+
+			popBuilderState();
+
+			// Find slotContent child if present
+			var slotContentTarget:Null<h2d.Object> = null;
+			for (i in 0...container.numChildren) {
+				if (Std.downcast(container.getChildAt(i), SlotContentRoot) != null) {
+					slotContentTarget = container.getChildAt(i);
+					break;
+				}
+			}
+			final handle = new SlotHandle(container, slotCtx, slotContentTarget);
+			// Persist the per-slot IR so getInteractives / getUpdatable / etc. can reach decoration
+			// registrations. Without this, codegen instances built via buildParameterizedSlot
+			// would have no API path to interactives, names, sub-slots, dynamicRefs or
+			// htmlTextsWithLinks declared inside the slot decoration body.
+			handle.ir = internalResults;
+			return handle;
+		} catch (e:Dynamic) {
+			// Keep the state stack balanced and the live indexedParams restored on any
+			// throw — same unwind contract as buildWithParameters
+			popBuilderState();
+			throw e;
 		}
-		final handle = new SlotHandle(container, slotCtx, slotContentTarget);
-		// Persist the per-slot IR so getInteractives / getUpdatable / etc. can reach decoration
-		// registrations. Without this, codegen instances built via buildParameterizedSlot
-		// would have no API path to interactives, names, sub-slots, dynamicRefs or
-		// htmlTextsWithLinks declared inside the slot decoration body.
-		handle.ir = internalResults;
-		return handle;
 	}
 
 	private static function findSlotNode(node:Node, slotName:String):Null<Node> {
@@ -8074,31 +8663,38 @@ class MultiAnimBuilder {
 			final gridCS = MultiAnimParser.getGridCoordinateSystem(switchNode);
 			final hexCS = MultiAnimParser.getHexCoordinateSystem(switchNode);
 			pushBuilderState();
-			// Convert parent params to resolved index params
-			final resolvedParams:Map<String, ResolvedIndexParameters> = new Map();
-			final progDefs = getProgrammableParameterDefinitions(progNode, false);
-			for (key => value in parentParams) {
-				final def = progDefs.get(key);
-				if (def != null)
-					resolvedParams.set(key, dynamicToResolvedWithDef(def.type, value));
-				else
-					resolvedParams.set(key, dynamicToResolvedInferred(value));
+			try {
+				// Convert parent params to resolved index params
+				final resolvedParams:Map<String, ResolvedIndexParameters> = new Map();
+				final progDefs = getProgrammableParameterDefinitions(progNode, false);
+				for (key => value in parentParams) {
+					final def = progDefs.get(key);
+					if (def != null)
+						resolvedParams.set(key, dynamicToResolvedWithDef(def.type, value));
+					else
+						resolvedParams.set(key, dynamicToResolvedInferred(value));
+				}
+				this.indexedParams = resolvedParams;
+				this.incrementalMode = false;
+				this.incrementalContext = null;
+				final bp:BuilderParameters = {
+					callback: (parentBP != null && parentBP.callback != null) ? parentBP.callback : defaultCallback,
+					placeholderObjects: parentBP != null ? parentBP.placeholderObjects : null,
+					scene: parentBP != null ? parentBP.scene : null,
+				};
+				this.builderParams = bp;
+				final ir:InternalBuilderResults = sink != null
+					? sink.ir
+					: {names: new Map(), interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
+				for (child in arm.children)
+					build(child, ObjectMode(container), cast gridCS, cast hexCS, ir, bp);
+				popBuilderState();
+			} catch (e:Dynamic) {
+				// Keep the state stack balanced and the live indexedParams restored on any
+				// throw — same unwind contract as buildWithParameters
+				popBuilderState();
+				throw e;
 			}
-			this.indexedParams = resolvedParams;
-			this.incrementalMode = false;
-			this.incrementalContext = null;
-			final bp:BuilderParameters = {
-				callback: (parentBP != null && parentBP.callback != null) ? parentBP.callback : defaultCallback,
-				placeholderObjects: parentBP != null ? parentBP.placeholderObjects : null,
-				scene: parentBP != null ? parentBP.scene : null,
-			};
-			this.builderParams = bp;
-			final ir:InternalBuilderResults = sink != null
-				? sink.ir
-				: {names: new Map(), interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
-			for (child in arm.children)
-				build(child, ObjectMode(container), cast gridCS, cast hexCS, ir, bp);
-			popBuilderState();
 		}
 	}
 
@@ -8237,34 +8833,55 @@ class MultiAnimBuilder {
 	 *
 	 *  progNode carries the parameter type definitions; parentParams supplies the runtime values
 	 *  (programmable params + current loop-var iteration). */
-	public function buildSingleNodeWithParams(node:Node, progNode:Node, parentParams:Map<String, Dynamic>):Null<h2d.Object> {
+	public function buildSingleNodeWithParams(node:Node, progNode:Node, parentParams:Map<String, Dynamic>, ?sink:SwitchArmResults):Null<h2d.Object> {
 		final parentBP = this.builderParams;
 		final gridCS = MultiAnimParser.getGridCoordinateSystem(node);
 		final hexCS = MultiAnimParser.getHexCoordinateSystem(node);
 		pushBuilderState();
-		final resolvedParams:Map<String, ResolvedIndexParameters> = new Map();
-		final progDefs = getProgrammableParameterDefinitions(progNode, false);
-		for (key => value in parentParams) {
-			final def = progDefs.get(key);
-			if (def != null)
-				resolvedParams.set(key, dynamicToResolvedWithDef(def.type, value));
-			else
-				resolvedParams.set(key, dynamicToResolvedInferred(value));
+		try {
+			final resolvedParams:Map<String, ResolvedIndexParameters> = new Map();
+			final progDefs = getProgrammableParameterDefinitions(progNode, false);
+			for (key => value in parentParams) {
+				final def = progDefs.get(key);
+				if (def != null)
+					resolvedParams.set(key, dynamicToResolvedWithDef(def.type, value));
+				else
+					resolvedParams.set(key, dynamicToResolvedInferred(value));
+			}
+			this.indexedParams = resolvedParams;
+			this.incrementalMode = false;
+			this.incrementalContext = null;
+			final bp:BuilderParameters = {
+				callback: (parentBP != null && parentBP.callback != null) ? parentBP.callback : defaultCallback,
+				placeholderObjects: parentBP != null ? parentBP.placeholderObjects : null,
+				scene: parentBP != null ? parentBP.scene : null,
+			};
+			this.builderParams = bp;
+			final parent = new h2d.Object();
+			// When a sink is supplied (param-dependent repeat body), register the node's slots /
+			// dynamicRefs / indexed names into it so the codegen instance dispatchers stay able to
+			// resolve them; otherwise discard into a throwaway IR (callers that only need the object).
+			final ir:InternalBuilderResults = sink != null
+				? sink.ir
+				: {names: [], interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
+			build(node, ObjectMode(parent), cast gridCS, cast hexCS, ir, bp);
+			popBuilderState();
+			return if (parent.numChildren > 0) parent.getChildAt(0) else null;
+		} catch (e:Dynamic) {
+			// Keep the state stack balanced and the live indexedParams restored on any
+			// throw — same unwind contract as buildWithParameters
+			popBuilderState();
+			throw e;
 		}
-		this.indexedParams = resolvedParams;
-		this.incrementalMode = false;
-		this.incrementalContext = null;
-		final bp:BuilderParameters = {
-			callback: (parentBP != null && parentBP.callback != null) ? parentBP.callback : defaultCallback,
-			placeholderObjects: parentBP != null ? parentBP.placeholderObjects : null,
-			scene: parentBP != null ? parentBP.scene : null,
-		};
-		this.builderParams = bp;
-		final parent = new h2d.Object();
-		final ir:InternalBuilderResults = {names: [], interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
-		build(node, ObjectMode(parent), cast gridCS, cast hexCS, ir, bp);
-		popBuilderState();
-		return if (parent.numChildren > 0) parent.getChildAt(0) else null;
+	}
+
+	/** Evict a repeat-body sink's registrations for objects under `container`, mirroring the
+	 *  @switch arm cleanup in rebuildSwitchArmByOrdinal. Codegen's _rebuildRepeat_X calls this
+	 *  BEFORE container.removeChildren() (parent links must still be intact) so slots / dynamicRefs
+	 *  / indexed names from the previous iteration count are dropped — and stale SlotHandles marked
+	 *  disposed — before the body is rebuilt into the same sink. */
+	public function resetRepeatSink(sink:SwitchArmResults, container:h2d.Object):Void {
+		MultiAnimBuilder.removeRegistrationsUnder(sink.ir, container);
 	}
 
 	function loadTileImpl(sheetName:String, tilename:String, ?index:Int) {

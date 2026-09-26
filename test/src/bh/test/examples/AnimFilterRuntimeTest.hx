@@ -128,6 +128,23 @@ class AnimFilterRuntimeTest extends utest.Test {
 		Assert.isTrue(finished);
 	}
 
+	@Test
+	public function testOnFinishedFiresExactlyOnceAfterCompletion():Void {
+		// Handlers commonly spawn or free objects in onFinished — it must fire
+		// once per completed playback, not once per update() after completion.
+		var sm = createSM();
+		var frame = createFrame(0.1);
+		sm.addAnimationState("once", [Frame(frame)], 0, new Map());
+
+		var count = 0;
+		sm.onFinished = function() count++;
+		sm.play("once");
+		for (_ in 0...10)
+			sm.update(0.1);
+
+		Assert.equals(1, count, 'onFinished must fire exactly once after the animation completes; fired $count times across 10 updates');
+	}
+
 	// ==================== Filter & Tint ====================
 
 	@Test

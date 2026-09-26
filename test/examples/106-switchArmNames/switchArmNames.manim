@@ -34,6 +34,27 @@ version: 1.0
   }
 }
 
+// Child target for the switch-arm dynamicRef host below.
+#switchArmChild programmable(value:uint=5) {
+  bitmap(generated(color($value, 8, #0ff))): 0, 0
+}
+
+// A #name dynamicRef declared inside a @switch arm must be reachable via
+// getDynamicRef("name") on a codegen instance — the runtime builder resolves it
+// (arm children build into the parent IR), so codegen must consult the switch sink.
+// This programmable has NO dynamicRef outside the arm, so the dispatcher must be
+// generated purely on the strength of the switch sink (not just static refs).
+#switchArmDynamicRef programmable(mode:[alpha, beta]=alpha) {
+  @switch(mode) {
+    alpha {
+      #embed dynamicRef($switchArmChild, value=>10): 0, 0
+    }
+    beta {
+      bitmap(generated(color(8, 8, #222))): 0, 0
+    }
+  }
+}
+
 // Two params: `rarity` drives the @switch, `disabled` is unrelated and is
 // not referenced anywhere inside the switch arms. Setting `disabled` must
 // not tear down and rebuild the switch arm — the named #core element inside

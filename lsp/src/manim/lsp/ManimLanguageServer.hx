@@ -38,7 +38,7 @@ class ManimLanguageServer {
 		switch (method) {
 			// ---- Lifecycle ----
 			case "initialize":
-				handleInitialize(id, msg.params);
+				safeRequest(id, method, () -> handleInitialize(id, msg.params));
 			case "initialized":
 				initialized = true;
 				LspTransport.log("Client initialized");
@@ -61,19 +61,34 @@ class ManimLanguageServer {
 
 			// ---- Language features ----
 			case "textDocument/completion":
-				handleCompletion(id, msg.params);
+				safeRequest(id, method, () -> handleCompletion(id, msg.params));
 			case "textDocument/hover":
-				handleHover(id, msg.params);
+				safeRequest(id, method, () -> handleHover(id, msg.params));
 			case "textDocument/documentSymbol":
-				handleDocumentSymbol(id, msg.params);
+				safeRequest(id, method, () -> handleDocumentSymbol(id, msg.params));
 			case "textDocument/definition":
-				handleDefinition(id, msg.params);
+				safeRequest(id, method, () -> handleDefinition(id, msg.params));
 
 			default:
 				if (id != null) {
 					// Unknown request — respond with method not found
 					transport.sendError(id, -32601, 'Method not found: $method');
 				}
+		}
+	}
+
+	/**
+	 * Every JSON-RPC request must get exactly one response. A throw anywhere in a
+	 * request handler (provider crash, malformed params) would otherwise leave the
+	 * client promise hanging forever — answer with an InternalError instead.
+	 */
+	function safeRequest(id:Dynamic, method:String, fn:Void->Void):Void {
+		try {
+			fn();
+		} catch (e:Dynamic) {
+			LspTransport.logError('$method handler failed: $e');
+			if (id != null)
+				transport.sendError(id, -32603, 'Internal error in $method: $e');
 		}
 	}
 

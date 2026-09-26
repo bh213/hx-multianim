@@ -63,6 +63,9 @@ typedef ReloadableHandle = {
 	sourcePath:String,
 	programmableName:String,
 	result:BuilderResult,
+	// Owning registry — lets structural discard paths (which bypass the scene-removal
+	// sentinel) unregister the handle directly
+	registry:ReloadableRegistry,
 }
 
 typedef ParamSnapshot = Map<String, ResolvedIndexParameters>;
@@ -153,6 +156,7 @@ class ReloadableRegistry {
 			sourcePath: sourcePath,
 			programmableName: programmableName,
 			result: result,
+			registry: this,
 		};
 		var list = liveObjects.get(sourcePath);
 		if (list == null) {

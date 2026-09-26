@@ -1,0 +1,79 @@
+version: 1.0
+
+// =============================================================================
+// AUTOTILE CORNER FORMAT - 16-tile corner set rendered on a dual grid
+// =============================================================================
+// One tile per grid-cell CORNER (offset by half a tile). The index says which of
+// the 4 cells around that corner are terrain: NW 1 + NE 2 + SW 4 + SE 8.
+// Index 0 (no terrain around the corner) is never drawn.
+//
+// The Forgotten Plains dirt patch (3x3 + 4 inner corners + 2 diagonals = 15 tiles,
+// plus the plain grass underneath = 16) is exactly a corner set, so every grid
+// configuration renders with no fallback - compare 30-blob47Fallback, which drives
+// the same 15 tiles through blob47.
+//
+// Tileset: Minifantasy - Forgotten Plains by Krishna Palacio
+// Region [56, 24, 24, 40] = 3x5 tiles (see 29-forgottenPlainsTerrain for the layout)
+// =============================================================================
+
+#dirtCorner autotile {
+    format: corner
+    tileSize: 8
+    file: "Tileset/Minifantasy_ForgottenPlainsTiles.png"
+    region: [56, 24, 24, 40]
+    // corner index (dirt cells around the corner) -> region tile
+    mapping: [
+        1:8,    // NW            -> [8] SE outer (dirt top-left)
+        2:6,    // NE            -> [6] SW outer (dirt top-right)
+        3:7,    // NW+NE         -> [7] S edge (dirt top half)
+        4:2,    // SW            -> [2] NE outer (dirt bottom-left)
+        5:5,    // NW+SW         -> [5] E edge (dirt left half)
+        6:11,   // NE+SW         -> [11] diagonal (grass NW + SE)
+        7:13,   // all but SE    -> [13] inner SE
+        8:0,    // SE            -> [0] NW outer (dirt bottom-right)
+        9:14,   // NW+SE         -> [14] diagonal (grass NE + SW)
+        10:3,   // NE+SE         -> [3] W edge (dirt right half)
+        11:12,  // all but SW    -> [12] inner SW
+        12:1,   // SW+SE         -> [1] N edge (dirt bottom half)
+        13:10,  // all but NE    -> [10] inner NE
+        14:9,   // all but NW    -> [9] inner NW
+        15:4    // all four      -> [4] center
+    ]
+}
+
+#cornerDemo autotile {
+    format: corner
+    tileSize: 8
+    demo: #66AA44, #886644    // green boundary, brown fill; empty quadrants transparent
+}
+
+#autotileCorner programmable() {
+    pos: 0, 0
+    grid: 1280, 720
+
+    @alpha(0.1) bitmap(generated(color(1280, 720, black)));
+
+    text(f3x5, "Corner tiles 0-15 (index = NW 1 + NE 2 + SW 4 + SE 8). Top: demo, bottom: tileset", #888888, left):10,8
+
+    // Demo tile on a dark swatch (its empty quadrants are transparent), tileset tile below
+    repeatable($i, range(0, 16)) {
+        point {
+            pos: 20 + $i * 22, 22
+            bitmap(generated(color(16, 16, #202020))):0,0
+            @scale(2) bitmap(generated(autotile("cornerDemo", $i))):0,0
+            @scale(2) bitmap(generated(autotile("dirtCorner", $i))):0,18
+        }
+    }
+
+    // Map backgrounds (test code places buildAutotile() terrain at +4,+4 inside each;
+    // corner terrain reaches half a tile past the grid, hence the 4px margin)
+    text(f3x5, "Edge cases - demo", #888888, left):10,70
+    bitmap(generated(color(136, 96, black))):10,80
+    text(f3x5, "Edge cases - tileset", #888888, left):160,70
+    bitmap(generated(color(136, 96, #6FA430))):160,80
+    text(f3x5, "All-47 blob grid - tileset", #888888, left):310,70
+    bitmap(generated(color(136, 104, #6FA430))):310,80
+
+    text(f3x5, "Region sheet (dirtCorner):", #888888, left):460,70
+    bitmap(generated(autotileRegionSheet("dirtCorner", 4, "f3x5", white))):460,80
+}

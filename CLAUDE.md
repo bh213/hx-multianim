@@ -21,7 +21,8 @@
 | `src/bh/multianim/ProgrammableCodeGen.hx` | Macro code generation for `@:manim`/`@:data` |
 | `src/bh/multianim/ProgrammableBuilder.hx` | Base class for macro-generated factories |
 | `src/bh/multianim/LayoutAlignRoot.hx` | Base class for codegen instances with aligned layouts |
-| `src/bh/multianim/dev/DevBridge.hx` | Dev JSON-RPC server for runtime inspection/manipulation (`-D MULTIANIM_DEV`) |
+| `src/bh/multianim/dev/DevBridge.hx` | Dev JSON-RPC bridge for runtime inspection/manipulation (`-D MULTIANIM_DEV`): every op, game ops, event buffers |
+| `src/bh/multianim/dev/transport/` | How the DevBridge is reached: `HttpServerTransport` (HashLink HTTP + SSE), `PageTransport` (`window.hxDevBridge`), `WebSocketTransport` (browser → relay) |
 | `src/bh/multianim/dev/HotReload.hx` | Live `.manim`/`.anim` reload (`-D MULTIANIM_DEV`) |
 | `src/bh/stateanim/AnimParser.hx` | Parser for `.anim` state animation files |
 | `src/bh/multianim/ManimKeywordInfo.hx` | Keyword metadata for LSP/tooling (exhaustive switch on parser enums) |
@@ -154,7 +155,7 @@ animation animationName {
 - **`docs/manim-reference.md`**: Comprehensive quick-lookup reference of ALL `.manim` elements, properties, and operations. **Always update this file** when adding/changing parser elements, builder features, filters, blend modes, coordinate systems, particle properties, path commands, or any other `.manim` language construct.
 - **`docs/anim-reference.md`**: Quick-lookup reference for the `.anim` state animation format — declarations, conditionals, filters, metadata API, and `AnimationSM` Haxe API. **Always update this file** when adding/changing `.anim` parser features.
 - **`docs/manim-cookbook.md`**: Practical pattern-based guide — buttons, tooltips, sidebars, panels, health bars, inventory grids, drag-drop, card hand, dialogue, skill trees, particles, animated paths, character sheets, status effects, data blocks, and Haxe wiring. **Consult this first** when building new screens or UI features.
-- **`docs/devbridge.md`**: DevBridge MCP server — 37 JSON-RPC tools for runtime inspection, manipulation, input injection, hot-reload, and game-registered custom ops (queries/commands/events). SSE streaming for lifecycle events (screen changes, hot reload, parameter changes, custom events, game events). Only compiles with `-D MULTIANIM_DEV`. Default port 9001, configurable via `HX_DEV_PORT` env var.
+- **`docs/devbridge.md`**: DevBridge MCP server — 37 JSON-RPC tools for runtime inspection, manipulation, input injection, hot-reload, and game-registered custom ops (queries/commands/events). SSE streaming for lifecycle events (screen changes, hot reload, parameter changes, custom events, game events). Only compiles with `-D MULTIANIM_DEV`. Default port 9001, configurable via `HX_DEV_PORT` env var; bind address defaults to `0.0.0.0`, configurable via `HX_DEV_BIND`. `HX_DEV_TOKEN` requires a token on every request (no auth without it) and `HX_DEV_ORIGIN` sets the CORS origin. Browser (JS) builds with `-D MULTIANIM_DEV` are reached through `window.hxDevBridge` or a WebSocket relay (`?devbridge=ws://127.0.0.1:9010`, the MCP server's `--listen` mode); `test/devbridge-page.md` has the checks.
 - **`docs/hot-reload.md`**: Hot reload subsystem — `FileChangeDetector`, `ReloadableRegistry`, `SignatureChecker`, state snapshot/restore across `.manim`/`.anim` reloads. `-D MULTIANIM_DEV` only.
 - **`docs/vscode-extension.md`**: VS Code extension — syntax highlighting, LSP client, language config, grammar maintenance.
 - **`TECHNICAL-DOCS.md`**: Architecture overview — parser, builder, macro codegen, incremental mode, UI layer, runtime systems.

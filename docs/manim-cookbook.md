@@ -702,7 +702,8 @@ cardHand.drawCard({id: "card1", params: ["cardName" => "Fireball", "cost" => 3]}
 // Or with manual wiring (if not using addCardHand):
 // onScreenEvent -> cardHand.handleScreenEvent(event)
 // onMouseMove -> cardHand.onMouseMove(x, y)
-// onMouseClick -> cardHand.onMouseRelease(x, y)
+// onMouseClick (push) -> cardHand.onMouseClick(x, y, button)   // before the UIPush: drags start for the left button only
+// onMouseClick (release) -> cardHand.onMouseRelease(x, y, button)
 // update(dt) -> cardHand.update(dt)
 // onClear -> cardHand.dispose()
 ```

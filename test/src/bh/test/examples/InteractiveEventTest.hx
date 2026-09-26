@@ -5,6 +5,8 @@ import bh.test.BuilderTestBase;
 import bh.base.CursorManager;
 import bh.ui.UIInteractiveWrapper;
 import bh.ui.UIRichInteractiveHelper;
+import bh.base.MAObject.MultiAnimObjectData;
+import bh.multianim.MultiAnimBuilder.BuilderResult;
 
 /**
  * Unit tests for interactive event filtering, metadata, and cursor support.
@@ -403,6 +405,68 @@ class InteractiveEventTest extends BuilderTestBase {
 		wrapper.containsPoint(new h2d.col.Point(50, 50));
 		Assert.equals(cached, Reflect.field(UIInteractiveWrapper, "_scratchPt"),
 			"containsPoint must reuse the cached static _scratchPt across calls");
+	}
+
+	// ==================== Hidden conditional-arm interactive is not exposed as a click target ====
+	// An interactive eagerly built in the true arm of a runtime-builder conditional must stop being
+	// exposed via getInteractives() once the condition flips false. The flip detaches the object from
+	// the scene graph (removeChild) but leaves its registration in the static interactives list at
+	// stale coords; getInteractives() must reflect the live graph (as codegen does), so the screen's
+	// syncInteractivesFrom diff drops the stale wrapper instead of leaving a ghost click target.
+
+	static function getInteractiveIds(result:BuilderResult):Array<String> {
+		return [
+			for (o in result.getInteractives())
+				switch o.multiAnimType { case MAInteractive(_, _, id, _): id; default: null; }
+		];
+	}
+
+	@Test
+	public function testHiddenConditionalInteractiveIsNotExposed():Void {
+		var result = BuilderTestBase.buildFromSource('
+			#test programmable(open:bool=true) {
+				@(open=>true) interactive(100, 30, "btn1"): 0, 0
+			}
+		', "test", Incremental);
+
+		// Visible arm: interactive is exposed.
+		Assert.isTrue(getInteractiveIds(result).indexOf("btn1") >= 0,
+			"interactive should be exposed by getInteractives() while the conditional arm is shown");
+
+		// Flip the condition false — the interactive is removed from the scene graph.
+		result.setParameter("open", false);
+		Assert.equals(-1, getInteractiveIds(result).indexOf("btn1"),
+			"interactive must NOT be exposed by getInteractives() after its arm is hidden (ghost click target)");
+
+		// Flip back true — it is exposed again.
+		result.setParameter("open", true);
+		Assert.isTrue(getInteractiveIds(result).indexOf("btn1") >= 0,
+			"interactive should be exposed by getInteractives() again after its arm is shown");
+	}
+
+	@Test
+	public function testHiddenConditionalNestedInteractiveIsNotExposed():Void {
+		// The interactive sits below an extra container inside the hidden arm, so its immediate parent
+		// stays non-null when the arm is detached — only an ancestor goes null. getInteractives() must
+		// still drop it (reachability walk, not just immediate-parent check).
+		var result = BuilderTestBase.buildFromSource('
+			#test programmable(open:bool=true) {
+				@(open=>true) layers() {
+					interactive(100, 30, "nested"): 0, 0
+				}
+			}
+		', "test", Incremental);
+
+		Assert.isTrue(getInteractiveIds(result).indexOf("nested") >= 0,
+			"nested interactive should be exposed while its conditional arm is shown");
+
+		result.setParameter("open", false);
+		Assert.equals(-1, getInteractiveIds(result).indexOf("nested"),
+			"nested interactive must NOT be exposed after its arm is hidden (ancestor detached, immediate parent still set)");
+
+		result.setParameter("open", true);
+		Assert.isTrue(getInteractiveIds(result).indexOf("nested") >= 0,
+			"nested interactive should be exposed again after its arm is shown");
 	}
 
 	@Test

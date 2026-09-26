@@ -13,7 +13,7 @@
 
 **Parameter types**: `uint`, `int`, `float`, `bool`, `string`, `color`, `tile`, enum (`[val1,val2]`), range (`1..5`), flags
 
-**Root-level properties on `programmable()`**: `pos:`, `scale:`, `rotate:`, `alpha:`, `tint:`, `filter:`, `blendMode:` may appear at the programmable body root (not just on child elements). Honoured identically in builder and codegen paths (prior to strict-D fix, codegen ignored them — see CHANGELOG). `$param`-dependent values re-fire on `setParameter()`. `pos:` composes additively with runtime `setPosition(x, y)` — the `.manim` offset stays as the origin.
+**Root-level properties on `programmable()`**: `pos:`, `scale:`, `rotate:`, `alpha:`, `filter:`, `blendMode:` may appear at the programmable body root (not just on child elements). Honoured identically in builder and codegen paths (prior to strict-D fix, codegen ignored them — see CHANGELOG). `$param`-dependent values re-fire on `setParameter()`. `pos:` composes additively with runtime `setPosition(x, y)` — the `.manim` offset stays as the origin. **`tint:` is NOT valid at the root**: the programmable root is an `h2d.Layers` (a non-Drawable, no `color`), so a root-level `tint:` now throws a `BuilderError` (`code="tint_requires_drawable"`) in both builder and codegen instead of silently no-oping. Put `tint:` on a Drawable child (`bitmap`/`text`/…) or `apply { tint: }` onto one.
 
 **Color format (strict-D)**: Internal storage is Heaps `0xAARRGGBB`. CSS `#` forms bake `0xFF` alpha on 3/6-digit shorthand (`#FF0000` → `0xFFFF0000`), alpha preserved on 8-digit `#RRGGBBAA`. Heaps `0x` forms preserve every byte verbatim — `0xFF0000` is transparent red (top byte = 0), not opaque. `transparent` / `0x00000000` is reachable from runtime code (`setColor(0)` no longer gets clobbered to opaque black). Migration from pre-strict-D: any `0xRRGGBB` literal meant for opaque → use `#RRGGBB` or `0xFFRRGGBB`.
 
@@ -40,7 +40,7 @@
 | `mask(w, h)` | Clipping mask rectangle |
 | `flow(...)` | Layout flow container |
 | `repeatable($var, iterator)` | Loop elements |
-| `tilegroup` | Optimized tile grouping (supports `bitmap`, `ninepatch`, `repeatable`, `repeatable2d`, `pixels`, `point`). Children are baked once at build time, so conditionals on programmable parameters are **rejected at build time** (`BuilderError code="tilegroup_conditional"`) — use conditionals outside the tileGroup, or key them on a `repeatable` loop variable inside it |
+| `tilegroup` | Optimized tile grouping (supports `bitmap`, `ninepatch`, `repeatable`, `repeatable2d`, `pixels`, `point`). Children are baked once at build time, so conditionals on programmable parameters are **rejected at build time** (`BuilderError code="tilegroup_conditional"`), in both the nested `tilegroup {}` element and the root `programmable tileGroup(...)` form — use conditionals outside the tileGroup, or key them on a `repeatable` loop variable inside it |
 | `stateanim construct(...)` | Inline state animation |
 | `point` | Positioning point |
 | `apply(...)` | Apply properties to parent |
@@ -50,6 +50,7 @@
 | `@final name = expr` | Immutable named constant |
 | `#name data {...}` | Static typed data block |
 | `#name atlas2("file") {...}` | Inline sprite atlas |
+| `#name autotile {...}` | Terrain tileset: `format: corner` (16, dual grid) / `blob47` / `cross`; source `file:`+`region:` / `sheet:`+`prefix:` / `tiles:` / `demo:`; `mapping:` autotile index -> source index. Build with `builder.buildAutotile(name, grid)`; single tile `generated(autotile(name, index))` |
 | `curves {...}` | 1D curve definitions |
 | `paths {...}` | Path definitions |
 | `#name animatedPath {...}` | Animated path with curves/events |

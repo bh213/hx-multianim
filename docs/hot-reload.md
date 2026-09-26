@@ -301,6 +301,14 @@ result.onReload = (result, report) -> {
 };
 ```
 
+`reloadable = false` is consulted per reload by the in-place rebuild loop (Strategy B): the
+result is skipped — no snapshot, no rebuild — but its handle stays registered, so setting the
+flag back to `true` re-enables reload on the next file change. An opted-out handle is also
+excluded from the signature-compatibility check, so an incompatible signature change to a
+programmable that only opted-out results use won't block the file's reload with
+`ReloadNeedsRestart`. The flag has no effect on Strategy A (nuclear screen reload) — screens
+rebuild wholesale via `screen.load()`.
+
 ### Transient Build Consumers
 
 For game code that creates non-incremental builds (unit bodies, etc.):
@@ -511,7 +519,7 @@ haxe test-hx-multianim-dev.hxml
 
 **Strategy B (In-Place) edge cases:**
 - [ ] Multiple handles from same file — all rebuilt independently
-- [ ] Handle with `reloadable = false` — skipped during reload
+- [x] Handle with `reloadable = false` — skipped during reload (`HotReloadTest.testReloadableFalseSkipsInPlaceReload`)
 - [ ] Result removed from scene between reloads — sentinel auto-unregisters
 - [ ] `onReload` callback — verify it fires with correct report
 - [ ] `onReload` callback throws — doesn't break other handles

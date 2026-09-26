@@ -1,0 +1,31 @@
+version: 1.0
+
+// dynamicRef lookup-key contract parity between builder and codegen:
+//
+// 1) Unnamed sibling sites referring to the same programmable collide on the map
+//    key. The builder stores per-writer arrays and getDynamicRef throws on
+//    arr.length > 1 to force #name disambiguation; codegen's dynamicRefFields is a
+//    plain Map so the second site silently overwrites the first (last-writer-wins).
+//
+// 2) #name dynamicRef($param) — the explicit #name must be the stable lookup key
+//    across template swaps (builder resolveDynamicRefKey: explicit name wins).
+//    Codegen's dynamic-name branch drops the #name and keys by the live template
+//    name instead, so getDynamicRef("name") returns null and the working key
+//    changes whenever the template param changes.
+
+#dynKeyLeafA programmable() {
+  bitmap(generated(color(11, 11, #ff0000))): 0, 0
+}
+
+#dynKeyLeafB programmable() {
+  bitmap(generated(color(22, 22, #0000ff))): 0, 0
+}
+
+#dynRefUnnamedCollision programmable() {
+  dynamicRef($dynKeyLeafA): 0, 0
+  dynamicRef($dynKeyLeafA): 0, 30
+}
+
+#dynRefNamedDynamicTarget programmable(tpl:string="dynKeyLeafA") {
+  #panel dynamicRef($tpl): 0, 0
+}

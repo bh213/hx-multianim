@@ -83,12 +83,12 @@ version: 1.0
 // Load tiles from a specific region in an image file with index remapping
 // =============================================================================
 
-// Example syntax (uses forgottenPlainsTerrain tileset pattern):
-// #grassTerrain autotile {
+// Example syntax (see 29-forgottenPlainsTerrain for the full, working file):
+// #dirtTerrain autotile {
 //     format: cross
 //     tileSize: 8
 //     file: "Tileset/Minifantasy_ForgottenPlainsTiles.png"
-//     region: [56, 24, 24, 40]  // x, y, width, height in pixels
+//     region: [56, 24, 24, 40]  // x, y, width, height in pixels (default: whole image)
 //     mapping: [
 //         1,    // 0: N edge      -> region tile 1
 //         3,    // 1: W edge      -> region tile 3
@@ -106,20 +106,8 @@ version: 1.0
 // #terrainAtlas autotile {
 //     format: cross
 //     tileSize: 16
-//     sheet: "terrain.atlas", prefix: "grass_"
-//     // Loads grass_0, grass_1, ..., grass_12 from atlas
-// }
-
-// =============================================================================
-// SOURCE TYPE 6: sheet: with region:
-// Load tiles from a region within an atlas
-// =============================================================================
-
-// Example syntax:
-// #terrainRegion autotile {
-//     format: blob47
-//     tileSize: 16
-//     sheet: "terrain.atlas", region: [0, 0, 128, 128]
+//     sheet: "terrain", prefix: "grass_"
+//     // Loads grass_0, grass_1, ..., grass_12 from the atlas (grass_<mapping target> with mapping:)
 // }
 
 // =============================================================================

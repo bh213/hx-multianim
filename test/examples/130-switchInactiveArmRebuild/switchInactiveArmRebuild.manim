@@ -1,0 +1,12 @@
+version: 1.0
+
+// Fixture: @switch where each arm references a DIFFERENT param. Changing a param used
+// only in the inactive arm must NOT rebuild the active arm (codegen active-arm gate).
+// ax → active arm a; bx → inactive arm b. Probe via object identity after setParameter.
+
+#switchInactiveArmRebuild programmable(mode:[a, b]=a, ax:uint=10, bx:uint=20) {
+  @switch(mode) {
+    a: bitmap(generated(color($ax, 10, #ff0000))): 0, 0;
+    b: bitmap(generated(color($bx, 10, #00ff00))): 0, 0;
+  }
+}

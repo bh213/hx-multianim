@@ -1,0 +1,17 @@
+version: 1.0
+
+// maxWidth with a param-dependent scale: the divisor must resolve at runtime
+// (the builder divides by the live scale; the codegen bakes 1.0 whenever the
+// scale is a $param).
+#tScale programmable(s:float=2.0) {
+  text(dd, "wrap sample text", white, left, 100) {
+    scale: $s
+  }
+}
+
+// TAWGrid: text aligned to the enclosing grid must take maxWidth from the
+// grid spacing (the codegen drops the TAWGrid arm entirely).
+#tGrid programmable() {
+  grid: 64, 64
+  text(dd, "abc", white, center, grid): $grid.pos(0, 0)
+}

@@ -4,7 +4,7 @@ Runtime inspection and manipulation server for hx-multianim applications. Design
 
 **Compilation:** Only available with `-D MULTIANIM_DEV`. Zero overhead in release builds.
 
-**File:** `src/bh/multianim/dev/DevBridge.hx`
+**Files:** `src/bh/multianim/dev/DevBridge.hx` does the work (every op, the game's own ops, the event buffers). `src/bh/multianim/dev/transport/` holds how it is reached: `HttpServerTransport` on HashLink (the HTTP server and `/sse` below), and in a browser page `PageTransport` (`window.hxDevBridge`) and `WebSocketTransport` (dials out to a relay). Every transport answers the same methods with the same bodies. See [Configuration](#configuration), [Token and origin](#token-and-origin) and [Browser builds (JS)](#browser-builds-js).
 
 ---
 
@@ -20,6 +20,12 @@ Runtime inspection and manipulation server for hx-multianim applications. Design
 1. **Environment variable** `HX_DEV_PORT` — parsed as integer (1–65535), falls back to 9001
 2. **Constructor parameter** `new DevBridge(screenManager, port)` — if `port != 0`, uses that value; if `0`, checks env var
 3. **Auto-fallback** — if the configured port is busy, tries up to 10 consecutive ports (e.g. 9001→9010)
+
+**Bind address configuration:**
+1. **Environment variable** `HX_DEV_BIND` — the address the HTTP server binds to. Defaults to `0.0.0.0` (all interfaces) so MCP clients on other LAN machines can connect.
+2. **Constructor parameter** `new DevBridge(screenManager, port, bindAddress)` — overrides the env var.
+
+> **Security note:** without `HX_DEV_TOKEN`, DevBridge has no authentication and answers with `Access-Control-Allow-Origin: *`. Anything that can reach the port — including any web page open in the developer's browser, which can POST to `localhost:9001` without a preflight — can screenshot the app, inject input, evaluate `.manim`, or quit the process. Set a token (see [Token and origin](#token-and-origin)), and on untrusted networks set `HX_DEV_BIND=127.0.0.1`. (DevBridge only compiles with `-D MULTIANIM_DEV`, so release builds are unaffected.)
 
 **Ready signal:** When `HX_DEV_READY_FILE` env var is set, DevBridge writes JSON to that path after binding:
 ```json
@@ -60,9 +66,85 @@ Runtime inspection and manipulation server for hx-multianim applications. Design
 | `invalid_params` | 400 | Missing or invalid parameters |
 | `invalid_state` | 409 | Precondition not met (e.g. game not paused for `step`) |
 | `unknown_method` | 404 | Unknown DevBridge method name |
+| `not_supported` | 501 | The op does not exist on this target (JS: `quit`, `reload` without `content`) |
+| `unauthorized` | 401 | HTTP only: `HX_DEV_TOKEN` is set and the request did not carry it |
+| `forbidden` | 403 | HTTP only: `HX_DEV_ORIGIN` is set and the request's `Origin` differs |
 | `internal` | 500 | Unexpected server error (includes stack trace in trace output) |
 
-The MCP server adds `connection_failed` when the game is not running (fetch to DevBridge port fails).
+A body that is not JSON answers 400 `{"ok": false, "error": "Invalid JSON"}` (no `code`). The MCP server adds `not_connected`, `ambiguous_target`, `unknown_target`, `connection_failed`, `timeout` and `bad_reply` of its own.
+
+---
+
+## Configuration
+
+Settings keep their environment-variable names on every target. On HashLink they are environment variables (`Sys.getEnv`). A browser page has none, so there they come from a `window.HX_DEV` object the host page writes before the game's script runs, or from the page's query string under the short key (the name lower-cased without `HX_DEV_`) — see [Browser builds (JS)](#browser-builds-js). Read through `bh.multianim.dev.DevBridgeConfig.get(name)`.
+
+| Setting | Query key | Default | Meaning |
+|---------|-----------|---------|---------|
+| `HX_DEV_PORT` | `port` | 9001 | HTTP port (HashLink); the next nine are tried when busy |
+| `HX_DEV_BIND` | `bind` | `0.0.0.0` | HTTP bind address (HashLink) |
+| `HX_DEV_READY_FILE` | — | unset | HashLink: write `{port, timestamp}` here once listening |
+| `HX_DEV_TOKEN` | `token` | unset | Required on every HTTP request; sent in a relay `hello` |
+| `HX_DEV_ORIGIN` | `origin` | unset | HTTP: the one CORS origin allowed |
+| `HX_DEV_RELAY` | `devbridge` | unset | Browser: a relay to dial, e.g. `ws://127.0.0.1:9010` |
+| `HX_DEV_PAGE` | `page` | on unless a relay is named | Browser: install `window.hxDevBridge` (`1`/`0`) |
+| `HX_DEV_APP` | `app` | the `hxd.App` class name | The name a relay and `info()` show |
+
+## Token and origin
+
+With `HX_DEV_TOKEN` set, every HTTP request must carry it, as `X-HX-Dev-Token: <token>`, `Authorization: Bearer <token>`, or `?token=<token>` (the only way for `GET /sse` from an `EventSource`, which cannot set headers). A request without it answers 401 `unauthorized`. CORS preflights (`OPTIONS`) are answered without it, since browsers send no credentials on a preflight.
+
+The `Access-Control-Allow-Origin` header is `HX_DEV_ORIGIN` when set, `*` when no token is set, and left out otherwise (a page on another origin then cannot read answers). With `HX_DEV_ORIGIN` set, a request whose `Origin` header differs answers 403 `forbidden`; requests without an `Origin` (curl, the MCP server) are not affected.
+
+With neither setting, requests and responses are byte-for-byte what they were before the transports were split out.
+
+In a browser page the token travels in the relay `hello` (`?token=` or `window.HX_DEV.HX_DEV_TOKEN`); the MCP server refuses a `hello` without the token it was given (close code 4401). Set the same `HX_DEV_TOKEN` for the game and the MCP server.
+
+## Browser builds (JS)
+
+A browser page cannot listen on a port, so a JS build with `-D MULTIANIM_DEV` has no HTTP server. It is reached in two other ways, and every op answers the same as on HashLink.
+
+**`window.hxDevBridge`** (`PageTransport`), installed when no relay is named, or with `?page=1`:
+
+```js
+window.hxDevBridge = {
+  protocol: 1,
+  info: () => ({app, session, frame, paused, transports, ops, gameOps, title, url}),
+  call: (request) => responseJson,  // request: '{"method":"list_screens","params":{}}' or {method, params}; synchronous
+  poll: (sinceSeq) => '{"events":[{"seq","event","data"}],"lastSeq":N,"dropped":N,"missed":N}',
+};
+```
+
+`call` returns the same body as an HTTP reply, as a JSON string. `poll` returns the pushed events (the `/sse` names) newer than `sinceSeq` from a ring of 200: `dropped` counts every event pushed out since start, `missed` those newer than `sinceSeq`. This is what the Playwright MCP drives with `browser_evaluate`; `test/devbridge-page.md` has the check to paste.
+
+**A relay** (`WebSocketTransport`): open the page with `?devbridge=ws://127.0.0.1:9010` (and `&token=...`). The game dials the URL and keeps dialling (1 s, doubling to 30 s) while the relay is down, sending its `hello` again each time. The MCP server in `--listen` mode is the relay (see its README); `test/devbridge-relay.mjs` is a dependency-free one for testing. One JSON object per message:
+
+```jsonc
+{"kind":"hello","protocol":1,"app":"Main","title":"…","url":"…","session":"k3f9…","token":"…"}  // game → relay, on open
+{"kind":"welcome","protocol":1,"instance":"web-1"}                                            // relay → game
+{"kind":"call","id":7,"method":"list_screens","params":{}}                                    // relay → game
+{"kind":"result","id":7,"ok":true,"result":{…}}                                               // game → relay
+{"kind":"result","id":7,"ok":false,"error":"…","code":"not_found"}
+{"kind":"event","seq":42,"event":"trace","data":{…}}                                           // game → relay
+```
+
+`id` is the relay's and is echoed. `seq` counts from 1 and keeps counting while the socket is down, so a gap says events were lost. `session` stays the same for the life of the page, so a relay can tell a reconnect from a new game.
+
+**What differs on JS:**
+
+| Op | On JS |
+|----|-------|
+| `screenshot` | PNG-encoded by the browser (`canvas.toDataURL`); the size is the render target's, so the device pixel ratio does not change the picture |
+| `reload` | needs `{file, content}`: a page cannot read the file. Without `content` it answers `not_supported` |
+| `quit` | `not_supported`: the page owns the game |
+| `pause`, `step` | work, but a hidden or background tab throttles or stops `requestAnimationFrame`: the tab being driven must be visible |
+| `send_event`, `send_events` | a key down and up inside one frame is not seen by code that polls keys: put `{step: 1}` between them |
+| `get_errors` | also has what the page reports and the Haxe side never sees: uncaught errors, unhandled promise rejections, a resource that failed to load, a lost WebGL context — prefixed `[browser]` |
+| `ping` | `port` is 0 |
+
+A result from one target promises nothing about the other: an `Int` does not wrap on `+`/`*` in JS and `Map` order differs.
+
+**Strict mode:** with `-D MULTIANIM_STRICT` on JS, `strictFail` throws the report instead of writing stderr and exiting.
 
 ---
 
@@ -282,7 +364,8 @@ Hot-reload a `.manim` file (or all files).
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
-| `file` | string | no | Resource path (e.g. `"ui/menu.manim"`). Omit to reload all |
+| `file` | string | no | Resource path (e.g. `"ui/menu.manim"`). Omit to reload all (HashLink only) |
+| `content` | string | no | Reload from this text instead of reading the file. Required on JS (with `file`); `not_found` lists the loaded paths when `file` matches none |
 
 Returns: `success`, `file`, `programmablesRebuilt[]`, `rebuiltCount`, `elapsedMs`, `needsFullRestart`, `paramsAdded[]`, `errors[]` (each with `message`, `file`, `line`, `col`, `errorType`, `context`).
 
@@ -311,6 +394,8 @@ Inject a single input event.
 | `charCode` | int | no | Character code (text input) |
 
 Returns: `success`, `type`, echoed parameters.
+
+A `key_down` and `key_up` sent in the same frame are not seen by code that polls `hxd.Key` each frame (`key_press` is exactly that). Use `send_events` with a `{step: 1}` between them.
 
 #### `send_events`
 Batch: sequence of events with frame steps between them. Enables multi-step interactions (drag-and-drop, slider scrub) in a single call.
@@ -353,7 +438,7 @@ Advance by N frames while paused, then re-pause. Game must be paused first.
 Returns: `paused`, `framesAdvanced`.
 
 #### `quit`
-Cleanly shut down the application (exits with 100ms delay).
+Cleanly shut down the application (exits with 100ms delay). In a browser page it answers `not_supported`: the page owns the game.
 
 No parameters.
 
@@ -528,6 +613,9 @@ Type fields in tool responses use these formats:
 - **Trace capture:** Ring buffer (200 lines) auto-installed on `start()`
 - **Error capture:** `reportError(message, ?stack)` public method for external error injection
 - **Hot-reload registry:** Only `incremental:true` programmables are tracked and appear in `list_active_programmables`
-- **CORS:** Enabled for cross-origin requests
-- **Listens on:** `0.0.0.0:port` (all interfaces)
-- **HTTP server:** Uses Heaps' `hxd.net.Socket` (libuv async)
+- **CORS:** `*` without a token; the configured origin, or none, with one (see [Token and origin](#token-and-origin))
+- **Listens on:** `0.0.0.0:port` (all interfaces) unless `HX_DEV_BIND` says otherwise
+- **HTTP server:** `HttpServerTransport`, on Heaps' `hxd.net.Socket` (libuv async); HashLink (and hxnodejs) only
+- **HTTP requests:** one request per connection — bytes after a complete request (a pipelined request, a trailing CRLF) are drained, never dispatched. A body needs `Content-Length`: `Transfer-Encoding` answers 411, a non-decimal `Content-Length` 400, a body over the limit 413, oversized headers 431
+- **Node (`hxnodejs`):** settings come from `process.env`; a busy port is reported asynchronously, so the next ports are tried from the socket's error callback and `actualPort` settles after `start()`
+- **Transports:** `IDevBridgeTransport` (`start`/`stop`/`tick`/`pushEvent`); `DevBridge` implements `IDevBridgeHost` (`handleRequestJson`, `handleCall`, `getToken`, `describeInstance`). `DevBridge.METHODS` lists every method `dispatch` answers

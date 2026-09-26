@@ -1,0 +1,22 @@
+version: 1.0
+
+// Regression: slots, dynamicRefs and indexed names declared inside a
+// PARAM-DEPENDENT repeatable (count driven by a settable param, so codegen takes
+// the runtime-rebuild branch in rebuildRepeatChildren -> generateRuntimeChildExprs)
+// must be reachable from codegen instances, matching builder-result behavior.
+// The runtime rebuild forwards these kinds to the builder via
+// buildNodeByUniqueNameWithParams, which currently discards their registrations.
+// The codegen instance's getSlot / getDynamicRef / get_* dispatchers therefore
+// never learn about them, while the builder result resolves them correctly.
+
+#repeatSlotInner programmable(label:string="x") {
+  bitmap(generated(color(10, 10, #00ffff))): 0, 0
+}
+
+#repeatSlotPanel programmable(rows:int=2) {
+  repeatable($i, range(0, $rows)) {
+    #cell[$i] slot: 0, $i * 40
+    #tag[$i] bitmap(generated(color(8, 8, #ff00ff))): 20, $i * 40
+    #embed[$i] dynamicRef($repeatSlotInner, label => "row"): 40, $i * 40
+  }
+}

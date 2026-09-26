@@ -44,10 +44,16 @@ npm install -g lix
 ### Quick Start
 
 1. **Add to your project**:
+   ```bash
+   haxelib install hx-multianim
+   # or with lix:
+   lix install haxelib:hx-multianim
+   ```
    ```hxml
    -lib hx-multianim
    -lib heaps
    ```
+   > `-lib hx-multianim` automatically applies the library's `extraParams.hxml`, which registers the `.atlas2` resource extension. If you reference the sources directly via `-cp` instead, add `--macro bh.base.AtlasMacroInit.init()` to your hxml yourself.
 
 2. **Create a UI element** (`.manim`):
    ```
@@ -101,7 +107,7 @@ npm install -g lix
    scene.addChild(animSM);
 
    // Control animations
-   animSM.addCommand(SwitchState("idle"), ExecuteNow);
+   animSM.play("idle");
    ```
 
 ## UIScreen System
@@ -120,7 +126,7 @@ class Main extends hxd.App {
 
     override function init() {
         screenManager = new ScreenManager(this);
-        screenManager.showScreen(new MainMenuScreen(screenManager));
+        screenManager.switchTo(new MainMenuScreen(screenManager));
     }
 
     override function update(dt:Float) {
@@ -144,7 +150,7 @@ class MainMenuScreen extends UIScreenBase {
         super(screenManager);
     }
 
-    public override function load() {
+    public function load() {
         // Load .manim file with hot-reload support
         builder = screenManager.buildFromResourceName("ui/mainmenu.manim", true);
 
@@ -158,7 +164,7 @@ class MainMenuScreen extends UIScreenBase {
         button.onClick = () -> onStartGame();
     }
 
-    public override function onScreenEvent(event:UIScreenEvent, source:UIElement) {
+    public function onScreenEvent(event:UIScreenEvent, source:Null<UIElement>) {
         // Handle UI events
     }
 }
@@ -190,10 +196,10 @@ var btn = addButtonWithSingleBuilder(builder, "button", settings, "Click Me");
 var btn = addButton(builder.createElementBuilder("button"), "Click Me", settings);
 
 // Checkboxes (buildName overridable via settings)
-var cb = addCheckbox(builder, true);
+var cb = addCheckbox(builder, settings, true);
 
 // Sliders (supports custom range via min/max/step settings)
-var slider = addSlider(builder, 50);
+var slider = addSlider(builder, settings, 50);
 slider.min = 0;
 slider.max = 1;
 slider.step = 0.1;
@@ -210,7 +216,7 @@ var list = addScrollableList(panelBuilder, itemBuilder, scrollbarBuilder,
     "scrollbar", items, settings, 0, 200, 300);
 
 // Radio buttons
-var radio = addRadio(builder, items, true, 0); // vertical, initially selected index 0
+var radio = addRadio(builder, settings, items, true, 0); // vertical, initially selected index 0
 ```
 
 ### Element Groups
@@ -235,10 +241,10 @@ Show modal dialogs over the current screen:
 
 ```haxe
 // Show dialog
-screenManager.showDialog(new ConfirmDialog(screenManager), this, "confirm");
+screenManager.modalDialog(new ConfirmDialog(screenManager), this, "confirm");
 
 // Handle dialog result in onScreenEvent
-public override function onScreenEvent(event:UIScreenEvent, source:UIElement) {
+public function onScreenEvent(event:UIScreenEvent, source:Null<UIElement>) {
     switch event {
         case UIOnControllerEvent(OnDialogResult(dialogName, result)):
             if (dialogName == "confirm") {
@@ -251,4 +257,4 @@ public override function onScreenEvent(event:UIScreenEvent, source:UIElement) {
 
 ## License
 
-BSD 3-Clause — see [LICENSE](LICENSE) for details.
+BSD 3-Clause — see [LICENSE](LICENSE) for details. Third-party assets and fonts are credited in [ATTRIBUTION.md](ATTRIBUTION.md).

@@ -48,11 +48,63 @@ private class DialogWithOverlay extends bh.ui.screens.UIScreenBase {
 class ScreenManagerModalOverlayTest extends utest.Test {
 	var sm:ScreenManager;
 	var caller:BgScreen;
+	var savedScaleMode:h2d.Scene.ScaleMode;
 
 	function setup():Void {
 		sm = new ScreenManager(VisualTestBase.appInstance);
 		caller = new BgScreen(sm);
 		sm.switchTo(caller);
+		savedScaleMode = VisualTestBase.appInstance.s2d.scaleMode;
+	}
+
+	function teardown():Void {
+		// The scene is shared with the visual tests: put its size back and drop the overlay.
+		VisualTestBase.appInstance.s2d.scaleMode = savedScaleMode;
+		sm.removeModalOverlay();
+	}
+
+	/**
+	 * The overlay used to be a fixed 4096×4096 bitmap, which stops short of the
+	 * edge on a 5K canvas or an AutoZoom-scaled scene. It must be sized to the scene.
+	 */
+	@Test
+	public function testOverlayIsSizedToScene():Void {
+		final s2d = VisualTestBase.appInstance.s2d;
+		var d = new DialogWithOverlay(sm, {color: 0x000000, alpha: 0.5});
+		sm.modalDialog(d, caller, "d");
+
+		var overlay = sm.modalOverlay;
+		Assert.notNull(overlay);
+		if (overlay == null) return;
+		Assert.floatEquals(s2d.width, overlay.tile.width, "overlay width must match the scene width");
+		Assert.floatEquals(s2d.height, overlay.tile.height, "overlay height must match the scene height");
+	}
+
+	/**
+	 * A scene resize while the dialog is open (window resize, scaleMode change)
+	 * must refit the overlay on the next update() — in both directions.
+	 */
+	@Test
+	public function testOverlayRefitsWhenSceneResizes():Void {
+		final s2d = VisualTestBase.appInstance.s2d;
+		var d = new DialogWithOverlay(sm, {color: 0x000000, alpha: 0.5});
+		sm.modalDialog(d, caller, "d");
+
+		var overlay = sm.modalOverlay;
+		Assert.notNull(overlay);
+		if (overlay == null) return;
+
+		// Larger than the old fixed bitmap in both dimensions.
+		s2d.scaleMode = Stretch(5120, 4320);
+		Assert.equals(5120, s2d.width, "precondition: the scaleMode change resized the scene");
+		sm.update(1 / 60);
+		Assert.floatEquals(5120, overlay.tile.width, "overlay must grow to the new scene width");
+		Assert.floatEquals(4320, overlay.tile.height, "overlay must grow to the new scene height");
+
+		s2d.scaleMode = Stretch(640, 360);
+		sm.update(1 / 60);
+		Assert.floatEquals(640, overlay.tile.width, "overlay must shrink to the new scene width");
+		Assert.floatEquals(360, overlay.tile.height, "overlay must shrink to the new scene height");
 	}
 
 	@Test
