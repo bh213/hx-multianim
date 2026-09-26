@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-09-26 07:17:25</div>
+    <div class="timestamp">Generated: 2026-09-26 11:58:54</div>
     <div class="summary">
         <strong>Summary:</strong> 102 tests,         <span style="color: #4CAF50;">102 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1s, visual 25.7s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 0.8s, visual 20.6s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>8176 assertions:</strong>             <span style="color: #4CAF50;">8176 passed</span>
+            <strong>8187 assertions:</strong>             <span style="color: #4CAF50;">8187 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -1248,6 +1248,7 @@
                 <div class="unit-method pass">testReenabledCardState: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testRemoveAnimationsForEntryHandlesHandResetFromOnComplete: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testRightButtonPushDoesNotStartDrag: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testRightButtonReleaseClearsTheLatchedButtonSoALaterBareUIPushDrags: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testSetAnchorUpdatesPosition: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSetArrowSnapPointProvider: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSetArrowSnapPointProviderNull: OK <span class="dots">.</span></div>
@@ -3235,6 +3236,8 @@
                 <div class="unit-method pass">testDispose: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testDisposeClearsLayers: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testDisposeDoesNotRunRemoveCellAnimatedCallbackLater: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testDisposeSkipsRemoveCellAnimatedCallbackWhoseTweenWasCancelledElsewhere: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testDisposeSkipsRemoveCellAnimatedCallbackWhoseTweenWentBackToThePool: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testDistanceHex: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testDistanceRect: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testDropContextAccept: OK <span class="dots">...</span></div>
@@ -3344,6 +3347,7 @@
                 <div class="unit-method pass">testCloseWhenNothingOpen: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testDefaultCloseModeIsOutsideClick: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testDisposeCancelsInFlightFadeTweens: OK <span class="dots">........</span></div>
+                <div class="unit-method pass">testDisposeDetachesSecondFadeOutWhenSlotIsClosedReopenedAndClosedWithinOneFade: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testDisposeRemovesFadingOutNamedPanelFromScene: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testDoubleRegisterDoesNotDuplicate: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testFadeInPanelReachesFullAlpha: OK <span class="dots">.</span></div>
