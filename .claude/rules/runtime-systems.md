@@ -237,7 +237,7 @@ screenManager.finalizeTransition(); // jump to end immediately
 
 ## Modal Dialog Overlay
 
-Configurable darkening/blur background behind modal dialogs. Overlay is an `h2d.Bitmap` at layer 5 (between master and dialog), animated via TweenManager.
+Configurable darkening/blur background behind modal dialogs. Overlay is an `h2d.Bitmap` at layer 5 (between master and dialog), sized to the scene (`sceneWidth` × `sceneHeight`) and animated via TweenManager. `ScreenManager.update()` refits it whenever the scene size changes (window resize, `scaleMode` change) — polled there rather than from a `hxd.Window` resize listener because that listener list is prepended to, so a late listener would read the scene size before the engine's own `s2d.checkResize()` ran.
 
 **Config typedef** (`UIScreen.hx`):
 ```haxe
@@ -284,7 +284,7 @@ if (overlayFromManim != null)
 
 **Priority:** `.manim` settings override code-set config (set `modalOverlayConfig` before `load()`, then `.manim` settings overwrite in `load()`).
 
-**Overlay lifecycle:** ScreenManager reads `modalOverlayConfig` after `dialog.load()` → creates overlay bitmap → tweens alpha in sync with transition → tweens alpha out on close → removes overlay in cleanup.
+**Overlay lifecycle:** ScreenManager reads `modalOverlayConfig` after `dialog.load()` → creates overlay bitmap at the current scene size → tweens alpha in sync with transition → refits to the scene size on every `update()` → tweens alpha out on close → removes overlay in cleanup.
 
 **Event routing while dialog is open** (known asymmetry): when a dialog opens over `MasterAndSingle`, `overrideActiveScreenControllers = [dialog, oldMaster]` — the dialog is first in the controller list but the underlying master still receives controller events. Opening a dialog over `Single` mode blocks instead (`overrideActiveScreenControllers = [dialog]`). There is no per-dialog `blockUnderlying:Bool` flag yet. If you need a fully input-blocking modal over a master/single layout, switch to `Single` before opening the dialog, or have the master screen gate its own input handlers. See the two `case Dialog(...)` branches under `Single(...)` vs `MasterAndSingle(...)` in `ScreenManager.updateScreenMode` for the asymmetry.
 

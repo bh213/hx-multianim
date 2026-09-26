@@ -273,7 +273,7 @@ Lightweight tween system (`src/bh/base/TweenManager.hx`) owned by `ScreenManager
 4. All tweens use `skipFirstDt = true` to prevent stutter
 5. On complete, `transitionCleanup` removes old screens from scene
 
-**Modal overlay:** When a dialog has `modalOverlayConfig` set, `ScreenManager` creates an `h2d.Bitmap` overlay at layer 5 (between master=4 and dialog=6). Overlay alpha animates in/out via TweenManager synchronized with dialog transition. Optional blur filter applied to underlying screen roots. Config: `color`, `alpha`, `fadeIn`, `fadeOut`, `blur`. Can be set in code (`modalOverlayConfig = {...}`) or via `.manim` `settings { overlay.color:color => ..., overlay.alpha:float => ... }`.
+**Modal overlay:** When a dialog has `modalOverlayConfig` set, `ScreenManager` creates an `h2d.Bitmap` overlay at layer 5 (between master=4 and dialog=6), sized to the scene and refitted in `update()` when the scene size changes. Overlay alpha animates in/out via TweenManager synchronized with dialog transition. Optional blur filter applied to underlying screen roots. Config: `color`, `alpha`, `fadeIn`, `fadeOut`, `blur`. Can be set in code (`modalOverlayConfig = {...}`) or via `.manim` `settings { overlay.color:color => ..., overlay.alpha:float => ... }`.
 
 **Layer ordering:** `layerContent=2`, `layerMaster=4`, `layerOverlay=5`, `layerDialog=6`
 

@@ -284,6 +284,7 @@ class ScreenManager {
 	public dynamic function onReload(?resource:hxd.res.Resource) {}
 
 	public function update(dt:Float):Void {
+		fitModalOverlayToScene();
 		tweens.update(dt);
 		#if MULTIANIM_DEV
 		if (devBridge != null) devBridge.tick();
@@ -1177,11 +1178,33 @@ class ScreenManager {
 	function createModalOverlay(config:ModalOverlayConfig):h2d.Bitmap {
 		final color = config.color ?? 0x000000;
 		// config.color is documented as 0xRRGGBB; bake opaque alpha for the tile — bitmap.alpha is tweened.
-		final overlay = solidBitmap(color | 0xFF000000, 4096, 4096);
+		// Sized to the scene rather than a fixed 4096×4096: a 5K canvas or an AutoZoom-scaled
+		// scene on a hi-DPI display is wider than that. update() refits it when the scene size changes.
+		final overlay = solidBitmap(color | 0xFF000000, Std.int(sceneWidth), Std.int(sceneHeight));
 		overlay.alpha = 0.0;
 		app.s2d.add(overlay, sceneLayers.overlay);
 		modalOverlayTargetAlpha = config.alpha ?? 0.5;
 		return overlay;
+	}
+
+	/**
+	 * Keep the modal overlay covering the whole scene after a resize.
+	 *
+	 * Polled from `update()` rather than registered as a `hxd.Window` resize
+	 * listener: `addResizeEvent` prepends (`List.push`), so a listener added after
+	 * the engine's own would run before that one has called `s2d.checkResize()`
+	 * and read the previous scene size — and a `scaleMode` change resizes the
+	 * scene with no window event at all. `update()` runs after both, before the
+	 * frame renders, and costs two compares when nothing changed.
+	 */
+	function fitModalOverlayToScene():Void {
+		final overlay = modalOverlay;
+		if (overlay == null) return;
+		final w = sceneWidth;
+		final h = sceneHeight;
+		if (overlay.tile.width == w && overlay.tile.height == h) return;
+		// scaleToSize keeps the 1×1 solid texture's UVs, the way Tile.fromColor sizes it; setSize would rewrite them.
+		overlay.tile.scaleToSize(w, h);
 	}
 
 	function removeModalOverlay():Void {
