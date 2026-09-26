@@ -37,6 +37,14 @@ private typedef PanelState = {
 	var fadeInGen:Int; // fadeInTween.generation when started (see Tween.generation)
 }
 
+/** One in-flight fade-out of a named panel slot. */
+@:nullSafety
+private typedef NamedFadeOut = {
+	final tween:Tween;
+	final gen:Int; // tween.generation when started (see Tween.generation)
+	final obj:h2d.Object;
+}
+
 @:nullSafety
 class UIPanelHelper {
 	/** Event name used with UICustomEvent when a panel closes. Data is the interactiveId (String). */
@@ -72,14 +80,13 @@ class UIPanelHelper {
 
 	// Named panel slots for multi-panel support
 	var namedPanels:Map<String, PanelState> = [];
-	// In-flight fade-out tweens for named panels (keyed by slot, survives panel removal from namedPanels)
-	var namedFadeOutTweens:Map<String, Tween> = [];
-	var namedFadeOutGens:Map<String, Int> = [];
-	// h2d.Object paired with each in-flight named fade-out — kept so dispose()
-	// can detach the object directly. TweenManager.cancel() suppresses
-	// onComplete (which is the only path that normally calls obj.remove()),
-	// so without this tracking dispose() would leak the panel into the scene.
-	var namedFadeOutObjs:Map<String, h2d.Object> = [];
+	// In-flight fade-out per slot (survives the panel's removal from namedPanels). `gen` is the
+	// tween's generation when it started, so a fade cancelled elsewhere and reused from the pool is
+	// left alone. `obj` is kept so dispose() can detach the panel directly: TweenManager.cancel()
+	// suppresses onComplete, the only path that normally calls obj.remove(), so without it dispose()
+	// would leak the panel into the scene. One record per fade, so a fade's own completion callback
+	// can tell whether the slot still tracks it or a newer fade started in the meantime.
+	var namedFadeOuts:Map<String, NamedFadeOut> = [];
 
 	public function new(screen:UIComponentHost, builder:MultiAnimBuilder, ?defaults:PanelDefaults, ?tweens:TweenManager) {
 		this.screen = screen;
@@ -297,14 +304,14 @@ class UIPanelHelper {
 
 	/** Close a specific named panel slot. */
 	public function closeNamed(slot:String):Void {
-		// Cancel any in-flight fade-out from a previous close of this slot
-		final prevFadeOut = namedFadeOutTweens.get(slot);
+		// Finish any in-flight fade-out from a previous close of this slot. finish() only snaps the
+		// tween to its end: its completion callback still runs on the next update(), and must then
+		// find the slot no longer tracking it (see the identity check below).
+		final prevFadeOut = namedFadeOuts.get(slot);
 		if (prevFadeOut != null) {
-			if (prevFadeOut.generation == namedFadeOutGens.get(slot))
-				prevFadeOut.finish();
-			namedFadeOutTweens.remove(slot);
-			namedFadeOutGens.remove(slot);
-			namedFadeOutObjs.remove(slot);
+			if (prevFadeOut.tween.generation == prevFadeOut.gen)
+				prevFadeOut.tween.finish();
+			namedFadeOuts.remove(slot);
 		}
 		final panel = namedPanels.get(slot);
 		if (panel == null)
@@ -319,14 +326,15 @@ class UIPanelHelper {
 		final obj = panel.result.object;
 		if (defaultFadeOut > 0 && tweens != null) {
 			final fadeOut = tweens.tween(obj, defaultFadeOut, [Alpha(0.0)]);
-			namedFadeOutTweens.set(slot, fadeOut);
-			namedFadeOutGens.set(slot, fadeOut.generation);
-			namedFadeOutObjs.set(slot, obj);
+			final entry:NamedFadeOut = {tween: fadeOut, gen: fadeOut.generation, obj: obj};
+			namedFadeOuts.set(slot, entry);
 			fadeOut.setOnComplete(() -> {
 				obj.remove();
-				namedFadeOutTweens.remove(slot);
-				namedFadeOutGens.remove(slot);
-				namedFadeOutObjs.remove(slot);
+				// Only drop the slot's tracking while it is still this fade's. A close, reopen and
+				// close of the same slot within one fade finishes this tween (which still completes
+				// on the next update) and starts a newer fade whose tracking must survive.
+				if (namedFadeOuts.get(slot) == entry)
+					namedFadeOuts.remove(slot);
 			});
 		} else {
 			obj.remove();
@@ -487,16 +495,14 @@ class UIPanelHelper {
 			panel.result.object.remove();
 		}
 		namedPanels.clear();
-		// Detach fading-out objects BEFORE cancelling the tweens. Cancel
-		// suppresses the onComplete that owns obj.remove(), so without this
-		// the panel's h2d.Object would stay parented to the scene.
-		for (_ => obj in namedFadeOutObjs)
-			obj.remove();
-		namedFadeOutObjs.clear();
-		for (slot => tween in namedFadeOutTweens)
-			Tween.cancelIfCurrent(tween, namedFadeOutGens.get(slot) ?? -1);
-		namedFadeOutTweens.clear();
-		namedFadeOutGens.clear();
+		// Detach each fading-out object and cancel its tween. Cancel suppresses the onComplete
+		// that owns obj.remove(), so without the detach the panel's h2d.Object would stay
+		// parented to the scene.
+		for (_ => fadeOut in namedFadeOuts) {
+			fadeOut.obj.remove();
+			Tween.cancelIfCurrent(fadeOut.tween, fadeOut.gen);
+		}
+		namedFadeOuts.clear();
 
 		positionOverrides.clear();
 		offsetOverrides.clear();

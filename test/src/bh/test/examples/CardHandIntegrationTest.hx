@@ -1474,6 +1474,24 @@ class CardHandIntegrationTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testRightButtonReleaseClearsTheLatchedButtonSoALaterBareUIPushDrags():Void {
+		// A UIPush that arrives without a raw push in front of it (a screen wired by hand that
+		// forwards only the release, or a DevBridge send_event) is a left-button push by default.
+		// A right press latches its button; releasing that button must clear the latch again,
+		// otherwise every later bare UIPush is refused and the hand can no longer be dragged.
+		var h = createHelper();
+		h.helper.setHand([desc("a")]);
+		final entryA = h.helper.cards[0];
+
+		h.helper.onMouseClick(400, 680, 1);
+		Assert.isFalse(pushOn(h, entryA), "precondition: a right-button push is not taken as a drag");
+		h.helper.onMouseRelease(400, 680, 1);
+
+		Assert.isTrue(pushOn(h, entryA), "once the right button is released, a bare UIPush starts a drag again");
+		Assert.isTrue(h.helper.isDragging, "the hand is dragging after the bare UIPush");
+	}
+
+	@Test
 	public function testOtherButtonReleaseDoesNotEndLeftDrag():Void {
 		// Screen-routed, as a real controller delivers it: the release carries its button.
 		var h = createHelper();

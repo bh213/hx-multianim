@@ -71,7 +71,7 @@ paths {
 **Tracking draw animation:** `drawCard()` uses a tracking animation that dynamically re-stretches the draw path toward the card's current `layoutPos` each frame. The `AnimatedPath` is created with no normalization (raw path coordinates); the stretch transform (`from` → `layoutPos`) is recomputed per frame in `update(dt)`. This means concurrent draws naturally handle shifting hand positions — no stale endpoints. Rotation also tracks `layoutPos.rotation`. Scale/alpha curves from the `.manim` `animatedPath` are applied normally.
 
 **Drag state machine:**
-1. `interactive()` emits `UIPush` → helper starts drag (left button only — it notes the button of the raw `onMouseClick` push the screen dispatches first), reparents card to `dragContainer`
+1. `interactive()` emits `UIPush` → helper starts drag (left button only — it notes the button of the raw `onMouseClick` push the screen dispatches first, and forgets it on release, so a `UIPush` with no raw push in front of it counts as left), reparents card to `dragContainer`
 2. Mouse move: card-to-card check first → targeting zone check (bounds + target fallback) → normal drag
 3. Release: card-to-card hover → `CardCombined`; targeting mode + target → `CardPlayed(TargetZone)`; in zone no target → `CardPlayed(NoTarget)`; outside zones → return animation. Left-button release only; the drag state is cleared before `CardPlayed`/`CardCombined` fire, so a handler may `discardCard()`/`setHand()`
 

@@ -108,8 +108,7 @@ bodies"; LSP-2 resolved with a build.js rebuild step + CI drift gate + LSP tests
   re-enable (UIInteractiveWrapper.hx:120; UIRichInteractiveHelper.hx:197-199).
 - [ ] `UI-15` Lows: dropdown panel updated 2×/frame (2× wheel speed); disabled checkbox/slider/textinput
   swallow events instead of bubbling; UIPanelHelper single-panel `close()` mid-dispatch (named path
-  defers via `pendingClose`); `closeNamed` assumes `Tween.finish()` is synchronous → deferred hook
-  clobbers next fade's tracking; cell-drag start emits 2 phantom `CellDataChanged`; cancelling a
+  defers via `pendingClose`); cell-drag start emits 2 phantom `CellDataChanged`; cancelling a
   TweenSequence from a member's `onComplete` doesn't suppress the sequence `onComplete`;
   `cancelDrag()`/`clear()` outside event dispatch don't release mouse capture + no `DragCancel`.
 

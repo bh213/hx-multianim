@@ -399,6 +399,7 @@ override public function onMouseMove(pos) {
     return super.onMouseMove(pos);
 }
 override public function onMouseClick(pos, button, release) {
+    if (!release) cardHand.onMouseClick(pos.x, pos.y, button); // notes the button: the UIPush that follows drags for left only
     if (release && cardHand.onMouseRelease(pos.x, pos.y, button)) return false;
     if (release) hexGrid.onMouseClick(pos.x, pos.y, button);
     return super.onMouseClick(pos, button, release);

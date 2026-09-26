@@ -1593,9 +1593,18 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 
 		// Stop every cell tween (tweenCell, addCellAnimated, removeCellAnimated) so none runs
 		// on — or calls back into — the disposed grid. Pending removeCellAnimated exits complete
-		// now, like swap animations below.
+		// now, like swap animations below — but only those still animating. A removal whose tween
+		// was cancelled elsewhere (TweenManager.cancelAll / clear, a screen-level cancelAllChildren)
+		// or already went back to the pool is over: its callback never ran and must not run now,
+		// long after the fact. Decided before our own cancel below, which would mark every removal
+		// cancelled. Compacted in place on the copy — no extra allocation.
 		final removals = pendingCellRemovals.copy();
 		pendingCellRemovals.resize(0);
+		var live = 0;
+		for (removal in removals)
+			if (removal.tween.generation == removal.gen && !removal.tween.cancelled)
+				removals[live++] = removal;
+		removals.resize(live);
 		if (tweenManager != null)
 			tweenManager.cancelAllChildren(root);
 		for (removal in removals) {

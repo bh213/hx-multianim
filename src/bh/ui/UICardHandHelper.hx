@@ -215,6 +215,7 @@ class UICardHandHelper implements UIHigherOrderComponent {
 	var isTargeting:Bool = false;
 	// Button of the latest push, from onMouseClick (which the screen dispatches before the
 	// interactive's UIPush). Drags are left-button only; right-click is the controllers' cancel.
+	// Cleared on release: the latch is only meant for the UIPush that follows its own press.
 	var pushButton:Int = 0;
 	var hoveredEntry:Null<CardEntry> = null;
 	var draggedEntry:Null<CardEntry> = null;
@@ -708,6 +709,10 @@ class UICardHandHelper implements UIHigherOrderComponent {
 	/** Handle mouse release for ending drags. Call from screen's mouse handling.
 	 *  `button` (null = left): a drag is a left-button drag, so other buttons don't end it. */
 	public function onMouseRelease(screenX:Float, screenY:Float, ?button:Int):Bool {
+		// Clear the button latched by onMouseClick on any release, so a right press does not keep
+		// refusing later pushes that arrive without a raw click in front of them (a DevBridge
+		// send_event, or a hand-wired screen that forwards only the release).
+		pushButton = 0;
 		if (button != null && button != 0)
 			return false;
 		sceneCursorX = screenX;

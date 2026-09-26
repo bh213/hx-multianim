@@ -2284,6 +2284,41 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testDisposeSkipsRemoveCellAnimatedCallbackWhoseTweenWasCancelledElsewhere():Void {
+		// ScreenManager cancels every tween under a screen root when the screen goes away. A
+		// cancelled tween never completes, so the removal's callback never ran, and dispose()
+		// must not run it now, long after the fact, as if the animation had just finished.
+		var tm = new bh.base.TweenManager();
+		var grid = createTweenGrid(tm);
+		grid.set(0, 0, "item");
+
+		var removed = 0;
+		grid.removeCellAnimated(0, 0, 0.5, [bh.base.TweenManager.TweenProperty.Alpha(0.0)], null, () -> removed++);
+		tm.cancelAllChildren(grid.getObject()); // as ScreenManager.removeScreen does for the screen root
+		grid.dispose();
+
+		Assert.equals(0, removed, "dispose() must not run the callback of a removal whose tween was cancelled elsewhere");
+	}
+
+	@Test
+	public function testDisposeSkipsRemoveCellAnimatedCallbackWhoseTweenWentBackToThePool():Void {
+		// Same as above, but the cancelled tween has already been recycled by an update(): the
+		// kept reference is now a pooled instance with a newer generation.
+		var tm = new bh.base.TweenManager();
+		var grid = createTweenGrid(tm);
+		grid.set(0, 0, "item");
+
+		var removed = 0;
+		grid.removeCellAnimated(0, 0, 0.5, [bh.base.TweenManager.TweenProperty.Alpha(0.0)], null, () -> removed++);
+		tm.cancelAllChildren(grid.getObject());
+		tm.update(0.1);
+		Assert.equals(0, removed, "precondition: a cancelled tween does not complete");
+		grid.dispose();
+
+		Assert.equals(0, removed, "dispose() must not run the callback of a removal whose tween already went back to the pool");
+	}
+
+	@Test
 	public function testRebuildCellStopsEntranceTweenOnReplacedVisual():Void {
 		var tm = new bh.base.TweenManager();
 		var grid = createTweenGrid(tm);
