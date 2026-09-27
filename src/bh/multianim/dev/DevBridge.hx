@@ -1473,8 +1473,13 @@ class DevBridge implements IDevBridgeHost {
 			});
 		}
 
+		final showing = screenManager.showing();
 		return {
 			mode: screenManager.modeToString(screenManager.mode),
+			base: showing.base != null ? resolveScreenName(showing.base) : null,
+			master: showing.master != null ? resolveScreenName(showing.master) : null,
+			dialog: showing.dialog != null ? resolveScreenName(showing.dialog) : null,
+			dialogName: showing.dialogName,
 			isTransitioning: screenManager.isTransitioning,
 			paused: paused,
 			activeTweens: screenManager.tweens.handles.length,

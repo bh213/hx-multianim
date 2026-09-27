@@ -70,6 +70,18 @@ typedef ScreenChangeEvent = {
 
 typedef ScreenChangeListener = (event:ScreenChangeEvent) -> Void;
 
+/** What `ScreenManager.showing()` reports. Fields are null when that part is not showing. */
+typedef ScreensShowing = {
+	/** The main screen: the `Single` screen, or the single of `MasterAndSingle` — also while a dialog is open over it. */
+	base:Null<UIScreen>,
+	/** The master of `MasterAndSingle` — also while a dialog is open over it. */
+	master:Null<UIScreen>,
+	/** The open dialog (the top one when a dialog was opened over another). */
+	dialog:Null<UIScreen>,
+	/** The open dialog's name, as passed to `modalDialog`. */
+	dialogName:Null<String>,
+}
+
 @:nullSafety
 @:allow(bh.ui.screens.UIScreen)
 @:allow(bh.ui.ControllerEventHandler)
@@ -504,6 +516,68 @@ class ScreenManager {
 			}
 		}
 		return null;
+	}
+
+	/** What is showing now: the base screen, the master beside it and the open dialog. During an
+	 *  animated switch this is the mode being switched to — the leaving screens are still drawn
+	 *  until the transition ends, but they are no longer showing. */
+	public function showing():ScreensShowing {
+		var base:Null<UIScreen> = null;
+		var master:Null<UIScreen> = null;
+		switch baseMode(mode) {
+			case Single(single):
+				base = single;
+			case MasterAndSingle(m, single):
+				master = m;
+				base = single;
+			case None | Dialog(_, _, _, _):
+		}
+		return switch mode {
+			case Dialog(dialog, _, _, dialogName): {base: base, master: master, dialog: dialog, dialogName: dialogName};
+			default: {base: base, master: master, dialog: null, dialogName: null};
+		};
+	}
+
+	/** Whether `screen` is one of those `showing()` reports: the base, the master or the open dialog.
+	 *  A dialog covered by another dialog is not showing. */
+	public function isShowing(screen:UIScreen):Bool {
+		switch mode {
+			case Dialog(dialog, _, _, _):
+				if (screen == dialog)
+					return true;
+			default:
+		}
+		return switch baseMode(mode) {
+			case Single(single): screen == single;
+			case MasterAndSingle(master, single): screen == master || screen == single;
+			case None | Dialog(_, _, _, _): false;
+		};
+	}
+
+	/** The mode under every open dialog. */
+	static function baseMode(m:ScreenManagerMode):ScreenManagerMode {
+		return switch m {
+			case Dialog(_, _, previousMode, _): baseMode(previousMode);
+			default: m;
+		};
+	}
+
+	/** Send a showing screen `UILeaving` and then `UIEntering(data)` without taking it out of the
+	 *  scene, so it sets itself up afresh as if entered again. Works for the base, the master or the
+	 *  open dialog; nothing else changes (mode, input routing, a dialog open over the screen). The
+	 *  screen's tweens are cancelled between the two, as when a screen leaves. A running transition
+	 *  is finished first. Throws when the screen is not showing. */
+	public function reenter(screen:UIScreen, ?data:Dynamic):Void {
+		finalizeTransition();
+		if (!isShowing(screen))
+			throw 'reenter: screen "${resolveScreenName(screen)}" is not showing';
+		screen.getController().lifecycleEvent(LifecycleControllerFinished);
+		screen.onScreenEvent(UILeaving, null);
+		screen.onScreenEvent(UIOnControllerEvent(Leaving), null);
+		tweens.cancelAllChildren(screen.getSceneRoot());
+		screen.onScreenEvent(UIEntering(data), null);
+		screen.onScreenEvent(UIOnControllerEvent(Entering), null);
+		screen.getController().lifecycleEvent(LifecycleControllerStarted);
 	}
 
 	function assertScreenNotFailed(screen:UIScreen) {

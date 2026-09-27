@@ -704,6 +704,36 @@ class DevBridgeTest extends BuilderTestBase {
 		Assert.equals("myScreen", active[0].name);
 	}
 
+	@Test
+	public function testGetScreenState_namesShowingScreens():Void {
+		var bridge = createTestBridge();
+		final sm = bridge.screenManager;
+		var result:Dynamic = bridge.dispatch("get_screen_state", {});
+		Assert.isNull(result.base, "nothing showing: base is null");
+		Assert.isNull(result.dialog);
+
+		var hud = addTestScreen(bridge, "hud");
+		var game = addTestScreen(bridge, "game");
+		var confirm = addTestScreen(bridge, "confirmScreen");
+		sm.updateScreenMode(MasterAndSingle(hud, game));
+		result = bridge.dispatch("get_screen_state", {});
+		Assert.equals("game", result.base);
+		Assert.equals("hud", result.master);
+		Assert.isNull(result.dialog);
+		Assert.isNull(result.dialogName);
+
+		sm.modalDialog(confirm, game, "confirm");
+		result = bridge.dispatch("get_screen_state", {});
+		Assert.equals("game", result.base, "base names the screen under the dialog");
+		Assert.equals("hud", result.master);
+		Assert.equals("confirmScreen", result.dialog);
+		Assert.equals("confirm", result.dialogName);
+		Assert.equals("dialog:confirm", result.mode, "mode is reported as before");
+
+		for (s in [hud, game, confirm])
+			s.getSceneRoot().remove();
+	}
+
 	// ==================== get_tween_state ====================
 
 	@Test

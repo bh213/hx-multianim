@@ -506,7 +506,9 @@ Screen manager state: mode, active screens, transition status, pause state.
 
 No parameters.
 
-Returns: `mode`, `isTransitioning`, `paused`, `activeTweens`, `activeScreens[]` (each with `name`, `elementCount`, `interactiveCount`).
+Returns: `mode`, `base`, `master`, `dialog`, `dialogName`, `isTransitioning`, `paused`, `activeTweens`, `activeScreens[]` (each with `name`, `elementCount`, `interactiveCount`).
+
+`base`, `master` and `dialog` name the screens `ScreenManager.showing()` reports (the screen name given to `addScreen`, `"unknown"` for a screen that was not added by name); each is `null` when that part is not showing. `base` and `master` are the screens under an open dialog; `dialog` is the top dialog and `dialogName` its name as passed to `modalDialog`. `mode` is the same string as before (`"none"`, `"single"`, `"masterAndSingle"`, `"dialog:<name>"`).
 
 #### `wait_for_idle`
 Check if system is idle (no active tweens, no transitions). Non-blocking.

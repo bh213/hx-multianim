@@ -264,6 +264,17 @@ screenManager.finalizeTransition(); // jump to end immediately
 - All transition tweens use `skipFirstDt = true` to prevent stutter
 - If a new transition starts while one is in progress, the current one finalizes immediately
 
+**What is showing** — `ScreenManagerMode` is private; read the mode through these instead:
+```haxe
+final s = screenManager.showing();  // ScreensShowing {base, master, dialog, dialogName}, null where absent
+screenManager.isShowing(screen);    // true for the base, the master or the open dialog
+screenManager.reenter(screen, data); // UILeaving then UIEntering(data) to a showing screen, in place
+```
+- `base` is the `Single` screen or the single of `MasterAndSingle`, found under any open dialogs; `master` likewise. `dialog`/`dialogName` are the top dialog. A dialog covered by another dialog is not showing (it is out of the scene).
+- During an animated switch, `showing()` already reports the mode being switched to.
+- `reenter(screen, ?data)` restarts a screen that stays up (a screen resets itself on `UIEntering`, which `updateScreenMode` does not send to a screen already present). Order: controller `LifecycleControllerFinished`, `UILeaving`, `UIOnControllerEvent(Leaving)`, the screen's tweens cancelled, `UIEntering(data)`, `UIOnControllerEvent(Entering)`, `LifecycleControllerStarted`. The root stays in the scene; mode, input routing and a dialog open over the screen are untouched. Finishes a running transition first; throws if the screen is not showing.
+- DevBridge `get_screen_state` returns the same view by screen name (`base`, `master`, `dialog`, `dialogName`) beside `mode`.
+
 ## Modal Dialog Overlay
 
 Configurable darkening/blur background behind modal dialogs. Overlay is an `h2d.Bitmap` at layer 5 (between master and dialog), sized to the scene (`sceneWidth` × `sceneHeight`) and animated via TweenManager. `ScreenManager.update()` refits it whenever the scene size changes (window resize, `scaleMode` change) — polled there rather than from a `hxd.Window` resize listener because that listener list is prepended to, so a late listener would read the scene size before the engine's own `s2d.checkResize()` ran.
