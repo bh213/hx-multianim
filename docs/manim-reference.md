@@ -315,6 +315,8 @@ Parse-time error when used outside a flow ancestor.
 
 A bare `@else` or `@default` is **terminal** — it closes the chain. Any `@else` / `@default` that follows one is unreachable and rejected at parse time. To start a fresh chain, open a new `@(...)` sibling first.
 
+One conditional per element: `@(a=>1) @(b=>2)` and `@(a=>1) @else` / `@(a=>1) @default` are parse errors (combine conditions with `@all()` / `@any()`). A condition list must not be empty — `@()`, `@if()`, `@all()`, `@any()` and `@else()` are parse errors.
+
 **`@final` constants cannot be conditional or `@switch` keys.** `@final` is a compile-time-only alias with no runtime value slot, so both the runtime matcher and codegen's condition emitter would fail on a reference to its name. Using a `@final` as a key in `@(MY_CONST=>…)`, `@if(…)`, `@any(…)`, `@all(…)`, `@else(…)`, or `@switch(MY_CONST)` is rejected at parse time with a message naming the offending `@final`. Use a programmable parameter (`param:type=default`) as the conditional key instead. The rule applies regardless of whether the `@final`'s RHS is a literal or a derived expression.
 
 **Unknown enum members in a conditional are rejected at parse time.** Multi-value (`@(p => [a, b])`), negated multi-value (`@(p != [a, b])`), and `@switch` pipe arms (`a | b { ... }`) build their match set from raw lexemes; a value not present in the parameter's declared enum is rejected with a message naming the offending value and listing the valid members. (String params accept any value; loop variables have no declared type to validate against.) This prevents the silent divergence where a typo never matched in the builder but matched enum index 0 in codegen.
@@ -1463,6 +1465,8 @@ interactive(200, 30, "shopBtn", bind => "status", events: [hover, click, push])
 ```
 
 `UIRichInteractiveHelper.register(result, ?prefix, metadataKey)` scans interactives for the given metadata key (default: `"bind"`) and auto-wires state transitions. The key `"autoStatus"` is reserved and throws if used manually.
+
+With a prefix, bindings are keyed `'<prefix>.<identifier>'` — pass that full id to `setHoverState` / `resetState` / `setDisabled`. `getBindingIds(prefix, out)` fills `out` with the ids registered under a prefix.
 
 **Important:** An interactive cannot have both `autoStatus` and `bind` — `register()` throws if the screen already manages the interactive via `autoStatus`.
 

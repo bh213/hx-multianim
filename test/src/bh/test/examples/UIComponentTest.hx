@@ -1577,6 +1577,31 @@ class UIComponentTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testScrollableListEmptySpacePressDoesNotArmDoubleClick():Void {
+		var list = createScrollableList();
+		var mock = new MockControllable();
+		function doubleClickCount():Int {
+			var count = 0;
+			for (e in mock.recordedEvents)
+				switch e.event {
+					case UIDoubleClickItem(_, _): count++;
+					default:
+				}
+			return count;
+		}
+
+		// Press on the empty tail below the last item (5 items x 20px, panel 200px) ...
+		UITestHarness.simulateClick(list, mock, new h2d.col.Point(60, 150));
+		// ... then on item 0 within the double-click window: one press on item 0 is not a double-click.
+		UITestHarness.simulateClick(list, mock, new h2d.col.Point(60, 5));
+		Assert.equals(0, doubleClickCount(), "a press on empty space followed by a press on item 0 must not double-click item 0");
+
+		// Control: a second press on item 0 is a double-click.
+		UITestHarness.simulateClick(list, mock, new h2d.col.Point(60, 5));
+		Assert.equals(1, doubleClickCount(), "two presses on item 0 double-click it");
+	}
+
+	@Test
 	public function testScrollableListClickModeDefault():Void {
 		var list = createScrollableList();
 		// Default should be DoubleClick

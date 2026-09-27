@@ -148,4 +148,47 @@ class CodegenRepeatParamParityTest extends BuilderTestBase {
 		Assert.notNull(flow, "codegen: expected an h2d.Flow in the tree");
 		Assert.equals(3, flow.numChildren, "codegen: flow must see 3 iteration children, not 1 wrapper container");
 	}
+
+	// ==================== builder-forwarded child inside a point ====================
+
+	/** Parents of the interactive objects under `root`, one entry per interactive. */
+	static function interactiveParents(root:h2d.Object, out:Array<h2d.Object>):Array<h2d.Object> {
+		for (i in 0...root.numChildren) {
+			final child = root.getChildAt(i);
+			if (Std.isOfType(child, bh.base.MAObject)) {
+				final ma:bh.base.MAObject = cast child;
+				if (ma.multiAnimType.match(MAInteractive(_, _, _, _)))
+					out.push(child.parent);
+			}
+			interactiveParents(child, out);
+		}
+		return out;
+	}
+
+	/** Builder baseline: each iteration's point holds its interactive. */
+	@Test
+	public function testPointForwardedChild_Builder_AddsChildToPoint():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "pointForwardedChild", null);
+		Assert.equals(2, interactiveParents(result.object, []).length, "builder: one interactive per iteration");
+	}
+
+	/** Codegen: a builder-forwarded child inside a point must be added to the point,
+	 *  not to itself ("Recursive addChild"). */
+	@Test
+	public function testPointForwardedChild_Codegen_AddsChildToPoint():Void {
+		var inst:Null<h2d.Object> = null;
+		var error:Null<String> = null;
+		try {
+			inst = cast createMp().pointForwardedChild.create();
+		} catch (e:Dynamic) {
+			error = Std.string(e);
+		}
+		Assert.isNull(error, 'codegen: create() must not throw, got: $error');
+		if (inst != null) {
+			final parents = interactiveParents(inst, []);
+			Assert.equals(2, parents.length, "codegen: one interactive per iteration");
+			for (p in parents)
+				Assert.isFalse(Std.isOfType(p, bh.base.MAObject), "codegen: the interactive's parent is the point, not an interactive");
+		}
+	}
 }

@@ -157,7 +157,13 @@ class CachingResourceLoader implements ResourceLoader {
         if (multiAnimCycleDetection.contains(key)) throw 'cyclic dependency in multiAnim $key: path ${multiAnimCycleDetection}';
         multiAnimCycleDetection.push(key);
 
-        var retVal =  cachedGet(multiAnimCache, key, k ->loadMultiAnimImpl(k));
+        var retVal = try {
+            cachedGet(multiAnimCache, key, k ->loadMultiAnimImpl(k));
+        } catch (e) {
+            // A failed load must leave the path, or every retry reports a cyclic dependency.
+            multiAnimCycleDetection.remove(key);
+            throw e;
+        }
 
         multiAnimCycleDetection.remove(key);
         return retVal;

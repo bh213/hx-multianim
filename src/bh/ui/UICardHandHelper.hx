@@ -34,6 +34,13 @@ private class CardEntry {
 	 *  Stored here so it can be removed when the card is discarded. Null if the card's result
 	 *  is not in incremental mode. */
 	public var rebuildListener:Null<Void -> Void> = null;
+	/** Ids of the card's `bind` bindings in `interactiveHelper`. `register(result, interactiveId)`
+	 *  keys them `'<interactiveId>.<identifier>'`, so card-level state changes go to each of these.
+	 *  Read through `UICardHandHelper.boundIdsOf()`, which refreshes them when `boundIdsStale`. */
+	public final boundIds:Array<String> = [];
+	/** Set by `rebuildListener` instead of refilling `boundIds` there: a state change rebuilds
+	 *  the card from inside a loop over `boundIds`, and refilling it mid-loop skips entries. */
+	public var boundIdsStale:Bool = true;
 
 	public function new(descriptor:CardDescriptor, result:BuilderResult, container:h2d.Object, interactiveId:String) {
 		this.descriptor = descriptor;
@@ -88,28 +95,49 @@ private class ActiveAnimation {
  *
  *  The game provides a `.manim` file with:
  *  ```manim
- *  paths { #drawArc lineTo(0, -30), bezier(100, 0, 50, -60) }
+ *  paths {
+ *      #drawArc path {
+ *          lineTo(0, -30)
+ *          bezier(100, 0, 50, -60)
+ *      }
+ *      #arrowCurve path { bezier(100, 0, 50, -30) }
+ *  }
  *  #drawPath animatedPath {
- *      path: drawArc, type: time, duration: 0.3, easing: easeOutBack
+ *      path: drawArc
+ *      type: time
+ *      duration: 0.3
+ *      easing: easeOutBack
  *      0.0: scaleCurve: easeOutBack       // card grows from 0→1 during draw
  *      0.0: alphaCurve: easeOutQuad        // card fades in during draw
  *  }
  *  #discardPath animatedPath {
- *      path: drawArc, type: time, duration: 0.25, easing: easeInQuad
+ *      path: drawArc
+ *      type: time
+ *      duration: 0.25
+ *      easing: easeInQuad
  *      0.0: alphaCurve: easeInQuad         // card fades out during discard (curve 0→1 maps to alpha 0→1; reverse path handles direction)
  *  }
- *  #returnPath animatedPath { path: drawArc, type: time, duration: 0.2, easing: easeOutCubic }
- *  #rearrangePath animatedPath { path: drawArc, type: time, duration: 0.15, easing: easeInOutCubic }
+ *  #returnPath animatedPath {
+ *      path: drawArc
+ *      type: time
+ *      duration: 0.2
+ *      easing: easeOutCubic
+ *  }
+ *  #rearrangePath animatedPath {
+ *      path: drawArc
+ *      type: time
+ *      duration: 0.15
+ *      easing: easeInOutCubic
+ *  }
  *
- *  paths { #arrowCurve path { bezier(100, 0, 50, -30) } }
  *  #arrowSegment programmable(valid:bool=false) { ... }  // body segment
  *  #arrowHead programmable(valid:bool=false) { ... }      // arrowhead at end
  *
  *  #card programmable(status:[normal,hover,pressed,disabled]=normal, name:string="", cost:uint=0) {
- *      interactive(80, 110, "card", bind => "status", events: [hover, click, push])
- *      @(status=>normal) ninepatch(cards, cardBg, 80, 110): 0, 0
- *      @(status=>hover) filter: glow(#FFFF00, 0.6, 10)
- *      @(status=>disabled) filter: group(brightness(0.5), grayscale(0.8))
+ *      interactive(80, 110, "card", bind => "status", events: [hover, click, push]): 0, 0
+ *      ninepatch(cards, cardBg, 80, 110): 0, 0
+ *      @(status=>hover) apply { filter: glow(#FFFF00, 0.6, 10) }
+ *      @(status=>disabled) apply { filter: group(brightness(0.5), grayscale(0.8)) }
  *      // ... card content
  *  }
  *  ```
@@ -488,7 +516,8 @@ class UICardHandHelper implements UIHigherOrderComponent {
 			entry.enableAfterAnimation = false;
 		}
 
-		interactiveHelper.setDisabled(entry.interactiveId, !enabled);
+		for (id in boundIdsOf(entry))
+			interactiveHelper.setDisabled(id, !enabled);
 	}
 
 	/** Get the number of cards in hand. */
@@ -856,7 +885,10 @@ class UICardHandHelper implements UIHigherOrderComponent {
 		// `screen.addInteractives` above. Skip on non-incremental results — those can't rebuild.
 		if (result.isIncremental) {
 			final capturedEntry = entry;
-			final listener = () -> interactiveHelper.resync(capturedEntry.result, capturedEntry.interactiveId);
+			final listener = () -> {
+				interactiveHelper.resync(capturedEntry.result, capturedEntry.interactiveId);
+				capturedEntry.boundIdsStale = true;
+			};
 			result.addRebuildListener(listener);
 			entry.rebuildListener = listener;
 		}
@@ -865,7 +897,8 @@ class UICardHandHelper implements UIHigherOrderComponent {
 		var enabled = descriptor.enabled != null ? descriptor.enabled : true;
 		if (!enabled) {
 			entry.state = Disabled;
-			interactiveHelper.setDisabled(interactiveId, true);
+			for (id in boundIdsOf(entry))
+				interactiveHelper.setDisabled(id, true);
 		}
 
 		// Allow game code to customize the card (add buttons, slots, custom content)
@@ -879,7 +912,9 @@ class UICardHandHelper implements UIHigherOrderComponent {
 	 *  removal site (discard, hand clear, play). Does NOT remove the card from `cards` or touch
 	 *  the scene graph — callers handle those site-specific steps around this call. */
 	function unregisterCardEntry(entry:CardEntry):Void {
-		interactiveHelper.unbind(entry.interactiveId);
+		interactiveHelper.unregisterByPrefix(entry.interactiveId);
+		entry.boundIds.resize(0);
+		entry.boundIdsStale = false;
 		screen.removeInteractives(entry.interactiveId);
 		if (entry.rebuildListener != null) {
 			entry.result.removeRebuildListener(entry.rebuildListener);
@@ -1045,7 +1080,8 @@ class UICardHandHelper implements UIHigherOrderComponent {
 		if (hoveredEntry != null) {
 			if (hoveredEntry.state == Hovered) {
 				hoveredEntry.state = InHand;
-				interactiveHelper.resetState(hoveredEntry.interactiveId); // Visual: normal
+				for (id in boundIdsOf(hoveredEntry))
+					interactiveHelper.resetState(id); // Visual: normal
 				addToHandLayer(hoveredEntry); // Restore z-order
 				emitEvent(CardHoverEnd(hoveredEntry.descriptor.id));
 			}
@@ -1057,7 +1093,8 @@ class UICardHandHelper implements UIHigherOrderComponent {
 		if (hoveredEntry != null) {
 			if (hoveredEntry.state == InHand) {
 				hoveredEntry.state = Hovered;
-				interactiveHelper.setHoverState(hoveredEntry.interactiveId); // Visual: hover
+				for (id in boundIdsOf(hoveredEntry))
+					interactiveHelper.setHoverState(id); // Visual: hover
 				handContainer.add(hoveredEntry.container, cards.length); // Bring to top
 				emitEvent(CardHoverStart(hoveredEntry.descriptor.id));
 			}
@@ -1085,7 +1122,8 @@ class UICardHandHelper implements UIHigherOrderComponent {
 
 		entry.state = Dragging;
 		// Reset "pressed" visual state — drag doesn't need pressed appearance
-		interactiveHelper.resetState(entry.interactiveId);
+		for (id in boundIdsOf(entry))
+			interactiveHelper.resetState(id);
 		entry.container.rotation = 0;
 
 		// Reparent to drag container (same local space, higher z-layer)
@@ -1359,7 +1397,8 @@ class UICardHandHelper implements UIHigherOrderComponent {
 					resolveAnimationComplete(entry);
 					entry.container.scaleX = targetPos.scale;
 					entry.container.scaleY = targetPos.scale;
-					interactiveHelper.resetState(entry.interactiveId);
+					for (id in boundIdsOf(entry))
+						interactiveHelper.resetState(id);
 				});
 		}
 
@@ -1567,7 +1606,8 @@ class UICardHandHelper implements UIHigherOrderComponent {
 		} else if (entry.state == Disabled && entry.enableAfterAnimation) {
 			entry.state = InHand;
 			entry.enableAfterAnimation = false;
-			interactiveHelper.setDisabled(entry.interactiveId, false);
+			for (id in boundIdsOf(entry))
+				interactiveHelper.setDisabled(id, false);
 		}
 		// If Disabled without enableAfterAnimation, stay Disabled
 	}
@@ -1658,6 +1698,16 @@ class UICardHandHelper implements UIHigherOrderComponent {
 			if (cards[i].descriptor.id == cardId)
 				return i;
 		return -1;
+	}
+
+	/** The card's binding ids, re-read if a rebuild marked them stale. Take the array once per
+	 *  loop (`for (id in boundIdsOf(entry))`): a rebuild during the loop only marks it stale. */
+	function boundIdsOf(entry:CardEntry):Array<String> {
+		if (entry.boundIdsStale) {
+			interactiveHelper.getBindingIds(entry.interactiveId, entry.boundIds);
+			entry.boundIdsStale = false;
+		}
+		return entry.boundIds;
 	}
 
 	function findCardByInteractiveId(id:String):Null<CardEntry> {

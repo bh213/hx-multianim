@@ -10113,4 +10113,44 @@ class BuilderUnitTest extends BuilderTestBase {
 			+ order.join(",") + '. Grouping by changedParams key order reorders trackeds that '
 			+ 'mutate overlapping properties of the same object.');
 	}
+
+	// A failed load must not leave the file on the loader's cycle-detection path: the
+	// next load of the same file (after the author fixes it) has to reach the loader
+	// again instead of reporting a cyclic dependency.
+	@Test
+	public function testFailedMultiAnimLoadDoesNotPoisonRetry():Void {
+		final fixed = builderFromSource("
+			#test programmable() {
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		");
+		final loader = new bh.base.ResourceLoader.CachingResourceLoader();
+		var attempts = 0;
+		loader.loadMultiAnimImpl = name -> {
+			attempts++;
+			if (attempts == 1)
+				throw 'syntax error in $name';
+			return fixed;
+		};
+
+		var firstError:Null<String> = null;
+		try {
+			loader.loadMultiAnim("screen.manim");
+		} catch (e:Dynamic) {
+			firstError = Std.string(e);
+		}
+		Assert.notNull(firstError, "first load must fail");
+		Assert.stringContains("syntax error", firstError, "first load must report the real error");
+
+		var retryError:Null<String> = null;
+		var retried:Null<bh.multianim.MultiAnimBuilder> = null;
+		try {
+			retried = loader.loadMultiAnim("screen.manim");
+		} catch (e:Dynamic) {
+			retryError = Std.string(e);
+		}
+		Assert.isNull(retryError, 'retry after a failed load must reach the loader, got: $retryError');
+		Assert.equals(2, attempts, "retry must call loadMultiAnimImpl again");
+		Assert.equals(fixed, retried, "retry must return the freshly loaded builder");
+	}
 }

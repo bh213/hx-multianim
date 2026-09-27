@@ -39,3 +39,14 @@ version: 1.0
     }
   }
 }
+
+// A point inside a param-dependent repeat (runtime rebuild path) holding a child that
+// codegen forwards to the builder at runtime: the child must be added to the point.
+#pointForwardedChild programmable(n:int=2) {
+  repeatable($i, step($n, dx: 20)) {
+    point {
+      pos: 0, 0
+      interactive(10, 10, $i): 0, 0
+    }
+  }
+}

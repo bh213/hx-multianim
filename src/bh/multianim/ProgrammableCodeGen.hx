@@ -3674,9 +3674,11 @@ class ProgrammableCodeGen {
 		for (loopVar => loopIdent in runtimeLoopVars) {
 			mapExprs.push(macro _rt_pp.set($v{loopVar}, $i{loopIdent}));
 		}
+		// `_rt_fwd`, not `_rt_obj`: a POINT arm passes its own `_rt_obj` as containerRef, which
+		// a same-named local here would shadow (`_rt_obj.addChild(_rt_obj)`).
 		mapExprs.push(macro {
-			final _rt_obj = this._pb.buildNodeByUniqueNameWithParams($v{progName}, $v{nodeName}, _rt_pp, $sinkExpr);
-			if (_rt_obj != null) $containerRef.addChild(_rt_obj);
+			final _rt_fwd = this._pb.buildNodeByUniqueNameWithParams($v{progName}, $v{nodeName}, _rt_pp, $sinkExpr);
+			if (_rt_fwd != null) $containerRef.addChild(_rt_fwd);
 		});
 		bodyExprs.push({expr: EBlock(mapExprs), pos: pos});
 	}

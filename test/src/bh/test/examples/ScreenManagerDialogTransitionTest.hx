@@ -156,6 +156,32 @@ class ScreenManagerDialogTransitionTest extends utest.Test {
 		a.getSceneRoot().remove();
 		b.getSceneRoot().remove();
 	}
+
+	@Test
+	public function testMasterAndSingleToSameSingle_RemovesOnlyMaster():Void {
+		// Dropping the master while the single screen stays: only the master leaves.
+		var sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
+
+		var master = new ProbeScreen(sm);
+		var single = new ProbeScreen(sm);
+
+		sm.updateScreenMode(MasterAndSingle(master, single));
+
+		var error:Null<String> = null;
+		try {
+			sm.updateScreenMode(Single(single));
+		} catch (e:Dynamic) {
+			error = Std.string(e);
+		}
+		Assert.isNull(error, 'MasterAndSingle(m, s) -> Single(s) must not throw, got: $error');
+		Assert.isNull(master.getSceneRoot().parent, "the master must be removed from the scene");
+		Assert.isFalse(sm.activeScreens.contains(master), "the master must no longer be active");
+		Assert.notNull(single.getSceneRoot().parent, "the single screen stays in the scene");
+		Assert.isFalse(single.leavingObserved, "the single screen stays, so it must not receive UILeaving");
+
+		master.getSceneRoot().remove();
+		single.getSceneRoot().remove();
+	}
 }
 
 /** Screen that records the scene-root parent observed when UILeaving fires,

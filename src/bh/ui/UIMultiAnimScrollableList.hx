@@ -329,7 +329,9 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 						this.currentPressedIndex = newIndex;
 					}
 				}
-				lastClickIndex = newIndex;
+				// -1 for a press on empty space: a null stored into the Int field reads as 0 on
+				// HashLink and would arm a double-click on item 0.
+				lastClickIndex = newIndex ?? -1;
 				lastClick = time;
 
 			case OnRelease(button):

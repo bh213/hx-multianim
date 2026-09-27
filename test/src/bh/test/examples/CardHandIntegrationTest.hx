@@ -1540,4 +1540,123 @@ class CardHandIntegrationTest extends BuilderTestBase {
 			+ "Add `-D MULTIANIM_ALLOC_TRACK` to test-common.hxml.");
 		#end
 	}
+
+	// ==================== bind => "status" visuals ====================
+	// The card's interactive is registered under '<interactiveId>.<identifier>'; the
+	// hand's hover / enable / discard calls must reach that binding.
+
+	static final STATUS_CARD_MANIM = "
+		#card programmable(status:[normal,hover,pressed,disabled]=normal) {
+			@(status=>normal) bitmap(generated(color(80, 110, #444444))): 0, 0
+			@(status=>hover) bitmap(generated(color(81, 110, #888888))): 0, 0
+			@(status=>pressed) bitmap(generated(color(82, 110, #AAAAAA))): 0, 0
+			@(status=>disabled) bitmap(generated(color(83, 110, #222222))): 0, 0
+			interactive(80, 110, \"card\", bind => \"status\"): 0, 0
+		}
+	";
+
+	static function createStatusHelper():{helper:UICardHandHelper, screen:UITestScreen} {
+		var builder = BuilderTestBase.builderFromSource(STATUS_CARD_MANIM);
+		var screen = new UITestScreen();
+		var helper = new UICardHandHelper(screen, builder);
+		return {helper: helper, screen: screen};
+	}
+
+	/** Width of the one visible status bitmap: 80 normal, 81 hover, 82 pressed, 83 disabled. */
+	static function statusWidth(result:bh.multianim.MultiAnimBuilder.BuilderResult):Int {
+		final bitmaps = BuilderTestBase.findVisibleBitmapDescendants(result.object);
+		return bitmaps.length == 1 ? Std.int(bitmaps[0].tile.width) : -bitmaps.length;
+	}
+
+	@Test
+	public function testHoveredCardShowsHoverStatus():Void {
+		var h = createStatusHelper();
+		h.helper.setHand([desc("a")]);
+		final entry = h.helper.cards[0];
+		Assert.equals(80, statusWidth(entry.result), "precondition: the card starts with status normal");
+
+		h.helper.setHoveredEntry(entry);
+		Assert.equals(81, statusWidth(entry.result), "hovering a card must set its bound status to hover");
+
+		h.helper.setHoveredEntry(null);
+		Assert.equals(80, statusWidth(entry.result), "un-hovering a card must set its bound status back to normal");
+	}
+
+	@Test
+	public function testDisabledCardShowsDisabledStatusAndDisablesInteractive():Void {
+		var h = createStatusHelper();
+		h.helper.setHand([desc("a")]);
+		final entry = h.helper.cards[0];
+		final wrapper = h.screen.getInteractive(entry.interactiveId + ".card");
+		Assert.notNull(wrapper, "precondition: the card's interactive is registered on the screen");
+
+		h.helper.setCardEnabled("a", false);
+		Assert.equals(83, statusWidth(entry.result), "a disabled card must set its bound status to disabled");
+		if (wrapper != null)
+			Assert.isTrue(wrapper.disabled, "a disabled card's interactive must be disabled so its clicks stop");
+
+		h.helper.setCardEnabled("a", true);
+		Assert.equals(80, statusWidth(entry.result), "a re-enabled card must set its bound status back to normal");
+		if (wrapper != null)
+			Assert.isFalse(wrapper.disabled, "a re-enabled card's interactive must be enabled again");
+	}
+
+	@Test
+	public function testCardDrawnDisabledShowsDisabledStatus():Void {
+		var h = createStatusHelper();
+		h.helper.setHand([{id: "a", buildName: "card", enabled: false}]);
+		Assert.equals(83, statusWidth(h.helper.cards[0].result), "a card built disabled must show status disabled");
+	}
+
+	@Test
+	public function testDiscardedCardReleasesItsBinding():Void {
+		var h = createStatusHelper();
+		h.helper.setHand([desc("a")]);
+		final boundId = h.helper.cards[0].interactiveId + ".card";
+		Assert.isTrue(h.helper.interactiveHelper.hasBinding(boundId), "precondition: the card's interactive is bound");
+
+		h.helper.discardCard("a");
+		Assert.isFalse(h.helper.interactiveHelper.hasBinding(boundId), "a discarded card must not leave its binding behind");
+	}
+
+	// A status change rebuilds the card from inside the hand's loop over the card's bindings; when
+	// the rebuild drops one of them, the loop must still reach the others. Each card has two bound
+	// interactives, `p` and `q`, and one of them exists only while status is normal. The two
+	// programmables swap which one vanishes, so whichever order the binding map iterates in, one
+	// of the two cards visits the vanishing binding first.
+	static final SHRINKING_BIND_MANIM = "
+		#qVanishes programmable(status:[normal,hover,pressed,disabled]=normal) {
+			interactive(80, 110, \"p\", bind => \"status\"): 0, 0
+			@switch(status) {
+				normal: interactive(10, 10, \"q\", bind => \"status\"): 0, 0;
+				default: bitmap(generated(color(1, 1, #000000))): 0, 0;
+			}
+		}
+		#pVanishes programmable(status:[normal,hover,pressed,disabled]=normal) {
+			@switch(status) {
+				normal: interactive(10, 10, \"p\", bind => \"status\"): 0, 0;
+				default: bitmap(generated(color(1, 1, #000000))): 0, 0;
+			}
+			interactive(80, 110, \"q\", bind => \"status\"): 0, 0
+		}
+	";
+
+	@Test
+	public function testDisablingCardWhoseRebuildDropsABindingDisablesTheRest():Void {
+		final builder = BuilderTestBase.builderFromSource(SHRINKING_BIND_MANIM);
+		for (card in [{buildName: "qVanishes", remaining: "p"}, {buildName: "pVanishes", remaining: "q"}]) {
+			final screen = new UITestScreen();
+			final helper = new UICardHandHelper(screen, builder, {interactivePrefix: "h"});
+			helper.setHand([{id: "a", buildName: card.buildName}]);
+			final entry = helper.cards[0];
+			final remainingId = entry.interactiveId + "." + card.remaining;
+			Assert.isTrue(helper.interactiveHelper.hasBinding(remainingId), '${card.buildName}: precondition: $remainingId is bound');
+
+			helper.setCardEnabled("a", false);
+			final wrapper = screen.getInteractive(remainingId);
+			Assert.notNull(wrapper, '${card.buildName}: $remainingId survives the rebuild');
+			if (wrapper != null)
+				Assert.isTrue(wrapper.disabled, '${card.buildName}: disabling the card must disable $remainingId too');
+		}
+	}
 }

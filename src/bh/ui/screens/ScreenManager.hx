@@ -603,8 +603,9 @@ class ScreenManager {
 					case None:
 						removedScreens = [oldMaster, oldSingle];
 					case Single(single):
+						removedScreens = [];
 						if (oldSingle != single) {
-							removedScreens = [oldSingle];
+							removedScreens.push(oldSingle);
 							addedScreens = [single => layerContent];
 						}
 						if (single == oldMaster)

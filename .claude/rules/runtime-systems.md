@@ -21,28 +21,57 @@
 **Game provides a `.manim` file with:**
 ```manim
 paths {
-    #cardArc lineTo(0, -30), bezier(100, 0, 50, -60)
-    #handShape bezier(0, 0, 400, -80, 800, 0)
+    #cardArc path {
+        lineTo(0, -30)
+        bezier(100, 0, 50, -60)
+    }
+    #handShape path {
+        bezier(800, 0, 400, -80)
+    }
 }
-#drawPath animatedPath { path: cardArc, type: time, duration: 0.3, easing: easeOutBack }
-#discardPath animatedPath { path: cardArc, type: time, duration: 0.25, easing: easeInQuad }
-#returnPath animatedPath { path: cardArc, type: time, duration: 0.2, easing: easeOutCubic }
-#rearrangePath animatedPath { path: cardArc, type: time, duration: 0.15, easing: easeInOutCubic }
+#drawPath animatedPath {
+    path: cardArc
+    type: time
+    duration: 0.3
+    easing: easeOutBack
+}
+#discardPath animatedPath {
+    path: cardArc
+    type: time
+    duration: 0.25
+    easing: easeInQuad
+}
+#returnPath animatedPath {
+    path: cardArc
+    type: time
+    duration: 0.2
+    easing: easeOutCubic
+}
+#rearrangePath animatedPath {
+    path: cardArc
+    type: time
+    duration: 0.15
+    easing: easeInOutCubic
+}
 
 #arrowSegment programmable(valid:bool=false) {
-    graphics(?(valid) #44FF44 : #FF4444, 2.0) { line(0, 0, 12, 0) }
+    @(valid=>true) graphics(line(#44FF44, 2.0, 0, 0, 12, 0)): 0, 0
+    @else graphics(line(#FF4444, 2.0, 0, 0, 12, 0)): 0, 0
 }
 #arrowHead programmable(valid:bool=false) {
-    graphics(?(valid) #44FF44 : #FF4444, 2.0) { line(0, -4, 8, 0), line(0, 4, 8, 0) }
+    @(valid=>true) graphics(line(#44FF44, 2.0, 0, -4, 8, 0); line(#44FF44, 2.0, 0, 4, 8, 0)): 0, 0
+    @else graphics(line(#FF4444, 2.0, 0, -4, 8, 0); line(#FF4444, 2.0, 0, 4, 8, 0)): 0, 0
 }
 
 #card programmable(status:[normal,hover,pressed,disabled]=normal, name:string="") {
-    interactive(80, 110, "card", bind => "status", events: [hover, click, push])
-    @(status=>hover) filter: glow(#FFFF00, 0.6, 10)
-    @(status=>disabled) filter: group(brightness(0.5), grayscale(0.8))
+    interactive(80, 110, "card", bind => "status", events: [hover, click, push]): 0, 0
+    @(status=>hover) apply { filter: glow(#FFFF00, 0.6, 10) }
+    @(status=>disabled) apply { filter: group(brightness(0.5), grayscale(0.8)) }
     ninepatch(cards, cardBg, 80, 110): 0, 0
 }
 ```
+
+`animatedPath {}` takes one property per line (commas are rejected); path commands in `path {}` are one per line or `;`-separated. `ParserErrorTest.testCardHandSetupSnippetParses` holds a copy of this block — keep the two in step.
 
 **Constructor:** `new UICardHandHelper(host:UIComponentHost, builder, ?config)` — takes `UIComponentHost` interface (not `UIScreenBase` directly). `UIScreenBase` implements `UIComponentHost`. Use `addCardHand(builder, config)` on screen for auto-wiring.
 
@@ -388,7 +417,11 @@ helper.count;
 // In .manim:
 paths { #dmgPath path { bezier(60, -25, 30, -50) } }
 curves { #dmgAlpha curve { points: [(0, 1.0), (0.6, 0.8), (1.0, 0.0)] } }
-#dmgAnim animatedPath { path: dmgPath, duration: 1.0, 0.0: alphaCurve: dmgAlpha }
+#dmgAnim animatedPath {
+    path: dmgPath
+    duration: 1.0
+    0.0: alphaCurve: dmgAlpha
+}
 
 // In game code:
 var floatingText = new FloatingTextHelper(overlayRoot);

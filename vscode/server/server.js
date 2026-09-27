@@ -3201,7 +3201,7 @@ bh_multianim_MacroManimParser.prototype = {
 		switch(_g._hx_index) {
 		case 31:
 			var n = _g.s;
-			var c = bh_multianim_MacroManimParser.tryStringToColor("0x" + n);
+			var c = bh_multianim_MacroManimParser.tryStringToColor("0x" + n.split("_").join(""));
 			if(c != null) {
 				this.advance();
 				return c;
@@ -4113,12 +4113,12 @@ bh_multianim_MacroManimParser.prototype = {
 				case 29:
 					var n = _g1.s;
 					this.advance();
-					s = "-" + n;
+					s = "-" + n.split("_").join("");
 					break;
 				case 30:
 					var n = _g1.s;
 					this.advance();
-					s = "-" + n;
+					s = "-" + n.split("_").join("");
 					break;
 				default:
 					this.error("expected number after minus");
@@ -4127,17 +4127,17 @@ bh_multianim_MacroManimParser.prototype = {
 			case 29:
 				var n = _g.s;
 				this.advance();
-				s = n;
+				s = n.split("_").join("");
 				break;
 			case 30:
 				var n = _g.s;
 				this.advance();
-				s = n;
+				s = n.split("_").join("");
 				break;
 			case 31:
 				var str = _g.s;
 				this.advance();
-				s = "0x" + str;
+				s = "0x" + str.split("_").join("");
 				break;
 			case 32:
 				var str = _g.s;
@@ -4294,14 +4294,22 @@ bh_multianim_MacroManimParser.prototype = {
 		var result = new haxe_ds_StringMap();
 		while(true) {
 			if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TClosed)) {
+				var h = result.h;
+				var inlStringMapKeyIterator_h = h;
+				var inlStringMapKeyIterator_keys = Object.keys(h);
+				var inlStringMapKeyIterator_length = inlStringMapKeyIterator_keys.length;
+				var inlStringMapKeyIterator_current = 0;
+				if(inlStringMapKeyIterator_current >= inlStringMapKeyIterator_length) {
+					this.error("empty conditional — list at least one condition, e.g. @(param=>value)");
+				}
 				return result;
 			}
-			var h = result.h;
-			var inlStringMapKeyIterator_h = h;
-			var inlStringMapKeyIterator_keys = Object.keys(h);
-			var inlStringMapKeyIterator_length = inlStringMapKeyIterator_keys.length;
-			var inlStringMapKeyIterator_current = 0;
-			if(inlStringMapKeyIterator_current < inlStringMapKeyIterator_length) {
+			var h1 = result.h;
+			var inlStringMapKeyIterator_h1 = h1;
+			var inlStringMapKeyIterator_keys1 = Object.keys(h1);
+			var inlStringMapKeyIterator_length1 = inlStringMapKeyIterator_keys1.length;
+			var inlStringMapKeyIterator_current1 = 0;
+			if(inlStringMapKeyIterator_current1 < inlStringMapKeyIterator_length1) {
 				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 			}
 			var paramName;
@@ -5703,6 +5711,9 @@ bh_multianim_MacroManimParser.prototype = {
 											} else {
 												var s7 = _g1;
 												if(bh_multianim_MacroManimParser.isKeyword(s7,"else")) {
+													if(conditional._hx_index != 3) {
+														this.error("stacked conditionals are not allowed — use @all() or @any() with comma-separated parameters");
+													}
 													this.advance();
 													if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TOpen)) {
 														conditional = bh_multianim_NodeConditionalValues.ConditionalElse(this.parseConditionalParameters(currentDefs));
@@ -5713,6 +5724,9 @@ bh_multianim_MacroManimParser.prototype = {
 												} else {
 													var s8 = _g1;
 													if(bh_multianim_MacroManimParser.isKeyword(s8,"default")) {
+														if(conditional._hx_index != 3) {
+															this.error("stacked conditionals are not allowed — use @all() or @any() with comma-separated parameters");
+														}
 														this.advance();
 														conditional = bh_multianim_NodeConditionalValues.ConditionalDefault;
 														++atCount;
@@ -8494,7 +8508,9 @@ bh_multianim_MacroManimParser.prototype = {
 				default:
 					this.parseStringOrReference();
 				}
-				this.eatSemicolon();
+				if(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
+					this.eatSemicolon();
+				}
 			}
 			if(groupId == null) {
 				this.error("subEmitter requires groupId");
@@ -9899,7 +9915,8 @@ bh_multianim_MacroManimParser.prototype = {
 																	var control1 = this.parseXY();
 																	if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TClosed)) {
 																		pathElements.push(bh_multianim_ParsedPaths.Bezier2To(end2,control1,bh_multianim_PathCoordinateMode.PCMAbsolute,null));
-																	} else if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
+																	} else {
+																		this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 																		var _g4 = this.tokens[this.tpos].type;
 																		if(_g4._hx_index == 32) {
 																			var s21 = _g4.s;
@@ -9941,7 +9958,8 @@ bh_multianim_MacroManimParser.prototype = {
 																		var control11 = this.parseXY();
 																		if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TClosed)) {
 																			pathElements.push(bh_multianim_ParsedPaths.Bezier2To(end3,control11,bezierMode,null));
-																		} else if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
+																		} else {
+																			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 																			var _g5 = this.tokens[this.tpos].type;
 																			if(_g5._hx_index == 32) {
 																				var s22 = _g5.s;
@@ -10606,6 +10624,7 @@ bh_multianim_MacroManimParser.prototype = {
 					var explicit = [false];
 					segments.push(this.parseCurveSegment(explicit));
 					segExplicit.push(explicit[0]);
+					this.eatComma();
 					break;
 				case 32:
 					var _g3 = _g2.s;

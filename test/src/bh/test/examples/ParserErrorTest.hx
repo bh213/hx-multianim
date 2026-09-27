@@ -12,6 +12,8 @@ import bh.multianim.MultiAnimParser.EasingType;
 import bh.multianim.MultiAnimParser.FilterType;
 import bh.multianim.MultiAnimParser.PixelOutlineModeDef;
 import bh.multianim.MultiAnimParser.Node;
+import bh.multianim.MultiAnimParser.ResolvedIndexParameters;
+import bh.test.BuilderTestBase;
 
 /**
  * Non-visual tests that parse invalid .manim files and assert on parser errors.
@@ -5540,5 +5542,203 @@ class ParserErrorTest extends utest.Test {
 		Assert.notNull(result, "palette(2d: width) { colors } must parse");
 		if (result != null)
 			Assert.notNull(result.nodes.get("pal"), "2D palette node should be registered under its #name");
+	}
+
+	// ===== @else / @default must not silently replace a condition on the same element =====
+
+	@Test
+	public function testConditionalFollowedByElseOrDefaultRejected() {
+		for (terminal in ["@else", "@default"]) {
+			var error = parseExpectingError('
+				#test programmable(mode:[on,off]=on) {
+					@(mode=>on) bitmap(generated(color(10, 10, #f00))): 0, 0
+					@(mode=>off) $terminal bitmap(generated(color(10, 10, #0f0))): 0, 10
+				}
+			');
+			Assert.notNull(error, '@(cond) $terminal must be a parse error, not an unconditional $terminal arm');
+			if (error != null)
+				Assert.stringContains("stacked conditionals", error);
+		}
+	}
+
+	// ===== An empty condition list is rejected =====
+
+	@Test
+	public function testEmptyConditionalRejected() {
+		for (form in ["@()", "@if()", "@all()", "@any()"]) {
+			var error = parseExpectingError('
+				#test programmable(mode:[on,off]=on) {
+					$form bitmap(generated(color(10, 10, #f00))): 0, 0
+				}
+			');
+			Assert.notNull(error, '$form must be a parse error (it would be always true, or for @any always false)');
+			if (error != null)
+				Assert.stringContains("empty", error);
+		}
+	}
+
+	// ===== Parameter defaults accept _ digit separators like every other number =====
+
+	@Test
+	public function testParameterDefaultsStripDigitSeparators() {
+		final defs = BuilderTestBase.builderFromSource("
+			#test programmable(n:int=1_000, neg:int=-2_000, f:float=1_000.5, c:color=0xFF_00FF00) {
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		").getParameterDefinitions("test");
+		Assert.isTrue(Type.enumEq(ResolvedIndexParameters.Value(1000), defs.get("n").defaultValue),
+			'n:int=1_000 must default to 1000, got ${defs.get("n").defaultValue}');
+		Assert.isTrue(Type.enumEq(ResolvedIndexParameters.Value(-2000), defs.get("neg").defaultValue),
+			'neg:int=-2_000 must default to -2000, got ${defs.get("neg").defaultValue}');
+		Assert.isTrue(Type.enumEq(ResolvedIndexParameters.ValueF(1000.5), defs.get("f").defaultValue),
+			'f:float=1_000.5 must default to 1000.5, got ${defs.get("f").defaultValue}');
+		Assert.isTrue(Type.enumEq(ResolvedIndexParameters.Value(0xFF00FF00), defs.get("c").defaultValue),
+			'c:color=0xFF_00FF00 must default to 0xFF00FF00, got ${defs.get("c").defaultValue}');
+	}
+
+	// ===== The documented comma-separated subEmitters form parses =====
+
+	@Test
+	public function testSubEmittersCommaSeparatedFieldsParse() {
+		var result = parseExpectingResult('
+			#test programmable() {
+				#fx particles {
+					count: 10
+					tiles: generated(color(4, 4, #ff0000))
+					subEmitters: [
+						{
+							groupId: "sparkGroup",
+							trigger: ondeath,
+							probability: 0.8,
+							inheritVelocity: 0.5,
+							offsetX: 10,
+							offsetY: 0
+						},
+						{ groupId: "smoke", trigger: onbirth, burstCount: 2 }
+					]
+				}
+			}
+		');
+		Assert.notNull(result, "the documented comma-separated subEmitters form must parse");
+		if (result == null)
+			return;
+		var subEmitters:Null<Array<bh.multianim.MultiAnimParser.ParticleSubEmitterDef>> = null;
+		for (child in result.nodes.get("test").children)
+			switch child.type {
+				case PARTICLES(def): subEmitters = def.subEmitters;
+				default:
+			}
+		Assert.notNull(subEmitters, "the particles node should carry its sub-emitters");
+		if (subEmitters != null) {
+			Assert.equals(2, subEmitters.length);
+			Assert.equals("sparkGroup", subEmitters[0].groupId);
+			Assert.notNull(subEmitters[0].offsetY, "the last comma-separated field must be parsed too");
+			Assert.equals("smoke", subEmitters[1].groupId);
+			Assert.notNull(subEmitters[1].burstCount);
+		}
+	}
+
+	// ===== A bezier with a missing ) is an error, not a dropped path segment =====
+
+	@Test
+	public function testMalformedBezierRejected() {
+		for (command in ["bezier", "bezierAbs"]) {
+			var error = parseExpectingError('
+				paths {
+					#p path {
+						$command(10, 0, 5, -5
+						lineTo(20, 0)
+					}
+				}
+			');
+			Assert.notNull(error, '$command( without ) must be a parse error, not silently dropped from the path');
+		}
+	}
+
+	// ===== The documented comma-separated curve segments parse =====
+
+	@Test
+	public function testCommaSeparatedCurveSegmentsParse() {
+		final source = "
+			curves {
+				#c curve { [0.0 .. 0.5] easeInQuad, [0.5 .. 1.0] easeOutQuad }
+			}
+		";
+		Assert.isTrue(parseExpectingSuccess(source), "comma-separated curve segments (documented form) must parse");
+		if (parseExpectingSuccess(source))
+			Assert.floatEquals(0.5, BuilderTestBase.builderFromSource(source).getCurve("c").getValue(0.5),
+				"two auto-chained segments meet at 0.5");
+	}
+
+	// ===== The card-hand setup in .claude/rules/runtime-systems.md parses =====
+	// Agents copy that snippet verbatim; keep this copy in step with it.
+
+	@Test
+	public function testCardHandSetupSnippetParses() {
+		Assert.isTrue(parseExpectingSuccess('
+			paths {
+				#cardArc path {
+					lineTo(0, -30)
+					bezier(100, 0, 50, -60)
+				}
+				#handShape path {
+					bezier(800, 0, 400, -80)
+				}
+			}
+			#drawPath animatedPath {
+				path: cardArc
+				type: time
+				duration: 0.3
+				easing: easeOutBack
+			}
+			#discardPath animatedPath {
+				path: cardArc
+				type: time
+				duration: 0.25
+				easing: easeInQuad
+			}
+			#returnPath animatedPath {
+				path: cardArc
+				type: time
+				duration: 0.2
+				easing: easeOutCubic
+			}
+			#rearrangePath animatedPath {
+				path: cardArc
+				type: time
+				duration: 0.15
+				easing: easeInOutCubic
+			}
+
+			#arrowSegment programmable(valid:bool=false) {
+				@(valid=>true) graphics(line(#44FF44, 2.0, 0, 0, 12, 0)): 0, 0
+				@else graphics(line(#FF4444, 2.0, 0, 0, 12, 0)): 0, 0
+			}
+			#arrowHead programmable(valid:bool=false) {
+				@(valid=>true) graphics(line(#44FF44, 2.0, 0, -4, 8, 0); line(#44FF44, 2.0, 0, 4, 8, 0)): 0, 0
+				@else graphics(line(#FF4444, 2.0, 0, -4, 8, 0); line(#FF4444, 2.0, 0, 4, 8, 0)): 0, 0
+			}
+
+			#card programmable(status:[normal,hover,pressed,disabled]=normal, name:string="") {
+				interactive(80, 110, "card", bind => "status", events: [hover, click, push]): 0, 0
+				@(status=>hover) apply { filter: glow(#FFFF00, 0.6, 10) }
+				@(status=>disabled) apply { filter: group(brightness(0.5), grayscale(0.8)) }
+				ninepatch(cards, cardBg, 80, 110): 0, 0
+			}
+		'), "the card-hand .manim setup in the rules file must parse");
+	}
+
+	// Mirrors the FloatingTextHelper usage pattern in the same rules file.
+	@Test
+	public function testFloatingTextSnippetParses() {
+		Assert.isTrue(parseExpectingSuccess('
+			paths { #dmgPath path { bezier(60, -25, 30, -50) } }
+			curves { #dmgAlpha curve { points: [(0, 1.0), (0.6, 0.8), (1.0, 0.0)] } }
+			#dmgAnim animatedPath {
+				path: dmgPath
+				duration: 1.0
+				0.0: alphaCurve: dmgAlpha
+			}
+		'), "the FloatingTextHelper .manim usage in the rules file must parse");
 	}
 }

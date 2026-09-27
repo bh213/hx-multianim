@@ -1134,7 +1134,7 @@ class MacroManimParser {
 	function tryParseColor():Null<Int> {
 		switch (peek()) {
 			case THexInteger(n):
-				final c = tryStringToColor("0x" + n);
+				final c = tryStringToColor("0x" + n.split("_").join(""));
 				if (c != null) { advance(); return c; }
 				return null;
 			case TName(s):
@@ -1882,20 +1882,21 @@ class MacroManimParser {
 					case TQuotedString(str):
 						advance();
 						s = str;
+					// Number tokens keep their `_` digit separators; strip them as stringToInt/stringToFloat do.
 					case THexInteger(str):
 						advance();
-						s = '0x' + str;
+						s = '0x' + str.split("_").join("");
 					case TMinus:
 						advance();
 						switch (peek()) {
 							case TInteger(n) | TFloat(n):
 								advance();
-								s = '-' + n;
+								s = '-' + n.split("_").join("");
 							default: error("expected number after minus");
 						}
 					case TInteger(n) | TFloat(n):
 						advance();
-						s = n;
+						s = n.split("_").join("");
 					default:
 						error('unexpected default value: ${peek()}');
 				}
@@ -1976,7 +1977,11 @@ class MacroManimParser {
 	function parseConditionalParameters(defs:ParametersDefinitions):Map<String, ConditionalValues> {
 		var result:Map<String, ConditionalValues> = new Map();
 		while (true) {
-			if (match(TClosed)) return result;
+			if (match(TClosed)) {
+				// Empty would be always true for @()/@all(), never true for @any().
+				if (!result.keys().hasNext()) error("empty conditional — list at least one condition, e.g. @(param=>value)");
+				return result;
+			}
 			if (result.keys().hasNext()) expect(TComma);
 
 			final paramName = switch (peek()) {
@@ -2995,6 +3000,7 @@ class MacroManimParser {
 						expect(TClosed);
 						atCount++;
 					case TIdentifier(s) if (isKeyword(s, "else")):
+						if (!conditional.match(NoConditional)) error("stacked conditionals are not allowed — use @all() or @any() with comma-separated parameters");
 						advance();
 						if (match(TOpen)) {
 							conditional = ConditionalElse(parseConditionalParameters(currentDefs));
@@ -3003,6 +3009,7 @@ class MacroManimParser {
 						}
 						atCount++;
 					case TIdentifier(s) if (isKeyword(s, "default")):
+						if (!conditional.match(NoConditional)) error("stacked conditionals are not allowed — use @all() or @any() with comma-separated parameters");
 						advance();
 						conditional = ConditionalDefault;
 						atCount++;
@@ -4903,7 +4910,8 @@ class MacroManimParser {
 					case "burstcount": burstCount = parseFloatOrReference();
 					default: parseStringOrReference(); // skip unknown
 				}
-				eatSemicolon();
+				// Fields are separated by `,` (documented form) or `;`.
+				if (!match(TComma)) eatSemicolon();
 			}
 			if (groupId == null) { error('subEmitter requires groupId'); continue; }
 			if (trigger == null) { error('subEmitter requires trigger'); continue; }
@@ -6007,7 +6015,8 @@ class MacroManimParser {
 						final control1 = parseXY();
 						if (match(TClosed)) {
 							pathElements.push(Bezier2To(end, control1, PCMAbsolute, null));
-						} else if (match(TComma)) {
+						} else {
+							expect(TComma);
 							switch (peek()) {
 								case TIdentifier(s2) if (isKeyword(s2, "smoothing")):
 									final smoothing = parsePathSmoothing();
@@ -6034,7 +6043,8 @@ class MacroManimParser {
 						final control1 = parseXY();
 						if (match(TClosed)) {
 							pathElements.push(Bezier2To(end, control1, bezierMode, null));
-						} else if (match(TComma)) {
+						} else {
+							expect(TComma);
 							// Check for smoothing or second control point
 							switch (peek()) {
 								case TIdentifier(s2) if (isKeyword(s2, "smoothing")):
@@ -6469,6 +6479,7 @@ class MacroManimParser {
 						var explicit = [false];
 						segments.push(parseCurveSegment(explicit));
 						segExplicit.push(explicit[0]);
+						eatComma(); // segments may be comma-separated (documented form)
 					default:
 						error('expected easing, points, multiply, apply, invert, scale, or segment [start..end] in curve definition, got ${peek()}');
 				}
