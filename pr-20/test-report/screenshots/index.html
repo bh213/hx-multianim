@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-09-27 20:12:53</div>
+    <div class="timestamp">Generated: 2026-09-27 20:35:04</div>
     <div class="summary">
         <strong>Summary:</strong> 102 tests,         <span style="color: #4CAF50;">102 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1s, visual 24.2s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1s, visual 23.9s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>8259 assertions:</strong>             <span style="color: #4CAF50;">8259 passed</span>
+            <strong>8303 assertions:</strong>             <span style="color: #4CAF50;">8303 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -2740,6 +2740,19 @@
                 <div class="unit-method pass">testDialogOverDialogKeepsNewOverlay: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testOverlayIsSizedToScene: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testOverlayRefitsWhenSceneResizes: OK <span class="dots">......</span></div>
+            </div>
+            <div class="unit-class">
+                <div class="unit-class-name">ScreenManagerShowingTest</div>
+                <div class="unit-method pass">testReenterCancelsTheScreensTweensBeforeEntering: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testReenterFinishesARunningTransition: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testReenterScreenThatIsNotShowingThrows: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testReenterScreenUnderDialog: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testReenterSendsLeavingThenEnteringInPlace: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testShowingDialogOverDialog: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testShowingDuringTransitionIsTheNewMode: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testShowingMasterAndSingleUnderDialog: OK <span class="dots">..........</span></div>
+                <div class="unit-method pass">testShowingNothing: OK <span class="dots">.....</span></div>
+                <div class="unit-method pass">testShowingSingle: OK <span class="dots">......</span></div>
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">ScreenShakeHelperTest</div>
