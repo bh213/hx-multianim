@@ -247,6 +247,7 @@ screenManager.modalDialog(new ConfirmDialog(screenManager), this, "confirm");
 public function onScreenEvent(event:UIScreenEvent, source:Null<UIElement>) {
     switch event {
         case UIOnControllerEvent(OnDialogResult(dialogName, result)):
+            // Arrives after the dialog has closed: opening the next dialog here is fine
             if (dialogName == "confirm") {
                 // Handle dialog result
             }

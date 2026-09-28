@@ -101,6 +101,13 @@ class ScreenManager {
 	var screenChangeListeners:Array<ScreenChangeListener> = [];
 	public var isTransitioning(default, null):Bool = false;
 	var transitionCleanup:Null<Void -> Void> = null;
+	/** Bumped when an animated transition starts and when finalizeTransition ends one: the onComplete
+	 *  of an ended transition must not run the cleanup of the transition that replaced it. */
+	var transitionSerial:Int = 0;
+	/** The running transition's tweens and the `generation` each had when started (a finished
+	 *  tween goes back to the pool), so finalizeTransition can jump them to their end. */
+	final transitionTweens:Array<Tween> = [];
+	final transitionTweenGenerations:Array<Int> = [];
 	var modalOverlay:Null<h2d.Bitmap> = null;
 	var modalOverlayTargetAlpha:Float = 0.0;
 	var modalOverlayBlurTargets:Array<{root:h2d.Object, saved:Null<h2d.filter.Filter>}> = [];
@@ -306,10 +313,16 @@ class ScreenManager {
 			switch result {
 				case UIControllerRunning:
 				case UIControllerFinished(result):
+					// A running transition (the dialog's own open, say) ends first: removing the
+					// dialog cancels its tweens, which left the root part-faded and isTransitioning set.
+					finalizeTransition();
 					switch mode {
 						case Dialog(dialog, caller, previousMode, dialogName):
-							caller.onScreenEvent(UIOnControllerEvent(OnDialogResult(dialogName, result)), null);
+							// Close first, then deliver: the handler sees the dialog gone, so a dialog it
+							// opens goes over the screen below — not over this dialog, which delivered this
+							// result again and was then removed by this close.
 							updateScreenMode(previousMode);
+							caller.onScreenEvent(UIOnControllerEvent(OnDialogResult(dialogName, result)), null);
 						default: throw 'unhandled exit $result code in $mode';
 					}
 			}
@@ -608,7 +621,19 @@ class ScreenManager {
 		}
 	}
 
+	/** The dialog's exit response, cleared: a result is used once. The controller clears it itself
+	 *  only in its own update(), which a dialog closed any other way no longer gets — the value then
+	 *  closed the dialog again on the first update() of its next opening. */
+	static function takeExitResponse(dialog:UIScreen):Null<Dynamic> {
+		final controller = dialog.getController();
+		final result = controller.exitResponse;
+		controller.exitResponse = null;
+		return result;
+	}
+
 	public function modalDialog(dialog:UIScreen, caller:UIScreen, dialogName:String, ?data:Dynamic) {
+		// A result left from the previous opening (a screen switch closes a dialog without reading it).
+		takeExitResponse(dialog);
 		dialog.load();
 		// Run the mode transition first so Dialog→Dialog's removeModalOverlay() at line 644
 		// tears down the previous overlay before we create a new one. Also means the new
@@ -799,8 +824,10 @@ class ScreenManager {
 							if (!returningToUnderlying) {
 								// Opening a new dialog over this one: the covered
 								// dialog's OnDialogResult fires now (documented in
-								// runtime-systems.md "Dialog over dialog").
-								final result = oldDialog.getController().exitResponse;
+								// runtime-systems.md "Dialog over dialog"). Taken, not
+								// read: the covered dialog comes back when this one
+								// closes and would deliver it again.
+								final result = takeExitResponse(oldDialog);
 								caller.onScreenEvent(UIOnControllerEvent(OnDialogResult(dialogName, result)), null);
 							}
 						}
@@ -847,11 +874,33 @@ class ScreenManager {
 			// If opening, jump to target alpha.
 			overlay.alpha = modalOverlayTargetAlpha;
 		}
+		// Jump the transition's own tweens to their end. Left running, an entering root went on
+		// animating after the transition was over — against the next transition on the same root —
+		// or kept its part-faded state when a close removed it.
+		for (i in 0...transitionTweens.length) {
+			final tween = transitionTweens[i];
+			if (tween.generation == transitionTweenGenerations[i]) {
+				tween.finish();
+				tween.cancel();
+			}
+		}
+		clearTransitionTweens();
+		transitionSerial++;
 		final cleanup = transitionCleanup;
 		isTransitioning = false;
 		transitionCleanup = null;
 		if (cleanup != null)
 			cleanup();
+	}
+
+	function trackTransitionTween(tween:Tween):Void {
+		transitionTweens.push(tween);
+		transitionTweenGenerations.push(tween.generation);
+	}
+
+	function clearTransitionTweens():Void {
+		transitionTweens.resize(0);
+		transitionTweenGenerations.resize(0);
 	}
 
 	/** Switch to a new screen mode with an optional visual transition.
@@ -956,6 +1005,8 @@ class ScreenManager {
 	/** Open a modal dialog with an optional transition. */
 	public function modalDialogWithTransition(dialog:UIScreen, caller:UIScreen, dialogName:String, ?data:Dynamic,
 			?transition:ScreenTransition):Void {
+		// A result left from the previous opening (see modalDialog).
+		takeExitResponse(dialog);
 		dialog.load();
 		// Run the screen transition first so Dialog→Dialog's auto-close
 		// (switchScreen → closeDialogWithTransition(None)) tears down the previous overlay
@@ -972,18 +1023,20 @@ class ScreenManager {
 
 	/** Close the current dialog with an optional transition. Returns to previous mode. */
 	public function closeDialogWithTransition(?transition:ScreenTransition):Void {
+		// A running transition (the dialog's own open, say) ends first — on the instant path too:
+		// removing the dialog cancels its tweens, which left the root part-faded and isTransitioning set.
+		finalizeTransition();
 		switch mode {
 			case Dialog(dialog, caller, previousMode, dialogName):
-				final result = dialog.getController().exitResponse;
+				final result = takeExitResponse(dialog);
 				if (transition == null || transition.match(None)) {
 					removeModalOverlay();
-					caller.onScreenEvent(UIOnControllerEvent(OnDialogResult(dialogName, result)), null);
+					// Close first, then deliver (see update()).
 					updateScreenMode(previousMode);
+					caller.onScreenEvent(UIOnControllerEvent(OnDialogResult(dialogName, result)), null);
 					return;
 				}
 				// Animated close: transition the dialog out, then restore previous mode
-				finalizeTransition();
-
 				isTransitioning = true;
 				final dialogRoot = dialog.getSceneRoot();
 
@@ -1079,6 +1132,9 @@ class ScreenManager {
 							screensToAdd.set(single, layerContent);
 						}
 					case MasterAndSingle(master, single):
+						// The instant path's guards (updateScreenMode): a screen that changes role
+						// would be both added and removed — detached by the cleanup yet still active.
+						if (master == oldSingle) throw 'Single -> MasterAndSingle: switching single with master';
 						screensToAdd.set(master, layerMaster);
 						if (single != oldSingle) {
 							screensToRemove.push(oldSingle);
@@ -1093,12 +1149,14 @@ class ScreenManager {
 						screensToRemove.push(oldMaster);
 						screensToRemove.push(oldSingle);
 					case Single(single):
+						if (single == oldMaster) throw 'MasterAndSingle -> Single: switching master to single';
 						screensToRemove.push(oldMaster);
 						if (oldSingle != single) {
 							screensToRemove.push(oldSingle);
 							screensToAdd.set(single, layerContent);
 						}
 					case MasterAndSingle(master, single):
+						if (single == oldMaster || master == oldSingle) throw 'MasterAndSingle -> MasterAndSingle: mismatching master/single';
 						if (oldMaster != master) {
 							screensToRemove.push(oldMaster);
 							screensToAdd.set(master, layerMaster);
@@ -1135,7 +1193,13 @@ class ScreenManager {
 		final screenWidth:Float = app.s2d.width;
 		final screenHeight:Float = app.s2d.height;
 
+		final serial = ++transitionSerial;
 		final onComplete = () -> {
+			// Ended by finalizeTransition, which ran this transition's cleanup: transitionCleanup
+			// now belongs to a later transition.
+			if (serial != transitionSerial)
+				return;
+			clearTransitionTweens();
 			final cleanup = transitionCleanup;
 			isTransitioning = false;
 			transitionCleanup = null;
@@ -1158,11 +1222,13 @@ class ScreenManager {
 				enterStart(root);
 				lastTween = tweens.tween(root, duration, [enterProp(root)], easing);
 				lastTween.skipFirstDt = true;
+				trackTransitionTween(lastTween);
 			}
 			for (screen in screensToRemove) {
 				final root = screen.getSceneRoot();
 				lastTween = tweens.tween(root, duration, [exitProp(root)], easing);
 				lastTween.skipFirstDt = true;
+				trackTransitionTween(lastTween);
 			}
 			if (lastTween != null)
 				lastTween.setOnComplete(onComplete);
@@ -1232,7 +1298,12 @@ class ScreenManager {
 		final screenWidth:Float = app.s2d.width;
 		final screenHeight:Float = app.s2d.height;
 
+		final serial = ++transitionSerial;
 		final onComplete = () -> {
+			// Ended by finalizeTransition (see executeTransition).
+			if (serial != transitionSerial)
+				return;
+			clearTransitionTweens();
 			final cleanup = transitionCleanup;
 			isTransitioning = false;
 			transitionCleanup = null;
@@ -1242,15 +1313,15 @@ class ScreenManager {
 
 		switch transition {
 			case Fade(duration, easing):
-				tweens.tween(root, duration, [Alpha(0.0)], easing).setOnComplete(onComplete);
+				trackTransitionTween(tweens.tween(root, duration, [Alpha(0.0)], easing).setOnComplete(onComplete));
 			case SlideLeft(duration, easing):
-				tweens.tween(root, duration, [X(-screenWidth)], easing).setOnComplete(onComplete);
+				trackTransitionTween(tweens.tween(root, duration, [X(-screenWidth)], easing).setOnComplete(onComplete));
 			case SlideRight(duration, easing):
-				tweens.tween(root, duration, [X(screenWidth)], easing).setOnComplete(onComplete);
+				trackTransitionTween(tweens.tween(root, duration, [X(screenWidth)], easing).setOnComplete(onComplete));
 			case SlideUp(duration, easing):
-				tweens.tween(root, duration, [Y(-screenHeight)], easing).setOnComplete(onComplete);
+				trackTransitionTween(tweens.tween(root, duration, [Y(-screenHeight)], easing).setOnComplete(onComplete));
 			case SlideDown(duration, easing):
-				tweens.tween(root, duration, [Y(screenHeight)], easing).setOnComplete(onComplete);
+				trackTransitionTween(tweens.tween(root, duration, [Y(screenHeight)], easing).setOnComplete(onComplete));
 			case Custom(fn):
 				fn(tweens, root, root, onComplete);
 			case None:
