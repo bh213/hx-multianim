@@ -322,10 +322,37 @@ class ScreenManager {
 		return buildFromResource(resource, enableReload);
 	}
 
+	/** The loaded resource of the file at `path`. `hxd.Res.load` returns a new object on every call,
+	 *  so `builders` holds one entry per file path and is matched by path, never by object. */
+	function loadedResource(path:String):Null<hxd.res.Resource> {
+		for (resource in builders.keys())
+			if (resource.entry.path == path)
+				return resource;
+		return null;
+	}
+
 	public function buildFromResource(resource:hxd.res.Resource, enableReload:Bool):MultiAnimBuilder {
-		var built = builders.get(resource);
-		if (built != null)
-			return built;
+		#if MULTIANIM_DEV
+		// Every screen that loads the file is recorded, cached builder or not, so a hot reload of
+		// the file reloads all of them.
+		final loadingScreen = currentlyLoadingScreen;
+		if (loadingScreen != null) {
+			final path = resource.entry.path;
+			var list = screenSourceMap.get(path);
+			if (list == null) {
+				list = [];
+				screenSourceMap.set(path, list);
+			}
+			if (!list.contains(loadingScreen))
+				list.push(loadingScreen);
+		}
+		#end
+		final known = loadedResource(resource.entry.path);
+		if (known != null) {
+			final cached = builders.get(known);
+			if (cached != null)
+				return cached;
+		}
 		if (enableReload)
 			resource.watch(() -> onReload(resource));
 
@@ -343,16 +370,6 @@ class ScreenManager {
 			final content = resource.entry.getBytes().toString();
 			fileChangeDetector.storeInitialHash(resource.entry.path, content);
 		} catch (_) {}
-		if (currentlyLoadingScreen != null) {
-			final path = resource.entry.path;
-			var list = screenSourceMap.get(path);
-			if (list == null) {
-				list = [];
-				screenSourceMap.set(path, list);
-			}
-			if (!list.contains(currentlyLoadingScreen))
-				list.push(currentlyLoadingScreen);
-		}
 		#end
 		return built;
 	}
@@ -368,7 +385,7 @@ class ScreenManager {
 		builders.clear();
 		try {
 			for (key => value in oldBuilders) {
-				if (resource != null && key != resource)
+				if (resource != null && key.entry.path != resource.entry.path)
 					continue;
 				#if MULTIANIM_TRACE
 				trace('rebuild $key'); // don't trace $value, js gets stack overflow
@@ -1377,9 +1394,10 @@ class ScreenManager {
 		final startTime = haxe.Timer.stamp();
 
 		// Determine which files to process
+		// Matched by path: a caller's resource (DevBridge `reload {file}`) is a new object.
 		var filesToProcess:Array<{resource:hxd.res.Resource, path:String}> = [];
 		for (key => _ in builders) {
-			if (resource != null && key != resource)
+			if (resource != null && key.entry.path != resource.entry.path)
 				continue;
 			filesToProcess.push({resource: key, path: key.entry.path});
 		}
@@ -1405,7 +1423,7 @@ class ScreenManager {
 		}
 
 		if (lastReport == null)
-			lastReport = unchangedReloadReport("");
+			lastReport = unchangedReloadReport(resource != null ? resource.entry.path : "");
 
 		return lastReport;
 	}
@@ -1528,8 +1546,9 @@ class ScreenManager {
 		for (consumer in builderConsumers)
 			consumer.onBuilderReplaced(path, newBuilder);
 
-		// 9. Determine reload strategy: per-file nuclear for screens, in-place for non-screen handles
-		final screensForFile = screenSourceMap.get(path);
+		// 9. Determine reload strategy: per-file nuclear for screens, in-place for non-screen handles.
+		// A copy: reloading a screen removes it from this list and its load() adds it back.
+		final screensForFile = screenSourceMap.get(path)?.copy();
 
 		if (screensForFile != null && screensForFile.length > 0) {
 			// Per-file nuclear: clear + reload only affected screens
@@ -1562,6 +1581,9 @@ class ScreenManager {
 			}
 			updateScreenMode(this.mode);
 
+			// A screen that failed to reload retries on the next reload of the same text.
+			if (screenErrors.length > 0)
+				fileChangeDetector.invalidate(path);
 			final elapsed = (haxe.Timer.stamp() - startTime) * 1000;
 			final report:bh.multianim.dev.HotReload.ReloadReport = {
 				success: screenErrors.length == 0,
@@ -1617,58 +1639,70 @@ class ScreenManager {
 			// Snapshot state
 			final snapshot = bh.multianim.dev.HotReload.StateSnapshotter.capture(oldResult);
 
-			// Detach slot contents so they can be reparented
-			bh.multianim.dev.HotReload.StateRestorer.detachSlots(oldResult);
-
-			// Remove old sentinel to prevent stale auto-unregister during swap
-			bh.multianim.dev.HotReload.ReloadableRegistry.removeSentinel(oldResult.object);
-			hotReloadRegistry.unregister(handle);
-
-			// Try rebuild with new builder, preserving original builderParams.
-			// Wrap params to reuse captured placeholder objects instead of re-invoking callbacks.
-			// Use devBuilderParams (stored on result) — works even for non-incremental builds.
-			var newResult:BuilderResult;
+			// Build the replacement and restore its state first; the live result is not touched
+			// until that succeeded. Wrap params to reuse captured placeholder objects instead of
+			// re-invoking callbacks (the wrapped callbacks move them into the new tree, so a failed
+			// build puts them back). devBuilderParams works even for non-incremental builds.
+			var rebuilt:BuilderResult;
+			var builtForCleanup:Null<BuilderResult> = null;
 			final oldBuilderParams = oldResult.devBuilderParams;
 			final capturedPlaceholders = oldResult.devCapturedPlaceholders;
+			final placeholderHomes = bh.multianim.dev.HotReload.PlaceholderReuser.recordHomes(capturedPlaceholders ?? []);
 			final reloadBuilderParams = if (oldBuilderParams != null && capturedPlaceholders != null && capturedPlaceholders.length > 0)
 				bh.multianim.dev.HotReload.PlaceholderReuser.wrapBuilderParams(oldBuilderParams, capturedPlaceholders);
 			else
 				oldBuilderParams;
 			try {
-				newResult = newBuilder.buildWithParameters(
+				final built = newBuilder.buildWithParameters(
 					handle.programmableName,
 					bh.multianim.dev.HotReload.StateRestorer.snapshotToInputMap(snapshot.params),
 					reloadBuilderParams,
 					null,
 					true
 				);
+				builtForCleanup = built;
+				bh.multianim.dev.HotReload.StateRestorer.restoreState(built, snapshot);
+				rebuilt = built;
 			} catch (e) {
+				// The live result stays as it was: registered, its tree and slot contents in place.
+				bh.multianim.dev.HotReload.PlaceholderReuser.putBack(placeholderHomes);
+				final failed = builtForCleanup;
+				if (failed != null && failed.reloadHandle != null)
+					hotReloadRegistry.unregister(failed.reloadHandle);
 				buildErrors.push(makeHotReloadFailError(path, handle.programmableName, e));
 				continue;
 			}
 
-			// Restore snapshot into new result
-			bh.multianim.dev.HotReload.StateRestorer.restore(newResult, snapshot);
-
-			// The new result auto-registered itself — unregister it and
-			// remove its sentinel before we move children.
-			if (newResult.reloadHandle != null) {
-				bh.multianim.dev.HotReload.ReloadableRegistry.removeSentinel(newResult.object);
-				hotReloadRegistry.unregister(newResult.reloadHandle);
+			// Commit. The new result auto-registered itself; the stable result is registered again below.
+			if (rebuilt.reloadHandle != null) {
+				bh.multianim.dev.HotReload.ReloadableRegistry.removeSentinel(rebuilt.object);
+				hotReloadRegistry.unregister(rebuilt.reloadHandle);
 			}
+			bh.multianim.dev.HotReload.ReloadableRegistry.removeSentinel(oldResult.object);
+			hotReloadRegistry.unregister(handle);
 
-			// Replace children of stable root with rebuilt children.
-			// oldResult.object stays in the scene — game references remain valid.
-			bh.multianim.dev.HotReload.SceneSwapper.replaceChildren(oldResult.object, newResult.object);
-
-			// Adopt non-scene internals (incrementalContext, names, slots, etc.)
-			// but keep oldResult.object unchanged — it's the stable scene node.
+			// Lift slot contents out of the old tree without Heaps' onRemove teardown, show the
+			// rebuilt root inside the stable object the game holds, then put the contents into the
+			// new (now live) slots.
+			for (saved in snapshot.slots)
+				if (saved.content != null)
+					bh.base.HeapsUtils.safeDetach(saved.content);
 			final stableObject = oldResult.object;
-			oldResult.adoptFrom(newResult);
+			bh.multianim.dev.HotReload.SceneSwapper.nest(stableObject, rebuilt.object, oldResult.devBuilderRootProps);
+			bh.multianim.dev.HotReload.StateRestorer.moveSlotContents(rebuilt, snapshot);
+
+			// Adopt non-scene internals (incrementalContext, names, slots, etc.) but keep
+			// oldResult.object — the stable scene node, now a plain container of the rebuilt root.
+			oldResult.adoptFrom(rebuilt);
 			oldResult.object = stableObject;
+			oldResult.devBuilderRootProps = [];
 
 			// Re-register the stable result (plants sentinel on oldResult.object)
 			oldResult.reloadHandle = hotReloadRegistry.register(path, oldResult, handle.programmableName);
+
+			// Listeners that track the result's interactives (screen sync, card-hand resync) see the
+			// rebuilt objects now.
+			oldResult.fireRebuildListeners();
 
 			// Fire onReload callback if set (for any extra game-side bookkeeping)
 			final reloadCb = oldResult.onReload;
@@ -1702,6 +1736,11 @@ class ScreenManager {
 		// Fire deferred onReload callbacks with final report
 		for (cb in pendingCallbacks)
 			cb(lastReport);
+
+		// A result that failed to rebuild still shows the old text: forget the new text's hash so
+		// reloading the same text retries instead of reporting it unchanged.
+		if (!lastReport.success)
+			fileChangeDetector.invalidate(path);
 
 		if (lastReport.success)
 			notifyReloadListeners(bh.multianim.dev.HotReload.ReloadEvent.ReloadSucceeded(lastReport));

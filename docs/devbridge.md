@@ -281,7 +281,7 @@ All slots on a programmable with occupied/empty status.
 Returns: `slots[]` — each with `name`, optional `index`/`indexX`/`indexY`, `occupied`, optional `hasParameters`.
 
 #### `list_active_programmables`
-All live incremental-mode programmables with current values, definitions, named elements, slots, interactive count.
+All live incremental-mode programmables with current values, definitions, named elements, slots, interactive count. A programmable whose root is out of the scene (its screen switched away) is not listed until the root is back; `eval_manim` builds are never listed.
 
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -364,10 +364,10 @@ Hot-reload a `.manim` file (or all files).
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
-| `file` | string | no | Resource path (e.g. `"ui/menu.manim"`). Omit to reload all (HashLink only) |
-| `content` | string | no | Reload from this text instead of reading the file. Required on JS (with `file`); `not_found` lists the loaded paths when `file` matches none |
+| `file` | string | no | Resource path (e.g. `"ui/menu.manim"`). Omit to reload all (HashLink only). A `file` no screen or build has loaded answers `not_found` listing the loaded paths (with or without `content`) |
+| `content` | string | no | Reload from this text instead of reading the file. Required on JS (with `file`) |
 
-Returns: `success`, `file`, `programmablesRebuilt[]`, `rebuiltCount`, `elapsedMs`, `needsFullRestart`, `paramsAdded[]`, `errors[]` (each with `message`, `file`, `line`, `col`, `errorType`, `context`).
+Returns: `success`, `file`, `programmablesRebuilt[]`, `rebuiltCount`, `elapsedMs`, `needsFullRestart`, `paramsAdded[]`, `errors[]` (each with `message`, `file`, `line`, `col`, `errorType`, `context`). A failed rebuild leaves the live result as it was; sending the same text again retries (it is not reported as unchanged).
 
 #### `eval_manim`
 Parse and validate a `.manim` source snippet.

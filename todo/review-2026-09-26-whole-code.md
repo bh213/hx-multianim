@@ -13,8 +13,9 @@ could only partly trace are marked *(plausible)*.
 Not run: the cloud `/code-review ultra` pass (user-triggered only) and the conventions pass.
 
 **Status 2026-09-27:** 12 items fixed in `7d43afd` and ticked below (ERR-10, UI-60, UI-36, UI-43, CG-40,
-PRS-10, PRS-16, PRS-18, PRS-19, PRS-20, PRS-23, DOC-26); PRS-9 partly. The summaries below list open
-items only.
+PRS-10, PRS-16, PRS-18, PRS-19, PRS-20, PRS-23, DOC-26); PRS-9 partly. Also fixed 2026-09-27: the
+interactive-wrapper cluster (UI-28, UI-52, UI-54, UI-55, UI-57, UI-58, UI-53) and the reload clusters
+(HR-6, HR-3, HR-2, DEV-2, DEV-3, HR-5, HR-4). The summaries below list open items only.
 
 **Legend:** same as `release-1.0-audit.md` — `[ ]` open, **P1** fix before 1.0, **P2** should fix,
 **P3** acceptable post-1.0. 🤖 marks agent-facing defects: they break DevBridge/MCP, hot reload, the LSP
@@ -34,18 +35,10 @@ build errors, it hot-reloads, and it inspects and pokes the running game through
 loop has defects that either lie (report success while nothing happened) or point at the wrong cause.
 
 **The tools report success when nothing happened**
-- `DEV-2` — `reload {file}` on HashLink reloads nothing and returns success.
-- `HR-6` — after a screen switch, that screen's programmables vanish from `list_active_programmables`
-  and from every name-based op; ops may silently hit another instance.
-- `HR-2` — hot reload skips the second screen that shares a file and still reports success.
-- `HR-5` — an in-place reload can fail half-way and leave the on-screen result torn down; the next
-  reload of the same text reports success with nothing rebuilt.
-- `DEV-3` — every `eval_manim` leaves a ghost that name lookups may resolve to.
 - `DEV-7`, `DEV-9` — click coordinates and inspection coordinates are in different spaces under zoom;
   clicks computed from inspection miss while returning success.
 - `DEV-1` — a request answered 408 may still execute; a retry runs it twice.
-- `DEV-4`, `DEV-10`, `HR-4` — skipped events, empty parameter lists, updates written to a discarded
-  root.
+- `DEV-4`, `DEV-10` — skipped events, empty parameter lists.
 
 **The edit-fix-retry loop is misdirected**
 - `ERR-9`, `LSP-6` — errors are positioned at the next token, or at line 0.
@@ -116,7 +109,7 @@ paths/curves/layouts), `PRS-13` (method calls in X), `DEC-9` (contradictory stri
 
 ## UI — screen stack, interactives, helpers
 
-- [ ] `UI-28` **P1** 🤖 **`syncInteractivesFrom` deletes the interactives of every other source that
+- [x] `UI-28` **P1** 🤖 **`syncInteractivesFrom` deletes the interactives of every other source that
   shares its prefix** — the rebuild listener diffs by prefix only (UIScreen.hx:1097-1121): with two
   incremental results registered under the same prefix (`null` included — the cookbook's two-builder
   screen, manim-cookbook.md:1440), any value-changing `setParameter` on one (an autoStatus hover is
@@ -124,6 +117,7 @@ paths/curves/layouts), `PRS-13` (method calls in X), `DEC-9` (contradictory stri
   `getInteractives()` filters detached nodes (MultiAnimBuilder.hx:2275-2277). Silent: the second
   result's buttons just stop responding. *Test: two incremental results, `addInteractives` both,
   `setParameter` on the first → `getInteractive(secondId)` still non-null and attached.*
+  **FIXED 2026-09-27** with the wrapper-lifecycle cluster below. `UIScreenInteractiveSyncTest.testRebuildLeavesInteractivesOfOtherSourceUnderSamePrefix`.
 - [ ] `UI-29` **P1** **A reused dialog auto-closes with its previous result** —
   `closeDialogWithTransition` (both branches) and the dialog-over-dialog branch read
   `controller.exitResponse` without clearing it (ScreenManager.hx:711, :885); the only reset is inside
@@ -199,29 +193,35 @@ paths/curves/layouts), `PRS-13` (method calls in X), `DEC-9` (contradictory stri
 `syncInteractivesFrom` (UIScreen.hx:1097-1133) diffs by prefix and id only, and removal calls
 `remove()` on the builder-owned object. Keying wrappers by source and object identity, and never
 detaching builder-owned objects, fixes all five.
+**FIXED 2026-09-27** (with `UI-53`, `UI-55`): wrappers record their source and the sync touches only
+its own `(source, prefix)`; a wrapper whose object a rebuild recreated under the same id follows it
+(`UIInteractiveWrapper.rebind`, so hover/`disabled`/priority carry over — a fresh wrapper would make the
+controller send leave/enter on every hover rebuild); objects are never detached; `addInteractives` takes
+an `eventPriority` applied to later wrappers too; the auto helper is created on first need;
+`removeInteractives` unbinds only its own wrappers. Tests in `UIScreenInteractiveSyncTest`.
 
-- [ ] `UI-52` **P1** 🤖 **A rebuild that recreates an interactive with the same id leaves a dead wrapper** —
+- [x] `UI-52` **P1** 🤖 **A rebuild that recreates an interactive with the same id leaves a dead wrapper** —
   the diff keeps any wrapper whose id still exists (:1113-1115, :1128-1129), so after a `@switch` arm
   rebuild or a repeat count change the wrapper points at the old, detached object and the live one is
   never wrapped. Wider than it sounds: an arm rebuilds when any conditional inside it changes, so the
   repo's own `SWITCH_AUTO_STATUS_MANIM` pattern (autoStatus interactive with `@(status=>hover)` visuals
   in an arm) goes dead after the first hover. Existing tests check only that `getInteractive(id)` is
   non-null. `UIRichInteractiveHelper.resync` is not affected.
-- [ ] `UI-54` **P1** 🤖 **An interactive inside a hidden conditional container is dead after it is shown
+- [x] `UI-54` **P1** 🤖 **An interactive inside a hidden conditional container is dead after it is shown
   again** — hiding a block conditional / `layers()` / `flow()` that holds an interactive makes the sync
   drop its wrapper through `removeElement`, which `remove()`s the object from its still-live container
   (UIScreen.hx:1117-1121, :1322); showing re-attaches only the container (MultiAnimBuilder.hx:957-975),
   so the interactive is out of the tree for good. Same cause: `removeInteractives(p)` followed by
   `addInteractives(sameResult, p)` — the usual way to toggle a HUD's input — wraps nothing. The flat
   `@(c) interactive(...)` form survives.
-- [ ] `UI-57` **P2** **Panel buttons rebuilt after open lose overlay priority** — `UIPanelHelper` raises
+- [x] `UI-57` **P2** **Panel buttons rebuilt after open lose overlay priority** — `UIPanelHelper` raises
   only the wrappers returned at open time to `UIEventPriority.Overlay` (UIPanelHelper.hx:134-135,
   :165-166, :275-276); wrappers the sync creates later have priority 0, so clicks go to the content
   underneath.
-- [ ] `UI-58` **P2** **An `autoStatus` interactive that appears after registration never gets hover
+- [x] `UI-58` **P2** **An `autoStatus` interactive that appears after registration never gets hover
   states** — the auto-status helper is created only if one exists at `addInteractives` time
   (UIScreen.hx:1058-1076) and the sync resyncs only when it exists (:1132-1133).
-- [ ] `UI-55` **P2** **A panel whose interactives are all behind an unmatched conditional is never wired** —
+- [x] `UI-55` **P2** **A panel whose interactives are all behind an unmatched conditional is never wired** —
   `open`/`openAt`/`openNamed` call `addInteractives` (and install the rebuild listener) only when the
   panel has interactives at open time (UIPanelHelper.hx:133-135, :164-166, :274-276); interactives
   materialised later by `setParameter` never get wrappers.
@@ -229,7 +229,7 @@ detaching builder-owned objects, fixes all five.
   `scrollContent` at root layer 0, which no `LayersEnum` maps to, so `findLayerFromObject` throws
   `layer not found for object` in the first `update()` (UIScrollableScreen.hx:17, :32-45; UIScreen.hx:
   1404-1417). The same element works on a plain screen.
-- [ ] `UI-53` **P3** **`removeInteractives(prefix)` strips auto-status bindings of child prefixes** —
+- [x] `UI-53` **P3** **`removeInteractives(prefix)` strips auto-status bindings of child prefixes** —
   wrappers and subscriptions are removed by exact prefix (UIScreen.hx:1170-1172, :1190) but bindings by
   `startsWith(prefix + ".")` (UIRichInteractiveHelper.hx:128-132), so an open panel prefixed
   `hud.settings.menu` loses its hover states when the HUD refreshes.
@@ -759,20 +759,27 @@ small HashLink programs that build the same programmable through both backends.
 
 ## DevBridge, hot reload, MCP transport
 
-- [ ] `HR-2` **P1** 🤖 **Hot reload skips screens that share a `.manim`, and reports success** —
+- [x] `HR-2` **P1** 🤖 **Hot reload skips screens that share a `.manim`, and reports success** —
   `hotReloadFile` iterates the live `screenSourceMap` list while `clearScreenFromSourceMap` removes from
   it and `load()` appends to it (ScreenManager.hx:1457-1487, :1710-1716): with two screens on one file
   the first reloads twice and the second never does; the report says success.
-- [ ] `HR-3` **P2** **`buildFromResourceName` never hits the builder cache** — `builders` is keyed by
+  **FIXED 2026-09-27**: the list is copied before reloading. Fixing HR-3 exposed a second cause: a
+  screen was recorded in `screenSourceMap` only on a builder cache miss, so the second screen sharing a
+  file was never recorded; every loading screen is recorded now, cached or not.
+  `HotReloadTest.testHotReloadReloadsEveryScreenThatSharesTheFile`.
+- [x] `HR-3` **P2** **`buildFromResourceName` never hits the builder cache** — `builders` is keyed by
   resource identity but `hxd.Res.load` returns a fresh object per call (:87, :227-229, :308-317): every
   call re-parses, adds a map entry and another file watch, and reload rebuilds every duplicate. Root
   cause of HR-2's guaranteed cache miss.
+  **FIXED 2026-09-27**: `builders` keeps resource keys (DevBridge and tests read them) but holds one
+  entry per file path and is matched by path (`loadedResource`); `hotReload(resource)` and
+  `reload(resource)` compare paths. `HotReloadTest.testBuildFromResourceNameKeepsOneEntryPerFile`.
 - [ ] `DEV-1` **P2** 🤖 **A request that times out (408) can still execute** — the timeout path answers 408
   but leaves the connection's data handler armed until the delayed close (HttpServerTransport.hx:
   301-316, :353-359); bytes that complete the request in that window are dispatched and answered with a
   second response. The MCP client sees an error while `set_parameter`/`send_event`/`quit` ran; a retry
   runs it twice. Gap left by 963a2a5's "one request per connection" rule.
-- [ ] `HR-6` **P1** 🤖 **Every screen switch drops that screen's programmables from hot reload and DevBridge** —
+- [x] `HR-6` **P1** 🤖 **Every screen switch drops that screen's programmables from hot reload and DevBridge** —
   `ReloadSentinel` unregisters in `onRemove` (HotReload.hx:141-144), which Heaps fires on any removal
   from the scene, and nothing re-registers when the object comes back. Screens are loaded once and their
   roots are removed and re-added on every switch (ScreenManager.hx:554-558), so after A → B → A every
@@ -780,7 +787,12 @@ small HashLink programs that build the same programmable through both backends.
   answer 404 — or hit another instance with the same name and report ok. Also hit: dialog-over-dialog
   revival and slot contents during a parent's reload. Tests miss it because their roots are never
   added to a scene (HotReloadTest:1112).
-- [ ] `HR-5` **P1** 🤖 **An in-place hot reload tears down the live result before it has a replacement** —
+  **FIXED 2026-09-27**: the sentinel detaches the handle on `onRemove` and attaches it again on `onAdd`;
+  `unregister` marks the handle disposed so a discarded result never comes back. Note for tests: the
+  test app's s2d is allocated only after its first render, later than the unit tests run, so adding a
+  root to s2d does not fire onAdd/onRemove there — `HotReloadTest.allocatedStage()` stands in.
+  `testResultBackInSceneIsReloadableAgain`, `testExplicitlyUnregisteredHandleStaysGoneWhenItsObjectIsAddedAgain`.
+- [x] `HR-5` **P1** 🤖 **An in-place hot reload tears down the live result before it has a replacement** —
   for a file not loaded by a screen, `hotReloadFile` swaps the builder and hash, empties the slots,
   removes the sentinel and unregisters the handle (ScreenManager.hx:1446-1450, :1546-1550), then builds
   and calls `StateRestorer.restore` outside any try (:1576). `restoreParams` calls `setParameter` for
@@ -788,7 +800,12 @@ small HashLink programs that build the same programmable through both backends.
   id, a stateanim selector or a param-dependent repeat body. Result: a 500 with no terminal SSE event, a
   stale on-screen result with its slot contents gone, a registered ghost, and a later reload of the same
   text answering success with nothing rebuilt. A build error leaves the same half-torn state.
-- [ ] `HR-4` **P2** 🤖 **After an in-place hot reload, updates go to the discarded root** — the adopted
+  **FIXED 2026-09-27** (with HR-4): build + `restoreState` first (params the rebuild already holds are
+  skipped, so `untracked_param` is never raised for them), the live result untouched until that
+  succeeded; on failure borrowed placeholders go back and the file hash is invalidated so the same text
+  retries; slot contents move last. `testFailedInPlaceReloadLeavesTheLiveResultIntact`,
+  `testInPlaceReloadKeepsParamUsedInInteractiveId`.
+- [x] `HR-4` **P2** 🤖 **After an in-place hot reload, updates go to the discarded root** — the adopted
   incremental context still records the discarded root as the parent of top-level conditional and
   deferred entries (MultiAnimBuilder.hx:6826, :5561, :2250; ScreenManager.hx:1587-1593), so hiding works
   but showing re-adds the element under the dead root. Root-level `alpha:`/`scale:`/`rotate:`/`filter:`
@@ -796,17 +813,28 @@ small HashLink programs that build the same programmable through both backends.
   editing a literal root alpha/scale has no effect. `adoptFrom` also drops the rebuild listeners
   (autoStatus resync, card resync) (:2236-2257), and `SceneSwapper` copies the root filter only when the
   new build has one, so removing a root `filter:` keeps the old filter (HotReload.hx:496-499).
-- [ ] `DEV-2` **P1** 🤖 **`reload {file}` on HashLink reloads nothing and reports success** — the handler builds a
+  **FIXED 2026-09-27**: instead of re-pointing the adopted context at the stable root (closures capture
+  the build's root), the rebuilt root is nested inside the stable `result.object` whole
+  (`SceneSwapper.nest`), so everything the new context references is live; on the first reload the root
+  properties the original build set on the stable object (`devBuilderRootProps`) are reset there.
+  `adoptFrom` moves the rebuild listeners and the reload fires them once. `@layer` order, lost by the
+  old child move, is kept too. `testReshownElementAfterInPlaceReloadIsOnScreen`,
+  `testRootParamAfterInPlaceReloadReachesTheScreen`, `testLiteralRootEditsApplyOnInPlaceReload`,
+  `testRebuildListenersSurviveInPlaceReload`.
+- [x] `DEV-2` **P1** 🤖 **`reload {file}` on HashLink reloads nothing and reports success** — the handler builds a
   fresh resource with `hxd.Res.load(file)` (DevBridge.hx:828) and `hotReload` compares it by reference
   with the `builders` keys (ScreenManager.hx:1307), so nothing matches and the reply is
   `{success: true, file: "", rebuiltCount: 0}`. This is the usage the MCP tool advertises for HashLink.
   Same root cause as HR-3. *Test: reload {file:"grid-demo.manim"} → `r.file` names the file.*
-- [ ] `DEV-3` **P1** 🤖 **Every `eval_manim` leaves a permanent ghost registration** — the eval build
+  **FIXED 2026-09-27** with HR-3 (matched by path); a `file` nothing loaded now answers `not_found`
+  listing the loaded paths. `HotReloadTest.testDevBridgeReloadByFileReloadsThatFile`.
+- [x] `DEV-3` **P1** 🤖 **Every `eval_manim` leaves a permanent ghost registration** — the eval build
   registers a reload handle (MultiAnimBuilder.hx:8399-8403, not gated on incremental) and
   `result.object.remove()` is a no-op for a root with no parent, so the sentinel never fires
   (DevBridge.hx:903-919). `list_active_programmables` grows by one per eval, and when the eval'd name
   matches a live programmable, `set_parameter` can hit the ghost (500 "requires incremental mode") and
   `inspect_programmable`/`list_slots` return the ghost's empty data with ok:true.
+  **FIXED 2026-09-27**: each eval build's handle is unregistered. `HotReloadTest.testEvalManimLeavesNoRegisteredResult`.
 - [ ] `DEV-7` **P2** 🤖 **`send_event` clicks land somewhere else under any zoom** — x,y are fed to the window
   as physical pixels (DevBridge.hx:958-982), which the scene maps through offset and viewport scale,
   while the MCP schema calls them "scene coordinates" and `find_element_at`/`coordinate_transform`/
@@ -859,12 +887,8 @@ small HashLink programs that build the same programmable through both backends.
 
 ## Fix clusters — one change closes several items
 
-- **Interactive wrapper identity** — key screen wrappers by source and object, never `remove()` a
-  builder-owned object: `UI-28`, `UI-52`, `UI-54`, `UI-57`, `UI-58` (and simplifies `UI-53`).
-- **Reload registration** — re-register on add (or register per screen, not per scene attach), key
-  `builders` by path: `HR-6`, `HR-3`, `HR-2`, `DEV-2`, `DEV-3`.
-- **In-place reload as a transaction** — build and restore first, swap only on success, rebind the
-  adopted context to the stable root: `HR-5`, `HR-4`.
+- ~~**Interactive wrapper identity**, **Reload registration**, **In-place reload as a transaction**~~ —
+  done 2026-09-27 (see the items).
 - **`rvToExpr` into typed sinks** — use `rvToExprInt` / `rvToExpr(x, true)` wherever the callee takes an
   Int or String: `CG-25`, `CG-26`, `CG-30`, `CG-31`, `CG-34`; attach node positions for `CG-33`.
 - **Parser early returns** — one `flowProperties` attachment point reached by every `return`, and
@@ -883,9 +907,11 @@ small HashLink programs that build the same programmable through both backends.
 - The visual harness builds only non-incremental builder output (VisualTestBase.hx:135), and codegen
   delegates tilegroups to the builder, so incremental-only divergences (`BLD-26`, `BLD-23`) and
   incremental-vs-codegen differences are invisible to `test.bat`.
-- Hot-reload tests never add their roots to a scene, which is why `HR-6` went unnoticed
-  (HotReloadTest:1112).
-- No test drives interactives through a real screen after a rebuild while checking object identity
-  (`UI-52`, `UI-54`).
+- Hot-reload tests never added their roots to a scene, which is why `HR-6` went unnoticed
+  (HotReloadTest:1112). The test app's s2d is allocated only after its first render, so even adding a
+  root to s2d fires no onAdd/onRemove in unit tests; `HotReloadTest.allocatedStage()` is the stand-in
+  (used by the 2026-09-27 reload tests; older tests still do not attach).
+- ~~No test drives interactives through a real screen after a rebuild while checking object identity~~ —
+  `UIScreenInteractiveSyncTest` (2026-09-27).
 - No `.manim` test parses a named `paths {}` block or reaches a sub-directory `.manim` through DevBridge
   (`subEmitters` and comma-separated curve segments are covered since `7d43afd`).

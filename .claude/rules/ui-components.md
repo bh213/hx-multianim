@@ -44,7 +44,8 @@ Metadata supports typed values matching the settings system: `key => val` (strin
 **UI integration:**
 - `UIInteractiveWrapper` — thin wrapper implementing `UIElement`, `StandardUIElementEvents`, `UIElementIdentifiable`
 - `UIElementIdentifiable` — opt-in interface with `id`, `prefix`, `metadata:BuilderResolvedSettings`
-- Screen methods: `addInteractive()`, `addInteractives(result, prefix)`, `removeInteractives(prefix)`, `getInteractive(id)` (O(1) map lookup), `getInteractivesByPrefix(prefix)`
+- Screen methods: `addInteractive()`, `addInteractives(result, prefix, ?eventPriority)`, `removeInteractives(prefix)`, `getInteractive(id)` (O(1) map lookup), `getInteractivesByPrefix(prefix)`
+- **Rebuild sync** — `addInteractives` on an incremental source installs a rebuild listener that keeps that `(source, prefix)` registration in line with `source.getInteractives()`: new interactives are wrapped (at `eventPriority` when one was given — `UIPanelHelper` passes `Overlay`), dropped ones unregistered, and a wrapper whose object a `@switch`/repeat rebuild recreated under the same id follows the new object (`UIInteractiveWrapper.rebind`), keeping its hover, `disabled` and priority. Other sources under the same prefix are never touched (`wrapper.source`). The screen never detaches interactive objects — they belong to the builder — so a hidden-then-shown container and `removeInteractives` → `addInteractives` on the same result both work. An `autoStatus` interactive that appears only after registration creates the auto helper then; `removeInteractives(prefix)` unbinds only the removed wrappers' autoStatus bindings (child prefixes keep theirs)
 - Events: emits `UIInteractiveEvent(event, id, metadata)` — pattern match in `onScreenEvent`:
   ```haxe
   case UIInteractiveEvent(UIClick, id, meta): // clicked interactive

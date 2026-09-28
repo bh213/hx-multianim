@@ -130,9 +130,9 @@ class UIPanelHelper {
 
 		// Register panel interactives with a prefix so the screen can identify them
 		final prefix = '${interactiveId}.$buildName';
-		if (result.interactives.length > 0)
-			for (w in screen.addInteractives(result, prefix))
-				w.eventPriority = UIEventPriority.Overlay;
+		// Registered even with no interactives yet: ones a later rebuild adds get wired too, raised
+		// above the content like the rest.
+		screen.addInteractives(result, prefix, UIEventPriority.Overlay);
 
 		// Apply fade-in
 		if (defaultFadeIn > 0 && tweens != null) {
@@ -161,9 +161,9 @@ class UIPanelHelper {
 
 		// Register panel interactives with a prefix so the screen can identify them
 		final prefix = 'pos.$buildName';
-		if (result.interactives.length > 0)
-			for (w in screen.addInteractives(result, prefix))
-				w.eventPriority = UIEventPriority.Overlay;
+		// Registered even with no interactives yet: ones a later rebuild adds get wired too, raised
+		// above the content like the rest.
+		screen.addInteractives(result, prefix, UIEventPriority.Overlay);
 
 		// Apply fade-in
 		if (defaultFadeIn > 0 && tweens != null) {
@@ -271,9 +271,9 @@ class UIPanelHelper {
 		screen.addObjectToLayer(result.object, layer);
 
 		final prefix = '${slot}.${interactiveId}.$buildName';
-		if (result.interactives.length > 0)
-			for (w in screen.addInteractives(result, prefix))
-				w.eventPriority = UIEventPriority.Overlay;
+		// Registered even with no interactives yet: ones a later rebuild adds get wired too, raised
+		// above the content like the rest.
+		screen.addInteractives(result, prefix, UIEventPriority.Overlay);
 
 		// Apply fade-in (tracked so closeNamed can cancel it)
 		var fadeInTween:Null<Tween> = null;

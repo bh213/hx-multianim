@@ -1030,13 +1030,50 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		return r;
 	}
 
-	/** Wraps a single interactive MAObject as a UIElement. Events arrive in `onScreenEvent` as `UIInteractiveEvent(event, id, metadata)`. */
-	public function addInteractive(obj:MAObject, ?prefix:String):UIInteractiveWrapper {
-		var wrapper = new UIInteractiveWrapper(obj, prefix);
+	/** Wraps a single interactive MAObject as a UIElement. Events arrive in `onScreenEvent` as `UIInteractiveEvent(event, id, metadata)`.
+	 *  The object is not added to the scene (it already sits in its builder's tree); `source` is the
+	 *  result it came from, which scopes the rebuild sync of `addInteractives`. */
+	public function addInteractive(obj:MAObject, ?prefix:String, ?source:bh.ui.UIInteractiveSource):UIInteractiveWrapper {
+		var wrapper = new UIInteractiveWrapper(obj, prefix, source);
 		interactiveWrappers.push(wrapper);
 		interactiveMap.set(wrapper.id, wrapper);
 		addElement(wrapper, null);
 		return wrapper;
+	}
+
+	/** Drop a wrapper without touching its object. Interactive objects belong to their builder (or
+	 *  codegen instance): detaching one would take it out of a hidden container for good. */
+	function unregisterInteractiveWrapper(w:UIInteractiveWrapper):Void {
+		interactiveWrappers.remove(w);
+		if (interactiveMap.get(w.id) == w) {
+			interactiveMap.remove(w.id);
+			// Another source under the same prefix may use the same id: it takes over the entry.
+			for (other in interactiveWrappers)
+				if (other.id == w.id) {
+					interactiveMap.set(w.id, other);
+					break;
+				}
+		}
+		w.clear();
+		final owner = contentTargetOwnership.get(w);
+		if (owner != null) {
+			owner.unregisterElement(w);
+			contentTargetOwnership.remove(w);
+		} else {
+			elements.remove(w);
+		}
+	}
+
+	static function hasAutoStatusInteractive(interactives:Array<MAObject>):Bool {
+		for (obj in interactives) {
+			switch obj.multiAnimType {
+				case MAInteractive(_, _, _, meta):
+					if (meta != null && new BuilderResolvedSettings(meta).getStringOrDefault(UIRichInteractiveHelper.RESERVED_KEY, "") != "")
+						return true;
+				default:
+			}
+		}
+		return false;
 	}
 
 	/** Registers all `interactive()` elements from a source for event dispatch. Events arrive in
@@ -1046,31 +1083,23 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	 *  Interactives with `autoStatus` metadata are automatically wired for Normal→Hover→Pressed
 	 *  state management.
 	 *
-	 *  Also installs a rebuild listener on the source so that `@switch` arm flips and param-
-	 *  dependent `repeatable` rebuilds automatically resync the screen's interactive map (and
-	 *  autoStatus bindings) to match the new arm/iteration set. */
-	public function addInteractives(source:bh.ui.UIInteractiveSource, ?prefix:String):Array<UIInteractiveWrapper> {
+	 *  Also installs a rebuild listener on the source so that `@switch` arm flips, param-dependent
+	 *  `repeatable` rebuilds and shown/hidden conditional containers automatically resync the
+	 *  screen's wrappers (and autoStatus bindings) with the interactives the source exposes.
+	 *
+	 *  `eventPriority`, when given, is set on every wrapper of this source — including the ones a
+	 *  later rebuild creates (e.g. `UIPanelHelper` raises its panels to `UIEventPriority.Overlay`). */
+	public function addInteractives(source:bh.ui.UIInteractiveSource, ?prefix:String, ?eventPriority:Int):Array<UIInteractiveWrapper> {
 		final interactives = source.getInteractives();
 		var wrappers:Array<UIInteractiveWrapper> = [];
 		for (obj in interactives) {
-			wrappers.push(addInteractive(obj, prefix));
+			final w = addInteractive(obj, prefix, source);
+			if (eventPriority != null)
+				w.eventPriority = eventPriority;
+			wrappers.push(w);
 		}
 		// Auto-wire interactives with autoStatus metadata
-		var hasAutoStatus = false;
-		for (obj in interactives) {
-			switch obj.multiAnimType {
-				case MAInteractive(_, _, _, meta):
-					if (meta != null) {
-						final brs = new BuilderResolvedSettings(meta);
-						if (brs.getStringOrDefault(UIRichInteractiveHelper.RESERVED_KEY, "") != "") {
-							hasAutoStatus = true;
-							break;
-						}
-					}
-				default:
-			}
-		}
-		if (hasAutoStatus) {
+		if (hasAutoStatusInteractive(interactives)) {
 			if (autoStatusHelper == null)
 				autoStatusHelper = new UIRichInteractiveHelper(this);
 			autoStatusHelper.registerAutoStatus(source, prefix);
@@ -1082,7 +1111,8 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		if (source.isIncremental) {
 			final capturedSource = source;
 			final capturedPrefix = prefix;
-			final listener = () -> syncInteractivesFrom(capturedSource, capturedPrefix);
+			final capturedPriority = eventPriority;
+			final listener = () -> syncInteractivesFrom(capturedSource, capturedPrefix, capturedPriority);
 			source.addRebuildListener(listener);
 			interactiveSubscriptions.push({source: source, prefix: prefix, listener: listener});
 		}
@@ -1090,48 +1120,52 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		return wrappers;
 	}
 
-	/** Diff the screen's interactive wrappers against the source's current `getInteractives()`
-	 *  list and bring them back in sync: remove stale wrappers (whose ids no longer exist), add
-	 *  new ones, and resync the autoStatus helper's bindings. Called automatically by the rebuild
-	 *  listener installed by `addInteractives`. */
-	function syncInteractivesFrom(source:bh.ui.UIInteractiveSource, prefix:Null<String>):Void {
+	/** Bring the wrappers of one `(source, prefix)` registration back in line with the interactives
+	 *  the source exposes now. Wrappers of other sources are never touched, even under the same
+	 *  prefix. A wrapper whose object a rebuild replaced with a new one of the same id follows it
+	 *  (`rebind`), so the element — its hover, `disabled` and priority — survives; other stale
+	 *  wrappers are dropped without detaching their objects, and new interactives are wrapped.
+	 *  Called by the rebuild listener installed by `addInteractives`. */
+	function syncInteractivesFrom(source:bh.ui.UIInteractiveSource, prefix:Null<String>, eventPriority:Null<Int>):Void {
 		final interactives = source.getInteractives();
 
-		// 1. Build expected fully-qualified id set from current interactives
-		final expectedIds = new Map<String, Bool>();
+		// Wrappers of this registration by the object they wrap. After the pass below only the
+		// stale ones (object no longer exposed by the source) are left in it.
+		final stale = new Map<MAObject, UIInteractiveWrapper>();
+		for (w in interactiveWrappers)
+			if (w.source == source && w.prefix == prefix)
+				stale.set(w.interactive, w);
+		final unwrapped:Array<MAObject> = [];
 		for (obj in interactives) {
-			switch obj.multiAnimType {
-				case MAInteractive(_, _, identifier, _):
-					final fullId = prefix != null ? '$prefix.$identifier' : identifier;
-					expectedIds.set(fullId, true);
-				default:
+			if (stale.exists(obj))
+				stale.remove(obj);
+			else
+				unwrapped.push(obj);
+		}
+
+		for (obj in unwrapped) {
+			final id = UIInteractiveWrapper.interactiveId(obj, prefix);
+			var rebound = false;
+			for (oldObj => w in stale) {
+				if (w.id == id) {
+					stale.remove(oldObj);
+					w.rebind(obj);
+					rebound = true;
+					break;
+				}
+			}
+			if (!rebound) {
+				final w = addInteractive(obj, prefix, source);
+				if (eventPriority != null)
+					w.eventPriority = eventPriority;
 			}
 		}
+		for (w in stale)
+			unregisterInteractiveWrapper(w);
 
-		// 2. Remove wrappers with matching prefix whose id is no longer in the expected set
-		final toRemove:Array<UIInteractiveWrapper> = [];
-		for (w in interactiveWrappers) {
-			if (w.prefix != prefix) continue;
-			if (!expectedIds.exists(w.id)) toRemove.push(w);
-		}
-		for (w in toRemove) {
-			interactiveWrappers.remove(w);
-			interactiveMap.remove(w.id);
-			removeElement(w);
-		}
-
-		// 3. Add wrappers for newly-appearing ids
-		for (obj in interactives) {
-			switch obj.multiAnimType {
-				case MAInteractive(_, _, identifier, _):
-					final fullId = prefix != null ? '$prefix.$identifier' : identifier;
-					if (!interactiveMap.exists(fullId))
-						addInteractive(obj, prefix);
-				default:
-			}
-		}
-
-		// 4. Resync autoStatus helper bindings (handles arm flip with `autoStatus` metadata)
+		// An autoStatus interactive can appear only after registration (a new arm, a shown block).
+		if (autoStatusHelper == null && hasAutoStatusInteractive(interactives))
+			autoStatusHelper = new UIRichInteractiveHelper(this);
 		if (autoStatusHelper != null)
 			autoStatusHelper.resyncAutoStatus(source, prefix);
 	}
@@ -1165,22 +1199,23 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		}
 	}
 
+	/** Unregister the interactives added under `prefix` (all of them when null). The objects stay in
+	 *  their builder's tree, so `addInteractives` on the same source can wrap them again. */
 	public function removeInteractives(?prefix:String):Void {
 		var toRemove:Array<UIInteractiveWrapper> = [];
 		for (w in interactiveWrappers) {
 			if (prefix == null || w.prefix == prefix)
 				toRemove.push(w);
 		}
-		for (w in toRemove) {
-			interactiveWrappers.remove(w);
-			interactiveMap.remove(w.id);
-			removeElement(w);
-		}
-		// Auto-unregister from autoStatus helper
+		for (w in toRemove)
+			unregisterInteractiveWrapper(w);
+		// Auto-unregister from autoStatus helper: only the removed wrappers' bindings, so a child
+		// prefix ("hud.settings" under "hud") keeps its hover states.
 		if (autoStatusHelper != null) {
-			if (prefix != null)
-				autoStatusHelper.unregisterByPrefix(prefix);
-			else
+			if (prefix != null) {
+				for (w in toRemove)
+					autoStatusHelper.unbind(w.id);
+			} else
 				autoStatusHelper.unbindAll();
 		}
 		// Drop rebuild listener subscriptions matching the prefix

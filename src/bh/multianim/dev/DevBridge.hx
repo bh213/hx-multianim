@@ -829,6 +829,10 @@ class DevBridge implements IDevBridgeHost {
 			} catch (e:Dynamic) {
 				throw DevBridgeError.notFound('Resource not found: $file');
 			}
+			// A file no screen or build loaded has nothing to reload: say so instead of "success".
+			final path = resource.entry.path;
+			if (!screenManager.loadedManimPaths().contains(path))
+				throw DevBridgeError.notFound('No loaded .manim with resource path "$path". Loaded: ${screenManager.loadedManimPaths().join(", ")}');
 		}
 
 		var report = screenManager.hotReload(resource);
@@ -914,9 +918,16 @@ class DevBridge implements IDevBridgeHost {
 		for (nodeName in nodeNames) {
 			try {
 				var result = builder.buildWithParameters(nodeName, new Map());
-				// Clean up built objects to avoid scene graph pollution
-				if (result != null && result.object != null)
-					result.object.remove();
+				if (result != null) {
+					// A validation build is thrown away: it must not stay registered as a live
+					// programmable (the root was never in the scene, so its sentinel never fires).
+					if (result.reloadHandle != null) {
+						result.reloadHandle.registry.unregister(result.reloadHandle);
+						result.reloadHandle = null;
+					}
+					if (result.object != null)
+						result.object.remove();
+				}
 			} catch (e:Dynamic) {
 				buildErrors.push(buildErrorPayload(nodeName, e));
 			}

@@ -675,6 +675,22 @@ class IncrementalUpdateContext {
 		rebuildListeners.remove(fn);
 	}
 
+	#if MULTIANIM_DEV
+	/** Hot reload: the result now uses `target`, so the listeners registered on it follow. */
+	public function moveRebuildListenersTo(target:IncrementalUpdateContext):Void {
+		for (fn in rebuildListeners)
+			if (!target.rebuildListeners.contains(fn))
+				target.rebuildListeners.push(fn);
+		rebuildListeners.resize(0);
+	}
+
+	/** Hot reload: run every listener once after the result's internals were replaced. */
+	public function fireRebuildListeners():Void {
+		for (fn in rebuildListeners.copy())
+			fn();
+	}
+	#end
+
 	/** Drop all per-element bookkeeping for entries whose underlying h2d.Object is `container` itself
 	 *  or a descendant of it. Called by SWITCH/REPEAT rebuild closures BEFORE container.removeChildren()
 	 *  so parent links are still intact for the descendant walk.
@@ -2230,12 +2246,18 @@ class BuilderResult implements bh.ui.UIInteractiveSource {
 	public var devBuilderParams:Null<BuilderParameters> = null;
 	// Captured placeholder objects for hot reload reuse
 	public var devCapturedPlaceholders:Array<{name:String, index:Null<Int>, object:h2d.Object}> = [];
+	// Root properties the builder set on `object` (see MultiAnimBuilder.builderRootProps). Emptied once
+	// hot reload has nested a rebuilt root inside `object`, which is then a plain container.
+	public var devBuilderRootProps:Array<String> = [];
 
 	// Adopt internals from another result, keeping this instance as the stable reference.
-	// The scene graph object is swapped via SceneSwapper (caller responsibility).
+	// The scene graph object is swapped via SceneSwapper (caller responsibility). Rebuild listeners
+	// registered on this result (screen interactive sync, card-hand resync) move to the adopted
+	// context — the caller fires them once the swap is complete.
 	public function adoptFrom(other:BuilderResult):Void {
 		// Preserve TweenManager reference across hot reload
 		final prevTweenManager = if (this.incrementalContext != null) this.incrementalContext.tweenManager else null;
+		final prevContext = this.incrementalContext;
 		this.object = other.object;
 		this.name = other.name;
 		this.names = other.names;
@@ -2254,6 +2276,16 @@ class BuilderResult implements bh.ui.UIInteractiveSource {
 		// Re-inject TweenManager into new incremental context
 		if (prevTweenManager != null && this.incrementalContext != null)
 			this.incrementalContext.setTweenManager(prevTweenManager);
+		final nextContext = this.incrementalContext;
+		if (prevContext != null && nextContext != null && prevContext != nextContext)
+			prevContext.moveRebuildListenersTo(nextContext);
+	}
+
+	/** Run the rebuild listeners once, after hot reload replaced this result's internals wholesale. */
+	public function fireRebuildListeners():Void {
+		final ctx = incrementalContext;
+		if (ctx != null)
+			ctx.fireRebuildListeners();
 	}
 	#end
 
@@ -7189,7 +7221,7 @@ class MultiAnimBuilder {
 			retRoot;
 		}
 		
-		return {
+		final result:BuilderResult = {
 			object: finalObject,
 			names: internalResults.names,
 			name: name,
@@ -7204,7 +7236,35 @@ class MultiAnimBuilder {
 			incrementalContext: null,
 			htmlTextsWithLinks: if (internalResults.htmlTextsWithLinks.length > 0) internalResults.htmlTextsWithLinks else null,
 		};
+		#if MULTIANIM_DEV
+		// A holder carries only the offset; the root properties went onto retRoot inside it.
+		if (finalObject == retRoot)
+			result.devBuilderRootProps = builderRootProps(rootNode);
+		#end
+		return result;
 	}
+
+	#if MULTIANIM_DEV
+	/** The root properties the builder sets on a result's root object: the root node's own and those
+	 *  of root-level `apply {}` children. Hot reload resets these on the stable root when it nests a
+	 *  rebuilt root inside it; everything else there (game-set transforms) is left alone. */
+	static function builderRootProps(rootNode:Node):Array<String> {
+		final props:Array<String> = [];
+		function add(node:Node):Void {
+			if (node.scale != null && !props.contains("scale")) props.push("scale");
+			if (node.rotation != null && !props.contains("rotation")) props.push("rotation");
+			if (node.alpha != null && !props.contains("alpha")) props.push("alpha");
+			if (node.blendMode != null && !props.contains("blendMode")) props.push("blendMode");
+			if (node.filter != null && !props.contains("filter")) props.push("filter");
+		}
+		add(rootNode);
+		if (rootNode.children != null)
+			for (child in rootNode.children)
+				if (child.type.match(APPLY))
+					add(child);
+		return props;
+	}
+	#end
 
 	function getPalette(name:String) {
 		return buildPalettes(name);
