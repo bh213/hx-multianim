@@ -4127,6 +4127,26 @@ class MacroManimParser {
 
 	// ===================== Repeat Iterator =====================
 
+	/** A `range` step. A literal 0 never advances (the builder's iteration count divides by
+	 *  it), so it is rejected here; a `$param` step of 0 is caught when the range is built. */
+	function parseRangeStep():ReferenceableValue {
+		final step = parseIntegerOrReference();
+		switch (step) {
+			case RVInteger(0): error("range step must not be 0");
+			default:
+		}
+		return step;
+	}
+
+	/** +1 or -1: the direction a `range` step counts in. Folded for a literal step, otherwise
+	 *  an expression resolved with the step (`$step < 0 ? -1 : 1`). */
+	static function rangeStepDirection(step:ReferenceableValue):ReferenceableValue {
+		return switch (step) {
+			case RVInteger(s): RVInteger(s < 0 ? -1 : 1);
+			default: RVTernary(EBinop(OpLess, step, RVInteger(0)), RVInteger(-1), RVInteger(1));
+		};
+	}
+
 	function parseRepeatIterator(defs:ParametersDefinitions):RepeatType {
 		switch (peek()) {
 			case TIdentifier(s) if (isKeyword(s, "step")):
@@ -4178,28 +4198,30 @@ class MacroManimParser {
 						final endKeyword = expectIdentifierOrString();
 						expect(TColon);
 						final endVal = parseIntegerOrReference();
-						final adjustedEnd = switch (endKeyword.toLowerCase()) {
-							case "to": EBinop(OpAdd, endVal, RVInteger(1));
-							case "until": endVal;
-							default: error('expected "to" or "until", got "$endKeyword"'); endVal;
+						final inclusive = switch (endKeyword.toLowerCase()) {
+							case "to": true;
+							case "until": false;
+							default: error('expected "to" or "until", got "$endKeyword"'); false;
 						};
+						var step:ReferenceableValue = RVInteger(1);
 						if (match(TComma)) {
 							final stepKeyword = expectIdentifierOrString();
 							if (!isKeyword(stepKeyword, "step")) error('expected "step", got "$stepKeyword"');
 							expect(TColon);
-							final step = parseIntegerOrReference();
-							expect(TClosed);
-							return RangeIterator(start, adjustedEnd, step);
+							step = parseRangeStep();
 						}
 						expect(TClosed);
-						return RangeIterator(start, adjustedEnd, RVInteger(1));
+						// `to:` is inclusive in either direction: the exclusive end is one past it
+						// in the step's direction (+1 counting up, -1 counting down)
+						final end = inclusive ? EBinop(OpAdd, endVal, rangeStepDirection(step)) : endVal;
+						return RangeIterator(start, end, step);
 					default:
 						// Positional syntax: range(start, end [, step])
 						final start = parseIntegerOrReference();
 						expect(TComma);
 						final end = parseIntegerOrReference();
 						if (match(TComma)) {
-							final step = parseIntegerOrReference();
+							final step = parseRangeStep();
 							expect(TClosed);
 							return RangeIterator(start, end, step);
 						}

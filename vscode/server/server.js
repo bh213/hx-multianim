@@ -2222,6 +2222,14 @@ bh_multianim_MacroManimParser.tryStringToColor = function(s) {
 	}
 	return Std.parseInt(s);
 };
+bh_multianim_MacroManimParser.rangeStepDirection = function(step) {
+	if(step._hx_index == 2) {
+		var s = step.i;
+		return bh_multianim_ReferenceableValue.RVInteger(s < 0 ? -1 : 1);
+	} else {
+		return bh_multianim_ReferenceableValue.RVTernary(bh_multianim_ReferenceableValue.EBinop(bh_multianim_RvOp.OpLess,step,bh_multianim_ReferenceableValue.RVInteger(0)),bh_multianim_ReferenceableValue.RVInteger(-1),bh_multianim_ReferenceableValue.RVInteger(1));
+	}
+};
 bh_multianim_MacroManimParser.inferFinalLiteralType = function(expr) {
 	switch(expr._hx_index) {
 	case 1:
@@ -7466,6 +7474,15 @@ bh_multianim_MacroManimParser.prototype = {
 		}
 		return node;
 	}
+	,parseRangeStep: function() {
+		var step = this.parseIntegerOrReference();
+		if(step._hx_index == 2) {
+			if(step.i == 0) {
+				this.error("range step must not be 0");
+			}
+		}
+		return step;
+	}
 	,parseRepeatIterator: function(defs) {
 		var _g = this.tokens[this.tpos].type;
 		if(_g._hx_index == 32) {
@@ -7534,36 +7551,36 @@ bh_multianim_MacroManimParser.prototype = {
 									var endKeyword = this.expectIdentifierOrString();
 									this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
 									var endVal = this.parseIntegerOrReference();
-									var adjustedEnd;
+									var inclusive;
 									switch(endKeyword.toLowerCase()) {
 									case "to":
-										adjustedEnd = bh_multianim_ReferenceableValue.EBinop(bh_multianim_RvOp.OpAdd,endVal,bh_multianim_ReferenceableValue.RVInteger(1));
+										inclusive = true;
 										break;
 									case "until":
-										adjustedEnd = endVal;
+										inclusive = false;
 										break;
 									default:
 										this.error("expected \"to\" or \"until\", got \"" + endKeyword + "\"");
-										adjustedEnd = endVal;
+										inclusive = false;
 									}
+									var step = bh_multianim_ReferenceableValue.RVInteger(1);
 									if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
 										var stepKeyword = this.expectIdentifierOrString();
 										if(!bh_multianim_MacroManimParser.isKeyword(stepKeyword,"step")) {
 											this.error("expected \"step\", got \"" + stepKeyword + "\"");
 										}
 										this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
-										var step = this.parseIntegerOrReference();
-										this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
-										return bh_multianim_RepeatType.RangeIterator(start,adjustedEnd,step);
+										step = this.parseRangeStep();
 									}
 									this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
-									return bh_multianim_RepeatType.RangeIterator(start,adjustedEnd,bh_multianim_ReferenceableValue.RVInteger(1));
+									var end = inclusive ? bh_multianim_ReferenceableValue.EBinop(bh_multianim_RvOp.OpAdd,endVal,bh_multianim_MacroManimParser.rangeStepDirection(step)) : endVal;
+									return bh_multianim_RepeatType.RangeIterator(start,end,step);
 								} else {
 									var start = this.parseIntegerOrReference();
 									this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 									var end = this.parseIntegerOrReference();
 									if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
-										var step = this.parseIntegerOrReference();
+										var step = this.parseRangeStep();
 										this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
 										return bh_multianim_RepeatType.RangeIterator(start,end,step);
 									}
@@ -7575,7 +7592,7 @@ bh_multianim_MacroManimParser.prototype = {
 								this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 								var end = this.parseIntegerOrReference();
 								if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
-									var step = this.parseIntegerOrReference();
+									var step = this.parseRangeStep();
 									this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
 									return bh_multianim_RepeatType.RangeIterator(start,end,step);
 								}

@@ -557,6 +557,37 @@ class AnimatedPathBuilderTest extends BuilderTestBase {
 		Assert.isTrue(Math.abs(stateEnd.position.y - 150.0) < 5.0, "Codegen stretch end Y");
 	}
 
+	// ==================== Codegen: builder fallback before the first create() ====================
+	// A path codegen cannot bake (here: `close`) falls back to the builder, which the factory
+	// used to load only in create()/createFrom(); the documented standalone call crashed on a
+	// null builder.
+
+	@Test
+	public function testCodegenBuilderFallbackPathsWorkBeforeCreate():Void {
+		final builder = builderFromFile("test/examples/60-newPathCommands/newPathCommands.manim");
+		final expectedEnd = builder.getPaths().getPath("triangle").getPoint(1.0);
+
+		final calls:Array<{name:String, call:bh.test.MultiProgrammable -> bh.base.FPoint}> = [
+			{name: "getPath_triangle()", call: mp -> mp.newPathCommands.getPath_triangle().getPoint(1.0)},
+			{name: "getPath(\"triangle\")", call: mp -> mp.newPathCommands.getPath("triangle").getPoint(1.0)},
+			{name: "createAnimatedPath_triangleAnim()", call: mp -> mp.newPathCommands.createAnimatedPath_triangleAnim().seek(1.0).position},
+		];
+		for (c in calls) {
+			var end:Null<FPoint> = null;
+			var error:Null<String> = null;
+			try {
+				end = c.call(createMp()); // fresh factory: create() never ran
+			} catch (e:Dynamic) {
+				error = Std.string(e);
+			}
+			Assert.isNull(error, '${c.name} before any create() must not throw, got: $error');
+			if (end != null) {
+				Assert.floatEquals(expectedEnd.x, end.x, '${c.name}: end x must match the builder path');
+				Assert.floatEquals(expectedEnd.y, end.y, '${c.name}: end y must match the builder path');
+			}
+		}
+	}
+
 	// ==================== Helpers ====================
 
 	static function createMp():bh.test.MultiProgrammable {

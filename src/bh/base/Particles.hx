@@ -747,6 +747,9 @@ class ParticleGroup {
 
 	/** Whether shutdown is currently active. */
 	var shutdownActive : Bool = false;
+	/** Set by shutdown(). A burst-driven group (nparts == 0) keeps its Particles container alive
+	 *  while idle between bursts; once shut down, its empty batch lets the container end. */
+	var shutdownRequested : Bool = false;
 	/** Elapsed time since shutdown started. */
 	var shutdownTime : Float = 0;
 	/** Active shutdown duration (from shutdown() call or configured default). */
@@ -891,12 +894,14 @@ class ParticleGroup {
 		not recycled based on the count curve. After the curve reaches zero, remaining particles
 		enter natural die-off.
 
-		No-op on non-looping groups. `emitBurstAt()` still works after shutdown.
+		No-op on non-looping groups, apart from marking a burst-driven group (`nparts == 0`) done so
+		its `Particles` container ends once its particles die. `emitBurstAt()` still works after shutdown.
 
 		@param duration Shutdown duration in seconds. null or 0 = instant (emitLoop = false).
 		@param curve Count curve override. null = use configured `shutdownCountCurve`, or linear default.
 	**/
 	public function shutdown(?duration:Float, ?curve:bh.paths.Curve.ICurve):Void {
+		shutdownRequested = true;
 		if (!emitLoop) return;
 		final dur = duration != null ? duration : shutdownDuration;
 		if (dur <= 0) {
@@ -1504,10 +1509,11 @@ class Particles extends h2d.Drawable {
 	// a worse trade than the linear scan it replaces.
 	final groupList : Array<ParticleGroup> = [];
 
-	// Latched true once any group's batch has held at least one live particle.
+	// Set once any group's batch holds a live particle, cleared when onEnd() fires.
 	// Gates onEnd() so a freshly-created container or a burst-only group
 	// (nparts == 0, awaiting emitBurstAt) is not auto-removed on the first sync
-	// just because no particles exist yet — distinguishes "not started" from "done".
+	// just because no particles exist yet — distinguishes "not started" from "done" —
+	// and so onEnd() fires once per live → empty transition, not on every idle frame.
 	var hasEmittedAny:Bool = false;
 
 	/**
@@ -1602,6 +1608,10 @@ class Particles extends h2d.Drawable {
 	override function sync(ctx:h2d.RenderContext):Void {
 		super.sync(ctx);
 		var isDone = true;
+		// Only a group that emits on its own (nparts > 0) or was shut down can finish the container.
+		// A burst-driven group (count: 0 — emitBurst/emitBurstAt/sub-emitter bursts only) is idle,
+		// not done, when its batch empties: a shared burst container must survive between bursts.
+		var canEnd = false;
 		var dt = ctx.elapsedTime;
 		for( g in groupList ) {
 			if ( !g.started && g.enabled ) g.start();
@@ -1611,8 +1621,12 @@ class Particles extends h2d.Drawable {
 				isDone = false;
 				hasEmittedAny = true;
 			}
+			if (g.nparts > 0 || g.shutdownRequested) canEnd = true;
 		}
-		if (isDone && hasEmittedAny) onEnd();
+		if (isDone && hasEmittedAny && canEnd) {
+			hasEmittedAny = false;
+			onEnd();
+		}
 	}
 
 	public dynamic function onEnd():Void {

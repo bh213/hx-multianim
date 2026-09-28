@@ -127,6 +127,52 @@ class CodegenRepeatParamParityTest extends BuilderTestBase {
 		assertXs([7, 9], bitmapXs(cast inst), "codegen: setParameter(start, 7) must yield loop values 7, 9");
 	}
 
+	// ==================== range() descending `to:` and zero step ====================
+
+	/** `to:` is inclusive counting down too: from 5 to 1 in steps of -1 yields 5,4,3,2,1.
+	 *  The parser used to add 1 to `to:` regardless of the step's sign, dropping 2 and 1. */
+	@Test
+	public function testRangeDescendingTo_BuilderAndCodegen_Inclusive():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "rangeDescendingTo", null);
+		assertXs([1, 2, 3, 4, 5], bitmapXs(result.object), "builder: range(from: 5, to: 1, step: -1) must include 1");
+
+		final inst:Dynamic = createMp().rangeDescendingTo.create();
+		assertXs([1, 2, 3, 4, 5], bitmapXs(cast inst), "codegen: range(from: 5, to: 1, step: -1) must include 1");
+	}
+
+	/** A $param step: the inclusive end follows the step's runtime sign, and a new step re-derives it. */
+	@Test
+	public function testRangeDescendingToParamStep_BuilderAndCodegen_Inclusive():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "rangeDescendingToParamStep", null);
+		assertXs([2, 4, 6, 8, 10], bitmapXs(result.object), "builder: range(from: 10, to: 2, step: $stepv) with stepv=-2 must include 2");
+
+		final inst:Dynamic = createMp().rangeDescendingToParamStep.create();
+		assertXs([2, 4, 6, 8, 10], bitmapXs(cast inst), "codegen: range(from: 10, to: 2, step: $stepv) with stepv=-2 must include 2");
+
+		inst.setParameter("stepv", -4);
+		assertXs([2, 6, 10], bitmapXs(cast inst), "codegen: setParameter(stepv, -4) must yield 10, 6, 2");
+	}
+
+	/** A $param step of 0 fails with a BuilderError on both backends instead of dividing by zero. */
+	@Test
+	public function testRangeZeroParamStep_BuilderAndCodegen_ThrowBuilderError():Void {
+		final builds:Array<{name:String, build:() -> Void}> = [
+			{name: "builder", build: () -> BuilderTestBase.buildFromFile(FIXTURE, "rangeZeroParamStep", null)},
+			{name: "codegen", build: () -> createMp().rangeZeroParamStep.create()},
+		];
+		for (b in builds) {
+			var error:Null<Dynamic> = null;
+			try {
+				b.build();
+			} catch (e:Dynamic) {
+				error = e;
+			}
+			Assert.isTrue(Std.isOfType(error, bh.multianim.BuilderError), '${b.name}: range(0, 5, $$stepv) with stepv=0 must throw a BuilderError, got: $error');
+			if (error != null)
+				Assert.stringContains("step", Std.string(error), '${b.name}: the error must name the step, got: $error');
+		}
+	}
+
 	// ==================== repeatable inside flow ====================
 
 	/** Builder baseline: a zero-offset repeatable adds its iteration children

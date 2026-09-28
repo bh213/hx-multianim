@@ -51,6 +51,14 @@ class ProgrammableBuilder {
 		return cast _builder;
 	}
 
+	/** Load the builder for `manimPath` unless create()/createFrom() already did. Generated
+	 *  factory methods that fall back to the builder (getPath, getPath_<name>,
+	 *  createAnimatedPath_<name>) call this first, so they work before the first create(). */
+	private function ensureBuilder(manimPath:String):Void {
+		if (_builder == null)
+			_builder = resourceLoader.loadMultiAnim(manimPath);
+	}
+
 	/** Walk an h2d.Object tree and collect all MAObject children. Used by codegen-generated
 	 *  `getInteractives()` methods on programmable instance classes to expose their interactives
 	 *  to `UIScreen.addInteractives` / `UIRichInteractiveHelper.register` without requiring a

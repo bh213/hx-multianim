@@ -100,8 +100,8 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `step(count, dx: N, dy: N)` | Fixed step offset, repeated `count` times |
 | `layout("entryName")` | Position from named relative layout (entryName is the `#name` used in the `layouts {}` block) |
 | `array($valueVar, $arrayName)` | Iterate over data array |
-| `range(start, end [, step])` | Numeric range (exclusive end), optional step |
-| `range(from: X, to: Y [, step: S])` | Named range (inclusive end: `to: 5` includes 5) |
+| `range(start, end [, step])` | Numeric range (exclusive end), optional step. A negative step counts down; a step of `0` is a parse error (a `$param` step that is 0 fails the build) |
+| `range(from: X, to: Y [, step: S])` | Named range (inclusive end: `to: 5` includes 5, counting down too: `range(from: 5, to: 1, step: -1)` is 5,4,3,2,1) |
 | `range(from: X, until: Y [, step: S])` | Named range (exclusive end: `until: 5` excludes 5) |
 | `stateanim($bitmapVar, "file.anim", "animName", key=>value)` | Iterate animation frames; exposes `$bitmapVar` and `$index` |
 | `tiles($bitmapVar, $tilenameVar, "sheetName")` | Iterate all tiles from sheet; exposes `$bitmapVar`, `$tilenameVar`, and `$index` |
@@ -758,7 +758,7 @@ Read color settings with `BuilderResolvedSettings.getColorOrDefault(key, default
 | Type | Description |
 |------|-------------|
 | `palette { colors... }` | Indexed color list |
-| `palette(2d: width) { colors... }` | 2D color grid (`width` colors per row) |
+| `palette(2d: width) { colors... }` | 2D color grid (`width` colors per row; the colors must fill whole rows) |
 | `palette(file: "image.png")` | Colors from image file |
 | `palette(external)` | External palette reference |
 
@@ -1102,7 +1102,8 @@ group.shutdownSpeedCurve = myCurve;
 - After shutdown, `emitBurstAt()` still works (manual one-shot effects)
 - `group.emitFilter = (x:Float, y:Float) -> Bool` — filter particles by world-space spawn position (return `false` to discard). Works for both relative and non-relative groups
 - `particles.worldAnchor : Null<h2d.Object>` — designated world-space anchor for `relative: false` groups. When non-null, non-relative emit position/velocity/scale/rotation bake into `worldAnchor`'s local frame (not full scene space) and the draw branch renders through `worldAnchor`'s transform. Set this on a per-emitter trail's `Particles` container with the scene's world-root so the trail stays anchored to the world during camera pan/zoom. Null (default) preserves legacy screen-space baking. Runtime-only — no DSL surface
-- Existing `onEnd()` callback fires when last particle dies (default: `this.remove()`)
+- Existing `onEnd()` callback fires when last particle dies (default: `this.remove()`) — once per live → empty transition, not on every idle frame
+- A container whose groups are all burst-driven (`count: 0`, fed by `emitBurst`/`emitBurstAt`) is idle between bursts, not done: `onEnd()` does not fire when a burst dies out, so one container serves every shot. Call `shutdown()` on it to have it end (and auto-remove) once its last particle dies. A container with at least one `count > 0` group ends as before once every particle is dead, including those of its `count: 0` sub-emitter groups
 - Total visual clear time: `duration` (curve phase) + up to `maxLife` (natural die-off of remaining particles)
 
 ### Externally Driven

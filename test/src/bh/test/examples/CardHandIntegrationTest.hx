@@ -1608,6 +1608,53 @@ class CardHandIntegrationTest extends BuilderTestBase {
 		Assert.equals(83, statusWidth(h.helper.cards[0].result), "a card built disabled must show status disabled");
 	}
 
+	// A card drawn with `enabled: false` must stay disabled through its draw animation:
+	// drawCard used to overwrite the Disabled state buildCardEntry set with Animating, and the
+	// animation end promoted Animating to InHand — a playable card that still looked disabled.
+
+	@Test
+	public function testCardDrawnWithEnabledFalseStaysDisabledAfterInstantDraw():Void {
+		var h = createHelper(); // no drawPathName: the draw completes synchronously
+		h.helper.drawCard({id: "a", buildName: "card", enabled: false});
+		Assert.isTrue(h.helper.cards[0].state == Disabled,
+			'a card drawn with enabled: false must stay Disabled once the draw ends, got ${h.helper.cards[0].state}');
+		Assert.isFalse(h.helper.isCardInHand("a"), "a card drawn disabled must not count as playable");
+	}
+
+	@Test
+	public function testCardDrawnWithEnabledFalseStaysDisabledAfterDrawAnimation():Void {
+		var h = createHelperWithPaths();
+		h.helper.drawCard({id: "a", buildName: "card", enabled: false});
+		for (_ in 0...30)
+			h.helper.update(0.1);
+		Assert.equals(0, h.helper.activeAnimations.length, "precondition: the draw animation has finished");
+		Assert.isTrue(h.helper.cards[0].state == Disabled,
+			'a card drawn with enabled: false must stay Disabled after its draw animation, got ${h.helper.cards[0].state}');
+		Assert.isFalse(h.helper.isCardInHand("a"), "a card drawn disabled must not count as playable");
+	}
+
+	@Test
+	public function testCardDrawnDisabledKeepsItsDrawAnimationWhenAnotherCardIsDrawn():Void {
+		var h = createHelperWithPaths();
+		var events:Array<CardHandEvent> = [];
+		h.helper.onCardEvent = (event) -> events.push(event);
+		h.helper.drawCard({id: "a", buildName: "card", enabled: false});
+		h.helper.drawCard(desc("b")); // rearranges the cards already in hand
+		Assert.isFalse(findEvent(events, e -> switch (e) { case DrawAnimComplete("a"): true; default: false; }),
+			"drawing another card must not cut short the draw animation of a card drawn disabled");
+	}
+
+	@Test
+	public function testCardDrawnDisabledAndEnabledMidDrawLandsInHand():Void {
+		var h = createHelperWithPaths();
+		h.helper.drawCard({id: "a", buildName: "card", enabled: false});
+		h.helper.setCardEnabled("a", true);
+		for (_ in 0...30)
+			h.helper.update(0.1);
+		Assert.isTrue(h.helper.cards[0].state == InHand,
+			'a card drawn disabled and enabled during its draw must land InHand, got ${h.helper.cards[0].state}');
+	}
+
 	@Test
 	public function testDiscardedCardReleasesItsBinding():Void {
 		var h = createStatusHelper();

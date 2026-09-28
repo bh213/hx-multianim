@@ -2767,6 +2767,16 @@ class MultiAnimBuilder {
 	inline function builderErrorAt(node:Null<Node>, message:String, ?code:String):BuilderError
 		return new BuilderError(message, node, code);
 
+	/** Iteration count of `range(start, end, step)` — `end` exclusive, a negative step counts
+	 *  down. Shared with codegen-generated repeat rebuilds. A step of 0 (only reachable through a
+	 *  `$param`: the parser rejects a literal 0) throws instead of dividing by zero, which JS
+	 *  turns into an endless loop. */
+	public static function rangeIterationCount(start:Int, end:Int, step:Int, ?node:Node):Int {
+		if (step == 0)
+			throw new BuilderError('range step must not be 0', node);
+		return Math.ceil((end - start) / step);
+	}
+
 	public function toString():String {
 		return 'MultiAnimBuilder( multiParserResult: ${multiParserResult.nodes.keys()}, indexedParams: ${indexedParams}, builderParams: ${builderParams}, currentNode: ${currentNode}, stateStack: ${stateStack.length} items)';
 	}
@@ -5217,7 +5227,7 @@ class MultiAnimBuilder {
 				rangeStart = resolveAsInteger(start);
 				final rangeEnd = resolveAsInteger(end);
 				rangeStep = resolveAsInteger(step);
-				repeatCount = Math.ceil((rangeEnd - rangeStart) / rangeStep);
+				repeatCount = rangeIterationCount(rangeStart, rangeEnd, rangeStep, node);
 			case StateAnimIterator(bmpVarName, animFilename, animationName, selectorRefs):
 				if (!allowTileIterators)
 					throw builderErrorAt(node, 'StateAnimIterator not supported in REPEAT2D');
@@ -6189,7 +6199,7 @@ class MultiAnimBuilder {
 						rangeStart = resolveAsInteger(start);
 						final rangeEnd = resolveAsInteger(end);
 						rangeStep = resolveAsInteger(step);
-						repeatCount = Math.ceil((rangeEnd - rangeStart) / rangeStep);
+						repeatCount = rangeIterationCount(rangeStart, rangeEnd, rangeStep, node);
 					case StateAnimIterator(bitmapVarName, animFilename, animationName, selectorRefs):
 						final selector = [for (k => v in selectorRefs) k => resolveAsString(v)];
 						final animName = resolveAsString(animationName);
@@ -6365,7 +6375,7 @@ class MultiAnimBuilder {
 								newRangeStart = resolveAsInteger(start);
 								final rangeEnd = resolveAsInteger(end);
 								newRangeStep = resolveAsInteger(step);
-								newCount = Math.ceil((rangeEnd - newRangeStart) / newRangeStep);
+								newCount = rangeIterationCount(newRangeStart, rangeEnd, newRangeStep, capturedNode);
 							case LayoutIterator(layoutName):
 								final l = getLayouts();
 								newCount = l.getLayoutSequenceLengthByLayoutName(layoutName);
@@ -6511,7 +6521,7 @@ class MultiAnimBuilder {
 							rangeStart = resolveAsInteger(start);
 							final rangeEnd = resolveAsInteger(end);
 							rangeStep = resolveAsInteger(step);
-							count = Math.ceil((rangeEnd - rangeStart) / rangeStep);
+							count = rangeIterationCount(rangeStart, rangeEnd, rangeStep, node);
 							isRange = true;
 						case StateAnimIterator(_, _, _, _):
 							throw builderErrorAt(node, 'StateAnimIterator not supported in REPEAT2D');
@@ -7278,7 +7288,11 @@ class MultiAnimBuilder {
 			case PALETTE(paletteType):
 				return switch paletteType {
 					case PaletteColors(colors): new Palette(resolveColorList(colors));
-					case PaletteColors2D(colors, width): new Palette(resolveColorList(colors));
+					case PaletteColors2D(colors, width):
+						final resolved = resolveColorList(colors);
+						if (width <= 0 || resolved.length % width != 0)
+							throw builderErrorAt(node, 'palette #$name: ${resolved.length} colors do not fill rows of width $width');
+						new Palette(resolved, width);
 					case PaletteImageFile(filename):
 						var filenameResolved = resolveAsString(filename);
 						var res = resourceLoader.loadHXDResource(filenameResolved);

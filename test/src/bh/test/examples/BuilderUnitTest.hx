@@ -4846,6 +4846,143 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.equals(countTo - 1, countUntil);
 	}
 
+	static function textValues(root:h2d.Object):Array<String> {
+		return [for (t in findAllTextDescendants(root)) t.text];
+	}
+
+	@Test
+	public function testNamedRangeDescendingToIsInclusive():Void {
+		// `to:` is inclusive in both directions: from 5 down to 1 yields 5,4,3,2,1
+		final result = buildFromSource("
+			#test programmable() {
+				repeatable($i, range(from: 5, to: 1, step: -1)) {
+					text(dd, $i, #fff): 0, 0
+				}
+			}
+		", "test");
+		final values = textValues(result.object).join(",");
+		Assert.equals("5,4,3,2,1", values, 'range(from: 5, to: 1, step: -1) must include 1 (to: is inclusive), got $values');
+	}
+
+	@Test
+	public function testNamedRangeDescendingToWithParamStepIsInclusive():Void {
+		// The step's sign is only known at build time: from 10 down to 2 in steps of 2 yields 10,8,6,4,2
+		final result = buildFromSource("
+			#test programmable(stepv:int=-2) {
+				repeatable($i, range(from: 10, to: 2, step: $stepv)) {
+					text(dd, $i, #fff): 0, 0
+				}
+			}
+		", "test");
+		final values = textValues(result.object).join(",");
+		Assert.equals("10,8,6,4,2", values, 'range(from: 10, to: 2, step: $$stepv) with stepv=-2 must include 2 (to: is inclusive), got $values');
+	}
+
+	@Test
+	public function testRangeZeroStepIsParseError():Void {
+		for (iterator in ["range(0, 5, 0)", "range(from: 0, to: 5, step: 0)", "range(from: 0, until: 5, step: 0)"]) {
+			final error = parseExpectingError("
+				#test programmable() {
+					repeatable($i, " + iterator + ") {
+						bitmap(generated(color(4, 4, #f00))): 0, 0
+					}
+				}
+			");
+			Assert.notNull(error, '$iterator must be rejected at parse time (a zero step never advances)');
+			if (error != null)
+				Assert.stringContains("step", error, '$iterator: the error must name the step, got: $error');
+		}
+	}
+
+	@Test
+	public function testRangeZeroStepFromParamThrowsBuilderError():Void {
+		var error:Null<Dynamic> = null;
+		try {
+			buildFromSource("
+				#test programmable(stepv:int=0) {
+					repeatable($i, range(0, 5, $stepv)) {
+						bitmap(generated(color(4, 4, #f00))): 0, 0
+					}
+				}
+			", "test");
+		} catch (e:Dynamic) {
+			error = e;
+		}
+		Assert.notNull(error, "a range whose $param step is 0 must fail the build (JS loops forever on it)");
+		Assert.isTrue(Std.isOfType(error, bh.multianim.BuilderError), 'expected a BuilderError, got: $error');
+		if (error != null)
+			Assert.stringContains("step", Std.string(error), 'the error must name the step, got: $error');
+	}
+
+	// ==================== Inline 2D palette ====================
+
+	static final PALETTE_2D_SOURCE = "
+		#pal palette(2d: 2) {
+			#FF0000 #00FF00
+			#0000FF #FFFF00
+		}
+		#tint2d programmable() {
+			bitmap(generated(color(8, 8, #FFFFFF))) {
+				tint: palette(pal, 1, 1)
+				pos: 0, 0
+			}
+		}
+		#swapRows programmable() {
+			bitmap(generated(color(8, 8, #FF0000))) {
+				filter: replacePalette(pal, 0, 1)
+				pos: 0, 0
+			}
+		}
+	";
+
+	@Test
+	public function testInline2dPaletteResolvesXYColor():Void {
+		var error:Null<String> = null;
+		var result:Null<bh.multianim.MultiAnimBuilder.BuilderResult> = null;
+		try {
+			result = buildFromSource(PALETTE_2D_SOURCE, "tint2d");
+		} catch (e:Dynamic) {
+			error = Std.string(e);
+		}
+		Assert.isNull(error, 'palette(pal, x, y) on an inline palette(2d: 2) must resolve, got: $error');
+		if (result != null) {
+			final bitmaps = findVisibleBitmapDescendants(result.object);
+			Assert.equals(1, bitmaps.length, "expected exactly one tinted bitmap");
+			if (bitmaps.length == 1)
+				Assert.equals(0xFFFFFF00, bitmaps[0].color.toColor(), "palette(pal, 1, 1) must pick row 1, column 1 (yellow)");
+		}
+	}
+
+	@Test
+	public function testInline2dPaletteReplacePaletteRows():Void {
+		var error:Null<String> = null;
+		try {
+			buildFromSource(PALETTE_2D_SOURCE, "swapRows");
+		} catch (e:Dynamic) {
+			error = Std.string(e);
+		}
+		Assert.isNull(error, 'replacePalette(pal, 0, 1) on an inline palette(2d: 2) must build, got: $error');
+	}
+
+	@Test
+	public function testInline2dPaletteWithPartialRowIsBuilderError():Void {
+		var error:Null<Dynamic> = null;
+		try {
+			buildFromSource("
+				#pal palette(2d: 3) { #FF0000 #00FF00 #0000FF #FFFF00 }
+				#test programmable() {
+					bitmap(generated(color(8, 8, #FFFFFF))) {
+						tint: palette(pal, 0, 0)
+						pos: 0, 0
+					}
+				}
+			", "test");
+		} catch (e:Dynamic) {
+			error = e;
+		}
+		Assert.isTrue(Std.isOfType(error, bh.multianim.BuilderError), 'a 2D palette whose colors do not fill its rows must fail with a BuilderError, got: $error');
+	}
+
 	// ==================== Builder error paths ====================
 
 	/** Helper: run a closure and return the error message string, or null if no error. */

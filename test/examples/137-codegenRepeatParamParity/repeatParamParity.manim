@@ -40,6 +40,28 @@ version: 1.0
   }
 }
 
+// Descending `to:` is inclusive (5,4,3,2,1) — literal step: static unroll path.
+#rangeDescendingTo programmable() {
+  repeatable($i, range(from: 5, to: 1, step: -1)) {
+    bitmap(generated(color(4, 4, #FF00FF))): $i, 0
+  }
+}
+
+// Descending `to:` with a $param step (runtime rebuild path): the step's sign is only
+// known at build time.
+#rangeDescendingToParamStep programmable(stepv:int=-2) {
+  repeatable($i, range(from: 10, to: 2, step: $stepv)) {
+    bitmap(generated(color(4, 4, #00FFFF))): $i, 0
+  }
+}
+
+// A $param step of 0 must fail like the builder does (JS used to loop forever).
+#rangeZeroParamStep programmable(stepv:int=0) {
+  repeatable($i, range(0, 5, $stepv)) {
+    bitmap(generated(color(4, 4, #FFFFFF))): $i, 0
+  }
+}
+
 // A point inside a param-dependent repeat (runtime rebuild path) holding a child that
 // codegen forwards to the builder at runtime: the child must be added to the point.
 #pointForwardedChild programmable(n:int=2) {

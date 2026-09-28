@@ -29,6 +29,9 @@ private class CardEntry {
 	/** Deferred enable: if card is disabled during animation and re-enabled before it completes,
 	 *  this flag causes the onComplete handler to restore InHand instead of staying Disabled. */
 	public var enableAfterAnimation:Bool = false;
+	/** Set by drawCard for a card built disabled: it animates as Animating (layout and hit tests
+	 *  skip it like any card in flight) and the onComplete handler lands it Disabled, not InHand. */
+	public var disableAfterAnimation:Bool = false;
 	/** Rebuild listener installed on the card's BuilderResult so that any `@switch` arm flip
 	 *  or other structural rebuild inside the card resyncs `interactiveHelper`'s bindings.
 	 *  Stored here so it can be removed when the card is discarded. Null if the card's result
@@ -390,6 +393,8 @@ class UICardHandHelper implements UIHigherOrderComponent {
 	 *  are drawn/discarded during the animation, the endpoint updates dynamically. */
 	public function drawCard(descriptor:CardDescriptor, insertIndex:Int = -1):Void {
 		var entry = buildCardEntry(descriptor);
+		// A card built disabled (`enabled: false`) flies in like any drawn card and lands Disabled
+		entry.disableAfterAnimation = entry.state == Disabled;
 		entry.state = Animating;
 
 		if (insertIndex < 0 || insertIndex >= cards.length) {
@@ -501,11 +506,12 @@ class UICardHandHelper implements UIHigherOrderComponent {
 
 		// During animation or disabled-while-animating: defer state changes
 		if (entry.state == Animating) {
+			entry.disableAfterAnimation = false;
 			if (!enabled) {
 				entry.state = Disabled;
 				entry.enableAfterAnimation = false;
 			} else {
-				// Already animating and enabled — no state change needed
+				// Already animating and enabled — lands InHand
 				entry.enableAfterAnimation = false;
 			}
 		} else if (entry.state == Disabled && isAnimatingEntry(entry)) {
@@ -1602,7 +1608,8 @@ class UICardHandHelper implements UIHigherOrderComponent {
 	 *  Handles deferred enable/disable from setCardEnabled called during animation. */
 	function resolveAnimationComplete(entry:CardEntry):Void {
 		if (entry.state == Animating) {
-			entry.state = InHand;
+			entry.state = entry.disableAfterAnimation ? Disabled : InHand;
+			entry.disableAfterAnimation = false;
 		} else if (entry.state == Disabled && entry.enableAfterAnimation) {
 			entry.state = InHand;
 			entry.enableAfterAnimation = false;

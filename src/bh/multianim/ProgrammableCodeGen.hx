@@ -2334,7 +2334,9 @@ class ProgrammableCodeGen {
 				final s = tryResolveStaticInt(start);
 				final e = tryResolveStaticInt(end);
 				final st = tryResolveStaticInt(step);
-				if (s != null && e != null && st != null) {
+				// A step folding to 0 (e.g. from a @final) takes the runtime path, whose count
+				// throws like the builder's instead of unrolling Math.ceil(x / 0) iterations here.
+				if (s != null && e != null && st != null && st != 0) {
 					{staticCount: Math.ceil((e - s) / st), dx: 0, dy: 0, rangeStart: s, rangeStep: st, countRV: null, paramScalars: false};
 				} else {
 					{staticCount: null, dx: 0, dy: 0, rangeStart: s != null ? s : 0, rangeStep: st != null ? st : 1, countRV: end,
@@ -2526,7 +2528,7 @@ class ProgrammableCodeGen {
 				final endExpr = rvToExprInt(end);
 				final startExpr = rvToExprInt(start);
 				final stepExpr = rvToExprInt(step);
-				macro Math.ceil(($endExpr - $startExpr) / $stepExpr);
+				macro bh.multianim.MultiAnimBuilder.rangeIterationCount($startExpr, $endExpr, $stepExpr);
 			case StepIterator(_, _, repeats):
 				rvToExprInt(repeats);
 			default:
@@ -4008,7 +4010,7 @@ class ProgrammableCodeGen {
 					final endExpr = rvToExprInt(end);
 					final startExpr = rvToExprInt(start);
 					final stepExpr = rvToExprInt(step);
-					macro Math.ceil(($endExpr - $startExpr) / $stepExpr);
+					macro bh.multianim.MultiAnimBuilder.rangeIterationCount($startExpr, $endExpr, $stepExpr);
 				case StepIterator(_, _, repeats): rvToExprInt(repeats);
 				default: macro 0;
 			};
@@ -4283,7 +4285,7 @@ class ProgrammableCodeGen {
 							case SVTFloat: final v = rvToExpr(entry.value); macro bh.multianim.MultiAnimParser.SettingValue.RSVFloat($v);
 							case SVTString: final v = rvToExpr(entry.value, true); macro bh.multianim.MultiAnimParser.SettingValue.RSVString($v);
 							case SVTColor: final v = rvToExpr(entry.value); macro bh.multianim.MultiAnimParser.SettingValue.RSVColor($v);
-							case SVTBool: final v = rvToExpr(entry.value); macro bh.multianim.MultiAnimParser.SettingValue.RSVBool($v != 0);
+							case SVTBool: final v = settingBoolExpr(entry.value); macro bh.multianim.MultiAnimParser.SettingValue.RSVBool($v);
 						};
 						entries.push(macro m.set($keyExpr, $valExpr));
 					}
@@ -7919,6 +7921,25 @@ class ProgrammableCodeGen {
 		}
 	}
 
+	/** Bool value of an SVTBool setting / interactive metadata entry. An untyped `key => true`
+	 *  infers the bool type but keeps its literal as RVString("true"), so `"true" != 0` would not
+	 *  compile; bake the literal like the builder's resolveAsBool RVString arm (the same words as
+	 *  MultiAnimParser.tryStringToBool, which is not available in macro context).
+	 *  Typed `key:bool => ...` arrives as RVInteger(1/0) or a reference and compares to 0. */
+	static function settingBoolExpr(rv:ReferenceableValue):Expr {
+		switch (rv) {
+			case RVString(s):
+				switch (s.toLowerCase()) {
+					case "true" | "yes" | "1": return macro true;
+					case "false" | "no" | "0": return macro false;
+					default:
+				}
+			default:
+		}
+		final v = rvToExpr(rv);
+		return macro $v != 0;
+	}
+
 	// ==================== Node Settings ====================
 
 	/** Convert a node's settings (walking parent chain) to a ResolvedSettings expression */
@@ -7950,7 +7971,7 @@ class ProgrammableCodeGen {
 				case SVTFloat: final v = rvToExpr(sv.value); macro bh.multianim.MultiAnimParser.SettingValue.RSVFloat($v);
 				case SVTString: final v = rvToExpr(sv.value, true); macro bh.multianim.MultiAnimParser.SettingValue.RSVString($v);
 				case SVTColor: final v = rvToExpr(sv.value); macro bh.multianim.MultiAnimParser.SettingValue.RSVColor($v);
-				case SVTBool: final v = rvToExpr(sv.value); macro bh.multianim.MultiAnimParser.SettingValue.RSVBool($v != 0);
+				case SVTBool: final v = settingBoolExpr(sv.value); macro bh.multianim.MultiAnimParser.SettingValue.RSVBool($v);
 			};
 			entries.push(macro m.set($keyExpr, $valExpr));
 		}
@@ -9690,8 +9711,12 @@ class ProgrammableCodeGen {
 	// ==================== Paths/Curves/AnimatedPath Factory Methods ====================
 
 	static function generatePathsFactoryMethods(pathsDef:PathsDef, factoryFields:Array<Field>, pos:Position):Void {
+		// Builder-fallback bodies load the builder themselves: create() may not have run yet
+		final manimPathLit = macro $v{currentManimPath};
+
 		// Generic getPath(name, ?normalization) method - still uses builder for dynamic name
 		factoryFields.push(makeMethod("getPath", [
+			macro this.ensureBuilder($manimPathLit),
 			macro return this.buildPath(name, normalization)
 		], [
 			{name: "name", type: macro :String},
@@ -9792,6 +9817,7 @@ class ProgrammableCodeGen {
 				// Fallback to builder for paths with parameter references
 				final nameExpr:Expr = macro $v{pathName};
 				factoryFields.push(makeMethod("getPath_" + pathName, [
+					macro this.ensureBuilder($manimPathLit),
 					macro return this.buildPath($nameExpr, normalization)
 				], [
 					{name: "normalization", type: macro :Null<bh.paths.MultiAnimPaths.PathNormalization>, opt: true},
@@ -10241,9 +10267,11 @@ class ProgrammableCodeGen {
 					modeExpr = macro bh.paths.AnimatedPath.AnimatedPathMode.Distance($spdExpr);
 				}
 			default:
-				// Fall back to builder
+				// Fall back to builder (loaded here: create() may not have run yet)
 				final nameExpr:Expr = macro $v{name};
+				final manimPathLit = macro $v{currentManimPath};
 				factoryFields.push(makeMethod(methodName, [
+					macro this.ensureBuilder($manimPathLit),
 					macro return this.buildAnimatedPath($nameExpr, normalization)
 				], [
 					{name: "normalization", opt: true, type: macro :Null<bh.paths.MultiAnimPaths.PathNormalization>},

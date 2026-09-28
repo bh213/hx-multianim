@@ -587,6 +587,19 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/137-codegenRepeatParamParity/repeatParamParity.manim", "pointForwardedChild")
 	public var pointForwardedChild;
 
+	@:manim("test/examples/137-codegenRepeatParamParity/repeatParamParity.manim", "rangeDescendingTo")
+	public var rangeDescendingTo;
+
+	@:manim("test/examples/137-codegenRepeatParamParity/repeatParamParity.manim", "rangeDescendingToParamStep")
+	public var rangeDescendingToParamStep;
+
+	@:manim("test/examples/137-codegenRepeatParamParity/repeatParamParity.manim", "rangeZeroParamStep")
+	public var rangeZeroParamStep;
+
+	// Also compiled in isolation by the 152 compile-check harness (Cg27Host)
+	@:manim("test/examples/152-codegenCompileErrors/cg27-untyped-bool.manim", "untypedBool")
+	public var untypedBool;
+
 	@:manim("test/examples/138-codegenCtxSize/ctxSize.manim", "ctxSize")
 	public var ctxSize;
 

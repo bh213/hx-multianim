@@ -2133,4 +2133,94 @@ class ParticleRuntimeTest extends utest.Test {
 			+ "trigger emitBurstAt(). This is the worldAnchor trail-emitter pattern. "
 			+ "Got " + endCalls + " call(s).");
 	}
+
+	// ==================== onEnd after the particles die ====================
+	//
+	// A burst-driven group (`count: 0`) only gets particles from emitBurst/emitBurstAt, so an
+	// empty batch means "idle between bursts", not "done": the default onEnd (remove()) used to
+	// detach a shared burst container as soon as its first burst died out, and every later
+	// burst went into a container no longer in the scene. onEnd also fired on every idle frame.
+
+	/** One render frame: Particles.sync (which fires onEnd), then the batch update that ages
+	 *  and frees particles — the order Heaps' syncRec runs them in. */
+	static function renderFrame(p:Particles, dt:Float):Void {
+		syncOnce(p, dt);
+		for (g in p.getGroups())
+			tickParticles(g, dt);
+	}
+
+	static function createBurstOnlyGroup(id:String, p:Particles):ParticleGroup {
+		final g = createGroup(id, p);
+		var dg:Dynamic = g;
+		dg.nparts = 0;
+		dg.life = 0.1;
+		return g;
+	}
+
+	@Test
+	public function testBurstOnlyContainerStaysInSceneBetweenBursts():Void {
+		final parent = new h2d.Object();
+		final p = createParticles();
+		parent.addChild(p);
+		final g = createBurstOnlyGroup("burst", p);
+
+		g.emitBurstAt(0, 0, 0, 0, 5);
+		for (_ in 0...20)
+			renderFrame(p, 0.016);
+		Assert.equals(0, countParticles(g), "precondition: the first burst has died out");
+		Assert.equals(parent, p.parent,
+			"a burst-driven (count: 0) container must stay in the scene after its burst dies out — "
+			+ "the default onEnd removed it, so the next burst renders nothing");
+
+		g.emitBurstAt(0, 0, 0, 0, 5);
+		renderFrame(p, 0.016);
+		Assert.equals(5, countParticles(g), "the second burst must emit into the container");
+		Assert.equals(parent, p.parent, "the container must still be in the scene for the second burst");
+	}
+
+	@Test
+	public function testBurstOnlyContainerRemovesItselfAfterShutdown():Void {
+		final parent = new h2d.Object();
+		final p = createParticles();
+		parent.addChild(p);
+		final g = createBurstOnlyGroup("burst", p);
+
+		g.emitBurstAt(0, 0, 0, 0, 5);
+		p.shutdown(); // the owner is done with it: auto-remove once the last particle dies
+		for (_ in 0...20)
+			renderFrame(p, 0.016);
+		Assert.isNull(p.parent, "a burst-driven container must remove itself once shut down and its particles are dead");
+	}
+
+	@Test
+	public function testOnEndFiresOnceWhenParticlesDie():Void {
+		final p = createParticles();
+		final g = createGroup("oneShot", p);
+		var dg:Dynamic = g;
+		dg.nparts = 5;
+		dg.life = 0.1;
+		var endCalls = 0;
+		p.onEnd = () -> endCalls++; // keeps the container: sync keeps running while idle
+
+		for (_ in 0...40)
+			renderFrame(p, 0.016);
+		Assert.equals(0, countParticles(g), "precondition: the one-shot group has died out");
+		Assert.equals(1, endCalls, 'onEnd must fire once when the last particle dies, not on every idle frame; got $endCalls calls');
+	}
+
+	@Test
+	public function testOneShotContainerWithBurstOnlyGroupStillAutoRemoves():Void {
+		final parent = new h2d.Object();
+		final p = createParticles();
+		parent.addChild(p);
+		final g = createGroup("oneShot", p);
+		var dg:Dynamic = g;
+		dg.nparts = 5;
+		dg.life = 0.1;
+		createBurstOnlyGroup("children", p); // e.g. a sub-emitter target
+
+		for (_ in 0...40)
+			renderFrame(p, 0.016);
+		Assert.isNull(p.parent, "a container with a one-shot group must still remove itself once every particle is dead");
+	}
 }

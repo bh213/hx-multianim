@@ -229,6 +229,8 @@ Operations reference other named curves **or built-in easing names** (e.g. `mult
 
 **Runtime API:** `group.emitBurst(count)`, `group.addForceField(ff)`, `group.removeForceFieldAt(i)`, `group.clearForceFields()`, `group.shutdown(?duration, ?curve)`, `particles.shutdown(?duration, ?curve)`, `group.isShuttingDown()`, `group.getShutdownRate()`, `group.emitFilter = (x, y) -> Bool`, `particles.worldAnchor : Null<h2d.Object>` (non-relative groups bake/render through the anchor's local frame instead of full scene-space — set to the scene world-root for per-shot trail emitters under a camera; null = legacy screen-space), `group.advanceTime(dt)`, `particles.advanceTime(dt)`
 
+**`particles.onEnd()`** (default `remove()`) fires once when the last particle dies. A container whose groups are all burst-driven (`count: 0`, fed by `emitBurst`/`emitBurstAt`) stays alive between bursts and only ends after `shutdown()`.
+
 See `docs/manim.md` for full particles documentation.
 
 ## Animated Paths Quick Reference
