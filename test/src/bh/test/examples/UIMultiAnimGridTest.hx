@@ -2252,6 +2252,286 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 		grid.dispose();
 	}
 
+	// ============== Teardown and cell removal while drags / swaps settle ==============
+
+	/** Two linked cell-drag grids (A at x 0, B at x 200) caught mid cross-grid swap: A(0,0) was
+	 *  dragged onto B's occupied (0,0). A's snap animation rebuilds B's cell when it lands, and the
+	 *  displaced item's animation (in B) rebuilds A's cell. */
+	function createLinkedGridsMidSwap():{a:UIMultiAnimGrid<Dynamic>, b:UIMultiAnimGrid<Dynamic>} {
+		var builder = BuilderTestBase.builderFromSource(CELL_WITH_PATH_MANIM);
+		function make(originX:Float):UIMultiAnimGrid<Dynamic> {
+			var grid = new UIMultiAnimGrid(builder, {
+				gridType: Rect(50, 50, 2),
+				cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
+				originX: originX,
+				originY: 0,
+				cellDragEnabled: true,
+				snapPathName: "swapAnim",
+				returnPathName: "swapAnim",
+				swapEnabled: true,
+				swapPathName: "swapAnim",
+			});
+			grid.addRectRegion(2, 1);
+			return grid;
+		}
+		var a = make(0);
+		var b = make(200);
+		UIMultiAnimGrid.linkGrids(a, b);
+		a.set(0, 0, "A");
+		b.set(0, 0, "B");
+		a.onMouseClick(25, 25, 0);
+		a.onMouseRelease(225, 25);
+		@:privateAccess Assert.equals(1, a.activeSwapAnims.length, "precondition: the dragged item snaps into B");
+		@:privateAccess Assert.equals(1, b.activeSwapAnims.length, "precondition: the displaced item flies back to A");
+		return {a: a, b: b};
+	}
+
+	@Test
+	public function testDisposingLinkedGridsMidCrossGridSwapDoesNotThrow():Void {
+		// Screen teardown disposes both grids, in either order, while the swap still animates.
+		for (aFirst in [true, false]) {
+			final grids = createLinkedGridsMidSwap();
+			var threw:Null<Dynamic> = null;
+			try {
+				if (aFirst) {
+					grids.a.dispose();
+					grids.b.dispose();
+				} else {
+					grids.b.dispose();
+					grids.a.dispose();
+				}
+			} catch (e:Dynamic) {
+				threw = e;
+			}
+			Assert.isNull(threw, 'disposing linked grids mid-swap (${aFirst ? "source" : "target"} first) must not throw, got: $threw');
+		}
+	}
+
+	@Test
+	public function testUpdateAfterLinkedGridDisposedMidSwapDoesNotThrow():Void {
+		// Only one grid goes away; the other keeps animating its half of the swap.
+		for (disposeSource in [true, false]) {
+			final grids = createLinkedGridsMidSwap();
+			final gone = disposeSource ? grids.a : grids.b;
+			final alive = disposeSource ? grids.b : grids.a;
+			var threw:Null<Dynamic> = null;
+			try {
+				gone.dispose();
+				alive.update(2.0);
+			} catch (e:Dynamic) {
+				threw = e;
+			}
+			Assert.isNull(threw, 'updating the ${disposeSource ? "target" : "source"} grid after the other was disposed mid-swap must not throw, got: $threw');
+			@:privateAccess Assert.equals(0, alive.activeSwapAnims.length, "the surviving grid's swap animation finishes");
+			alive.dispose();
+		}
+	}
+
+	@Test
+	public function testSwapCompletionThatDisposesGridDoesNotCrashUpdate():Void {
+		// A swap's onComplete switches screens (clear() -> dispose()) while another swap
+		// finishes in the same frame.
+		var grid = createSwapGridWithPath();
+		grid.addRectRegion(4, 1);
+		grid.set(0, 0, "a");
+		grid.set(1, 0, "b");
+		grid.set(2, 0, "c");
+		grid.set(3, 0, "d");
+		var completions = 0;
+		var disposed = false;
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellSwap(_, _, _, ctx):
+					ctx.onComplete(() -> {
+						completions++;
+						if (!disposed) {
+							disposed = true;
+							grid.dispose();
+						}
+					});
+				default:
+			}
+		};
+		grid.swapCells(0, 0, 1, 0, true);
+		grid.swapCells(2, 0, 3, 0, true);
+		@:privateAccess Assert.equals(4, grid.activeSwapAnims.length, "precondition: two swaps in flight");
+
+		var threw:Null<Dynamic> = null;
+		try {
+			grid.update(2.0);
+		} catch (e:Dynamic) {
+			threw = e;
+		}
+		Assert.isNull(threw, 'a swap completion that disposes the grid must not crash update(), got: $threw');
+		Assert.equals(2, completions, "each swap completes exactly once");
+	}
+
+	@Test
+	public function testRemovingDragSourceCellMidDragDoesNotWedgeLaterDrags():Void {
+		var grid = createCellDragGrid(3, 1);
+		grid.set(0, 0, "item");
+		grid.set(1, 0, "other");
+		var dragEnds = 0;
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellDragEnd(_): dragEnds++;
+				default:
+			}
+		};
+
+		grid.onMouseClick(25, 25, 0);
+		@:privateAccess Assert.notNull(grid.cellDragObj, "precondition: (0,0) is being dragged");
+		var threw:Null<Dynamic> = null;
+		try {
+			grid.removeCell(0, 0);
+			grid.onMouseRelease(500, 500);
+		} catch (e:Dynamic) {
+			threw = e;
+		}
+		Assert.isNull(threw, 'removing the dragged cell, then releasing, must not throw, got: $threw');
+		Assert.equals(1, dragEnds, "the drag ends (CellDragEnd) once its source cell is removed");
+		@:privateAccess Assert.isFalse(grid.cellDragSettling, "the drag is not left settling");
+
+		// A later drag moves and releases as usual
+		grid.onMouseClick(52 + 25, 25, 0);
+		@:privateAccess Assert.notNull(grid.cellDragObj, "a new drag starts");
+		Assert.isTrue(grid.onMouseMove(300, 300), "the new drag follows the mouse");
+		Assert.isTrue(grid.onMouseRelease(500, 500), "the new drag can be released");
+		@:privateAccess Assert.isNull(grid.cellDragObj, "the new drag settles");
+		Assert.equals("other", grid.get(1, 0));
+		grid.dispose();
+	}
+
+	@Test
+	public function testRemovingDragSourceCellThenReleasingOnOccupiedCellDoesNotSwap():Void {
+		var grid = createCellDragSwapGrid(3, 1);
+		grid.set(0, 0, "A");
+		grid.set(1, 0, "B");
+		var swaps = 0;
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellSwap(_, _, _, _): swaps++;
+				default:
+			}
+		};
+
+		grid.onMouseClick(25, 25, 0);
+		var threw:Null<Dynamic> = null;
+		try {
+			grid.removeCell(0, 0);
+			grid.onMouseRelease(52 + 25, 25);
+		} catch (e:Dynamic) {
+			threw = e;
+		}
+		Assert.isNull(threw, 'releasing onto an occupied cell after the source cell was removed must not throw, got: $threw');
+		Assert.equals(0, swaps, "there is no source cell left to swap with");
+		Assert.equals("B", grid.get(1, 0), "the occupied cell keeps its item");
+		Assert.notNull(grid.getCellVisual(1, 0).getResult(), "the occupied cell keeps a real visual");
+		grid.dispose();
+	}
+
+	@Test
+	public function testRemovingDragSourceCellWhileItReturnsDoesNotWedgeLaterDrags():Void {
+		var grid = createCellDragGridWithPaths(3, 1);
+		grid.set(0, 0, "item");
+		grid.set(1, 0, "other");
+
+		grid.onMouseClick(25, 25, 0);
+		grid.onMouseMove(300, 300);
+		grid.onMouseRelease(300, 300); // no target: the item animates back to (0,0)
+		@:privateAccess Assert.isTrue(grid.cellDragSettling, "precondition: the return animation runs");
+		var threw:Null<Dynamic> = null;
+		try {
+			grid.removeCell(0, 0);
+			grid.update(2.0);
+		} catch (e:Dynamic) {
+			threw = e;
+		}
+		Assert.isNull(threw, 'the return animation landing on a removed cell must not throw, got: $threw');
+		@:privateAccess Assert.isFalse(grid.cellDragSettling, "the drag finishes");
+		@:privateAccess Assert.isNull(grid.cellDragObj, "the dragged visual is gone");
+
+		grid.onMouseClick(52 + 25, 25, 0);
+		@:privateAccess Assert.notNull(grid.cellDragObj, "a new drag starts");
+		Assert.isTrue(grid.onMouseRelease(500, 500), "the new drag can be released");
+		grid.update(2.0);
+		@:privateAccess Assert.isNull(grid.cellDragObj, "the new drag settles");
+		grid.dispose();
+	}
+
+	function createDropTargetGrid(builder:bh.multianim.MultiAnimBuilder):UIMultiAnimGrid<Dynamic> {
+		var grid = new UIMultiAnimGrid(builder, {
+			gridType: Rect(50, 50, 2),
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
+			originX: 0,
+			originY: 0,
+			snapPathName: "swapAnim",
+			swapEnabled: true,
+			swapPathName: "swapAnim",
+		});
+		grid.addRectRegion(2, 1);
+		return grid;
+	}
+
+	@Test
+	public function testAcceptedExternalDropSettlingAfterDisposeDoesNotCallBackLater():Void {
+		var builder = BuilderTestBase.builderFromSource(CELL_WITH_PATH_MANIM);
+		var grid = createDropTargetGrid(builder);
+		var drag = UIMultiAnimDraggable.create(new h2d.Object());
+		drag.setSnapAnimPath(builder, "swapAnim");
+		grid.acceptDrops(drag);
+		var completions = 0;
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellDrop(_, _, _, _, ctx):
+					ctx.accept();
+					ctx.onComplete(() -> completions++);
+				default:
+			}
+		};
+
+		var control = new bh.test.UITestHarness.MockControllable();
+		bh.test.UITestHarness.simulatePush(drag, control, new h2d.col.Point(10, 10));
+		drag.onEvent(bh.test.UITestHarness.createEventWrapper(OnRelease(0), control, new h2d.col.Point(52 + 25, 25)));
+		Assert.isTrue(drag.isAnimating(), "precondition: the accepted drop snaps into cell (1,0)");
+
+		grid.dispose();
+		final atDispose = completions;
+		drag.update(2.0);
+		Assert.equals(atDispose, completions, "no drop completion may run after dispose()");
+		Assert.equals(1, completions, "the accepted drop completes (once) as the grid is disposed, like swap animations");
+	}
+
+	@Test
+	public function testAcceptedExternalSwapSettlingAfterDisposeDoesNotCallBackLater():Void {
+		var builder = BuilderTestBase.builderFromSource(CELL_WITH_PATH_MANIM);
+		var grid = createDropTargetGrid(builder);
+		grid.set(0, 0, "A");
+		grid.set(1, 0, "B");
+		var drag = grid.makeDraggableFromCell(0, 0);
+		grid.acceptDrops(drag);
+		var completions = 0;
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellSwap(_, _, _, ctx):
+					ctx.accept();
+					ctx.onComplete(() -> completions++);
+				default:
+			}
+		};
+
+		var control = new bh.test.UITestHarness.MockControllable();
+		bh.test.UITestHarness.simulatePush(drag, control, new h2d.col.Point(25, 25));
+		drag.onEvent(bh.test.UITestHarness.createEventWrapper(OnRelease(0), control, new h2d.col.Point(52 + 25, 25)));
+		Assert.isTrue(drag.isAnimating(), "precondition: the swapped-in item snaps into cell (1,0)");
+
+		grid.dispose();
+		final atDispose = completions;
+		drag.update(2.0);
+		Assert.equals(atDispose, completions, "no swap completion may run after dispose()");
+		Assert.equals(1, completions, "the accepted swap completes (once) as the grid is disposed");
+	}
+
 	// ============== Cell tweens: dispose / rebuild ==============
 
 	function createTweenGrid(tm:bh.base.TweenManager):UIMultiAnimGrid<Dynamic> {

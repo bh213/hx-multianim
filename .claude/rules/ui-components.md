@@ -265,6 +265,7 @@ var grid = new UIMultiAnimGrid(builder, {
 - The `draggable` in `CellSwap` is null for cell-drag-initiated swaps (same as programmatic swaps)
 - Self-drop: grid auto-registers its own cells as drop targets (source cell excluded)
 - Cross-grid drop: use `linkDropTarget()` to register other grids as drop targets
+- `removeCell()` / `removeCellAnimated()` on the cell being dragged ends the drag: the dragged visual is dropped and `CellDragEnd` fires. Removed while the item already snaps/returns, the drag finishes normally and skips the missing cell
 
 **Cross-grid linking** (for `cellDragEnabled`):
 - `linkDropTarget(target, ?accepts)` — register another grid as a drop target for this grid's cell drags. `accepts: (targetCell, sourceCell, data) -> Bool`
@@ -306,8 +307,8 @@ var grid = new UIMultiAnimGrid(builder, {
 
 **Lifecycle:**
 - `getObject()` — root `h2d.Object`, add to scene via `addObjectToLayer(grid.getObject(), layer)`
-- `update(dt)` — call from screen update for animation support
-- `dispose()` — clean up all resources, zones, and scene graph
+- `update(dt)` — call from screen update for animation support. Completions fire after all animations stepped, so an `onComplete` may dispose the grid
+- `dispose()` — clean up all resources, zones, and scene graph. In-flight work completes at once, and nothing calls back later: swap/snap animations (`ctx.onComplete` fires), `removeCellAnimated` exits, and accepted `acceptDrops` drops whose draggable is still snapping. Disposing one of two linked grids mid-swap (or both, in either order) is safe — the other grid's pending rebuild of the gone cell is skipped
 
 **Callbacks:**
 - `onGridEvent:(GridEvent) -> Void` — main event callback

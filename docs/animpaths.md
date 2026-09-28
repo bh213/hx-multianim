@@ -562,6 +562,8 @@ paths {
 var ap = builder.createProjectilePath("projectile", towerPos, targetPos);
 ```
 
+When start and end are the same point, the path collapses onto it: every rate returns that point, and the animated path still runs its duration there with its scale/alpha/rotation curves (a `distance`-mode path ends on the first update). A draggable released where it was picked up uses this for an in-place return animation.
+
 ---
 
 ## Examples

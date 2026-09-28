@@ -156,16 +156,91 @@ class AnimatedPathTest extends BuilderTestBase {
 	}
 
 	@Test
-	public function testZeroLengthPathThrows():Void {
-		// A zero-length path (start == end) should throw
-		var sp = new SinglePath(new FPoint(0, 0), new FPoint(0, 0), Line);
+	public function testZeroLengthPathAnimatesInPlace():Void {
+		// A zero-length path (start == end — what Stretch(p, p) produces) is a valid path: the
+		// object stays at that point for the whole duration while its curves play.
+		var sp = new SinglePath(new FPoint(5, 7), new FPoint(5, 7), Line);
+		var threw:Null<Dynamic> = null;
 		try {
-			var zeroPath = new Path([sp]);
-			var ap = new AnimatedPath(zeroPath, Time(1.0));
-			Assert.fail("Should have thrown for zero-length path");
+			var ap = new AnimatedPath(new Path([sp]), Time(1.0));
+			ap.addCurveSegment(Scale, 0.0, createLinearCurve());
+			var state = ap.update(0.5);
+			Assert.floatEquals(5.0, state.position.x, null, "a zero-length path stays at its point");
+			Assert.floatEquals(7.0, state.position.y, null, "a zero-length path stays at its point");
+			Assert.floatEquals(0.5, state.scale, null, "curves still play along a zero-length path");
+			Assert.isFalse(state.done, "a zero-length path still runs its duration");
+			state = ap.update(0.5);
+			Assert.isTrue(state.done);
+			Assert.floatEquals(5.0, state.position.x);
 		} catch (e:Dynamic) {
-			Assert.stringContains("pathLength", Std.string(e));
+			threw = e;
 		}
+		Assert.isNull(threw, 'a zero-length path must animate in place, got: $threw');
+	}
+
+	@Test
+	public function testZeroLengthPathDistanceModeCompletesOnFirstUpdate():Void {
+		// Distance mode has no distance to cover — it ends at once instead of never.
+		var sp = new SinglePath(new FPoint(5, 7), new FPoint(5, 7), Line);
+		var threw:Null<Dynamic> = null;
+		try {
+			var ap = new AnimatedPath(new Path([sp]), Distance(100.0));
+			var state = ap.update(0.016);
+			Assert.isTrue(state.done, "a zero-length distance-mode path is covered at once");
+			Assert.floatEquals(5.0, state.position.x);
+			Assert.floatEquals(7.0, state.position.y);
+		} catch (e:Dynamic) {
+			threw = e;
+		}
+		Assert.isNull(threw, 'a zero-length distance-mode path must not throw, got: $threw');
+	}
+
+	@Test
+	public function testPathWithoutSegmentsThrowsAtConstruction():Void {
+		// A path with nothing to follow (no segments) still fails where it is created.
+		var threw = false;
+		try {
+			new AnimatedPath(new Path([]), Time(1.0));
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw, "an AnimatedPath over a path without segments must throw at construction");
+	}
+
+	@Test
+	public function testZeroLengthPathPointsAreItsPoint():Void {
+		// Path lookups on a zero-length path return its point — no NaN, no "rate out of range".
+		var sp = new SinglePath(new FPoint(5, 7), new FPoint(5, 7), Line);
+		var threw:Null<Dynamic> = null;
+		try {
+			var path = new Path([sp]);
+			for (rate in [0.0, 0.5, 1.0]) {
+				var p = path.getPoint(rate);
+				Assert.floatEquals(5.0, p.x, null, 'getPoint($rate).x');
+				Assert.floatEquals(7.0, p.y, null, 'getPoint($rate).y');
+				Assert.isFalse(Math.isNaN(path.getTangentAngle(rate)), 'getTangentAngle($rate) must not be NaN');
+			}
+		} catch (e:Dynamic) {
+			threw = e;
+		}
+		Assert.isNull(threw, 'getPoint on a zero-length path must not throw, got: $threw');
+	}
+
+	@Test
+	public function testLeadingZeroLengthSegmentHasNoNaNStart():Void {
+		// lineTo(0, 0) first: a zero-length segment ahead of the real one must not make the
+		// start position NaN (0 / 0 local rate).
+		var zero = new SinglePath(new FPoint(0, 0), new FPoint(0, 0), Line);
+		var line = new SinglePath(new FPoint(0, 0), new FPoint(0, 100), Line);
+		var path = new Path([zero, line]);
+		var start = path.getPoint(0.0);
+		Assert.isFalse(Math.isNaN(start.x) || Math.isNaN(start.y), 'start of the path must not be NaN, got (${start.x}, ${start.y})');
+		Assert.floatEquals(0.0, start.y);
+		Assert.floatEquals(Math.PI / 2, path.getTangentAngle(0.0), null, "tangent at the start follows the first real segment (down)");
+		Assert.floatEquals(50.0, path.getPoint(0.5).y);
+		var ap = new AnimatedPath(path, Time(1.0));
+		var state = ap.seek(0.0);
+		Assert.isFalse(Math.isNaN(state.position.x), "AnimatedPath start position must not be NaN");
 	}
 
 	// ==================== Seek ====================

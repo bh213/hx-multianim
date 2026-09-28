@@ -861,6 +861,9 @@ Bezier smoothing options: `auto`, `distance(value)`, or none.
 ### Events
 `event("name")` at any rate. Built-in events: `pathStart`, `pathEnd`, `cycleStart`, `cycleEnd`.
 
+### Zero-length paths
+A path of length 0 — `Stretch(p, p)` / `createProjectilePath(name, p, p)`, or a path of only `lineTo(0, 0)` — is valid: every rate is `p`, and an animated path over it stays at `p` for its duration while its curves play (`distance` mode ends on the first update). A zero-length segment inside a longer path (a leading `lineTo(0, 0)`) takes no share of the rate range. A path with no segments at all still throws when the animated path is created.
+
 ---
 
 ## Curves
@@ -1299,7 +1302,7 @@ When `tabPanel.contentRoot` is set, tab content coordinates are relative to the 
 
 **Cell swap:** `swapCells(col1, row1, col2, row2, ?animated)` — swap data and visuals between two cells. Animated mode uses `swapPathName` (fallback: `returnPathName`) for both items. Emits `CellSwap` with `ctx.programmatic=true`. Drag-drop swap: when `swapEnabled=true` and a draggable drops on a cell with a source cell, the `swapAccepts` delegate (or `isOccupied()` by default) decides whether to emit `CellSwap` or fall through to `CellDrop`.
 
-**Cell animations** (require `tweenManager`): `tweenCell(col, row, duration, props, ?easing)`, `addCellAnimated(col, row, ?data, ?params, duration, initProps, ?easing)`, `removeCellAnimated(col, row, duration, props, ?easing, ?onComplete)`. **Detach/reattach**: `detachCellVisual(col, row)` → `{object, data, sceneX, sceneY}`, `reattachCellVisual(col, row, ?obj)`. `tweenCell` returns a pooled `Tween` — keep `tween.generation` and cancel later with `Tween.cancelIfCurrent(tween, generation)`. `dispose()` cancels every cell tween and completes pending `removeCellAnimated` exits (object removed, `onComplete` called once).
+**Cell animations** (require `tweenManager`): `tweenCell(col, row, duration, props, ?easing)`, `addCellAnimated(col, row, ?data, ?params, duration, initProps, ?easing)`, `removeCellAnimated(col, row, duration, props, ?easing, ?onComplete)`. **Detach/reattach**: `detachCellVisual(col, row)` → `{object, data, sceneX, sceneY}`, `reattachCellVisual(col, row, ?obj)`. `tweenCell` returns a pooled `Tween` — keep `tween.generation` and cancel later with `Tween.cancelIfCurrent(tween, generation)`. `dispose()` cancels every cell tween and completes pending `removeCellAnimated` exits (object removed, `onComplete` called once), swap/snap animations, and accepted `acceptDrops` drops still snapping — none calls back after `dispose()`. Removing the cell under an active built-in cell drag ends that drag (`CellDragEnd`).
 
 ### Common UI Settings
 

@@ -84,6 +84,24 @@ private class SwapAnimEntry {
 	}
 }
 
+/** Completion of an accepted external drop (acceptDrops) whose draggable is still snapping. Runs
+ *  once: on the draggable's DragSnapComplete/DragCancel, or from dispose() if that comes first. */
+private class DropSettle {
+	var settle:Null<(snapped:Bool) -> Void>;
+
+	public function new(settle:(snapped:Bool) -> Void) {
+		this.settle = settle;
+	}
+
+	public function run(snapped:Bool):Void {
+		final fn = settle;
+		if (fn == null)
+			return;
+		settle = null;
+		fn(snapped);
+	}
+}
+
 /** Internal binding for a registered draggable. */
 private typedef DraggableBinding = {
 	var draggable:UIMultiAnimDraggable;
@@ -268,6 +286,9 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 	// --- removeCellAnimated exits in flight (dispose() completes them) ---
 	final pendingCellRemovals:Array<{tween:Tween, gen:Int, obj:h2d.Object, onComplete:Null<Void -> Void>}> = [];
 
+	// --- Accepted acceptDrops drops whose draggable still snaps (dispose() completes them) ---
+	final pendingDropSettles:Array<DropSettle> = [];
+
 	// --- Instance counter for unique card hand target IDs ---
 	static var cardTargetCounter:Int = 0;
 	final cardTargetId:Int;
@@ -363,6 +384,7 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 
 		refreshAllDraggableZones();
 		refreshAllCardTargets();
+		cellDragAbortIfSource(col, row);
 	}
 
 	/** Check if a cell exists at (col, row). */
@@ -616,6 +638,13 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 			onCellBuilt(newEntry.coord, newEntry.visual);
 	}
 
+	/** rebuildCell for work that lands after an animation (swap, snap): by then the cell may be
+	 *  gone — removed, or its grid disposed — and there is nothing left to rebuild. */
+	function rebuildCellIfPresent(col:Int, row:Int):Void {
+		if (cells.exists(cellKey(col, row)))
+			rebuildCell(col, row);
+	}
+
 	// ============================================================
 	// Cell animations
 	// ============================================================
@@ -649,6 +678,7 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 			hoveredCell = null;
 		refreshAllDraggableZones();
 		refreshAllCardTargets();
+		cellDragAbortIfSource(col, row);
 
 		if (tweenManager != null && duration > 0) {
 			// Animate, then remove scene object
@@ -1294,11 +1324,12 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 				ctx.completeCb();
 		};
 
-		// Animate displaced item to source cell
+		// Animate displaced item to source cell. The animation runs in the target grid, so it can
+		// land after this grid was disposed (screen teardown) — hence rebuildCellIfPresent.
 		if (detached != null && resolvedSwapPath != null) {
 			final sourceScenePos = cellPosition(srcCoord.col, srcCoord.row);
 			targetGrid.animateSwapVisual(detached, targetCoord, sourceScenePos, resolvedSwapPath, () -> {
-				rebuildCell(srcCoord.col, srcCoord.row);
+				rebuildCellIfPresent(srcCoord.col, srcCoord.row);
 				displacedDone = true;
 				onBothDone();
 			});
@@ -1313,7 +1344,7 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 		final targetScenePos = targetGrid.cellPosition(targetCoord.col, targetCoord.row);
 		cellDragSnapTo(targetScenePos, resolvedSnapPath, () -> {
 			cellDragRemoveObj();
-			targetGrid.rebuildCell(targetCoord.col, targetCoord.row);
+			targetGrid.rebuildCellIfPresent(targetCoord.col, targetCoord.row);
 			if (ctx.snapCompleteCb != null)
 				ctx.snapCompleteCb();
 			snapDone = true;
@@ -1381,12 +1412,32 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 		}
 	}
 
-	/** Restore source cell data and rebuild (after cancel/return), then finish drag. */
+	/** Restore source cell data and rebuild (after cancel/return), then finish drag.
+	 *  The source cell may have been removed while the item flew back: then there is nothing to restore. */
 	function cellDragRebuildSourceAndFinish():Void {
-		if (cellDragSourceCoord != null) {
+		if (cellDragSourceCoord != null && hasCell(cellDragSourceCoord.col, cellDragSourceCoord.row)) {
 			set(cellDragSourceCoord.col, cellDragSourceCoord.row, cellDragSourceData);
 			rebuildCell(cellDragSourceCoord.col, cellDragSourceCoord.row);
 		}
+		cellDragFinish();
+	}
+
+	/** removeCell/removeCellAnimated hit the source of a cell drag that still follows the mouse: the
+	 *  item has no cell left to return to or swap with, so the drag ends here — the dragged visual is
+	 *  dropped and CellDragEnd fires. A drag already settling finishes on its own. */
+	function cellDragAbortIfSource(col:Int, row:Int):Void {
+		if (cellDragObj == null || cellDragSettling || cellDragSourceCoord == null
+			|| cellDragSourceCoord.col != col || cellDragSourceCoord.row != row)
+			return;
+		if (cellDragHoverCoord != null && cellDragHoverGrid != null) {
+			final g = cellDragHoverGrid;
+			final e = g.cells.get(g.cellKey(cellDragHoverCoord.col, cellDragHoverCoord.row));
+			if (e != null)
+				e.visual.setStatus("normal");
+		}
+		clearDragHighlights();
+		for (link in linkedGrids)
+			link.target.clearDragHighlights();
 		cellDragFinish();
 	}
 
@@ -1555,11 +1606,17 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 		return root;
 	}
 
-	/** Update — call from game loop for swap animations. */
+	/** Update — call from game loop for swap animations.
+	 *
+	 *  Two-phase: step-and-collect, then fire the completions after the loop. A completion can
+	 *  re-enter the grid — a screen switch disposes it (emptying activeSwapAnims), a new swap
+	 *  pushes to it — which would corrupt the loop index if it ran mid-iteration. Same pattern as
+	 *  UICardHandHelper.update; the list is allocated only on a frame where an animation ends. */
 	public function update(dt:Float):Void {
 		if (activeSwapAnims.length == 0)
 			return;
 
+		var completed:Null<Array<SwapAnimEntry>> = null;
 		var i = activeSwapAnims.length;
 		while (i-- > 0) {
 			final entry = activeSwapAnims[i];
@@ -1567,12 +1624,16 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 			// AnimatedPath outputs parent-local positions (Stretch endpoints converted at creation)
 			entry.object.setPosition(s.position.x, s.position.y);
 			if (s.done) {
-				final cb = entry.onComplete;
+				if (completed == null)
+					completed = [];
+				completed.push(entry);
 				activeSwapAnims.splice(i, 1);
-				if (cb != null)
-					cb();
 			}
 		}
+		if (completed != null)
+			for (entry in completed)
+				if (entry.onComplete != null)
+					entry.onComplete();
 	}
 
 	/** Clean up all resources. */
@@ -1614,13 +1675,22 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 				removal.onComplete();
 		}
 
-		// Cancel active swap animations — fire onComplete so game logic isn't left dangling
-		for (entry in activeSwapAnims) {
+		// Cancel active swap animations — fire onComplete so game logic isn't left dangling.
+		// Taken off the list first: a completion may re-enter (dispose() again, a new swap).
+		final swaps = activeSwapAnims.copy();
+		activeSwapAnims.resize(0);
+		for (entry in swaps) {
 			entry.object.remove();
 			if (entry.onComplete != null)
 				entry.onComplete();
 		}
-		activeSwapAnims.resize(0);
+
+		// Accepted acceptDrops drops whose draggable is still snapping settle now too (the draggable
+		// animates on its own, not in activeSwapAnims); its later DragSnapComplete finds nothing to run.
+		final settles = pendingDropSettles.copy();
+		pendingDropSettles.resize(0);
+		for (settle in settles)
+			settle.run(true);
 
 		// Clear all drag bindings
 		for (binding in registeredDraggables)
@@ -1869,9 +1939,12 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 					if (ctx.handled && ctx.pathName != null)
 						binding.draggable.setSnapAnimPath(builder, ctx.pathName);
 
-					// Wire onComplete for accepted drops via DragSnapComplete event
+					// Wire onComplete for accepted drops via DragSnapComplete event — unless dispose()
+					// comes first and completes the drop then
 					if (ctx.completeCb != null) {
 						final onComplete = ctx.completeCb;
+						final settle = new DropSettle((_) -> onComplete());
+						pendingDropSettles.push(settle);
 						final prevEvent = binding.draggable.onDragEvent;
 						binding.draggable.onDragEvent = (event, pos, w) -> {
 							if (prevEvent != null)
@@ -1880,7 +1953,8 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 								case DragSnapComplete | DragCancel:
 									// Restore original event handler and fire completion
 									binding.draggable.onDragEvent = prevEvent;
-									onComplete();
+									pendingDropSettles.remove(settle);
+									settle.run(true);
 								default:
 							}
 						};
@@ -1946,11 +2020,11 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 				ctx.completeCb();
 		};
 
-		// Animate displaced item to source cell
+		// Animate displaced item to source cell (the source grid may be disposed before it lands)
 		if (detached != null && resolvedSwapPath != null) {
 			final sourceScenePos = sourceGrid.cellPosition(srcCell.col, srcCell.row);
 			animateSwapVisual(detached, targetCoord, sourceScenePos, resolvedSwapPath, () -> {
-				sourceGrid.rebuildCell(srcCell.col, srcCell.row);
+				sourceGrid.rebuildCellIfPresent(srcCell.col, srcCell.row);
 				displacedDone = true;
 				onBothDone();
 			});
@@ -1962,8 +2036,18 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 			displacedDone = true;
 		}
 
-		// Wire DragSnapComplete to clean up draggable visual.
+		// Wire DragSnapComplete to clean up draggable visual — or dispose(), if that comes first.
 		// Target cell is already rebuilt with correct data above.
+		final settle = new DropSettle((snapped) -> {
+			if (snapped) {
+				draggable.getObject().remove();
+				if (ctx.snapCompleteCb != null)
+					ctx.snapCompleteCb();
+			}
+			snapDone = true;
+			onBothDone();
+		});
+		pendingDropSettles.push(settle);
 		final prevEvent = draggable.onDragEvent;
 		draggable.onDragEvent = (event, pos, w) -> {
 			if (prevEvent != null)
@@ -1971,15 +2055,12 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 			switch event {
 				case DragSnapComplete:
 					draggable.onDragEvent = prevEvent;
-					draggable.getObject().remove();
-					if (ctx.snapCompleteCb != null)
-						ctx.snapCompleteCb();
-					snapDone = true;
-					onBothDone();
+					pendingDropSettles.remove(settle);
+					settle.run(true);
 				case DragCancel:
 					draggable.onDragEvent = prevEvent;
-					snapDone = true;
-					onBothDone();
+					pendingDropSettles.remove(settle);
+					settle.run(false);
 				default:
 			}
 		};

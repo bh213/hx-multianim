@@ -148,7 +148,9 @@ class AnimatedPath {
 		this.path = path;
 		this.mode = mode;
 		this.pathLength = path.totalLength;
-		if (pathLength <= 0) throw 'pathLength must be > 0';
+		// A zero-length path (Stretch(p, p)) is fine — the object stays at p while its curves
+		// play — but a path without segments has no position at all.
+		if (path.singlePaths.length == 0) throw 'animated path needs a path with at least one segment';
 		this.currentState = {
 			position: new FPoint(0, 0),
 			angle: 0.,
@@ -396,7 +398,8 @@ class AnimatedPath {
 	}
 
 	inline function getDistanceRate():Float {
-		return if (pathLength <= 0) 0. else Math.min(distance / pathLength, 1.0);
+		// A zero-length path has no distance to cover: it is done at once, not never
+		return if (pathLength <= 0) 1. else Math.min(distance / pathLength, 1.0);
 	}
 
 	/** Evaluate curve segments at given rate. Returns 1.0 if no segments. */

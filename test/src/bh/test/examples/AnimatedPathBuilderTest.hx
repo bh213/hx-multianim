@@ -304,6 +304,54 @@ class AnimatedPathBuilderTest extends BuilderTestBase {
 		Assert.isTrue(Math.abs(state.position.y - 200.0) < 5.0, "End Y should be near 200");
 	}
 
+	@Test
+	public function testStretchOntoOnePointIsValidPathAtThatPoint():Void {
+		// Stretch(p, p) — a projectile to where it already is, a click-release drag snap —
+		// collapses the path onto p. Every lookup must return p instead of throwing
+		// "rate out of range", and an animatedPath over it must be creatable and run.
+		final builder = builderFromSource(ANIM_PATH_SOURCE);
+		final p = new FPoint(40, 60);
+		var threw:Null<Dynamic> = null;
+		try {
+			final path = builder.getPaths().getPath("curved", Stretch(p, p));
+			final mid = path.getPoint(0.5);
+			Assert.floatEquals(40.0, mid.x, null, "Stretch(p, p) path point x");
+			Assert.floatEquals(60.0, mid.y, null, "Stretch(p, p) path point y");
+
+			final ap = builder.createProjectilePath("withCurves", p, p);
+			var state = ap.update(0.5);
+			Assert.floatEquals(40.0, state.position.x, null, "the object stays at p");
+			Assert.floatEquals(60.0, state.position.y, null, "the object stays at p");
+			Assert.floatEquals(1.25, state.scale, null, "the scale curve still plays");
+			Assert.isFalse(state.done);
+			state = ap.update(0.6);
+			Assert.isTrue(state.done);
+		} catch (e:Dynamic) {
+			threw = e;
+		}
+		Assert.isNull(threw, 'a path stretched onto one point must be usable, got: $threw');
+	}
+
+	@Test
+	public function testLeadingZeroLengthLineToGivesFiniteStart():Void {
+		final builder = builderFromSource("
+			paths {
+				#lead path { lineTo(0, 0) lineTo(100, 0) }
+			}
+			#leadAnim animatedPath {
+				path: lead
+				type: time
+				duration: 1.0
+			}
+			#dummy programmable() { bitmap(generated(color(1, 1, #000))): 0,0 }
+		");
+		final ap = builder.createAnimatedPath("leadAnim");
+		final state = ap.seek(0.0);
+		Assert.isFalse(Math.isNaN(state.position.x) || Math.isNaN(state.position.y),
+			'a leading lineTo(0, 0) must not make the start position NaN, got (${state.position.x}, ${state.position.y})');
+		Assert.floatEquals(0.0, state.position.x);
+	}
+
 	// ==================== Builder: Anchor Normalization ====================
 
 	@Test
