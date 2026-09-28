@@ -26,6 +26,13 @@ retired. Done to date: all `P0-*`, all `BLD-*`, `CG-1..12`/`14..20`/`22` (+ most
 `TST-1..2`, `PERF-9`, `HR-1`, `LSP-1..4`, `API-8` (2026-09-25, `Tween.generation`) (PRS-8 resolved as "allow enclosing finals in slot
 bodies"; LSP-2 resolved with a build.js rebuild step + CI drift gate + LSP tests in CI).
 
+**Whole-code review 2026-09-26:** 149 verified findings (46 P1) live in
+`todo/review-2026-09-26-whole-code.md`, with an agent-impact summary and a list of the audit items
+above that it confirms or extends. Its IDs continue these sequences (`UI-16..64`, `BLD-13..32`,
+`CG-25..40`, `PRS-9..25`, `VFX-18..36`, `HR-2..6`, `LSP-6..7`, `ERR-9..10`, `API-10..11`, `DEC-9`,
+`DOC-26`, `PERF-15..18`, `TST-9`) plus a new `DEV-1..10` prefix for DevBridge/MCP — check both files
+before assigning a new ID.
+
 ---
 
 ## P1 — High-severity code bugs
