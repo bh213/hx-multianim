@@ -200,6 +200,17 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:data("test/examples/62-dataBlock/dataBlock.manim", "gameData", "bh.test.merged", mergeTypes)
 	public var gameDataMerged2;
 
+	// Tables, picks and a tree (DataTablesTest)
+	@:data("test/examples/62-dataBlock/dataTables.manim", "cards")
+	public var cardsData;
+
+	// The same block twice in one package, merged: one ids class per record (DataTablesTest)
+	@:data("test/examples/62-dataBlock/dataTables.manim", "cards", "bh.test.merged", mergeTypes)
+	public var cardsMerged;
+
+	@:data("test/examples/62-dataBlock/dataTables.manim", "cards", "bh.test.merged", mergeTypes)
+	public var cardsMerged2;
+
 	@:manim("test/examples/64-repeatRebuild/repeatRebuild.manim", "repeatRebuild")
 	public var repeatRebuild;
 

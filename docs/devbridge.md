@@ -567,7 +567,7 @@ Discover all registered queries, commands, and event types.
 
 No parameters.
 
-Returns: `queries[]` (each `{op, description, params}`), `commands[]` (same shape), `events[]` (each `{name, description, payload}`).
+Returns: `queries[]` (each `{op, description, params}`), `commands[]` (same shape), `events[]` (each `{name, description, payload}`), and `builtIn[]`: the library's own queries (the game's data, below), which `game_op` answers too.
 
 #### `game_op`
 Invoke a registered query or command by name. Looks up queries first, then commands.
@@ -594,6 +594,44 @@ Pairs with the `game_event` SSE stream for push-based delivery — use `get_game
 | `types` | string[] | — | Filter by event name (omit for all) |
 
 Returns: `events[]` (each `{id, name, data, timestamp}`), `total`, `dropped`, `lastId`.
+
+### The game's data: `data_list`, `data_get`, `data_pick`
+
+Every table, pick and tree of the game's data, from `bh.multianim.data.DataRegistry`: those made from a
+.manim data block (by `@:data` or `getData`), and tables the game builds in its own code and registers
+with `DataRegistry.registerTable(name, () -> rows)`. They are the library's own queries, not the game's:
+`game_op` answers them when the game has no op of the name (so any client reaches them with no tool of
+its own), `list_game_ops` lists them under `builtIn`, and each is also a method by its name, which
+hx-multianim-mcp's `list_data`, `get_data` and `roll_pick` tools call.
+
+#### `data_list`
+No parameters. Returns an array, by name, of `{name, kind, rows, key, source, says?}` for a table or a tree
+(`kind` `"table"` or `"tree"`), and `{name, kind: "pick", over, by, chance, draws, repeats, otherwise?, source}`
+for a pick. `source` is where it is: `{manim, block, line}` for a data block, `{code, className, method, line}`
+for a table registered in code.
+
+#### `data_get`
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | yes | From `data_list`: `cards.all`, `AllCards` |
+
+A table: `{name, kind, key, source, says?, columns, rows, rowMeta?, tree?}`. `columns` are
+`{id, type, optional?, many?, key?, whole?, options?, to?, columns?, unit?, meta?}` (`type` int, float,
+string, bool, enum, record or ref; `options` an enum's values; `to` the enum, record, or record a ref names;
+`columns` a record's own; `meta` the annotations); `rows` are plain objects, an enum's value and a ref's id
+as words, a record inside a row by its own columns; `rowMeta` is each row's
+annotations by id; a tree adds `tree: {by, edges: [{from, to}]}`. A pick: `{name, kind, over, by, chance,
+draws, repeats, otherwise?, source, odds: [{id, share, chance}], nothing}`. Errors: `not_found`.
+
+#### `data_pick`
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | yes | A pick, from `data_list` |
+| `seed` | int | no | 1 when not given |
+| `n` | int | no | How many rows; the pick's `draws` when not given |
+
+Draws with the game's own picker from `new DataRandom(seed)`: the rows the game draws from the same seed.
+Returns `{name, seed, draws, picked: [ids]}`. Errors: `not_found`.
 
 ---
 

@@ -801,8 +801,20 @@ Tile entry properties: `x, y, w, h`, plus optional `offset: ox, oy`, `orig: ow, 
 | `fieldName: recordName { ... }` | Record instance |
 | `fieldName: type[] [values]` | Typed array |
 | Optional fields with `?` prefix | Field not required |
+| `#name record(key id, ...)` | A row type: an array of it is a table, its rows found by id |
+| `field: ref record` | The id of a row of a keyed record (in any one of its tables), checked when the block is read |
+| `field: type @range(0, 3) @unit("s") @default(v) @says("…")` | Field annotations; unknown ones are kept |
+| `@range(1, 10) name: 5` | Annotations before a field of the block (or a pick), checked the same way |
+| `@by(claude) { ... }` | Row annotations, before a row of a table |
+| `name: pick(table, weight: col, draws: n, repeats: bool)` | How a table is drawn from, by weight |
+| `name: pick(table, chance: col, otherwise: id)` | By chance; `otherwise` takes what is left |
+| `name: pick(table, weight: ref.col)` | The weight of the row a ref field links to |
 
-Types: `int`, `float`, `string`, `bool`, enum names, record names, `type[]` arrays.
+Types: `int`, `float`, `string`, `bool`, enum names, record names, `ref record`, `type[]` arrays.
+
+A table is a `bh.multianim.data.DataTable` and a pick a `bh.multianim.data.DataPick` (`@:data` typed, with a
+class of ids as constants; `getData` Dynamic). A table whose record names its own rows is a tree. All of
+them are listed by `DataRegistry`, which the DevBridge's `data_list` / `data_get` / `data_pick` read.
 
 Enums generate Haxe `enum` types at compile time (via `@:data`). Runtime builder returns enum values as strings.
 

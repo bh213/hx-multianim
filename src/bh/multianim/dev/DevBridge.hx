@@ -37,7 +37,7 @@ class DevBridge implements IDevBridgeHost {
 		"list_interactives", "list_slots", "get_tween_state", "get_screen_state", "find_element_at",
 		"inspect_programmable", "list_fonts", "list_atlases", "coordinate_transform", "wait_for_idle",
 		"check_overlaps", "click_interactive", "click_button", "list_active_programmables", "list_game_ops",
-		"game_op", "get_game_events",
+		"game_op", "get_game_events", "data_list", "data_get", "data_pick",
 	];
 
 	final screenManager:ScreenManager;
@@ -82,6 +82,8 @@ class DevBridge implements IDevBridgeHost {
 	// ---- Custom game ops registry (queries, commands, events) ----
 	static final GAME_EVENT_BUFFER_SIZE = 200;
 	var queryRegistry:Map<String, RegisteredOp> = new Map();
+	/** The library's own queries (the game's data): answered by game_op when the game has none of the name. */
+	var builtInQueries:Map<String, RegisteredOp> = new Map();
 	var commandRegistry:Map<String, RegisteredOp> = new Map();
 	var eventRegistry:Map<String, RegisteredEvent> = new Map();
 	var gameEventBuffer:Array<Dynamic> = [];
@@ -102,6 +104,41 @@ class DevBridge implements IDevBridgeHost {
 		final configuredToken = DevBridgeConfig.get("HX_DEV_TOKEN");
 		this.token = configuredToken != null && configuredToken != "" ? configuredToken : null;
 		this.session = newSessionId();
+		registerDataOps();
+	}
+
+	/**
+		The game's data (`bh.multianim.data.DataRegistry`): every table, pick and tree it loaded from a
+		.manim data block or built in its own code and registered, each with where it is. The library's
+		own queries, apart from the game's: `game_op` answers them (so any MCP client reaches them with
+		nothing added to it), `list_game_ops` lists them under builtIn, and each is a method by its name.
+	**/
+	function registerDataOps():Void {
+		final registerQuery = (op:String, description:String, params:Dynamic, handler:Dynamic->Dynamic) ->
+			builtInQueries.set(op, {description: description, params: params, handler: handler});
+		registerQuery("data_list",
+			"Every table, pick and tree of the game's data: its kind, how many rows, and where it is (a .manim file, block and line, or the code that builds it)",
+			{}, (_:Dynamic) -> bh.multianim.data.DataRegistry.list());
+		registerQuery("data_get",
+			"One table, pick or tree in full: a table's columns (type, unit, range, enum values, what a ref names) and rows, a tree's edges, a pick's odds",
+			{name: "string"}, (params:Dynamic) -> {
+				final name:Null<String> = params.name;
+				if (name == null) throw DevBridgeError.invalidParams("Required param: name (from data_list)");
+				final found = bh.multianim.data.DataRegistry.get(name);
+				if (found == null) throw DevBridgeError.notFound('No data named "$name". Call data_list to see what the game has.');
+				return found;
+			});
+		registerQuery("data_pick",
+			"Draw from a pick with the game's own picker and a seed: the same seed draws the same rows as new DataRandom(seed) in the game",
+			{name: "string", seed: "int?", n: "int?"}, (params:Dynamic) -> {
+				final name:Null<String> = params.name;
+				if (name == null) throw DevBridgeError.invalidParams("Required param: name (a pick, from data_list)");
+				final seed:Int = params.seed != null ? Std.int(params.seed) : 1;
+				final n:Null<Int> = params.n != null ? Std.int(params.n) : null;
+				final rolled = bh.multianim.data.DataRegistry.roll(name, seed, n);
+				if (rolled == null) throw DevBridgeError.notFound('No pick named "$name". Call data_list to see the game\'s picks.');
+				return rolled;
+			});
 	}
 
 	static function resolvePort():Int {
@@ -579,6 +616,7 @@ class DevBridge implements IDevBridgeHost {
 			// v8: custom game ops (query/command/event)
 			case "list_game_ops": handleListGameOps(params);
 			case "game_op": handleGameOp(params);
+			case "data_list" | "data_get" | "data_pick": handleBuiltInQuery(method, params);
 			case "get_game_events": handleGetGameEvents(params);
 			default: throw DevBridgeError.unknownMethod('Unknown method: $method');
 		};
@@ -1210,7 +1248,18 @@ class DevBridge implements IDevBridgeHost {
 		var events:Array<Dynamic> = [];
 		for (name => spec in eventRegistry)
 			events.push({name: name, description: spec.description, payload: spec.payload});
-		return {queries: queries, commands: commands, events: events};
+		// The library's own queries, which game_op answers too: the game's data.
+		var builtIn:Array<Dynamic> = [];
+		for (op => spec in builtInQueries)
+			builtIn.push({op: op, description: spec.description, params: spec.params});
+		return {queries: queries, commands: commands, events: events, builtIn: builtIn};
+	}
+
+	/** A built-in query called by its name, as a method. **/
+	function handleBuiltInQuery(op:String, params:Dynamic):Dynamic {
+		final spec = builtInQueries.get(op);
+		if (spec == null) throw DevBridgeError.notFound('Unknown query: $op');
+		return spec.handler(params != null ? params : {});
 	}
 
 	function handleGameOp(params:Dynamic):Dynamic {
@@ -1223,6 +1272,11 @@ class DevBridge implements IDevBridgeHost {
 		if (spec == null) {
 			spec = commandRegistry.get(op);
 			kind = "command";
+		}
+		// The library's own queries, when the game has no op of the name.
+		if (spec == null) {
+			spec = builtInQueries.get(op);
+			kind = "query";
 		}
 		if (spec == null)
 			throw DevBridgeError.notFound('Unknown game op: $op. Call list_game_ops to discover registered ops.');

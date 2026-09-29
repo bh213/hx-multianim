@@ -229,6 +229,7 @@ class ManimAnalyzer {
 			case DVTEnum(name): name;
 			case DVTRecord(name): name;
 			case DVTArray(elemType): '${dataTypeName(elemType)}[]';
+			case DVTRef(name): 'ref $name';
 		};
 	}
 

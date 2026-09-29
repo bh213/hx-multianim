@@ -838,6 +838,8 @@ enum DataValueType {
 	DVTEnum(enumName:String);
 	DVTRecord(recordName:String);
 	DVTArray(elementType:DataValueType);
+	/** The id of a row of a keyed record (`ref card`): checked against the block's tables of it. */
+	DVTRef(recordName:String);
 }
 
 @:nullSafety
@@ -849,6 +851,8 @@ enum DataValue {
 	DVArray(elements:Array<DataValue>);
 	DVRecord(recordName:String, fields:Map<String, DataValue>);
 	DVEnumValue(enumName:String, value:String);
+	/** A row of a keyed record named by its id. */
+	DVRef(recordName:String, id:String);
 }
 
 @:nullSafety
@@ -857,10 +861,31 @@ typedef DataEnumDef = {
 	var values:Array<String>;
 }
 
+/** An annotation: `@unit("energy")`, `@range(0, 3)`, `@by(claude)`. Its arguments are plain values;
+ *  a bare word is a string. The parser checks the ones it knows (`range`, `default`, `step`, `unit`,
+ *  `says`) and keeps every other as it is, for tools to read. */
+@:nullSafety
+typedef DataMeta = {
+	var name:String;
+	var args:Array<DataValue>;
+}
+
+@:nullSafety
+typedef DataRecordField = {
+	var name:String;
+	var type:DataValueType;
+	var optional:Bool;
+	/** The field rows of this record are found by (`key id`). */
+	var ?key:Bool;
+	var ?meta:Array<DataMeta>;
+}
+
 @:nullSafety
 typedef DataRecordDef = {
 	var name:String;
-	var fields:Array<{name:String, type:DataValueType, optional:Bool}>;
+	var fields:Array<DataRecordField>;
+	/** The name of its key field: an array of it is a table, its rows found by that field. */
+	var ?key:String;
 }
 
 @:nullSafety
@@ -868,6 +893,31 @@ typedef DataFieldDef = {
 	var name:String;
 	var type:DataValueType;
 	var value:DataValue;
+	/** The line of the .manim file the field starts on. */
+	var ?line:Int;
+	/** Annotations written before the field. */
+	var ?meta:Array<DataMeta>;
+	/** For an array of records: each row's annotations, in the rows' order. */
+	var ?rowMeta:Array<Array<DataMeta>>;
+}
+
+/** How a table is drawn from: `reward: pick(all, weight: weight, draws: 3)`. */
+@:nullSafety
+typedef DataPickDef = {
+	var name:String;
+	/** The field holding the table it draws from. */
+	var over:String;
+	/** The column the odds are read from: the table's own, or with `through`, the linked row's. */
+	var by:String;
+	/** A `ref` field of the table's rows whose linked row holds `by` (`weight: tier.weight`). */
+	var ?through:String;
+	/** Each row at its chance (the `otherwise` row with what is left); otherwise, by weight. */
+	var chance:Bool;
+	var draws:Int;
+	var repeats:Bool;
+	var ?otherwise:String;
+	var line:Int;
+	var ?meta:Array<DataMeta>;
 }
 
 @:nullSafety
@@ -875,6 +925,9 @@ typedef DataDef = {
 	var enums:Map<String, DataEnumDef>;
 	var records:Map<String, DataRecordDef>;
 	var fields:Array<DataFieldDef>;
+	var ?picks:Array<DataPickDef>;
+	/** The line the block's body starts on. */
+	var ?line:Int;
 }
 
 @:nullSafety

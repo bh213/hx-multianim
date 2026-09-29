@@ -1961,8 +1961,111 @@ Records are considered identical when they have the same fields (name, type, opt
 - Enum and record names must be unique within a data block
 - Enums must be defined before records or fields that reference them
 - Commas between array elements and record fields are optional
-- Optional fields (`?name: type`) default to `null` when omitted from record values
+- Optional fields (`?name: type`) default to `null` when omitted from record values, or to their `@default`
 - Runtime builder returns enum values as strings; macro codegen returns typed Haxe `enum` values
+
+### Tables
+
+A record with a `key` field is a row type, and an array of it is a **table**: its rows are found by
+their id, and an id used twice is an error.
+
+```
+#cards data {
+    #category enum(basic, catalog, chaos)
+    #card record(key id, name: string, category: category, cost: int @range(0, 3) @unit("energy"),
+        ?starter: int @default(0) @says("copies in the starting deck"), ?requires: ref card[])
+
+    @says("every card a meeting can deal")
+    all: card[] [
+        { id: agree, name: "Agree in principle", category: basic, cost: 1, starter: 5 }
+        @by(claude) { id: nod-along, name: "Nod along", category: basic, cost: 1, requires: [agree] }
+        { id: "1-on-1", name: "One on one", category: catalog, cost: 2 }
+    ]
+}
+```
+
+- `key id` is a string field every row has (`key id: string` says the same). A record has one key at most.
+- An id is a bare word (`agree`, `nod-along`), or a quoted string for one a word cannot be (`"1-on-1"`).
+- A field named `key` is still a field: `key: string`.
+
+### Refs
+
+`ref <record>` holds the id of a row of a keyed record: `?requires: ref card[]`, `tier: ref tier`. Every
+ref is checked once the whole block is read, so a row may name one written after it; a ref to an id no
+table of that record has, or to a record with no key, is an error. A record may have more than one table,
+and a ref names a row of any of them, but of one only: an id that two tables of the record both have is an
+error for a ref to it. A record may name its own rows.
+
+A table whose record names its own rows is a **tree** (an upgrade or tech tree): `requires` above makes
+`all` one, and the DevBridge gives its edges (see below).
+
+### Annotations
+
+`@name` or `@name(value, …)` after a record field's type, before a field of the block (`@range(1, 10)
+handSize: 5`) or a pick, or before a row of a table. Arguments are numbers, strings, `true`/`false`, or
+bare words (read as strings). The parser checks the ones it knows, on a field of the block as on a field of
+a record, and keeps every other as it is, for tools to read:
+
+| Annotation | On | Checked |
+|------------|----|---------|
+| `@range(min, max)` | a number field | every value written is within it |
+| `@step(n)` | a number field | above 0 |
+| `@default(value)` | an optional field of a record | of the field's type, within its `@range`; a row that leaves the field out gets it |
+| `@unit("…")`, `@says("…")` | a field or a pick | one word or string |
+| anything else (`@by(claude)`, `@note("…")`) | a field, a pick or a row | kept |
+
+### Picks
+
+A pick says how a table is drawn from:
+
+```
+reward: pick(all, weight: weight, draws: 3)                 // each row as often as its weight; 3 different rows a draw
+loot: pick(drops, chance: chance, otherwise: nothing)      // each row at its chance, the otherwise row with the rest
+relic: pick(relics, weight: tier.weight, repeats: true)    // the weight of the tier row each relic links to
+```
+
+- `weight: <column>` or `chance: <column>`, a number column of the table's rows, or `<ref>.<column>` of the rows a ref field links to (in whichever table of their record each is).
+- `draws: n` (1 when not given) is how many rows one draw takes; `repeats: true` lets a draw hold a row twice.
+- `otherwise: <id>` (with `chance:`) is the row that takes what the other chances leave; without one, the leftover chance is nothing.
+- Checked when the block is read: the table exists and has a key, the column is a number, chances add up to 1 at most.
+
+By weight a weight of 0 or less never comes up. Without repeats, a row drawn is out of the pool for the rest
+of the draw. The seeded random `bh.multianim.data.DataRandom` is Mulberry32: the same numbers on every target,
+and the same as the usual JavaScript `mulberry32`, so the same seed draws the same rows.
+
+### Tables and picks at runtime
+
+`@:data` makes a table a `bh.multianim.data.DataTable<Row>` and a pick a `bh.multianim.data.DataPick<Row>`,
+with a class of each keyed record's ids as constants, so code that names a row the file does not have does
+not compile:
+
+```haxe
+final cards = screen.cards;                          // @:data("res/cards.manim", "cards")
+final agree = cards.all.get(CardsCardId.Agree);      // "agree"; CardsCardId.Id1On1 is "1-on-1"
+trace(agree.cost, cards.all.length, cards.all.ids());
+final offer = cards.reward.draw(new DataRandom(seed).float);   // 3 rows, the same for the same seed
+final one = cards.reward.pick();                                // Math.random when no random is given
+trace(cards.reward.odds().chances.get("agree"));                // each row's chance of being picked
+```
+
+The ids class holds the ids of every table of the record, named by their letters and digits (`"very rare!"`
+is `VeryRare`). A second `@:data` of a block of the same name in the same package (with `mergeTypes`)
+shares the class when the ids are the same, and does not compile when they are not.
+
+`getData` gives the same with `Dynamic` rows: `data.all.get("agree").category` is `"basic"`.
+
+### The game's data over the DevBridge
+
+Every `DataTable` and `DataPick` made, by `@:data` or `getData`, lists itself in
+`bh.multianim.data.DataRegistry` with its .manim file, block and line. A table the game builds in its own
+code is registered by hand, and its place is the registering call:
+
+```haxe
+DataRegistry.registerTable("AllCards", () -> [for (c in Cards.ALL) {id: c.id, name: c.name, cost: c.cost}]);
+```
+
+The DevBridge answers `data_list`, `data_get` and `data_pick` from it (see `docs/devbridge.md`), so a tool
+reads what the game has, from a .manim file or from code, and where each is.
 
 ---
 

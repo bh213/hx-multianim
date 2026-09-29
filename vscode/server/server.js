@@ -85,6 +85,15 @@ Lambda.find = function(it,f) {
 	return null;
 };
 Math.__name__ = true;
+var Reflect = function() { };
+Reflect.__name__ = true;
+Reflect.field = function(o,field) {
+	try {
+		return o[field];
+	} catch( _g ) {
+		return null;
+	}
+};
 var Std = function() { };
 Std.__name__ = true;
 Std.string = function(s) {
@@ -2073,6 +2082,7 @@ bh_multianim__$MacroManimParser_MacroLexer.prototype = {
 	,__class__: bh_multianim__$MacroManimParser_MacroLexer
 };
 var bh_multianim_MacroManimParser = function(tokens,sourceName,resourceLoader) {
+	this.dataRefs = [];
 	this.tokens = tokens;
 	this.tpos = 0;
 	this.sourceName = sourceName;
@@ -2408,6 +2418,51 @@ bh_multianim_MacroManimParser.tryMatchEasingName = function(s) {
 	default:
 		return null;
 	}
+};
+bh_multianim_MacroManimParser.refersTo = function(type,recordName) {
+	switch(type._hx_index) {
+	case 6:
+		var e = type.elementType;
+		return bh_multianim_MacroManimParser.refersTo(e,recordName);
+	case 7:
+		var r = type.recordName;
+		return r == recordName;
+	default:
+		return false;
+	}
+};
+bh_multianim_MacroManimParser.dataNumberOf = function(value) {
+	if(value == null) {
+		return null;
+	}
+	if(value == null) {
+		return null;
+	} else {
+		switch(value._hx_index) {
+		case 0:
+			var v = value.v;
+			return v;
+		case 1:
+			var v = value.v;
+			return v;
+		default:
+			return null;
+		}
+	}
+};
+bh_multianim_MacroManimParser.dataMetaOf = function(meta,name) {
+	if(meta == null) {
+		return null;
+	}
+	var _g = 0;
+	while(_g < meta.length) {
+		var m = meta[_g];
+		++_g;
+		if(m.name == name) {
+			return m;
+		}
+	}
+	return null;
 };
 bh_multianim_MacroManimParser.parseFile = function(content,sourceName,resourceLoader) {
 	var lexer = new bh_multianim__$MacroManimParser_MacroLexer(content,sourceName);
@@ -11092,9 +11147,12 @@ bh_multianim_MacroManimParser.prototype = {
 		return { source : source, entries : entries};
 	}
 	,parseData: function() {
+		var blockLine = this.tokens[this.tpos].line;
 		var enums = new haxe_ds_StringMap();
 		var records = new haxe_ds_StringMap();
 		var fields = [];
+		var picks = [];
+		this.dataRefs = [];
 		while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed)) {
 			this.eatSemicolon();
 			if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed)) {
@@ -11111,14 +11169,23 @@ bh_multianim_MacroManimParser.prototype = {
 					if(bh_multianim_MacroManimParser.isKeyword(s,"record")) {
 						this.advance();
 						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
-						var recordFields = this.parseDataRecordFields(enums,records);
 						if(Object.prototype.hasOwnProperty.call(records.h,name)) {
 							this.error("record type \"" + name + "\" already defined");
 						}
 						if(Object.prototype.hasOwnProperty.call(enums.h,name)) {
 							this.error("\"" + name + "\" is already defined as an enum");
 						}
-						records.h[name] = { name : name, fields : recordFields};
+						var recordFields = this.parseDataRecordFields(name,enums,records);
+						var key = null;
+						var _g3 = 0;
+						while(_g3 < recordFields.length) {
+							var f = recordFields[_g3];
+							++_g3;
+							if(f.key == true) {
+								key = f.name;
+							}
+						}
+						records.h[name] = key != null ? { name : name, fields : recordFields, key : key} : { name : name, fields : recordFields};
 					} else {
 						var s1 = _g2;
 						if(bh_multianim_MacroManimParser.isKeyword(s1,"enum")) {
@@ -11140,14 +11207,56 @@ bh_multianim_MacroManimParser.prototype = {
 					this.error("expected \"record\" or \"enum\" after #" + name);
 				}
 			} else {
+				var meta = this.parseDataMetaList();
+				var start = this.tokens[this.tpos];
 				var fieldName = this.expectIdentifierOrString();
 				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
-				var field = this.parseDataField(fieldName,enums,records);
-				fields.push(field);
+				var _g4 = 0;
+				while(_g4 < fields.length) {
+					var f1 = fields[_g4];
+					++_g4;
+					if(f1.name == fieldName) {
+						this.error("field \"" + fieldName + "\" is in this data block twice");
+					}
+				}
+				var _g5 = 0;
+				while(_g5 < picks.length) {
+					var p = picks[_g5];
+					++_g5;
+					if(p.name == fieldName) {
+						this.error("field \"" + fieldName + "\" is in this data block twice");
+					}
+				}
+				if(this.isDataPickAhead()) {
+					this.checkDataMeta("pick " + fieldName,null,meta,enums);
+					var pick = this.parseDataPick(fieldName,start.line);
+					if(meta.length > 0) {
+						pick.meta = meta;
+					}
+					picks.push(pick);
+				} else {
+					var at = this.tokens[this.tpos];
+					var field = this.parseDataField(fieldName,enums,records);
+					this.checkDataMeta(fieldName,field.type,meta,enums);
+					this.checkDataRange(meta,fieldName,field.value,at);
+					field.line = start.line;
+					if(meta.length > 0) {
+						field.meta = meta;
+					}
+					fields.push(field);
+				}
 			}
 			this.eatSemicolon();
 		}
-		return { enums : enums, records : records, fields : fields};
+		var data = { enums : enums, records : records, fields : fields, picks : picks, line : blockLine};
+		this.checkDataRefs(data);
+		var _g = 0;
+		while(_g < picks.length) {
+			var pick = picks[_g];
+			++_g;
+			this.checkDataPick(pick,data);
+		}
+		return data;
 	}
 	,parseDataEnumValues: function() {
 		var result = [];
@@ -11166,24 +11275,91 @@ bh_multianim_MacroManimParser.prototype = {
 			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 		}
 	}
-	,parseDataRecordFields: function(enums,records) {
+	,parseDataRecordFields: function(recordName,enums,records) {
 		var result = [];
 		if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TClosed)) {
 			return result;
 		}
+		var keyName = null;
+		var refsItself = false;
 		while(true) {
 			var isOptional = this.match(bh_multianim__$MacroManimParser_MacroTokenType.TQuestion);
+			var isKey = false;
+			var _g = this.tokens[this.tpos].type;
+			if(_g._hx_index == 32) {
+				var s = _g.s;
+				if(bh_multianim_MacroManimParser.isKeyword(s,"key") && this.tpos + 1 < this.tokens.length) {
+					var _g1 = this.tokens[this.tpos + 1].type;
+					switch(_g1._hx_index) {
+					case 32:
+						var _g2 = _g1.s;
+						if(isOptional) {
+							this.error("a key cannot be optional: every row has one");
+						}
+						this.advance();
+						isKey = true;
+						break;
+					case 35:
+						var _g3 = _g1.s;
+						if(isOptional) {
+							this.error("a key cannot be optional: every row has one");
+						}
+						this.advance();
+						isKey = true;
+						break;
+					default:
+					}
+				}
+			}
 			var fieldName = this.expectIdentifierOrString();
-			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
-			var fieldType = this.parseDataType(enums,records);
-			result.push({ name : fieldName, type : fieldType, optional : isOptional});
+			var _g4 = 0;
+			while(_g4 < result.length) {
+				var f = result[_g4];
+				++_g4;
+				if(f.name == fieldName) {
+					this.error("field \"" + fieldName + "\" is in record \"" + recordName + "\" twice");
+				}
+			}
+			var fieldType = bh_multianim_DataValueType.DVTString;
+			if(isKey) {
+				if(keyName != null) {
+					this.error("record \"" + recordName + "\" has two keys, " + keyName + " and " + fieldName + ": a row is found by one");
+				}
+				keyName = fieldName;
+				if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TColon)) {
+					fieldType = this.parseDataType(enums,records,recordName);
+					if(!Type.enumEq(fieldType,bh_multianim_DataValueType.DVTString)) {
+						this.error("key \"" + fieldName + "\" of record \"" + recordName + "\" is a string: an id is a word");
+					}
+				}
+			} else {
+				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+				fieldType = this.parseDataType(enums,records,recordName);
+			}
+			if(bh_multianim_MacroManimParser.refersTo(fieldType,recordName)) {
+				refsItself = true;
+			}
+			var field = { name : fieldName, type : fieldType, optional : isOptional};
+			if(isKey) {
+				field.key = true;
+			}
+			var meta = this.parseDataMetaList();
+			if(meta.length > 0) {
+				this.checkDataMeta("" + recordName + "." + fieldName,fieldType,meta,enums,field);
+				field.meta = meta;
+			}
+			result.push(field);
 			if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TClosed)) {
-				return result;
+				break;
 			}
 			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 		}
+		if(refsItself && keyName == null) {
+			this.error("record \"" + recordName + "\" refers to its own rows, so it needs a key to name them by: key id");
+		}
+		return result;
 	}
-	,parseDataType: function(enums,records) {
+	,parseDataType: function(enums,records,selfName) {
 		var typeName = this.expectIdentifierOrString();
 		var baseType;
 		switch(typeName.toLowerCase()) {
@@ -11196,6 +11372,21 @@ bh_multianim_MacroManimParser.prototype = {
 		case "int":
 			baseType = bh_multianim_DataValueType.DVTInt;
 			break;
+		case "ref":
+			if(!Object.prototype.hasOwnProperty.call(records.h,typeName) && !Object.prototype.hasOwnProperty.call(enums.h,typeName)) {
+				var target = this.expectIdentifierOrString();
+				var def = records.h[target];
+				if(def == null && target != selfName) {
+					this.error("ref " + target + ": there is no record \"" + target + "\"; a record is defined before a ref to it, but for its own rows");
+				}
+				if(def != null && def.key == null) {
+					this.error("ref " + target + ": record \"" + target + "\" has no key, so its rows cannot be named; give it one: key id");
+				}
+				baseType = bh_multianim_DataValueType.DVTRef(target);
+			} else {
+				baseType = Object.prototype.hasOwnProperty.call(enums.h,typeName) ? bh_multianim_DataValueType.DVTEnum(typeName) : Object.prototype.hasOwnProperty.call(records.h,typeName) ? bh_multianim_DataValueType.DVTRecord(typeName) : this.error("unknown type \"" + typeName + "\" (if this is an enum or record, it must be defined before use)");
+			}
+			break;
 		case "string":
 			baseType = bh_multianim_DataValueType.DVTString;
 			break;
@@ -11207,6 +11398,247 @@ bh_multianim_MacroManimParser.prototype = {
 			return bh_multianim_DataValueType.DVTArray(baseType);
 		}
 		return baseType;
+	}
+	,parseDataMetaList: function() {
+		var result = [];
+		while(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TAt)) {
+			var name = this.expectIdentifierOrString();
+			var args = [];
+			if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TOpen)) {
+				while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TClosed)) {
+					this.eatComma();
+					if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TClosed)) {
+						break;
+					}
+					args.push(this.parseDataMetaArg());
+				}
+			}
+			result.push({ name : name, args : args});
+		}
+		return result;
+	}
+	,parseDataScalar: function() {
+		var _g = this.tokens[this.tpos].type;
+		switch(_g._hx_index) {
+		case 20:
+			this.advance();
+			var _g1 = this.tokens[this.tpos].type;
+			switch(_g1._hx_index) {
+			case 29:
+				var n = _g1.s;
+				this.advance();
+				return bh_multianim_DataValue.DVInt(-this.stringToInt(n));
+			case 30:
+				var n = _g1.s;
+				this.advance();
+				return bh_multianim_DataValue.DVFloat(-this.stringToFloat(n));
+			default:
+				return this.error("expected number after minus");
+			}
+			break;
+		case 29:
+			var n = _g.s;
+			this.advance();
+			return bh_multianim_DataValue.DVInt(this.stringToInt(n));
+		case 30:
+			var n = _g.s;
+			this.advance();
+			return bh_multianim_DataValue.DVFloat(this.stringToFloat(n));
+		case 32:
+			var s = _g.s;
+			if(bh_multianim_MacroManimParser.isKeyword(s,"true") || bh_multianim_MacroManimParser.isKeyword(s,"false")) {
+				return bh_multianim_DataValue.DVBool(this.parseBool());
+			} else {
+				return null;
+			}
+			break;
+		case 35:
+			var s = _g.s;
+			this.advance();
+			return bh_multianim_DataValue.DVString(s);
+		default:
+			return null;
+		}
+	}
+	,parseDataMetaArg: function() {
+		var scalar = this.parseDataScalar();
+		if(scalar != null) {
+			return scalar;
+		}
+		var _g = this.tokens[this.tpos].type;
+		if(_g._hx_index == 32) {
+			var s = _g.s;
+			this.advance();
+			return bh_multianim_DataValue.DVString(s);
+		} else {
+			return this.error("expected a number, a word or a string in an annotation");
+		}
+	}
+	,checkDataMeta: function(where,type,meta,enums,field) {
+		var numeric;
+		if(type != null) {
+			if(type == null) {
+				numeric = false;
+			} else {
+				switch(type._hx_index) {
+				case 0:case 1:
+					numeric = true;
+					break;
+				case 6:
+					switch(type.elementType._hx_index) {
+					case 0:case 1:
+						numeric = true;
+						break;
+					default:
+						numeric = false;
+					}
+					break;
+				default:
+					numeric = false;
+				}
+			}
+		} else {
+			numeric = false;
+		}
+		var _g = 0;
+		while(_g < meta.length) {
+			var m = meta[_g];
+			++_g;
+			switch(m.name) {
+			case "default":
+				if(field == null) {
+					this.error("@default on " + where + ": a field of the block is written with its value; a default is for an optional field of a record");
+				} else {
+					if(!field.optional) {
+						this.error("@default on " + where + ": a field every row has has no default; make it optional: ?" + field.name);
+					}
+					if(m.args.length != 1) {
+						this.error("@default on " + where + " takes one value");
+					}
+					m.args[0] = this.dataDefaultOf(where,field.type,m.args[0],enums);
+				}
+				break;
+			case "range":
+				if(!numeric) {
+					this.error("@range on " + where + ": only a number has a range");
+				}
+				var lo = m.args.length == 2 ? bh_multianim_MacroManimParser.dataNumberOf(m.args[0]) : null;
+				var hi = m.args.length == 2 ? bh_multianim_MacroManimParser.dataNumberOf(m.args[1]) : null;
+				if(lo == null || hi == null) {
+					this.error("@range on " + where + " takes two numbers: @range(0, 10)");
+				} else if(lo > hi) {
+					this.error("@range on " + where + ": " + lo + " is more than " + hi);
+				}
+				break;
+			case "says":case "unit":
+				var word;
+				if(m.args.length == 1) {
+					var _g1 = m.args[0];
+					if(_g1._hx_index == 2) {
+						var _g2 = _g1.v;
+						word = true;
+					} else {
+						word = false;
+					}
+				} else {
+					word = false;
+				}
+				if(!word) {
+					this.error("@" + m.name + " on " + where + " takes one word or string: @" + m.name + "(\"…\")");
+				}
+				break;
+			case "step":
+				if(!numeric) {
+					this.error("@step on " + where + ": only a number has a step");
+				}
+				var step = m.args.length == 1 ? bh_multianim_MacroManimParser.dataNumberOf(m.args[0]) : null;
+				if(step == null || step <= 0) {
+					this.error("@step on " + where + " takes one number above 0");
+				}
+				break;
+			default:
+			}
+		}
+		var fallback = bh_multianim_MacroManimParser.dataMetaOf(meta,"default");
+		var range = bh_multianim_MacroManimParser.dataMetaOf(meta,"range");
+		if(fallback != null && range != null) {
+			var n = bh_multianim_MacroManimParser.dataNumberOf(fallback.args[0]);
+			var lo = bh_multianim_MacroManimParser.dataNumberOf(range.args[0]);
+			var hi = bh_multianim_MacroManimParser.dataNumberOf(range.args[1]);
+			if(n != null && lo != null && hi != null && (n < lo || n > hi)) {
+				this.error("@default on " + where + ": " + n + " is outside its @range(" + lo + ", " + hi + ")");
+			}
+		}
+	}
+	,dataDefaultOf: function(where,type,arg,enums) {
+		switch(type._hx_index) {
+		case 0:
+			if(arg._hx_index == 0) {
+				var _g = arg.v;
+				return arg;
+			} else {
+				return this.error("@default on " + where + ": a default is a number, a word, true or false, or one of an enum's values, of the field's type");
+			}
+			break;
+		case 1:
+			switch(arg._hx_index) {
+			case 0:
+				var v = arg.v;
+				return bh_multianim_DataValue.DVFloat(v);
+			case 1:
+				var _g = arg.v;
+				return arg;
+			default:
+				return this.error("@default on " + where + ": a default is a number, a word, true or false, or one of an enum's values, of the field's type");
+			}
+			break;
+		case 2:
+			if(arg._hx_index == 2) {
+				var _g = arg.v;
+				return arg;
+			} else {
+				return this.error("@default on " + where + ": a default is a number, a word, true or false, or one of an enum's values, of the field's type");
+			}
+			break;
+		case 3:
+			if(arg._hx_index == 3) {
+				var _g = arg.v;
+				return arg;
+			} else {
+				return this.error("@default on " + where + ": a default is a number, a word, true or false, or one of an enum's values, of the field's type");
+			}
+			break;
+		case 4:
+			if(arg._hx_index == 2) {
+				var v = arg.v;
+				var enumName = type.enumName;
+				this.validateEnumValue(enumName,v,enums);
+				return bh_multianim_DataValue.DVEnumValue(enumName,v);
+			} else {
+				return this.error("@default on " + where + ": a default is a number, a word, true or false, or one of an enum's values, of the field's type");
+			}
+			break;
+		default:
+			return this.error("@default on " + where + ": a default is a number, a word, true or false, or one of an enum's values, of the field's type");
+		}
+	}
+	,parseDataId: function(what) {
+		var _g = this.tokens[this.tpos].type;
+		switch(_g._hx_index) {
+		case 32:
+			var s = _g.s;
+			this.advance();
+			return s;
+		case 35:
+			var s = _g.s;
+			this.advance();
+			return s;
+		default:
+			return this.error("" + what + ": expected an id (a word, or a string)");
+		}
+	}
+	,errorAtLine: function(line,col,msg) {
+		throw haxe_Exception.thrown(new bh_multianim_InvalidSyntax("" + this.sourceName + ": " + msg,new bh_base_ParsePosition(this.sourceName,line,col)));
 	}
 	,parseDataField: function(fieldName,enums,records) {
 		var _g = this.tokens[this.tpos].type;
@@ -11240,8 +11672,19 @@ bh_multianim_MacroManimParser.prototype = {
 						this.advance();
 						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TBracketClosed);
 						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TBracketOpen);
-						var elements = this.parseDataArrayElements(bh_multianim_DataValueType.DVTRecord(s),enums,records);
-						return { name : fieldName, type : bh_multianim_DataValueType.DVTArray(bh_multianim_DataValueType.DVTRecord(s)), value : bh_multianim_DataValue.DVArray(elements)};
+						var rowMeta = [];
+						var elements = this.parseDataArrayElements(bh_multianim_DataValueType.DVTRecord(s),enums,records,rowMeta);
+						var field = { name : fieldName, type : bh_multianim_DataValueType.DVTArray(bh_multianim_DataValueType.DVTRecord(s)), value : bh_multianim_DataValue.DVArray(elements)};
+						var _g = 0;
+						while(_g < rowMeta.length) {
+							var m = rowMeta[_g];
+							++_g;
+							if(m.length > 0) {
+								field.rowMeta = rowMeta;
+								break;
+							}
+						}
+						return field;
 					case 5:
 						this.advance();
 						var recordDef = records.h[s];
@@ -11257,42 +11700,17 @@ bh_multianim_MacroManimParser.prototype = {
 				}
 			}
 		}
-		var _g = this.tokens[this.tpos].type;
-		switch(_g._hx_index) {
-		case 3:
+		var scalar = this.parseDataScalar();
+		if(scalar != null) {
+			var value = scalar;
+			return { name : fieldName, type : this.inferDataValueType(value), value : value};
+		}
+		if(this.tokens[this.tpos].type._hx_index == 3) {
 			this.advance();
 			var elements = this.parseDataArrayInferred(records);
 			var elemType = elements.length > 0 ? this.inferDataValueType(elements[0]) : bh_multianim_DataValueType.DVTInt;
 			return { name : fieldName, type : bh_multianim_DataValueType.DVTArray(elemType), value : bh_multianim_DataValue.DVArray(elements)};
-		case 20:
-			this.advance();
-			var _g1 = this.tokens[this.tpos].type;
-			switch(_g1._hx_index) {
-			case 29:
-				var n = _g1.s;
-				this.advance();
-				return { name : fieldName, type : bh_multianim_DataValueType.DVTInt, value : bh_multianim_DataValue.DVInt(-this.stringToInt(n))};
-			case 30:
-				var n = _g1.s;
-				this.advance();
-				return { name : fieldName, type : bh_multianim_DataValueType.DVTFloat, value : bh_multianim_DataValue.DVFloat(-this.stringToFloat(n))};
-			default:
-				return this.error("expected number after minus");
-			}
-			break;
-		case 29:
-			var n = _g.s;
-			this.advance();
-			return { name : fieldName, type : bh_multianim_DataValueType.DVTInt, value : bh_multianim_DataValue.DVInt(this.stringToInt(n))};
-		case 30:
-			var n = _g.s;
-			this.advance();
-			return { name : fieldName, type : bh_multianim_DataValueType.DVTFloat, value : bh_multianim_DataValue.DVFloat(this.stringToFloat(n))};
-		case 35:
-			var s = _g.s;
-			this.advance();
-			return { name : fieldName, type : bh_multianim_DataValueType.DVTString, value : bh_multianim_DataValue.DVString(s)};
-		default:
+		} else {
 			return this.error("expected value in data field \"" + fieldName + "\"");
 		}
 	}
@@ -11305,25 +11723,27 @@ bh_multianim_MacroManimParser.prototype = {
 			}
 			var name = this.expectIdentifierOrString();
 			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
-			var expectedType = null;
+			var recordField = null;
 			var _g = 0;
 			var _g1 = recordDef.fields;
 			while(_g < _g1.length) {
 				var rf = _g1[_g];
 				++_g;
 				if(rf.name == name) {
-					expectedType = rf.type;
+					recordField = rf;
 					break;
 				}
 			}
-			if(expectedType == null) {
+			if(recordField == null) {
 				this.error("unknown field \"" + name + "\" in record \"" + recordName + "\"");
 				return bh_multianim_DataValue.DVInt(0);
 			}
-			var value = this.parseDataValueOfType(expectedType,enums,records);
+			var at = this.tokens[this.tpos];
+			var value = recordField.key == true ? bh_multianim_DataValue.DVString(this.parseDataId("key \"" + name + "\" of record \"" + recordName + "\"")) : this.parseDataValueOfType(recordField.type,enums,records);
 			if(Object.prototype.hasOwnProperty.call(fieldValues.h,name)) {
 				this.error("duplicate field \"" + name + "\" in record");
 			}
+			this.checkDataRange(recordField.meta,name,value,at,recordName);
 			fieldValues.h[name] = value;
 		}
 		var _g = 0;
@@ -11331,11 +11751,46 @@ bh_multianim_MacroManimParser.prototype = {
 		while(_g < _g1.length) {
 			var rf = _g1[_g];
 			++_g;
-			if(!Object.prototype.hasOwnProperty.call(fieldValues.h,rf.name) && !rf.optional) {
+			if(Object.prototype.hasOwnProperty.call(fieldValues.h,rf.name)) {
+				continue;
+			}
+			if(!rf.optional) {
 				this.error("missing required field \"" + rf.name + "\" in record \"" + recordName + "\"");
+			}
+			var fallback = bh_multianim_MacroManimParser.dataMetaOf(rf.meta,"default");
+			if(fallback != null && fallback.args.length == 1) {
+				fieldValues.h[rf.name] = fallback.args[0];
 			}
 		}
 		return bh_multianim_DataValue.DVRecord(recordName,fieldValues);
+	}
+	,checkDataRange: function(meta,name,value,at,inRecord) {
+		var range = bh_multianim_MacroManimParser.dataMetaOf(meta,"range");
+		if(range == null || range.args.length != 2) {
+			return;
+		}
+		var lo = bh_multianim_MacroManimParser.dataNumberOf(range.args[0]);
+		var hi = bh_multianim_MacroManimParser.dataNumberOf(range.args[1]);
+		if(lo == null || hi == null) {
+			return;
+		}
+		var values;
+		if(value._hx_index == 4) {
+			var elements = value.elements;
+			values = elements;
+		} else {
+			values = [value];
+		}
+		var _g = 0;
+		while(_g < values.length) {
+			var v = values[_g];
+			++_g;
+			var n = bh_multianim_MacroManimParser.dataNumberOf(v);
+			if(n != null && (n < lo || n > hi)) {
+				var inWhat = inRecord != null ? " in a " + inRecord : "";
+				this.errorAtLine(at.line,at.col,"" + name + " is " + n + inWhat + ", outside its @range(" + lo + ", " + hi + ")");
+			}
+		}
 	}
 	,parseDataValueOfType: function(type,enums,records) {
 		switch(type._hx_index) {
@@ -11374,18 +11829,310 @@ bh_multianim_MacroManimParser.prototype = {
 			var elemType = type.elementType;
 			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TBracketOpen);
 			return bh_multianim_DataValue.DVArray(this.parseDataArrayElements(elemType,enums,records));
+		case 7:
+			var recordName = type.recordName;
+			var at = this.tokens[this.tpos];
+			var id = this.parseDataId("ref " + recordName);
+			this.dataRefs.push({ record : recordName, id : id, line : at.line, col : at.col});
+			return bh_multianim_DataValue.DVRef(recordName,id);
 		}
 	}
-	,parseDataArrayElements: function(elemType,enums,records) {
+	,parseDataArrayElements: function(elemType,enums,records,rowMeta) {
 		var result = [];
+		var keyed;
+		if(elemType._hx_index == 5) {
+			var r = elemType.recordName;
+			var def = records.h[r];
+			keyed = def != null && def.key != null ? def : null;
+		} else {
+			keyed = null;
+		}
+		var seen_h = Object.create(null);
 		while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TBracketClosed)) {
 			this.eatComma();
 			if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TBracketClosed)) {
 				break;
 			}
-			result.push(this.parseDataValueOfType(elemType,enums,records));
+			var at = this.tokens[this.tpos];
+			var meta = this.parseDataMetaList();
+			if(meta.length > 0 && rowMeta == null) {
+				this.errorAtLine(at.line,at.col,"annotations go before a row of a table of records: @by(claude) { … }");
+			}
+			var rowAt = this.tokens[this.tpos];
+			var value = this.parseDataValueOfType(elemType,enums,records);
+			if(rowMeta != null) {
+				rowMeta.push(meta);
+			}
+			if(keyed != null) {
+				var id = bh_multianim_data_DataSchema.rowId(value,keyed);
+				if(id != null) {
+					if(Object.prototype.hasOwnProperty.call(seen_h,id)) {
+						this.errorAtLine(rowAt.line,rowAt.col,"\"" + id + "\" is the id of two rows of " + keyed.name);
+					}
+					seen_h[id] = true;
+				}
+			}
+			result.push(value);
 		}
 		return result;
+	}
+	,checkDataRefs: function(data) {
+		if(this.dataRefs.length == 0) {
+			return;
+		}
+		var holders_h = Object.create(null);
+		var _g = 0;
+		var _g1 = data.fields;
+		while(_g < _g1.length) {
+			var field = _g1[_g];
+			++_g;
+			var def = bh_multianim_data_DataSchema.tableRecord(data,field);
+			if(def == null) {
+				continue;
+			}
+			var ids = holders_h[def.name];
+			if(ids == null) {
+				ids = new haxe_ds_StringMap();
+				holders_h[def.name] = ids;
+			}
+			var _g2 = 0;
+			var _g3 = bh_multianim_data_DataSchema.rowsOf(field);
+			while(_g2 < _g3.length) {
+				var row = _g3[_g2];
+				++_g2;
+				var id = bh_multianim_data_DataSchema.rowId(row,def);
+				if(id == null) {
+					continue;
+				}
+				var tables = ids.h[id];
+				if(tables == null) {
+					ids.h[id] = [field.name];
+				} else {
+					tables.push(field.name);
+				}
+			}
+		}
+		var _g = 0;
+		var _g1 = this.dataRefs;
+		while(_g < _g1.length) {
+			var ref = _g1[_g];
+			++_g;
+			var ids = holders_h[ref.record];
+			var tables = ids == null ? null : ids.h[ref.id];
+			if(ids == null) {
+				this.errorAtLine(ref.line,ref.col,"ref " + ref.record + " \"" + ref.id + "\": this data block has no table of " + ref.record + " rows");
+			} else if(tables == null) {
+				this.errorAtLine(ref.line,ref.col,"ref " + ref.record + " \"" + ref.id + "\": no " + ref.record + " row has that id");
+			} else if(tables.length > 1) {
+				this.errorAtLine(ref.line,ref.col,"ref " + ref.record + " \"" + ref.id + "\": " + tables.join(" and ") + " both have a row of that id, so the ref could name either; give one of them another id");
+			}
+		}
+		this.dataRefs = [];
+	}
+	,isDataPickAhead: function() {
+		var _g = this.tokens[this.tpos].type;
+		if(_g._hx_index == 32) {
+			var s = _g.s;
+			if(bh_multianim_MacroManimParser.isKeyword(s,"pick")) {
+				if(this.tpos + 1 < this.tokens.length) {
+					return Type.enumEq(this.tokens[this.tpos + 1].type,bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
+				} else {
+					return false;
+				}
+			} else {
+				return false;
+			}
+		} else {
+			return false;
+		}
+	}
+	,parseDataPick: function(name,line) {
+		this.advance();
+		this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
+		var over = this.expectIdentifierOrString();
+		var by = null;
+		var through = null;
+		var chance = false;
+		var draws = 1;
+		var repeats = false;
+		var otherwise = null;
+		while(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
+			var option = this.expectIdentifierOrString();
+			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+			switch(option.toLowerCase()) {
+			case "chance":case "weight":
+				if(by != null) {
+					this.error("pick " + name + " goes by one column: weight: or chance:, once");
+				}
+				chance = option.toLowerCase() == "chance";
+				var column = this.expectIdentifierOrString();
+				if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TDot)) {
+					through = column;
+					by = this.expectIdentifierOrString();
+				} else {
+					by = column;
+				}
+				break;
+			case "draws":
+				draws = this.parseInteger();
+				if(draws < 1) {
+					this.error("pick " + name + ": draws is how many rows one draw takes, 1 or more");
+				}
+				break;
+			case "otherwise":
+				otherwise = this.parseDataId("pick " + name + ", otherwise");
+				break;
+			case "repeats":
+				repeats = this.parseBool();
+				break;
+			default:
+				this.error("pick " + name + ": unknown option \"" + option + "\"; a pick takes weight: or chance:, draws:, repeats: and otherwise:");
+			}
+		}
+		this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
+		var column = by == null ? this.error("pick " + name + ": say what it goes by, weight: <column> or chance: <column>") : by;
+		if(otherwise != null && !chance) {
+			this.error("pick " + name + ": otherwise is the row that takes what the chances leave, so it goes with chance:");
+		}
+		var pick = { name : name, over : over, by : column, chance : chance, draws : draws, repeats : repeats, line : line};
+		if(through != null) {
+			pick.through = through;
+		}
+		if(otherwise != null) {
+			pick.otherwise = otherwise;
+		}
+		return pick;
+	}
+	,checkDataPick: function(pick,data) {
+		var _gthis = this;
+		var fail = function(msg) {
+			return _gthis.errorAtLine(pick.line,1,"pick " + pick.name + ": " + msg);
+		};
+		var table = bh_multianim_data_DataSchema.fieldNamed(data,pick.over);
+		if(table == null) {
+			fail("there is no field \"" + pick.over + "\" to draw from");
+			return;
+		}
+		var def = bh_multianim_data_DataSchema.tableRecord(data,table);
+		if(def == null) {
+			fail("" + pick.over + " is not a table: a pick draws from an array of a record with a key");
+			return;
+		}
+		var holder = def;
+		var linkedRows_h = Object.create(null);
+		var through = pick.through;
+		if(through != null) {
+			var target = bh_multianim_data_DataSchema.throughRecord(data,pick);
+			var targetDef = target == null ? null : data.records.h[target];
+			if(target == null || targetDef == null) {
+				fail("" + def.name + " has no ref field \"" + through + "\" to read " + pick.by + " through");
+				return;
+			}
+			holder = targetDef;
+			var tables = bh_multianim_data_DataSchema.tablesOf(data,target);
+			if(tables.length == 0) {
+				fail("this data block has no table of " + target + " rows for " + through + " to link to");
+				return;
+			}
+			var _g = 0;
+			while(_g < tables.length) {
+				var linked = tables[_g];
+				++_g;
+				var _g1 = 0;
+				var _g2 = bh_multianim_data_DataSchema.rowsOf(linked);
+				while(_g1 < _g2.length) {
+					var row = _g2[_g1];
+					++_g1;
+					var id = bh_multianim_data_DataSchema.rowId(row,targetDef);
+					if(id != null) {
+						linkedRows_h[id] = row;
+					}
+				}
+			}
+		}
+		var column = null;
+		var _g = 0;
+		var _g1 = holder.fields;
+		while(_g < _g1.length) {
+			var f = _g1[_g];
+			++_g;
+			if(f.name == pick.by) {
+				column = f;
+			}
+		}
+		if(column == null) {
+			fail("" + holder.name + " has no field \"" + pick.by + "\"");
+			return;
+		}
+		switch(column.type._hx_index) {
+		case 0:case 1:
+			break;
+		default:
+			fail("" + holder.name + "." + pick.by + " is not a number, so it cannot be a " + (pick.chance ? "chance" : "weight"));
+		}
+		var rows = bh_multianim_data_DataSchema.rowsOf(table);
+		var otherwise = pick.otherwise;
+		if(otherwise != null) {
+			var found = false;
+			var _g = 0;
+			while(_g < rows.length) {
+				var row = rows[_g];
+				++_g;
+				if(bh_multianim_data_DataSchema.rowId(row,def) == otherwise) {
+					found = true;
+				}
+			}
+			if(!found) {
+				fail("otherwise \"" + otherwise + "\" is not a row of " + pick.over);
+			}
+		}
+		if(!pick.chance) {
+			return;
+		}
+		var sum = 0.0;
+		var _g = 0;
+		while(_g < rows.length) {
+			var row = rows[_g];
+			++_g;
+			if(otherwise != null && bh_multianim_data_DataSchema.rowId(row,def) == otherwise) {
+				continue;
+			}
+			var source = row;
+			if(through != null) {
+				if(row._hx_index == 5) {
+					var _g1 = row.recordName;
+					var f = row.fields;
+					var _g2 = f.h[through];
+					if(_g2 == null) {
+						source = null;
+					} else if(_g2._hx_index == 7) {
+						var _g3 = _g2.recordName;
+						var id = _g2.id;
+						source = linkedRows_h[id];
+					} else {
+						source = null;
+					}
+				} else {
+					source = null;
+				}
+			}
+			var share;
+			if(source == null) {
+				share = null;
+			} else if(source._hx_index == 5) {
+				var _g4 = source.recordName;
+				var f1 = source.fields;
+				share = bh_multianim_MacroManimParser.dataNumberOf(f1.h[pick.by]);
+			} else {
+				share = null;
+			}
+			if(share != null && share > 0) {
+				sum += share;
+			}
+		}
+		if(sum > 1.000000001) {
+			fail("the chances add up to " + Math.round(sum * 1000) / 1000 + ", more than 1");
+		}
 	}
 	,validateEnumValue: function(enumName,value,enums) {
 		var def = enums.h[enumName];
@@ -11404,51 +12151,11 @@ bh_multianim_MacroManimParser.prototype = {
 			if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TBracketClosed)) {
 				break;
 			}
-			var _g = this.tokens[this.tpos].type;
-			switch(_g._hx_index) {
-			case 20:
-				this.advance();
-				var _g1 = this.tokens[this.tpos].type;
-				switch(_g1._hx_index) {
-				case 29:
-					var n = _g1.s;
-					this.advance();
-					result.push(bh_multianim_DataValue.DVInt(-this.stringToInt(n)));
-					break;
-				case 30:
-					var n1 = _g1.s;
-					this.advance();
-					result.push(bh_multianim_DataValue.DVFloat(-this.stringToFloat(n1)));
-					break;
-				default:
-					this.error("expected number after minus");
-				}
-				break;
-			case 29:
-				var n2 = _g.s;
-				this.advance();
-				result.push(bh_multianim_DataValue.DVInt(this.stringToInt(n2)));
-				break;
-			case 30:
-				var n3 = _g.s;
-				this.advance();
-				result.push(bh_multianim_DataValue.DVFloat(this.stringToFloat(n3)));
-				break;
-			case 32:
-				var s = _g.s;
-				if(bh_multianim_MacroManimParser.isKeyword(s,"true") || bh_multianim_MacroManimParser.isKeyword(s,"false")) {
-					result.push(bh_multianim_DataValue.DVBool(this.parseBool()));
-				} else {
-					this.error("expected value in array literal");
-				}
-				break;
-			case 35:
-				var s1 = _g.s;
-				this.advance();
-				result.push(bh_multianim_DataValue.DVString(s1));
-				break;
-			default:
+			var scalar = this.parseDataScalar();
+			if(scalar == null) {
 				this.error("expected value in array literal");
+			} else {
+				result.push(scalar);
 			}
 		}
 		return result;
@@ -11478,6 +12185,10 @@ bh_multianim_MacroManimParser.prototype = {
 			var _g = value.value;
 			var enumName = value.enumName;
 			return bh_multianim_DataValueType.DVTEnum(enumName);
+		case 7:
+			var _g = value.id;
+			var recordName = value.recordName;
+			return bh_multianim_DataValueType.DVTRef(recordName);
 		}
 	}
 	,parseOptionalParams: function(defs) {
@@ -12476,8 +13187,9 @@ var bh_multianim_DataValueType = $hxEnums["bh.multianim.DataValueType"] = { __en
 	,DVTEnum: ($_=function(enumName) { return {_hx_index:4,enumName:enumName,__enum__:"bh.multianim.DataValueType",toString:$estr}; },$_._hx_name="DVTEnum",$_.__params__ = ["enumName"],$_)
 	,DVTRecord: ($_=function(recordName) { return {_hx_index:5,recordName:recordName,__enum__:"bh.multianim.DataValueType",toString:$estr}; },$_._hx_name="DVTRecord",$_.__params__ = ["recordName"],$_)
 	,DVTArray: ($_=function(elementType) { return {_hx_index:6,elementType:elementType,__enum__:"bh.multianim.DataValueType",toString:$estr}; },$_._hx_name="DVTArray",$_.__params__ = ["elementType"],$_)
+	,DVTRef: ($_=function(recordName) { return {_hx_index:7,recordName:recordName,__enum__:"bh.multianim.DataValueType",toString:$estr}; },$_._hx_name="DVTRef",$_.__params__ = ["recordName"],$_)
 };
-bh_multianim_DataValueType.__constructs__ = [bh_multianim_DataValueType.DVTInt,bh_multianim_DataValueType.DVTFloat,bh_multianim_DataValueType.DVTString,bh_multianim_DataValueType.DVTBool,bh_multianim_DataValueType.DVTEnum,bh_multianim_DataValueType.DVTRecord,bh_multianim_DataValueType.DVTArray];
+bh_multianim_DataValueType.__constructs__ = [bh_multianim_DataValueType.DVTInt,bh_multianim_DataValueType.DVTFloat,bh_multianim_DataValueType.DVTString,bh_multianim_DataValueType.DVTBool,bh_multianim_DataValueType.DVTEnum,bh_multianim_DataValueType.DVTRecord,bh_multianim_DataValueType.DVTArray,bh_multianim_DataValueType.DVTRef];
 var bh_multianim_DataValue = $hxEnums["bh.multianim.DataValue"] = { __ename__:true,__constructs__:null
 	,DVInt: ($_=function(v) { return {_hx_index:0,v:v,__enum__:"bh.multianim.DataValue",toString:$estr}; },$_._hx_name="DVInt",$_.__params__ = ["v"],$_)
 	,DVFloat: ($_=function(v) { return {_hx_index:1,v:v,__enum__:"bh.multianim.DataValue",toString:$estr}; },$_._hx_name="DVFloat",$_.__params__ = ["v"],$_)
@@ -12486,8 +13198,9 @@ var bh_multianim_DataValue = $hxEnums["bh.multianim.DataValue"] = { __ename__:tr
 	,DVArray: ($_=function(elements) { return {_hx_index:4,elements:elements,__enum__:"bh.multianim.DataValue",toString:$estr}; },$_._hx_name="DVArray",$_.__params__ = ["elements"],$_)
 	,DVRecord: ($_=function(recordName,fields) { return {_hx_index:5,recordName:recordName,fields:fields,__enum__:"bh.multianim.DataValue",toString:$estr}; },$_._hx_name="DVRecord",$_.__params__ = ["recordName","fields"],$_)
 	,DVEnumValue: ($_=function(enumName,value) { return {_hx_index:6,enumName:enumName,value:value,__enum__:"bh.multianim.DataValue",toString:$estr}; },$_._hx_name="DVEnumValue",$_.__params__ = ["enumName","value"],$_)
+	,DVRef: ($_=function(recordName,id) { return {_hx_index:7,recordName:recordName,id:id,__enum__:"bh.multianim.DataValue",toString:$estr}; },$_._hx_name="DVRef",$_.__params__ = ["recordName","id"],$_)
 };
-bh_multianim_DataValue.__constructs__ = [bh_multianim_DataValue.DVInt,bh_multianim_DataValue.DVFloat,bh_multianim_DataValue.DVString,bh_multianim_DataValue.DVBool,bh_multianim_DataValue.DVArray,bh_multianim_DataValue.DVRecord,bh_multianim_DataValue.DVEnumValue];
+bh_multianim_DataValue.__constructs__ = [bh_multianim_DataValue.DVInt,bh_multianim_DataValue.DVFloat,bh_multianim_DataValue.DVString,bh_multianim_DataValue.DVBool,bh_multianim_DataValue.DVArray,bh_multianim_DataValue.DVRecord,bh_multianim_DataValue.DVEnumValue,bh_multianim_DataValue.DVRef];
 var bh_multianim_NodeType = $hxEnums["bh.multianim.NodeType"] = { __ename__:true,__constructs__:null
 	,FLOW: ($_=function(maxWidth,maxHeight,minWidth,minHeight,lineHeight,colWidth,layout,paddingTop,paddingBottom,paddingLeft,paddingRight,horizontalSpacing,verticalSpacing,debug,multiline,bgSheet,bgTile,overflow,fillWidth,fillHeight,reverse,hAlign,vAlign) { return {_hx_index:0,maxWidth:maxWidth,maxHeight:maxHeight,minWidth:minWidth,minHeight:minHeight,lineHeight:lineHeight,colWidth:colWidth,layout:layout,paddingTop:paddingTop,paddingBottom:paddingBottom,paddingLeft:paddingLeft,paddingRight:paddingRight,horizontalSpacing:horizontalSpacing,verticalSpacing:verticalSpacing,debug:debug,multiline:multiline,bgSheet:bgSheet,bgTile:bgTile,overflow:overflow,fillWidth:fillWidth,fillHeight:fillHeight,reverse:reverse,hAlign:hAlign,vAlign:vAlign,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="FLOW",$_.__params__ = ["maxWidth","maxHeight","minWidth","minHeight","lineHeight","colWidth","layout","paddingTop","paddingBottom","paddingLeft","paddingRight","horizontalSpacing","verticalSpacing","debug","multiline","bgSheet","bgTile","overflow","fillWidth","fillHeight","reverse","hAlign","vAlign"],$_)
 	,SPACER: ($_=function(width,height) { return {_hx_index:1,width:width,height:height,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="SPACER",$_.__params__ = ["width","height"],$_)
@@ -12797,6 +13510,323 @@ bh_multianim_TextMarkupConverter.isValidStyleName = function(name) {
 		}
 	}
 	return true;
+};
+var bh_multianim_data_DataSchema = function() { };
+bh_multianim_data_DataSchema.__name__ = true;
+bh_multianim_data_DataSchema.columnsOf = function(def,data) {
+	var columns = [];
+	var _g = 0;
+	var _g1 = def.fields;
+	while(_g < _g1.length) {
+		var f = _g1[_g];
+		++_g;
+		var type = f.type;
+		var many = false;
+		if(type._hx_index == 6) {
+			var e = type.elementType;
+			many = true;
+			type = e;
+		}
+		var column = { id : f.name, type : bh_multianim_data_DataSchema.typeName(type)};
+		if(many) {
+			column.many = true;
+		}
+		if(f.optional) {
+			column.optional = true;
+		}
+		if(f.key == true) {
+			column.key = true;
+		}
+		switch(type._hx_index) {
+		case 0:
+			column.whole = true;
+			break;
+		case 4:
+			var e1 = type.enumName;
+			column.to = e1;
+			var values = data.enums.h[e1];
+			if(values != null) {
+				column.options = values.values.slice();
+			}
+			break;
+		case 5:
+			var r = type.recordName;
+			column.to = r;
+			var nested = data.records.h[r];
+			if(nested != null) {
+				column.columns = bh_multianim_data_DataSchema.columnsOf(nested,data);
+			}
+			break;
+		case 7:
+			var r1 = type.recordName;
+			column.to = r1;
+			break;
+		default:
+		}
+		var meta = bh_multianim_data_DataSchema.metaObject(f.meta);
+		if(meta != null) {
+			column.meta = meta;
+			var unit = Reflect.field(meta,"unit");
+			if(unit != null) {
+				column.unit = Std.string(unit);
+			}
+		}
+		columns.push(column);
+	}
+	return columns;
+};
+bh_multianim_data_DataSchema.typeName = function(type) {
+	switch(type._hx_index) {
+	case 0:
+		return "int";
+	case 1:
+		return "float";
+	case 2:
+		return "string";
+	case 3:
+		return "bool";
+	case 4:
+		var _g = type.enumName;
+		return "enum";
+	case 5:
+		var _g = type.recordName;
+		return "record";
+	case 6:
+		var e = type.elementType;
+		return bh_multianim_data_DataSchema.typeName(e);
+	case 7:
+		var _g = type.recordName;
+		return "ref";
+	}
+};
+bh_multianim_data_DataSchema.metaObject = function(meta) {
+	if(meta == null || meta.length == 0) {
+		return null;
+	}
+	var result = { };
+	var _g = 0;
+	while(_g < meta.length) {
+		var m = meta[_g];
+		++_g;
+		var value;
+		switch(m.args.length) {
+		case 0:
+			value = true;
+			break;
+		case 1:
+			value = bh_multianim_data_DataSchema.plainValue(m.args[0]);
+			break;
+		default:
+			var _g1 = [];
+			var _g2 = 0;
+			var _g3 = m.args;
+			while(_g2 < _g3.length) {
+				var a = _g3[_g2];
+				++_g2;
+				_g1.push(bh_multianim_data_DataSchema.plainValue(a));
+			}
+			value = _g1;
+		}
+		result[m.name] = value;
+	}
+	return result;
+};
+bh_multianim_data_DataSchema.rowMetaObjects = function(field) {
+	var rows = field.rowMeta;
+	if(rows == null) {
+		return null;
+	}
+	var _g = [];
+	var _g1 = 0;
+	while(_g1 < rows.length) {
+		var meta = rows[_g1];
+		++_g1;
+		var object = bh_multianim_data_DataSchema.metaObject(meta);
+		_g.push(object == null ? { } : object);
+	}
+	return _g;
+};
+bh_multianim_data_DataSchema.plainValue = function(value) {
+	switch(value._hx_index) {
+	case 0:
+		var v = value.v;
+		return v;
+	case 1:
+		var v = value.v;
+		return v;
+	case 2:
+		var v = value.v;
+		return v;
+	case 3:
+		var v = value.v;
+		return v;
+	case 4:
+		var elements = value.elements;
+		var _g = [];
+		var _g1 = 0;
+		while(_g1 < elements.length) {
+			var e = elements[_g1];
+			++_g1;
+			_g.push(bh_multianim_data_DataSchema.plainValue(e));
+		}
+		return _g;
+	case 5:
+		var _g = value.recordName;
+		var fields = value.fields;
+		var object = { };
+		var h = fields.h;
+		var _g_h = h;
+		var _g_keys = Object.keys(h);
+		var _g_length = _g_keys.length;
+		var _g_current = 0;
+		while(_g_current < _g_length) {
+			var key = _g_keys[_g_current++];
+			var _g_key = key;
+			var _g_value = _g_h[key];
+			var name = _g_key;
+			var v = _g_value;
+			object[name] = bh_multianim_data_DataSchema.plainValue(v);
+		}
+		return object;
+	case 6:
+		var _g = value.enumName;
+		var v = value.value;
+		return v;
+	case 7:
+		var _g = value.recordName;
+		var id = value.id;
+		return id;
+	}
+};
+bh_multianim_data_DataSchema.fieldNamed = function(data,name) {
+	var _g = 0;
+	var _g1 = data.fields;
+	while(_g < _g1.length) {
+		var field = _g1[_g];
+		++_g;
+		if(field.name == name) {
+			return field;
+		}
+	}
+	return null;
+};
+bh_multianim_data_DataSchema.tableRecord = function(data,field) {
+	var _g = field.type;
+	if(_g._hx_index == 6) {
+		var _g1 = _g.elementType;
+		if(_g1._hx_index == 5) {
+			var r = _g1.recordName;
+			var def = data.records.h[r];
+			if(def != null && def.key != null) {
+				return def;
+			} else {
+				return null;
+			}
+		} else {
+			return null;
+		}
+	} else {
+		return null;
+	}
+};
+bh_multianim_data_DataSchema.tablesOf = function(data,recordName) {
+	var tables = [];
+	var _g = 0;
+	var _g1 = data.fields;
+	while(_g < _g1.length) {
+		var field = _g1[_g];
+		++_g;
+		var def = bh_multianim_data_DataSchema.tableRecord(data,field);
+		if(def != null && def.name == recordName) {
+			tables.push(field);
+		}
+	}
+	return tables;
+};
+bh_multianim_data_DataSchema.rowsOf = function(field) {
+	var _g = field.value;
+	if(_g._hx_index == 4) {
+		var rows = _g.elements;
+		return rows;
+	} else {
+		return [];
+	}
+};
+bh_multianim_data_DataSchema.rowId = function(row,def) {
+	var key = def.key;
+	if(key == null) {
+		return null;
+	}
+	if(row._hx_index == 5) {
+		var _g = row.recordName;
+		var fields = row.fields;
+		var _g = fields.h[key];
+		if(_g == null) {
+			return null;
+		} else if(_g._hx_index == 2) {
+			var id = _g.v;
+			return id;
+		} else {
+			return null;
+		}
+	} else {
+		return null;
+	}
+};
+bh_multianim_data_DataSchema.overRecord = function(data,pick) {
+	var table = bh_multianim_data_DataSchema.fieldNamed(data,pick.over);
+	if(table == null) {
+		return null;
+	} else {
+		return bh_multianim_data_DataSchema.tableRecord(data,table);
+	}
+};
+bh_multianim_data_DataSchema.throughRecord = function(data,pick) {
+	var through = pick.through;
+	var over = bh_multianim_data_DataSchema.overRecord(data,pick);
+	if(through == null || over == null) {
+		return null;
+	}
+	var _g = 0;
+	var _g1 = over.fields;
+	while(_g < _g1.length) {
+		var f = _g1[_g];
+		++_g;
+		if(f.name == through) {
+			var _g2 = f.type;
+			if(_g2._hx_index == 7) {
+				var r = _g2.recordName;
+				return r;
+			}
+		}
+	}
+	return null;
+};
+bh_multianim_data_DataSchema.tableInfo = function(data,field,record,manim,block) {
+	var info = { columns : bh_multianim_data_DataSchema.columnsOf(record,data), source : { manim : manim, block : block, line : field.line != null ? field.line : 0}, record : record.name};
+	var rowMeta = bh_multianim_data_DataSchema.rowMetaObjects(field);
+	if(rowMeta != null) {
+		info.rowMeta = rowMeta;
+	}
+	var meta = bh_multianim_data_DataSchema.metaObject(field.meta);
+	if(meta != null) {
+		info.meta = meta;
+	}
+	return info;
+};
+bh_multianim_data_DataSchema.pickInfo = function(pick,manim,block) {
+	var info = { by : pick.by, chance : pick.chance, draws : pick.draws, repeats : pick.repeats, source : { manim : manim, block : block, line : pick.line}};
+	if(pick.through != null) {
+		info.through = pick.through;
+	}
+	if(pick.otherwise != null) {
+		info.otherwise = pick.otherwise;
+	}
+	var meta = bh_multianim_data_DataSchema.metaObject(pick.meta);
+	if(meta != null) {
+		info.meta = meta;
+	}
+	return info;
 };
 var bh_multianim_layouts_LayoutContent = $hxEnums["bh.multianim.layouts.LayoutContent"] = { __ename__:true,__constructs__:null
 	,LayoutPoint: ($_=function(pos) { return {_hx_index:0,pos:pos,__enum__:"bh.multianim.layouts.LayoutContent",toString:$estr}; },$_._hx_name="LayoutPoint",$_.__params__ = ["pos"],$_)
@@ -15710,6 +16740,9 @@ manim_lsp_ManimAnalyzer.dataTypeName = function(type) {
 	case 6:
 		var elemType = type.elementType;
 		return "" + manim_lsp_ManimAnalyzer.dataTypeName(elemType) + "[]";
+	case 7:
+		var name = type.recordName;
+		return "ref " + name;
 	}
 };
 manim_lsp_ManimAnalyzer.nodeTypeName = function(type) {

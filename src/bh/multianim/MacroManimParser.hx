@@ -12,6 +12,7 @@ import bh.multianim.MacroCompatTypes.MacroFlowLayout;
 import bh.multianim.MacroCompatTypes.MacroFlowOverflow;
 import bh.multianim.MacroCompatTypes.MacroFlowAlign;
 import bh.multianim.layouts.LayoutTypes;
+import bh.multianim.data.DataSchema;
 import bh.base.Hex;
 
 using StringTools;
@@ -6792,10 +6793,16 @@ class MacroManimParser {
 
 	// ===================== Data =====================
 
+	/** The rows the block being read names by id (`ref card agree`), checked once all of it is read. */
+	var dataRefs:Array<{record:String, id:String, line:Int, col:Int}> = [];
+
 	function parseData():DataDef {
+		final blockLine = peekToken().line;
 		var enums:Map<String, DataEnumDef> = new Map();
 		var records:Map<String, DataRecordDef> = new Map();
 		var fields:Array<DataFieldDef> = [];
+		var picks:Array<DataPickDef> = [];
+		dataRefs = [];
 
 		while (!match(TCurlyClosed)) {
 			eatSemicolon();
@@ -6810,10 +6817,13 @@ class MacroManimParser {
 							// #name record(...) — record type definition
 							advance();
 							expect(TOpen);
-							final recordFields = parseDataRecordFields(enums, records);
 							if (records.exists(name)) error('record type "$name" already defined');
 							if (enums.exists(name)) error('"$name" is already defined as an enum');
-							records.set(name, {name: name, fields: recordFields});
+							final recordFields = parseDataRecordFields(name, enums, records);
+							var key:Null<String> = null;
+							for (f in recordFields)
+								if (f.key == true) key = f.name;
+							records.set(name, key != null ? {name: name, fields: recordFields, key: key} : {name: name, fields: recordFields});
 						case TIdentifier(s) if (isKeyword(s, "enum")):
 							// #name enum(...) — enum type definition
 							advance();
@@ -6827,16 +6837,39 @@ class MacroManimParser {
 					}
 
 				default:
-					// Regular field: name: [type] value
+					// Regular field: [@annotations] name: [type] value, or name: pick(table, …)
+					final meta = parseDataMetaList();
+					final start = peekToken();
 					final fieldName = expectIdentifierOrString();
 					expect(TColon);
-					final field = parseDataField(fieldName, enums, records);
-					fields.push(field);
+					for (f in fields)
+						if (f.name == fieldName) error('field "$fieldName" is in this data block twice');
+					for (p in picks)
+						if (p.name == fieldName) error('field "$fieldName" is in this data block twice');
+					// The annotations it knows are checked as on a field of a record: a @range holds for the value
+					if (isDataPickAhead()) {
+						checkDataMeta('pick $fieldName', null, meta, enums);
+						final pick = parseDataPick(fieldName, start.line);
+						if (meta.length > 0) pick.meta = meta;
+						picks.push(pick);
+					} else {
+						final at = peekToken();
+						final field = parseDataField(fieldName, enums, records);
+						checkDataMeta(fieldName, field.type, meta, enums);
+						checkDataRange(meta, fieldName, field.value, at);
+						field.line = start.line;
+						if (meta.length > 0) field.meta = meta;
+						fields.push(field);
+					}
 			}
 			eatSemicolon();
 		}
 
-		return {enums: enums, records: records, fields: fields};
+		final data:DataDef = {enums: enums, records: records, fields: fields, picks: picks, line: blockLine};
+		checkDataRefs(data);
+		for (pick in picks)
+			checkDataPick(pick, data);
+		return data;
 	}
 
 	function parseDataEnumValues():Array<String> {
@@ -6851,29 +6884,87 @@ class MacroManimParser {
 		}
 	}
 
-	function parseDataRecordFields(enums:Map<String, DataEnumDef>, records:Map<String, DataRecordDef>):Array<{name:String, type:DataValueType, optional:Bool}> {
-		var result:Array<{name:String, type:DataValueType, optional:Bool}> = [];
+	/** A record's fields. `key id` is the field its rows are found by: an array of the record is a
+	 *  table. A field may be followed by annotations: `cost: int @range(0, 3) @unit("energy")`. */
+	function parseDataRecordFields(recordName:String, enums:Map<String, DataEnumDef>, records:Map<String, DataRecordDef>):Array<DataRecordField> {
+		var result:Array<DataRecordField> = [];
 		if (match(TClosed)) return result;
+		var keyName:Null<String> = null;
+		var refsItself = false;
 		while (true) {
 			final isOptional = match(TQuestion);
+			// `key id` (a word after the keyword) is the key; `key: int` is a field called key.
+			var isKey = false;
+			switch (peek()) {
+				case TIdentifier(s) if (isKeyword(s, "key") && tpos + 1 < tokens.length):
+					switch (tokens[tpos + 1].type) {
+						case TIdentifier(_) | TQuotedString(_):
+							if (isOptional) error('a key cannot be optional: every row has one');
+							advance();
+							isKey = true;
+						default:
+					}
+				default:
+			}
 			final fieldName = expectIdentifierOrString();
-			expect(TColon);
-			final fieldType = parseDataType(enums, records);
-			result.push({name: fieldName, type: fieldType, optional: isOptional});
-			if (match(TClosed)) return result;
+			for (f in result)
+				if (f.name == fieldName) error('field "$fieldName" is in record "$recordName" twice');
+			var fieldType:DataValueType = DVTString;
+			if (isKey) {
+				if (keyName != null) error('record "$recordName" has two keys, $keyName and $fieldName: a row is found by one');
+				keyName = fieldName;
+				// `key id` is a word; `key id: string` says so
+				if (match(TColon)) {
+					fieldType = parseDataType(enums, records, recordName);
+					if (!Type.enumEq(fieldType, DVTString)) error('key "$fieldName" of record "$recordName" is a string: an id is a word');
+				}
+			} else {
+				expect(TColon);
+				fieldType = parseDataType(enums, records, recordName);
+			}
+			if (refersTo(fieldType, recordName)) refsItself = true;
+			final field:DataRecordField = {name: fieldName, type: fieldType, optional: isOptional};
+			if (isKey) field.key = true;
+			final meta = parseDataMetaList();
+			if (meta.length > 0) {
+				checkDataMeta('$recordName.$fieldName', fieldType, meta, enums, field);
+				field.meta = meta;
+			}
+			result.push(field);
+			if (match(TClosed)) break;
 			expect(TComma);
 		}
+		if (refsItself && keyName == null)
+			error('record "$recordName" refers to its own rows, so it needs a key to name them by: key id');
+		return result;
 	}
 
-	/** Parse a type keyword: int, float, string, bool, enum name, or a record name.
-	 *  If followed by [], it becomes an array type. */
-	function parseDataType(enums:Map<String, DataEnumDef>, records:Map<String, DataRecordDef>):DataValueType {
+	static function refersTo(type:DataValueType, recordName:String):Bool {
+		return switch (type) {
+			case DVTRef(r): r == recordName;
+			case DVTArray(e): refersTo(e, recordName);
+			default: false;
+		};
+	}
+
+	/** Parse a type keyword: int, float, string, bool, enum name, a record name, or `ref <record>`
+	 *  (the id of a row of a record with a key; `selfName` is the record being defined, whose rows
+	 *  it may name). If followed by [], it becomes an array type. */
+	function parseDataType(enums:Map<String, DataEnumDef>, records:Map<String, DataRecordDef>, ?selfName:String):DataValueType {
 		final typeName = expectIdentifierOrString();
 		var baseType:DataValueType = switch (typeName.toLowerCase()) {
 			case "int": DVTInt;
 			case "float": DVTFloat;
 			case "string": DVTString;
 			case "bool": DVTBool;
+			case "ref" if (!records.exists(typeName) && !enums.exists(typeName)):
+				final target = expectIdentifierOrString();
+				final def = records.get(target);
+				if (def == null && target != selfName)
+					error('ref $target: there is no record "$target"; a record is defined before a ref to it, but for its own rows');
+				if (def != null && def.key == null)
+					error('ref $target: record "$target" has no key, so its rows cannot be named; give it one: key id');
+				DVTRef(target);
 			default:
 				if (enums.exists(typeName)) DVTEnum(typeName)
 				else if (records.exists(typeName)) DVTRecord(typeName)
@@ -6885,6 +6976,164 @@ class MacroManimParser {
 			return DVTArray(baseType);
 		}
 		return baseType;
+	}
+
+	/** Annotations: `@name` or `@name(value, …)`, as many as are written. */
+	function parseDataMetaList():Array<DataMeta> {
+		final result:Array<DataMeta> = [];
+		while (match(TAt)) {
+			final name = expectIdentifierOrString();
+			final args:Array<DataValue> = [];
+			if (match(TOpen)) {
+				while (!match(TClosed)) {
+					eatComma();
+					if (match(TClosed)) break;
+					args.push(parseDataMetaArg());
+				}
+			}
+			result.push({name: name, args: args});
+		}
+		return result;
+	}
+
+	/** A number, a quoted string, or true or false, when one comes next; null, with nothing read, otherwise. */
+	function parseDataScalar():Null<DataValue> {
+		switch (peek()) {
+			case TInteger(n):
+				advance();
+				return DVInt(stringToInt(n));
+			case TFloat(n):
+				advance();
+				return DVFloat(stringToFloat(n));
+			case TMinus:
+				advance();
+				switch (peek()) {
+					case TInteger(n):
+						advance();
+						return DVInt(-stringToInt(n));
+					case TFloat(n):
+						advance();
+						return DVFloat(-stringToFloat(n));
+					default:
+						return error('expected number after minus');
+				}
+			case TQuotedString(s):
+				advance();
+				return DVString(s);
+			case TIdentifier(s) if (isKeyword(s, "true") || isKeyword(s, "false")):
+				return DVBool(parseBool());
+			default:
+				return null;
+		}
+	}
+
+	/** An annotation's argument: a number, a string, true or false, or a bare word (a string). */
+	function parseDataMetaArg():DataValue {
+		final scalar = parseDataScalar();
+		if (scalar != null) return scalar;
+		switch (peek()) {
+			case TIdentifier(s):
+				advance();
+				return DVString(s);
+			default:
+				return error('expected a number, a word or a string in an annotation');
+		}
+	}
+
+	/** The annotations the parser knows are checked where they are written: `@range(min, max)` and
+	 *  `@step(n)` on a number, `@unit(…)` and `@says(…)` with one word or string, and `@default(v)`
+	 *  on an optional field of a record (`field`), of its type, filled in where a row leaves the field
+	 *  out. `type` is null for a pick, which has no number of its own. Any other is kept as it is, for
+	 *  tools to read. */
+	function checkDataMeta(where:String, type:Null<DataValueType>, meta:Array<DataMeta>, enums:Map<String, DataEnumDef>, ?field:DataRecordField):Void {
+		final numeric = type != null && switch (type) {
+			case DVTInt | DVTFloat | DVTArray(DVTInt) | DVTArray(DVTFloat): true;
+			default: false;
+		};
+		for (m in meta) {
+			switch (m.name) {
+				case "range":
+					if (!numeric) error('@range on $where: only a number has a range');
+					final lo = m.args.length == 2 ? dataNumberOf(m.args[0]) : null;
+					final hi = m.args.length == 2 ? dataNumberOf(m.args[1]) : null;
+					if (lo == null || hi == null) error('@range on $where takes two numbers: @range(0, 10)');
+					else if (lo > hi) error('@range on $where: $lo is more than $hi');
+				case "step":
+					if (!numeric) error('@step on $where: only a number has a step');
+					final step = m.args.length == 1 ? dataNumberOf(m.args[0]) : null;
+					if (step == null || step <= 0) error('@step on $where takes one number above 0');
+				case "unit" | "says":
+					final word = m.args.length == 1 ? switch (m.args[0]) {
+						case DVString(_): true;
+						default: false;
+					} : false;
+					if (!word) error('@${m.name} on $where takes one word or string: @${m.name}("…")');
+				case "default":
+					if (field == null) error('@default on $where: a field of the block is written with its value; a default is for an optional field of a record');
+					else {
+						if (!field.optional) error('@default on $where: a field every row has has no default; make it optional: ?${field.name}');
+						if (m.args.length != 1) error('@default on $where takes one value');
+						m.args[0] = dataDefaultOf(where, field.type, m.args[0], enums);
+					}
+				default:
+			}
+		}
+		// A default is what a row that leaves the field out holds: it keeps to the range as a written value does.
+		final fallback = dataMetaOf(meta, "default");
+		final range = dataMetaOf(meta, "range");
+		if (fallback != null && range != null) {
+			final n = dataNumberOf(fallback.args[0]);
+			final lo = dataNumberOf(range.args[0]);
+			final hi = dataNumberOf(range.args[1]);
+			if (n != null && lo != null && hi != null && (n < lo || n > hi))
+				error('@default on $where: $n is outside its @range($lo, $hi)');
+		}
+	}
+
+	/** A default as the field's type has it: a number, a word, a yes-no, or one of an enum's values. */
+	function dataDefaultOf(where:String, type:DataValueType, arg:DataValue, enums:Map<String, DataEnumDef>):DataValue {
+		switch [type, arg] {
+			case [DVTInt, DVInt(_)] | [DVTFloat, DVFloat(_)] | [DVTString, DVString(_)] | [DVTBool, DVBool(_)]:
+				return arg;
+			case [DVTFloat, DVInt(v)]:
+				return DVFloat(v);
+			case [DVTEnum(enumName), DVString(v)]:
+				validateEnumValue(enumName, v, enums);
+				return DVEnumValue(enumName, v);
+			default:
+				return error('@default on $where: a default is a number, a word, true or false, or one of an enum\'s values, of the field\'s type');
+		}
+	}
+
+	static function dataNumberOf(value:Null<DataValue>):Null<Float> {
+		if (value == null) return null;
+		return switch (value) {
+			case DVInt(v): v;
+			case DVFloat(v): v;
+			default: null;
+		};
+	}
+
+	static function dataMetaOf(meta:Null<Array<DataMeta>>, name:String):Null<DataMeta> {
+		if (meta == null) return null;
+		for (m in meta)
+			if (m.name == name) return m;
+		return null;
+	}
+
+	/** A row's id, or a ref's: a word, or a string for an id a word cannot be (one that starts with a digit). */
+	function parseDataId(what:String):String {
+		switch (peek()) {
+			case TIdentifier(s) | TQuotedString(s):
+				advance();
+				return s;
+			default:
+				return error('$what: expected an id (a word, or a string)');
+		}
+	}
+
+	function errorAtLine(line:Int, col:Int, msg:String):Dynamic {
+		throw new InvalidSyntax('$sourceName: $msg', new ParsePosition(sourceName, line, col));
 	}
 
 	/** Parse a data field value, inferring type from value or using explicit type prefix for records/enums. */
@@ -6927,12 +7176,19 @@ class MacroManimParser {
 						final recordValue = parseDataRecordValue(s, recordDef, enums, records);
 						return {name: fieldName, type: DVTRecord(s), value: recordValue};
 					case TBracketOpen:
-						// recordName[] [ ... ]
+						// recordName[] [ ... ] — with a key, a table: each row may carry annotations
 						advance();
 						expect(TBracketClosed);
 						expect(TBracketOpen);
-						final elements = parseDataArrayElements(DVTRecord(s), enums, records);
-						return {name: fieldName, type: DVTArray(DVTRecord(s)), value: DVArray(elements)};
+						final rowMeta:Array<Array<DataMeta>> = [];
+						final elements = parseDataArrayElements(DVTRecord(s), enums, records, rowMeta);
+						final field:DataFieldDef = {name: fieldName, type: DVTArray(DVTRecord(s)), value: DVArray(elements)};
+						for (m in rowMeta)
+							if (m.length > 0) {
+								field.rowMeta = rowMeta;
+								break;
+							}
+						return field;
 					default:
 						// Not a type prefix, restore position
 						tpos = saved;
@@ -6942,28 +7198,12 @@ class MacroManimParser {
 		}
 
 		// Infer type from value
+		final scalar = parseDataScalar();
+		if (scalar != null) {
+			final value:DataValue = scalar;
+			return {name: fieldName, type: inferDataValueType(value), value: value};
+		}
 		switch (peek()) {
-			case TInteger(n):
-				advance();
-				return {name: fieldName, type: DVTInt, value: DVInt(stringToInt(n))};
-			case TMinus:
-				advance();
-				switch (peek()) {
-					case TInteger(n):
-						advance();
-						return {name: fieldName, type: DVTInt, value: DVInt(-stringToInt(n))};
-					case TFloat(n):
-						advance();
-						return {name: fieldName, type: DVTFloat, value: DVFloat(-stringToFloat(n))};
-					default:
-						return error('expected number after minus');
-				}
-			case TFloat(n):
-				advance();
-				return {name: fieldName, type: DVTFloat, value: DVFloat(stringToFloat(n))};
-			case TQuotedString(s):
-				advance();
-				return {name: fieldName, type: DVTString, value: DVString(s)};
 			case TBracketOpen:
 				advance();
 				// Array literal — infer element type from first element
@@ -6984,24 +7224,49 @@ class MacroManimParser {
 			final name = expectIdentifierOrString();
 			expect(TColon);
 			// Find expected type from record definition
-			var expectedType:Null<DataValueType> = null;
+			var recordField:Null<DataRecordField> = null;
 			for (rf in recordDef.fields) {
 				if (rf.name == name) {
-					expectedType = rf.type;
+					recordField = rf;
 					break;
 				}
 			}
-			if (expectedType == null) { error('unknown field "$name" in record "$recordName"'); return DVInt(0); }
-			final value = parseDataValueOfType(expectedType, enums, records);
+			if (recordField == null) { error('unknown field "$name" in record "$recordName"'); return DVInt(0); }
+			final at = peekToken();
+			final value = recordField.key == true ? DVString(parseDataId('key "$name" of record "$recordName"')) : parseDataValueOfType(recordField.type, enums, records);
 			if (fieldValues.exists(name)) error('duplicate field "$name" in record');
+			checkDataRange(recordField.meta, name, value, at, recordName);
 			fieldValues.set(name, value);
 		}
-		// Validate all required fields present (optional fields can be omitted)
+		// Validate all required fields present (optional fields can be omitted, and take their @default)
 		for (rf in recordDef.fields) {
-			if (!fieldValues.exists(rf.name) && !rf.optional)
-				error('missing required field "${rf.name}" in record "$recordName"');
+			if (fieldValues.exists(rf.name)) continue;
+			if (!rf.optional) error('missing required field "${rf.name}" in record "$recordName"');
+			final fallback = dataMetaOf(rf.meta, "default");
+			if (fallback != null && fallback.args.length == 1) fieldValues.set(rf.name, fallback.args[0]);
 		}
 		return DVRecord(recordName, fieldValues);
+	}
+
+	/** A number outside the `@range` its field says is an error where it is written: in a row of
+	 *  `inRecord`, or as a field of the block when that is null. */
+	function checkDataRange(meta:Null<Array<DataMeta>>, name:String, value:DataValue, at:Token, ?inRecord:String):Void {
+		final range = dataMetaOf(meta, "range");
+		if (range == null || range.args.length != 2) return;
+		final lo = dataNumberOf(range.args[0]);
+		final hi = dataNumberOf(range.args[1]);
+		if (lo == null || hi == null) return;
+		final values:Array<DataValue> = switch (value) {
+			case DVArray(elements): elements;
+			default: [value];
+		};
+		for (v in values) {
+			final n = dataNumberOf(v);
+			if (n != null && (n < lo || n > hi)) {
+				final inWhat = inRecord != null ? " in a " + inRecord : "";
+				errorAtLine(at.line, at.col, '$name is $n$inWhat, outside its @range($lo, $hi)');
+			}
+		}
 	}
 
 	function parseDataValueOfType(type:DataValueType, enums:Map<String, DataEnumDef>, records:Map<String, DataRecordDef>):DataValue {
@@ -7026,18 +7291,219 @@ class MacroManimParser {
 			case DVTArray(elemType):
 				expect(TBracketOpen);
 				DVArray(parseDataArrayElements(elemType, enums, records));
+			case DVTRef(recordName):
+				// Checked when the whole block is read: the row may come later in the file.
+				final at = peekToken();
+				final id = parseDataId('ref $recordName');
+				dataRefs.push({record: recordName, id: id, line: at.line, col: at.col});
+				DVRef(recordName, id);
 		};
 	}
 
+	/** An array's elements. `rowMeta`, for an array of records, takes each row's annotations
+	 *  (`@by(claude) { … }`); a record with a key makes the array a table, whose ids are unique. */
 	function parseDataArrayElements(elemType:DataValueType, enums:Map<String, DataEnumDef>,
-			records:Map<String, DataRecordDef>):Array<DataValue> {
+			records:Map<String, DataRecordDef>, ?rowMeta:Array<Array<DataMeta>>):Array<DataValue> {
 		var result:Array<DataValue> = [];
+		final keyed:Null<DataRecordDef> = switch (elemType) {
+			case DVTRecord(r):
+				final def = records.get(r);
+				def != null && def.key != null ? def : null;
+			default: null;
+		};
+		final seen:Map<String, Bool> = new Map();
 		while (!match(TBracketClosed)) {
 			eatComma();
 			if (match(TBracketClosed)) break;
-			result.push(parseDataValueOfType(elemType, enums, records));
+			final at = peekToken();
+			final meta = parseDataMetaList();
+			if (meta.length > 0 && rowMeta == null)
+				errorAtLine(at.line, at.col, 'annotations go before a row of a table of records: @by(claude) { … }');
+			final rowAt = peekToken();
+			final value = parseDataValueOfType(elemType, enums, records);
+			if (rowMeta != null) rowMeta.push(meta);
+			if (keyed != null) {
+				final id = DataSchema.rowId(value, keyed);
+				if (id != null) {
+					if (seen.exists(id)) errorAtLine(rowAt.line, rowAt.col, '"$id" is the id of two rows of ${keyed.name}');
+					seen.set(id, true);
+				}
+			}
+			result.push(value);
 		}
 		return result;
+	}
+
+	/** Every ref names a row of a table of its record in this block, wherever in the block the row
+	 *  is, and one row: an id that two tables of the record both have would leave the ref naming either. */
+	function checkDataRefs(data:DataDef):Void {
+		if (dataRefs.length == 0) return;
+		// Each record's ids, and the tables holding a row of each
+		final holders:Map<String, Map<String, Array<String>>> = new Map();
+		for (field in data.fields) {
+			final def = DataSchema.tableRecord(data, field);
+			if (def == null) continue;
+			var ids = holders.get(def.name);
+			if (ids == null) {
+				ids = new Map();
+				holders.set(def.name, ids);
+			}
+			for (row in DataSchema.rowsOf(field)) {
+				final id = DataSchema.rowId(row, def);
+				if (id == null) continue;
+				final tables = ids.get(id);
+				if (tables == null) ids.set(id, [field.name]);
+				else tables.push(field.name);
+			}
+		}
+		for (ref in dataRefs) {
+			final ids = holders.get(ref.record);
+			final tables = ids == null ? null : ids.get(ref.id);
+			if (ids == null)
+				errorAtLine(ref.line, ref.col, 'ref ${ref.record} "${ref.id}": this data block has no table of ${ref.record} rows');
+			else if (tables == null)
+				errorAtLine(ref.line, ref.col, 'ref ${ref.record} "${ref.id}": no ${ref.record} row has that id');
+			else if (tables.length > 1)
+				errorAtLine(ref.line, ref.col,
+					'ref ${ref.record} "${ref.id}": ${tables.join(" and ")} both have a row of that id, so the ref could name either; give one of them another id');
+		}
+		dataRefs = [];
+	}
+
+	/** `pick(` starts a pick; a record or an enum named pick is followed by `{`, `[` or a value. */
+	function isDataPickAhead():Bool {
+		return switch (peek()) {
+			case TIdentifier(s) if (isKeyword(s, "pick")):
+				tpos + 1 < tokens.length && Type.enumEq(tokens[tpos + 1].type, TOpen);
+			default: false;
+		};
+	}
+
+	/** `pick(all, weight: weight, draws: 3, repeats: no)` or `pick(loot, chance: chance, otherwise: nothing)`:
+	 *  how a table is drawn from. `weight: tier.weight` reads the weight of the row a ref field links to. */
+	function parseDataPick(name:String, line:Int):DataPickDef {
+		advance(); // pick
+		expect(TOpen);
+		final over = expectIdentifierOrString();
+		var by:Null<String> = null;
+		var through:Null<String> = null;
+		var chance = false;
+		var draws = 1;
+		var repeats = false;
+		var otherwise:Null<String> = null;
+		while (match(TComma)) {
+			final option = expectIdentifierOrString();
+			expect(TColon);
+			switch (option.toLowerCase()) {
+				case "weight" | "chance":
+					if (by != null) error('pick $name goes by one column: weight: or chance:, once');
+					chance = option.toLowerCase() == "chance";
+					final column = expectIdentifierOrString();
+					if (match(TDot)) {
+						through = column;
+						by = expectIdentifierOrString();
+					} else
+						by = column;
+				case "draws":
+					draws = parseInteger();
+					if (draws < 1) error('pick $name: draws is how many rows one draw takes, 1 or more');
+				case "repeats":
+					repeats = parseBool();
+				case "otherwise":
+					otherwise = parseDataId('pick $name, otherwise');
+				default:
+					error('pick $name: unknown option "$option"; a pick takes weight: or chance:, draws:, repeats: and otherwise:');
+			}
+		}
+		expect(TClosed);
+		final column:String = by == null ? error('pick $name: say what it goes by, weight: <column> or chance: <column>') : by;
+		if (otherwise != null && !chance) error('pick $name: otherwise is the row that takes what the chances leave, so it goes with chance:');
+		final pick:DataPickDef = {name: name, over: over, by: column, chance: chance, draws: draws, repeats: repeats, line: line};
+		if (through != null) pick.through = through;
+		if (otherwise != null) pick.otherwise = otherwise;
+		return pick;
+	}
+
+	/** A pick draws from a table of this block, by a number of its rows (or of the rows they link
+	 *  to), and chances add up to 1 at most: what they leave is the otherwise row's, or nothing. */
+	function checkDataPick(pick:DataPickDef, data:DataDef):Void {
+		final fail = (msg:String) -> errorAtLine(pick.line, 1, 'pick ${pick.name}: $msg');
+		final table = DataSchema.fieldNamed(data, pick.over);
+		if (table == null) {
+			fail('there is no field "${pick.over}" to draw from');
+			return;
+		}
+		final def = DataSchema.tableRecord(data, table);
+		if (def == null) {
+			fail('${pick.over} is not a table: a pick draws from an array of a record with a key');
+			return;
+		}
+		// Whose rows hold the number: the table's own, or those a ref field links them to, in any table
+		// of their record (a ref names a row of one of them).
+		var holder:DataRecordDef = def;
+		final linkedRows:Map<String, DataValue> = new Map();
+		final through = pick.through;
+		if (through != null) {
+			final target = DataSchema.throughRecord(data, pick);
+			final targetDef = target == null ? null : data.records.get(target);
+			if (target == null || targetDef == null) {
+				fail('${def.name} has no ref field "$through" to read ${pick.by} through');
+				return;
+			}
+			holder = targetDef;
+			final tables = DataSchema.tablesOf(data, target);
+			if (tables.length == 0) {
+				fail('this data block has no table of $target rows for $through to link to');
+				return;
+			}
+			for (linked in tables)
+				for (row in DataSchema.rowsOf(linked)) {
+					final id = DataSchema.rowId(row, targetDef);
+					if (id != null) linkedRows.set(id, row);
+				}
+		}
+		var column:Null<DataRecordField> = null;
+		for (f in holder.fields)
+			if (f.name == pick.by) column = f;
+		if (column == null) {
+			fail('${holder.name} has no field "${pick.by}"');
+			return;
+		}
+		switch (column.type) {
+			case DVTInt | DVTFloat:
+			default:
+				fail('${holder.name}.${pick.by} is not a number, so it cannot be a ${pick.chance ? "chance" : "weight"}');
+		}
+		final rows = DataSchema.rowsOf(table);
+		final otherwise = pick.otherwise;
+		if (otherwise != null) {
+			var found = false;
+			for (row in rows)
+				if (DataSchema.rowId(row, def) == otherwise) found = true;
+			if (!found) fail('otherwise "$otherwise" is not a row of ${pick.over}');
+		}
+		if (!pick.chance) return;
+		// The chances besides otherwise add up to 1 at most.
+		var sum = 0.0;
+		for (row in rows) {
+			if (otherwise != null && DataSchema.rowId(row, def) == otherwise) continue;
+			var source:Null<DataValue> = row;
+			if (through != null)
+				source = switch (row) {
+					case DVRecord(_, f):
+						switch (f.get(through)) {
+							case DVRef(_, id): linkedRows.get(id);
+							default: null;
+						}
+					default: null;
+				};
+			final share = switch (source) {
+				case DVRecord(_, f): dataNumberOf(f.get(pick.by));
+				default: null;
+			};
+			if (share != null && share > 0) sum += share;
+		}
+		if (sum > 1 + 1e-9) fail('the chances add up to ${Math.round(sum * 1000) / 1000}, more than 1');
 	}
 
 	function validateEnumValue(enumName:String, value:String, enums:Map<String, DataEnumDef>):Void {
@@ -7052,33 +7518,9 @@ class MacroManimParser {
 		while (!match(TBracketClosed)) {
 			eatComma();
 			if (match(TBracketClosed)) break;
-			switch (peek()) {
-				case TInteger(n):
-					advance();
-					result.push(DVInt(stringToInt(n)));
-				case TFloat(n):
-					advance();
-					result.push(DVFloat(stringToFloat(n)));
-				case TQuotedString(s):
-					advance();
-					result.push(DVString(s));
-				case TMinus:
-					advance();
-					switch (peek()) {
-						case TInteger(n):
-							advance();
-							result.push(DVInt(-stringToInt(n)));
-						case TFloat(n):
-							advance();
-							result.push(DVFloat(-stringToFloat(n)));
-						default:
-							error('expected number after minus');
-					}
-				case TIdentifier(s) if (isKeyword(s, "true") || isKeyword(s, "false")):
-					result.push(DVBool(parseBool()));
-				default:
-					error('expected value in array literal');
-			}
+			final scalar = parseDataScalar();
+			if (scalar == null) error('expected value in array literal');
+			else result.push(scalar);
 		}
 		return result;
 	}
@@ -7092,6 +7534,7 @@ class MacroManimParser {
 			case DVEnumValue(enumName, _): DVTEnum(enumName);
 			case DVRecord(name, _): DVTRecord(name);
 			case DVArray(elements): DVTArray(if (elements.length > 0) inferDataValueType(elements[0]) else DVTInt);
+			case DVRef(recordName, _): DVTRef(recordName);
 		};
 	}
 

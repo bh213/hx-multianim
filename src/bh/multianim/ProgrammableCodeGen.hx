@@ -28,6 +28,7 @@ import bh.multianim.MultiAnimParser.DataValue;
 import bh.multianim.MultiAnimParser.DataValueType;
 import bh.multianim.MultiAnimParser.DataRecordDef;
 import bh.multianim.MultiAnimParser.DataFieldDef;
+import bh.multianim.data.DataSchema;
 import bh.multianim.MultiAnimParser.SwitchArm;
 import bh.multianim.CoordinateSystems;
 import bh.multianim.MacroCompatTypes.MacroFlowLayout;
@@ -170,6 +171,9 @@ class ProgrammableCodeGen {
 
 	// Type deduplication cache: signature → fully qualified type name (for mergeTypes)
 	static var mergedTypeCache:Map<String, {pack:Array<String>, name:String}> = new Map();
+
+	// The ids classes of keyed data records made so far: type path → constant name → id
+	static var dataIdsCache:Map<String, Map<String, String>> = new Map();
 
 	// Track generated style/image setters to avoid duplicates across text elements
 	static var generatedStyleSetters:Map<String, Bool> = new Map();
@@ -387,7 +391,7 @@ class ProgrammableCodeGen {
 					switch (node.type) {
 						case DATA(dataDef):
 							final dataClassName = parentName + "_" + toPascalCase(field.name);
-							final dataFields = generateDataClass(dataDef, dataName, dataClassName, typePack, mergeTypes, pos);
+							final dataFields = generateDataClass(dataDef, dataName, dataClassName, typePack, mergeTypes, pos, manimPath);
 
 							// Define the data class
 							final dataTd:TypeDefinition = {
@@ -9439,14 +9443,17 @@ class ProgrammableCodeGen {
 
 	/** Generate fields for a data class from a DataDef.
 	 *  Enum types become enum abstracts over Int, record types become exposed classes,
-	 *  scalar/array fields become public final fields.
+	 *  scalar/array fields become public final fields. An array of a record with a key is a
+	 *  `bh.multianim.data.DataTable` (rows found by id), with a class of its ids as constants
+	 *  (`CardsCardId.Agree`), so code naming a row the file does not have does not compile; a pick is
+	 *  a `bh.multianim.data.DataPick`, made in the constructor once the tables are there.
 	 *  @param dataName The #name from the manim file (e.g., "gameData") — used for exposed type naming
 	 *  @param className The internal data class name (e.g., "MultiProgrammable_GameData")
 	 *  @param typePack Package for exposed record/enum types
 	 *  @param mergeTypes Whether to deduplicate identical record/enum types
 	 */
 	static function generateDataClass(dataDef:DataDef, dataName:String, className:String, typePack:Array<String>,
-			mergeTypes:Bool, pos:Position):Array<Field> {
+			mergeTypes:Bool, pos:Position, ?manimPath:String):Array<Field> {
 		var dataFields:Array<Field> = [];
 
 		// Map from enum name → exposed type {pack, name}
@@ -9572,9 +9579,36 @@ class ProgrammableCodeGen {
 			}
 		}
 
+		// A class of each keyed record's ids, as constants: CardsCardId.Agree is "agree".
+		for (recordName => recordDef in dataDef.records) {
+			if (recordDef.key == null) continue;
+			generateDataIds(dataDef, dataName, recordName, typePack, pos);
+		}
+
 		// Generate public final fields for each data entry
 		for (field in dataDef.fields) {
 			final initExpr = dataValueToExpr(field.value, enumTypeMap, recordTypeMap, dataDef.enums, dataDef.records, pos);
+			final record = DataSchema.tableRecord(dataDef, field);
+			final key = record != null ? record.key : null;
+			if (record != null && key != null) {
+				// A table: its rows found by id, and what tools read of it (DataRegistry)
+				final rowCT = dataTypeToComplexType(DVTRecord(record.name), enumTypeMap, recordTypeMap);
+				final info = DataSchema.tableInfo(dataDef, field, record, manimPath, dataName);
+				final tableName = '$dataName.${field.name}';
+				final tableCT:ComplexType = TPath({pack: ["bh", "multianim", "data"], name: "DataTable", params: [TPType(rowCT)]});
+				final newTable:Expr = {
+					expr: ENew({pack: ["bh", "multianim", "data"], name: "DataTable", params: [TPType(rowCT)]},
+						[macro $v{tableName}, macro $v{key}, initExpr, dataInfoToExpr(info, pos)]),
+					pos: pos,
+				};
+				dataFields.push({
+					name: field.name,
+					kind: FVar(tableCT, newTable),
+					access: [APublic, AFinal],
+					pos: pos,
+				});
+				continue;
+			}
 			dataFields.push({
 				name: field.name,
 				kind: FVar(dataTypeToComplexType(field.type, enumTypeMap, recordTypeMap), initExpr),
@@ -9583,15 +9617,142 @@ class ProgrammableCodeGen {
 			});
 		}
 
-		// Empty constructor (fields initialized inline)
+		// A pick draws from a table made above: made in the constructor, once the tables are there.
+		final ctorExprs:Array<Expr> = [];
+		if (dataDef.picks != null) {
+			for (pick in dataDef.picks) {
+				final overRecord = DataSchema.overRecord(dataDef, pick);
+				if (overRecord == null) Context.fatalError('data "$dataName": pick ${pick.name} draws from ${pick.over}, which is not a table', pos);
+				final rowCT = dataTypeToComplexType(DVTRecord(overRecord.name), enumTypeMap, recordTypeMap);
+				final pickExprs:Array<Expr> = [];
+				final through = pick.through;
+				// A row's weight or chance: its own cell, or the cell of the row its ref field links to,
+				// in whichever table of that record holds it (the tables are gathered once, for the pick).
+				final shareBody:Expr = if (through == null) {
+					final cell:Expr = {expr: EField(macro row, pick.by), pos: pos};
+					macro return bh.multianim.data.DataPick.shareValue($cell);
+				} else {
+					final target = DataSchema.throughRecord(dataDef, pick);
+					final tables = target == null ? [] : DataSchema.tablesOf(dataDef, target);
+					if (tables.length == 0) Context.fatalError('data "$dataName": pick ${pick.name} reads ${pick.by} through ${through}, which links to no table', pos);
+					final tableExprs:Array<Expr> = [for (t in tables) ({expr: EField(macro this, t.name), pos: pos} : Expr)];
+					pickExprs.push(macro final linkedTables = [$a{tableExprs}]);
+					final idExpr:Expr = {expr: EField(macro row, through), pos: pos};
+					final cell:Expr = {expr: EField(macro linked, pick.by), pos: pos};
+					macro {
+						final linked = bh.multianim.data.DataTable.rowIn(linkedTables, $idExpr);
+						return linked == null ? 0.0 : bh.multianim.data.DataPick.shareValue($cell);
+					};
+				};
+				final shareFn:Expr = {
+					expr: EFunction(FAnonymous, {args: [{name: "row", type: rowCT}], ret: macro :Float, expr: shareBody}),
+					pos: pos,
+				};
+				final pickName = '$dataName.${pick.name}';
+				final pickCT:ComplexType = TPath({pack: ["bh", "multianim", "data"], name: "DataPick", params: [TPType(rowCT)]});
+				dataFields.push({
+					name: pick.name,
+					kind: FVar(pickCT, null),
+					access: [APublic, AFinal],
+					pos: pos,
+				});
+				final overExpr:Expr = {expr: EField(macro this, pick.over), pos: pos};
+				final pickField:Expr = {expr: EField(macro this, pick.name), pos: pos};
+				final newPick:Expr = {
+					expr: ENew({pack: ["bh", "multianim", "data"], name: "DataPick", params: [TPType(rowCT)]},
+						[macro $v{pickName}, overExpr, shareFn, dataInfoToExpr(DataSchema.pickInfo(pick, manimPath, dataName), pos)]),
+					pos: pos,
+				};
+				pickExprs.push(macro $pickField = $newPick);
+				ctorExprs.push(macro $b{pickExprs});
+			}
+		}
+
+		// Constructor: the fields are initialized inline; the picks are made here.
 		dataFields.push({
 			name: "new",
-			kind: FFun({args: [], ret: null, expr: macro {}}),
+			kind: FFun({args: [], ret: null, expr: macro $b{ctorExprs}}),
 			access: [APublic],
 			pos: pos,
 		});
 
 		return dataFields;
+	}
+
+	/** What a table or a pick knows of itself (`DataTableInfo`, `DataPickInfo`: plain objects, arrays,
+	 *  strings, numbers) as an expression. Annotation values (under `meta` and `rowMeta`) are Dynamic,
+	 *  where an array of mixed values (`@note(2, "by hand")`) compiles only typed `Array<Dynamic>`. */
+	static function dataInfoToExpr(value:Dynamic, pos:Position, inMeta:Bool = false):Expr {
+		if (value == null) return macro null;
+		if (Std.isOfType(value, Array)) {
+			final items:Array<Dynamic> = value;
+			final decl:Expr = {expr: EArrayDecl([for (item in items) dataInfoToExpr(item, pos, inMeta)]), pos: pos};
+			return inMeta ? macro ($decl : Array<Dynamic>) : decl;
+		}
+		if (Std.isOfType(value, String) || Std.isOfType(value, Bool) || Std.isOfType(value, Float) || Std.isOfType(value, Int))
+			return Context.makeExpr(value, pos);
+		final fields:Array<ObjectField> = [];
+		for (name in Reflect.fields(value))
+			fields.push({field: name, quotes: Quoted, expr: dataInfoToExpr(Reflect.field(value, name), pos, inMeta || name == "meta" || name == "rowMeta")});
+		return {expr: EObjectDecl(fields), pos: pos};
+	}
+
+	/** A class of a keyed record's ids as String constants, from every table of it in the block:
+	 *  `CardsCardId.Agree` is "agree". A name the file does not have does not compile. Another
+	 *  `@:data` of a block of the same name in the same package shares the class when its ids are the
+	 *  same (the same block, read again); with other ids it is an error, not a class missing them. */
+	static function generateDataIds(dataDef:DataDef, dataName:String, recordName:String, typePack:Array<String>, pos:Position):Void {
+		final recordDef = dataDef.records.get(recordName);
+		if (recordDef == null || recordDef.key == null) return;
+		final exposedName = toPascalCase(dataName) + toPascalCase(recordName) + "Id";
+		final typePath = typePack.concat([exposedName]).join(".");
+		final names:Map<String, String> = new Map();
+		final idFields:Array<Field> = [];
+		for (table in DataSchema.tablesOf(dataDef, recordName))
+			for (row in DataSchema.rowsOf(table)) {
+				final id = DataSchema.rowId(row, recordDef);
+				if (id == null) continue;
+				// A quoted id may hold any character: only letters and digits make the name ("a b" is AB)
+				var name = toPascalCase(~/[^A-Za-z0-9]+/g.replace(id, "_"));
+				if (name.length == 0 || (name.charCodeAt(0) >= "0".code && name.charCodeAt(0) <= "9".code)) name = "Id" + name;
+				final taken = names.get(name);
+				if (taken == id) continue;
+				if (taken != null)
+					Context.fatalError('data "$dataName": ids "$taken" and "$id" of $recordName are both $exposedName.$name', pos);
+				names.set(name, id);
+				idFields.push({
+					name: name,
+					kind: FVar(macro :String, macro $v{id}),
+					access: [APublic, AStatic, AInline],
+					pos: pos,
+				});
+			}
+		final made = dataIdsCache.get(typePath);
+		if (made != null) {
+			final differ = [for (name => id in names) if (made.get(name) != id) id];
+			for (name => id in made)
+				if (!names.exists(name)) differ.push(id);
+			if (differ.length > 0) {
+				differ.sort(Reflect.compare);
+				Context.fatalError('data "$dataName": $typePath is made already, by another @:data of a block "$dataName" in this package, '
+					+ 'and its $recordName ids are not these (${differ.join(", ")}); read one of the blocks into another package', pos);
+			}
+			return;
+		}
+		try {
+			Context.getType(typePath);
+			Context.fatalError('Type "$exposedName" already exists (collision with the ids of data record "$recordName")', pos);
+		} catch (_:Dynamic) {
+			// Expected — type doesn't exist yet
+		}
+		dataIdsCache.set(typePath, names);
+		Context.defineType({
+			pack: typePack,
+			name: exposedName,
+			pos: pos,
+			kind: TDClass(null, null, false, true, false),
+			fields: idFields,
+		});
 	}
 
 	/** Build a signature string for a record definition (for mergeTypes dedup) */
@@ -9618,6 +9779,7 @@ class ProgrammableCodeGen {
 			case DVTEnum(enumName): 'Enum($enumName)';
 			case DVTRecord(recordName): 'Record($recordName)';
 			case DVTArray(elemType): 'Array<${dataValueTypeSignature(elemType)}>';
+			case DVTRef(recordName): 'Ref($recordName)';
 		};
 	}
 
@@ -9640,6 +9802,7 @@ class ProgrammableCodeGen {
 			case DVTArray(elemType):
 				final elemCT = dataTypeToComplexType(elemType, enumTypeMap, recordTypeMap);
 				TPath({pack: [], name: "Array", params: [TPType(elemCT)]});
+			case DVTRef(_): macro :String;
 		};
 	}
 
@@ -9651,6 +9814,7 @@ class ProgrammableCodeGen {
 			case DVInt(v): {expr: EConst(CInt('$v')), pos: pos};
 			case DVFloat(v): {expr: EConst(CFloat('$v')), pos: pos};
 			case DVString(v): {expr: EConst(CString(v)), pos: pos};
+			case DVRef(_, id): {expr: EConst(CString(id)), pos: pos};
 			case DVBool(v): {expr: EConst(CIdent(v ? "true" : "false")), pos: pos};
 			case DVEnumValue(enumName, value):
 				final info = enumTypeMap.get(enumName);

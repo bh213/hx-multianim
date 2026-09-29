@@ -30,6 +30,9 @@ import bh.base.PixelLine;
 import h2d.Object;
 import bh.multianim.MultiAnimParser;
 import bh.multianim.MultiAnimParser.SwitchArm;
+import bh.multianim.data.DataPick;
+import bh.multianim.data.DataSchema;
+import bh.multianim.data.DataTable;
 import bh.multianim.BuilderError;
 import bh.base.ResourceLoader;
 import bh.base.TweenManager;
@@ -7683,44 +7686,53 @@ class MultiAnimBuilder {
 		return resolved;
 	}
 
-	/** Get a data block by name, returning its fields as a Dynamic object. */
+	/** Get a data block by name, returning its fields as a Dynamic object. A field of records with a
+	 *  key is a DataTable (rows found by id), a pick a DataPick over one; each lists itself in
+	 *  DataRegistry with this file and its line, which the DevBridge's data_list reads. */
 	public function getData(name:String):Dynamic {
 		var node = multiParserResult.nodes.get(name);
 		if (node == null)
 			throw builderError('could not get data node #${name}');
 		switch node.type {
 			case DATA(dataDef):
-				return resolveDataDef(dataDef);
+				return resolveDataDef(dataDef, name);
 			default:
 				throw builderErrorAt(node, '$name has to be data');
 		}
 	}
 
-	private function resolveDataDef(dataDef:DataDef):Dynamic {
+	private function resolveDataDef(dataDef:DataDef, blockName:String):Dynamic {
 		var result:Dynamic = {};
 		for (field in dataDef.fields) {
-			Reflect.setField(result, field.name, resolveDataValue(field.value));
+			final record = DataSchema.tableRecord(dataDef, field);
+			final key = record != null ? record.key : null;
+			if (record == null || key == null) {
+				Reflect.setField(result, field.name, DataSchema.plainValue(field.value));
+				continue;
+			}
+			final rows:Array<Dynamic> = DataSchema.plainValue(field.value);
+			Reflect.setField(result, field.name,
+				new DataTable<Dynamic>('$blockName.${field.name}', key, rows, DataSchema.tableInfo(dataDef, field, record, sourceName, blockName)));
+		}
+		if (dataDef.picks != null) {
+			for (pick in dataDef.picks) {
+				final table:DataTable<Dynamic> = Reflect.field(result, pick.over);
+				// Through a ref field, the number is the linked row's, in whichever table of its record holds it.
+				final through = pick.through;
+				final target = DataSchema.throughRecord(dataDef, pick);
+				final linked:Array<DataTable<Dynamic>> = target == null ? [] : [
+					for (f in DataSchema.tablesOf(dataDef, target)) Reflect.field(result, f.name)
+				];
+				final by = pick.by;
+				final share = (row:Dynamic) -> {
+					final holder:Dynamic = through == null ? row : DataTable.rowIn(linked, Reflect.field(row, through));
+					return holder == null ? 0.0 : DataPick.shareValue(Reflect.field(holder, by));
+				};
+				Reflect.setField(result, pick.name,
+					new DataPick<Dynamic>('$blockName.${pick.name}', table, share, DataSchema.pickInfo(pick, sourceName, blockName)));
+			}
 		}
 		return result;
-	}
-
-	private function resolveDataValue(value:DataValue):Dynamic {
-		return switch (value) {
-			case DVInt(v): v;
-			case DVFloat(v): v;
-			case DVString(v): v;
-			case DVBool(v): v;
-			case DVArray(elements):
-				var arr:Array<Dynamic> = [for (e in elements) resolveDataValue(e)];
-				arr;
-			case DVRecord(_, fields):
-				var obj:Dynamic = {};
-				for (key => val in fields) {
-					Reflect.setField(obj, key, resolveDataValue(val));
-				}
-				obj;
-			case DVEnumValue(_, value): value;
-		};
 	}
 
 	/** Create an AnimatedPath from a named definition.

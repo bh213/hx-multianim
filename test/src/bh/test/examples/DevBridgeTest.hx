@@ -56,6 +56,55 @@ class DevBridgeTest extends BuilderTestBase {
 		return screen;
 	}
 
+	// ==================== The game's data ====================
+
+	@Test
+	public function testDataOpsListGetAndPick():Void {
+		var bridge = createTestBridge();
+		bh.multianim.data.DataRegistry.clear();
+		final builder = builderFromSource("
+			#shop data {
+				#item record(key id, price: int @unit(\"gold\"), weight: int)
+				items: item[] [ { id: sword, price: 10, weight: 3 } { id: shield, price: 8, weight: 1 } ]
+				offer: pick(items, weight: weight)
+			}
+		");
+		builder.getData("shop");
+		// The library's own queries: listed apart from the game's, and reached through game_op.
+		var ops:Dynamic = bridge.dispatch("list_game_ops", {});
+		Assert.equals(0, (ops.queries : Array<Dynamic>).length);
+		Assert.same(["data_get", "data_list", "data_pick"], sorted([for (q in (ops.builtIn : Array<Dynamic>)) (q.op : String)]));
+		var listed:Dynamic = bridge.dispatch("game_op", {op: "data_list"});
+		final list:Array<Dynamic> = listed.result;
+		Assert.equals(2, list.length);
+		Assert.equals("shop.items", list[0].name);
+		Assert.equals("table", list[0].kind);
+		Assert.notNull(list[0].source.manim);
+		var got:Dynamic = bridge.dispatch("game_op", {op: "data_get", params: {name: "shop.items"}});
+		Assert.equals("gold", (got.result.columns : Array<Dynamic>)[1].unit);
+		Assert.equals(8, (got.result.rows : Array<Dynamic>)[1].price);
+		var rolled:Dynamic = bridge.dispatch("game_op", {op: "data_pick", params: {name: "shop.offer", seed: 7, n: 2}});
+		Assert.equals(2, (rolled.result.picked : Array<Dynamic>).length);
+		var threw = false;
+		try {
+			bridge.dispatch("game_op", {op: "data_get", params: {name: "shop.nothing"}});
+		} catch (e:Dynamic) {
+			threw = true;
+			Assert.isTrue(Std.string(e).indexOf("data_list") >= 0, 'the refusal says where to look, got: $e');
+		}
+		Assert.isTrue(threw, "an unknown name is refused");
+		// And by name, as a method.
+		var direct:Dynamic = bridge.dispatch("data_list", {});
+		Assert.equals(2, (direct : Array<Dynamic>).length);
+		bh.multianim.data.DataRegistry.clear();
+	}
+
+	static function sorted(items:Array<String>):Array<String> {
+		final copy = items.copy();
+		copy.sort((a, b) -> a < b ? -1 : a > b ? 1 : 0);
+		return copy;
+	}
+
 	// ==================== Dispatch Routing ====================
 
 	@Test
