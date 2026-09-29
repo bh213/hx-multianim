@@ -562,7 +562,7 @@ paths {
 var ap = builder.createProjectilePath("projectile", towerPos, targetPos);
 ```
 
-When start and end are the same point, the path collapses onto it: every rate returns that point, and the animated path still runs its duration there with its scale/alpha/rotation curves (a `distance`-mode path ends on the first update). A draggable released where it was picked up uses this for an in-place return animation.
+When start and end are the same point, the path collapses onto it: every rate returns that point, and the animated path still runs its duration there with its scale/alpha/rotation curves (a `distance`-mode path ends on the first update). A draggable released where it was picked up uses this for an in-place return animation when `animApplyScale`/`Alpha`/`Rotation` is set; without them, and in the grid and card hand, a move of almost no distance finishes at once instead.
 
 ---
 

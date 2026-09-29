@@ -26,10 +26,10 @@ retired. Done to date: all `P0-*`, all `BLD-*`, `CG-1..12`/`14..20`/`22` (+ most
 `TST-1..2`, `PERF-9`, `HR-1`, `LSP-1..4`, `API-8` (2026-09-25, `Tween.generation`) (PRS-8 resolved as "allow enclosing finals in slot
 bodies"; LSP-2 resolved with a build.js rebuild step + CI drift gate + LSP tests in CI).
 
-**Whole-code review 2026-09-26:** 149 verified findings (46 P1) live in
+**Whole-code review 2026-09-26:** 149 verified findings (46 P1), plus items filed while fixing them, live in
 `todo/review-2026-09-26-whole-code.md`, with an agent-impact summary and a list of the audit items
-above that it confirms or extends. Its IDs continue these sequences (`UI-16..64`, `BLD-13..32`,
-`CG-25..40`, `PRS-9..25`, `VFX-18..36`, `HR-2..6`, `LSP-6..7`, `ERR-9..10`, `API-10..11`, `DEC-9`,
+above that it confirms or extends. Its IDs continue these sequences (`UI-16..74`, `BLD-13..33`,
+`CG-25..40`, `PRS-9..25`, `VFX-18..37`, `HR-2..6`, `LSP-6..7`, `ERR-9..10`, `API-10..11`, `DEC-9`,
 `DOC-26`, `PERF-15..18`, `TST-9`) plus a new `DEV-1..10` prefix for DevBridge/MCP — check both files
 before assigning a new ID.
 
@@ -87,8 +87,10 @@ before assigning a new ID.
   but unbatched — the root form's entire point is draw-call reduction. Decision still open.)*
 
 ### UI layer
-- [ ] `UI-3` Interrupted screen transitions: `finalizeTransition()` doesn't finish the **entering** screen's
+- [x] `UI-3` Interrupted screen transitions: `finalizeTransition()` doesn't finish the **entering** screen's
   tween (ScreenManager.hx:730-746, :825) — back-to-back transitions fight over the same root.
+  **FIXED 2026-09-28** (`c388b14`, review UI-30/UI-31) for the built-in transitions: `finalizeTransition`
+  finishes the transition's own tweens, entering roots included. `Custom` transitions remain (review UI-69).
 - [ ] `UI-4` Dialog over `MasterAndSingle`: **instant** open keeps `[dialog, oldMaster]` controllers, but
   **animated** open leaves `[dialog]` only, never restored (:643 vs :810-814) — same API, different
   routing by transition arg.

@@ -635,7 +635,7 @@ class ScreenManager {
 		// A result left from the previous opening (a screen switch closes a dialog without reading it).
 		takeExitResponse(dialog);
 		dialog.load();
-		// Run the mode transition first so Dialog→Dialog's removeModalOverlay() at line 644
+		// Run the mode transition first so Dialog→Dialog's removeModalOverlay() in updateScreenMode
 		// tears down the previous overlay before we create a new one. Also means the new
 		// dialog is already in activeScreens when we apply blur, so pass it to exclude.
 		updateScreenMode(Dialog(dialog, caller, mode, dialogName), data);
@@ -813,10 +813,10 @@ class ScreenManager {
 							// Distinguish closing back to an underlying dialog from
 							// opening a new dialog over this one: when returning, the
 							// target dialog is the one captured as this dialog's
-							// previousMode — and closeDialogWithTransition has already
-							// delivered OnDialogResult for the closing dialog. Firing
-							// again here double-delivered it (a purchase-confirm
-							// handler ran twice).
+							// previousMode — and closeDialogWithTransition delivers
+							// OnDialogResult for the closing dialog itself, after this
+							// switch. Firing here as well double-delivered it (a
+							// purchase-confirm handler ran twice).
 							final returningToUnderlying = switch previousMode {
 								case Dialog(prevDialog, _, _, _): prevDialog == newDialog;
 								default: false;

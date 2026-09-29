@@ -308,7 +308,7 @@ var grid = new UIMultiAnimGrid(builder, {
 **Lifecycle:**
 - `getObject()` — root `h2d.Object`, add to scene via `addObjectToLayer(grid.getObject(), layer)`
 - `update(dt)` — call from screen update for animation support. Completions fire after all animations stepped, so an `onComplete` may dispose the grid
-- `dispose()` — clean up all resources, zones, and scene graph. In-flight work completes at once, and nothing calls back later: swap/snap animations (`ctx.onComplete` fires), `removeCellAnimated` exits, and accepted `acceptDrops` drops whose draggable is still snapping. Disposing one of two linked grids mid-swap (or both, in either order) is safe — the other grid's pending rebuild of the gone cell is skipped
+- `dispose()` — clean up all resources, zones, and scene graph. In-flight work completes at once — each pending completion fires exactly once, at the latest when the grid that owns the animation is disposed (with linked grids, a target grid's `ctx` callbacks can fire from the source grid, which owns the snap): swap/snap animations (`ctx.onComplete` fires), `removeCellAnimated` exits, and accepted `acceptDrops` drops whose draggable is still snapping. Disposing one of two linked grids mid-swap (or both, in either order) is safe — the other grid's pending rebuild of the gone cell is skipped
 
 **Callbacks:**
 - `onGridEvent:(GridEvent) -> Void` — main event callback

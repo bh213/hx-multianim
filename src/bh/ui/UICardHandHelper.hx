@@ -1528,8 +1528,8 @@ class UICardHandHelper implements UIHigherOrderComponent {
 
 		var dx = toX - fromX;
 		var dy = toY - fromY;
-		// Snap if positions are close — avoids degenerate Stretch-normalized paths
-		// that produce NaN when from≈to (e.g. quick click-release)
+		// Snap if positions are close (e.g. quick click-release): there is no motion worth
+		// animating, so finish at once instead of playing the path in place
 		if (dx * dx + dy * dy < 1.0) {
 			entry.container.setPosition(toX, toY);
 			entry.container.rotation = endRotation;

@@ -100,7 +100,7 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `step(count, dx: N, dy: N)` | Fixed step offset, repeated `count` times |
 | `layout("entryName")` | Position from named relative layout (entryName is the `#name` used in the `layouts {}` block) |
 | `array($valueVar, $arrayName)` | Iterate over data array |
-| `range(start, end [, step])` | Numeric range (exclusive end), optional step. A negative step counts down; a step of `0` is a parse error (a `$param` step that is 0 fails the build) |
+| `range(start, end [, step])` | Numeric range (exclusive end), optional step. A negative step counts down; a literal step of `0` is a parse error (a step expression or `$param` that evaluates to 0 fails the build) |
 | `range(from: X, to: Y [, step: S])` | Named range (inclusive end: `to: 5` includes 5, counting down too: `range(from: 5, to: 1, step: -1)` is 5,4,3,2,1) |
 | `range(from: X, until: Y [, step: S])` | Named range (exclusive end: `until: 5` excludes 5) |
 | `stateanim($bitmapVar, "file.anim", "animName", key=>value)` | Iterate animation frames; exposes `$bitmapVar` and `$index` |
@@ -862,7 +862,7 @@ Bezier smoothing options: `auto`, `distance(value)`, or none.
 `event("name")` at any rate. Built-in events: `pathStart`, `pathEnd`, `cycleStart`, `cycleEnd`.
 
 ### Zero-length paths
-A path of length 0 — `Stretch(p, p)` / `createProjectilePath(name, p, p)`, or a path of only `lineTo(0, 0)` — is valid: every rate is `p`, and an animated path over it stays at `p` for its duration while its curves play (`distance` mode ends on the first update). A zero-length segment inside a longer path (a leading `lineTo(0, 0)`) takes no share of the rate range. A path with no segments at all still throws when the animated path is created.
+A path of length 0 — `Stretch(p, p)` / `createProjectilePath(name, p, p)`, or a path of only `lineTo(0, 0)` — is valid: every rate is `p`, and an animated path over it stays at `p` for its duration while its curves play (`distance` mode ends on the first update). A zero-length segment inside a longer path (a leading `lineTo(0, 0)`) takes no share of the rate range. A path with no segments at all still throws when the animated path is created. On a zero-length path every checkpoint sits at rate 0, so checkpoint events fire on the first update, and a looping or ping-pong `distance`-mode path completes a whole cycle (with all its events) on every update.
 
 ---
 
@@ -1101,7 +1101,7 @@ group.shutdownSpeedCurve = myCurve;
 ```
 
 **Behavior:**
-- No-op on non-looping groups
+- No-op on non-looping groups, except that it marks a burst-driven (`count: 0`) group done so its container can end
 - After shutdown, `emitBurstAt()` still works (manual one-shot effects)
 - `group.emitFilter = (x:Float, y:Float) -> Bool` — filter particles by world-space spawn position (return `false` to discard). Works for both relative and non-relative groups
 - `particles.worldAnchor : Null<h2d.Object>` — designated world-space anchor for `relative: false` groups. When non-null, non-relative emit position/velocity/scale/rotation bake into `worldAnchor`'s local frame (not full scene space) and the draw branch renders through `worldAnchor`'s transform. Set this on a per-emitter trail's `Particles` container with the scene's world-root so the trail stays anchored to the world during camera pan/zoom. Null (default) preserves legacy screen-space baking. Runtime-only — no DSL surface
@@ -1302,7 +1302,7 @@ When `tabPanel.contentRoot` is set, tab content coordinates are relative to the 
 
 **Cell swap:** `swapCells(col1, row1, col2, row2, ?animated)` — swap data and visuals between two cells. Animated mode uses `swapPathName` (fallback: `returnPathName`) for both items. Emits `CellSwap` with `ctx.programmatic=true`. Drag-drop swap: when `swapEnabled=true` and a draggable drops on a cell with a source cell, the `swapAccepts` delegate (or `isOccupied()` by default) decides whether to emit `CellSwap` or fall through to `CellDrop`.
 
-**Cell animations** (require `tweenManager`): `tweenCell(col, row, duration, props, ?easing)`, `addCellAnimated(col, row, ?data, ?params, duration, initProps, ?easing)`, `removeCellAnimated(col, row, duration, props, ?easing, ?onComplete)`. **Detach/reattach**: `detachCellVisual(col, row)` → `{object, data, sceneX, sceneY}`, `reattachCellVisual(col, row, ?obj)`. `tweenCell` returns a pooled `Tween` — keep `tween.generation` and cancel later with `Tween.cancelIfCurrent(tween, generation)`. `dispose()` cancels every cell tween and completes pending `removeCellAnimated` exits (object removed, `onComplete` called once), swap/snap animations, and accepted `acceptDrops` drops still snapping — none calls back after `dispose()`. Removing the cell under an active built-in cell drag ends that drag (`CellDragEnd`).
+**Cell animations** (require `tweenManager`): `tweenCell(col, row, duration, props, ?easing)`, `addCellAnimated(col, row, ?data, ?params, duration, initProps, ?easing)`, `removeCellAnimated(col, row, duration, props, ?easing, ?onComplete)`. **Detach/reattach**: `detachCellVisual(col, row)` → `{object, data, sceneX, sceneY}`, `reattachCellVisual(col, row, ?obj)`. `tweenCell` returns a pooled `Tween` — keep `tween.generation` and cancel later with `Tween.cancelIfCurrent(tween, generation)`. `dispose()` cancels every cell tween and completes pending `removeCellAnimated` exits (object removed, `onComplete` called once), swap/snap animations, and accepted `acceptDrops` drops still snapping — each fires once, at the latest when the grid owning the animation is disposed (a linked target grid's callbacks can fire from the source grid). Removing the cell under an active built-in cell drag ends that drag (`CellDragEnd`).
 
 ### Common UI Settings
 

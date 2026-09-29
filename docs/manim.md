@@ -382,7 +382,7 @@ repeatable($varname, range(from: start, until: end[, step: s]))
 - `from:` — start value (required for named syntax)
 - `to:` — inclusive end (`to: 5` includes 5), in either direction
 - `until:` — exclusive end (`until: 5` excludes 5, same as positional)
-- `step:` — step increment (optional, defaults to 1). A negative step counts down: `range(from: 5, to: 1, step: -1)` yields 5,4,3,2,1. A step of 0 is a parse error; a `$param` step that resolves to 0 fails the build with a `BuilderError`
+- `step:` — step increment (optional, defaults to 1). A negative step counts down: `range(from: 5, to: 1, step: -1)` yields 5,4,3,2,1. A literal step of 0 is a parse error; a step expression or `$param` that resolves to 0 fails the build with a `BuilderError`
 
 **Stateanim iterator:**
 Iterates over all frames of an animation from a `.anim` file. Exposes `$bitmap` (the tile source) and `$index`.
@@ -1423,7 +1423,7 @@ Collections of colors accessed by index.
   red 0xf13 0x333 0xffa
 }
 ```
-The colors must fill whole rows of `width` (a partial last row is a build error). `palette(main, x, y)` reads column `x` of row `y`; `replacePalette(main, sourceRow, replacementRow)` swaps rows.
+The colors must fill whole rows of `width` (a partial last row is a build error). `palette(main, x, y)` reads column `x` of row `y`; `replacePalette(main, sourceRow, replacementRow)` recolours each colour of `sourceRow` to the colour in the same column of `replacementRow` (one way, not a swap).
 
 **File palette:**
 ```
@@ -2404,7 +2404,7 @@ group.shutdownAlphaCurve = myCurve;
 ```
 
 **Notes:**
-- No-op on non-looping groups
+- No-op on non-looping groups, except that it marks a burst-driven (`count: 0`) group done so its container can end
 - `emitBurstAt()` still works during shutdown (for manual one-shot effects)
 - Default `onEnd()` is `this.remove()` — no change needed. It fires once, when the last particle dies
 - A container whose groups are all burst-driven (`count: 0`, fed by `emitBurst`/`emitBurstAt`) does not end when a burst dies out — it is idle until the next burst, so one container can serve every shot without overriding `onEnd`. `shutdown()` lets it end once its last particle dies

@@ -15,7 +15,12 @@ Not run: the cloud `/code-review ultra` pass (user-triggered only) and the conve
 **Status 2026-09-27:** 12 items fixed in `7d43afd` and ticked below (ERR-10, UI-60, UI-36, UI-43, CG-40,
 PRS-10, PRS-16, PRS-18, PRS-19, PRS-20, PRS-23, DOC-26); PRS-9 partly. Also fixed 2026-09-27: the
 interactive-wrapper cluster (UI-28, UI-52, UI-54, UI-55, UI-57, UI-58, UI-53) and the reload clusters
-(HR-6, HR-3, HR-2, DEV-2, DEV-3, HR-5, HR-4). The summaries below list open items only.
+(HR-6, HR-3, HR-2, DEV-2, DEV-3, HR-5, HR-4). Fixed 2026-09-28 in three commits: dialog results and
+transitions `c388b14` (UI-29, UI-51, UI-30, UI-31, UI-47); `a128c22` (UI-37, CG-27, CG-32, BLD-25, BLD-28,
+VFX-20); grid teardown and zero-length paths `8b734f0` (UI-16, UI-17, UI-59, VFX-33, UI-27, UI-26). Found
+while fixing those and filed below: UI-65..UI-71, BLD-33. A pre-push review of those three commits
+(2026-09-29) confirmed every claimed fix and filed UI-72..UI-74 and VFX-37 (UI-71 widened). The
+summaries below list open items only.
 
 **Legend:** same as `release-1.0-audit.md` — `[ ]` open, **P1** fix before 1.0, **P2** should fix,
 **P3** acceptable post-1.0. 🤖 marks agent-facing defects: they break DevBridge/MCP, hot reload, the LSP
@@ -54,8 +59,7 @@ comparisons), `VFX-28` (metadata typos).
 **Documented syntax is rejected** — agents copy the docs verbatim: `PRS-21` (named
 paths/curves/layouts), `PRS-13` (method calls in X), `DEC-9` (contradictory strict-D docs).
 
-**Previews an agent looks at are wrong** — `BLD-28` (a step-0 range hangs the playground tab), `VFX-32`
-(DevBridge bounds of flipped sprites).
+**Previews an agent looks at are wrong** — `VFX-32` (DevBridge bounds of flipped sprites).
 
 ---
 
@@ -118,7 +122,7 @@ paths/curves/layouts), `PRS-13` (method calls in X), `DEC-9` (contradictory stri
   result's buttons just stop responding. *Test: two incremental results, `addInteractives` both,
   `setParameter` on the first → `getInteractive(secondId)` still non-null and attached.*
   **FIXED 2026-09-27** with the wrapper-lifecycle cluster below. `UIScreenInteractiveSyncTest.testRebuildLeavesInteractivesOfOtherSourceUnderSamePrefix`.
-- [ ] `UI-29` **P1** **A reused dialog auto-closes with its previous result** —
+- [x] `UI-29` **P1** **A reused dialog auto-closes with its previous result** —
   `closeDialogWithTransition` (both branches) and the dialog-over-dialog branch read
   `controller.exitResponse` without clearing it (ScreenManager.hx:711, :885); the only reset is inside
   `UIDefaultController.update()` (:276-285), which never runs once the dialog left `activeScreens`.
@@ -127,20 +131,23 @@ paths/curves/layouts), `PRS-13` (method calls in X), `DEC-9` (contradictory stri
   confirms itself. `switchScreen`'s forced close (:779-783) delivers the stale value too. *Test:
   ScreenManagerDialogTransitionTest — setExitCode, closeDialogWithTransition(Fade), reopen, update →
   still open, no result.*
-- [ ] `UI-30` **P2** **Closing a dialog during its own open transition leaves it dim/off-screen**
+  **FIXED 2026-09-28** (`c388b14`): the exit response is taken (read and cleared) when delivered and cleared when a dialog opens. `ScreenManagerDialogTransitionTest.testReopenedDialogAfter*DoesNotReplayItsResult`, `testCoveredDialogRevivedAfterTopCloseDoesNotReplayItsResult`.
+- [x] `UI-30` **P2** **Closing a dialog during its own open transition leaves it dim/off-screen**
   *(extends UI-3)* — the controller-exit close in `update()` (:288-302) and the instant
   `closeDialogWithTransition` branch (:886-890) never call `finalizeTransition()`; `removeScreen`
   cancels the enter tween (onComplete skipped), the root keeps its partial alpha/x/y (only the cleanup
   at :837-848 resets transforms, and only for removed screens), `isTransitioning` stays true, and the
   next instant `modalDialog` shows the stale transform. *Test: modalDialogWithTransition(Fade(1.0)),
   update(0.1), setExitCode, update → isTransitioning false; reopen → root.alpha == 1.*
-- [ ] `UI-31` **P2** **An interrupted transition's enter tween later runs the NEXT transition's cleanup**
+  **FIXED 2026-09-28** (`c388b14`): the controller-exit and instant closes call `finalizeTransition()` first, which now finishes the transition tweens. `testDialogExitDuringOpenTransitionFinishesTheTransition`, `testInstantCloseDuringOpenTransitionFinishesTheTransition`.
+- [x] `UI-31` **P2** **An interrupted transition's enter tween later runs the NEXT transition's cleanup**
   *(extends UI-3)* — `executeTransition` hangs `onComplete` on the last tween, which is the entering
   root's tween whenever nothing is removed (first screen, any dialog open) (:1063-1076); the closure
   reads `transitionCleanup` at fire time (:1046-1052) and `finalizeTransition` does not cancel entering
   roots. So `switchTo(A, Fade)` then `switchTo(B, SlideLeft)` mid-fade removes A early and clears
   `isTransitioning` while B still slides; a `closeDialogWithTransition` during the open fade delivers
   `OnDialogResult` early. *Test: ScreenTransitionIntegrationTest per verifier sketch.*
+  **FIXED 2026-09-28** (`c388b14`): a `transitionSerial` guard makes the onComplete of an ended transition a no-op; `finalizeTransition` finishes entering roots too. `testInterruptedSwitchDoesNotEndTheNextTransitionEarly`, `testClosingDialogDuringOpenFadeDeliversResultWhenCloseEnds`.
 - [ ] `UI-32` **P2** **Tooltips and panels are misplaced inside any offset layer** — `UIPositionHelper`
   assigns `anchor.getBounds()` (absolute scene coordinates) to the target's local x/y
   (UIPositionHelper.hx:9-24); `UITooltipHelper`/`UIPanelHelper` then add the target to a layer, which in
@@ -159,12 +166,13 @@ paths/curves/layouts), `PRS-13` (method calls in X), `DEC-9` (contradictory stri
   updateScreenMode(MasterAndSingle(M, S)) then updateScreenMode(Single(S)) → no throw, M removed.*
   **FIXED 2026-09-27** (`7d43afd`): `removedScreens = []` before the `if`.
   `ScreenManagerDialogTransitionTest.testMasterAndSingleToSameSingle_RemovesOnlyMaster`.
-- [ ] `UI-47` **P2** **`switchScreen(MasterAndSingle(A, B), transition)` from `Single(A)` leaves A invisible
+- [x] `UI-47` **P2** **`switchScreen(MasterAndSingle(A, B), transition)` from `Single(A)` leaves A invisible
   but active** — `computeScreenDiff` puts A in both the add and the remove set (ScreenManager.hx:983-989)
   where the instant path throws (:589, :610-611, :622); A gets a second UIEntering, its root is detached
   by the cleanup, yet it stays in `activeScreens` and is updated and hit-tested. Same gap for
   `MasterAndSingle(A,B) → Single(A)` and `→ MasterAndSingle(B,A)`: the animated path has none of the
   instant path's guards. UI-5 family.
+  **FIXED 2026-09-28** (`c388b14`): `computeScreenDiff` has the instant path guards, so the animated switch throws the same errors before any state changes. `testPromotingTheSingleToMasterWithTransitionIsRejectedLikeTheInstantSwitch`.
 - [ ] `UI-49` **P3** **Dialog-close and overlay fade-out tweens skip `skipFirstDt`** — contrary to the
   documented rule (runtime-systems.md "All transition tweens use skipFirstDt") at :1148-1161 and
   :1294-1295. No visible jump in ordinary use; after an expensive closing frame the fade starts part-way.
@@ -182,12 +190,13 @@ paths/curves/layouts), `PRS-13` (method calls in X), `DEC-9` (contradictory stri
   float param works in a placeholder's `settings {}` (UIScreen.hx:969) and throws in `#dropdown`'s root
   settings (UIMultiAnimDropdown.hx:67); same split for `scrollSpeed`. `AnimMetadata` is a third
   near-copy. Make UIScreen wrap `BuilderResolvedSettings`.
-- [ ] `UI-51` **P1** **Opening the next dialog from `OnDialogResult` delivers the result twice and loses the
+- [x] `UI-51` **P1** **Opening the next dialog from `OnDialogResult` delivers the result twice and loses the
   new dialog** — the result is delivered while `mode` is still `Dialog(A)` (ScreenManager.hx:297-300,
   :885-889), so `modalDialog(B)` inside the handler takes the dialog-over-dialog branch, which delivers
   A's result again (null on the update path, :693-712), and the pending `updateScreenMode(previousMode)`
   then removes B in the same frame. A handler that opens B without checking the result recurses forever.
   *Test: probe screen opening B from OnDialogResult("A") → one result, B shown.*
+  **FIXED 2026-09-28** (`c388b14`): the controller-exit and instant close paths close first and deliver afterwards, like the animated close. `testOpeningNextDialogFromResultShowsItAndDeliversOnce`, `testOpeningNextDialogFromResultOfInstantCloseShowsIt`.
 
 **Interactive wrapper lifecycle.** `UI-28`, `UI-52`, `UI-54`, `UI-57` and `UI-58` share one cause:
 `syncInteractivesFrom` (UIScreen.hx:1097-1133) diffs by prefix and id only, and removal calls
@@ -234,6 +243,41 @@ an `eventPriority` applied to later wrappers too; the auto helper is created on 
   `startsWith(prefix + ".")` (UIRichInteractiveHelper.hx:128-132), so an open panel prefixed
   `hud.settings.menu` loses its hover states when the HUD refreshes.
 
+Found 2026-09-28 while fixing the dialog items (`c388b14`):
+
+- [ ] `UI-65` **P2** **An instant switch out of a dialog drops its result** — `switchScreen(mode)` without a
+  transition, or a direct `updateScreenMode`, from `Dialog` mode closes the dialog without delivering
+  `OnDialogResult`; the animated switch delivers it (through `closeDialogWithTransition`). Since
+  `c388b14` the stale value no longer replays on the next opening, but the result is lost.
+- [ ] `UI-66` **P2** **Any finished controller closes the open dialog with its own value** —
+  `ScreenManager.update()` handles `UIControllerFinished(result)` from every active screen by switching
+  on `mode`, so under `Dialog(...)` it closes the dialog and delivers `result` as the dialog's
+  `OnDialogResult` even when the finished controller is the master's (the master stays active under a
+  dialog opened over `MasterAndSingle`, see UI-4).
+- [ ] `UI-67` **P2** **A rejected switch from a dialog still closes the dialog** — `switchScreen(…,
+  transition)` from `Dialog` mode closes the dialog before `computeScreenDiff` validates the target mode
+  (the role-change guards added for UI-47), so a rejected switch throws with the dialog already gone.
+  And the instant `Dialog → MasterAndSingle` branch of `updateScreenMode` has no role-change guard: over
+  `Single(A)` it accepts `MasterAndSingle(A, B)` and leaves A on the content layer.
+- [ ] `UI-68` **P3** **The covered dialog's result is delivered mid-switch** — opening a dialog over
+  another delivers the covered dialog's `OnDialogResult` inside `updateScreenMode`, before the switch
+  commits: a handler that opens a dialog from it nests, and one that opens a dialog on any result (null
+  included) recurses forever. The close paths deliver after the switch since `c388b14` (UI-51).
+- [ ] `UI-69` **P3** **`finalizeTransition` cannot finish a `Custom` transition** — its tweens come from
+  the game's function and are not in `transitionTweens`, so an interrupted `Custom` transition keeps
+  animating; the `transitionSerial` guard (`c388b14`) does stop it running the next transition's
+  cleanup. The remaining half of UI-3 for custom transitions.
+- [ ] `UI-72` **P3** **A pending animated close can deliver a result that changes the mode under the next
+  close** — since `c388b14`, `update()`'s controller-exit path and `closeDialogWithTransition` call
+  `finalizeTransition()` before reading `mode` (ScreenManager.hx:318, :1028). If that finalizes an
+  animated dialog close, its `OnDialogResult` handler runs first and may open or switch screens; the
+  code then acts on the new mode: it closes the wrong dialog and delivers the result under the wrong
+  name, or `update()` throws `unhandled exit`. Sequence: dialog over dialog, animated close of the top
+  (the covered one revives), covered one exits within the fade, handler opens another dialog. Capture the
+  `Dialog` fields before finalizing and re-check afterwards. Related nit: the result is now taken before
+  `updateScreenMode`, so a throw there (a `UILeaving` handler, a failed hot reload) loses it.
+  *Found 2026-09-29.*
+
 ## UI — panels and tooltips
 
 - [ ] `UI-34` **P2** **`closeNamed()` loses a fade-out that was cancelled elsewhere; the panel stays as a
@@ -261,23 +305,26 @@ an `eventPriority` applied to later wrappers too; the auto helper is created on 
 
 ## UI — grid and drag-drop
 
-- [ ] `UI-16` **P1** **Disposing two linked grids during a cross-grid swap throws** — the displaced
+- [x] `UI-16` **P1** **Disposing two linked grids during a cross-grid swap throws** — the displaced
   item's animation sits in the target grid's `activeSwapAnims` with a callback that rebuilds the SOURCE
   grid, and vice versa (UIMultiAnimGrid.hx:1300-1301, :1316); `dispose()` fires pending callbacks
   (:1618-1623) then clears `cells` (:1644), so the grid disposed second (screen teardown order) throws
   `Cell (c, r) does not exist` from `rebuildCell` (:603) and aborts `UIScreen.clear()`. Same throw from
   `update()` if only one grid is disposed. *Test: two linked grids, drag onto an occupied cell,
   dispose A then B (and mirror) → no throw.*
-- [ ] `UI-17` **P1** **Removing the source cell of an active cell drag throws and wedges every later
+  **FIXED 2026-09-28** (`8b734f0`): late swap work uses `rebuildCellIfPresent`; `dispose()` takes its swaps off the list before firing them. `testDisposingLinkedGridsMidCrossGridSwapDoesNotThrow`, `testUpdateAfterLinkedGridDisposedMidSwapDoesNotThrow`.
+- [x] `UI-17` **P1** **Removing the source cell of an active cell drag throws and wedges every later
   drag** — every settle path ends in `set(src)` → `getEntry` throw (:1385-1388, :1289, :1660) after
   `cellDragObj` was nulled; `cellDragFinish` never runs, `cellDragSettling` stays true, and the next
   press detaches a visual that can never move or be released (:1043 vs :1007/:1062). *Test:
   createCellDragGrid; click (0,0); removeCell(0,0); release → no throw; second drag releasable.*
-- [ ] `UI-27` **P2** **A swap callback that disposes the grid crashes `update()`** — `update()` fires
+  **FIXED 2026-09-28** (`8b734f0`): `removeCell`/`removeCellAnimated` end a drag whose source they remove (`cellDragAbortIfSource`); a return landing on a removed cell finishes. `testRemovingDragSourceCell*` (three tests).
+- [x] `UI-27` **P2** **A swap callback that disposes the grid crashes `update()`** — `update()` fires
   each completed swap's callback inside a descending loop (:1559-1576); a callback that disposes the
   grid (screen switch → `clear()` → `dispose()` → `activeSwapAnims.resize(0)`) leaves the loop reading
   a null entry when two swaps were in flight. `UICardHandHelper` uses collect-then-fire for exactly
   this (:741, :1590). *Test: two swapCells in one frame, dispose from ctx.onComplete, update → no throw.*
+  **FIXED 2026-09-28** (`8b734f0`): `update()` collects finished swaps and fires them after the loop. `testSwapCompletionThatDisposesGridDoesNotCrashUpdate`.
 - [ ] `UI-21` **P2** **`makeDraggableFromCell` hands the live cell visual to the draggable** — the entry
   keeps pointing at the object now inside the draggable (:1491-1509), unlike every internal path which
   swaps in a `DummyCellVisual` (:884-899). Any `rebuildCell`/`removeCell`/`swapCells`/swap-drop on that
@@ -317,19 +364,34 @@ an `eventPriority` applied to later wrappers too; the auto helper is created on 
   `rejectWithPath`/`acceptWithPath`/`SwapContext` snap paths permanently replace the draggable's path
   factories (:1850-1852, :1869-1870, :1917-1918); the "save current factory" comment has no save. The
   built-in cell-drag path resolves the path per drop (:1246).
-- [ ] `UI-26` **P3** **An accepted external drop settling after `dispose()` runs the game's callback
+- [x] `UI-26` **P3** **An accepted external drop settling after `dispose()` runs the game's callback
   against the disposed grid** — `dispose()` completes swap and cell-drag animations at once
   (:1616-1621) but for `acceptDrops` draggables only removes zones (:1624-1627); the draggable's own
   snap (an AnimatedPath, not a tween) later fires `DragSnapComplete` → `ctx.onComplete`.
+  **FIXED 2026-09-28** (`8b734f0`): a run-once `DropSettle` per accepted drop; `dispose()` completes the pending ones. `testAcceptedExternal*SettlingAfterDisposeDoesNotCallBackLater`.
 - [ ] `UI-46` **P3** **`ctx.reject()` + `ctx.onComplete(cb)` runs `cb` before the return animation** — for
   `acceptDrops` draggables the draggable calls `onDragCancel` synchronously at release, before starting
   the return (UIMultiAnimDraggable.hx:668-677); the docs (ui-components.md:242, the `DropContext`
   docstring) and the built-in cell drag (:1368-1373) wait for the animation.
-- [ ] `UI-59` **P1** **Clicking an animated draggable without moving it throws** — the zero-distance
+- [x] `UI-59` **P1** **Clicking an animated draggable without moving it throws** — the zero-distance
   guard is skipped on purpose when `animApplyScale`/`Alpha`/`Rotation` is set (UIMultiAnimDraggable.hx:
   359-364), and the built-in `setReturnAnimPath`/`setSnapAnimPath` factories then build
   `Stretch(from, from)`, which cannot become an AnimatedPath (`pathLength must be > 0`, a plain string
   thrown inside the event handler). `UIDraggableTest` works around it (:355-358). Root cause VFX-33.
+  **FIXED 2026-09-28** (`8b734f0`): through VFX-33, no draggable change; the `UIDraggableTest` workaround is gone. `testClickWithoutMovingAnimatedDraggable*`.
+- [ ] `UI-71` **P3** **A `CellSwap` handler that removes the source or target cell makes the swap throw** —
+  `cellDragHandleSwap` calls `set()` on both cells right after emitting `CellSwap`; if the game's handler
+  removed either, `getEntry` throws `Cell (c, r) does not exist`. The late rebuilds are guarded since
+  `8b734f0` (UI-16); these synchronous sets are not. *Found 2026-09-28.* The external-draggable swap has
+  the same hole: `handleSwapDrop` calls `sourceGrid.set`/`rebuildCell` synchronously (UIMultiAnimGrid.hx:
+  2007-2035) and throws when the draggable's source cell was removed, or its grid disposed, before the
+  drop. *(Widened 2026-09-29.)*
+- [ ] `UI-74` **P3** **Work a completion starts during `dispose()` never runs** — `dispose()` drains a copy of
+  `activeSwapAnims` (UIMultiAnimGrid.hx:1680), so a swap the game starts from a `ctx.onComplete` fired by
+  that drain stays in the list and never completes; `pendingCellRemovals` has the same gap (older).
+  Completions finishing in the same `update()` as the one that disposes still fire after `dispose()`.
+  Drain until empty, or ignore new work once disposed. (The docs' "nothing calls back after `dispose()`"
+  was reworded 2026-09-29.) *Found 2026-09-29.*
 
 ## UI — card hand and widgets
 
@@ -346,9 +408,10 @@ an `eventPriority` applied to later wrappers too; the auto helper is created on 
   `UIRichInteractiveHelper.getBindingIds(prefix, out)`) and every state call goes through them; discard
   uses `unregisterByPrefix`. The rebuild listener only marks the ids stale (a status change rebuilds the
   card from inside the loop). Five tests in `CardHandIntegrationTest`.
-- [ ] `UI-37` **P1** **A card drawn with `enabled: false` becomes playable** — `drawCard` overwrites the
+- [x] `UI-37` **P1** **A card drawn with `enabled: false` becomes playable** — `drawCard` overwrites the
   `Disabled` state `buildCardEntry` set with `Animating` (:364-365), and the animation end promotes it to
   `InHand` (:1565-1566). `setHand` keeps it disabled.
+  **FIXED 2026-09-28** (`a128c22`): `CardEntry.disableAfterAnimation`; the card flies as `Animating` and lands `Disabled`. `CardHandIntegrationTest.testCardDrawnWithEnabledFalseStaysDisabledAfter*` and two guards.
 - [x] `UI-43` **P1** **ScrollableList: a press on empty space arms a double-click on item 0 (HashLink)** —
   `lastClickIndex = newIndex` stores a `Null<Int>` into an `Int` field (:65, :317, :332); on HL null
   unboxes to 0 (verified with Haxe 4.3.6; JS keeps null). A press on the scrollbar or the empty tail
@@ -399,6 +462,17 @@ an `eventPriority` applied to later wrappers too; the auto helper is created on 
   tracking draw lerps straight when the raw endpoint is at the origin (UICardHandHelper.hx:760-767),
   where `Path.applyStretch` (used by discard/return/rearrange) falls back to fit-centre
   (MultiAnimPaths.hx:503-533).
+- [ ] `UI-70` **P2** **A card disabled mid-animation is laid out like a resting card** —
+  `setCardEnabled(id, false)` during a draw, discard or rearrange sets `Disabled`, which
+  `rearrangeCards`/`applyLayout` do not skip (they skip `Animating`): another draw or discard cuts its
+  animation short and fires `DrawAnimComplete` early, and `applyLayout` snaps disabled cards instead of
+  animating them. Drawn-disabled cards no longer take this path since `a128c22` (UI-37). *Found
+  2026-09-28.*
+- [ ] `UI-73` **P3** **A redundant `setCardEnabled(id, false)` during a disabled card's draw brings UI-70 back**
+  — the `Animating` branch clears `disableAfterAnimation` and sets `Disabled` mid-flight
+  (UICardHandHelper.hx:508), so the next `drawCard`'s rearrange replaces its draw animation and
+  `DrawAnimComplete` fires early. Keep it `Animating` when it is already due to land disabled. *Found
+  2026-09-29.*
 
 ## Builder (runtime `MultiAnimBuilder`)
 
@@ -431,20 +505,22 @@ an `eventPriority` applied to later wrappers too; the auto helper is created on 
   the node position on top of the canvas offset (:6670-6675, :6808-6811); the redraw closure resets to
   the canvas offset only (:4532) and the position closure overwrites without it (:4681-4683).
   `pixels {...}: 100, 50` snaps to (0,0). The existing test uses position 0.
-- [ ] `BLD-25` **P1** **Inline 2D palettes are unusable** — `buildPalettes` drops the width of
+- [x] `BLD-25` **P1** **Inline 2D palettes are unusable** — `buildPalettes` drops the width of
   `palette(2d: N) {...}` (:7220-7221), so `palette(name, x, y)`, `replacePalette` and codegen's
   `getPaletteColor2D` all throw `palette is not 2d` (a plain string, no position) for a palette declared
   2D. Only a parse test covers the feature.
+  **FIXED 2026-09-28** (`a128c22`): the width is passed; colours that do not fill whole rows are a positioned BuilderError. `BuilderUnitTest.testInline2dPalette*`.
 - [ ] `BLD-26` **P1** **Tilegroups bake losing `@else`/`@default` arms in incremental builds** — inside
   `buildTileGroup` all children are returned unfiltered (:4047-4048) and every else/default arm counts
   as visible (:3985), so loop-variable chains that `validateTileGroupSubtree` explicitly allows bake the
   winning arm AND the losers. Every widget is built incrementally (UIElementBuilder.hx:83), and codegen
   delegates tilegroups to the builder, so both backends are affected.
-- [ ] `BLD-28` **P1** 🤖 **`range` with step 0 hangs the web playground; descending `to:` drops values** —
+- [x] `BLD-28` **P1** 🤖 **`range` with step 0 hangs the web playground; descending `to:` drops values** —
   the parser adds 1 to `to:` regardless of step sign and never rejects step 0 (MacroManimParser.hx:4175,
   :4178-4200); all count sites use `Math.ceil((end - start) / step)` unguarded (builder :5188, :6160,
   :6336, :6482; codegen :2338, :2529, :4009). Verified: `range(from: 5, to: 1, step: -1)` yields 5,4,3
   (docs: inclusive); step 0 is an infinite loop on JS and zero iterations on HL.
+  **FIXED 2026-09-28** (`a128c22`): a literal step 0 is a parse error; a `$param` step 0 throws a BuilderError on both backends (`MultiAnimBuilder.rangeIterationCount`, shared with generated rebuilds); `to:` adds ±1 (one unit in the step's direction). Tests in `BuilderUnitTest` and `CodegenRepeatParamParityTest`.
 - [ ] `BLD-17` **P2** **`?($flag == true)` is always false on both backends** — bool params are stored as
   1/0 and a bare `true` lowers to the string "true" (:1093-1094, MacroManimParser.hx:988-990). Only
   `?($flag)` works.
@@ -481,6 +557,11 @@ an `eventPriority` applied to later wrappers too; the auto helper is created on 
   alpha 0, the builder's removes it from any parent (CodegenTransitionHelper.hx:354-395 vs
   MultiAnimBuilder.hx:1469-1476); `cancelAllTransitions` is iterate-then-clear in one and drain in the
   other (unreachable re-entrancy today). Have the context own one shared runner.
+- [ ] `BLD-33` **P2** 🤖 **`key:bool => $K` with `@final K = true` fails on both backends** — the builder's
+  `resolveAsBool` sends the `@final` alias (`RVString("true")`) through `resolveAsInteger` (`expected
+  integer, got "true"`); codegen inlines it as `"true" != 0`, a compile error. The parser's
+  `validateTypedMetadataRef` accepts the form. The untyped literal `key => true` works since `a128c22`
+  (CG-27). *Found 2026-09-28.*
 - [ ] `DEC-9` **P2** 🤖 **Strict-D alpha is honoured inconsistently, and the docs contradict each other** —
   (a) `generated(color(…))` goes through `solidTile`, which treats a zero top byte as opaque
   (HeapsUtils.hx:20-24; MultiAnimBuilder.hx:3569, :4470; ProgrammableCodeGen.hx:7987), so `transparent`
@@ -512,20 +593,22 @@ sinks (use `rvToExprInt`, or `rvToExpr(x, true)` for strings) closes CG-25, CG-2
 - [ ] `CG-26` **P1** 🤖 **Enum parameters play animation "0"** — every stateanim string sink stringifies
   the enum's Int index (`Std.string(this._anim)`, :6124-6191, :5773, :8364) instead of its name; create()
   throws `unknown animation 0`, naming the index, so the agent searches the `.anim` file.
-- [ ] `CG-27` **P1** **Untyped `key => true` in settings or interactive metadata does not compile** —
+- [x] `CG-27` **P1** **Untyped `key => true` in settings or interactive metadata does not compile** —
   parsed as the string "true" with bool type, lowered as `RSVBool("true" != 0)` (:4284, :7951). The
   documented auto-inferred form breaks; typed `key:bool => true` compiles.
+  **FIXED 2026-09-28** (`a128c22`): `ProgrammableCodeGen.settingBoolExpr` bakes the literal at both sites. Compile-check host `Cg27Host`; `CodegenIncrementalInteractiveStateanimTest.testUntypedBoolMetadataAndSettings_CodegenMatchesBuilder`.
 - [ ] `CG-30` **P1** **`pixels` rect sizes from expressions do not compile; literal fractions round** —
   `var w:Int = <Float expr>` (:5972-5983); the static path uses `Math.round` where the builder truncates
   (:5889-5890 vs MultiAnimBuilder.hx:5011-5012).
 - [ ] `CG-31` **P1** **Fractional palette and array indices do not compile** — `palette(pal, $n / 2)` and
   `$items[$n / 2]` lower with `rvToExpr` into Int sinks (:7614-7633); an out-of-range array index
   renders "null" where the builder throws.
-- [ ] `CG-32` **P1** **`getPath_x()` / `createAnimatedPath_x()` crash before the first `create()`** — the
+- [x] `CG-32` **P1** **`getPath_x()` / `createAnimatedPath_x()` crash before the first `create()`** — the
   builder-fallback bodies call `getBuilder()` (ProgrammableBuilder.hx:538-552) but `_builder` is only
   set inside `create()`/`createFrom()` (CG :9170, :9218). Fallback is emitted for `close`, unresolvable
   coordinates, animatedPath without duration/speed and curve fallbacks. The docs show the standalone
   call. Raw null access, no BuilderError.
+  **FIXED 2026-09-28** (`a128c22`): the generated fallback bodies call `ProgrammableBuilder.ensureBuilder(manimPath)` first. `AnimatedPathBuilderTest.testCodegenBuilderFallbackPathsWorkBeforeCreate`.
 - [ ] `CG-28` **P2** **autoFit diverges from the builder** — codegen fits once at create (:6888-6890)
   and never on text updates (builder refits, MultiAnimBuilder.hx:4386-4391); with `maxWidth: grid` it
   passes `fitWidth = null` so the first fallback font always wins (:6844-6860; ProgrammableBuilder.hx:
@@ -677,11 +760,12 @@ small HashLink programs that build the same programmable through both backends.
 
 ## Base runtime — tweens, particles, paths
 
-- [ ] `VFX-20` **P1** **A burst-driven (`count: 0`) particle emitter disappears after its first burst** —
+- [x] `VFX-20` **P1** **A burst-driven (`count: 0`) particle emitter disappears after its first burst** —
   `onEnd()` (default `remove()`) fires as soon as every batch is empty after any emission
   (Particles.hx:1602-1620), so the documented per-shot trail emitter renders nothing from the second
   shot on. Looping groups are unaffected (burst particles recycle). `onEnd` also has no one-shot latch:
   a no-op override is called every frame while idle.
+  **FIXED 2026-09-28** (`a128c22`): a container ends only when some group has `nparts > 0` or was shut down, and `onEnd` fires once per live-to-empty transition. `ParticleRuntimeTest` (four tests).
 - [ ] `VFX-19` **P2** **`fadeOut(..., removeOnComplete)` + `clear()` in its callback removes the wrong
   object** — `runCompletionHooks` reads `target`/`removeTargetOnComplete` after the callback
   (TweenManager.hx:235-241); `clear()` returns this tween to the pool and a tween started in the same
@@ -747,10 +831,22 @@ small HashLink programs that build the same programmable through both backends.
 - [ ] `VFX-30` **P3** **`.anim` colours read as strings come back as `#AARRGGBB`** — regression from the
   rc.6 alpha baking: `'#' + StringTools.hex(c, 6)` no longer strips alpha (AnimParser.hx:585, :597,
   :2136), so `#FF0000` metadata or event meta reads `#FFFF0000`, which re-parses as transparent yellow.
-- [ ] `VFX-33` **P3** **Zero-length paths produce NaN or "rate out of range"** — ranges are divided by
+- [x] `VFX-33` **P3** **Zero-length paths produce NaN or "rate out of range"** — ranges are divided by
   `totalLength` with no zero guard (MultiAnimPaths.hx:302-306): `Stretch(p, p)` makes every `getPoint`
   throw `rate out of range: 0.5`, and a leading zero-length segment (`lineTo(0, 0)` first) gives a NaN
   start position. `UICardHandTargeting` has no distance guard (:275).
+  **FIXED 2026-09-28** (`8b734f0`): a zero-length path spans 0..1 on every segment, lookups skip zero-width segments (`covers`/`localRate`), distance mode finishes at once; a path with no segments still throws. Tests in `AnimatedPathTest`, `AnimatedPathBuilderTest`.
+  Remaining (pre-push review 2026-09-29, P3): a looping or pingPong distance-mode path over a zero-length
+  path runs a full cycle and all its events every update, checkpoint events all fire on the first update,
+  a NaN `totalLength` takes the zero-length branch silently, and nothing tests the targeting arrow with
+  the cursor on its origin.
+- [ ] `VFX-37` **P2** 🤖 **Normalized paths lose their checkpoints** — `Path.applyTransform` builds the new
+  path from `singlePaths`, which the constructor already stripped of checkpoints, and the new path gets an
+  empty `checkpoints` map (MultiAnimPaths.hx:597). Any checkpoint-keyed curve or event on an
+  `animatedPath` created with a normalization — `Stretch`, `createProjectilePath`, which the draggable,
+  grid and card hand always use — throws `checkpoint not found` on both backends (MultiAnimBuilder.hx:
+  7760, ProgrammableCodeGen ~10295). Pre-existing; untested. Copy `checkpoints` into the transformed path
+  (uniform transforms keep rates). *Found 2026-09-29.*
 - [ ] `VFX-34` **P3** **Unsorted curve `points:` are used as written** — `Curve.getValue` assumes time
   order (Curve.hx:36-37) and nothing sorts or validates; points can be `$refs`, so sort at build time.
 - [ ] `VFX-35` **P3** **`AnimatedPath.update(0)` before the first real step returns the constructor
@@ -895,10 +991,7 @@ small HashLink programs that build the same programmable through both backends.
   unknown-property rejection: `ERR-5`, `PRS-22` (the separator half, `PRS-19`/`PRS-23`, is done).
 - **`Tween` handles** — return a generation-checked handle from `tween()` and snapshot fields before
   callbacks: `API-11`, `VFX-19`, `VFX-25`, `UI-15` (sequence part).
-- **Callbacks during iteration** — collect-then-fire, the pattern `UICardHandHelper` already uses: `UI-27`,
-  `UI-16`, `UI-26`.
-- **Zero-length paths** — one guard in `Path` (or `applyStretch`) and callers stop special-casing it:
-  `VFX-33`, `UI-59`.
+- ~~**Callbacks during iteration**, **Zero-length paths**~~ — done 2026-09-28 (`8b734f0`, see the items).
 - **Strict-D alpha** — decide the contract once (`DEC-9`), then fix `solidTile`, graphics and text leaves
   and the docs together.
 
