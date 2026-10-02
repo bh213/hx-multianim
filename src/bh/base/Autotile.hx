@@ -54,6 +54,14 @@ class Autotile {
 	public static inline var BLOB47_TILE_COUNT:Int = 47;
 	public static inline var CORNER_TILE_COUNT:Int = 16;
 
+	/**
+	 * Which of `count` variants a position takes: the same for the same position every time, and
+	 * spread evenly, so a map drawn again looks the same and repeats do not line up.
+	 */
+	public static inline function variantAt(x:Int, y:Int, count:Int):Int {
+		return count <= 1 ? 0 : (((x * 73856093) ^ (y * 19349663)) & 0x7FFFFFFF) % count;
+	}
+
 	/** True when `grid[y][x]` exists and is non-zero. */
 	public static inline function isFilled(grid:Array<Array<Int>>, x:Int, y:Int):Bool {
 		return y >= 0 && y < grid.length && x >= 0 && x < grid[y].length && grid[y][x] != 0;

@@ -1513,6 +1513,35 @@ class HotReloadTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testTilemapThatNoLongerFitsItsTilesetFailsTheReload():Void {
+		final fileName = "hotreload-tilemap-tmp.manim";
+		final fits = "version: 1.0
+" + bh.test.examples.TilemapTest.source('#m tilemap { tileset: plains size: 2, 1 legend { ".": grass } terrain: [".."] }');
+		final unfit = "version: 1.0
+" + bh.test.examples.TilemapTest.source('#m tilemap { tileset: plains size: 2, 1 legend { ".": lava } terrain: [".."] }');
+		withTempManim(fileName, fits, filePath -> {
+			final sm = new bh.ui.screens.ScreenManager(bh.test.VisualTestBase.appInstance);
+			final map = sm.buildFromResourceName(fileName, false).buildTilemap("m");
+			final stage = allocatedStage();
+			stage.addChild(map);
+			var failed = 0;
+			sm.addReloadListener(event -> switch event {
+				case ReloadFailed(_): failed++;
+				default:
+			});
+			sys.io.File.saveContent(filePath, unfit);
+			final report = sm.hotReload();
+			Assert.isFalse(report.success, "the reload does not throw: it fails its report");
+			Assert.equals(1, failed, "and says so to the listeners");
+			Assert.equals("tilemap:m", report.errors[0].context);
+			Assert.stringContains("lava", report.errors[0].message);
+			Assert.equals("grass", map.terrainAt(0, 0), "the map stays as it was");
+			Assert.isFalse(sm.hotReload().success, "the same text is tried again, not taken as unchanged");
+			map.remove();
+		});
+	}
+
+	@Test
 	public function testEvalManimLeavesNoRegisteredResult():Void {
 		final sm = new bh.ui.screens.ScreenManager(bh.test.VisualTestBase.appInstance);
 		final bridge = new bh.multianim.dev.DevBridge(sm, 0);

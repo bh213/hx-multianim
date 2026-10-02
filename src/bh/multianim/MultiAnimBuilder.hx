@@ -1696,11 +1696,7 @@ class IncrementalUpdateContext {
 		binding.container.removeChildren();
 
 		// Resolve the builder (external or local)
-		var targetBuilder = if (binding.externalReference != null) {
-			var b = builder.multiParserResult.imports?.get(binding.externalReference);
-			if (b == null) throw BuilderError.of('could not find builder for external dynamicRef ${binding.externalReference}');
-			b;
-		} else builder;
+		var targetBuilder = builder.importedBuilder(binding.externalReference);
 
 		// Pass ReferenceableValue entries as Dynamic — buildWithParameters/updateIndexedParamsFromDynamicMap handles both
 		final paramMap = new Map<String, Dynamic>();
@@ -2715,7 +2711,8 @@ class MultiAnimBuilder {
 	 *  Built once per builder so repeated buildAutotile() / generated(autotile()) calls neither
 	 *  regenerate demo textures nor redo the blob47 fallback search. Safe to keep for the builder's
 	 *  lifetime: multiParserResult never changes (hot reload creates a new builder). */
-	var autotileTileCache:Map<String, Array<Null<h2d.Tile>>> = [];
+	// Per autotile index, its tiles: one, or several drawn by turns (`mapping: [15: 7 | 8 | 9]`)
+	var autotileTileCache:Map<String, Array<Null<Array<h2d.Tile>>>> = [];
 	var incrementalMode:Bool = false;
 	/** Set true while iterating a constant-count repeatable body in incremental mode (the loop has
 	 *  no settable-param dependency, so `hasIncrementalRepeat` is false but `incrementalMode` stays
@@ -3045,15 +3042,6 @@ class MultiAnimBuilder {
 	}
 
 	function resolveAsColorInteger(v:ReferenceableValue):Int {
-		function getBuilderWithExternal(externalReference:Null<String>) {
-			if (externalReference == null)
-				return this;
-			var builder = multiParserResult.imports.get(externalReference);
-			if (builder == null)
-				throw builderError('could not find builder for external reference ${externalReference}', "missing_ref");
-			return builder;
-		}
-
 		return switch v {
 			case RVInteger(i): i;
 			case RVString(s):
@@ -3063,12 +3051,10 @@ class MultiAnimBuilder {
 				if (parsed != null) return parsed;
 				throw builderError('cannot resolve color from string "$s"');
 			case RVColorXY(externalReference, name, x, y):
-				var builder = getBuilderWithExternal(externalReference);
-				var palette = builder.getPalette(name);
+				var palette = importedBuilder(externalReference).getPalette(name);
 				palette.getColor2D(resolveAsInteger(x), resolveAsInteger(y));
 			case RVColor(externalReference, name, index):
-				var builder = getBuilderWithExternal(externalReference);
-				var palette = builder.getPalette(name);
+				var palette = importedBuilder(externalReference).getPalette(name);
 				palette.getColorByIndex(resolveAsInteger(index));
 			case RVReference(_): resolveAsInteger(v);
 
@@ -3646,7 +3632,7 @@ class MultiAnimBuilder {
 				final baseTile = resourceLoader.loadTile(resolveAsString(filename));
 				final r = resolveAutotileRegion(name, at.node, at.def, baseTile, tileSize);
 				AutotileRegionSheet(baseTile, r.x, r.y, r.w, r.h, tileSize, tileCount, scaleVal, fontName, fontColorVal);
-			case ATSDemo(_, _) | ATSTiles(_) | ATSAtlas(_, _):
+			case ATSDemo(_, _) | ATSTiles(_) | ATSAtlas(_, _) | ATSAtlasIndexed(_, _):
 				throw builderErrorAt(at.node, 'autotileRegionSheet: autotile "$name" has no image region to display (only file: sources do)');
 		};
 	}
@@ -4657,13 +4643,13 @@ class MultiAnimBuilder {
 					}
 				}
 			case STATEANIM(_, initialState, selectorReferences):
-				// Track initialState only. Selectors (which pick animation variants at load time)
-				// and the filename itself stay frozen — changing them would require a full
-				// detach/rebuild which is out of scope.
+				// initialState replays the animation; a selector changes that state in place
+				// (AnimationSM.setState keeps the frame when the animation's length allows). The
+				// filename stays frozen — changing it would require a full detach/rebuild.
+				final sm = switch builtObject { case StateAnim(a): a; default: null; };
 				final sRefs:Array<String> = [];
 				collectParamRefs(initialState, sRefs);
 				if (sRefs.length > 0) {
-					final sm = switch builtObject { case StateAnim(a): a; default: null; };
 					if (sm != null) {
 						final initCapture = initialState;
 						ctx.trackExpression(() -> {
@@ -4675,7 +4661,16 @@ class MultiAnimBuilder {
 					for (k => v in selectorReferences) {
 						final selRefs:Array<String> = [];
 						collectParamRefs(v, selRefs);
-						for (r in selRefs) ctx.markParamUntracked(r, 'stateanim selector "$k"');
+						if (selRefs.length == 0)
+							continue;
+						if (sm != null) {
+							final key = k;
+							final valueCapture = v;
+							ctx.trackExpression(() -> {
+								sm.setState(key, resolveAsString(valueCapture));
+							}, selRefs, object);
+						} else
+							for (r in selRefs) ctx.markParamUntracked(r, 'stateanim selector "$k"');
 					}
 				}
 			case STATEANIM_CONSTRUCT(initialState, construct, _):
@@ -5859,6 +5854,11 @@ class MultiAnimBuilder {
 				Particles(createParticleImpl(particlesDef, node.uniqueNodeName));
 			case PALETTE(_): throw builderErrorAt(node, 'palette not allowed as non-root node');
 			case AUTOTILE(_): throw builderErrorAt(node, 'autotile not allowed as non-root node');
+			case TILESET(_): throw builderErrorAt(node, 'tileset not allowed as non-root node');
+			case TILEMAP(_): throw builderErrorAt(node, 'a tilemap { } definition is placed with tilemap(name)');
+			case TILEMAP_REF(extRef, mapName):
+				skipChildren = true;
+				HeapsObject(extRef == null ? buildTilemap(mapName) : importedBuilder(extRef, node).buildTilemap(mapName));
 			case ATLAS2(_): throw builderErrorAt(node, 'atlas2 is a definition node, not a renderable element');
 			case DATA(_): throw builderErrorAt(node, 'data is a definition node, not a renderable element');
 
@@ -5924,12 +5924,7 @@ class MultiAnimBuilder {
 
 			case STATIC_REF(externalReference, progRefRV, parameters):
 				final reference = resolveRefName(progRefRV);
-				var builder = if (externalReference != null) {
-					var builder = multiParserResult.imports?.get(externalReference);
-					if (builder == null)
-						throw builderErrorAt(node, 'could not find builder for external staticRef ${externalReference}');
-					builder;
-				} else this;
+				var builder = importedBuilder(externalReference, node);
 
 				var result = builder.buildWithParameters(reference, parameters, builderParams, indexedParams);
 				var object = result?.object;
@@ -5955,12 +5950,7 @@ class MultiAnimBuilder {
 					default: "";
 				});
 				final reference = resolveRefName(progRefRV);
-				var builder = if (externalReference != null) {
-					var builder = multiParserResult.imports?.get(externalReference);
-					if (builder == null)
-						throw builderErrorAt(node, 'could not find builder for external dynamicRef ${externalReference}');
-					builder;
-				} else this;
+				var builder = importedBuilder(externalReference, node);
 
 				// Build with incremental: true so the dynamicRef supports setParameter
 				var result = builder.buildWithParameters(reference, parameters, builderParams, indexedParams, true);
@@ -6723,15 +6713,8 @@ class MultiAnimBuilder {
 				var resolvedMeta:ResolvedSettings = null;
 				if (metadata != null) {
 					resolvedMeta = [];
-					for (entry in metadata) {
-						resolvedMeta.set(resolveAsString(entry.key), switch entry.type {
-							case SVTInt: RSVInt(resolveAsInteger(entry.value));
-							case SVTFloat: RSVFloat(resolveAsNumber(entry.value));
-							case SVTString: RSVString(resolveAsString(entry.value));
-							case SVTColor: RSVColor(resolveAsColorInteger(entry.value));
-							case SVTBool: RSVBool(resolveAsBool(entry.value));
-						});
-					}
+					for (entry in metadata)
+						resolvedMeta.set(resolveAsString(entry.key), resolveSettingValue(entry));
 				}
 				var obj = new MAObject(MAInteractive(resolveAsInteger(width), resolveAsInteger(height), resolveAsString(id), resolvedMeta), debug);
 				internalResults.interactives.push(obj);
@@ -6977,18 +6960,32 @@ class MultiAnimBuilder {
 
 		if (currentSettings != null) {
 			final retSettings:ResolvedSettings = [];
-			for (key => settingValue in currentSettings) {
-				retSettings[key] = switch settingValue.type {
-					case SVTInt: RSVInt(resolveAsInteger(settingValue.value));
-					case SVTFloat: RSVFloat(resolveAsNumber(settingValue.value));
-					case SVTString: RSVString(resolveAsString(settingValue.value));
-					case SVTColor: RSVColor(resolveAsColorInteger(settingValue.value));
-					case SVTBool: RSVBool(resolveAsBool(settingValue.value));
-				}
-			}
+			for (key => settingValue in currentSettings)
+				retSettings[key] = resolveSettingValue(settingValue);
 			return retSettings;
 		} else
 			return null;
+	}
+
+	/** A setting, an interactive's metadata or a tile's metadata, as written (`key:type => value`), resolved. */
+	function resolveSettingValue(setting:{type:SettingValueType, value:ReferenceableValue}):SettingValue {
+		return switch setting.type {
+			case SVTInt: RSVInt(resolveAsInteger(setting.value));
+			case SVTFloat: RSVFloat(resolveAsNumber(setting.value));
+			case SVTString: RSVString(resolveAsString(setting.value));
+			case SVTColor: RSVColor(resolveAsColorInteger(setting.value));
+			case SVTBool: RSVBool(resolveAsBool(setting.value));
+		};
+	}
+
+	/** Metadata of a tileset, resolved as settings are; null when there is none. */
+	function resolveMetadata(metadata:Map<String, ParsedSettingValue>):ResolvedSettings {
+		if (!metadata.keys().hasNext())
+			return null;
+		final resolved:Map<String, SettingValue> = [];
+		for (key => value in metadata)
+			resolved.set(key, resolveSettingValue(value));
+		return resolved;
 	}
 
 	function toNamedResult(updatableNameType:UpdatableNameType, obj:BuiltHeapsComponent, node:Node):NamedBuildResult {
@@ -7962,15 +7959,23 @@ class MultiAnimBuilder {
 	 * Build a TileGroup from an autotile definition over a grid.
 	 * @param name The name of the autotile definition in the .manim file
 	 * @param grid `grid[y][x]`, any non-zero value = terrain present
+	 * @param where only the positions set in it are drawn, in the format's own positions (corners
+	 *   for `corner`, `where[cy][cx]` for the corner at the top-left of cell (cx, cy); cells
+	 *   otherwise); the indices still come from the whole grid. Null draws every position.
 	 * @return h2d.TileGroup in cell space: cell (x, y) covers (x * tileSize, y * tileSize).
 	 *   cross/blob47 draw one tile per filled cell. corner draws one tile per grid corner, offset by
-	 *   half a tile, so its tiles extend half a tile past the grid edge.
+	 *   half a tile, so its tiles extend half a tile past the grid edge. An index with several tiles
+	 *   (`mapping: [15: 7 | 8 | 9]`) draws one of them by position, the same every time.
 	 */
-	public function buildAutotile(name:String, grid:Array<Array<Int>>):h2d.TileGroup {
+	public function buildAutotile(name:String, grid:Array<Array<Int>>, ?where:Array<Array<Int>>):h2d.TileGroup {
 		final at = getAutotileDef(name);
 		final tiles = getAutotileTiles(name, at.node, at.def);
 		final tileSize = resolveAsInteger(at.def.tileSize);
 		final tileGroup = new h2d.TileGroup();
+		inline function tileAt(index:Int, x:Int, y:Int):Null<h2d.Tile> {
+			final variants = tiles[index];
+			return variants == null ? null : variants[bh.base.Autotile.variantAt(x, y, variants.length)];
+		}
 
 		switch at.def.format {
 			case Corner:
@@ -7978,10 +7983,12 @@ class MultiAnimBuilder {
 				final width = bh.base.Autotile.gridWidth(grid);
 				for (cy in 0...grid.length + 1)
 					for (cx in 0...width + 1) {
+						if (where != null && !bh.base.Autotile.isFilled(where, cx, cy))
+							continue;
 						final index = bh.base.Autotile.getCornerIndex(grid, cx, cy);
 						if (index == 0)
 							continue; // no filled cell around this corner
-						final tile = tiles[index];
+						final tile = tileAt(index, cx, cy);
 						if (tile != null)
 							tileGroup.add(cx * tileSize - half, cy * tileSize - half, tile);
 					}
@@ -7991,9 +7998,11 @@ class MultiAnimBuilder {
 					for (x in 0...grid[y].length) {
 						if (grid[y][x] == 0)
 							continue;
+						if (where != null && !bh.base.Autotile.isFilled(where, x, y))
+							continue;
 						final mask8 = bh.base.Autotile.getNeighborMask8(grid, x, y);
 						final index = isCross ? bh.base.Autotile.getCrossIndex(mask8) : bh.base.Autotile.getBlob47Index(mask8);
-						final tile = tiles[index];
+						final tile = tileAt(index, x, y);
 						if (tile != null)
 							tileGroup.add(x * tileSize, y * tileSize, tile);
 					}
@@ -8003,19 +8012,24 @@ class MultiAnimBuilder {
 
 	/**
 	 * Resolved tile for one autotile index (after mapping and blob47 fallback) — the same tile
-	 * `buildAutotile` places. Corner index 0 (no filled cell) returns a transparent tile unless the
-	 * source provides one.
+	 * `buildAutotile` places at position (x, y), or the first of several when no position is given.
+	 * Corner index 0 (no filled cell) returns a transparent tile unless the source provides one.
 	 */
-	public function getAutotileTile(name:String, index:Int):h2d.Tile {
+	public function getAutotileTile(name:String, index:Int, x = 0, y = 0):h2d.Tile {
 		final at = getAutotileDef(name);
 		final tiles = getAutotileTiles(name, at.node, at.def);
 		if (index < 0 || index >= tiles.length)
 			throw builderErrorAt(at.node, 'autotile "$name": index $index is out of range for ${autotileFormatName(at.def.format)} (0-${tiles.length - 1})', "autotile_index");
-		final tile = tiles[index];
-		if (tile != null)
-			return tile;
+		final variants = tiles[index];
+		if (variants != null)
+			return variants[bh.base.Autotile.variantAt(x, y, variants.length)];
 		final tileSize = resolveAsInteger(at.def.tileSize);
 		return h2d.Tile.fromColor(0, tileSize, tileSize, 0.0);
+	}
+
+	/** The format of an autotile of this file; `missing_ref` for a name it has not. */
+	public function autotileFormat(name:String):AutotileFormat {
+		return getAutotileDef(name).def.format;
 	}
 
 	function getAutotileDef(name:String):{node:Node, def:AutotileDef} {
@@ -8026,6 +8040,189 @@ class MultiAnimBuilder {
 			case AUTOTILE(def): {node: node, def: def};
 			default: throw builderErrorAt(node, '"$name" is not an autotile definition');
 		};
+	}
+
+	// ===================== Tilesets and tile maps =====================
+
+	public function getTilesetDef(name:String):{node:Node, def:TilesetDef} {
+		final node = multiParserResult.nodes.get(name);
+		if (node == null)
+			throw builderError('tileset "$name" not found', "missing_ref");
+		return switch node.type {
+			case TILESET(def): {node: node, def: def};
+			default: throw builderErrorAt(node, '"$name" is not a tileset definition');
+		};
+	}
+
+	public function getTilemapDef(name:String):{node:Node, def:TilemapDef} {
+		final node = multiParserResult.nodes.get(name);
+		if (node == null)
+			throw builderError('tilemap "$name" not found', "missing_ref");
+		return switch node.type {
+			case TILEMAP(def): {node: node, def: def};
+			default: throw builderErrorAt(node, '"$name" is not a tilemap definition');
+		};
+	}
+
+	/**
+	 * Builds `#name tilemap { … }` of this file: terrains, levels, cell layers, shadows, and its
+	 * decor built as any element is, into the map's sorted actors' layer.
+	 */
+	public function buildTilemap(name:String):bh.base.TileMap {
+		final tm = getTilemapDef(name);
+		final parts = tilemapParts(name, tm.node, tm.def);
+		final map = new bh.base.TileMap(name, sourceName, tm.def, parts.tileset, parts.tiles);
+		map.setDecor(buildTilemapDecor(tm.node));
+		return map;
+	}
+
+	/**
+	 * Reads a map built from this file again (a hot reload): its rows, tileset and decor; the actors
+	 * stay. A map already read from this builder's parse (built by it, or refreshed already) is left
+	 * as it is, its changes with it: there is nothing new to read.
+	 */
+	public function refreshTilemap(map:bh.base.TileMap):Void {
+		final tm = getTilemapDef(map.mapName);
+		if (map.sourceDef == tm.def)
+			return;
+		final parts = tilemapParts(map.mapName, tm.node, tm.def);
+		map.setSource(tm.def, parts.tileset, parts.tiles);
+		map.setDecor(buildTilemapDecor(tm.node));
+	}
+
+	/**
+	 * The cells of a name in a sheet (an atlas2 file or inline block), or null when the sheet has no
+	 * such name. A sheet that cannot be loaded is an error, as the loader says it.
+	 */
+	public function atlasTiles(sheet:String, name:String):Null<Array<h2d.Tile>> {
+		final atlas:Null<IAtlas2> = getOrLoadSheet(sheet);
+		if (atlas == null)
+			throw builderError('sheet "$sheet" could not be loaded', "tilemap_sheet");
+		final frames = atlas.getAnim(name);
+		if (frames == null)
+			return null;
+		return [for (f in frames) if (f != null) f.tile];
+	}
+
+	function buildTilemapDecor(node:Node):Array<h2d.Object> {
+		final out:Array<h2d.Object> = [];
+		for (child in node.children) {
+			final obj = buildSingleNodeWithParams(child, node, new Map());
+			if (obj != null)
+				out.push(obj);
+		}
+		return out;
+	}
+
+	/**
+	 * The builder of a file this one imports (`import "file.manim" as "name"`), by its name; this
+	 * builder when there is none. `node` is where an error is said, when there is one to name.
+	 */
+	public function importedBuilder(ext:Null<String>, ?node:Node):MultiAnimBuilder {
+		if (ext == null)
+			return this;
+		final imported:Null<MultiAnimBuilder> = multiParserResult.imports.get(ext);
+		if (imported == null) {
+			final message = 'no import "$ext" (import "file.manim" as "$ext")';
+			throw node != null ? builderErrorAt(node, message, "missing_ref") : builderError(message, "missing_ref");
+		}
+		return imported;
+	}
+
+	function tilemapParts(name:String, node:Node, def:TilemapDef):{tileset:TilesetDef, tiles:bh.base.TileMap.TileMapTiles} {
+		final tsBuilder = importedBuilder(def.tilesetImport, node);
+		final ts = tsBuilder.getTilesetDef(def.tileset).def;
+		final tiles:bh.base.TileMap.TileMapTiles = {
+			autotile: (autotileName, grid, where) -> tsBuilder.buildAutotile(autotileName, grid, where),
+			autotileFormat: autotileName -> tsBuilder.autotileFormat(autotileName),
+			frames: (sheet, cell) -> tsBuilder.atlasTiles(sheet, cell),
+			metadata: metadata -> tsBuilder.resolveMetadata(metadata),
+		};
+		checkTilemap(name, node, def, ts, tiles);
+		return {tileset: ts, tiles: tiles};
+	}
+
+	/** What the parse cannot know, since the tileset may be in another file: every name the map uses is there, and every rise has its cliff. */
+	function checkTilemap(name:String, node:Node, def:TilemapDef, ts:TilesetDef, tiles:bh.base.TileMap.TileMapTiles):Void {
+		function has(sheet:String, cell:String):Bool {
+			final frames = try tiles.frames(sheet, cell) catch (e:Dynamic)
+				throw builderErrorAt(node, 'tilemap $name: sheet $sheet cannot be loaded: ${Std.string(e)}', "tilemap_sheet");
+			return frames != null && frames.length > 0;
+		}
+		// Every autotile the tileset names is in its file (missing_ref otherwise), before any is drawn
+		for (t in ts.terrains)
+			for (a in t.autotiles)
+				tiles.autotileFormat(a);
+		for (t in ts.transitions)
+			for (a in t.autotiles)
+				tiles.autotileFormat(a);
+		if (ts.edge != null)
+			tiles.autotileFormat(ts.edge);
+		for (edge in ts.edges)
+			tiles.autotileFormat(edge);
+		for (p in ts.platforms) {
+			final edge = p.edge;
+			if (edge != null)
+				tiles.autotileFormat(edge);
+		}
+		for (c => platform in def.levelPlatforms)
+			if (!Lambda.exists(ts.platforms, p -> p.name == platform))
+				throw builderErrorAt(node, 'tilemap $name: "$c" in the levels legend is platform $platform, which tileset ${def.tileset} has not (${[for (p in ts.platforms) p.name].join(", ")})', "tilemap_platform");
+		final terrainNames = [for (t in ts.terrains) t.name];
+		for (c => terrain in def.legend)
+			if (terrain != "none" && !terrainNames.contains(terrain))
+				throw builderErrorAt(node, 'tilemap $name: "$c" is terrain $terrain, which tileset ${def.tileset} has not (${terrainNames.join(", ")}, or none)', "tilemap_terrain");
+		for (t in ts.terrains) {
+			final cells = t.cells;
+			if (cells != null && !has(ts.atlas, cells))
+				throw builderErrorAt(node, 'tileset ${def.tileset}: terrain ${t.name}: sheet ${ts.atlas} has no cell $cells', "tilemap_missing_cell");
+		}
+		for (l in def.layers) {
+			final sheet = l.sheet != null ? l.sheet : ts.atlas;
+			for (c => cell in l.legend)
+				if (!has(sheet, cell))
+					throw builderErrorAt(node, 'tilemap $name: layer ${l.name}: "$c" is $cell, which sheet $sheet has not', "tilemap_missing_cell");
+		}
+		if (def.levels.length > 0) {
+			for (r in ts.rises)
+				for (piece in (r.sides : Array<Null<String>>).concat([r.left, r.right, r.single]))
+					if (piece != null && !has(ts.atlas, piece))
+						throw builderErrorAt(node, 'tileset ${def.tileset}: rise ${r.rise == 0 ? "any" : Std.string(r.rise)}: sheet ${ts.atlas} has no cell $piece', "tilemap_missing_cell");
+			// every rise the map has, in a direction the tileset draws sides toward, needs its rise
+			final towards:Array<String> = [];
+			for (r in ts.rises)
+				if (!towards.contains(r.toward)) towards.push(r.toward);
+			function level(cx:Int, cy:Int):Int
+				return bh.base.TileMap.levelOf(def.levelLegend, def.levels[cy].charAt(cx));
+			function terrainAt(cx:Int, cy:Int):Null<String> {
+				final terrain = def.legend.get(def.terrain[cy].charAt(cx));
+				return terrain == "none" ? null : terrain;
+			}
+			function platformAt(cx:Int, cy:Int):Null<String>
+				return def.levelPlatforms.get(def.levels[cy].charAt(cx));
+			for (toward in towards) {
+				final step = bh.base.TileMap.towardStep(toward);
+				for (cy in 0...def.height)
+					for (cx in 0...def.width) {
+						final nx = cx + step.dx;
+						final ny = cy + step.dy;
+						if (nx < 0 || ny < 0 || nx >= def.width || ny >= def.height)
+							continue;
+						final rise = level(cx, cy) - level(nx, ny);
+						final platform = platformAt(cx, cy);
+						// a platform draws sides only where it has them: one with none toward a side is drawn without
+						if (platform != null && !Lambda.exists(ts.rises, r -> r.toward == toward && r.platform == platform))
+							continue;
+						if (rise > 0 && bh.base.TileMap.riseFor(ts, rise, toward, terrainAt(cx, cy), platform) < 0) {
+							final terrain = terrainAt(cx, cy);
+							final ownPlatform = platform != null;
+							final own = !ownPlatform && terrain != null && Lambda.exists(ts.rises, r -> r.toward == toward && r.terrain == terrain && r.platform == null);
+							throw builderErrorAt(node, 'tilemap $name: the cell at column ${cx + 1}, row ${cy + 1} is $rise level(s) above its neighbour $toward, and tileset ${def.tileset} has no rise $rise toward $toward${ownPlatform ? ' for platform $platform' : own ? ' for $terrain' : ""}',
+								"tilemap_rise");
+						}
+					}
+			}
+		}
 	}
 
 	static function autotileTileCount(format:AutotileFormat):Int {
@@ -8053,7 +8250,7 @@ class MultiAnimBuilder {
 	 *   (`Autotile.applyBlob47FallbackWithMap`);
 	 * - corner index 0 (no filled cell) is optional — it is never drawn.
 	 */
-	function getAutotileTiles(name:String, node:Node, def:AutotileDef):Array<Null<h2d.Tile>> {
+	function getAutotileTiles(name:String, node:Node, def:AutotileDef):Array<Null<Array<h2d.Tile>>> {
 		final cached = autotileTileCache.get(name);
 		if (cached != null)
 			return cached;
@@ -8085,12 +8282,22 @@ class MultiAnimBuilder {
 
 		final optionalIndex = format == AutotileFormat.Corner ? 0 : -1;
 		final partial = format == AutotileFormat.Blob47 && def.allowPartialMapping == true;
-		final tiles:Array<Null<h2d.Tile>> = [];
+		final alternates = def.alternates;
+		// Every source index an autotile index draws from: mapping's, then its alternates
+		function sourcesOf(i:Int):Null<Array<Int>> {
+			final first = mapping.get(i);
+			if (first == null)
+				return null;
+			final f:Int = first; // unboxed: an Array<Null<Int>> is another array type on HashLink
+			final more = alternates != null ? alternates.get(i) : null;
+			return more == null ? [f] : [f].concat(more);
+		}
+		final tiles:Array<Null<Array<h2d.Tile>>> = [];
 		for (i in 0...count) {
-			var sourceIndex = mapping.get(i);
-			if (sourceIndex == null && partial)
-				sourceIndex = mapping.get(bh.base.Autotile.applyBlob47FallbackWithMap(i, mapping));
-			if (sourceIndex == null) {
+			var sources = sourcesOf(i);
+			if (sources == null && partial)
+				sources = sourcesOf(bh.base.Autotile.applyBlob47FallbackWithMap(i, mapping));
+			if (sources == null) {
 				if (i == optionalIndex) {
 					tiles.push(null);
 					continue;
@@ -8099,18 +8306,22 @@ class MultiAnimBuilder {
 				final hint = format == AutotileFormat.Blob47 ? " (or set allowPartialMapping: true to use the closest mapped tile)" : "";
 				throw builderErrorAt(node, 'autotile "$name": no tile for $formatName index $i - $where$hint', "autotile_missing_tile");
 			}
-			final j:Int = sourceIndex;
-			if (source.count >= 0 && j >= source.count)
-				throw builderErrorAt(node, 'autotile "$name": $formatName index $i maps to source tile $j, but ${source.desc} has only ${source.count} tiles (0-${source.count - 1})', "autotile_index");
-			final tile = source.get(j);
-			if (tile == null) {
-				if (i == optionalIndex) {
-					tiles.push(null);
-					continue;
+			final variants:Array<h2d.Tile> = [];
+			var missing = false;
+			for (j in sources) {
+				if (source.count >= 0 && j >= source.count)
+					throw builderErrorAt(node, 'autotile "$name": $formatName index $i maps to source tile $j, but ${source.desc} has only ${source.count} tiles (0-${source.count - 1})', "autotile_index");
+				final tile = source.get(j);
+				if (tile == null) {
+					if (i == optionalIndex) {
+						missing = true;
+						break;
+					}
+					throw builderErrorAt(node, 'autotile "$name": ${source.desc} has no source tile $j (needed for $formatName index $i)', "autotile_missing_tile");
 				}
-				throw builderErrorAt(node, 'autotile "$name": ${source.desc} has no source tile $j (needed for $formatName index $i)', "autotile_missing_tile");
+				variants.push(tile);
 			}
-			tiles.push(tile);
+			tiles.push(missing ? null : variants);
 		}
 		autotileTileCache.set(name, tiles);
 		return tiles;
@@ -8151,6 +8362,22 @@ class MultiAnimBuilder {
 					desc: 'sheet: "$sheetName" prefix: "$prefixStr"',
 					get: j -> {
 						final frame = atlas.get(prefixStr + j);
+						frame == null ? null : frame.tile;
+					}
+				};
+			case ATSAtlasIndexed(sheet, tileName):
+				// One atlas name whose frames are numbered by `index:`, as a packer writes a run of cells
+				final sheetName = resolveAsString(sheet);
+				final nameStr = resolveAsString(tileName);
+				final frames = getOrLoadSheet(sheetName).getAnim(nameStr);
+				if (frames == null)
+					throw builderErrorAt(node, 'autotile "$name": sheet "$sheetName" has no tile "$nameStr"', "autotile_missing_tile");
+				{
+					count: frames.length,
+					exact: false,
+					desc: 'sheet: "$sheetName" name: "$nameStr"',
+					get: j -> {
+						final frame = frames[j];
 						frame == null ? null : frame.tile;
 					}
 				};

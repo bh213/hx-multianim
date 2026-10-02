@@ -19,6 +19,8 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `#name atlas2("file") { ... }` | Define inline sprite atlas from image file |
 | `#name palette { ... }` | Define color palette |
 | `#name autotile { ... }` | Autotile terrain set (`corner` / `blob47` / `cross`) |
+| `#name tileset { ... }` | What tile maps are drawn with: terrains, rises between levels, named cells, metadata |
+| `#name tilemap { ... }` | A tile map: legend, terrain and level rows, layers of cells, decor, marks |
 | `@final name = expr` | Declare immutable named constant |
 
 ---
@@ -28,6 +30,7 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | Element | Description |
 |---------|-------------|
 | `bitmap(source, hAlign, vAlign)` | Display image tile with optional alignment |
+| `tilemap(name)` / `tilemap(external(file), name)` | Place a tile map (`#name tilemap`) |
 | `text(font, text, color, align, maxWidth, options)` | Simple text with font, color, and formatting options |
 | `richText(font, text, color, align, maxWidth, options)` | Rich text with `[markup]`, styles, images — always `h2d.HtmlText` |
 | `ninepatch(sheet, tile, w, h)` | 9-patch scalable image for resizable panels |
@@ -774,12 +777,42 @@ Access: `palette(name, index)` or `palette(name, x, y)` for 2D.
 |----------|-------------|
 | `format` | `corner` (16 tiles, dual grid: one tile per grid corner, index `NW 1 + NE 2 + SW 4 + SE 8`, 0 never drawn), `blob47` (47 tiles, one per cell, 8 neighbours), `cross` (13 tiles, one per cell) |
 | `tileSize` | Tile size in pixels |
-| source (exactly one) | `file: "img.png"` (tiles of `region:`, row-major), `sheet: "atlas", prefix: "p"` (atlas tile `p<j>`), `tiles: <src> <src> ...` (listed tile sources), `demo: edgeColor, fillColor` (generated placeholders) |
+| source (exactly one) | `file: "img.png"` (tiles of `region:`, row-major), `sheet: "atlas", prefix: "p"` (atlas tile `p<j>`), `sheet: "atlas", name: "n"` (frame `j` of atlas tile `n`, by `index:` from 0), `tiles: <src> <src> ...` (listed tile sources), `demo: edgeColor, fillColor` (generated placeholders) |
 | `region` | `[x, y, w, h]`, `file:` source only; must fit the image and be whole tiles. Default: whole image |
-| `mapping` | Autotile index -> source index: `[a, b, ...]` (position = index) or `[i:j, ...]`. Keys validated per format; duplicates rejected; not allowed with `demo:` |
+| `mapping` | Autotile index -> source index: `[a, b, ...]` (position = index) or `[i:j, ...]`; several for one index, `[15: 7 \| 8 \| 9]`, drawn by turns per position (the same every time; a source given twice is drawn twice as often). Keys validated per format; duplicates rejected; not allowed with `demo:` |
 | `allowPartialMapping` | `blob47` only: unmapped indices use the closest mapped tile instead of a build error |
 
 Every index must resolve to a tile (build-time `BuilderError` codes `autotile_missing_tile`, `autotile_index`, `autotile_region`), except corner index 0 and blob47 with `allowPartialMapping`. Removed: `depth:` / `buildAutotileElevation`, `sheet: ..., region: [...]` (use `file:` + `region:`).
+
+---
+
+## Tilesets and Tile Maps
+
+`#name tileset { … }`, `#name tilemap { … }` (root level); `tilemap(name)` or `tilemap(external(file), name)` places one. `builder.buildTilemap(name)` returns a `bh.base.TileMap`.
+
+| Tileset | Description |
+|---------|-------------|
+| `tileSize: n`, `atlas: "sheet"`, `edge: autotile` | Cell size; the sheet named cells come from; the outline of every higher level, drawn along its rim (needed with rises) |
+| `edge <terrain>: autotile` | The outline where that terrain is on top, in place of `edge` |
+| `terrain name { autotile: a[, b…] duration: ms \| cells: "name"; metadata {…} }` | Drawn in order, bottom first, each under the ones after it; several autotiles = animated; `cells` = variants by position |
+| `transition a, b { autotile: x[, y…] }` | Where `b` meets `a` (a terrain below it, or `none`: the map's edge too) and nothing else, drawn over `b`'s own autotile; one a frame when `b` is animated |
+| `rise n { side: "name"[, "b"…] left: right: single: span: n toward: down\|up\|left\|right metadata {…} }` | A cell n levels above its neighbour `toward`: `side` covers `span` cells beyond it (several sides are taken in turn along the run); ends optional; one per number, direction and terrain |
+| `rise any { … }`, `rise n <terrain> { … }` | For every number of levels with no rise of its own; for a higher cell of that terrain (a terrain with rises of its own toward a side uses only those) |
+| `platform name { edge: autotile  rise n { … } }` | A higher level that is not the ground raised (a tree top, a roof): its `edge` over all of it, on whatever terrain is under it, and sides of its own; a map names it in its levels' legend |
+| `cell name { draw: under\|over\|top metadata {…} }` | What a named layer cell is, wherever placed |
+| `metadata { key:type => value, key => value }` | As `settings { }` are written, literals only; read with `metadataAt(x, y)`, a `BuilderResolvedSettings`; the engine gives no key a meaning |
+
+| Tile map | Description |
+|----------|-------------|
+| `tileset: name` / `tileset: external(imp), name` | Its tileset |
+| `size: w, h` | Cells |
+| `legend { "c": terrain, " ": none }` | One character a cell |
+| `terrain: ["…", …]`, `levels: ["0011", …]` or `levels { legend { "A": 10, "c": 1 canopy } rows: […] }` | Rows; levels are digits, or characters of their legend: a level beyond nine, or a level and the platform there; optional |
+| `layer name { sheet: "s" draw: under\|over\|top legend {…} rows: [...] }` | Cells as they are; a space is none |
+| `decor { elements }` | Any elements, sorted with the actors by `y` |
+| `marks { name: x, y  other: x, y, w, h }` | Points and rectangles in cells |
+
+Runtime (`TileMap`): `actors` (`h2d.Layers`, y-sorted as it is drawn unless `sortActors = false`), `addActor`, `toCell`, `toPixel`, `terrainAt`, `levelAt`, `platformAt`, `sideAt`, `cellAt(layer, …)`, `metadataAt(x, y)` (a `BuilderResolvedSettings`: `getBoolOrDefault`, `getIntOrDefault`, …), `mark`, `setTerrain` / `setLevel` / `setCell` (drawn again once, as the map is next drawn or asked; `redraw()` now; `BuilderError`s `tilemap_outside`, `tilemap_legend`, `tilemap_level`, `tilemap_layer`), `describe()`; `TileMap.showing` (the maps in a scene) for the DevBridge (`map_list`, `map_get`) and hot reload, `sourceDef` the parse a map was read from.
 
 ---
 
@@ -1364,7 +1397,7 @@ The builder (incremental mode) and codegen paths both re-fire the listed propert
 | `mask` | `width`, `height` | — |
 | `flow` | `maxWidth`, `maxHeight`, `minWidth`, `minHeight`, `lineHeight`, `colWidth`, `padding*` (×4), `horizontalSpacing`, `verticalSpacing` | `layout`, `overflow`, `horizontalAlign`, `verticalAlign`, `debug`, `multiline`, `fillWidth`, `fillHeight`, `reverse`, 9-patch background |
 | `interactive` | `width`, `height` | `id`, metadata keys and values |
-| `stateanim` | `initialState` (fires `AnimationSM.play(newState)`) | filename, selectors |
+| `stateanim` | `initialState` (fires `AnimationSM.play(newState)`), selectors (fire `AnimationSM.setState(name, value)`, keeping the frame where the animation's length allows) | filename |
 | `stateanim(construct)` | `initialState` | sheet, animName, fps, loop, center |
 | Common to every element | `pos`, `scale`, `rotate`, `alpha`, `tint`, `filter`, `blendMode` | — |
 
@@ -1379,7 +1412,7 @@ rendered state inconsistent. Either rebuild the programmable or avoid
 runtime mutation of this param.
 ```
 
-Builder throws `BuilderError` with `code == "untracked_param"`; codegen throws a plain `String` from the generated setter. Params that appear in both tracked and frozen slots are also rejected (the tracked effect would apply while the frozen one would silently drift). Reasons surface the slot kind so the message is greppable: `interactive id`, `interactive metadata key`, `interactive metadata value`, `stateanim selector "<name>"`, `stateanim_construct animName "<key>"`, `stateanim_construct fps "<key>"`. Applies to param-dependent `repeatable` / `repeatable2d` bodies as well — the walker `markUntrackedParamsInSubtree` (builder) / `recordUntrackedParamsInSubtree` (codegen) seeds `untrackedParamRefs` before the repeat body is built non-incrementally, so the param-dep case is identical to the static-count case. **Exception: conditional gates.** A param referenced only by `@()`/`@else`/`@default` gates inside a param-dependent repeat body is NOT untracked on either backend — it is a rebuild trigger: changing it rebuilds the repeat body (builder folds it into `repeatParamRefs`; codegen forces the `_rebuildRepeat_*` method past its scalar early-out), and the gates re-evaluate during the rebuild.
+Builder throws `BuilderError` with `code == "untracked_param"`; codegen throws a plain `String` from the generated setter. Params that appear in both tracked and frozen slots are also rejected (the tracked effect would apply while the frozen one would silently drift). Reasons surface the slot kind so the message is greppable: `interactive id`, `interactive metadata key`, `interactive metadata value`, `stateanim selector "<name>"` (in a param-dependent repeat body only), `stateanim_construct animName "<key>"`, `stateanim_construct fps "<key>"`. Applies to param-dependent `repeatable` / `repeatable2d` bodies as well — the walker `markUntrackedParamsInSubtree` (builder) / `recordUntrackedParamsInSubtree` (codegen) seeds `untrackedParamRefs` before the repeat body is built non-incrementally, so the param-dep case is identical to the static-count case. **Exception: conditional gates.** A param referenced only by `@()`/`@else`/`@default` gates inside a param-dependent repeat body is NOT untracked on either backend — it is a rebuild trigger: changing it rebuilds the repeat body (builder folds it into `repeatParamRefs`; codegen forces the `_rebuildRepeat_*` method past its scalar early-out), and the gates re-evaluate during the rebuild.
 
 ### Other `BuilderError` codes from `setParameter` / `beginUpdate` / `endUpdate`
 

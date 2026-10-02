@@ -4403,6 +4403,9 @@ class ProgrammableCodeGen {
 			case TILEGROUP:
 				generateTileGroupCreate(node, fieldName, pos);
 
+			case TILEMAP_REF(extRef, mapName):
+				generateTilemapCreate(fieldName, extRef, mapName);
+
 			default: null;
 		};
 	}
@@ -6140,7 +6143,8 @@ class ProgrammableCodeGen {
 		}
 		mapBuildExprs.push(macro $fieldRef = this._pb.buildStateAnim($filenameExpr, _selMap, Std.string($initialStateExpr)));
 
-		// Track initialState only — selectors + filename stay frozen (would require full rebuild).
+		// initialState replays; a selector changes that state in place (AnimationSM.setState); the
+		// filename stays frozen (would require full rebuild).
 		// Mirrors builder STATEANIM handling in MultiAnimBuilder.trackIncrementalExpressions.
 		final updatesSA:Array<{fieldName:String, updateExpr:Expr, paramRefs:Array<String>}> = [];
 		final initRefs = collectParamRefs(initialState);
@@ -6152,7 +6156,16 @@ class ProgrammableCodeGen {
 			});
 		}
 		for (k => v in selectorReferences) {
-			recordUntrackedParams(collectParamRefs(v), 'stateanim selector "$k"');
+			final selRefs = collectParamRefs(v);
+			if (selRefs.length == 0)
+				continue;
+			final keyExpr:Expr = macro $v{k};
+			final valExpr = rvToExpr(v);
+			updatesSA.push({
+				fieldName: fieldName,
+				updateExpr: macro (cast $fieldRef : bh.stateanim.AnimationSM).setState($keyExpr, Std.string($valExpr)),
+				paramRefs: selRefs,
+			});
 		}
 
 		return {
@@ -6264,6 +6277,17 @@ class ProgrammableCodeGen {
 			default:
 				for (child in node.children) validateTileGroupSubtreeMacro(child, loopVarScope, pos);
 		}
+	}
+
+	/** `tilemap(name)`: the builder draws the map at run time, as it does autotiles. */
+	static function generateTilemapCreate(fieldName:String, extRef:Null<String>, mapName:String):CreateResult {
+		final fieldRef = macro $p{["this", fieldName]};
+		return {
+			fieldType: macro :bh.base.TileMap,
+			createExprs: [macro $fieldRef = this._pb.buildTilemap($v{mapName}, $v{extRef})],
+			isContainer: false,
+			exprUpdates: [],
+		};
 	}
 
 	static function generateTileGroupCreate(node:Node, fieldName:String, pos:Position):CreateResult {

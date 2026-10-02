@@ -226,7 +226,8 @@ before assigning a new ID.
   or add a no-op keyword + test.
 - [ ] `DOC-15` Per-animation `center:` override doesn't exist (parse error).
 - [ ] `DOC-16` Playlist per-frame filters **replace**, don't accumulate (pinned by AnimFilterRuntimeTest).
-- [ ] `DOC-17` `$$state$$` "migration hint error" doesn't exist; `LoadedAnimation` in example is dead code;
+- [ ] `DOC-17` `$$state$$` "migration hint error" doesn't exist; ~~`LoadedAnimation` in example is dead code~~
+  (**DONE 2026-09-30**: `AnimParserResult.loaded()` returns it, and the example calls it);
   color metadata alpha semantics (`VFX-2` fixed 2026-07-12: short forms bake 0xFF — update the text
   to the new semantics); flipX/flipY size check is load-time not parse-time.
 - [ ] `DOC-18` Structural: anim.md and anim-reference.md share the same H1 title; anim.md + animpaths.md are

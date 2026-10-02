@@ -164,6 +164,15 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/153-autotileCorner/autotileCorner.manim", "autotileCorner")
 	public var autotileCorner;
 
+	@:manim("test/examples/154-animLayers/animLayers.manim", "animLayers")
+	public var animLayers;
+
+	@:manim("test/examples/154-animLayers/animLayers.manim", "animLayersParams")
+	public var animLayersParams;
+
+	@:manim("test/examples/155-tilemap/tilemap.manim", "tilemapDemo")
+	public var tilemapDemo;
+
 	@:manim("test/examples/54-codegenPaletteReplace/codegenPaletteReplace.manim", "codegenPaletteReplace")
 	public var paletteReplace;
 
@@ -451,8 +460,8 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/111-codegenIncrementalInteractiveStateanim/codegenIncrementalInteractiveStateanim.manim", "codegenIncUntrackedMeta")
 	public var codegenIncUntrackedMeta;
 
-	@:manim("test/examples/111-codegenIncrementalInteractiveStateanim/codegenIncrementalInteractiveStateanim.manim", "codegenIncUntrackedSelector")
-	public var codegenIncUntrackedSelector;
+	@:manim("test/examples/111-codegenIncrementalInteractiveStateanim/codegenIncrementalInteractiveStateanim.manim", "codegenIncSelector")
+	public var codegenIncSelector;
 
 	@:manim("test/examples/112-chainBoundary/chainBoundary.manim", "chainBoundary")
 	public var chainBoundary;

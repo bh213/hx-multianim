@@ -633,6 +633,24 @@ draws, repeats, otherwise?, source, odds: [{id, share, chance}], nothing}`. Erro
 Draws with the game's own picker from `new DataRandom(seed)`: the rows the game draws from the same seed.
 Returns `{name, seed, draws, picked: [ids]}`. Errors: `not_found`.
 
+### Tile maps: `map_list`, `map_get`
+
+The tile maps in a scene (`bh.base.TileMap.showing`), built from `#name tilemap { … }` blocks.
+
+#### `map_list`
+No parameters. Returns `{maps: [{name, source, line, width, height, tileSize}]}`: `source` the .manim file
+and `line` where the map's block is.
+
+#### `map_get`
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | yes | From `map_list` |
+
+The map as it is now, in the shape it is written in: `{name, source, line, width, height, tileSize,
+tileset, legend, terrain, levels, layers: [{name, sheet, draw, legend, rows}], marks: [{name, x, y, w?,
+h?}]}`. A map changed while the game runs (`setTerrain`, `setLevel`, `setCell`) answers with its rows as
+they are. Errors: `not_found`.
+
 ---
 
 ## Parameter Types

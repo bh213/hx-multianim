@@ -248,6 +248,54 @@ class AutotileTest extends BuilderTestBase {
 			Assert.equals(4, built.count(), "one tile per filled cell");
 	}
 
+	@Test
+	public function testAtlasIndexedNameSource():Void {
+		// One atlas name whose frames are the corner cases by index, as a packer writes a run of
+		// cells, from 0 (corner case 0 is never drawn, so its frame can be anything)
+		final builder = builderFromSource('
+			#fp atlas2("$TILESET") {
+				lava: 64, 64, 8, 8, index: 0
+				lava: 72, 40, 8, 8, index: 1
+				lava: 56, 40, 8, 8, index: 2
+				lava: 64, 40, 8, 8, index: 3
+				lava: 72, 24, 8, 8, index: 4
+				lava: 72, 32, 8, 8, index: 5
+				lava: 72, 48, 8, 8, index: 6
+				lava: 64, 56, 8, 8, index: 7
+				lava: 56, 24, 8, 8, index: 8
+				lava: 72, 56, 8, 8, index: 9
+				lava: 56, 32, 8, 8, index: 10
+				lava: 56, 56, 8, 8, index: 11
+				lava: 64, 24, 8, 8, index: 12
+				lava: 64, 48, 8, 8, index: 13
+				lava: 56, 48, 8, 8, index: 14
+				lava: 64, 32, 8, 8, index: 15
+				short: 72, 40, 8, 8, index: 0
+				short: 56, 40, 8, 8, index: 1
+			}
+			#t autotile { format: corner tileSize: 8 sheet: "fp", name: "lava" }
+			#missing autotile { format: corner tileSize: 8 sheet: "fp", name: "nope" }
+			#short autotile { format: corner tileSize: 8 sheet: "fp", name: "short" }
+			#mapped autotile { format: corner tileSize: 8 sheet: "fp", name: "short" mapping: [1:1, 2:1, 3:1, 4:1, 5:1, 6:1, 7:1, 8:1, 9:1, 10:1, 11:1, 12:1, 13:1, 14:1, 15:1] }
+		');
+		Assert.equals(4, builder.buildAutotile("t", [[1]]).count());
+		final five = builder.getAutotileTile("t", 5);
+		Assert.equals(72, Std.int(five.x), "case 5 is the frame with index: 5");
+		Assert.equals(32, Std.int(five.y));
+		assertBuilderError(() -> builder.buildAutotile("missing", [[1]]), "autotile_missing_tile");
+		// two frames, and the corner cases reach 15
+		assertBuilderError(() -> builder.buildAutotile("short", [[1]]), "autotile_missing_tile");
+		Assert.equals(4, builder.buildAutotile("mapped", [[1]]).count(), "mapping: picks frames of the name");
+	}
+
+	@Test
+	public function testAtlasSheetNeedsPrefixOrName():Void {
+		final error = parseExpectingError('#t autotile { format: corner tileSize: 8 sheet: "fp", region: [0, 0, 8, 8] }');
+		Assert.notNull(error);
+		final other = parseExpectingError('#t autotile { format: corner tileSize: 8 sheet: "fp", frames: "lava" }');
+		Assert.stringContains("prefix: or name:", other);
+	}
+
 	// ==================== Builder: validation ====================
 
 	@Test
@@ -325,6 +373,70 @@ class AutotileTest extends BuilderTestBase {
 		Assert.isTrue(tile.getTexture() == cached.getTexture(), "generated(autotile()) uses the cached demo texture");
 		Assert.equals(cached.x, tile.x);
 		Assert.equals(cached.y, tile.y);
+	}
+
+	// ==================== Variants per index ====================
+
+	/** Which tile of the test sheet's 8-wide region a tile is, by its position in the image. **/
+	static function sourceOf(tile:h2d.Tile):Int {
+		return Std.int(tile.y / 8) * 8 + Std.int(tile.x / 8);
+	}
+
+	@Test
+	public function testMappingVariantsParse():Void {
+		final builder = builderFromSource('#t autotile { format: cross tileSize: 8 file: "$TILESET" mapping: [4 | 5, 1: 2 | 3 | 3, 6] }');
+		final def = @:privateAccess builder.getAutotileDef("t").def;
+		Assert.equals(4, def.mapping.get(0), "the first target is the mapping's");
+		Assert.equals(2, def.mapping.get(1));
+		Assert.equals(6, def.mapping.get(2));
+		Assert.same([5], def.alternates.get(0), "the rest are alternates");
+		Assert.same([3, 3], def.alternates.get(1), "a source given twice is drawn twice as often");
+		Assert.isFalse(def.alternates.exists(2), "one target, no alternates");
+		assertParseError('#t autotile { format: cross tileSize: 8 file: "$TILESET" mapping: [1: 2 | -1] }', "must be >= 0");
+		Assert.notNull(parseExpectingError('#t autotile { format: cross tileSize: 8 file: "$TILESET" mapping: [1: 2 |] }'), "a pipe needs a source after it");
+	}
+
+	@Test
+	public function testMappingVariantsAreDrawnByPositionTheSameEveryTime():Void {
+		// The full corner tile (15) comes in three; a position draws one of them, the same each time
+		final builder = builderFromSource('
+			#t autotile { format: corner tileSize: 8 file: "$TILESET" region: [0, 0, 64, 16]
+				mapping: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 | 1 | 2] }
+		');
+		Assert.equals(15, sourceOf(builder.getAutotileTile("t", 15)), "no position: the first");
+		Assert.equals(3, sourceOf(builder.getAutotileTile("t", 3)));
+		final seen = new Map<Int, Bool>();
+		for (y in 0...6)
+			for (x in 0...6) {
+				final s = sourceOf(builder.getAutotileTile("t", 15, x, y));
+				Assert.isTrue(s == 15 || s == 1 || s == 2, 'position $x,$y draws one of the three, got $s');
+				seen.set(s, true);
+				Assert.equals(s, sourceOf(builder.getAutotileTile("t", 15, x, y)), "the same again");
+				Assert.equals(3, sourceOf(builder.getAutotileTile("t", 3, x, y)), "an index with one tile has no choice");
+			}
+		Assert.equals(3, Lambda.count(seen), "all three are used across 36 positions");
+		Assert.equals(9, builder.buildAutotile("t", [[1, 1], [1, 1]]).count(), "every corner of a 2x2 block is drawn");
+	}
+
+	@Test
+	public function testPartialBlob47FallbackKeepsTheVariants():Void {
+		// 45 (all neighbours but one diagonal) is not mapped: it falls back to 46, with both of 46's tiles
+		final builder = builderFromSource('#p autotile { format: blob47 tileSize: 8 file: "$TILESET" region: [0, 0, 64, 8] allowPartialMapping: true mapping: [0: 0, 46: 1 | 2] }');
+		final seen = new Map<Int, Bool>();
+		for (x in 0...12)
+			seen.set(sourceOf(builder.getAutotileTile("p", 45, x, 0)), true);
+		Assert.isTrue(seen.exists(1) && seen.exists(2), "both of the fallback's tiles");
+		Assert.isFalse(seen.exists(0));
+	}
+
+	@Test
+	public function testBuildAutotileDrawsOnlyWhere():Void {
+		final builder = builderFromSource('#t autotile { format: corner tileSize: 8 demo: #FF0000, #00FF00 }');
+		// a 2x2 block has 9 corners; only the two marked are drawn, with indices from the whole grid
+		final where = [[0, 1, 0], [0, 0, 0], [0, 0, 1]];
+		Assert.equals(2, builder.buildAutotile("t", [[1, 1], [1, 1]], where).count());
+		Assert.equals(9, builder.buildAutotile("t", [[1, 1], [1, 1]]).count(), "null: every corner");
+		Assert.equals(0, builder.buildAutotile("t", [[1, 1], [1, 1]], []).count(), "an empty where draws nothing");
 	}
 
 	// ==================== Helpers ====================

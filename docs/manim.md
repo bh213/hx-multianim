@@ -1469,6 +1469,7 @@ Exactly one source is required. Every source is addressed by a **source index** 
 |--------|-----------------|
 | `file: "tileset.png"` | `j`-th tile (row-major) of `region: [x, y, w, h]`, or of the whole image without `region:`. The region must fit the image and be a whole number of tiles. |
 | `sheet: "atlasName", prefix: "tile_"` | atlas tile named `tile_<j>` (works with inline `atlas2` blocks). |
+| `sheet: "atlasName", name: "lava"` | frame `j` of the atlas tile `lava`, its frames in `index:` order from 0 (a run whose first index is 1 counts from it, as every atlas is read). How a packer writes a terrain's cells: one name, one `index` a cell. |
 | `tiles: <tile source> <tile source> ...` | `j`-th listed tile source (`sheet(...)`, `file(...)`, `generated(...)`, ...). |
 | `demo: edgeColor, fillColor` | Generated placeholder tiles, one per autotile index (all in one texture). Takes no `mapping:`. |
 
@@ -1485,6 +1486,15 @@ mapping: [4, 7, 3, 6]  // autotile 0->4, 1->7, 2->3, 3->6
 ```
 mapping: [0:4, 1:7, 5:1, 13:5]
 ```
+
+**Several tiles for one index:** `index: a | b | c` (or `a | b | c` in the sequential form). A position
+draws one of them, chosen by its position so the same map always draws the same way and repeats do
+not line up; a source given twice is drawn twice as often. The usual use is the full interior tile
+and the long edges, which most tilesets ship in several versions:
+```
+mapping: [0:4, 1:7, 5:1, 13:5, 15: 9 | 10 | 11 | 11]
+```
+`generated(autotile(name, index))` takes the first; `builder.getAutotileTile(name, index, x, y)` the one a position draws.
 
 Every autotile index needs a tile, otherwise building fails with a `BuilderError` naming the index - with two exceptions: `corner` index 0 (never drawn) and `blob47` with `allowPartialMapping: true`. A mapping target outside the source (e.g. past the end of the region) is an error too.
 
@@ -1584,6 +1594,160 @@ Visualize a `file:` source's region with each tile's source index overlaid:
 ```
 bitmap(generated(autotileRegionSheet("dirt", 4, "f3x5", white)))
 ```
+
+---
+
+## Tilesets and Tile Maps
+
+A **tileset** says what maps are drawn with; a **tile map** is rows of characters, one a cell, drawn
+from one. Nothing in either is particular to an art pack: which sheet, which names, which autotile,
+which way a level's side is drawn and what a cell means to the game are all written in the file.
+
+### Tileset
+
+```manim
+#dirt autotile { format: corner tileSize: 8 sheet: "fp", name: "dirt" }
+#water autotile { format: corner tileSize: 8 sheet: "fp", name: "water" }
+#water2 autotile { format: corner tileSize: 8 sheet: "fp", name: "water2" }
+#edge1 autotile { format: corner tileSize: 8 sheet: "fp", name: "edge" }
+
+#plains tileset {
+    tileSize: 8
+    atlas: "fp"                                   // the sheet its named cells are in
+    edge: edge1                                   // the outline of every higher level
+    terrain grass { cells: "grass" metadata { cost:int => 1 } }
+    terrain dirt { autotile: dirt metadata { cost:int => 2 } }
+    terrain water { autotile: water, water2 duration: 300 metadata { swim:bool => true } }
+    rise 1 { side: "side1" left: "side1L" right: "side1R" span: 2 metadata { wall:bool => true } }
+    cell stairs { metadata { wall:bool => false, climb:bool => true } }
+    cell treetop { draw: over }
+}
+```
+
+| In a tileset | |
+|---|---|
+| `tileSize: n` | Pixels a cell |
+| `atlas: "sheet"` | The sheet (an atlas2 file or inline block) its named cells come from |
+| `edge: autotile` | The outline of a higher level, drawn along the rim of every level above 0 (not its inside, so the terrains on it show); needed when there are rises |
+| `edge <terrain>: autotile` | The outline where that terrain is on top, in place of `edge`: for a tileset whose cliff rim is drawn with the ground it holds (a rim of stone round grass, another round dirt) |
+| `terrain name { … }` | A terrain, drawn in the order written, bottom first; each is drawn under every terrain after it (its autotile covers their cells too, so what is drawn over it has something under it) |
+| `transition a, b { autotile: … }` | Where terrain `b` meets terrain `a` (or `none`, the map's edge included) and nothing else, this autotile is drawn over `b`'s own there: for a tileset whose edge between those two is its own tile set (grass to water, not grass to anything). `a` is below `b`; one autotile a frame when `b` is animated |
+| `rise n { … }` | How a cell `n` levels above its neighbour is drawn (below) |
+| `rise any { … }` | The same for every number of levels that has no rise of its own: a fence behind a plateau is the same however high it is |
+| `rise n <terrain> { … }` | The same where the higher cell is of that terrain. A terrain with rises of its own toward a side uses only those there |
+| `platform name { … }` | A kind of higher level that is not the ground raised: a tree top, a roof (below) |
+| `cell name { … }` | What a named cell of a map's layers is, wherever it is placed: `draw:` and `metadata` |
+
+| In a terrain | |
+|---|---|
+| `autotile: a` | An autotile definition of the tileset's file |
+| `autotile: a, b, c` with `duration: ms` | An animated terrain: one autotile a frame |
+| `cells: "name"` | Or the frames of an atlas name, as variants: each cell takes one by its position, the same every time |
+| `metadata { … }` | What the game reads of a cell of this terrain |
+
+**Height is levels, and nothing is lifted.** A map's `levels:` give each cell a level: a digit, or
+for more than ten levels a character of a legend, `levels { legend { "A": 10, "B": 11 } rows: [ … ] }`
+(a digit is always itself). A higher level is outlined by the tileset's `edge` autotile, and beyond a higher cell,
+toward the neighbour its rise faces, its `side` is drawn over `span` cells: the cliff face, the wall,
+the front of a platform. What stands on a higher level stands on its cells, where they are drawn, so
+sorting by feet stays right.
+
+| In a rise | |
+|---|---|
+| `side: "name"` | The side's middle: `span` frames of the name, from the edge outward |
+| `side: "a", "b", "c"` | Several middles, taken in turn along the run (after its first end): a wall drawn as columns that differ |
+| `left:`, `right:`, `single:` | Optional: the side's run's first end (left, or top), its last end, and a side one cell wide |
+| `span: n` | How many cells the side covers |
+| `toward: down` | Which neighbour the side faces: `down` (the default), `up`, `left`, `right`. One rise a number and direction |
+| `metadata { … }` | What the game reads of the cells the side covers |
+
+**A platform** is a higher level with a top of its own, drawn over whatever terrain the map has
+there: the ground under a tree top is still grass. Its `edge` autotile is drawn over all of it,
+inside and rim, and its sides are its own: where it has none toward a side, none is drawn.
+
+```manim
+platform canopy {
+    edge: canopyTop                                 // its top, every cell of it
+    rise 1 { side: "face", "face2" left: "faceL" right: "faceR" span: 6 }
+}
+```
+
+A map says where a platform is in its levels: a character of the levels' legend stands for a level
+and the platform there (`"c": 1 canopy`; `"c": canopy` is one level up). `map.platformAt(cx, cy)`
+is its name, or null for the ground.
+
+### Metadata
+
+`metadata { key:type => value, key => value, … }` on a terrain, a rise or a cell, written as
+`settings { }` and an interactive's metadata are (`int`, `float`, `string`, `bool`, `color`; without
+a type it is inferred), with literals only: a tileset has no parameters. A cell's metadata is its
+terrain's, then a rise's side over it, then each layer's cell there, a later one winning, and it is
+read as settings are: `map.metadataAt(x, y)` is a `BuilderResolvedSettings`. The engine gives no key
+a meaning: the game says what `wall`, `swim` or `cost` are for.
+
+### Tile map
+
+```manim
+#meadow tilemap {
+    tileset: plains                               // or tileset: external(tiles), plains
+    size: 20, 12
+    legend { ".": grass, "d": dirt, "~": water, " ": none }
+    terrain: [
+        "....................",
+        "..dddd.......~~~~...",
+        …
+    ]
+    levels: [                                     // optional: a digit a cell; levels { legend { "A": 10, "c": 1 canopy } rows: [ … ] } for more, and for platforms
+        "00000000000000000000",
+        "00000011111100000000",
+        …
+    ]
+    layer deco { legend { "s": stairs, "t": treetop } rows: [ … ] }   // a space is no cell
+    layer shade { sheet: "shadows" draw: top legend { "x": shade } rows: [ … ] }
+    decor {                                       // any element, sorted with the actors
+        bitmap(sheet("props", "rock")): 40, 80
+    }
+    marks { spawn: 1, 1  exit: 16, 9, 3, 2 }      // a point, or x, y, w, h: in cells
+}
+
+#level programmable() {
+    tilemap(meadow): 0, 0                         // or tilemap(external(maps), meadow)
+}
+```
+
+- Rows are checked when parsed: every row the map's width, every character in its legend, the right
+  number of rows, levels as digits or characters of their legend. The builder checks the rest, since the tileset may be in another
+  file: every terrain, cell and side piece is there (`tilemap_terrain`, `tilemap_missing_cell`), and
+  every rise the map has in a direction the tileset draws sides toward has its `rise` (`tilemap_rise`).
+- A layer's cells come from its `sheet:` (the tileset's `atlas` when not given) and are drawn `under`
+  the actors (the default), `over` them, or at the `top`, above everything; a `cell` with its own
+  `draw:` goes there instead.
+- Drawing order: terrains, the levels' edges and sides, the `under` layers; the decor and the actors in
+  one layer sorted by their feet every frame; `over`; `top`.
+
+### From code
+
+```haxe
+final map:bh.base.TileMap = builder.buildTilemap("meadow");
+map.addActor(hero);                         // sorted by its y with the decor, every frame (map.sortActors = false: not)
+map.toCell(hero.x, hero.y);                 // the cell a point is in
+map.terrainAt(cx, cy);                      // "grass", or null for none
+map.levelAt(cx, cy); map.sideAt(cx, cy);    // a cell's level; the rise of a side over it, or 0
+map.platformAt(cx, cy);                     // the platform a higher cell is of, or null: the ground
+map.cellAt("deco", cx, cy);                 // a layer's cell name, or null
+map.metadataAt(cx, cy).getBoolOrDefault("wall", false);  // getIntOrDefault, getStringOrDefault, has, keys…
+map.mark("exit");                           // {name, x, y, w?, h?}
+map.setTerrain(cx, cy, "~"); map.setLevel(cx, cy, 1); map.setCell("deco", cx, cy, "s");
+```
+
+`setTerrain`, `setLevel` and `setCell` change the map's own copy of the rows, so a map can be painted
+while the game runs. However many cells change, the map is drawn again once, as it is next drawn or
+asked what it draws (`terrainAt`, `sideAt`, `metadataAt`); `redraw()` draws it sooner. `setLevel`
+raises the ground: a digit for 0–9, else a character of the levels legend that is not a platform's.
+A cell outside the map, a character the legend has not, a level no character stands for and a layer
+the map has not are `BuilderError`s (`tilemap_outside`, `tilemap_legend`, `tilemap_level`,
+`tilemap_layer`). Hot reload of the file redraws every map from it in a scene and keeps the actors;
+a map not in a scene is not. The DevBridge answers `map_list` and `map_get`.
 
 ---
 

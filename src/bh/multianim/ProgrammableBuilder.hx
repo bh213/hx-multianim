@@ -171,13 +171,7 @@ class ProgrammableBuilder {
 	}
 
 	function resolvePaletteBuilder(externalRef:Null<String>):MultiAnimBuilder {
-		final base = getBuilder();
-		if (externalRef == null)
-			return base;
-		final ext = base.multiParserResult?.imports?.get(externalRef);
-		if (ext == null)
-			throw BuilderError.of('could not find builder for external palette reference "$externalRef"');
-		return ext;
+		return getBuilder().importedBuilder(externalRef);
 	}
 
 	/** Build a palette replace filter via the builder (for FilterPaletteReplace) */
@@ -188,24 +182,12 @@ class ProgrammableBuilder {
 
 	/** Build a sub-programmable via the builder (for STATIC_REF nodes) */
 	public function buildStaticRef(name:String, parameters:Map<String, Dynamic>, ?externalRef:String):BuilderResult {
-		var builder:MultiAnimBuilder = getBuilder();
-		if (externalRef != null) {
-			var extBuilder = builder.multiParserResult?.imports?.get(externalRef);
-			if (extBuilder == null) throw BuilderError.of('buildStaticRef: external reference "$externalRef" not found');
-			builder = extBuilder;
-		}
-		return builder.buildWithParameters(name, parameters);
+		return getBuilder().importedBuilder(externalRef).buildWithParameters(name, parameters);
 	}
 
 	/** Build a dynamic ref via the builder (for DYNAMIC_REF nodes, always incremental) */
 	public function buildDynamicRef(name:String, parameters:Map<String, Dynamic>, ?externalRef:String):BuilderResult {
-		var builder:MultiAnimBuilder = getBuilder();
-		if (externalRef != null) {
-			var extBuilder = builder.multiParserResult?.imports?.get(externalRef);
-			if (extBuilder == null) throw BuilderError.of('buildDynamicRef: external reference "$externalRef" not found');
-			builder = extBuilder;
-		}
-		return builder.buildWithParameters(name, parameters, null, null, true);
+		return getBuilder().importedBuilder(externalRef).buildWithParameters(name, parameters, null, null, true);
 	}
 
 	/** Build a parameterized slot's children via the builder (for SLOT nodes with parameters in codegen).
@@ -248,6 +230,12 @@ class ProgrammableBuilder {
 		}
 	}
 
+
+	/** Build a tile map (`#name tilemap { … }`) of this file, or of an imported one.
+	 *  Used by generated code for `tilemap(name)` elements. */
+	public function buildTilemap(name:String, ?externalRef:String):bh.base.TileMap {
+		return getBuilder().importedBuilder(externalRef).buildTilemap(name);
+	}
 
 	/** Build a state animation from a .anim file.
 	 *  Used by generated code for STATEANIM nodes. */

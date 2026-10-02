@@ -2804,4 +2804,226 @@ animation idle {
 		Assert.isTrue(error.indexOf("test-input:5:") >= 0,
 			'Error must be reported on line 5 (the stray backtick), got: $error');
 	}
+
+	// ===== For tools: annotations, lists of words, where each value is written =====
+
+	/** As a tool parses: with where each value is written. **/
+	static function loadedOf(animSource:String):LoadedAnimation {
+		try {
+			final loader = new bh.base.ResourceLoader.CachingResourceLoader();
+			return AnimParser.parseFile(byte.ByteData.ofString(animSource), "test-input", loader, true).loaded();
+		} catch (e:Dynamic) {
+			Assert.fail('Unexpected parse error: $e');
+			return null;
+		}
+	}
+
+	static function annotationNamed(list:Array<AnimAnnotation>, name:String):Null<AnimAnnotation> {
+		for (a in list)
+			if (a.name == name) return a;
+		return null;
+	}
+
+	@Test
+	public function testAnnotationsBelongToTheAnimationAfterThemOrToTheFile() {
+		final loaded = loadedOf('
+@pack("Creatures")
+sheet: testSheet
+@from("WolfIdle.png", grid: 32, rows: direction)
+@note
+animation idle {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+}
+@from(layer: shadow, "ShadowWolf.png", merged, [a, b])
+anim walk(fps:4): "test_walk"
+@trailing(1.5, #FF0000)
+');
+		Assert.equals(2, loaded.annotations.length, "@pack before sheet: and @trailing after the last animation are the file's");
+		Assert.same(MVString("Creatures"), annotationNamed(loaded.annotations, "pack").args[0]);
+		Assert.same([MVFloat(1.5), MVColor(0xFFFF0000)], annotationNamed(loaded.annotations, "trailing").args);
+
+		final idle = loaded.animations[0].annotations;
+		Assert.equals(2, idle.length, "@from and @note belong to idle");
+		final from = annotationNamed(idle, "from");
+		Assert.same([MVString("WolfIdle.png")], from.args);
+		Assert.same(MVInt(32), from.named.get("grid"));
+		Assert.same(MVString("direction"), from.named.get("rows"), "a bare word is a string");
+		Assert.equals(0, annotationNamed(idle, "note").args.length);
+		Assert.equals(4, from.line, "an annotation says where it is");
+
+		final walk = loaded.animations[1].annotations;
+		Assert.equals(1, walk.length, "an annotation before an anim shorthand belongs to it");
+		Assert.same(MVString("shadow"), walk[0].named.get("layer"));
+		Assert.same([MVString("ShadowWolf.png"), MVString("merged"), MVList(["a", "b"])], walk[0].args);
+	}
+
+	@Test
+	public function testBadAnnotationsAreErrors() {
+		Assert.stringContains("belong to a condition", parseAnimExpectingError('
+sheet: testSheet
+@else
+animation idle { fps: 4 playlist { sheet: "test_idle" } }
+'));
+		Assert.stringContains("given twice", parseAnimExpectingError('
+sheet: testSheet
+@from(grid: 8, grid: 16)
+animation idle { fps: 4 playlist { sheet: "test_idle" } }
+'));
+		Assert.notNull(parseAnimExpectingError('
+sheet: testSheet
+@from("a.png" "b.png")
+animation idle { fps: 4 playlist { sheet: "test_idle" } }
+'), "arguments are separated by commas");
+		Assert.notNull(parseAnimExpectingError('
+sheet: testSheet
+@(direction=>l)
+animation idle { fps: 4 playlist { sheet: "test_idle" } }
+'), "a condition is not an annotation");
+	}
+
+	@Test
+	public function testMetadataTakesListsOfWords() {
+		final parsed = parseAnimExpectingSuccess('
+sheet: testSheet
+metadata {
+    tags: [beast, wolf, "big one", 3]
+    kind: "sprite"
+    none: []
+}
+animation idle { fps: 4 loop: yes playlist { sheet: "test_idle" } }
+');
+		final meta = parsed.metadata;
+		Assert.same(["beast", "wolf", "big one", "3"], meta.getListOrException("tags"));
+		Assert.same(["sprite"], meta.getListOrDefault("kind", []), "a single string is a list of one");
+		Assert.same([], meta.getListOrException("none"));
+		Assert.same(["x"], meta.getListOrDefault("missing", ["x"]));
+		Assert.equals("beast, wolf, big one, 3", meta.getStringOrDefault("tags", ""));
+		Assert.raises(() -> meta.getIntOrException("tags"));
+		Assert.raises(() -> meta.getColorOrDefault("tags", 0));
+	}
+
+	@Test
+	public function testLoadedSaysWhereEachValueIsWritten() {
+		final source = '@pack("Creatures")
+sheet: testSheet
+allowedExtraPoints: [fire]
+center: 16, 26
+fps: 5
+metadata {
+    tags: [beast, wolf]
+    tags: [pup]
+}
+@from("WolfIdle.png")
+animation idle {
+    loop: yes
+    playlist {
+        sheet: "test_idle" frames: 0..1 offset: 0, -1
+        event step 3, 4
+        sheet: "test_idle2", duration: 50ms
+    }
+    extrapoints { fire: 5, -3 }
+}
+anim walk(fps:4): "test_walk"
+';
+		final loaded = loadedOf(source);
+		function text(path:String):Null<String> {
+			for (s in loaded.spans)
+				if (s.path == path) return source.substring(s.start, s.end);
+			return null;
+		}
+		Assert.equals("testSheet", text("sheet"));
+		Assert.equals("[fire]", text("allowedExtraPoints"));
+		Assert.equals("16, 26", text("center"));
+		Assert.equals("5", text("fps"));
+		Assert.equals("[beast, wolf]", text("metadata.tags#0"));
+		Assert.equals("[pup]", text("metadata.tags#1"), "a key written twice: #n counts its entries");
+		Assert.isTrue(text("metadata").indexOf("metadata {") == 0);
+		Assert.equals('@pack("Creatures")', text("@pack#0"));
+		Assert.equals('@from("WolfIdle.png")', text("animations.0.@from#0"));
+		Assert.equals("yes", text("animations.0.loop"));
+		Assert.equals("idle", text("animations.0.name"));
+		Assert.equals('"test_idle"', text("animations.0.playlist#0.0.sheet"));
+		Assert.equals('sheet: "test_idle" frames: 0..1 offset: 0, -1', text("animations.0.playlist#0.0"));
+		Assert.equals("0..1", text("animations.0.playlist#0.0.frames"));
+		Assert.equals("0, -1", text("animations.0.playlist#0.0.offset"));
+		Assert.equals("event step 3, 4", text("animations.0.playlist#0.1"));
+		Assert.equals("3, 4", text("animations.0.playlist#0.1.at"));
+		Assert.equals("50ms", text("animations.0.playlist#0.2.duration"));
+		Assert.equals("5, -3", text("animations.0.extrapoints.fire#0"));
+		Assert.isTrue(StringTools.startsWith(text("animations.0"), "animation idle {"));
+		Assert.isTrue(StringTools.endsWith(text("animations.0"), "}"));
+		Assert.equals("walk", text("animations.1.name"));
+		Assert.equals("4", text("animations.1.fps"));
+		Assert.equals('"test_walk"', text("animations.1.playlist#0.0.sheet"));
+		Assert.equals('anim walk(fps:4): "test_walk"', text("animations.1"));
+
+		Assert.equals(5, loaded.defaults.fps);
+		Assert.equals("testSheet", loaded.sheet);
+		Assert.equals(2, loaded.metadataEntries.get("tags").length);
+		final lineOfFps = Lambda.find(loaded.spans, s -> s.path == "fps");
+		Assert.equals(5, lineOfFps.line);
+		Assert.equals(6, lineOfFps.col);
+
+		// A game's parse keeps none: only a tool that asks for them gets them
+		final played = parseAnimExpectingSuccess(source).loaded();
+		Assert.equals(0, played.spans.length, "no spans unless asked for");
+		Assert.equals(2, played.metadataEntries.get("tags").length, "the rest is there as it is");
+		Assert.equals(1, played.annotations.length, "and so are the annotations");
+	}
+
+	@Test
+	public function testPlaylistLineModifiersInAnyOrderOnce() {
+		Assert.notNull(parseAnimExpectingSuccess('
+sheet: testSheet
+animation idle {
+    fps: 4
+    playlist {
+        sheet: "a" offset: 1, 1 duration: 50ms frames: 0..1
+        sheet: "b", frames: 0..0, duration: 20ms, offset: -2, 3
+        file: "c.png" offset: 0, 1
+        sheet: "d"
+    }
+}
+'));
+		Assert.stringContains("offset already set", parseAnimExpectingError('
+sheet: testSheet
+animation idle { fps: 4 playlist { sheet: "a" offset: 1, 1 offset: 2, 2 } }
+'));
+		Assert.notNull(parseAnimExpectingError('
+sheet: testSheet
+animation idle { fps: 4 playlist { file: "c.png" frames: 0..1 } }
+'), "a file: line is one frame and takes no frames:");
+	}
+
+	@Test
+	public function testPlaylistOffsetMovesTheFramesAndMirrorsWithFlip() {
+		function firstTile(source:String):h2d.Tile {
+			final loader:bh.base.ResourceLoader = bh.test.TestResourceLoader.createLoader(false);
+			final parsed = AnimParser.parseFile(byte.ByteData.ofString(source), "test-input", loader);
+			final sm = parsed.createAnimSM([]);
+			for (state in sm.animationStates.get("idle").states)
+				switch state {
+					case Frame(f): return f.tile;
+					default:
+				}
+			return null;
+		}
+		function anim(line:String, flip:String):String
+			return 'sheet: crew2\ncenter: 16, 16\nanimation idle { fps: 4 flipX: $flip playlist { $line } }\n';
+
+		final plain = firstTile(anim('sheet: "marine_l_dead"', "no"));
+		final nudged = firstTile(anim('sheet: "marine_l_dead" offset: 3, -2', "no"));
+		Assert.equals(plain.dx + 3, nudged.dx);
+		Assert.equals(plain.dy - 2, nudged.dy);
+
+		final flipped = firstTile(anim('sheet: "marine_l_dead"', "yes"));
+		final flippedNudged = firstTile(anim('sheet: "marine_l_dead" offset: 3, -2', "yes"));
+		Assert.equals(flipped.dx - 3, flippedNudged.dx, "the nudge is part of the art, so a flip mirrors it");
+		Assert.equals(flipped.dy - 2, flippedNudged.dy);
+
+		final again = firstTile(anim('sheet: "marine_l_dead"', "no"));
+		Assert.equals(plain.dx, again.dx, "a nudge never moves the atlas's shared tile");
+	}
 }

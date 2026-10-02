@@ -131,7 +131,7 @@ class CodegenIncrementalInteractiveStateanimTest extends BuilderTestBase {
 	}
 
 	// ==================== Untracked-ref rejection ====================
-	// Params referenced only in untracked slots (interactive id/metadata, stateanim selectors)
+	// Params referenced only in untracked slots (interactive id/metadata)
 	// are silently frozen at construction. To prevent footgun where setParameter succeeds in
 	// updating the field but has no visual effect, both setter and setParameter must throw.
 	//
@@ -195,19 +195,31 @@ class CodegenIncrementalInteractiveStateanimTest extends BuilderTestBase {
 			"price", "interactive metadata value", "codegen metadata");
 	}
 
+	// A param in a stateanim selector changes that state on the same state machine
+	// (AnimationSM.setState), keeping the animation playing: no rebuild, no throw.
+
 	@Test
-	public function testUntrackedSelector_Builder_Throws():Void {
-		final result = BuilderTestBase.buildFromFile(FIXTURE, "codegenIncUntrackedSelector", null, Incremental);
-		assertUntrackedReject(runAndCatch(() -> result.setParameter("dir", "r")),
-			"dir", "stateanim selector \"direction\"", "builder selector");
+	public function testSelector_Builder_ChangesStateInPlace():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "codegenIncSelector", null, Incremental);
+		final sm = findAnimationSM(result.object);
+		Assert.notNull(sm, "Should find AnimationSM child");
+		Assert.equals("l", sm.currentSelector.get("direction"));
+		result.setParameter("dir", "r");
+		Assert.isTrue(findAnimationSM(result.object) == sm, "the same state machine, not a rebuilt one");
+		Assert.equals("r", sm.currentSelector.get("direction"), "the selector changed");
+		Assert.equals("idle", sm.getCurrentAnimName(), "still playing idle");
 	}
 
 	@Test
-	public function testUntrackedSelector_Codegen_Throws():Void {
+	public function testSelector_Codegen_ChangesStateInPlace():Void {
 		final mp = createMp();
-		final inst:Dynamic = mp.codegenIncUntrackedSelector.create();
-		assertUntrackedReject(runAndCatch(() -> inst.setDir("r")),
-			"dir", "stateanim selector \"direction\"", "codegen selector");
+		final inst:Dynamic = mp.codegenIncSelector.create();
+		final sm = findAnimationSM(cast inst);
+		Assert.notNull(sm, "Should find AnimationSM child");
+		inst.setDir("r");
+		Assert.isTrue(findAnimationSM(cast inst) == sm, "the same state machine, not a rebuilt one");
+		Assert.equals("r", sm.currentSelector.get("direction"), "the selector changed");
+		Assert.equals("idle", sm.getCurrentAnimName(), "still playing idle");
 	}
 
 	// ==================== Metadata type compat (parse-time validation) ====================

@@ -55,6 +55,16 @@ HxOverrides.now = function() {
 };
 var Lambda = function() { };
 Lambda.__name__ = true;
+Lambda.exists = function(it,f) {
+	var x = $getIterator(it);
+	while(x.hasNext()) {
+		var x1 = x.next();
+		if(f(x1)) {
+			return true;
+		}
+	}
+	return false;
+};
 Lambda.count = function(it,pred) {
 	var n = 0;
 	if(pred == null) {
@@ -83,6 +93,18 @@ Lambda.find = function(it,f) {
 		}
 	}
 	return null;
+};
+Lambda.findIndex = function(it,f) {
+	var i = 0;
+	var v = $getIterator(it);
+	while(v.hasNext()) {
+		var v1 = v.next();
+		if(f(v1)) {
+			return i;
+		}
+		++i;
+	}
+	return -1;
 };
 Math.__name__ = true;
 var Reflect = function() { };
@@ -208,6 +230,13 @@ Type.enumEq = function(a,b) {
 };
 var bh_base_Autotile = function() { };
 bh_base_Autotile.__name__ = true;
+bh_base_Autotile.variantAt = function(x,y,count) {
+	if(count <= 1) {
+		return 0;
+	} else {
+		return ((x * 73856093 ^ y * 19349663) & 2147483647) % count;
+	}
+};
 bh_base_Autotile.isFilled = function(grid,x,y) {
 	if(y >= 0 && y < grid.length && x >= 0 && x < grid[y].length) {
 		return grid[y][x] != 0;
@@ -1541,6 +1570,38 @@ var bh_multianim_MacroBlendMode = $hxEnums["bh.multianim.MacroBlendMode"] = { __
 	,MBMin: {_hx_name:"MBMin",_hx_index:11,__enum__:"bh.multianim.MacroBlendMode",toString:$estr}
 };
 bh_multianim_MacroBlendMode.__constructs__ = [bh_multianim_MacroBlendMode.MBNone,bh_multianim_MacroBlendMode.MBAlpha,bh_multianim_MacroBlendMode.MBAdd,bh_multianim_MacroBlendMode.MBAlphaAdd,bh_multianim_MacroBlendMode.MBSoftAdd,bh_multianim_MacroBlendMode.MBMultiply,bh_multianim_MacroBlendMode.MBAlphaMultiply,bh_multianim_MacroBlendMode.MBErase,bh_multianim_MacroBlendMode.MBScreen,bh_multianim_MacroBlendMode.MBSub,bh_multianim_MacroBlendMode.MBMax,bh_multianim_MacroBlendMode.MBMin];
+var bh_multianim_MacroBlendModes = function() { };
+bh_multianim_MacroBlendModes.__name__ = true;
+bh_multianim_MacroBlendModes.fromName = function(name) {
+	switch(name.toLowerCase()) {
+	case "add":
+		return bh_multianim_MacroBlendMode.MBAdd;
+	case "alpha":
+		return bh_multianim_MacroBlendMode.MBAlpha;
+	case "alphaadd":
+		return bh_multianim_MacroBlendMode.MBAlphaAdd;
+	case "alphamultiply":
+		return bh_multianim_MacroBlendMode.MBAlphaMultiply;
+	case "erase":
+		return bh_multianim_MacroBlendMode.MBErase;
+	case "max":
+		return bh_multianim_MacroBlendMode.MBMax;
+	case "min":
+		return bh_multianim_MacroBlendMode.MBMin;
+	case "multiply":
+		return bh_multianim_MacroBlendMode.MBMultiply;
+	case "none":
+		return bh_multianim_MacroBlendMode.MBNone;
+	case "screen":
+		return bh_multianim_MacroBlendMode.MBScreen;
+	case "softadd":
+		return bh_multianim_MacroBlendMode.MBSoftAdd;
+	case "sub":
+		return bh_multianim_MacroBlendMode.MBSub;
+	default:
+		return null;
+	}
+};
 var bh_multianim_MacroFlowLayout = $hxEnums["bh.multianim.MacroFlowLayout"] = { __ename__:true,__constructs__:null
 	,MFLHorizontal: {_hx_name:"MFLHorizontal",_hx_index:0,__enum__:"bh.multianim.MacroFlowLayout",toString:$estr}
 	,MFLVertical: {_hx_name:"MFLVertical",_hx_index:1,__enum__:"bh.multianim.MacroFlowLayout",toString:$estr}
@@ -4722,47 +4783,7 @@ bh_multianim_MacroManimParser.prototype = {
 		var _g = this.tokens[this.tpos].type;
 		if(_g._hx_index == 32) {
 			var s = _g.s;
-			var bm;
-			switch(s.toLowerCase()) {
-			case "add":
-				bm = bh_multianim_MacroBlendMode.MBAdd;
-				break;
-			case "alpha":
-				bm = bh_multianim_MacroBlendMode.MBAlpha;
-				break;
-			case "alphaadd":
-				bm = bh_multianim_MacroBlendMode.MBAlphaAdd;
-				break;
-			case "alphamultiply":
-				bm = bh_multianim_MacroBlendMode.MBAlphaMultiply;
-				break;
-			case "erase":
-				bm = bh_multianim_MacroBlendMode.MBErase;
-				break;
-			case "max":
-				bm = bh_multianim_MacroBlendMode.MBMax;
-				break;
-			case "min":
-				bm = bh_multianim_MacroBlendMode.MBMin;
-				break;
-			case "multiply":
-				bm = bh_multianim_MacroBlendMode.MBMultiply;
-				break;
-			case "none":
-				bm = bh_multianim_MacroBlendMode.MBNone;
-				break;
-			case "screen":
-				bm = bh_multianim_MacroBlendMode.MBScreen;
-				break;
-			case "softadd":
-				bm = bh_multianim_MacroBlendMode.MBSoftAdd;
-				break;
-			case "sub":
-				bm = bh_multianim_MacroBlendMode.MBSub;
-				break;
-			default:
-				bm = null;
-			}
+			var bm = bh_multianim_MacroBlendModes.fromName(s);
 			if(bm != null) {
 				this.advance();
 				return bm;
@@ -5657,11 +5678,21 @@ bh_multianim_MacroManimParser.prototype = {
 			break;
 		}
 		var tmp;
-		if(type._hx_index == 34) {
+		switch(type._hx_index) {
+		case 28:
+			var _g = type.tilesetDef;
+			tmp = $hxEnums[type.__enum__].__constructs__[type._hx_index]._hx_name;
+			break;
+		case 29:
+			var _g = type.tilemapDef;
+			tmp = $hxEnums[type.__enum__].__constructs__[type._hx_index]._hx_name;
+			break;
+		case 37:
 			var _g = type.paramName;
 			var _g = type.arms;
 			tmp = $hxEnums[type.__enum__].__constructs__[type._hx_index]._hx_name;
-		} else {
+			break;
+		default:
 			tmp = Std.string(type);
 		}
 		return { pos : bh_multianim_Coordinates.ZERO, scale : scale, rotation : rotation, alpha : alpha, tint : tint, layer : layerIndex, gridCoordinateSystem : null, hexCoordinateSystem : null, namedCoordinateSystems : null, blendMode : null, filter : null, parent : parent, updatableName : updatableName, type : type, children : [], conditionals : conditional, uniqueNodeName : this.generateUniqueName(this.uniqueCounter,nameStr,tmp), settings : null, transitions : null, flowProperties : null, cachedRelevantParamRefs : null};
@@ -6541,7 +6572,7 @@ bh_multianim_MacroManimParser.prototype = {
 														var checkNode = parent;
 														while(checkNode != null) {
 															var _g = checkNode.type;
-															if(_g._hx_index == 30) {
+															if(_g._hx_index == 33) {
 																var _g2 = _g.parameters;
 																var _g3 = _g.paramOrder;
 																insideSlot = true;
@@ -7184,205 +7215,255 @@ bh_multianim_MacroManimParser.prototype = {
 																																return n2;
 																															} else {
 																																var s = _g1;
-																																if(bh_multianim_MacroManimParser.isKeyword(s,"autotile")) {
+																																if(bh_multianim_MacroManimParser.isKeyword(s,"tileset")) {
 																																	this.advance();
 																																	if(this.currentName == null) {
-																																		this.error("autotile requires a #name");
+																																		this.error("tileset requires a #name");
 																																	}
 																																	if(parent != null) {
-																																		this.error("autotile must be a root node");
+																																		this.error("tileset must be a root node");
 																																	}
 																																	this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyOpen);
-																																	var atDef = this.parseAutotile();
-																																	var n = this.createNode(bh_multianim_NodeType.AUTOTILE(atDef),parent,conditional,scale,rotation,alpha,tint,layerIndex,updatableName);
+																																	var n = this.createNode(bh_multianim_NodeType.TILESET(this.parseTileset()),parent,conditional,scale,rotation,alpha,tint,layerIndex,updatableName);
 																																	return n;
 																																} else {
 																																	var s = _g1;
-																																	if(bh_multianim_MacroManimParser.isKeyword(s,"atlas2")) {
+																																	if(bh_multianim_MacroManimParser.isKeyword(s,"tilemap")) {
 																																		this.advance();
-																																		if(this.currentName == null) {
-																																			this.error("atlas2 requires a #name");
-																																		}
-																																		if(parent != null) {
-																																			this.error("atlas2 must be a root node");
-																																		}
-																																		var a2Def = this.parseAtlas2();
-																																		var n = this.createNode(bh_multianim_NodeType.ATLAS2(a2Def),parent,conditional,scale,rotation,alpha,tint,layerIndex,updatableName);
-																																		return n;
-																																	} else {
-																																		var s = _g1;
-																																		if(bh_multianim_MacroManimParser.isKeyword(s,"data")) {
-																																			this.advance();
+																																		if(this.tokens[this.tpos].type._hx_index == 5) {
 																																			if(this.currentName == null) {
-																																				this.error("data requires a #name");
+																																				this.error("tilemap requires a #name");
 																																			}
 																																			if(parent != null) {
-																																				this.error("data must be a root node");
+																																				this.error("a tilemap { } definition must be a root node; place it with tilemap(name)");
+																																			}
+																																			var tilemapLine = this.tokens[this.tpos].line;
+																																			this.advance();
+																																			var tmDef = { tileset : "", width : 0, height : 0, legend : new haxe_ds_StringMap(), terrain : [], levels : [], levelLegend : new haxe_ds_StringMap(), levelPlatforms : new haxe_ds_StringMap(), layers : [], marks : [], line : tilemapLine};
+																																			var n = this.createNode(bh_multianim_NodeType.TILEMAP(tmDef),parent,conditional,scale,rotation,alpha,tint,layerIndex,updatableName);
+																																			this.parseTilemap(tmDef,n,currentDefs);
+																																			return n;
+																																		} else {
+																																			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
+																																			var extRef = null;
+																																			var _g = this.tokens[this.tpos].type;
+																																			if(_g._hx_index == 32) {
+																																				var s2 = _g.s;
+																																				if(bh_multianim_MacroManimParser.isKeyword(s2,"external")) {
+																																					this.advance();
+																																					this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
+																																					extRef = this.expectIdentifierOrString();
+																																					this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
+																																					this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
+																																				}
+																																			}
+																																			var mapName = this.expectIdentifierOrString();
+																																			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
+																																			node = this.createNode(bh_multianim_NodeType.TILEMAP_REF(extRef,mapName),parent,conditional,scale,rotation,alpha,tint,layerIndex,updatableName);
+																																		}
+																																	} else {
+																																		var s = _g1;
+																																		if(bh_multianim_MacroManimParser.isKeyword(s,"autotile")) {
+																																			this.advance();
+																																			if(this.currentName == null) {
+																																				this.error("autotile requires a #name");
+																																			}
+																																			if(parent != null) {
+																																				this.error("autotile must be a root node");
 																																			}
 																																			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyOpen);
-																																			var dataDef = this.parseData();
-																																			var n = this.createNode(bh_multianim_NodeType.DATA(dataDef),parent,conditional,scale,rotation,alpha,tint,layerIndex,updatableName);
+																																			var atDef = this.parseAutotile();
+																																			var n = this.createNode(bh_multianim_NodeType.AUTOTILE(atDef),parent,conditional,scale,rotation,alpha,tint,layerIndex,updatableName);
 																																			return n;
 																																		} else {
 																																			var s = _g1;
-																																			if(bh_multianim_MacroManimParser.isKeyword(s,"rect") || bh_multianim_MacroManimParser.isKeyword(s,"circle") || bh_multianim_MacroManimParser.isKeyword(s,"line") || bh_multianim_MacroManimParser.isKeyword(s,"polygon") || bh_multianim_MacroManimParser.isKeyword(s,"ellipse") || bh_multianim_MacroManimParser.isKeyword(s,"roundrect") || bh_multianim_MacroManimParser.isKeyword(s,"arc")) {
+																																			if(bh_multianim_MacroManimParser.isKeyword(s,"atlas2")) {
 																																				this.advance();
-																																				var element;
-																																				switch(s.toLowerCase()) {
-																																				case "arc":
-																																					element = this.parseGraphicsArc();
-																																					break;
-																																				case "circle":
-																																					element = this.parseGraphicsCircle();
-																																					break;
-																																				case "ellipse":
-																																					element = this.parseGraphicsEllipse();
-																																					break;
-																																				case "line":
-																																					element = this.parseGraphicsLine();
-																																					break;
-																																				case "polygon":
-																																					element = this.parseGraphicsPolygon();
-																																					break;
-																																				case "rect":
-																																					element = this.parseGraphicsRect();
-																																					break;
-																																				case "roundrect":
-																																					element = this.parseGraphicsRoundRect();
-																																					break;
-																																				default:
-																																					this.error("unexpected graphics shorthand: " + s);
-																																					element = null;
+																																				if(this.currentName == null) {
+																																					this.error("atlas2 requires a #name");
 																																				}
-																																				var nodePos = element.pos;
-																																				element.pos = bh_multianim_Coordinates.ZERO;
-																																				var n = this.createNode(bh_multianim_NodeType.GRAPHICS([element]),parent,conditional,scale,rotation,alpha,tint,layerIndex,updatableName);
-																																				n.pos = nodePos;
-																																				this.eatSemicolon();
+																																				if(parent != null) {
+																																					this.error("atlas2 must be a root node");
+																																				}
+																																				var a2Def = this.parseAtlas2();
+																																				var n = this.createNode(bh_multianim_NodeType.ATLAS2(a2Def),parent,conditional,scale,rotation,alpha,tint,layerIndex,updatableName);
 																																				return n;
 																																			} else {
 																																				var s = _g1;
-																																				if(bh_multianim_MacroManimParser.isKeyword(s,"transition")) {
+																																				if(bh_multianim_MacroManimParser.isKeyword(s,"data")) {
 																																					this.advance();
-																																					if(conditional._hx_index != 3 || alpha != null || scale != null || rotation != null || tint != null || layerIndex != -1 || hasFlowProps) {
-																																						this.error("@ modifiers are not supported on transition {} — transition declarations are unconditional");
+																																					if(this.currentName == null) {
+																																						this.error("data requires a #name");
+																																					}
+																																					if(parent != null) {
+																																						this.error("data must be a root node");
 																																					}
 																																					this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyOpen);
-																																					if(parent == null) {
-																																						this.error("transition must be inside a programmable");
-																																					}
-																																					var transParamDefs;
-																																					var _g = parent.type;
-																																					if(_g._hx_index == 9) {
-																																						var _g2 = _g.isTileGroup;
-																																						var _g2 = _g.paramOrder;
-																																						var defs = _g.parameters;
-																																						transParamDefs = defs;
-																																					} else {
-																																						this.error("transition block only valid inside programmable");
-																																						transParamDefs = null;
-																																					}
-																																					if(parent.transitions == null) {
-																																						parent.transitions = new haxe_ds_StringMap();
-																																					}
-																																					while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed)) {
-																																						var paramName = this.expectIdentifierOrString();
-																																						if(transParamDefs != null && !Object.prototype.hasOwnProperty.call(transParamDefs.h,paramName)) {
-																																							this.error("transition references unknown parameter \"" + paramName + "\"");
-																																						}
-																																						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
-																																						var transType = this.parseTransitionType();
-																																						if(Object.prototype.hasOwnProperty.call(parent.transitions.h,paramName)) {
-																																							this.error("duplicate transition for parameter \"" + paramName + "\"");
-																																						}
-																																						parent.transitions.h[paramName] = transType;
-																																						if(transType._hx_index == 5) {
-																																							var _g = transType.direction;
-																																							var _g2 = transType.duration;
-																																							var _g3 = transType.distance;
-																																							var _g4 = transType.easing;
-																																							var p = parent.parent;
-																																							while(p != null) {
-																																								var _g5 = p.type;
-																																								if(_g5._hx_index == 0) {
-																																									var _g6 = _g5.maxWidth;
-																																									var _g7 = _g5.maxHeight;
-																																									var _g8 = _g5.minWidth;
-																																									var _g9 = _g5.minHeight;
-																																									var _g10 = _g5.lineHeight;
-																																									var _g11 = _g5.colWidth;
-																																									var _g12 = _g5.layout;
-																																									var _g13 = _g5.paddingTop;
-																																									var _g14 = _g5.paddingBottom;
-																																									var _g15 = _g5.paddingLeft;
-																																									var _g16 = _g5.paddingRight;
-																																									var _g17 = _g5.horizontalSpacing;
-																																									var _g18 = _g5.verticalSpacing;
-																																									var _g19 = _g5.debug;
-																																									var _g20 = _g5.multiline;
-																																									var _g21 = _g5.bgSheet;
-																																									var _g22 = _g5.bgTile;
-																																									var _g23 = _g5.overflow;
-																																									var _g24 = _g5.fillWidth;
-																																									var _g25 = _g5.fillHeight;
-																																									var _g26 = _g5.reverse;
-																																									var _g27 = _g5.hAlign;
-																																									var _g28 = _g5.vAlign;
-																																									break;
-																																								}
-																																								p = p.parent;
-																																							}
-																																						}
-																																						this.eatComma();
-																																					}
-																																					return null;
+																																					var dataDef = this.parseData();
+																																					var n = this.createNode(bh_multianim_NodeType.DATA(dataDef),parent,conditional,scale,rotation,alpha,tint,layerIndex,updatableName);
+																																					return n;
 																																				} else {
 																																					var s = _g1;
-																																					if(bh_multianim_MacroManimParser.isKeyword(s,"settings")) {
+																																					if(bh_multianim_MacroManimParser.isKeyword(s,"rect") || bh_multianim_MacroManimParser.isKeyword(s,"circle") || bh_multianim_MacroManimParser.isKeyword(s,"line") || bh_multianim_MacroManimParser.isKeyword(s,"polygon") || bh_multianim_MacroManimParser.isKeyword(s,"ellipse") || bh_multianim_MacroManimParser.isKeyword(s,"roundrect") || bh_multianim_MacroManimParser.isKeyword(s,"arc")) {
 																																						this.advance();
-																																						if(conditional._hx_index != 3 || alpha != null || scale != null || rotation != null || tint != null || layerIndex != -1 || hasFlowProps) {
-																																							this.error("@ modifiers are not supported on settings {} — settings are static and unconditional");
+																																						var element;
+																																						switch(s.toLowerCase()) {
+																																						case "arc":
+																																							element = this.parseGraphicsArc();
+																																							break;
+																																						case "circle":
+																																							element = this.parseGraphicsCircle();
+																																							break;
+																																						case "ellipse":
+																																							element = this.parseGraphicsEllipse();
+																																							break;
+																																						case "line":
+																																							element = this.parseGraphicsLine();
+																																							break;
+																																						case "polygon":
+																																							element = this.parseGraphicsPolygon();
+																																							break;
+																																						case "rect":
+																																							element = this.parseGraphicsRect();
+																																							break;
+																																						case "roundrect":
+																																							element = this.parseGraphicsRoundRect();
+																																							break;
+																																						default:
+																																							this.error("unexpected graphics shorthand: " + s);
+																																							element = null;
 																																						}
-																																						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyOpen);
-																																						if(parent == null) {
-																																							this.error("settings must have a parent");
-																																						}
-																																						if(parent.settings == null) {
-																																							parent.settings = new haxe_ds_StringMap();
-																																						}
-																																						while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed)) {
-																																							var key = this.expectIdentifierOrString();
-																																							if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TDot)) {
-																																								var suffix = this.expectIdentifierOrString();
-																																								key = key + "." + suffix;
-																																							}
-																																							switch(this.tokens[this.tpos].type._hx_index) {
-																																							case 11:
-																																								this.advance();
-																																								var tv = this.parseTypedSettingValue();
-																																								if(Object.prototype.hasOwnProperty.call(parent.settings.h,key)) {
-																																									this.error("setting " + key + " already defined");
-																																								}
-																																								parent.settings.h[key] = { type : tv.type, value : tv.value};
-																																								break;
-																																							case 15:
-																																								this.advance();
-																																								var value = this.parseAnything();
-																																								if(Object.prototype.hasOwnProperty.call(parent.settings.h,key)) {
-																																									this.error("setting " + key + " already defined");
-																																								}
-																																								var this1 = parent.settings;
-																																								var value1 = { type : this.inferSettingType(value), value : value};
-																																								this1.h[key] = value1;
-																																								break;
-																																							default:
-																																								this.error("expected :type=> or => after setting key");
-																																							}
-																																							this.eatComma();
-																																						}
-																																						return null;
+																																						var nodePos = element.pos;
+																																						element.pos = bh_multianim_Coordinates.ZERO;
+																																						var n = this.createNode(bh_multianim_NodeType.GRAPHICS([element]),parent,conditional,scale,rotation,alpha,tint,layerIndex,updatableName);
+																																						n.pos = nodePos;
+																																						this.eatSemicolon();
+																																						return n;
 																																					} else {
-																																						node = this.error("expected valid node type, got " + Std.string(this.tokens[this.tpos].type));
+																																						var s = _g1;
+																																						if(bh_multianim_MacroManimParser.isKeyword(s,"transition")) {
+																																							this.advance();
+																																							if(conditional._hx_index != 3 || alpha != null || scale != null || rotation != null || tint != null || layerIndex != -1 || hasFlowProps) {
+																																								this.error("@ modifiers are not supported on transition {} — transition declarations are unconditional");
+																																							}
+																																							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyOpen);
+																																							if(parent == null) {
+																																								this.error("transition must be inside a programmable");
+																																							}
+																																							var transParamDefs;
+																																							var _g = parent.type;
+																																							if(_g._hx_index == 9) {
+																																								var _g2 = _g.isTileGroup;
+																																								var _g2 = _g.paramOrder;
+																																								var defs = _g.parameters;
+																																								transParamDefs = defs;
+																																							} else {
+																																								this.error("transition block only valid inside programmable");
+																																								transParamDefs = null;
+																																							}
+																																							if(parent.transitions == null) {
+																																								parent.transitions = new haxe_ds_StringMap();
+																																							}
+																																							while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed)) {
+																																								var paramName = this.expectIdentifierOrString();
+																																								if(transParamDefs != null && !Object.prototype.hasOwnProperty.call(transParamDefs.h,paramName)) {
+																																									this.error("transition references unknown parameter \"" + paramName + "\"");
+																																								}
+																																								this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+																																								var transType = this.parseTransitionType();
+																																								if(Object.prototype.hasOwnProperty.call(parent.transitions.h,paramName)) {
+																																									this.error("duplicate transition for parameter \"" + paramName + "\"");
+																																								}
+																																								parent.transitions.h[paramName] = transType;
+																																								if(transType._hx_index == 5) {
+																																									var _g = transType.direction;
+																																									var _g2 = transType.duration;
+																																									var _g3 = transType.distance;
+																																									var _g4 = transType.easing;
+																																									var p = parent.parent;
+																																									while(p != null) {
+																																										var _g5 = p.type;
+																																										if(_g5._hx_index == 0) {
+																																											var _g6 = _g5.maxWidth;
+																																											var _g7 = _g5.maxHeight;
+																																											var _g8 = _g5.minWidth;
+																																											var _g9 = _g5.minHeight;
+																																											var _g10 = _g5.lineHeight;
+																																											var _g11 = _g5.colWidth;
+																																											var _g12 = _g5.layout;
+																																											var _g13 = _g5.paddingTop;
+																																											var _g14 = _g5.paddingBottom;
+																																											var _g15 = _g5.paddingLeft;
+																																											var _g16 = _g5.paddingRight;
+																																											var _g17 = _g5.horizontalSpacing;
+																																											var _g18 = _g5.verticalSpacing;
+																																											var _g19 = _g5.debug;
+																																											var _g20 = _g5.multiline;
+																																											var _g21 = _g5.bgSheet;
+																																											var _g22 = _g5.bgTile;
+																																											var _g23 = _g5.overflow;
+																																											var _g24 = _g5.fillWidth;
+																																											var _g25 = _g5.fillHeight;
+																																											var _g26 = _g5.reverse;
+																																											var _g27 = _g5.hAlign;
+																																											var _g28 = _g5.vAlign;
+																																											break;
+																																										}
+																																										p = p.parent;
+																																									}
+																																								}
+																																								this.eatComma();
+																																							}
+																																							return null;
+																																						} else {
+																																							var s = _g1;
+																																							if(bh_multianim_MacroManimParser.isKeyword(s,"settings")) {
+																																								this.advance();
+																																								if(conditional._hx_index != 3 || alpha != null || scale != null || rotation != null || tint != null || layerIndex != -1 || hasFlowProps) {
+																																									this.error("@ modifiers are not supported on settings {} — settings are static and unconditional");
+																																								}
+																																								this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyOpen);
+																																								if(parent == null) {
+																																									this.error("settings must have a parent");
+																																								}
+																																								if(parent.settings == null) {
+																																									parent.settings = new haxe_ds_StringMap();
+																																								}
+																																								while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed)) {
+																																									var key = this.expectIdentifierOrString();
+																																									if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TDot)) {
+																																										var suffix = this.expectIdentifierOrString();
+																																										key = key + "." + suffix;
+																																									}
+																																									switch(this.tokens[this.tpos].type._hx_index) {
+																																									case 11:
+																																										this.advance();
+																																										var tv = this.parseTypedSettingValue();
+																																										if(Object.prototype.hasOwnProperty.call(parent.settings.h,key)) {
+																																											this.error("setting " + key + " already defined");
+																																										}
+																																										parent.settings.h[key] = { type : tv.type, value : tv.value};
+																																										break;
+																																									case 15:
+																																										this.advance();
+																																										var value = this.parseAnything();
+																																										if(Object.prototype.hasOwnProperty.call(parent.settings.h,key)) {
+																																											this.error("setting " + key + " already defined");
+																																										}
+																																										var this1 = parent.settings;
+																																										var value1 = { type : this.inferSettingType(value), value : value};
+																																										this1.h[key] = value1;
+																																										break;
+																																									default:
+																																										this.error("expected :type=> or => after setting key");
+																																									}
+																																									this.eatComma();
+																																								}
+																																								return null;
+																																							} else {
+																																								node = this.error("expected valid node type, got " + Std.string(this.tokens[this.tpos].type));
+																																							}
+																																						}
 																																					}
 																																				}
 																																			}
@@ -8682,7 +8763,20 @@ bh_multianim_MacroManimParser.prototype = {
 		return { key : bh_multianim_ReferenceableValue.RVString("events"), type : bh_multianim_SettingValueType.SVTInt, value : bh_multianim_ReferenceableValue.RVInteger(flags)};
 	}
 	,parseTypedSettingValue: function() {
-		var typeName = this.expectIdentifierOrString();
+		var typeName;
+		var _g = this.tokens[this.tpos].type;
+		switch(_g._hx_index) {
+		case 32:
+			var _g1 = _g.s;
+			typeName = this.expectIdentifierOrString();
+			break;
+		case 35:
+			var _g1 = _g.s;
+			typeName = this.expectIdentifierOrString();
+			break;
+		default:
+			typeName = this.error("expected a type after \":\" (int, float, string, color or bool), as in key:int => 1; or no type: key => 1");
+		}
 		this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TArrow);
 		switch(typeName.toLowerCase()) {
 		case "bool":
@@ -10825,6 +10919,7 @@ bh_multianim_MacroManimParser.prototype = {
 		var source = null;
 		var tileSize = null;
 		var mapping = null;
+		var alternates = null;
 		var region = null;
 		var allowPartialMapping = false;
 		var setSource = function(s) {
@@ -10884,14 +10979,22 @@ bh_multianim_MacroManimParser.prototype = {
 								setSource(bh_multianim_AutotileSource.ATSAtlas(sheet,prefix));
 							} else {
 								var s24 = _g5;
-								if(bh_multianim_MacroManimParser.isKeyword(s24,"region")) {
-									this.error("autotile \"sheet: ..., region: [...]\" is not supported - use file: \"image.png\" with region: [x, y, w, h]");
+								if(bh_multianim_MacroManimParser.isKeyword(s24,"name")) {
+									this.advance();
+									this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+									var name = this.parseStringOrReference();
+									setSource(bh_multianim_AutotileSource.ATSAtlasIndexed(sheet,name));
 								} else {
-									this.error("expected prefix: after sheet");
+									var s25 = _g5;
+									if(bh_multianim_MacroManimParser.isKeyword(s25,"region")) {
+										this.error("autotile \"sheet: ..., region: [...]\" is not supported - use file: \"image.png\" with region: [x, y, w, h]");
+									} else {
+										this.error("expected prefix: or name: after sheet");
+									}
 								}
 							}
 						} else {
-							this.error("expected prefix: after sheet");
+							this.error("expected prefix: or name: after sheet");
 						}
 					} else {
 						var s3 = _g1;
@@ -10935,7 +11038,9 @@ bh_multianim_MacroManimParser.prototype = {
 												this.advance();
 												this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
 												this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TBracketOpen);
-												mapping = this.parseAutotileMapping();
+												var parsed = this.parseAutotileMapping();
+												mapping = parsed.mapping;
+												alternates = parsed.alternates;
 											} else {
 												var s9 = _g1;
 												if(bh_multianim_MacroManimParser.isKeyword(s9,"allowpartialmapping")) {
@@ -10990,7 +11095,7 @@ bh_multianim_MacroManimParser.prototype = {
 		var fmt = format;
 		var src = source;
 		if(region != null) {
-			if(src._hx_index == 1) {
+			if(src._hx_index == 2) {
 				var _g = src.filename;
 			} else {
 				this.error("autotile region: only applies to a file: source");
@@ -11000,7 +11105,7 @@ bh_multianim_MacroManimParser.prototype = {
 			this.error("autotile allowPartialMapping: only applies to format: blob47");
 		}
 		if(mapping != null) {
-			if(src._hx_index == 3) {
+			if(src._hx_index == 4) {
 				var _g = src.edgeColor;
 				var _g = src.fillColor;
 				this.error("autotile demo: source generates its own tiles and does not take mapping:");
@@ -11033,11 +11138,32 @@ bh_multianim_MacroManimParser.prototype = {
 					this.error("autotile mapping " + key1 + ":" + target + " - source index must be >= 0");
 				}
 			}
+			if(alternates != null) {
+				var map = alternates;
+				var _g_map = map;
+				var _g_keys = map.keys();
+				while(_g_keys.hasNext()) {
+					var key = _g_keys.next();
+					var _g_value = _g_map.get(key);
+					var _g_key = key;
+					var key1 = _g_key;
+					var more = _g_value;
+					var _g = 0;
+					while(_g < more.length) {
+						var target = more[_g];
+						++_g;
+						if(target < 0) {
+							this.error("autotile mapping " + key1 + ": a source index must be >= 0, got " + target);
+						}
+					}
+				}
+			}
 		}
-		return { format : fmt, source : src, tileSize : tileSize, mapping : mapping, region : region, allowPartialMapping : allowPartialMapping};
+		return { format : fmt, source : src, tileSize : tileSize, mapping : mapping, alternates : alternates, region : region, allowPartialMapping : allowPartialMapping};
 	}
 	,parseAutotileMapping: function() {
 		var map = new haxe_ds_IntMap();
+		var alternates = null;
 		var seqIdx = 0;
 		while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TBracketClosed)) {
 			this.eatComma();
@@ -11055,9 +11181,913 @@ bh_multianim_MacroManimParser.prototype = {
 				this.error("autotile mapping has more than one entry for index " + key);
 			}
 			map.h[key] = target;
+			if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TPipe)) {
+				var more = [];
+				do more.push(this.parseInteger()); while(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TPipe));
+				if(alternates == null) {
+					alternates = new haxe_ds_IntMap();
+				}
+				alternates.h[key] = more;
+			}
 			++seqIdx;
 		}
-		return map;
+		return { mapping : map, alternates : alternates};
+	}
+	,parseTileset: function() {
+		var _gthis = this;
+		var tileSize = null;
+		var atlas = null;
+		var edge = null;
+		var edges = new haxe_ds_StringMap();
+		var terrains = [];
+		var transitions = [];
+		var rises = [];
+		var platforms = [];
+		var cells = [];
+		var parseRise = function(platform) {
+			var rise = 0;
+			var _g = _gthis.tokens[_gthis.tpos].type;
+			if(_g._hx_index == 32) {
+				var a = _g.s;
+				if(bh_multianim_MacroManimParser.isKeyword(a,"any")) {
+					_gthis.advance();
+				} else {
+					rise = _gthis.parseInteger();
+					if(rise <= 0) {
+						_gthis.error("a rise is 1 level or more (or any)");
+					}
+				}
+			} else {
+				rise = _gthis.parseInteger();
+				if(rise <= 0) {
+					_gthis.error("a rise is 1 level or more (or any)");
+				}
+			}
+			var riseTerrain = null;
+			if(!_gthis.match(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyOpen)) {
+				if(platform != null) {
+					_gthis.error("platform " + platform + ": a platform's rise is its own, whatever terrain is under it");
+				}
+				riseTerrain = _gthis.expectIdentifierOrString();
+				_gthis.expect(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyOpen);
+			}
+			var riseName = (platform != null ? "platform " + platform + ": " : "") + (rise == 0 ? "any" : rise == null ? "null" : "" + rise) + (riseTerrain != null ? " " + riseTerrain : "");
+			var parsed = _gthis.parseTilesetRise(rise,riseTerrain,riseName);
+			parsed.platform = platform;
+			var _g = 0;
+			while(_g < rises.length) {
+				var r = rises[_g];
+				++_g;
+				if(r.rise == rise && r.toward == parsed.toward && r.terrain == riseTerrain && r.platform == platform) {
+					_gthis.error("rise " + riseName + " toward " + parsed.toward + " is defined twice");
+				}
+			}
+			rises.push(parsed);
+		};
+		while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed)) {
+			var _g = this.tokens[this.tpos].type;
+			if(_g._hx_index == 32) {
+				var _g1 = _g.s;
+				var s = _g1;
+				if(bh_multianim_MacroManimParser.isKeyword(s,"tilesize")) {
+					this.advance();
+					this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+					if(tileSize != null) {
+						this.error("tileSize already set");
+					}
+					var size = this.parseInteger();
+					if(size <= 0) {
+						this.error("tileSize must be greater than 0");
+					}
+					tileSize = size;
+				} else {
+					var s1 = _g1;
+					if(bh_multianim_MacroManimParser.isKeyword(s1,"atlas")) {
+						this.advance();
+						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+						atlas = this.expectIdentifierOrString();
+					} else {
+						var s2 = _g1;
+						if(bh_multianim_MacroManimParser.isKeyword(s2,"edge")) {
+							this.advance();
+							if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TColon)) {
+								if(edge != null) {
+									this.error("edge already set");
+								}
+								edge = this.expectIdentifierOrString();
+							} else {
+								var edgeTerrain = this.expectIdentifierOrString();
+								this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+								if(Object.prototype.hasOwnProperty.call(edges.h,edgeTerrain)) {
+									this.error("edge " + edgeTerrain + " already set");
+								}
+								var value = this.expectIdentifierOrString();
+								edges.h[edgeTerrain] = value;
+							}
+						} else {
+							var s3 = _g1;
+							if(bh_multianim_MacroManimParser.isKeyword(s3,"terrain")) {
+								this.advance();
+								var terrainName = this.expectIdentifierOrString();
+								if(terrainName == "none") {
+									this.error("\"none\" means no terrain in a legend; name the terrain otherwise");
+								}
+								var _g2 = 0;
+								while(_g2 < terrains.length) {
+									var t = terrains[_g2];
+									++_g2;
+									if(t.name == terrainName) {
+										this.error("terrain " + terrainName + " is defined twice");
+									}
+								}
+								this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyOpen);
+								terrains.push(this.parseTilesetTerrain(terrainName));
+							} else {
+								var s4 = _g1;
+								if(bh_multianim_MacroManimParser.isKeyword(s4,"transition")) {
+									this.advance();
+									var from = this.expectIdentifierOrString();
+									this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
+									var to = this.expectIdentifierOrString();
+									var _g3 = 0;
+									while(_g3 < transitions.length) {
+										var t1 = transitions[_g3];
+										++_g3;
+										if(t1.from == from && t1.to == to) {
+											this.error("transition " + from + ", " + to + " is defined twice");
+										}
+									}
+									this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyOpen);
+									var autotiles = [];
+									while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed)) {
+										var _g4 = this.tokens[this.tpos].type;
+										if(_g4._hx_index == 32) {
+											var s21 = _g4.s;
+											if(bh_multianim_MacroManimParser.isKeyword(s21,"autotile")) {
+												this.advance();
+												this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+												this.parseNameList(autotiles);
+											} else {
+												this.error("unexpected transition property: " + Std.string(this.tokens[this.tpos].type) + " (a transition has autotile: only)");
+											}
+										} else {
+											this.error("unexpected transition property: " + Std.string(this.tokens[this.tpos].type) + " (a transition has autotile: only)");
+										}
+									}
+									if(autotiles.length == 0) {
+										this.error("transition " + from + ", " + to + " needs autotile:");
+									}
+									transitions.push({ from : from, to : to, autotiles : autotiles});
+								} else {
+									var s5 = _g1;
+									if(bh_multianim_MacroManimParser.isKeyword(s5,"rise")) {
+										this.advance();
+										parseRise(null);
+									} else {
+										var s6 = _g1;
+										if(bh_multianim_MacroManimParser.isKeyword(s6,"platform")) {
+											this.advance();
+											var platformName = this.expectIdentifierOrString();
+											var _g5 = 0;
+											while(_g5 < platforms.length) {
+												var p = platforms[_g5];
+												++_g5;
+												if(p.name == platformName) {
+													this.error("platform " + platformName + " is defined twice");
+												}
+											}
+											this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyOpen);
+											var platformEdge = null;
+											while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed)) {
+												var _g6 = this.tokens[this.tpos].type;
+												if(_g6._hx_index == 32) {
+													var _g7 = _g6.s;
+													var s22 = _g7;
+													if(bh_multianim_MacroManimParser.isKeyword(s22,"edge")) {
+														this.advance();
+														this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+														if(platformEdge != null) {
+															this.error("platform " + platformName + ": edge already set");
+														}
+														platformEdge = this.expectIdentifierOrString();
+													} else {
+														var s23 = _g7;
+														if(bh_multianim_MacroManimParser.isKeyword(s23,"rise")) {
+															this.advance();
+															parseRise(platformName);
+														} else {
+															this.error("unexpected platform property: " + Std.string(this.tokens[this.tpos].type) + " (edge: and rise <n> { })");
+														}
+													}
+												} else {
+													this.error("unexpected platform property: " + Std.string(this.tokens[this.tpos].type) + " (edge: and rise <n> { })");
+												}
+											}
+											platforms.push({ name : platformName, edge : platformEdge});
+										} else {
+											var s7 = _g1;
+											if(bh_multianim_MacroManimParser.isKeyword(s7,"cell")) {
+												this.advance();
+												var cellName = this.expectIdentifierOrString();
+												var _g8 = 0;
+												while(_g8 < cells.length) {
+													var c = cells[_g8];
+													++_g8;
+													if(c.name == cellName) {
+														this.error("cell " + cellName + " is defined twice");
+													}
+												}
+												this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyOpen);
+												cells.push(this.parseTilesetCell(cellName));
+											} else {
+												this.error("unexpected tileset property: " + Std.string(this.tokens[this.tpos].type));
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			} else {
+				this.error("unexpected tileset property: " + Std.string(this.tokens[this.tpos].type));
+			}
+		}
+		if(tileSize == null) {
+			this.error("tileset requires tileSize");
+		}
+		if(atlas == null) {
+			this.error("tileset requires atlas");
+		}
+		if(terrains.length == 0) {
+			this.error("tileset requires at least one terrain");
+		}
+		var tmp;
+		if(Lambda.exists(rises,function(r) {
+			return r.platform == null;
+		}) && edge == null) {
+			var h = edges.h;
+			var inlStringMapKeyIterator_h = h;
+			var inlStringMapKeyIterator_keys = Object.keys(h);
+			var inlStringMapKeyIterator_length = inlStringMapKeyIterator_keys.length;
+			var inlStringMapKeyIterator_current = 0;
+			tmp = inlStringMapKeyIterator_current >= inlStringMapKeyIterator_length;
+		} else {
+			tmp = false;
+		}
+		if(tmp) {
+			this.error("a tileset with rises needs edge: the autotile that outlines a higher level");
+		}
+		var h = edges.h;
+		var edgeTerrain_h = h;
+		var edgeTerrain_keys = Object.keys(h);
+		var edgeTerrain_length = edgeTerrain_keys.length;
+		var edgeTerrain_current = 0;
+		while(edgeTerrain_current < edgeTerrain_length) {
+			var edgeTerrain = [edgeTerrain_keys[edgeTerrain_current++]];
+			if(Lambda.findIndex(terrains,(function(edgeTerrain) {
+				return function(x) {
+					return x.name == edgeTerrain[0];
+				};
+			})(edgeTerrain)) < 0) {
+				this.error("edge " + edgeTerrain[0] + ": tileset has no terrain " + edgeTerrain[0]);
+			}
+		}
+		var _g = 0;
+		while(_g < rises.length) {
+			var r = rises[_g];
+			++_g;
+			var riseTerrain = [r.terrain];
+			if(riseTerrain[0] != null && Lambda.findIndex(terrains,(function(riseTerrain) {
+				return function(x) {
+					return x.name == riseTerrain[0];
+				};
+			})(riseTerrain)) < 0) {
+				this.error("rise " + (r.rise == 0 ? "any" : r.rise == null ? "null" : "" + r.rise) + " " + riseTerrain[0] + ": tileset has no terrain " + riseTerrain[0]);
+			}
+		}
+		var _g = 0;
+		while(_g < platforms.length) {
+			var p = [platforms[_g]];
+			++_g;
+			if(p[0].edge == null && !Lambda.exists(rises,(function(p) {
+				return function(r) {
+					return r.platform == p[0].name;
+				};
+			})(p))) {
+				this.error("platform " + p[0].name + " needs edge: (the autotile its top is drawn with) or a rise");
+			}
+		}
+		rises.sort(function(a,b) {
+			return (a.rise == 0 ? 2147483647 : a.rise) - (b.rise == 0 ? 2147483647 : b.rise);
+		});
+		var _g = 0;
+		while(_g < transitions.length) {
+			var t = [transitions[_g]];
+			++_g;
+			var toIndex = Lambda.findIndex(terrains,(function(t) {
+				return function(x) {
+					return x.name == t[0].to;
+				};
+			})(t));
+			if(toIndex < 0) {
+				this.error("transition " + t[0].from + ", " + t[0].to + ": tileset has no terrain " + t[0].to);
+			}
+			var to = terrains[toIndex];
+			if(to.autotiles.length == 0) {
+				this.error("transition " + t[0].from + ", " + t[0].to + ": terrain " + t[0].to + " is drawn from cells:, not an autotile, so it has no edge to draw otherwise");
+			}
+			if(t[0].autotiles.length != to.autotiles.length) {
+				this.error("transition " + t[0].from + ", " + t[0].to + ": " + t[0].autotiles.length + " autotile(s) for terrain " + t[0].to + ", which has " + to.autotiles.length + " (one a frame)");
+			}
+			if(t[0].from != "none") {
+				var fromIndex = Lambda.findIndex(terrains,(function(t) {
+					return function(x) {
+						return x.name == t[0].from;
+					};
+				})(t));
+				if(fromIndex < 0) {
+					this.error("transition " + t[0].from + ", " + t[0].to + ": tileset has no terrain " + t[0].from + " (or none)");
+				}
+				if(fromIndex >= toIndex) {
+					this.error("transition " + t[0].from + ", " + t[0].to + ": " + t[0].from + " is drawn over " + t[0].to + "; a transition is from the terrain below to the one above it");
+				}
+			}
+		}
+		return { tileSize : tileSize, atlas : atlas, edge : edge, edges : edges, terrains : terrains, transitions : transitions, rises : rises, platforms : platforms, cells : cells};
+	}
+	,parseNameList: function(into) {
+		into.push(this.expectIdentifierOrString());
+		while(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) into.push(this.expectIdentifierOrString());
+	}
+	,parseTilesetTerrain: function(name) {
+		var autotiles = [];
+		var cells = null;
+		var duration = null;
+		var metadata = new haxe_ds_StringMap();
+		while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed)) {
+			var _g = this.tokens[this.tpos].type;
+			if(_g._hx_index == 32) {
+				var _g1 = _g.s;
+				var s = _g1;
+				if(bh_multianim_MacroManimParser.isKeyword(s,"autotile")) {
+					this.advance();
+					this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+					this.parseNameList(autotiles);
+				} else {
+					var s1 = _g1;
+					if(bh_multianim_MacroManimParser.isKeyword(s1,"cells")) {
+						this.advance();
+						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+						cells = this.expectIdentifierOrString();
+					} else {
+						var s2 = _g1;
+						if(bh_multianim_MacroManimParser.isKeyword(s2,"duration")) {
+							this.advance();
+							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+							var ms = this.parseInteger();
+							if(ms <= 0) {
+								this.error("duration must be greater than 0 (milliseconds a frame)");
+							}
+							duration = ms;
+						} else {
+							var s3 = _g1;
+							if(bh_multianim_MacroManimParser.isKeyword(s3,"metadata")) {
+								this.advance();
+								metadata = this.parseTileMetadata();
+							} else {
+								this.error("unexpected terrain property: " + Std.string(this.tokens[this.tpos].type));
+							}
+						}
+					}
+				}
+			} else {
+				this.error("unexpected terrain property: " + Std.string(this.tokens[this.tpos].type));
+			}
+		}
+		if(autotiles.length == 0 == (cells == null)) {
+			this.error("terrain " + name + " needs autotile: or cells:, one of them");
+		}
+		if(duration != null && autotiles.length < 2) {
+			this.error("terrain " + name + ": duration: is for an animated terrain, one autotile a frame");
+		}
+		if(autotiles.length > 1 && duration == null) {
+			this.error("terrain " + name + ": an animated terrain needs duration: (milliseconds a frame)");
+		}
+		return { name : name, autotiles : autotiles, cells : cells, duration : duration, metadata : metadata};
+	}
+	,parseTilesetRise: function(riseLevels,terrain,rise) {
+		var sides = [];
+		var left = null;
+		var right = null;
+		var single = null;
+		var span = null;
+		var toward = "down";
+		var metadata = new haxe_ds_StringMap();
+		while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed)) {
+			var _g = this.tokens[this.tpos].type;
+			if(_g._hx_index == 32) {
+				var _g1 = _g.s;
+				var s = _g1;
+				if(bh_multianim_MacroManimParser.isKeyword(s,"edge")) {
+					this.error("rise " + rise + ": edge: is the tileset's; write it beside tileSize: (edge: name, or edge <terrain>: name for one terrain)");
+				} else {
+					var s1 = _g1;
+					if(bh_multianim_MacroManimParser.isKeyword(s1,"side")) {
+						this.advance();
+						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+						if(sides.length > 0) {
+							this.error("rise " + rise + ": side: is given twice (several are one list: side: \"a\", \"b\")");
+						}
+						this.parseNameList(sides);
+					} else {
+						var s2 = _g1;
+						if(bh_multianim_MacroManimParser.isKeyword(s2,"left")) {
+							this.advance();
+							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+							left = this.expectIdentifierOrString();
+						} else {
+							var s3 = _g1;
+							if(bh_multianim_MacroManimParser.isKeyword(s3,"right")) {
+								this.advance();
+								this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+								right = this.expectIdentifierOrString();
+							} else {
+								var s4 = _g1;
+								if(bh_multianim_MacroManimParser.isKeyword(s4,"single")) {
+									this.advance();
+									this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+									single = this.expectIdentifierOrString();
+								} else {
+									var s5 = _g1;
+									if(bh_multianim_MacroManimParser.isKeyword(s5,"span")) {
+										this.advance();
+										this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+										var cells = this.parseInteger();
+										if(cells <= 0) {
+											this.error("span is 1 cell or more");
+										}
+										span = cells;
+									} else {
+										var s6 = _g1;
+										if(bh_multianim_MacroManimParser.isKeyword(s6,"toward")) {
+											this.advance();
+											this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+											toward = this.expectIdentifierOrString();
+											if(toward != "down" && toward != "up" && toward != "left" && toward != "right") {
+												this.error("rise " + rise + ": toward: is down, up, left or right, got " + toward);
+											}
+										} else {
+											var s7 = _g1;
+											if(bh_multianim_MacroManimParser.isKeyword(s7,"metadata")) {
+												this.advance();
+												metadata = this.parseTileMetadata();
+											} else {
+												this.error("unexpected rise property: " + Std.string(this.tokens[this.tpos].type));
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			} else {
+				this.error("unexpected rise property: " + Std.string(this.tokens[this.tpos].type));
+			}
+		}
+		if(sides.length == 0 || span == null) {
+			this.error("rise " + rise + " needs side: and span:");
+		}
+		return { rise : riseLevels, terrain : terrain, side : sides[0], sides : sides, left : left, right : right, single : single, span : span, toward : toward, metadata : metadata};
+	}
+	,parseTilesetCell: function(name) {
+		var draw = null;
+		var metadata = new haxe_ds_StringMap();
+		while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed)) {
+			var _g = this.tokens[this.tpos].type;
+			if(_g._hx_index == 32) {
+				var _g1 = _g.s;
+				var s = _g1;
+				if(bh_multianim_MacroManimParser.isKeyword(s,"draw")) {
+					this.advance();
+					this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+					var where = this.expectIdentifierOrString();
+					if(where != "under" && where != "over" && where != "top") {
+						this.error("cell " + name + ": draw: is under (the actors), over (them) or top (above everything), got " + where);
+					}
+					draw = where;
+				} else {
+					var s1 = _g1;
+					if(bh_multianim_MacroManimParser.isKeyword(s1,"metadata")) {
+						this.advance();
+						metadata = this.parseTileMetadata();
+					} else {
+						this.error("unexpected cell property: " + Std.string(this.tokens[this.tpos].type));
+					}
+				}
+			} else {
+				this.error("unexpected cell property: " + Std.string(this.tokens[this.tpos].type));
+			}
+		}
+		return { name : name, draw : draw, metadata : metadata};
+	}
+	,parseTileMetadata: function() {
+		var metadata = new haxe_ds_StringMap();
+		this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyOpen);
+		while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed)) {
+			var key = this.expectIdentifierOrString();
+			if(Object.prototype.hasOwnProperty.call(metadata.h,key)) {
+				this.error("metadata " + key + " is given twice");
+			}
+			var entry = this.parseMetadataValue(bh_multianim_ReferenceableValue.RVString(key));
+			var _g = entry.value;
+			switch(_g._hx_index) {
+			case 1:
+				var _g1 = _g.s;
+				break;
+			case 2:
+				var _g2 = _g.i;
+				break;
+			case 5:
+				var _g3 = _g.f;
+				break;
+			default:
+				this.error("metadata " + key + ": a tileset has no parameters, so its metadata is a number, a string or a yes/no");
+			}
+			metadata.h[key] = { type : entry.type, value : entry.value};
+			this.eatComma();
+		}
+		return metadata;
+	}
+	,parseTilemap: function(def,node,defs) {
+		var sizeSet = false;
+		var terrainPos = [];
+		var levelsPos = [];
+		var layerPos_h = Object.create(null);
+		while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed)) {
+			var _g = this.tokens[this.tpos].type;
+			if(_g._hx_index == 32) {
+				var _g1 = _g.s;
+				var s = _g1;
+				if(bh_multianim_MacroManimParser.isKeyword(s,"tileset")) {
+					this.advance();
+					this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+					var _g2 = this.tokens[this.tpos].type;
+					if(_g2._hx_index == 32) {
+						var s2 = _g2.s;
+						if(bh_multianim_MacroManimParser.isKeyword(s2,"external")) {
+							this.advance();
+							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
+							def.tilesetImport = this.expectIdentifierOrString();
+							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
+							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
+						}
+					}
+					def.tileset = this.expectIdentifierOrString();
+				} else {
+					var s1 = _g1;
+					if(bh_multianim_MacroManimParser.isKeyword(s1,"size")) {
+						this.advance();
+						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+						def.width = this.parseInteger();
+						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
+						def.height = this.parseInteger();
+						if(def.width <= 0 || def.height <= 0) {
+							this.error("size is a width and a height, each 1 cell or more");
+						}
+						sizeSet = true;
+					} else {
+						var s3 = _g1;
+						if(bh_multianim_MacroManimParser.isKeyword(s3,"legend")) {
+							this.advance();
+							this.parseTilemapLegend(def.legend);
+						} else {
+							var s4 = _g1;
+							if(bh_multianim_MacroManimParser.isKeyword(s4,"terrain")) {
+								this.advance();
+								this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+								this.parseTilemapRows(def.terrain,terrainPos);
+							} else {
+								var s5 = _g1;
+								if(bh_multianim_MacroManimParser.isKeyword(s5,"levels")) {
+									this.advance();
+									if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyOpen)) {
+										while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed)) {
+											var _g3 = this.tokens[this.tpos].type;
+											if(_g3._hx_index == 32) {
+												var _g4 = _g3.s;
+												var s21 = _g4;
+												if(bh_multianim_MacroManimParser.isKeyword(s21,"legend")) {
+													this.advance();
+													this.parseTilemapLevelLegend(def.levelLegend,def.levelPlatforms);
+												} else {
+													var s22 = _g4;
+													if(bh_multianim_MacroManimParser.isKeyword(s22,"rows")) {
+														this.advance();
+														this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+														this.parseTilemapRows(def.levels,levelsPos);
+													} else {
+														this.error("unexpected levels property: " + Std.string(this.tokens[this.tpos].type) + " (legend { } and rows: [ ])");
+													}
+												}
+											} else {
+												this.error("unexpected levels property: " + Std.string(this.tokens[this.tpos].type) + " (legend { } and rows: [ ])");
+											}
+										}
+									} else {
+										this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+										this.parseTilemapRows(def.levels,levelsPos);
+									}
+								} else {
+									var s6 = _g1;
+									if(bh_multianim_MacroManimParser.isKeyword(s6,"layer")) {
+										this.advance();
+										var layerName = this.expectIdentifierOrString();
+										var _g5 = 0;
+										var _g6 = def.layers;
+										while(_g5 < _g6.length) {
+											var l = _g6[_g5];
+											++_g5;
+											if(l.name == layerName) {
+												this.error("layer " + layerName + " is defined twice");
+											}
+										}
+										this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyOpen);
+										var layer = { name : layerName, legend : new haxe_ds_StringMap(), rows : [], draw : "under"};
+										var rowsAt = [];
+										layerPos_h[layerName] = rowsAt;
+										while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed)) {
+											var _g7 = this.tokens[this.tpos].type;
+											if(_g7._hx_index == 32) {
+												var _g8 = _g7.s;
+												var s23 = _g8;
+												if(bh_multianim_MacroManimParser.isKeyword(s23,"sheet")) {
+													this.advance();
+													this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+													layer.sheet = this.expectIdentifierOrString();
+												} else {
+													var s24 = _g8;
+													if(bh_multianim_MacroManimParser.isKeyword(s24,"draw")) {
+														this.advance();
+														this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+														var draw = this.expectIdentifierOrString();
+														if(draw != "under" && draw != "over" && draw != "top") {
+															this.error("layer " + layerName + ": draw: is under (the actors), over (them) or top (above everything), got " + draw);
+														}
+														layer.draw = draw;
+													} else {
+														var s25 = _g8;
+														if(bh_multianim_MacroManimParser.isKeyword(s25,"legend")) {
+															this.advance();
+															this.parseTilemapLegend(layer.legend);
+														} else {
+															var s26 = _g8;
+															if(bh_multianim_MacroManimParser.isKeyword(s26,"rows")) {
+																this.advance();
+																this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+																this.parseTilemapRows(layer.rows,rowsAt);
+															} else {
+																this.error("unexpected tilemap layer property: " + Std.string(this.tokens[this.tpos].type));
+															}
+														}
+													}
+												}
+											} else {
+												this.error("unexpected tilemap layer property: " + Std.string(this.tokens[this.tpos].type));
+											}
+										}
+										def.layers.push(layer);
+									} else {
+										var s7 = _g1;
+										if(bh_multianim_MacroManimParser.isKeyword(s7,"decor")) {
+											this.advance();
+											this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyOpen);
+											this.parseNodes(node,defs);
+										} else {
+											var s8 = _g1;
+											if(bh_multianim_MacroManimParser.isKeyword(s8,"marks")) {
+												this.advance();
+												this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyOpen);
+												while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed)) {
+													var markName = this.expectIdentifierOrString();
+													var _g9 = 0;
+													var _g10 = def.marks;
+													while(_g9 < _g10.length) {
+														var m = _g10[_g9];
+														++_g9;
+														if(m.name == markName) {
+															this.error("mark " + markName + " is defined twice");
+														}
+													}
+													this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+													var x = this.parseInteger();
+													this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
+													var y = this.parseInteger();
+													var mark = { name : markName, x : x, y : y};
+													if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
+														mark.w = this.parseInteger();
+														this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
+														mark.h = this.parseInteger();
+													}
+													def.marks.push(mark);
+													this.eatSemicolon();
+												}
+											} else {
+												this.error("unexpected tilemap property: " + Std.string(this.tokens[this.tpos].type));
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			} else {
+				this.error("unexpected tilemap property: " + Std.string(this.tokens[this.tpos].type));
+			}
+		}
+		if(def.tileset == "") {
+			this.error("tilemap requires tileset:");
+		}
+		if(!sizeSet) {
+			this.error("tilemap requires size: width, height");
+		}
+		if(def.terrain.length == 0) {
+			this.error("tilemap requires terrain: rows");
+		}
+		this.checkTilemapRows(def,"terrain",def.terrain,terrainPos,function(c) {
+			return Object.prototype.hasOwnProperty.call(def.legend.h,c);
+		},"is not in the legend");
+		if(def.levels.length > 0) {
+			this.checkTilemapRows(def,"levels",def.levels,levelsPos,function(c) {
+				if(!(c >= "0" && c <= "9")) {
+					return Object.prototype.hasOwnProperty.call(def.levelLegend.h,c);
+				} else {
+					return true;
+				}
+			},"is not a level (a digit, or a character of the levels legend)");
+		}
+		var _g = 0;
+		var _g1 = def.layers;
+		while(_g < _g1.length) {
+			var l = _g1[_g];
+			++_g;
+			var legend = [l.legend];
+			var tmp = layerPos_h[l.name];
+			var rowsAt = tmp != null ? tmp : [];
+			this.checkTilemapRows(def,"layer " + l.name,l.rows,rowsAt,(function(legend) {
+				return function(c) {
+					if(c != " ") {
+						return Object.prototype.hasOwnProperty.call(legend[0].h,c);
+					} else {
+						return true;
+					}
+				};
+			})(legend),"is not in the layer's legend (a space is no cell)");
+		}
+		var _g = 0;
+		var _g1 = def.marks;
+		while(_g < _g1.length) {
+			var m = _g1[_g];
+			++_g;
+			var w = m.w != null ? m.w : 1;
+			var h = m.h != null ? m.h : 1;
+			if(m.x < 0 || m.y < 0 || m.x + w > def.width || m.y + h > def.height) {
+				this.error("mark " + m.name + " is outside the " + def.width + "x" + def.height + " map");
+			}
+		}
+	}
+	,parseTilemapLegend: function(into) {
+		this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyOpen);
+		while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed)) {
+			var key;
+			var _g = this.tokens[this.tpos].type;
+			if(_g._hx_index == 35) {
+				var k = _g.s;
+				this.advance();
+				key = k;
+			} else {
+				key = this.error("a legend key is one character in quotes: \".\": ground");
+			}
+			if(key.length != 1) {
+				this.error("a legend key is one character, got \"" + key + "\"");
+			}
+			if(Object.prototype.hasOwnProperty.call(into.h,key)) {
+				this.error("\"" + key + "\" is in the legend twice");
+			}
+			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+			var value = this.expectIdentifierOrString();
+			into.h[key] = value;
+			this.eatComma();
+		}
+	}
+	,parseTilemapLevelLegend: function(into,platforms) {
+		this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyOpen);
+		while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed)) {
+			var key;
+			var _g = this.tokens[this.tpos].type;
+			if(_g._hx_index == 35) {
+				var k = _g.s;
+				this.advance();
+				key = k;
+			} else {
+				key = this.error("a levels legend key is one character in quotes: \"A\": 10");
+			}
+			if(key.length != 1) {
+				this.error("a levels legend key is one character, got \"" + key + "\"");
+			}
+			if(key >= "0" && key <= "9") {
+				this.error("a digit is its own level; \"" + key + "\" cannot stand for another");
+			}
+			if(Object.prototype.hasOwnProperty.call(into.h,key)) {
+				this.error("\"" + key + "\" is in the levels legend twice");
+			}
+			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+			var level = 1;
+			var _g1 = this.tokens[this.tpos].type;
+			switch(_g1._hx_index) {
+			case 20:
+				level = this.parseInteger();
+				if(level < 0) {
+					this.error("a level is 0 or more, got " + level + " for \"" + key + "\"");
+				}
+				break;
+			case 29:
+				var _g2 = _g1.s;
+				level = this.parseInteger();
+				if(level < 0) {
+					this.error("a level is 0 or more, got " + level + " for \"" + key + "\"");
+				}
+				break;
+			default:
+			}
+			var _g3 = this.tokens[this.tpos].type;
+			switch(_g3._hx_index) {
+			case 32:
+				var _g4 = _g3.s;
+				if(level < 1) {
+					this.error("\"" + key + "\": a platform is 1 level up or more");
+				}
+				var value = this.expectIdentifierOrString();
+				platforms.h[key] = value;
+				break;
+			case 35:
+				var _g5 = _g3.s;
+				if(level < 1) {
+					this.error("\"" + key + "\": a platform is 1 level up or more");
+				}
+				var value1 = this.expectIdentifierOrString();
+				platforms.h[key] = value1;
+				break;
+			default:
+			}
+			into.h[key] = level;
+			this.eatComma();
+		}
+	}
+	,parseTilemapRows: function(rows,pos) {
+		if(rows.length > 0) {
+			this.error("rows already set");
+		}
+		this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TBracketOpen);
+		while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TBracketClosed)) {
+			var t = this.tokens[this.tpos];
+			var _g = this.tokens[this.tpos].type;
+			if(_g._hx_index == 35) {
+				var row = _g.s;
+				this.advance();
+				rows.push(row);
+				pos.push({ line : t.line, col : t.col});
+			} else {
+				this.error("a row is a quoted string of characters, one a cell: \"..~~..\"");
+			}
+			this.eatComma();
+		}
+	}
+	,checkTilemapRows: function(def,what,rows,pos,ok,bad) {
+		if(rows.length != def.height) {
+			var at = pos.length > 0 ? pos[pos.length - 1] : { line : def.line != null ? def.line : 0, col : 1};
+			this.errorAtLine(at.line,at.col,"" + what + " has " + rows.length + " rows, the map is " + def.height + " high");
+		}
+		var _g = 0;
+		var _g1 = rows.length;
+		while(_g < _g1) {
+			var r = _g++;
+			var row = rows[r];
+			if(row.length != def.width) {
+				this.errorAtLine(pos[r].line,pos[r].col,"" + what + " row " + (r + 1) + " is " + row.length + " characters, the map is " + def.width + " wide");
+			}
+			var _g2 = 0;
+			var _g3 = row.length;
+			while(_g2 < _g3) {
+				var i = _g2++;
+				var c = row.charAt(i);
+				if(!ok(c)) {
+					this.errorAtLine(pos[r].line,pos[r].col + 1 + i,"" + what + " row " + (r + 1) + ": \"" + c + "\" " + bad);
+				}
+			}
+		}
 	}
 	,parseAtlas2: function() {
 		this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
@@ -13165,11 +14195,12 @@ var bh_multianim_AutotileFormat = $hxEnums["bh.multianim.AutotileFormat"] = { __
 bh_multianim_AutotileFormat.__constructs__ = [bh_multianim_AutotileFormat.Cross,bh_multianim_AutotileFormat.Blob47,bh_multianim_AutotileFormat.Corner];
 var bh_multianim_AutotileSource = $hxEnums["bh.multianim.AutotileSource"] = { __ename__:true,__constructs__:null
 	,ATSAtlas: ($_=function(sheet,prefix) { return {_hx_index:0,sheet:sheet,prefix:prefix,__enum__:"bh.multianim.AutotileSource",toString:$estr}; },$_._hx_name="ATSAtlas",$_.__params__ = ["sheet","prefix"],$_)
-	,ATSFile: ($_=function(filename) { return {_hx_index:1,filename:filename,__enum__:"bh.multianim.AutotileSource",toString:$estr}; },$_._hx_name="ATSFile",$_.__params__ = ["filename"],$_)
-	,ATSTiles: ($_=function(tiles) { return {_hx_index:2,tiles:tiles,__enum__:"bh.multianim.AutotileSource",toString:$estr}; },$_._hx_name="ATSTiles",$_.__params__ = ["tiles"],$_)
-	,ATSDemo: ($_=function(edgeColor,fillColor) { return {_hx_index:3,edgeColor:edgeColor,fillColor:fillColor,__enum__:"bh.multianim.AutotileSource",toString:$estr}; },$_._hx_name="ATSDemo",$_.__params__ = ["edgeColor","fillColor"],$_)
+	,ATSAtlasIndexed: ($_=function(sheet,name) { return {_hx_index:1,sheet:sheet,name:name,__enum__:"bh.multianim.AutotileSource",toString:$estr}; },$_._hx_name="ATSAtlasIndexed",$_.__params__ = ["sheet","name"],$_)
+	,ATSFile: ($_=function(filename) { return {_hx_index:2,filename:filename,__enum__:"bh.multianim.AutotileSource",toString:$estr}; },$_._hx_name="ATSFile",$_.__params__ = ["filename"],$_)
+	,ATSTiles: ($_=function(tiles) { return {_hx_index:3,tiles:tiles,__enum__:"bh.multianim.AutotileSource",toString:$estr}; },$_._hx_name="ATSTiles",$_.__params__ = ["tiles"],$_)
+	,ATSDemo: ($_=function(edgeColor,fillColor) { return {_hx_index:4,edgeColor:edgeColor,fillColor:fillColor,__enum__:"bh.multianim.AutotileSource",toString:$estr}; },$_._hx_name="ATSDemo",$_.__params__ = ["edgeColor","fillColor"],$_)
 };
-bh_multianim_AutotileSource.__constructs__ = [bh_multianim_AutotileSource.ATSAtlas,bh_multianim_AutotileSource.ATSFile,bh_multianim_AutotileSource.ATSTiles,bh_multianim_AutotileSource.ATSDemo];
+bh_multianim_AutotileSource.__constructs__ = [bh_multianim_AutotileSource.ATSAtlas,bh_multianim_AutotileSource.ATSAtlasIndexed,bh_multianim_AutotileSource.ATSFile,bh_multianim_AutotileSource.ATSTiles,bh_multianim_AutotileSource.ATSDemo];
 var bh_multianim_Atlas2Source = $hxEnums["bh.multianim.Atlas2Source"] = { __ename__:true,__constructs__:null
 	,A2SFile: ($_=function(filename) { return {_hx_index:0,filename:filename,__enum__:"bh.multianim.Atlas2Source",toString:$estr}; },$_._hx_name="A2SFile",$_.__params__ = ["filename"],$_)
 	,A2SSheet: ($_=function(sheetName) { return {_hx_index:1,sheetName:sheetName,__enum__:"bh.multianim.Atlas2Source",toString:$estr}; },$_._hx_name="A2SSheet",$_.__params__ = ["sheetName"],$_)
@@ -13230,15 +14261,18 @@ var bh_multianim_NodeType = $hxEnums["bh.multianim.NodeType"] = { __ename__:true
 	,PALETTE: ($_=function(paletteType) { return {_hx_index:25,paletteType:paletteType,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="PALETTE",$_.__params__ = ["paletteType"],$_)
 	,GRAPHICS: ($_=function(elements) { return {_hx_index:26,elements:elements,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="GRAPHICS",$_.__params__ = ["elements"],$_)
 	,AUTOTILE: ($_=function(autotileDef) { return {_hx_index:27,autotileDef:autotileDef,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="AUTOTILE",$_.__params__ = ["autotileDef"],$_)
-	,ATLAS2: ($_=function(atlas2Def) { return {_hx_index:28,atlas2Def:atlas2Def,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="ATLAS2",$_.__params__ = ["atlas2Def"],$_)
-	,DATA: ($_=function(dataDef) { return {_hx_index:29,dataDef:dataDef,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="DATA",$_.__params__ = ["dataDef"],$_)
-	,SLOT: ($_=function(parameters,paramOrder) { return {_hx_index:30,parameters:parameters,paramOrder:paramOrder,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="SLOT",$_.__params__ = ["parameters","paramOrder"],$_)
-	,SLOT_CONTENT: {_hx_name:"SLOT_CONTENT",_hx_index:31,__enum__:"bh.multianim.NodeType",toString:$estr}
-	,DYNAMIC_REF: ($_=function(externalReference,programmableReference,parameters) { return {_hx_index:32,externalReference:externalReference,programmableReference:programmableReference,parameters:parameters,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="DYNAMIC_REF",$_.__params__ = ["externalReference","programmableReference","parameters"],$_)
-	,FINAL_VAR: ($_=function(name,value) { return {_hx_index:33,name:name,value:value,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="FINAL_VAR",$_.__params__ = ["name","value"],$_)
-	,SWITCH: ($_=function(paramName,arms) { return {_hx_index:34,paramName:paramName,arms:arms,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="SWITCH",$_.__params__ = ["paramName","arms"],$_)
+	,TILESET: ($_=function(tilesetDef) { return {_hx_index:28,tilesetDef:tilesetDef,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="TILESET",$_.__params__ = ["tilesetDef"],$_)
+	,TILEMAP: ($_=function(tilemapDef) { return {_hx_index:29,tilemapDef:tilemapDef,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="TILEMAP",$_.__params__ = ["tilemapDef"],$_)
+	,TILEMAP_REF: ($_=function(externalReference,name) { return {_hx_index:30,externalReference:externalReference,name:name,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="TILEMAP_REF",$_.__params__ = ["externalReference","name"],$_)
+	,ATLAS2: ($_=function(atlas2Def) { return {_hx_index:31,atlas2Def:atlas2Def,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="ATLAS2",$_.__params__ = ["atlas2Def"],$_)
+	,DATA: ($_=function(dataDef) { return {_hx_index:32,dataDef:dataDef,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="DATA",$_.__params__ = ["dataDef"],$_)
+	,SLOT: ($_=function(parameters,paramOrder) { return {_hx_index:33,parameters:parameters,paramOrder:paramOrder,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="SLOT",$_.__params__ = ["parameters","paramOrder"],$_)
+	,SLOT_CONTENT: {_hx_name:"SLOT_CONTENT",_hx_index:34,__enum__:"bh.multianim.NodeType",toString:$estr}
+	,DYNAMIC_REF: ($_=function(externalReference,programmableReference,parameters) { return {_hx_index:35,externalReference:externalReference,programmableReference:programmableReference,parameters:parameters,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="DYNAMIC_REF",$_.__params__ = ["externalReference","programmableReference","parameters"],$_)
+	,FINAL_VAR: ($_=function(name,value) { return {_hx_index:36,name:name,value:value,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="FINAL_VAR",$_.__params__ = ["name","value"],$_)
+	,SWITCH: ($_=function(paramName,arms) { return {_hx_index:37,paramName:paramName,arms:arms,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="SWITCH",$_.__params__ = ["paramName","arms"],$_)
 };
-bh_multianim_NodeType.__constructs__ = [bh_multianim_NodeType.FLOW,bh_multianim_NodeType.SPACER,bh_multianim_NodeType.BITMAP,bh_multianim_NodeType.POINT,bh_multianim_NodeType.STATEANIM,bh_multianim_NodeType.STATEANIM_CONSTRUCT,bh_multianim_NodeType.PIXELS,bh_multianim_NodeType.TEXT,bh_multianim_NodeType.RICHTEXT,bh_multianim_NodeType.PROGRAMMABLE,bh_multianim_NodeType.TILEGROUP,bh_multianim_NodeType.RELATIVE_LAYOUTS,bh_multianim_NodeType.PATHS,bh_multianim_NodeType.ANIMATED_PATH,bh_multianim_NodeType.CURVES,bh_multianim_NodeType.PARTICLES,bh_multianim_NodeType.APPLY,bh_multianim_NodeType.LAYERS,bh_multianim_NodeType.MASK,bh_multianim_NodeType.REPEAT,bh_multianim_NodeType.REPEAT2D,bh_multianim_NodeType.STATIC_REF,bh_multianim_NodeType.PLACEHOLDER,bh_multianim_NodeType.NINEPATCH,bh_multianim_NodeType.INTERACTIVE,bh_multianim_NodeType.PALETTE,bh_multianim_NodeType.GRAPHICS,bh_multianim_NodeType.AUTOTILE,bh_multianim_NodeType.ATLAS2,bh_multianim_NodeType.DATA,bh_multianim_NodeType.SLOT,bh_multianim_NodeType.SLOT_CONTENT,bh_multianim_NodeType.DYNAMIC_REF,bh_multianim_NodeType.FINAL_VAR,bh_multianim_NodeType.SWITCH];
+bh_multianim_NodeType.__constructs__ = [bh_multianim_NodeType.FLOW,bh_multianim_NodeType.SPACER,bh_multianim_NodeType.BITMAP,bh_multianim_NodeType.POINT,bh_multianim_NodeType.STATEANIM,bh_multianim_NodeType.STATEANIM_CONSTRUCT,bh_multianim_NodeType.PIXELS,bh_multianim_NodeType.TEXT,bh_multianim_NodeType.RICHTEXT,bh_multianim_NodeType.PROGRAMMABLE,bh_multianim_NodeType.TILEGROUP,bh_multianim_NodeType.RELATIVE_LAYOUTS,bh_multianim_NodeType.PATHS,bh_multianim_NodeType.ANIMATED_PATH,bh_multianim_NodeType.CURVES,bh_multianim_NodeType.PARTICLES,bh_multianim_NodeType.APPLY,bh_multianim_NodeType.LAYERS,bh_multianim_NodeType.MASK,bh_multianim_NodeType.REPEAT,bh_multianim_NodeType.REPEAT2D,bh_multianim_NodeType.STATIC_REF,bh_multianim_NodeType.PLACEHOLDER,bh_multianim_NodeType.NINEPATCH,bh_multianim_NodeType.INTERACTIVE,bh_multianim_NodeType.PALETTE,bh_multianim_NodeType.GRAPHICS,bh_multianim_NodeType.AUTOTILE,bh_multianim_NodeType.TILESET,bh_multianim_NodeType.TILEMAP,bh_multianim_NodeType.TILEMAP_REF,bh_multianim_NodeType.ATLAS2,bh_multianim_NodeType.DATA,bh_multianim_NodeType.SLOT,bh_multianim_NodeType.SLOT_CONTENT,bh_multianim_NodeType.DYNAMIC_REF,bh_multianim_NodeType.FINAL_VAR,bh_multianim_NodeType.SWITCH];
 var bh_multianim_NodeConditionalValues = $hxEnums["bh.multianim.NodeConditionalValues"] = { __ename__:true,__constructs__:null
 	,Conditional: ($_=function(values,anyMode) { return {_hx_index:0,values:values,anyMode:anyMode,__enum__:"bh.multianim.NodeConditionalValues",toString:$estr}; },$_._hx_name="Conditional",$_.__params__ = ["values","anyMode"],$_)
 	,ConditionalElse: ($_=function(values) { return {_hx_index:1,values:values,__enum__:"bh.multianim.NodeConditionalValues",toString:$estr}; },$_._hx_name="ConditionalElse",$_.__params__ = ["values"],$_)
@@ -13924,8 +14958,13 @@ var bh_stateanim_APKeywords = $hxEnums["bh.stateanim.APKeywords"] = { __ename__:
 	,APNone: {_hx_name:"APNone",_hx_index:22,__enum__:"bh.stateanim.APKeywords",toString:$estr}
 	,APFlipX: {_hx_name:"APFlipX",_hx_index:23,__enum__:"bh.stateanim.APKeywords",toString:$estr}
 	,APFlipY: {_hx_name:"APFlipY",_hx_index:24,__enum__:"bh.stateanim.APKeywords",toString:$estr}
+	,APOffset: {_hx_name:"APOffset",_hx_index:25,__enum__:"bh.stateanim.APKeywords",toString:$estr}
+	,APLayers: {_hx_name:"APLayers",_hx_index:26,__enum__:"bh.stateanim.APKeywords",toString:$estr}
+	,APLayer: {_hx_name:"APLayer",_hx_index:27,__enum__:"bh.stateanim.APKeywords",toString:$estr}
+	,APTimeline: {_hx_name:"APTimeline",_hx_index:28,__enum__:"bh.stateanim.APKeywords",toString:$estr}
+	,APBlend: {_hx_name:"APBlend",_hx_index:29,__enum__:"bh.stateanim.APKeywords",toString:$estr}
 };
-bh_stateanim_APKeywords.__constructs__ = [bh_stateanim_APKeywords.APSheet,bh_stateanim_APKeywords.APFile,bh_stateanim_APKeywords.APStates,bh_stateanim_APKeywords.APAllowedExtraPoints,bh_stateanim_APKeywords.APExtrapoints,bh_stateanim_APKeywords.APPlaylist,bh_stateanim_APKeywords.APCenter,bh_stateanim_APKeywords.APLoop,bh_stateanim_APKeywords.APAnimation,bh_stateanim_APKeywords.APName,bh_stateanim_APKeywords.APFps,bh_stateanim_APKeywords.APEvent,bh_stateanim_APKeywords.APDuration,bh_stateanim_APKeywords.APRandom,bh_stateanim_APKeywords.APFrames,bh_stateanim_APKeywords.APMetadata,bh_stateanim_APKeywords.APAnim,bh_stateanim_APKeywords.APFinal,bh_stateanim_APKeywords.APElse,bh_stateanim_APKeywords.APDefault,bh_stateanim_APKeywords.APFilters,bh_stateanim_APKeywords.APFilter,bh_stateanim_APKeywords.APNone,bh_stateanim_APKeywords.APFlipX,bh_stateanim_APKeywords.APFlipY];
+bh_stateanim_APKeywords.__constructs__ = [bh_stateanim_APKeywords.APSheet,bh_stateanim_APKeywords.APFile,bh_stateanim_APKeywords.APStates,bh_stateanim_APKeywords.APAllowedExtraPoints,bh_stateanim_APKeywords.APExtrapoints,bh_stateanim_APKeywords.APPlaylist,bh_stateanim_APKeywords.APCenter,bh_stateanim_APKeywords.APLoop,bh_stateanim_APKeywords.APAnimation,bh_stateanim_APKeywords.APName,bh_stateanim_APKeywords.APFps,bh_stateanim_APKeywords.APEvent,bh_stateanim_APKeywords.APDuration,bh_stateanim_APKeywords.APRandom,bh_stateanim_APKeywords.APFrames,bh_stateanim_APKeywords.APMetadata,bh_stateanim_APKeywords.APAnim,bh_stateanim_APKeywords.APFinal,bh_stateanim_APKeywords.APElse,bh_stateanim_APKeywords.APDefault,bh_stateanim_APKeywords.APFilters,bh_stateanim_APKeywords.APFilter,bh_stateanim_APKeywords.APNone,bh_stateanim_APKeywords.APFlipX,bh_stateanim_APKeywords.APFlipY,bh_stateanim_APKeywords.APOffset,bh_stateanim_APKeywords.APLayers,bh_stateanim_APKeywords.APLayer,bh_stateanim_APKeywords.APTimeline,bh_stateanim_APKeywords.APBlend];
 var bh_stateanim_AnimKeywordContext = $hxEnums["bh.stateanim.AnimKeywordContext"] = { __ename__:true,__constructs__:null
 	,AKTopLevel: {_hx_name:"AKTopLevel",_hx_index:0,__enum__:"bh.stateanim.AnimKeywordContext",toString:$estr}
 	,AKAnimationBody: {_hx_name:"AKAnimationBody",_hx_index:1,__enum__:"bh.stateanim.AnimKeywordContext",toString:$estr}
@@ -13975,6 +15014,8 @@ bh_stateanim_AnimKeywordInfo.prototype = {
 	__class__: bh_stateanim_AnimKeywordInfo
 };
 var bh_stateanim__$AnimParser_AnimToken = function(type,line,col) {
+	this.end = 0;
+	this.start = 0;
 	this.type = type;
 	this.line = line;
 	this.col = col;
@@ -14027,6 +15068,14 @@ bh_stateanim__$AnimParser_AnimLexerHC.prototype = {
 		}
 	}
 	,nextToken: function() {
+		this.skipTrivia();
+		var start = this.pos;
+		var token = this.scanToken();
+		token.start = start;
+		token.end = this.pos;
+		return token;
+	}
+	,skipTrivia: function() {
 		while(this.pos < this.len) {
 			var c = this.pos < this.len ? HxOverrides.cca(this.src,this.pos) : -1;
 			if(c == 32 || c == 9) {
@@ -14082,6 +15131,8 @@ bh_stateanim__$AnimParser_AnimLexerHC.prototype = {
 				break;
 			}
 		}
+	}
+	,scanToken: function() {
 		var startLine = this.line;
 		var startCol = this.col;
 		if(this.pos >= this.len) {
@@ -14370,8 +15421,9 @@ var bh_stateanim_MetadataValue = $hxEnums["bh.stateanim.MetadataValue"] = { __en
 	,MVFloat: ($_=function(f) { return {_hx_index:1,f:f,__enum__:"bh.stateanim.MetadataValue",toString:$estr}; },$_._hx_name="MVFloat",$_.__params__ = ["f"],$_)
 	,MVString: ($_=function(s) { return {_hx_index:2,s:s,__enum__:"bh.stateanim.MetadataValue",toString:$estr}; },$_._hx_name="MVString",$_.__params__ = ["s"],$_)
 	,MVColor: ($_=function(c) { return {_hx_index:3,c:c,__enum__:"bh.stateanim.MetadataValue",toString:$estr}; },$_._hx_name="MVColor",$_.__params__ = ["c"],$_)
+	,MVList: ($_=function(values) { return {_hx_index:4,values:values,__enum__:"bh.stateanim.MetadataValue",toString:$estr}; },$_._hx_name="MVList",$_.__params__ = ["values"],$_)
 };
-bh_stateanim_MetadataValue.__constructs__ = [bh_stateanim_MetadataValue.MVInt,bh_stateanim_MetadataValue.MVFloat,bh_stateanim_MetadataValue.MVString,bh_stateanim_MetadataValue.MVColor];
+bh_stateanim_MetadataValue.__constructs__ = [bh_stateanim_MetadataValue.MVInt,bh_stateanim_MetadataValue.MVFloat,bh_stateanim_MetadataValue.MVString,bh_stateanim_MetadataValue.MVColor,bh_stateanim_MetadataValue.MVList];
 var bh_stateanim_AnimConditionalMatcher = function() { };
 bh_stateanim_AnimConditionalMatcher.__name__ = true;
 bh_stateanim_AnimConditionalMatcher.matchConditionalValue = function(condValue,runtimeValue) {
@@ -14449,6 +15501,25 @@ var bh_stateanim_AnimMetadata = function(metadata) {
 	this.metadata = metadata;
 };
 bh_stateanim_AnimMetadata.__name__ = true;
+bh_stateanim_AnimMetadata.listOf = function(key,value) {
+	switch(value._hx_index) {
+	case 0:
+		var i = value.i;
+		throw haxe_Exception.thrown("expected list for metadata key " + key + " but was int " + i);
+	case 1:
+		var f = value.f;
+		throw haxe_Exception.thrown("expected list for metadata key " + key + " but was float " + f);
+	case 2:
+		var s = value.s;
+		return [s];
+	case 3:
+		var c = value.c;
+		throw haxe_Exception.thrown("expected list for metadata key " + key + " but was color " + c);
+	case 4:
+		var vs = value.values;
+		return vs.slice();
+	}
+};
 bh_stateanim_AnimMetadata.prototype = {
 	findBestMatch: function(key,stateSelector) {
 		if(this.metadata == null) {
@@ -14494,6 +15565,9 @@ bh_stateanim_AnimMetadata.prototype = {
 		case 3:
 			var c = value.c;
 			throw haxe_Exception.thrown("expected int for metadata key " + key + " but was color " + c);
+		case 4:
+			var vs = value.values;
+			throw haxe_Exception.thrown("expected int for metadata key " + key + " but was list " + Std.string(vs));
 		}
 	}
 	,getIntOrException: function(key,stateSelector) {
@@ -14514,6 +15588,9 @@ bh_stateanim_AnimMetadata.prototype = {
 		case 3:
 			var c = value.c;
 			throw haxe_Exception.thrown("expected int for metadata key " + key + " but was color " + c);
+		case 4:
+			var vs = value.values;
+			throw haxe_Exception.thrown("expected int for metadata key " + key + " but was list " + Std.string(vs));
 		}
 	}
 	,getFloatOrDefault: function(key,defaultValue,stateSelector) {
@@ -14534,6 +15611,9 @@ bh_stateanim_AnimMetadata.prototype = {
 		case 3:
 			var c = value.c;
 			throw haxe_Exception.thrown("expected float for metadata key " + key + " but was color " + c);
+		case 4:
+			var vs = value.values;
+			throw haxe_Exception.thrown("expected float for metadata key " + key + " but was list " + Std.string(vs));
 		}
 	}
 	,getFloatOrException: function(key,stateSelector) {
@@ -14554,6 +15634,9 @@ bh_stateanim_AnimMetadata.prototype = {
 		case 3:
 			var c = value.c;
 			throw haxe_Exception.thrown("expected float for metadata key " + key + " but was color " + c);
+		case 4:
+			var vs = value.values;
+			throw haxe_Exception.thrown("expected float for metadata key " + key + " but was list " + Std.string(vs));
 		}
 	}
 	,getStringOrDefault: function(key,defaultValue,stateSelector) {
@@ -14574,6 +15657,9 @@ bh_stateanim_AnimMetadata.prototype = {
 		case 3:
 			var c = value.c;
 			return "#" + StringTools.hex(c,6);
+		case 4:
+			var vs = value.values;
+			return vs.join(", ");
 		}
 	}
 	,getStringOrException: function(key,stateSelector) {
@@ -14594,6 +15680,9 @@ bh_stateanim_AnimMetadata.prototype = {
 		case 3:
 			var c = value.c;
 			return "#" + StringTools.hex(c,6);
+		case 4:
+			var vs = value.values;
+			return vs.join(", ");
 		}
 	}
 	,getColorOrDefault: function(key,defaultValue,stateSelector) {
@@ -14614,6 +15703,9 @@ bh_stateanim_AnimMetadata.prototype = {
 		case 3:
 			var c = value.c;
 			return c;
+		case 4:
+			var vs = value.values;
+			throw haxe_Exception.thrown("expected color for metadata key " + key + " but was list " + Std.string(vs));
 		}
 	}
 	,getColorOrException: function(key,stateSelector) {
@@ -14634,14 +15726,31 @@ bh_stateanim_AnimMetadata.prototype = {
 		case 3:
 			var c = value.c;
 			return c;
+		case 4:
+			var vs = value.values;
+			throw haxe_Exception.thrown("expected color for metadata key " + key + " but was list " + Std.string(vs));
 		}
+	}
+	,getListOrDefault: function(key,defaultValue,stateSelector) {
+		var value = this.findBestMatch(key,stateSelector);
+		if(value == null) {
+			return defaultValue;
+		}
+		return bh_stateanim_AnimMetadata.listOf(key,value);
+	}
+	,getListOrException: function(key,stateSelector) {
+		var value = this.findBestMatch(key,stateSelector);
+		if(value == null) {
+			throw haxe_Exception.thrown("metadata key " + key + " not found");
+		}
+		return bh_stateanim_AnimMetadata.listOf(key,value);
 	}
 	,__class__: bh_stateanim_AnimMetadata
 };
 var bh_stateanim_AnimPlaylistFrames = $hxEnums["bh.stateanim.AnimPlaylistFrames"] = { __ename__:true,__constructs__:null
-	,SheetFrameAnim: ($_=function(name,durationMilliseconds) { return {_hx_index:0,name:name,durationMilliseconds:durationMilliseconds,__enum__:"bh.stateanim.AnimPlaylistFrames",toString:$estr}; },$_._hx_name="SheetFrameAnim",$_.__params__ = ["name","durationMilliseconds"],$_)
-	,SheetFrameAnimWithIndex: ($_=function(name,from,to,durationMilliseconds) { return {_hx_index:1,name:name,from:from,to:to,durationMilliseconds:durationMilliseconds,__enum__:"bh.stateanim.AnimPlaylistFrames",toString:$estr}; },$_._hx_name="SheetFrameAnimWithIndex",$_.__params__ = ["name","from","to","durationMilliseconds"],$_)
-	,FileSingleFrame: ($_=function(filename,durationMilliseconds) { return {_hx_index:2,filename:filename,durationMilliseconds:durationMilliseconds,__enum__:"bh.stateanim.AnimPlaylistFrames",toString:$estr}; },$_._hx_name="FileSingleFrame",$_.__params__ = ["filename","durationMilliseconds"],$_)
+	,SheetFrameAnim: ($_=function(name,durationMilliseconds,offset) { return {_hx_index:0,name:name,durationMilliseconds:durationMilliseconds,offset:offset,__enum__:"bh.stateanim.AnimPlaylistFrames",toString:$estr}; },$_._hx_name="SheetFrameAnim",$_.__params__ = ["name","durationMilliseconds","offset"],$_)
+	,SheetFrameAnimWithIndex: ($_=function(name,from,to,durationMilliseconds,offset) { return {_hx_index:1,name:name,from:from,to:to,durationMilliseconds:durationMilliseconds,offset:offset,__enum__:"bh.stateanim.AnimPlaylistFrames",toString:$estr}; },$_._hx_name="SheetFrameAnimWithIndex",$_.__params__ = ["name","from","to","durationMilliseconds","offset"],$_)
+	,FileSingleFrame: ($_=function(filename,durationMilliseconds,offset) { return {_hx_index:2,filename:filename,durationMilliseconds:durationMilliseconds,offset:offset,__enum__:"bh.stateanim.AnimPlaylistFrames",toString:$estr}; },$_._hx_name="FileSingleFrame",$_.__params__ = ["filename","durationMilliseconds","offset"],$_)
 	,PlaylistEventData: ($_=function(name,meta) { return {_hx_index:3,name:name,meta:meta,__enum__:"bh.stateanim.AnimPlaylistFrames",toString:$estr}; },$_._hx_name="PlaylistEventData",$_.__params__ = ["name","meta"],$_)
 	,PlaylistFilter: ($_=function(filter) { return {_hx_index:4,filter:filter,__enum__:"bh.stateanim.AnimPlaylistFrames",toString:$estr}; },$_._hx_name="PlaylistFilter",$_.__params__ = ["filter"],$_)
 };
@@ -14847,7 +15956,7 @@ bh_stateanim_AnimParserLsp.prototype = {
 						}
 						this.skipToNextTopLevel();
 						break;
-					case 0:case 3:case 6:case 7:case 10:case 23:case 24:
+					case 0:case 3:case 6:case 7:case 10:case 23:case 24:case 26:
 						this.advance();
 						if(!this.match(bh_stateanim_APToken.APColon)) {
 							throw haxe_Exception.thrown(new bh_stateanim_InvalidSyntax("expected ':'",this.currentPos()));
@@ -16487,11 +17596,11 @@ manim_lsp_ManimAnalyzer.getSymbols = function(text,uri) {
 				var _g7 = _g.curves;
 				symbol = manim_lsp_ManimAnalyzer.makeSymbol(name,3,range,"curves");
 				break;
-			case 29:
+			case 32:
 				var dataDef = _g.dataDef;
 				symbol = manim_lsp_ManimAnalyzer.makeSymbol(name,23,range,null,manim_lsp_ManimAnalyzer.getDataChildren(dataDef,text));
 				break;
-			case 33:
+			case 36:
 				var _g8 = _g.value;
 				var n = _g.name;
 				symbol = manim_lsp_ManimAnalyzer.makeSymbol(n,14,range,"@final");
@@ -16563,7 +17672,7 @@ manim_lsp_ManimAnalyzer.getChildSymbols = function(node,text) {
 				var _g8 = _g3.metadata;
 				kind = 8;
 				break;
-			case 30:
+			case 33:
 				var _g9 = _g3.parameters;
 				var _g10 = _g3.paramOrder;
 				kind = 8;
@@ -16587,7 +17696,7 @@ manim_lsp_ManimAnalyzer.getChildSymbols = function(node,text) {
 				var _g16 = _g11.metadata;
 				kind1 = 8;
 				break;
-			case 30:
+			case 33:
 				var _g17 = _g11.parameters;
 				var _g18 = _g11.paramOrder;
 				kind1 = 8;
@@ -16612,7 +17721,7 @@ manim_lsp_ManimAnalyzer.getChildSymbols = function(node,text) {
 				var _g25 = _g20.metadata;
 				kind2 = 8;
 				break;
-			case 30:
+			case 33:
 				var _g26 = _g20.parameters;
 				var _g27 = _g20.paramOrder;
 				kind2 = 8;
@@ -16638,7 +17747,7 @@ manim_lsp_ManimAnalyzer.getChildSymbols = function(node,text) {
 				var _g35 = _g30.metadata;
 				kind3 = 8;
 				break;
-			case 30:
+			case 33:
 				var _g36 = _g30.parameters;
 				var _g37 = _g30.paramOrder;
 				kind3 = 8;
@@ -16864,19 +17973,19 @@ manim_lsp_ManimAnalyzer.nodeTypeName = function(type) {
 	case 26:
 		var _g = type.elements;
 		return "graphics";
-	case 29:
+	case 32:
 		var _g = type.dataDef;
 		return "data";
-	case 30:
+	case 33:
 		var _g = type.parameters;
 		var _g = type.paramOrder;
 		return "slot";
-	case 32:
+	case 35:
 		var _g = type.externalReference;
 		var _g = type.programmableReference;
 		var _g = type.parameters;
 		return "dynamicRef";
-	case 33:
+	case 36:
 		var _g = type.name;
 		var _g = type.value;
 		return "@final";
@@ -17227,6 +18336,7 @@ bh_base_OffsetCoord.EVEN = 1;
 bh_base_OffsetCoord.ODD = -1;
 bh_base_HexLayout.pointy = new bh_base_HexOrientationData(Math.sqrt(3.0),Math.sqrt(3.0) / 2.0,0.0,1.5,Math.sqrt(3.0) / 3.0,-0.3333333333333333,0.0,0.6666666666666666,0.5);
 bh_base_HexLayout.flat = new bh_base_HexOrientationData(1.5,0.0,Math.sqrt(3.0) / 2.0,Math.sqrt(3.0),0.6666666666666666,0.0,-0.3333333333333333,Math.sqrt(3.0) / 3.0,0.0);
+bh_multianim_MacroBlendModes.NAMES = ["none","alpha","add","alphaAdd","softAdd","multiply","alphaMultiply","erase","screen","sub","max","min"];
 bh_multianim__$MacroManimParser_MacroLexer.interpolationKeywords = ["callback","function","div","true","false","yes","no"];
 bh_multianim_MacroManimParser.defaultLayoutNodeName = "#defaultLayout";
 bh_multianim_MacroManimParser.defaultPathNodeName = "#defaultPaths";
@@ -17266,6 +18376,9 @@ bh_multianim_ManimKeywordInfo.elementNames = (function($this) {
 	_g.h["DATA"] = "data";
 	_g.h["AUTOTILE"] = "autotile";
 	_g.h["ATLAS2"] = "atlas2";
+	_g.h["TILESET"] = "tileset";
+	_g.h["TILEMAP"] = "tilemap";
+	_g.h["TILEMAP_REF"] = "tilemap";
 	_g.h["PALETTE"] = "palette";
 	_g.h["FINAL_VAR"] = "@final";
 	_g.h["NINEPATCH"] = "ninepatch";
@@ -17306,6 +18419,9 @@ bh_multianim_ManimKeywordInfo.elementDescriptions = (function($this) {
 	_g.h["GRAPHICS"] = "Vector graphics drawing";
 	_g.h["DATA"] = "Static typed data block";
 	_g.h["AUTOTILE"] = "Autotile terrain pattern";
+	_g.h["TILESET"] = "What tile maps are drawn with: terrains, transitions where two meet, how each rise between levels is drawn, and what named cells are (where drawn, their metadata)";
+	_g.h["TILEMAP"] = "A tile map: rows of characters for terrain, levels and layers of cells, decor and marks";
+	_g.h["TILEMAP_REF"] = "Places a tile map: tilemap(name) or tilemap(external(file), name)";
 	_g.h["ATLAS2"] = "Inline sprite atlas definition";
 	_g.h["PALETTE"] = "Color palette definition";
 	_g.h["FINAL_VAR"] = "Immutable named constant";
@@ -17328,6 +18444,9 @@ bh_multianim_ManimKeywordInfo.elementSnippets = (function($this) {
 	_g.h["LAYERS"] = "layers {\n\t$0\n}";
 	_g.h["SLOT"] = "#${1:name} slot";
 	_g.h["ATLAS2"] = "#${1:name} atlas2(\"$2\") {\n\t$0\n}";
+	_g.h["TILESET"] = "#${1:name} tileset {\n\ttileSize: ${2:8}\n\tatlas: \"$3\"\n\tterrain ${4:ground} { cells: \"$5\" }\n\t$0\n}";
+	_g.h["TILEMAP"] = "#${1:name} tilemap {\n\ttileset: $2\n\tsize: ${3:16}, ${4:9}\n\tlegend { \".\": $5 }\n\tterrain: [\n\t\t$0\n\t]\n}";
+	_g.h["TILEMAP_REF"] = "tilemap(${1:name}): ${2:0}, ${3:0}";
 	_g.h["PALETTE"] = "#${1:name} palette {\n\t$0\n}";
 	_g.h["FINAL_VAR"] = "@final ${1:NAME} = $0";
 	_g.h["REPEAT"] = "repeatable(\\$$1, ${2:iterator}) {\n\t$0\n}";
@@ -17335,16 +18454,16 @@ bh_multianim_ManimKeywordInfo.elementSnippets = (function($this) {
 	$r = _g;
 	return $r;
 }(this));
-bh_multianim_ManimKeywordInfo.topLevelElements = ["PROGRAMMABLE","DATA","CURVES","PATHS","ANIMATED_PATH","ATLAS2","PALETTE","FINAL_VAR","RELATIVE_LAYOUTS"];
-bh_multianim_ManimKeywordInfo.childElements = ["BITMAP","TEXT","RICHTEXT","NINEPATCH","FLOW","LAYERS","MASK","TILEGROUP","INTERACTIVE","SLOT","SLOT_CONTENT","SPACER","POINT","APPLY","GRAPHICS","PIXELS","PARTICLES","REPEAT","REPEAT2D","STATIC_REF","DYNAMIC_REF","PLACEHOLDER","STATEANIM","STATEANIM_CONSTRUCT","AUTOTILE","FINAL_VAR","SWITCH"];
-bh_multianim_ManimKeywordInfo.allElementCtors = ["FLOW","SPACER","BITMAP","POINT","STATEANIM","STATEANIM_CONSTRUCT","PIXELS","TEXT","RICHTEXT","PROGRAMMABLE","TILEGROUP","RELATIVE_LAYOUTS","PATHS","ANIMATED_PATH","CURVES","PARTICLES","APPLY","LAYERS","MASK","REPEAT","REPEAT2D","STATIC_REF","PLACEHOLDER","DYNAMIC_REF","SLOT","SLOT_CONTENT","INTERACTIVE","GRAPHICS","DATA","AUTOTILE","ATLAS2","PALETTE","FINAL_VAR","NINEPATCH","SWITCH"];
+bh_multianim_ManimKeywordInfo.topLevelElements = ["PROGRAMMABLE","DATA","CURVES","PATHS","ANIMATED_PATH","ATLAS2","PALETTE","FINAL_VAR","RELATIVE_LAYOUTS","TILESET","TILEMAP"];
+bh_multianim_ManimKeywordInfo.childElements = ["BITMAP","TEXT","RICHTEXT","NINEPATCH","FLOW","LAYERS","MASK","TILEGROUP","INTERACTIVE","SLOT","SLOT_CONTENT","SPACER","POINT","APPLY","GRAPHICS","PIXELS","PARTICLES","REPEAT","REPEAT2D","STATIC_REF","DYNAMIC_REF","PLACEHOLDER","STATEANIM","STATEANIM_CONSTRUCT","AUTOTILE","FINAL_VAR","SWITCH","TILEMAP_REF"];
+bh_multianim_ManimKeywordInfo.allElementCtors = ["FLOW","SPACER","BITMAP","POINT","STATEANIM","STATEANIM_CONSTRUCT","PIXELS","TEXT","RICHTEXT","PROGRAMMABLE","TILEGROUP","RELATIVE_LAYOUTS","PATHS","ANIMATED_PATH","CURVES","PARTICLES","APPLY","LAYERS","MASK","REPEAT","REPEAT2D","STATIC_REF","PLACEHOLDER","DYNAMIC_REF","SLOT","SLOT_CONTENT","INTERACTIVE","GRAPHICS","DATA","AUTOTILE","ATLAS2","PALETTE","FINAL_VAR","NINEPATCH","SWITCH","TILESET","TILEMAP","TILEMAP_REF"];
 bh_multianim_ManimKeywordInfo.simpleParamTypes = [bh_multianim_DefinitionType.PPTInt,bh_multianim_DefinitionType.PPTUnsignedInt,bh_multianim_DefinitionType.PPTFloat,bh_multianim_DefinitionType.PPTBool,bh_multianim_DefinitionType.PPTString,bh_multianim_DefinitionType.PPTColor,bh_multianim_DefinitionType.PPTTile,bh_multianim_DefinitionType.PPTArray,bh_multianim_DefinitionType.PPTHexDirection,bh_multianim_DefinitionType.PPTGridDirection];
 bh_multianim_ManimKeywordInfo.completableFilters = [bh_multianim_FilterType.FilterOutline(null,null),bh_multianim_FilterType.FilterGlow(null,null,null,null,null,false,false),bh_multianim_FilterType.FilterBlur(null,null,null,null),bh_multianim_FilterType.FilterSaturate(null),bh_multianim_FilterType.FilterBrightness(null),bh_multianim_FilterType.FilterGrayscale(null),bh_multianim_FilterType.FilterHue(null),bh_multianim_FilterType.FilterDropShadow(null,null,null,null,null,null,null,false),bh_multianim_FilterType.FilterPixelOutline(null,false),bh_multianim_FilterType.FilterPaletteReplace("",null,null),bh_multianim_FilterType.FilterColorListReplace(null,null),bh_multianim_FilterType.FilterGroup(null),bh_multianim_FilterType.FilterNone];
 bh_multianim_ManimKeywordInfo.allTransitions = [bh_multianim_TransitionType.TransNone,bh_multianim_TransitionType.TransFade(0,null),bh_multianim_TransitionType.TransCrossfade(0,null),bh_multianim_TransitionType.TransFlipX(0,null),bh_multianim_TransitionType.TransFlipY(0,null),bh_multianim_TransitionType.TransSlide(bh_multianim_TransitionDirection.TDLeft,0,null,null)];
 bh_multianim_ManimKeywordInfo.allEasings = [bh_multianim_EasingType.Linear,bh_multianim_EasingType.EaseInQuad,bh_multianim_EasingType.EaseOutQuad,bh_multianim_EasingType.EaseInOutQuad,bh_multianim_EasingType.EaseInCubic,bh_multianim_EasingType.EaseOutCubic,bh_multianim_EasingType.EaseInOutCubic,bh_multianim_EasingType.EaseInBack,bh_multianim_EasingType.EaseOutBack,bh_multianim_EasingType.EaseInOutBack,bh_multianim_EasingType.EaseOutBounce,bh_multianim_EasingType.EaseOutElastic];
 bh_multianim_ManimKeywordInfo.allPathCommands = [bh_multianim_ParsedPaths.MoveTo(null,null),bh_multianim_ParsedPaths.LineTo(null,null),bh_multianim_ParsedPaths.Forward(null),bh_multianim_ParsedPaths.TurnDegrees(null),bh_multianim_ParsedPaths.Checkpoint(""),bh_multianim_ParsedPaths.Bezier3To(null,null,null,null,null),bh_multianim_ParsedPaths.Arc(null,null),bh_multianim_ParsedPaths.Close,bh_multianim_ParsedPaths.Spiral(null,null,null),bh_multianim_ParsedPaths.Wave(null,null,null)];
 bh_multianim_ManimKeywordInfo.allCurveOps = [bh_multianim_CurveOperation.Multiply(null),bh_multianim_CurveOperation.Compose("",""),bh_multianim_CurveOperation.Invert(""),bh_multianim_CurveOperation.Scale("",null)];
-bh_stateanim_AnimKeywordInfo.all = [new bh_stateanim_AnimKeywordInfo("sheet",bh_stateanim_AnimKeywordContext.AKTopLevel,"Sprite sheet name","sheet: "),new bh_stateanim_AnimKeywordInfo("states",bh_stateanim_AnimKeywordContext.AKTopLevel,"State variable declaration: `states: stateName(value1, value2)`","states: "),new bh_stateanim_AnimKeywordInfo("center",bh_stateanim_AnimKeywordContext.AKTopLevel,"Default center point: `center: x,y`","center: "),new bh_stateanim_AnimKeywordInfo("fps",bh_stateanim_AnimKeywordContext.AKTopLevel,"Default frames per second","fps: "),new bh_stateanim_AnimKeywordInfo("loop",bh_stateanim_AnimKeywordContext.AKTopLevel,"Default loop count. `yes` = forever, number = N times","loop: "),new bh_stateanim_AnimKeywordInfo("flipX",bh_stateanim_AnimKeywordContext.AKTopLevel,"Default horizontal flip (yes/no)","flipX: yes"),new bh_stateanim_AnimKeywordInfo("flipY",bh_stateanim_AnimKeywordContext.AKTopLevel,"Default vertical flip (yes/no)","flipY: yes"),new bh_stateanim_AnimKeywordInfo("allowedExtraPoints",bh_stateanim_AnimKeywordContext.AKTopLevel,"Declare valid extra point names for validation"),new bh_stateanim_AnimKeywordInfo("animation",bh_stateanim_AnimKeywordContext.AKTopLevel,"Named animation definition with playlist, extrapoints, and filters","animation ${1:name} {\n\t$0\n}",true),new bh_stateanim_AnimKeywordInfo("anim",bh_stateanim_AnimKeywordContext.AKTopLevel,"One-liner animation shorthand: `anim name(fps:N, loop:yes): \"sheetName\"`","anim ${1:name}(fps:${2:20}): \"${3:sheetName}\""),new bh_stateanim_AnimKeywordInfo("metadata",bh_stateanim_AnimKeywordContext.AKTopLevel,"Typed key-value pairs (int, float, string, color). Supports state conditionals","metadata {\n\t$0\n}",true),new bh_stateanim_AnimKeywordInfo("fps",bh_stateanim_AnimKeywordContext.AKAnimationBody,"Frames per second","fps: "),new bh_stateanim_AnimKeywordInfo("loop",bh_stateanim_AnimKeywordContext.AKAnimationBody,"Loop count (yes = forever)","loop: "),new bh_stateanim_AnimKeywordInfo("playlist",bh_stateanim_AnimKeywordContext.AKAnimationBody,"Frame playlist","playlist {\n\tsheet: \"${1:name}\"\n\t$0\n}",true),new bh_stateanim_AnimKeywordInfo("extrapoints",bh_stateanim_AnimKeywordContext.AKAnimationBody,"Named points for effects/interactions. Supports state conditionals","extrapoints {\n\t$0\n}",true),new bh_stateanim_AnimKeywordInfo("filters",bh_stateanim_AnimKeywordContext.AKAnimationBody,"Per-animation filter block with state conditionals","filters {\n\t$0\n}",true),new bh_stateanim_AnimKeywordInfo("flipX",bh_stateanim_AnimKeywordContext.AKAnimationBody,"Horizontal flip (yes/no)","flipX: yes"),new bh_stateanim_AnimKeywordInfo("flipY",bh_stateanim_AnimKeywordContext.AKAnimationBody,"Vertical flip (yes/no)","flipY: yes"),new bh_stateanim_AnimKeywordInfo("sheet",bh_stateanim_AnimKeywordContext.AKPlaylistBody,"Sheet name. Supports `${stateName}` interpolation","sheet: \""),new bh_stateanim_AnimKeywordInfo("event",bh_stateanim_AnimKeywordContext.AKPlaylistBody,"Trigger event: `event <name> trigger | random x,y,radius | x,y`"),new bh_stateanim_AnimKeywordInfo("filter",bh_stateanim_AnimKeywordContext.AKPlaylistBody,"Per-frame filter change"),new bh_stateanim_AnimKeywordInfo("tint",bh_stateanim_AnimKeywordContext.AKFilterBody,"Tint filter: `tint: #RRGGBB`","tint: "),new bh_stateanim_AnimKeywordInfo("brightness",bh_stateanim_AnimKeywordContext.AKFilterBody,"Brightness filter: `brightness: 0.0-1.0`","brightness: "),new bh_stateanim_AnimKeywordInfo("saturate",bh_stateanim_AnimKeywordContext.AKFilterBody,"Saturation filter","saturate: "),new bh_stateanim_AnimKeywordInfo("grayscale",bh_stateanim_AnimKeywordContext.AKFilterBody,"Grayscale filter","grayscale: "),new bh_stateanim_AnimKeywordInfo("hue",bh_stateanim_AnimKeywordContext.AKFilterBody,"Hue rotation filter","hue: "),new bh_stateanim_AnimKeywordInfo("outline",bh_stateanim_AnimKeywordContext.AKFilterBody,"Outline filter: `outline: size, #color`","outline: "),new bh_stateanim_AnimKeywordInfo("pixelOutline",bh_stateanim_AnimKeywordContext.AKFilterBody,"Pixel outline filter: `pixelOutline: #color`","pixelOutline: "),new bh_stateanim_AnimKeywordInfo("replaceColor",bh_stateanim_AnimKeywordContext.AKFilterBody,"Color replacement: `replaceColor: [#src] => [#dst]`","replaceColor: "),new bh_stateanim_AnimKeywordInfo("none",bh_stateanim_AnimKeywordContext.AKFilterBody,"Clear filters"),new bh_stateanim_AnimKeywordInfo("@(",bh_stateanim_AnimKeywordContext.AKConditional,"Conditional: `@(state=>value)`","@(${1:state}=>${2:value}) "),new bh_stateanim_AnimKeywordInfo("@else",bh_stateanim_AnimKeywordContext.AKConditional,"Else branch"),new bh_stateanim_AnimKeywordInfo("@else(",bh_stateanim_AnimKeywordContext.AKConditional,"Else-if with condition","@else(${1:state}=>${2:value}) "),new bh_stateanim_AnimKeywordInfo("@default",bh_stateanim_AnimKeywordContext.AKConditional,"Default fallback"),new bh_stateanim_AnimKeywordInfo("@final",bh_stateanim_AnimKeywordContext.AKConditional,"Named constant","@final ${1:NAME} = ${2:value}")];
+bh_stateanim_AnimKeywordInfo.all = [new bh_stateanim_AnimKeywordInfo("sheet",bh_stateanim_AnimKeywordContext.AKTopLevel,"Sprite sheet name","sheet: "),new bh_stateanim_AnimKeywordInfo("states",bh_stateanim_AnimKeywordContext.AKTopLevel,"State variable declaration: `states: stateName(value1, value2)`","states: "),new bh_stateanim_AnimKeywordInfo("center",bh_stateanim_AnimKeywordContext.AKTopLevel,"Default center point: `center: x,y`","center: "),new bh_stateanim_AnimKeywordInfo("fps",bh_stateanim_AnimKeywordContext.AKTopLevel,"Default frames per second","fps: "),new bh_stateanim_AnimKeywordInfo("loop",bh_stateanim_AnimKeywordContext.AKTopLevel,"Default loop count. `yes` = forever, number = N times","loop: "),new bh_stateanim_AnimKeywordInfo("flipX",bh_stateanim_AnimKeywordContext.AKTopLevel,"Default horizontal flip (yes/no)","flipX: yes"),new bh_stateanim_AnimKeywordInfo("flipY",bh_stateanim_AnimKeywordContext.AKTopLevel,"Default vertical flip (yes/no)","flipY: yes"),new bh_stateanim_AnimKeywordInfo("allowedExtraPoints",bh_stateanim_AnimKeywordContext.AKTopLevel,"Declare valid extra point names for validation"),new bh_stateanim_AnimKeywordInfo("animation",bh_stateanim_AnimKeywordContext.AKTopLevel,"Named animation definition with playlist, extrapoints, and filters","animation ${1:name} {\n\t$0\n}",true),new bh_stateanim_AnimKeywordInfo("anim",bh_stateanim_AnimKeywordContext.AKTopLevel,"One-liner animation shorthand: `anim name(fps:N, loop:yes): \"sheetName\"`","anim ${1:name}(fps:${2:20}): \"${3:sheetName}\""),new bh_stateanim_AnimKeywordInfo("layers",bh_stateanim_AnimKeywordContext.AKTopLevel,"The file's layers, drawn bottom first: `layers: shadow, body, hat`. Before animations","layers: "),new bh_stateanim_AnimKeywordInfo("metadata",bh_stateanim_AnimKeywordContext.AKTopLevel,"Typed key-value pairs (int, float, string, color, [list of words]). Supports state conditionals","metadata {\n\t$0\n}",true),new bh_stateanim_AnimKeywordInfo("fps",bh_stateanim_AnimKeywordContext.AKAnimationBody,"Frames per second","fps: "),new bh_stateanim_AnimKeywordInfo("loop",bh_stateanim_AnimKeywordContext.AKAnimationBody,"Loop count (yes = forever)","loop: "),new bh_stateanim_AnimKeywordInfo("playlist",bh_stateanim_AnimKeywordContext.AKAnimationBody,"Frame playlist","playlist {\n\tsheet: \"${1:name}\"\n\t$0\n}",true),new bh_stateanim_AnimKeywordInfo("extrapoints",bh_stateanim_AnimKeywordContext.AKAnimationBody,"Named points for effects/interactions. Supports state conditionals","extrapoints {\n\t$0\n}",true),new bh_stateanim_AnimKeywordInfo("filters",bh_stateanim_AnimKeywordContext.AKAnimationBody,"Per-animation filter block with state conditionals","filters {\n\t$0\n}",true),new bh_stateanim_AnimKeywordInfo("flipX",bh_stateanim_AnimKeywordContext.AKAnimationBody,"Horizontal flip (yes/no)","flipX: yes"),new bh_stateanim_AnimKeywordInfo("flipY",bh_stateanim_AnimKeywordContext.AKAnimationBody,"Vertical flip (yes/no)","flipY: yes"),new bh_stateanim_AnimKeywordInfo("layer",bh_stateanim_AnimKeywordContext.AKAnimationBody,"A layer's frames, in place of a playlist: `layer hat @(hat != none) { sheet: \"hat_walk\" }`","layer ${1:name} {\r\n\tsheet: \"${2:name}\"\r\n\t$0\r\n}",true),new bh_stateanim_AnimKeywordInfo("timeline",bh_stateanim_AnimKeywordContext.AKAnimationBody,"The layer whose frames, durations and events are the animation's (default: the first in `layers:` order)","timeline: "),new bh_stateanim_AnimKeywordInfo("sheet",bh_stateanim_AnimKeywordContext.AKPlaylistBody,"Sheet name. Supports `${stateName}` interpolation","sheet: \""),new bh_stateanim_AnimKeywordInfo("event",bh_stateanim_AnimKeywordContext.AKPlaylistBody,"Trigger event: `event <name> trigger | random x,y,radius | x,y`"),new bh_stateanim_AnimKeywordInfo("filter",bh_stateanim_AnimKeywordContext.AKPlaylistBody,"Per-frame filter change"),new bh_stateanim_AnimKeywordInfo("blend",bh_stateanim_AnimKeywordContext.AKPlaylistBody,"In a layer block: how it is drawn, `blend: add` (alpha, add, multiply, screen, …)","blend: "),new bh_stateanim_AnimKeywordInfo("offset",bh_stateanim_AnimKeywordContext.AKPlaylistBody,"After a `sheet:` or `file:` line: its frames drawn this many pixels over, `offset: x, y`","offset: "),new bh_stateanim_AnimKeywordInfo("tint",bh_stateanim_AnimKeywordContext.AKFilterBody,"Tint filter: `tint: #RRGGBB`","tint: "),new bh_stateanim_AnimKeywordInfo("brightness",bh_stateanim_AnimKeywordContext.AKFilterBody,"Brightness filter: `brightness: 0.0-1.0`","brightness: "),new bh_stateanim_AnimKeywordInfo("saturate",bh_stateanim_AnimKeywordContext.AKFilterBody,"Saturation filter","saturate: "),new bh_stateanim_AnimKeywordInfo("grayscale",bh_stateanim_AnimKeywordContext.AKFilterBody,"Grayscale filter","grayscale: "),new bh_stateanim_AnimKeywordInfo("hue",bh_stateanim_AnimKeywordContext.AKFilterBody,"Hue rotation filter","hue: "),new bh_stateanim_AnimKeywordInfo("outline",bh_stateanim_AnimKeywordContext.AKFilterBody,"Outline filter: `outline: size, #color`","outline: "),new bh_stateanim_AnimKeywordInfo("pixelOutline",bh_stateanim_AnimKeywordContext.AKFilterBody,"Pixel outline filter: `pixelOutline: #color`","pixelOutline: "),new bh_stateanim_AnimKeywordInfo("replaceColor",bh_stateanim_AnimKeywordContext.AKFilterBody,"Color replacement: `replaceColor: [#src] => [#dst]`","replaceColor: "),new bh_stateanim_AnimKeywordInfo("none",bh_stateanim_AnimKeywordContext.AKFilterBody,"Clear filters"),new bh_stateanim_AnimKeywordInfo("@(",bh_stateanim_AnimKeywordContext.AKConditional,"Conditional: `@(state=>value)`","@(${1:state}=>${2:value}) "),new bh_stateanim_AnimKeywordInfo("@else",bh_stateanim_AnimKeywordContext.AKConditional,"Else branch"),new bh_stateanim_AnimKeywordInfo("@else(",bh_stateanim_AnimKeywordContext.AKConditional,"Else-if with condition","@else(${1:state}=>${2:value}) "),new bh_stateanim_AnimKeywordInfo("@default",bh_stateanim_AnimKeywordContext.AKConditional,"Default fallback"),new bh_stateanim_AnimKeywordInfo("@final",bh_stateanim_AnimKeywordContext.AKConditional,"Named constant","@final ${1:NAME} = ${2:value}"),new bh_stateanim_AnimKeywordInfo("@name(",bh_stateanim_AnimKeywordContext.AKConditional,"Annotation for tools, before an animation or at the top level: `@from(\"walk.png\", grid: 32)`. Kept, never acted on","@${1:name}(${2:value}) ")];
 bh_stateanim__$AnimParser_AnimLexerHC.keywordMap = (function($this) {
 	var $r;
 	var _g = new haxe_ds_StringMap();
@@ -17373,6 +18492,11 @@ bh_stateanim__$AnimParser_AnimLexerHC.keywordMap = (function($this) {
 	_g.h["none"] = bh_stateanim_APKeywords.APNone;
 	_g.h["flipx"] = bh_stateanim_APKeywords.APFlipX;
 	_g.h["flipy"] = bh_stateanim_APKeywords.APFlipY;
+	_g.h["offset"] = bh_stateanim_APKeywords.APOffset;
+	_g.h["layers"] = bh_stateanim_APKeywords.APLayers;
+	_g.h["layer"] = bh_stateanim_APKeywords.APLayer;
+	_g.h["timeline"] = bh_stateanim_APKeywords.APTimeline;
+	_g.h["blend"] = bh_stateanim_APKeywords.APBlend;
 	$r = _g;
 	return $r;
 }(this));

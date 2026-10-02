@@ -742,6 +742,7 @@ enum AutotileFormat {
 @:nullSafety
 enum AutotileSource {
 	ATSAtlas(sheet:ReferenceableValue, prefix:ReferenceableValue);  // source index j -> atlas tile "<prefix><j>"
+	ATSAtlasIndexed(sheet:ReferenceableValue, name:ReferenceableValue);  // source index j -> frame j (by `index:`) of atlas tile "<name>"
 	ATSFile(filename:ReferenceableValue);  // source index j -> j-th tile (row-major) of `region:` (default: whole image)
 	ATSTiles(tiles:Array<TileSource>);  // source index j -> j-th listed tile
 	ATSDemo(edgeColor:ReferenceableValue, fillColor:ReferenceableValue);  // auto-generated demo tiles, one per autotile index
@@ -753,8 +754,153 @@ typedef AutotileDef = {
 	var source:AutotileSource;
 	var tileSize:ReferenceableValue;
 	var ?mapping:Null<Map<Int, Int>>;     // autotile index -> source index (validated against the format at parse time)
+	/** Autotile index -> more source indices drawn in its place by turns (`mapping: [15: 7 | 8 | 9]` puts 8 and 9 here), chosen by position; `mapping` holds the first. **/
+	var ?alternates:Null<Map<Int, Array<Int>>>;
 	var ?region:Null<Array<ReferenceableValue>>;  // file source only: [x, y, w, h] in pixels
 	var ?allowPartialMapping:Bool;        // blob47 only: indices with no tile use the closest mapped tile instead of an error
+}
+
+/** A terrain of a tileset (`terrain name { … }`): an autotile, several for an animated one, or the variants of one atlas name. **/
+@:nullSafety
+typedef TilesetTerrainDef = {
+	var name:String;
+	/** Autotile definitions of the tileset's file; several are the frames of an animated terrain. **/
+	var autotiles:Array<String>;
+	/** Or an atlas name whose frames are variants, each cell taking one by its position. **/
+	var ?cells:String;
+	/** Milliseconds a frame of an animated terrain. **/
+	var ?duration:Int;
+	/** What the game reads of a cell of this terrain: `metadata { cost:int => 2, swim:bool => true }`, as settings are written. **/
+	var metadata:Map<String, ParsedSettingValue>;
+}
+
+/**
+	`transition a, b { autotile: … }`: where terrain `b` meets terrain `a` (or `none`), this autotile is
+	drawn over `b`'s own at the meeting positions, for a tileset whose edge between two terrains is
+	drawn for that pair. `a` is below `b` in the tileset; the autotiles are one a frame when `b` is animated.
+**/
+@:nullSafety
+typedef TilesetTransitionDef = {
+	var from:String;
+	var to:String;
+	var autotiles:Array<String>;
+}
+
+/**
+	`rise <n> { side: "name" span: s }`: how a cell that many levels above its neighbour `toward` it is
+	drawn. Nothing is lifted: the tileset's `edge` outlines the higher level, and the rise's `side` is
+	drawn on the `span` cells beyond it, toward that neighbour. `rise any` is for every rise that has
+	none of its own; `rise <n> <terrain>` is for a higher cell of that terrain.
+**/
+@:nullSafety
+typedef TilesetRiseDef = {
+	/** How many levels; 0 for `any`: every rise with none of its own. **/
+	var rise:Int;
+	/** The terrain of the higher cell this is for; null: every terrain that has no rises of its own in this direction. **/
+	var ?terrain:String;
+	/** The platform it is a side of (`platform name { rise … }`); null: a level of the ground. **/
+	var ?platform:String;
+	/** An atlas name, `span` frames from the edge outward: the side's middle (the first of `sides`). **/
+	var side:String;
+	/** The side's middle, one name or several taken in turn along the run: `side: "a", "b"`. **/
+	var sides:Array<String>;
+	/** The side's two ends and a side one cell wide, when the tileset draws them apart (else `side`). **/
+	var ?left:String;
+	var ?right:String;
+	var ?single:String;
+	var span:Int;
+	/** Where the side is drawn from the higher cell: down (the default), up, left or right. **/
+	var toward:String;
+	/** What the game reads of the cells a side covers: `metadata { wall:bool => true }`. **/
+	var metadata:Map<String, ParsedSettingValue>;
+}
+
+/**
+	`platform name { edge: autotile  rise <n> { … } }`: a kind of higher level that is not the ground
+	raised: a tree top, a roof. Its `edge` is drawn over all of it, inside and rim, on whatever terrain
+	is under it, and its sides are its own. A map puts it where a character of its levels legend says
+	(`levels { legend { "c": 1 canopy } rows: [ … ] }`).
+**/
+@:nullSafety
+typedef TilesetPlatformDef = {
+	var name:String;
+	/** The autotile its top is drawn with, every cell of it. **/
+	var ?edge:String;
+}
+
+/** `cell name { draw: over metadata { … } }`: what a named cell of the layers is, wherever it is placed. **/
+@:nullSafety
+typedef TilesetCellDef = {
+	var name:String;
+	/** Where it is drawn, over the layer's own `draw:`: under, over or top. **/
+	var ?draw:String;
+	var metadata:Map<String, ParsedSettingValue>;
+}
+
+/** `#name tileset { … }`: what a tile map is drawn with. **/
+@:nullSafety
+typedef TilesetDef = {
+	var tileSize:Int;
+	/** The sheet the named cells are in (an atlas2 file or inline block). **/
+	var atlas:String;
+	/** An autotile drawn along the rim of "level >= L" for every level L above 0: a higher level's outline. **/
+	var ?edge:String;
+	/** By terrain: the outline of a higher level where that terrain is on top (`edge grass: rim`), in place of `edge`. **/
+	var edges:Map<String, String>;
+	/** Drawn in this order, bottom first; each is drawn under every terrain after it. **/
+	var terrains:Array<TilesetTerrainDef>;
+	/** Pairs of terrains drawn with their own autotile where they meet. **/
+	var transitions:Array<TilesetTransitionDef>;
+	/** By rise, the smallest first; a platform's sides are among them, with its name. **/
+	var rises:Array<TilesetRiseDef>;
+	/** The kinds of higher level that are not the ground raised. **/
+	var platforms:Array<TilesetPlatformDef>;
+	var cells:Array<TilesetCellDef>;
+}
+
+/** `layer name { legend { "s": skull } rows: [ … ] }`: cells placed as they are; a space is no cell. **/
+@:nullSafety
+typedef TilemapLayerDef = {
+	var name:String;
+	var legend:Map<String, String>;
+	var rows:Array<String>;
+	/** The sheet its cells are in; the tileset's atlas when not given. **/
+	var ?sheet:String;
+	/** `under` the actors (the default; a cell the tileset lists in `over` still goes above them), `over` them, or `top`, above everything (shadows). **/
+	var draw:String;
+}
+
+/** A mark the game reads by name, in cells: a point, or a rectangle with `w` and `h`. **/
+@:nullSafety
+typedef TilemapMarkDef = {
+	var name:String;
+	var x:Int;
+	var y:Int;
+	var ?w:Int;
+	var ?h:Int;
+}
+
+/** `#name tilemap { … }`: rows of characters, one a cell. **/
+@:nullSafety
+typedef TilemapDef = {
+	var tileset:String;
+	/** `tileset: external(name), tileset`: the tileset is in an imported file. **/
+	var ?tilesetImport:String;
+	var width:Int;
+	var height:Int;
+	/** Character -> terrain name, or `none`. **/
+	var legend:Map<String, String>;
+	var terrain:Array<String>;
+	/** One character a cell, the cell's level: a digit is itself, any other character is in `levelLegend`; empty for a flat map. **/
+	var levels:Array<String>;
+	/** `levels { legend { "A": 10 } rows: [...] }`: what a character that is not a digit stands for. **/
+	var levelLegend:Map<String, Int>;
+	/** `levels { legend { "c": 1 canopy } … }`: the platform a character of the levels legend stands for, with its level. **/
+	var levelPlatforms:Map<String, String>;
+	var layers:Array<TilemapLayerDef>;
+	var marks:Array<TilemapMarkDef>;
+	/** Where the map is defined in its file (the DevBridge's `map_list` says it). **/
+	var ?line:Int;
 }
 
 @:nullSafety
@@ -968,6 +1114,9 @@ enum NodeType {
 	PALETTE(paletteType:PaletteType);
 	GRAPHICS(elements:Array<PositionedGraphicsElement>);
 	AUTOTILE(autotileDef:AutotileDef);
+	TILESET(tilesetDef:TilesetDef);
+	TILEMAP(tilemapDef:TilemapDef);
+	TILEMAP_REF(externalReference:Null<String>, name:String);
 	ATLAS2(atlas2Def:Atlas2Def);
 	DATA(dataDef:DataDef);
 	SLOT(parameters:Null<ParametersDefinitions>, paramOrder:Null<Array<String>>);

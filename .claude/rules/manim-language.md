@@ -50,7 +50,8 @@
 | `@final name = expr` | Immutable named constant |
 | `#name data {...}` | Static typed data block |
 | `#name atlas2("file") {...}` | Inline sprite atlas |
-| `#name autotile {...}` | Terrain tileset: `format: corner` (16, dual grid) / `blob47` / `cross`; source `file:`+`region:` / `sheet:`+`prefix:` / `tiles:` / `demo:`; `mapping:` autotile index -> source index. Build with `builder.buildAutotile(name, grid)`; single tile `generated(autotile(name, index))` |
+| `#name autotile {...}` | Terrain tileset: `format: corner` (16, dual grid) / `blob47` / `cross`; source `file:`+`region:` / `sheet:`+`prefix:` / `sheet:`+`name:` (frames of one indexed name) / `tiles:` / `demo:`; `mapping:` autotile index -> source index, several per index with `\|` (drawn by position). Build with `builder.buildAutotile(name, grid, ?where)`; single tile `generated(autotile(name, index))` |
+| `#name tileset {...}` / `#name tilemap {...}` | Tileset: `atlas`, `edge` (every higher level's outline, along its rim; `edge <terrain>:` for one terrain on top), `terrain` (autotile / animated / `cells` variants, drawn bottom first), `transition a, b { autotile }` (where two meet), `rise n { side left right single span toward }` (`rise any`, `rise n <terrain>`, `side: "a", "b"` taken in turn), `platform name { edge rise }` (a top of its own over the ground, named in a map's levels legend: `"c": 1 canopy`), `cell name { draw }`, `metadata {}` on terrain / rise / cell. Tile map: `tileset`, `size`, `legend`, `terrain`/`levels` rows (`levels { legend rows }` beyond nine), `layer { sheet draw legend rows }`, `decor {}`, `marks {}`; placed with `tilemap(name)`; `builder.buildTilemap(name)` → `bh.base.TileMap` |
 | `curves {...}` | 1D curve definitions |
 | `paths {...}` | Path definitions |
 | `#name animatedPath {...}` | Animated path with curves/events |

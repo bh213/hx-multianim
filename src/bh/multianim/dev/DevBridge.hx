@@ -37,7 +37,7 @@ class DevBridge implements IDevBridgeHost {
 		"list_interactives", "list_slots", "get_tween_state", "get_screen_state", "find_element_at",
 		"inspect_programmable", "list_fonts", "list_atlases", "coordinate_transform", "wait_for_idle",
 		"check_overlaps", "click_interactive", "click_button", "list_active_programmables", "list_game_ops",
-		"game_op", "get_game_events", "data_list", "data_get", "data_pick",
+		"game_op", "get_game_events", "data_list", "data_get", "data_pick", "map_list", "map_get",
 	];
 
 	final screenManager:ScreenManager;
@@ -138,6 +138,23 @@ class DevBridge implements IDevBridgeHost {
 				final rolled = bh.multianim.data.DataRegistry.roll(name, seed, n);
 				if (rolled == null) throw DevBridgeError.notFound('No pick named "$name". Call data_list to see the game\'s picks.');
 				return rolled;
+			});
+		registerQuery("map_list",
+			"Every tile map in a scene: its name, the .manim file and line it is read from, its size in cells and its tile size",
+			{}, (_:Dynamic) -> {
+				maps: [
+					for (m in bh.base.TileMap.showing)
+						{name: m.mapName, source: m.sourceName, line: m.def.line, width: m.width, height: m.height, tileSize: m.tileSize}
+				]
+			});
+		registerQuery("map_get",
+			"One tile map as it is now, in the shape it is written in: legend, terrain rows, levels, layers, marks",
+			{name: "string"}, (params:Dynamic) -> {
+				final name:Null<String> = params.name;
+				if (name == null) throw DevBridgeError.invalidParams("Required param: name (from map_list)");
+				for (m in bh.base.TileMap.showing)
+					if (m.mapName == name) return m.describe();
+				throw DevBridgeError.notFound('No tile map named "$name" in a scene. Call map_list to see them.');
 			});
 	}
 
@@ -616,7 +633,7 @@ class DevBridge implements IDevBridgeHost {
 			// v8: custom game ops (query/command/event)
 			case "list_game_ops": handleListGameOps(params);
 			case "game_op": handleGameOp(params);
-			case "data_list" | "data_get" | "data_pick": handleBuiltInQuery(method, params);
+			case "data_list" | "data_get" | "data_pick" | "map_list" | "map_get": handleBuiltInQuery(method, params);
 			case "get_game_events": handleGetGameEvents(params);
 			default: throw DevBridgeError.unknownMethod('Unknown method: $method');
 		};

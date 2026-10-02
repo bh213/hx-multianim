@@ -73,7 +73,7 @@ class DevBridgeTest extends BuilderTestBase {
 		// The library's own queries: listed apart from the game's, and reached through game_op.
 		var ops:Dynamic = bridge.dispatch("list_game_ops", {});
 		Assert.equals(0, (ops.queries : Array<Dynamic>).length);
-		Assert.same(["data_get", "data_list", "data_pick"], sorted([for (q in (ops.builtIn : Array<Dynamic>)) (q.op : String)]));
+		Assert.same(["data_get", "data_list", "data_pick", "map_get", "map_list"], sorted([for (q in (ops.builtIn : Array<Dynamic>)) (q.op : String)]));
 		var listed:Dynamic = bridge.dispatch("game_op", {op: "data_list"});
 		final list:Array<Dynamic> = listed.result;
 		Assert.equals(2, list.length);

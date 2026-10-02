@@ -361,8 +361,8 @@ class StateRestorer {
 		// session. The outer batch's endUpdate flushes our setParameter calls in
 		// its own applyUpdates cycle.
 		// Only params whose value differs: a result rebuilt from the snapshot already holds them, and
-		// setParameter rejects a param used in an interactive id, a stateanim selector or a
-		// param-dependent repeat body (`untracked_param`) whatever the value.
+		// setParameter rejects a param used in an interactive id or a param-dependent repeat body
+		// (`untracked_param`) whatever the value.
 		final current = result.incrementalContext.snapshotParams();
 		final opened = !result.batchMode;
 		if (opened) result.beginUpdate();

@@ -466,3 +466,37 @@ The `bh.base.Autotile` utility class provides:
 - `getCornerIndex(grid, cornerX, cornerY)` - corner format index (corners run 0..width x 0..height)
 - `getCrossIndex(mask)` / `getBlob47Index(mask)` / `getBlob47Mask(index)` - per-cell formats
 - `getBlob47FallbackChain(index, mapping)` / `applyBlob47FallbackWithMap(index, mapping)` - partial-mapping fallback (one algorithm: same cardinals with the closest diagonals, then fewer cardinals, then tile 46, then 0; the chain form is what the hx-multianim-utils autotile mapper displays)
+
+## Tile maps
+
+`#name tileset { … }` → `TILESET(TilesetDef)`, `#name tilemap { … }` → `TILEMAP(TilemapDef)` (the map's
+`decor { }` elements are the node's children), `tilemap(name)` → `TILEMAP_REF(extRef, name)`. The parser
+checks the rows (width, height, legend, digits), keeping each row's line and column for tools; the
+builder (`buildTilemap`, `tilemapParts`, `checkTilemap`) resolves the tileset in this file or an
+import (`importedBuilder`), checks every name the map uses, and builds `bh.base.TileMap` with
+`TileMapTiles` closures (an autotile over a grid, the frames of a name, a tileset's metadata resolved
+as settings are, `resolveSettingValue`) so the map needs no builder of its own.
+Decor is built with `buildSingleNodeWithParams`. Codegen delegates `tilemap(name)` to
+`ProgrammableBuilder.buildTilemap`, as autotile tiles are.
+
+`TileMap.redraw()` draws from its own copy of the rows: the terrains (a mask per terrain of the cells
+of it and of every terrain after it; a `transition a, b` adds b's pair autotile over b's own at the
+positions `meetingPositions` finds, where the cells around a position are some of b-or-above and
+otherwise all a, computed in the autotile's own positions by its format and passed as `where`), each
+level's edge (along its rim only: `rimPositions`, by the edge's format, of the cells whose terrain
+has that edge, `edges[terrain]` or the tileset's own; a platform's cells are left out, and each
+platform's own edge is drawn over all of its cells), each rise's sides (per direction and cell:
+`riseFor` picks the rise, a platform's own for a cell of one, else the terrain's own in that
+direction when it has any, else the tileset's, of that many levels or `any`; the run's ends from the
+neighbours across the side's direction that take the same rise, in reading order, and of several
+`sides` the one whose turn it is along the run), the layers into
+`ground`, `overLayer` or `topLayer` (a `TileGroups` helper keeps one `TileGroup` a texture), and merges
+each cell's metadata once, into a `BuilderResolvedSettings` a cell (one shared empty one for the rest). `sync` steps the animated terrains and y-sorts `actors` with the frame's time (the private `step(dt)`), the one place it is done, so a game calls nothing each frame. `setTerrain`/`setLevel`/`setCell` only
+mark the map `changed`; `redraw` runs once, from `sync` or from the first `terrainAt`/`sideAt`/
+`metadataAt` after, so a brush over many cells draws once. Maps in a scene are in `TileMap.showing`
+(`onAdd`/`onRemove`; a Heaps object has no other sign of its lifetime, so a map off-scene is not
+reloaded): `ScreenManager.hotReloadFile` calls `TileMap.builderReplaced` after the file's screens are
+reloaded (their `load()` builds new maps and the old ones leave the scene), which `refreshTilemap`s
+each from the new builder, keeping the actors; `refreshTilemap` leaves a map whose `sourceDef` is this
+builder's parse alone, so a map is never drawn twice for one reload. The DevBridge's `map_list` and
+`map_get` read `showing`.

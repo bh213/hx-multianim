@@ -4,9 +4,9 @@
     "license": "BSD",
     "tags": ["animation", "ui", "heaps", "pixel-art", "sprite", "manim"],
     "description": "animations and pixel art UI for Heaps framework",
-    "version": "1.0.0-rc.6",
+    "version": "1.0.0-rc.7",
     "classPath": "src/",
-    "releasenote": "RC6: large builder/codegen parity sweep (conditionals, dynamicRef/staticRef keying, int truncation, batch API), dialog-over-dialog close fixes, DevBridge bind address via HX_DEV_BIND, extraParams.hxml so -lib consumers get the atlas2 macro automatically.",
+    "releasenote": "RC7: tilesets and tile maps (terrains, levels and platforms, transitions, cell layers, metadata, hot reload, DevBridge map ops), .anim layers with detachLayer, setState/seek, annotations and loaded() spans for tools, autotile alternates and indexed-name sources, data-block tables and picks.",
     "contributors": ["bh213"],
     "dependencies": { 
         "heaps":""

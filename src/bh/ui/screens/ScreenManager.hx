@@ -1613,9 +1613,30 @@ class ScreenManager {
 		// 7. Update content hash
 		fileChangeDetector.updateHash(path, content);
 
-		// 8. Notify transient-build consumers
-		for (consumer in builderConsumers)
-			consumer.onBuilderReplaced(path, newBuilder);
+		// 8. Notify transient-build consumers. The builder is swapped already: what fails here fails
+		// the report and leaves that consumer as it was, and the rest of the reload goes on.
+		final replacedErrors:Array<bh.multianim.dev.HotReload.ReloadError> = [];
+		for (consumer in builderConsumers) {
+			try {
+				consumer.onBuilderReplaced(path, newBuilder);
+			} catch (e:Dynamic) {
+				replacedErrors.push(makeHotReloadFailError(path, "builder consumer", e));
+			}
+		}
+		// The tile maps from this file in a scene are read again in place (rows, tileset, decor; the
+		// actors stay), as consumers are. Called once the screens of this file are reloaded: their
+		// load() builds its maps anew from the new builder and the old ones leave the scene, so none is
+		// drawn twice (and refreshTilemap leaves a map already read from this parse alone). A map that
+		// cannot be read fails the report and stays as it was.
+		function refreshTilemaps():Void {
+			bh.base.TileMap.builderReplaced(path, map -> {
+				try {
+					newBuilder.refreshTilemap(map);
+				} catch (e:Dynamic) {
+					replacedErrors.push(makeHotReloadFailError(path, 'tilemap:${map.mapName}', e));
+				}
+			});
+		}
 
 		// 9. Determine reload strategy: per-file nuclear for screens, in-place for non-screen handles.
 		// A copy: reloading a screen removes it from this list and its load() adds it back.
@@ -1651,50 +1672,59 @@ class ScreenManager {
 				}
 			}
 			updateScreenMode(this.mode);
+			refreshTilemaps();
 
 			// A screen that failed to reload retries on the next reload of the same text.
-			if (screenErrors.length > 0)
+			final errors = replacedErrors.concat(screenErrors);
+			if (errors.length > 0)
 				fileChangeDetector.invalidate(path);
 			final elapsed = (haxe.Timer.stamp() - startTime) * 1000;
 			final report:bh.multianim.dev.HotReload.ReloadReport = {
-				success: screenErrors.length == 0,
+				success: errors.length == 0,
 				file: path,
 				fileType: bh.multianim.dev.HotReload.ReloadFileType.Manim,
 				programmablesRebuilt: [],
 				paramsAdded: paramsAdded,
 				needsFullRestart: null,
-				errors: screenErrors,
+				errors: errors,
 				rebuiltCount: 0,
 				elapsedMs: elapsed,
 			};
-			notifyReloadListeners(screenErrors.length == 0
+			notifyReloadListeners(errors.length == 0
 				? bh.multianim.dev.HotReload.ReloadEvent.ReloadSucceeded(report)
 				: bh.multianim.dev.HotReload.ReloadEvent.ReloadFailed(report));
 			return report;
 		}
+
+		refreshTilemaps();
 
 		if (handles.length == 0) {
 			// No screens and no handles: transient builds only, builder already replaced
 			trace('[HotReload] Builder replaced for ${path} (no screens or handles)');
 			final elapsed = (haxe.Timer.stamp() - startTime) * 1000;
 			final report:bh.multianim.dev.HotReload.ReloadReport = {
-				success: true,
+				success: replacedErrors.length == 0,
 				file: path,
 				fileType: bh.multianim.dev.HotReload.ReloadFileType.Manim,
 				programmablesRebuilt: [],
 				paramsAdded: paramsAdded,
 				needsFullRestart: null,
-				errors: [],
+				errors: replacedErrors,
 				rebuiltCount: 0,
 				elapsedMs: elapsed,
 			};
-			notifyReloadListeners(bh.multianim.dev.HotReload.ReloadEvent.ReloadSucceeded(report));
+			if (report.success)
+				notifyReloadListeners(bh.multianim.dev.HotReload.ReloadEvent.ReloadSucceeded(report));
+			else {
+				fileChangeDetector.invalidate(path);
+				notifyReloadListeners(bh.multianim.dev.HotReload.ReloadEvent.ReloadFailed(report));
+			}
 			return report;
 		}
 
 		// 10. In-place rebuild for non-screen incremental handles
 		final rebuiltNames:Array<String> = [];
-		var buildErrors:Array<bh.multianim.dev.HotReload.ReloadError> = [];
+		var buildErrors:Array<bh.multianim.dev.HotReload.ReloadError> = replacedErrors.copy();
 		var pendingCallbacks:Array<bh.multianim.dev.HotReload.ReloadReport->Void> = [];
 
 		for (handle in handles) {

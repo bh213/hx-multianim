@@ -592,7 +592,7 @@ class AnimFilterRuntimeTest extends utest.Test {
 
 		final delta = AnimationClip.setFramesCallCount - baseline;
 		Assert.equals(0, delta,
-			"AnimationSM.setCurrentFrame should swap the active frame in place; "
+			"AnimationSM.showFrame should swap the active frame in place; "
 			+ "saw " + delta + " AnimationClip.setFrames() calls during steady-state playback "
 			+ "(each one allocates an Array<AnimationFrame>).");
 	}

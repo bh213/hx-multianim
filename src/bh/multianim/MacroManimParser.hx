@@ -8,6 +8,7 @@ import bh.multianim.MultiAnimParser.InvalidSyntax;
 import bh.base.ParsePosition;
 import bh.multianim.CoordinateSystems;
 import bh.multianim.MacroCompatTypes.MacroBlendMode;
+import bh.multianim.MacroCompatTypes.MacroBlendModes;
 import bh.multianim.MacroCompatTypes.MacroFlowLayout;
 import bh.multianim.MacroCompatTypes.MacroFlowOverflow;
 import bh.multianim.MacroCompatTypes.MacroFlowAlign;
@@ -2244,21 +2245,7 @@ class MacroManimParser {
 	function tryParseBlendMode():Null<MacroBlendMode> {
 		switch (peek()) {
 			case TIdentifier(s):
-				final bm = switch (s.toLowerCase()) {
-					case "none": MBNone;
-					case "alpha": MBAlpha;
-					case "add": MBAdd;
-					case "alphaadd": MBAlphaAdd;
-					case "softadd": MBSoftAdd;
-					case "multiply": MBMultiply;
-					case "alphamultiply": MBAlphaMultiply;
-					case "erase": MBErase;
-					case "screen": MBScreen;
-					case "sub": MBSub;
-					case "max": MBMax;
-					case "min": MBMin;
-					default: null;
-				}
+				final bm = MacroBlendModes.fromName(s);
 				if (bm != null) { advance(); return bm; }
 				return null;
 			default: return null;
@@ -2910,7 +2897,7 @@ class MacroManimParser {
 			// consumers that rely on the detailed name (ProgrammableBuilder.buildNodeByUniqueName,
 			// findNodeByUniqueName for REPEAT-child runtime forwarding).
 			uniqueNodeName: generateUniqueName(uniqueCounter, nameStr,
-				switch type { case SWITCH(_, _): Type.enumConstructor(type); default: Std.string(type); }),
+				switch type { case SWITCH(_, _) | TILESET(_) | TILEMAP(_): Type.enumConstructor(type); default: Std.string(type); }),
 			settings: null,
 			transitions: null,
 			flowProperties: null,
@@ -3919,6 +3906,55 @@ class MacroManimParser {
 					case UNTIndexed2D(_, _, _): UNTObject(defaultCurveNodeName);
 				});
 				return n;
+
+			case TIdentifier(s) if (isKeyword(s, "tileset")):
+				advance();
+				if (currentName == null) error("tileset requires a #name");
+				if (parent != null) error("tileset must be a root node");
+				expect(TCurlyOpen);
+				final n = createNode(TILESET(parseTileset()), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
+				return n;
+
+			case TIdentifier(s) if (isKeyword(s, "tilemap")):
+				advance();
+				switch (peek()) {
+					case TCurlyOpen: // #name tilemap { … }: a map
+						if (currentName == null) error("tilemap requires a #name");
+						if (parent != null) error("a tilemap { } definition must be a root node; place it with tilemap(name)");
+						final tilemapLine = peekToken().line;
+						advance();
+						final tmDef:TilemapDef = {
+							tileset: "",
+							width: 0,
+							height: 0,
+							legend: new Map(),
+							terrain: [],
+							levels: [],
+							levelLegend: new Map(),
+							levelPlatforms: new Map(),
+							layers: [],
+							marks: [],
+							line: tilemapLine,
+						};
+						final n = createNode(TILEMAP(tmDef), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
+						parseTilemap(tmDef, n, currentDefs);
+						return n;
+					default: // tilemap(name) or tilemap(external(file), name): places a map
+						expect(TOpen);
+						var extRef:Null<String> = null;
+						switch (peek()) {
+							case TIdentifier(s2) if (isKeyword(s2, "external")):
+								advance();
+								expect(TOpen);
+								extRef = expectIdentifierOrString();
+								expect(TClosed);
+								expect(TComma);
+							default:
+						}
+						final mapName = expectIdentifierOrString();
+						expect(TClosed);
+						createNode(TILEMAP_REF(extRef, mapName), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
+				}
 
 			case TIdentifier(s) if (isKeyword(s, "autotile")):
 				advance();
@@ -5013,7 +5049,10 @@ class MacroManimParser {
 	}
 
 	function parseTypedSettingValue():{type:SettingValueType, value:ReferenceableValue} {
-		final typeName = expectIdentifierOrString();
+		final typeName = switch (peek()) {
+			case TIdentifier(_) | TQuotedString(_): expectIdentifierOrString();
+			default: error('expected a type after ":" (int, float, string, color or bool), as in key:int => 1; or no type: key => 1');
+		};
 		expect(TArrow);
 		return switch (typeName.toLowerCase()) {
 			case "int": {type: SVTInt, value: parseIntegerOrReference()};
@@ -6562,6 +6601,7 @@ class MacroManimParser {
 		var source:Null<AutotileSource> = null;
 		var tileSize:Null<ReferenceableValue> = null;
 		var mapping:Null<Map<Int, Int>> = null;
+		var alternates:Null<Map<Int, Array<Int>>> = null;
 		var region:Null<Array<ReferenceableValue>> = null;
 		var allowPartialMapping:Bool = false;
 
@@ -6600,10 +6640,15 @@ class MacroManimParser {
 							expect(TColon);
 							final prefix = parseStringOrReference();
 							setSource(ATSAtlas(sheet, prefix));
+						case TIdentifier(s2) if (isKeyword(s2, "name")):
+							advance();
+							expect(TColon);
+							final name = parseStringOrReference();
+							setSource(ATSAtlasIndexed(sheet, name));
 						case TIdentifier(s2) if (isKeyword(s2, "region")):
 							error('autotile "sheet: ..., region: [...]" is not supported - use file: "image.png" with region: [x, y, w, h]');
 						default:
-							error("expected prefix: after sheet");
+							error("expected prefix: or name: after sheet");
 					}
 				case TIdentifier(s) if (isKeyword(s, "file")):
 					advance();
@@ -6634,7 +6679,9 @@ class MacroManimParser {
 					advance();
 					expect(TColon);
 					expect(TBracketOpen);
-					mapping = parseAutotileMapping();
+					final parsed = parseAutotileMapping();
+					mapping = parsed.mapping;
+					alternates = parsed.alternates;
 				case TIdentifier(s) if (isKeyword(s, "allowpartialmapping")):
 					advance();
 					expect(TColon);
@@ -6686,6 +6733,11 @@ class MacroManimParser {
 				if (target < 0)
 					error('autotile mapping $key:$target - source index must be >= 0');
 			}
+			if (alternates != null)
+				for (key => more in alternates)
+					for (target in more)
+						if (target < 0)
+							error('autotile mapping $key: a source index must be >= 0, got $target');
 		}
 
 		return {
@@ -6693,14 +6745,20 @@ class MacroManimParser {
 			source: src,
 			tileSize: cast tileSize,
 			mapping: mapping,
+			alternates: alternates,
 			region: region,
 			allowPartialMapping: allowPartialMapping
 		};
 	}
 
-	function parseAutotileMapping():Map<Int, Int> {
-		// Two entry forms, may be mixed: `target` (key = position in the list) or `key:target`.
+	/**
+		Two entry forms, may be mixed: `target` (key = position in the list) or `key:target`. A target
+		may be several, `7 | 8 | 9`: the first goes to `mapping`, the rest to `alternates`, and a
+		position draws one of them by turns (a source index given twice is drawn that much more often).
+	**/
+	function parseAutotileMapping():{mapping:Map<Int, Int>, alternates:Null<Map<Int, Array<Int>>>} {
 		var map:Map<Int, Int> = new Map();
+		var alternates:Null<Map<Int, Array<Int>>> = null;
 		var seqIdx = 0;
 		while (!match(TBracketClosed)) {
 			eatComma();
@@ -6715,9 +6773,558 @@ class MacroManimParser {
 			if (map.exists(key))
 				error('autotile mapping has more than one entry for index $key');
 			map.set(key, target);
+			if (match(TPipe)) {
+				final more:Array<Int> = [];
+				do
+					more.push(parseInteger())
+				while (match(TPipe));
+				if (alternates == null)
+					alternates = new Map();
+				alternates.set(key, more);
+			}
 			seqIdx++;
 		}
-		return map;
+		return {mapping: map, alternates: alternates};
+	}
+
+	// ---- Tilesets and tile maps ----
+
+	/** `#name tileset { … }`, after its `{`. **/
+	function parseTileset():TilesetDef {
+		var tileSize:Null<Int> = null;
+		var atlas:Null<String> = null;
+		var edge:Null<String> = null;
+		final edges:Map<String, String> = [];
+		final terrains:Array<TilesetTerrainDef> = [];
+		final transitions:Array<TilesetTransitionDef> = [];
+		final rises:Array<TilesetRiseDef> = [];
+		final platforms:Array<TilesetPlatformDef> = [];
+		final cells:Array<TilesetCellDef> = [];
+		// `rise <n> | rise any`, then the terrain it is for when it is for one, then its `{ … }`
+		function parseRise(platform:Null<String>):Void {
+			var rise = 0;
+			switch (peek()) {
+				case TIdentifier(a) if (isKeyword(a, "any")):
+					advance();
+				default:
+					rise = parseInteger();
+					if (rise <= 0) error("a rise is 1 level or more (or any)");
+			}
+			var riseTerrain:Null<String> = null;
+			if (!match(TCurlyOpen)) {
+				if (platform != null) error('platform $platform: a platform\'s rise is its own, whatever terrain is under it');
+				riseTerrain = expectIdentifierOrString();
+				expect(TCurlyOpen);
+			}
+			final riseName = (platform != null ? 'platform $platform: ' : "") + (rise == 0 ? "any" : Std.string(rise)) + (riseTerrain != null ? ' $riseTerrain' : "");
+			final parsed = parseTilesetRise(rise, riseTerrain, riseName);
+			parsed.platform = platform;
+			for (r in rises)
+				if (r.rise == rise && r.toward == parsed.toward && r.terrain == riseTerrain && r.platform == platform)
+					error('rise $riseName toward ${parsed.toward} is defined twice');
+			rises.push(parsed);
+		}
+		while (!match(TCurlyClosed)) {
+			switch (peek()) {
+				case TIdentifier(s) if (isKeyword(s, "tilesize")):
+					advance();
+					expect(TColon);
+					if (tileSize != null) error("tileSize already set");
+					final size = parseInteger();
+					if (size <= 0) error("tileSize must be greater than 0");
+					tileSize = size;
+				case TIdentifier(s) if (isKeyword(s, "atlas")):
+					advance();
+					expect(TColon);
+					atlas = expectIdentifierOrString();
+				case TIdentifier(s) if (isKeyword(s, "edge")):
+					advance();
+					if (match(TColon)) {
+						if (edge != null) error("edge already set");
+						edge = expectIdentifierOrString();
+					} else {
+						// edge <terrain>: <autotile> - the outline where that terrain is on top
+						final edgeTerrain = expectIdentifierOrString();
+						expect(TColon);
+						if (edges.exists(edgeTerrain)) error('edge $edgeTerrain already set');
+						edges.set(edgeTerrain, expectIdentifierOrString());
+					}
+				case TIdentifier(s) if (isKeyword(s, "terrain")):
+					advance();
+					final terrainName = expectIdentifierOrString();
+					if (terrainName == "none") error('"none" means no terrain in a legend; name the terrain otherwise');
+					for (t in terrains)
+						if (t.name == terrainName) error('terrain $terrainName is defined twice');
+					expect(TCurlyOpen);
+					terrains.push(parseTilesetTerrain(terrainName));
+				case TIdentifier(s) if (isKeyword(s, "transition")):
+					advance();
+					final from = expectIdentifierOrString();
+					expect(TComma);
+					final to = expectIdentifierOrString();
+					for (t in transitions)
+						if (t.from == from && t.to == to) error('transition $from, $to is defined twice');
+					expect(TCurlyOpen);
+					final autotiles:Array<String> = [];
+					while (!match(TCurlyClosed)) {
+						switch (peek()) {
+							case TIdentifier(s2) if (isKeyword(s2, "autotile")):
+								advance();
+								expect(TColon);
+								parseNameList(autotiles);
+							default:
+								error('unexpected transition property: ${peek()} (a transition has autotile: only)');
+						}
+					}
+					if (autotiles.length == 0) error('transition $from, $to needs autotile:');
+					transitions.push({from: from, to: to, autotiles: autotiles});
+				case TIdentifier(s) if (isKeyword(s, "rise")):
+					advance();
+					parseRise(null);
+				case TIdentifier(s) if (isKeyword(s, "platform")):
+					advance();
+					final platformName = expectIdentifierOrString();
+					for (p in platforms)
+						if (p.name == platformName) error('platform $platformName is defined twice');
+					expect(TCurlyOpen);
+					var platformEdge:Null<String> = null;
+					while (!match(TCurlyClosed)) {
+						switch (peek()) {
+							case TIdentifier(s2) if (isKeyword(s2, "edge")):
+								advance();
+								expect(TColon);
+								if (platformEdge != null) error('platform $platformName: edge already set');
+								platformEdge = expectIdentifierOrString();
+							case TIdentifier(s2) if (isKeyword(s2, "rise")):
+								advance();
+								parseRise(platformName);
+							default:
+								error('unexpected platform property: ${peek()} (edge: and rise <n> { })');
+						}
+					}
+					platforms.push({name: platformName, edge: platformEdge});
+				case TIdentifier(s) if (isKeyword(s, "cell")):
+					advance();
+					final cellName = expectIdentifierOrString();
+					for (c in cells)
+						if (c.name == cellName) error('cell $cellName is defined twice');
+					expect(TCurlyOpen);
+					cells.push(parseTilesetCell(cellName));
+				default:
+					error('unexpected tileset property: ${peek()}');
+			}
+		}
+		if (tileSize == null) error("tileset requires tileSize");
+		if (atlas == null) error("tileset requires atlas");
+		if (terrains.length == 0) error("tileset requires at least one terrain");
+		if (Lambda.exists(rises, r -> r.platform == null) && edge == null && !edges.keys().hasNext())
+			error("a tileset with rises needs edge: the autotile that outlines a higher level");
+		for (edgeTerrain in edges.keys())
+			if (Lambda.findIndex(terrains, x -> x.name == edgeTerrain) < 0) error('edge $edgeTerrain: tileset has no terrain $edgeTerrain');
+		for (r in rises) {
+			final riseTerrain = r.terrain;
+			if (riseTerrain != null && Lambda.findIndex(terrains, x -> x.name == riseTerrain) < 0)
+				error('rise ${r.rise == 0 ? "any" : Std.string(r.rise)} $riseTerrain: tileset has no terrain $riseTerrain');
+		}
+		for (p in platforms)
+			if (p.edge == null && !Lambda.exists(rises, r -> r.platform == p.name))
+				error('platform ${p.name} needs edge: (the autotile its top is drawn with) or a rise');
+		// by rise, the smallest first, `any` last
+		rises.sort((a, b) -> (a.rise == 0 ? 0x7FFFFFFF : a.rise) - (b.rise == 0 ? 0x7FFFFFFF : b.rise));
+		for (t in transitions) {
+			final toIndex = Lambda.findIndex(terrains, x -> x.name == t.to);
+			if (toIndex < 0) error('transition ${t.from}, ${t.to}: tileset has no terrain ${t.to}');
+			final to = terrains[toIndex];
+			if (to.autotiles.length == 0)
+				error('transition ${t.from}, ${t.to}: terrain ${t.to} is drawn from cells:, not an autotile, so it has no edge to draw otherwise');
+			if (t.autotiles.length != to.autotiles.length)
+				error('transition ${t.from}, ${t.to}: ${t.autotiles.length} autotile(s) for terrain ${t.to}, which has ${to.autotiles.length} (one a frame)');
+			if (t.from != "none") {
+				final fromIndex = Lambda.findIndex(terrains, x -> x.name == t.from);
+				if (fromIndex < 0) error('transition ${t.from}, ${t.to}: tileset has no terrain ${t.from} (or none)');
+				if (fromIndex >= toIndex)
+					error('transition ${t.from}, ${t.to}: ${t.from} is drawn over ${t.to}; a transition is from the terrain below to the one above it');
+			}
+		}
+		return {tileSize: cast tileSize, atlas: cast atlas, edge: edge, edges: edges, terrains: terrains, transitions: transitions, rises: rises, platforms: platforms, cells: cells};
+	}
+
+	/** `a, b, "c"`: one name or more. **/
+	function parseNameList(into:Array<String>):Void {
+		into.push(expectIdentifierOrString());
+		while (match(TComma))
+			into.push(expectIdentifierOrString());
+	}
+
+	function parseTilesetTerrain(name:String):TilesetTerrainDef {
+		final autotiles:Array<String> = [];
+		var cells:Null<String> = null;
+		var duration:Null<Int> = null;
+		var metadata:Map<String, ParsedSettingValue> = new Map();
+		while (!match(TCurlyClosed)) {
+			switch (peek()) {
+				case TIdentifier(s) if (isKeyword(s, "autotile")):
+					advance();
+					expect(TColon);
+					parseNameList(autotiles);
+				case TIdentifier(s) if (isKeyword(s, "cells")):
+					advance();
+					expect(TColon);
+					cells = expectIdentifierOrString();
+				case TIdentifier(s) if (isKeyword(s, "duration")):
+					advance();
+					expect(TColon);
+					final ms = parseInteger();
+					if (ms <= 0) error("duration must be greater than 0 (milliseconds a frame)");
+					duration = ms;
+				case TIdentifier(s) if (isKeyword(s, "metadata")):
+					advance();
+					metadata = parseTileMetadata();
+				default:
+					error('unexpected terrain property: ${peek()}');
+			}
+		}
+		if ((autotiles.length == 0) == (cells == null))
+			error('terrain $name needs autotile: or cells:, one of them');
+		if (duration != null && autotiles.length < 2)
+			error('terrain $name: duration: is for an animated terrain, one autotile a frame');
+		if (autotiles.length > 1 && duration == null)
+			error('terrain $name: an animated terrain needs duration: (milliseconds a frame)');
+		return {name: name, autotiles: autotiles, cells: cells, duration: duration, metadata: metadata};
+	}
+
+	function parseTilesetRise(riseLevels:Int, terrain:Null<String>, rise:String):TilesetRiseDef {
+		final sides:Array<String> = [];
+		var left:Null<String> = null;
+		var right:Null<String> = null;
+		var single:Null<String> = null;
+		var span:Null<Int> = null;
+		var toward = "down";
+		var metadata:Map<String, ParsedSettingValue> = new Map();
+		while (!match(TCurlyClosed)) {
+			switch (peek()) {
+				case TIdentifier(s) if (isKeyword(s, "edge")):
+					error('rise $rise: edge: is the tileset\'s; write it beside tileSize: (edge: name, or edge <terrain>: name for one terrain)');
+				case TIdentifier(s) if (isKeyword(s, "side")):
+					advance();
+					expect(TColon);
+					if (sides.length > 0) error('rise $rise: side: is given twice (several are one list: side: "a", "b")');
+					parseNameList(sides);
+				case TIdentifier(s) if (isKeyword(s, "left")):
+					advance();
+					expect(TColon);
+					left = expectIdentifierOrString();
+				case TIdentifier(s) if (isKeyword(s, "right")):
+					advance();
+					expect(TColon);
+					right = expectIdentifierOrString();
+				case TIdentifier(s) if (isKeyword(s, "single")):
+					advance();
+					expect(TColon);
+					single = expectIdentifierOrString();
+				case TIdentifier(s) if (isKeyword(s, "span")):
+					advance();
+					expect(TColon);
+					final cells = parseInteger();
+					if (cells <= 0) error("span is 1 cell or more");
+					span = cells;
+				case TIdentifier(s) if (isKeyword(s, "toward")):
+					advance();
+					expect(TColon);
+					toward = expectIdentifierOrString();
+					if (toward != "down" && toward != "up" && toward != "left" && toward != "right")
+						error('rise $rise: toward: is down, up, left or right, got $toward');
+				case TIdentifier(s) if (isKeyword(s, "metadata")):
+					advance();
+					metadata = parseTileMetadata();
+				default:
+					error('unexpected rise property: ${peek()}');
+			}
+		}
+		if (sides.length == 0 || span == null)
+			error('rise $rise needs side: and span:');
+		return {
+			rise: riseLevels,
+			terrain: terrain,
+			side: sides[0],
+			sides: sides,
+			left: left,
+			right: right,
+			single: single,
+			span: cast span,
+			toward: toward,
+			metadata: metadata,
+		};
+	}
+
+	function parseTilesetCell(name:String):TilesetCellDef {
+		var draw:Null<String> = null;
+		var metadata:Map<String, ParsedSettingValue> = new Map();
+		while (!match(TCurlyClosed)) {
+			switch (peek()) {
+				case TIdentifier(s) if (isKeyword(s, "draw")):
+					advance();
+					expect(TColon);
+					final where = expectIdentifierOrString();
+					if (where != "under" && where != "over" && where != "top")
+						error('cell $name: draw: is under (the actors), over (them) or top (above everything), got $where');
+					draw = where;
+				case TIdentifier(s) if (isKeyword(s, "metadata")):
+					advance();
+					metadata = parseTileMetadata();
+				default:
+					error('unexpected cell property: ${peek()}');
+			}
+		}
+		return {name: name, draw: draw, metadata: metadata};
+	}
+
+	/**
+		`{ key:type => value, key => value }`: what the game reads of a cell, written as settings and an
+		interactive's metadata are, and read the same way (`BuilderResolvedSettings`). A tileset has no
+		parameters, so a value is a literal.
+	**/
+	function parseTileMetadata():Map<String, ParsedSettingValue> {
+		final metadata:Map<String, ParsedSettingValue> = new Map();
+		expect(TCurlyOpen);
+		while (!match(TCurlyClosed)) {
+			final key = expectIdentifierOrString();
+			if (metadata.exists(key)) error('metadata $key is given twice');
+			final entry = parseMetadataValue(RVString(key));
+			switch (entry.value) {
+				case RVInteger(_) | RVFloat(_) | RVString(_):
+				default: error('metadata $key: a tileset has no parameters, so its metadata is a number, a string or a yes/no');
+			}
+			metadata.set(key, {type: entry.type, value: entry.value});
+			eatComma();
+		}
+		return metadata;
+	}
+
+	/** `#name tilemap { … }`, after its `{`; decor is parsed into the map's node as children. **/
+	function parseTilemap(def:TilemapDef, node:Node, defs:ParametersDefinitions):Void {
+		var sizeSet = false;
+		// Where each row is written, for the errors below
+		final terrainPos:Array<TilemapRowAt> = [];
+		final levelsPos:Array<TilemapRowAt> = [];
+		final layerPos:Map<String, Array<TilemapRowAt>> = [];
+		while (!match(TCurlyClosed)) {
+			switch (peek()) {
+				case TIdentifier(s) if (isKeyword(s, "tileset")):
+					advance();
+					expect(TColon);
+					switch (peek()) {
+						case TIdentifier(s2) if (isKeyword(s2, "external")):
+							advance();
+							expect(TOpen);
+							def.tilesetImport = expectIdentifierOrString();
+							expect(TClosed);
+							expect(TComma);
+						default:
+					}
+					def.tileset = expectIdentifierOrString();
+				case TIdentifier(s) if (isKeyword(s, "size")):
+					advance();
+					expect(TColon);
+					def.width = parseInteger();
+					expect(TComma);
+					def.height = parseInteger();
+					if (def.width <= 0 || def.height <= 0) error("size is a width and a height, each 1 cell or more");
+					sizeSet = true;
+				case TIdentifier(s) if (isKeyword(s, "legend")):
+					advance();
+					parseTilemapLegend(def.legend);
+				case TIdentifier(s) if (isKeyword(s, "terrain")):
+					advance();
+					expect(TColon);
+					parseTilemapRows(def.terrain, terrainPos);
+				case TIdentifier(s) if (isKeyword(s, "levels")):
+					advance();
+					// `levels: [rows]` of digits, or `levels { legend { "A": 10 } rows: [...] }` for more
+					if (match(TCurlyOpen)) {
+						while (!match(TCurlyClosed)) {
+							switch (peek()) {
+								case TIdentifier(s2) if (isKeyword(s2, "legend")):
+									advance();
+									parseTilemapLevelLegend(def.levelLegend, def.levelPlatforms);
+								case TIdentifier(s2) if (isKeyword(s2, "rows")):
+									advance();
+									expect(TColon);
+									parseTilemapRows(def.levels, levelsPos);
+								default:
+									error('unexpected levels property: ${peek()} (legend { } and rows: [ ])');
+							}
+						}
+					} else {
+						expect(TColon);
+						parseTilemapRows(def.levels, levelsPos);
+					}
+				case TIdentifier(s) if (isKeyword(s, "layer")):
+					advance();
+					final layerName = expectIdentifierOrString();
+					for (l in def.layers)
+						if (l.name == layerName) error('layer $layerName is defined twice');
+					expect(TCurlyOpen);
+					final layer:TilemapLayerDef = {name: layerName, legend: new Map(), rows: [], draw: "under"};
+					final rowsAt:Array<TilemapRowAt> = [];
+					layerPos.set(layerName, rowsAt);
+					while (!match(TCurlyClosed)) {
+						switch (peek()) {
+							case TIdentifier(s2) if (isKeyword(s2, "sheet")):
+								advance();
+								expect(TColon);
+								layer.sheet = expectIdentifierOrString();
+							case TIdentifier(s2) if (isKeyword(s2, "draw")):
+								advance();
+								expect(TColon);
+								final draw = expectIdentifierOrString();
+								if (draw != "under" && draw != "over" && draw != "top")
+									error('layer $layerName: draw: is under (the actors), over (them) or top (above everything), got $draw');
+								layer.draw = draw;
+							case TIdentifier(s2) if (isKeyword(s2, "legend")):
+								advance();
+								parseTilemapLegend(layer.legend);
+							case TIdentifier(s2) if (isKeyword(s2, "rows")):
+								advance();
+								expect(TColon);
+								parseTilemapRows(layer.rows, rowsAt);
+							default:
+								error('unexpected tilemap layer property: ${peek()}');
+						}
+					}
+					def.layers.push(layer);
+				case TIdentifier(s) if (isKeyword(s, "decor")):
+					advance();
+					expect(TCurlyOpen);
+					parseNodes(node, defs);
+				case TIdentifier(s) if (isKeyword(s, "marks")):
+					advance();
+					expect(TCurlyOpen);
+					while (!match(TCurlyClosed)) {
+						final markName = expectIdentifierOrString();
+						for (m in def.marks)
+							if (m.name == markName) error('mark $markName is defined twice');
+						expect(TColon);
+						final x = parseInteger();
+						expect(TComma);
+						final y = parseInteger();
+						final mark:TilemapMarkDef = {name: markName, x: x, y: y};
+						if (match(TComma)) {
+							mark.w = parseInteger();
+							expect(TComma);
+							mark.h = parseInteger();
+						}
+						def.marks.push(mark);
+						eatSemicolon();
+					}
+				default:
+					error('unexpected tilemap property: ${peek()}');
+			}
+		}
+		if (def.tileset == "") error("tilemap requires tileset:");
+		if (!sizeSet) error("tilemap requires size: width, height");
+		if (def.terrain.length == 0) error("tilemap requires terrain: rows");
+		checkTilemapRows(def, "terrain", def.terrain, terrainPos, c -> def.legend.exists(c), "is not in the legend");
+		if (def.levels.length > 0)
+			checkTilemapRows(def, "levels", def.levels, levelsPos, c -> (c >= "0" && c <= "9") || def.levelLegend.exists(c),
+				"is not a level (a digit, or a character of the levels legend)");
+		for (l in def.layers) {
+			final legend = l.legend;
+			final rowsAt = layerPos.get(l.name) ?? [];
+			checkTilemapRows(def, 'layer ${l.name}', l.rows, rowsAt, c -> c == " " || legend.exists(c), "is not in the layer's legend (a space is no cell)");
+		}
+		for (m in def.marks) {
+			final w = m.w != null ? m.w : 1;
+			final h = m.h != null ? m.h : 1;
+			if (m.x < 0 || m.y < 0 || m.x + w > def.width || m.y + h > def.height)
+				error('mark ${m.name} is outside the ${def.width}x${def.height} map');
+		}
+	}
+
+	function parseTilemapLegend(into:Map<String, String>):Void {
+		expect(TCurlyOpen);
+		while (!match(TCurlyClosed)) {
+			final key:String = switch (peek()) {
+				case TQuotedString(k):
+					advance();
+					k;
+				default:
+					error('a legend key is one character in quotes: ".": ground');
+			};
+			if (key.length != 1) error('a legend key is one character, got "$key"');
+			if (into.exists(key)) error('"$key" is in the legend twice');
+			expect(TColon);
+			into.set(key, expectIdentifierOrString());
+			eatComma();
+		}
+	}
+
+	/** `{ "A": 10, "B": 11 }`: a character of the levels rows and the level it stands for; a digit is its own level and cannot be given another. **/
+	function parseTilemapLevelLegend(into:Map<String, Int>, platforms:Map<String, String>):Void {
+		expect(TCurlyOpen);
+		while (!match(TCurlyClosed)) {
+			final key:String = switch (peek()) {
+				case TQuotedString(k):
+					advance();
+					k;
+				default:
+					error('a levels legend key is one character in quotes: "A": 10');
+			};
+			if (key.length != 1) error('a levels legend key is one character, got "$key"');
+			if (key >= "0" && key <= "9") error('a digit is its own level; "$key" cannot stand for another');
+			if (into.exists(key)) error('"$key" is in the levels legend twice');
+			expect(TColon);
+			// a level, a level and the platform it is of (`"c": 1 canopy`), or a platform alone, one level up
+			var level = 1;
+			switch (peek()) {
+				case TInteger(_) | TMinus:
+					level = parseInteger();
+					if (level < 0) error('a level is 0 or more, got $level for "$key"');
+				default:
+			}
+			switch (peek()) {
+				case TIdentifier(_) | TQuotedString(_):
+					if (level < 1) error('"$key": a platform is 1 level up or more');
+					platforms.set(key, expectIdentifierOrString());
+				default:
+			}
+			into.set(key, level);
+			eatComma();
+		}
+	}
+
+	function parseTilemapRows(rows:Array<String>, pos:Array<TilemapRowAt>):Void {
+		if (rows.length > 0) error("rows already set");
+		expect(TBracketOpen);
+		while (!match(TBracketClosed)) {
+			final t = peekToken();
+			switch (peek()) {
+				case TQuotedString(row):
+					advance();
+					rows.push(row);
+					pos.push({line: t.line, col: t.col});
+				default:
+					error('a row is a quoted string of characters, one a cell: "..~~.."');
+			}
+			eatComma();
+		}
+	}
+
+	function checkTilemapRows(def:TilemapDef, what:String, rows:Array<String>, pos:Array<TilemapRowAt>, ok:String->Bool, bad:String):Void {
+		if (rows.length != def.height) {
+			final at = pos.length > 0 ? pos[pos.length - 1] : {line: def.line != null ? def.line : 0, col: 1};
+			errorAtLine(at.line, at.col, '$what has ${rows.length} rows, the map is ${def.height} high');
+		}
+		for (r in 0...rows.length) {
+			final row = rows[r];
+			if (row.length != def.width)
+				errorAtLine(pos[r].line, pos[r].col, '$what row ${r + 1} is ${row.length} characters, the map is ${def.width} wide');
+			for (i in 0...row.length) {
+				final c = row.charAt(i);
+				if (!ok(c))
+					errorAtLine(pos[r].line, pos[r].col + 1 + i, '$what row ${r + 1}: "$c" $bad');
+			}
+		}
 	}
 
 	// ===================== Atlas2 =====================
@@ -7596,4 +8203,10 @@ class MacroManimParser {
 		final parser = new MacroManimParser(tokens, sourceName, resourceLoader);
 		return parser.parse();
 	}
+}
+
+/** Where a row of a tile map is written: the parse's own, for its errors. **/
+private typedef TilemapRowAt = {
+	var line:Int;
+	var col:Int;
 }

@@ -1545,6 +1545,34 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		async.done();
 	}
 
+	// ==================== AnimLayers: layers in .anim ====================
+
+	@Test
+	public function test154_AnimLayers(async:utest.Async):Void {
+		simpleMacroTest(154, "animLayers", () -> createMp().animLayers.create(), async, null, null, 4.0);
+	}
+
+	// ==================== Tilemap: tilesets and tile maps ====================
+
+	@Test
+	public function test155_Tilemap(async:utest.Async):Void {
+		simpleMacroTest(155, "tilemap", () -> createMp().tilemapDemo.create(), async, "tilemapDemo", null, 4.0);
+	}
+
+	@Test
+	public function testGeneratedTilemapIsATileMap():Void {
+		final root = createMp().tilemapDemo.create();
+		var found:Null<bh.base.TileMap> = null;
+		function walk(o:h2d.Object)
+			for (child in o) {
+				if (Std.isOfType(child, bh.base.TileMap)) found = cast child;
+				walk(child);
+			}
+		walk(root);
+		Assert.notNull(found, "tilemap(name) is a bh.base.TileMap, with its API");
+		Assert.equals("grass", found.terrainAt(0, 0));
+	}
+
 	// ==================== AutotileCorner: macro comparison ====================
 
 	@Test

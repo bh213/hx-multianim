@@ -100,6 +100,11 @@ enum APKeywords {
 	APNone; // (#12) filter none
 	APFlipX; // (#13) horizontal flip
 	APFlipY; // (#13) vertical flip
+	APOffset; // a playlist line's frames drawn this many pixels over
+	APLayers; // the file's layers, bottom first
+	APLayer; // an animation's layer block
+	APTimeline; // the layer whose frames are the animation's timeline
+	APBlend; // a layer's blend mode
 }
 
 /**
@@ -145,7 +150,8 @@ class AnimKeywordInfo {
 			"animation ${1:name} {\n\t$0\n}", true),
 		new AnimKeywordInfo("anim", AKTopLevel, "One-liner animation shorthand: `anim name(fps:N, loop:yes): \"sheetName\"`",
 			"anim ${1:name}(fps:${2:20}): \"${3:sheetName}\""),
-		new AnimKeywordInfo("metadata", AKTopLevel, "Typed key-value pairs (int, float, string, color). Supports state conditionals",
+		new AnimKeywordInfo("layers", AKTopLevel, "The file's layers, drawn bottom first: `layers: shadow, body, hat`. Before animations", "layers: "),
+		new AnimKeywordInfo("metadata", AKTopLevel, "Typed key-value pairs (int, float, string, color, [list of words]). Supports state conditionals",
 			"metadata {\n\t$0\n}", true),
 		// Animation body
 		new AnimKeywordInfo("fps", AKAnimationBody, "Frames per second", "fps: "),
@@ -157,10 +163,18 @@ class AnimKeywordInfo {
 			"filters {\n\t$0\n}", true),
 		new AnimKeywordInfo("flipX", AKAnimationBody, "Horizontal flip (yes/no)", "flipX: yes"),
 		new AnimKeywordInfo("flipY", AKAnimationBody, "Vertical flip (yes/no)", "flipY: yes"),
+		new AnimKeywordInfo("layer", AKAnimationBody, "A layer's frames, in place of a playlist: `layer hat @(hat != none) { sheet: \"hat_walk\" }`",
+			"layer ${1:name} {
+	sheet: \"${2:name}\"
+	$0
+}", true),
+		new AnimKeywordInfo("timeline", AKAnimationBody, "The layer whose frames, durations and events are the animation's (default: the first in `layers:` order)", "timeline: "),
 		// Playlist body
 		new AnimKeywordInfo("sheet", AKPlaylistBody, "Sheet name. Supports `${stateName}` interpolation", "sheet: \""),
 		new AnimKeywordInfo("event", AKPlaylistBody, "Trigger event: `event <name> trigger | random x,y,radius | x,y`"),
 		new AnimKeywordInfo("filter", AKPlaylistBody, "Per-frame filter change"),
+		new AnimKeywordInfo("blend", AKPlaylistBody, "In a layer block: how it is drawn, `blend: add` (alpha, add, multiply, screen, …)", "blend: "),
+		new AnimKeywordInfo("offset", AKPlaylistBody, "After a `sheet:` or `file:` line: its frames drawn this many pixels over, `offset: x, y`", "offset: "),
 		// Filter body
 		new AnimKeywordInfo("tint", AKFilterBody, "Tint filter: `tint: #RRGGBB`", "tint: "),
 		new AnimKeywordInfo("brightness", AKFilterBody, "Brightness filter: `brightness: 0.0-1.0`", "brightness: "),
@@ -177,6 +191,9 @@ class AnimKeywordInfo {
 		new AnimKeywordInfo("@else(", AKConditional, "Else-if with condition", "@else(${1:state}=>${2:value}) "),
 		new AnimKeywordInfo("@default", AKConditional, "Default fallback"),
 		new AnimKeywordInfo("@final", AKConditional, "Named constant", "@final ${1:NAME} = ${2:value}"),
+		new AnimKeywordInfo("@name(", AKConditional,
+			"Annotation for tools, before an animation or at the top level: `@from(\"walk.png\", grid: 32)`. Kept, never acted on",
+			"@${1:name}(${2:value}) "),
 	];
 
 	public static function forContext(ctx:AnimKeywordContext):Array<AnimKeywordInfo> {
@@ -199,6 +216,9 @@ private class AnimToken {
 	public var type:APToken;
 	public var line:Int;
 	public var col:Int;
+	/** Where the token is in the text, as offsets: `start` its first character, `end` just past its last. **/
+	public var start:Int = 0;
+	public var end:Int = 0;
 
 	public function new(type:APToken, line:Int, col:Int) {
 		this.type = type;
@@ -236,7 +256,8 @@ private class AnimLexerHC {
 		"anim" => APAnim, "final" => APFinal,
 		"else" => APElse, "default" => APDefault, "filters" => APFilters,
 		"filter" => APFilter, "none" => APNone,
-		"flipx" => APFlipX, "flipy" => APFlipY,
+		"flipx" => APFlipX, "flipy" => APFlipY, "offset" => APOffset,
+		"layers" => APLayers, "layer" => APLayer, "timeline" => APTimeline, "blend" => APBlend,
 	];
 
 	inline function ch():Int {
@@ -248,6 +269,15 @@ private class AnimLexerHC {
 	}
 
 	public function nextToken():AnimToken {
+		skipTrivia();
+		final start = pos;
+		final token = scanToken();
+		token.start = start;
+		token.end = pos;
+		return token;
+	}
+
+	function skipTrivia():Void {
 		// Skip spaces, tabs, newlines (#10 - newlines are now whitespace),
 		// comments, and BOMs. Iterative on purpose: recursing per comment made
 		// long comment runs in generated files a stack-overflow risk.
@@ -287,7 +317,9 @@ private class AnimLexerHC {
 					throw '$sourceName:$commentLine:$commentCol: Unterminated block comment, missing closing */';
 			} else break;
 		}
+	}
 
+	function scanToken():AnimToken {
 		final startLine = line;
 		final startCol = col;
 
@@ -437,6 +469,7 @@ enum MetadataValue {
 	MVFloat(f:Float); // (#6)
 	MVString(s:String);
 	MVColor(c:Int); // (#11) stored as 0xRRGGBB or 0xAARRGGBB
+	MVList(values:Array<String>); // a list of words: `tags: [beast, wolf]`
 }
 
 @:nullSafety
@@ -445,14 +478,70 @@ typedef MetadataEntry = {
 	var value:MetadataValue;
 }
 
+/**
+	An annotation, `@name` or `@name(value, key: value, …)`, written at the top level of a file or
+	before an animation. The engine keeps it for tools and never acts on it: `@from("walk.png",
+	grid: 32)` can say where an animation's frames were cut from. Values are what metadata takes
+	(numbers, strings, colours, `[lists]`), and a bare word is a string.
+**/
+@:nullSafety
+typedef AnimAnnotation = {
+	var name:String;
+	/** The values without a key, in order. **/
+	var args:Array<MetadataValue>;
+	/** The values with a key: `grid: 32`. **/
+	var named:Map<String, MetadataValue>;
+	var line:Int;
+	var col:Int;
+}
+
+/**
+	Where a value is written in the text, so a tool can change it in place: `start` is the offset
+	of its first character and `end` the offset just past its last. `path` names it:
+
+	- `sheet`, `states`, `layers`, `center`, `fps`, `loop`, `flipX`, `flipY`, `allowedExtraPoints`, the
+	  `metadata` block, and `metadata.<key>#<n>`, the value of the key's n-th entry
+	- `@<name>#<n>`, a file annotation, whole
+	- `animations.<i>`, the i-th animation block of the file, whole, and in it `.name`, `.fps`,
+	  `.loop`, `.flipX`, `.flipY`, `.@<name>#<n>`, `.extrapoints` (the block),
+	  `.extrapoints.<point>#<n>` (the point's n-th coordinates), `.filters` (the block),
+	  `.playlist#<p>` (the p-th playlist block) and in it `.<j>`, its j-th line, with `.sheet`,
+	  `.file`, `.frames`, `.duration`, `.offset` and, for an event, `.at`; `.timeline`, and
+	  `.layer.<name>#<n>` (the layer's n-th block) with `.blend` and its lines as a playlist's
+
+	`#<n>` counts from 0 in the order the file has them, and `<i>` and `<j>` are indices into
+	`LoadedAnimation.animations` and a playlist's `anims`.
+**/
+@:nullSafety
+typedef AnimSpan = {
+	var path:String;
+	var start:Int;
+	var end:Int;
+	var line:Int;
+	var col:Int;
+}
+
+/**
+	What an .anim file says, as written: for tools, from `AnimParserResult.loaded()`. The arrays
+	and maps are the parser's own; read them, never change them.
+**/
 @:nullSafety
 typedef LoadedAnimation = {
-	var sheet:String;
+	var sheet:Null<String>;
 	var states:Map<String, Array<String>>;
+	/** `layers:`, bottom first; empty for a file without layers. **/
+	var layers:Array<String>;
 	var allowedExtraPoints:Array<String>;
 	var ?center:Point;
 	var ?metadata:AnimMetadata;
+	/** Every metadata entry by key, in the order written, with the states it is for. **/
+	var metadataEntries:Map<String, Array<MetadataEntry>>;
 	var animations:Array<AnimationState>;
+	/** The file-level `fps:`, `loop:`, `flipX:` and `flipY:`. **/
+	var defaults:{fps:Null<Int>, loop:Null<Int>, flipX:Bool, flipY:Bool};
+	/** The annotations at the top level of the file. An animation's are on the animation. **/
+	var annotations:Array<AnimAnnotation>;
+	var spans:Array<AnimSpan>;
 }
 
 /**
@@ -535,6 +624,7 @@ class AnimMetadata {
 			case MVFloat(f): Std.int(f);
 			case MVString(s): throw 'expected int for metadata key ${key} but was string $s';
 			case MVColor(c): throw 'expected int for metadata key ${key} but was color $c';
+			case MVList(vs): throw 'expected int for metadata key ${key} but was list $vs';
 		};
 	}
 
@@ -547,6 +637,7 @@ class AnimMetadata {
 			case MVFloat(f): Std.int(f);
 			case MVString(s): throw 'expected int for metadata key ${key} but was string $s';
 			case MVColor(c): throw 'expected int for metadata key ${key} but was color $c';
+			case MVList(vs): throw 'expected int for metadata key ${key} but was list $vs';
 		};
 	}
 
@@ -559,6 +650,7 @@ class AnimMetadata {
 			case MVFloat(f): f;
 			case MVString(s): throw 'expected float for metadata key ${key} but was string $s';
 			case MVColor(c): throw 'expected float for metadata key ${key} but was color $c';
+			case MVList(vs): throw 'expected float for metadata key ${key} but was list $vs';
 		};
 	}
 
@@ -571,6 +663,7 @@ class AnimMetadata {
 			case MVFloat(f): f;
 			case MVString(s): throw 'expected float for metadata key ${key} but was string $s';
 			case MVColor(c): throw 'expected float for metadata key ${key} but was color $c';
+			case MVList(vs): throw 'expected float for metadata key ${key} but was list $vs';
 		};
 	}
 
@@ -583,6 +676,7 @@ class AnimMetadata {
 			case MVInt(i): '$i';
 			case MVFloat(f): '$f';
 			case MVColor(c): '#${StringTools.hex(c, 6)}';
+			case MVList(vs): vs.join(", ");
 		};
 	}
 
@@ -595,6 +689,7 @@ class AnimMetadata {
 			case MVInt(i): '$i';
 			case MVFloat(f): '$f';
 			case MVColor(c): '#${StringTools.hex(c, 6)}';
+			case MVList(vs): vs.join(", ");
 		};
 	}
 
@@ -607,6 +702,7 @@ class AnimMetadata {
 			case MVInt(i): i;
 			case MVString(s): throw 'expected color for metadata key ${key} but was string $s';
 			case MVFloat(f): throw 'expected color for metadata key ${key} but was float $f';
+			case MVList(vs): throw 'expected color for metadata key ${key} but was list $vs';
 		};
 	}
 
@@ -619,6 +715,32 @@ class AnimMetadata {
 			case MVInt(i): i;
 			case MVString(s): throw 'expected color for metadata key ${key} but was string $s';
 			case MVFloat(f): throw 'expected color for metadata key ${key} but was float $f';
+			case MVList(vs): throw 'expected color for metadata key ${key} but was list $vs';
+		};
+	}
+
+	/** A list of words (`tags: [beast, wolf]`); a single string is a list of one. **/
+	public function getListOrDefault(key:String, defaultValue:Array<String>, ?stateSelector:AnimationStateSelector):Array<String> {
+		final value = findBestMatch(key, stateSelector);
+		if (value == null)
+			return defaultValue;
+		return listOf(key, value);
+	}
+
+	public function getListOrException(key:String, ?stateSelector:AnimationStateSelector):Array<String> {
+		final value = findBestMatch(key, stateSelector);
+		if (value == null)
+			throw 'metadata key ${key} not found';
+		return listOf(key, value);
+	}
+
+	static function listOf(key:String, value:MetadataValue):Array<String> {
+		return switch value {
+			case MVList(vs): vs.copy();
+			case MVString(s): [s];
+			case MVInt(i): throw 'expected list for metadata key ${key} but was int $i';
+			case MVFloat(f): throw 'expected list for metadata key ${key} but was float $f';
+			case MVColor(c): throw 'expected list for metadata key ${key} but was color $c';
 		};
 	}
 }
@@ -635,9 +757,10 @@ typedef ExtraPoints = {
 
 @:nullSafety
 enum AnimPlaylistFrames {
-	SheetFrameAnim(name:String, durationMilliseconds:Null<Int>);
-	SheetFrameAnimWithIndex(name:String, from:Null<Int>, to:Null<Int>, durationMilliseconds:Null<Int>);
-	FileSingleFrame(filename:String, durationMilliseconds:Null<Int>);
+	// `offset`: the line's frames drawn that many pixels over (`offset: x, y`), a nudge of the art
+	SheetFrameAnim(name:String, durationMilliseconds:Null<Int>, ?offset:Point);
+	SheetFrameAnimWithIndex(name:String, from:Null<Int>, to:Null<Int>, durationMilliseconds:Null<Int>, ?offset:Point);
+	FileSingleFrame(filename:String, durationMilliseconds:Null<Int>, ?offset:Point);
 	#if (!macro && !noheaps)
 	PlaylistEvent(playlistEvent:AnimationPlaylistEvent);
 	#end
@@ -688,6 +811,26 @@ typedef AnimationState = {
 	var ?filters:Array<AnimFilterEntry>; // (#12)
 	var ?flipX:Bool; // (#13) horizontal flip
 	var ?flipY:Bool; // (#13) vertical flip
+	var ?annotations:Array<AnimAnnotation>; // written before the animation, kept for tools
+	// A layered animation: every `layer` block, in the order written, the timeline's included, and
+	// the timeline's name. `playlist` then holds the timeline's blocks, so it plays as a playlist does.
+	var ?layers:Array<AnimLayer>;
+	var ?timeline:String;
+}
+
+/**
+	A `layer name @(cond) { … }` block of an animation: the frames of one of the file's `layers:`
+	for the states it matches. `anims` holds only `sheet:` and `file:` lines, except in the timeline,
+	which may have events and filters as a playlist does.
+**/
+@:nullSafety
+typedef AnimLayer = {
+	var name:String;
+	var states:AnimConditionalSelector;
+	var anims:Array<AnimPlaylistFrames>;
+	/** `blend: add`: one of alpha, add, multiply, screen, alphaAdd, softAdd, alphaMultiply, erase, sub, max, min, none. **/
+	var ?blend:String;
+	var ?visited:Bool;
 }
 
 #if (!macro && !noheaps)
@@ -738,6 +881,9 @@ interface AnimParserResult {
 	var metadata(default, never):Null<AnimMetadata>;
 
 	function createAnimSM(stateSelector:AnimationStateSelector):AnimationSM;
+
+	/** What the file says, as written, with its annotations and where each value is: for tools. **/
+	function loaded():LoadedAnimation;
 }
 #end
 
@@ -764,10 +910,18 @@ class AnimParser implements AnimParserResult {
 	var defaultLoop:Null<Int> = null; // (#3) file-level loop default
 	var defaultFlipX:Bool = false; // (#13) file-level flipX default
 	var defaultFlipY:Bool = false; // (#13) file-level flipY default
+	// For tools (loaded()): the file's own annotations, those read and not yet given to what
+	// follows them, and where each value is written
+	var annotations:Array<AnimAnnotation> = [];
+	var layerNames:Array<String> = []; // `layers:`, bottom first
+	var pendingAnnotations:Array<{annotation:AnimAnnotation, start:Int, end:Int}> = [];
+	// Where each value is written: kept only when the parse is asked for it (`withSpans`), as only tools read it
+	final withSpans:Bool;
+	var spans:Array<AnimSpan> = [];
 	// Cache holds immutable parse data only — filters are stored as their
 	// DEFINITIONS and resolved per AnimationSM in load(); extraPoints are copied
 	// per SM there too. Never hand a cached mutable instance to an SM.
-	var cache:Map<String, Array<{name:String, states:Array<AnimationFrameState>, loopCount:Int, extraPoints:Map<String, h2d.col.IPoint>, filters:Null<Array<AnimFilterEntry>>}>> = [];
+	var cache:Map<String, Array<{name:String, states:Array<AnimationFrameState>, loopCount:Int, extraPoints:Map<String, h2d.col.IPoint>, filters:Null<Array<AnimFilterEntry>>, layers:Null<AnimationLayerFrames>}>> = [];
 	final resourceLoader:bh.base.ResourceLoader;
 
 	// ===================== Token Access =====================
@@ -825,11 +979,13 @@ class AnimParser implements AnimParserResult {
 
 	// ===================== Entry Points =====================
 
-	public static function parseFile(input:byte.ByteData, sourceName:String, resourceLoader):AnimParserResult {
-		return parseString(input.readString(0, input.length), sourceName, resourceLoader);
+	/** `withSpans`: keep where each value is written, for a tool that changes one in place (`loaded().spans`). **/
+	public static function parseFile(input:byte.ByteData, sourceName:String, resourceLoader, withSpans = false):AnimParserResult {
+		return parseString(input.readString(0, input.length), sourceName, resourceLoader, withSpans);
 	}
 
-	public static function parseString(content:String, sourceName:String, resourceLoader):AnimParserResult {
+	/** `withSpans`: keep where each value is written, for a tool that changes one in place (`loaded().spans`). **/
+	public static function parseString(content:String, sourceName:String, resourceLoader, withSpans = false):AnimParserResult {
 		try {
 			final lexer = new AnimLexerHC(content, sourceName);
 			var tokens:Array<AnimToken> = [];
@@ -838,7 +994,7 @@ class AnimParser implements AnimParserResult {
 				tokens.push(t);
 				if (Type.enumEq(t.type, APEof)) break;
 			}
-			var p = new AnimParser(tokens, sourceName, resourceLoader);
+			var p = new AnimParser(tokens, sourceName, resourceLoader, withSpans);
 			p.parse();
 			return p;
 		} catch (e:Dynamic) {
@@ -853,9 +1009,10 @@ class AnimParser implements AnimParserResult {
 		}
 	}
 
-	function new(tokens:Array<AnimToken>, sourceName:String, resourceLoader) {
+	function new(tokens:Array<AnimToken>, sourceName:String, resourceLoader, withSpans:Bool) {
 		this.tokens = tokens;
 		this.tpos = 0;
+		this.withSpans = withSpans;
 		this.sourceName = sourceName;
 		this.resourceLoader = resourceLoader;
 	}
@@ -866,13 +1023,19 @@ class AnimParser implements AnimParserResult {
 	function parse():Void {
 		var animationParsingStarted = false;
 		while (true) {
+			// Annotations belong to the animation that follows them; before anything else, to the file
+			switch (peek()) {
+				case APAt | APIdentifier(_, APAnimation | APAnim, AITString):
+				default:
+					attachAnnotations(annotations, "");
+			}
 			switch (peek()) {
 				case APEof:
 					break;
 				case APIdentifier(_, APSheet, AITString):
 					advance();
 					expect(APColon);
-					final value = expectIdentifier();
+					final value = spanned("sheet", expectIdentifier);
 					if (animationParsingStarted) syntaxError("sheet must be defined before animations");
 					if (sheetName != null) syntaxError("sheet already defined");
 					sheetName = value;
@@ -881,52 +1044,64 @@ class AnimParser implements AnimParserResult {
 					expect(APColon);
 					if (animationParsingStarted) syntaxError("states must be defined before animations");
 					if (definedStates.count() > 0) syntaxError("states already defined");
-					definedStates = parseAllStates();
+					definedStates = spanned("states", parseAllStates);
 				case APIdentifier(_, APAllowedExtraPoints, AITString):
 					advance();
 					expect(APColon);
-					expect(APBracketOpen);
 					if (animationParsingStarted) syntaxError("allowedExtraPoints must be defined before animations");
 					if (allowedExtraPoints.length > 0) syntaxError("allowedExtraPoints already defined");
-					allowedExtraPoints = parseListUntilBracket();
+					allowedExtraPoints = spanned("allowedExtraPoints", () -> {
+						expect(APBracketOpen);
+						parseListUntilBracket();
+					});
+				case APIdentifier(_, APLayers, AITString):
+					advance();
+					expect(APColon);
+					if (animationParsingStarted) syntaxError("layers must be declared before animations");
+					if (layerNames.length > 0) syntaxError("layers already declared");
+					layerNames = spanned("layers", parseLayerNames);
 				case APIdentifier(_, APCenter, AITString):
 					advance();
 					expect(APColon);
 					if (center != null) syntaxError("center already defined");
-					center = parseCoordinates();
+					center = spanned("center", parseCoordinates);
 				case APIdentifier(_, APMetadata, AITString):
+					final blockToken = tpos;
 					advance();
 					expect(APCurlyOpen);
 					if (animationParsingStarted) syntaxError("metadata must be defined before animations");
 					if (metadataMap.count() > 0) syntaxError("metadata already defined");
 					parseMetadata();
+					markSpan("metadata", blockToken);
 				case APIdentifier(_, APFps, AITString): // (#3) file-level fps default
 					advance();
 					expect(APColon);
 					if (animationParsingStarted) syntaxError("file-level fps default must be before animations");
 					if (defaultFps != null) syntaxError("default fps already set");
-					final parsedDefaultFps = parseIntNumber();
+					final parsedDefaultFps = spanned("fps", parseIntNumber);
 					if (parsedDefaultFps <= 0) syntaxError("default fps must be greater than 0");
 					defaultFps = parsedDefaultFps;
 				case APIdentifier(_, APLoop, AITString): // (#3) file-level loop default
 					advance();
 					expect(APColon);
 					if (animationParsingStarted) syntaxError("file-level loop default must be before animations");
-					defaultLoop = parseLoopValue();
+					defaultLoop = spanned("loop", parseLoopValue);
 				case APIdentifier(_, APFlipX, AITString): // (#13) file-level flipX default
 					advance();
 					expect(APColon);
 					if (animationParsingStarted) syntaxError("file-level flipX default must be before animations");
-					defaultFlipX = parseBoolValue();
+					defaultFlipX = spanned("flipX", parseBoolValue);
 				case APIdentifier(_, APFlipY, AITString): // (#13) file-level flipY default
 					advance();
 					expect(APColon);
 					if (animationParsingStarted) syntaxError("file-level flipY default must be before animations");
-					defaultFlipY = parseBoolValue();
-				case APAt: // (#7) @final constants, or other @ at top level
+					defaultFlipY = spanned("flipY", parseBoolValue);
+				case APAt: // (#7) @final constants, or an annotation for tools
+					final atToken = tpos;
 					advance();
 					switch peek() {
 						case APIdentifier(_, APFinal, _): // @final name = expr
+							attachAnnotations(annotations, "");
 							advance();
 							if (animationParsingStarted) syntaxError("@final must be declared before animations");
 							final constName = expectIdentifier();
@@ -934,10 +1109,18 @@ class AnimParser implements AnimParserResult {
 							final constVal = parseConstantExpr();
 							if (constants.exists(constName)) syntaxError('@final "${constName}" already defined');
 							constants.set(constName, constVal);
+						case APIdentifier(_, APElse | APDefault, _):
+							unexpectedError("@else and @default belong to a condition, not the top level");
+						case APIdentifier(_, _, AITString): // @name or @name(…)
+							final annotation = parseAnnotation(atToken);
+							pendingAnnotations.push({annotation: annotation, start: tokens[atToken].start, end: tokens[tpos - 1].end});
 						default:
-							unexpectedError("expected 'final' after @");
+							unexpectedError("expected 'final' or an annotation name after @");
 					}
 				case APIdentifier(_, APAnimation, AITString): // full animation block
+					final blockToken = tpos;
+					final index = animations.length;
+					final path = 'animations.$index';
 					advance();
 					animationParsingStarted = true;
 
@@ -947,6 +1130,7 @@ class AnimParser implements AnimParserResult {
 						case [APIdentifier(s, _, AITString), APCurlyOpen | APAt]:
 							advance();
 							headerName = s;
+							markSpan('$path.name', tpos - 1);
 						case _:
 					}
 
@@ -956,7 +1140,7 @@ class AnimParser implements AnimParserResult {
 					}
 					expect(APCurlyOpen);
 					final startOfAnim = curPos();
-					var parsedAnim = parseAnimation(definedStates, animationStates, allowedExtraPoints, headerName);
+					var parsedAnim = parseAnimation(definedStates, animationStates, allowedExtraPoints, path, headerName);
 					final animFps = parsedAnim.fps ?? defaultFps;
 					if (animFps == null) syntaxError("fps expected (set fps in animation body or as file-level default)", startOfAnim);
 					var anim:AnimationState = {
@@ -969,12 +1153,21 @@ class AnimParser implements AnimParserResult {
 						filters: parsedAnim.filters,
 						flipX: parsedAnim.flipX ?? defaultFlipX,
 						flipY: parsedAnim.flipY ?? defaultFlipY,
+						annotations: [],
+						layers: parsedAnim.layers.length > 0 ? parsedAnim.layers : null,
+						timeline: parsedAnim.timeline,
 					};
 					animations.push(anim);
+					markSpan(path, blockToken);
+					attachAnnotations(anim.annotations, '$path.');
 				case APIdentifier(_, APAnim, AITString): // (#5) compact shorthand: anim name(fps:N, loop:yes): "sheet"
+					final blockToken = tpos;
+					final index = animations.length;
 					advance();
 					animationParsingStarted = true;
-					parseAnimShorthand();
+					parseAnimShorthand('animations.$index');
+					markSpan('animations.$index', blockToken);
+					attachAnnotations(animations[index].annotations, 'animations.$index.');
 				default:
 					unexpectedError();
 			}
@@ -1006,8 +1199,19 @@ class AnimParser implements AnimParserResult {
 				}
 
 				var playlist = try findPlaylist(state, anim, definedStates) catch (e:String) syntaxError(e);
-				if (playlist == null) syntaxError('no playlist for ${state}, id ${anim.name}');
+				if (playlist == null)
+					syntaxError(anim.timeline != null ? 'the timeline of ${anim.name}, layer ${anim.timeline}, has no block for ${state}' : 'no playlist for ${state}, id ${anim.name}');
 				else playlist.visited = true;
+
+				final animLayers = anim.layers;
+				if (animLayers != null)
+					for (layerName in layerNames) {
+						if (layerName == anim.timeline) continue;
+						final blocks = animLayers.filter(l -> l.name == layerName);
+						if (blocks.length == 0) continue;
+						final block = try findBestStateMatch(blocks, state, 'layer $layerName of ${anim.name}') catch (e:String) syntaxError(e);
+						if (block != null) block.visited = true;
+					}
 			}
 		}
 
@@ -1026,6 +1230,11 @@ class AnimParser implements AnimParserResult {
 				if (pl.visited != true)
 					syntaxError('Playlist in anim ${anim.name} not reachable ${pl.states}');
 			}
+			final animLayers = anim.layers;
+			if (animLayers != null)
+				for (l in animLayers)
+					if (l.name != anim.timeline && l.visited != true)
+						syntaxError('Layer ${l.name} in anim ${anim.name} not reachable ${l.states}');
 		}
 
 		// Comparison/range conditionals evaluate operands numerically at match
@@ -1043,6 +1252,114 @@ class AnimParser implements AnimParserResult {
 					validateComparisonConditionals(f.states, 'filter in animation ${anim.name}');
 		}
 		this.metadata = metadataMap.count() > 0 ? new AnimMetadata(metadataMap) : null;
+	}
+
+	// ===================== For Tools =====================
+
+	public function loaded():LoadedAnimation {
+		return {
+			sheet: sheetName,
+			states: definedStates,
+			layers: layerNames,
+			allowedExtraPoints: allowedExtraPoints,
+			center: center,
+			metadata: metadata,
+			metadataEntries: metadataMap,
+			animations: animations,
+			defaults: {fps: defaultFps, loop: defaultLoop, flipX: defaultFlipX, flipY: defaultFlipY},
+			annotations: annotations,
+			spans: spans,
+		};
+	}
+
+	/** Records that the tokens from `fromToken` to the last one read are where `path` is written. **/
+	function markSpan(path:String, fromToken:Int):Void {
+		if (!withSpans)
+			return;
+		final first = tokens[fromToken];
+		final last = tokens[tpos > fromToken ? tpos - 1 : fromToken];
+		spans.push({path: path, start: first.start, end: last.end, line: first.line, col: first.col});
+	}
+
+	/** Parses one value with `parse` and records where it is written as `path`. **/
+	inline function spanned<T>(path:String, parse:() -> T):T {
+		final from = tpos;
+		final value = parse();
+		markSpan(path, from);
+		return value;
+	}
+
+	/** Gives the annotations read so far to `to`, the file's or an animation's, `pathPrefix` naming it in spans. **/
+	function attachAnnotations(to:Null<Array<AnimAnnotation>>, pathPrefix:String):Void {
+		if (to == null || pendingAnnotations.length == 0)
+			return;
+		for (pending in pendingAnnotations) {
+			final name = pending.annotation.name;
+			var n = 0;
+			for (a in to)
+				if (a.name == name) n++;
+			to.push(pending.annotation);
+			if (withSpans)
+				spans.push({path: '$pathPrefix@$name#$n', start: pending.start, end: pending.end, line: pending.annotation.line, col: pending.annotation.col});
+		}
+		pendingAnnotations = [];
+	}
+
+	/** `name` or `name(value, key: value, …)`, the `@` at `atToken` already read. **/
+	function parseAnnotation(atToken:Int):AnimAnnotation {
+		final name = expectIdentifier();
+		final args:Array<MetadataValue> = [];
+		final named:Map<String, MetadataValue> = [];
+		if (match(APOpen)) {
+			var first = true;
+			while (!match(APClosed)) {
+				if (!first) expect(APComma);
+				first = false;
+				switch [peek(), peekAt(1)] {
+					case [APIdentifier(key, _, AITString), APColon]:
+						advance();
+						advance();
+						if (named.exists(key)) syntaxError('annotation @$name: "$key" is given twice');
+						named.set(key, parseAnnotationValue(name));
+					default:
+						args.push(parseAnnotationValue(name));
+				}
+			}
+		}
+		final at = tokens[atToken];
+		return {name: name, args: args, named: named, line: at.line, col: at.col};
+	}
+
+	function parseAnnotationValue(annotationName:String):MetadataValue {
+		switch peek() {
+			case APNumber(s):
+				advance();
+				return s.contains(".") ? MVFloat(Std.parseFloat(s)) : MVInt(s.toInt());
+			case APIdentifier(s, _, AITString | AITQuotedString): // a string, or a bare word read as one
+				advance();
+				return MVString(s);
+			case APColor(c):
+				advance();
+				return MVColor(c);
+			case APBracketOpen:
+				advance();
+				return MVList(parseWordList());
+			default:
+				return unexpectedError('annotation @$annotationName: expected a number, a string, a word, a colour or a [list]');
+		}
+	}
+
+	/** `a, "b c", 3]`, the `[` already read: the words of a list, as strings. **/
+	function parseWordList():Array<String> {
+		final words:Array<String> = [];
+		if (match(APBracketClosed))
+			return words;
+		while (true) {
+			words.push(expectIdentifier());
+			if (match(APComma)) continue;
+			expect(APBracketClosed);
+			return words;
+		}
 	}
 
 	// ===================== Parse Helpers =====================
@@ -1352,34 +1669,49 @@ class AnimParser implements AnimParserResult {
 			final states = parseStates();
 			final key = expectIdentifier();
 			expect(APColon);
-			var entryValue:MetadataValue;
-			switch (peek()) {
-				case APNumber(numStr):
-					advance();
-					// (#6) detect float vs int
-					if (numStr.contains(".")) {
-						entryValue = MVFloat(Std.parseFloat(numStr));
-					} else {
-						entryValue = MVInt(numStr.toInt());
-					}
-				case APIdentifier(strVal, _, AITQuotedString):
-					advance();
-					entryValue = MVString(strVal);
-				case APColor(c): // (#11)
-					advance();
-					entryValue = MVColor(c);
-				default:
-					entryValue = unexpectedError("Expected number, string, or color value in metadata");
-			}
-			var entry:MetadataEntry = {states: states, value: entryValue};
 			final existing = metadataMap.get(key);
+			final entry:MetadataEntry = {
+				states: states,
+				value: spanned('metadata.$key#${existing != null ? existing.length : 0}', parseMetadataEntryValue)
+			};
 			if (existing != null) existing.push(entry);
 			else metadataMap[key] = [entry];
 		}
 	}
 
+	function parseMetadataEntryValue():MetadataValue {
+		switch (peek()) {
+			case APNumber(numStr):
+				advance();
+				// (#6) detect float vs int
+				return numStr.contains(".") ? MVFloat(Std.parseFloat(numStr)) : MVInt(numStr.toInt());
+			case APIdentifier(strVal, _, AITQuotedString):
+				advance();
+				return MVString(strVal);
+			case APColor(c): // (#11)
+				advance();
+				return MVColor(c);
+			case APBracketOpen: // a list of words: tags: [beast, wolf]
+				advance();
+				return MVList(parseWordList());
+			default:
+				return unexpectedError("Expected number, string, color or [list] value in metadata");
+		}
+	}
+
+	/** `layers: shadow, body, hat`: each once, bottom first. **/
+	function parseLayerNames():Array<String> {
+		final names:Array<String> = [];
+		while (true) {
+			final layerName = expectIdentifier();
+			if (names.contains(layerName)) syntaxError('layer $layerName is declared twice');
+			names.push(layerName);
+			if (!match(APComma)) return names;
+		}
+	}
+
 	@:nullSafety(Off)
-	function parseAnimation(statesDefinitions, animationStates, allowedExtraPointsList, ?headerName:String) {
+	function parseAnimation(statesDefinitions, animationStates, allowedExtraPointsList, path:String, ?headerName:String) {
 		var extraPoints:Map<String, Array<ExtraPoints>> = [];
 		var filters:Array<AnimFilterEntry> = []; // (#12)
 		var flipX:Null<Bool> = null; // (#13)
@@ -1393,6 +1725,8 @@ class AnimParser implements AnimParserResult {
 			filters: filters,
 			flipX: flipX,
 			flipY: flipY,
+			layers: ([] : Array<AnimLayer>),
+			timeline: (null : Null<String>),
 		};
 
 		while (true) {
@@ -1403,7 +1737,7 @@ class AnimParser implements AnimParserResult {
 				case APIdentifier(_, APName, AITString): // (#2) backward compat: name: inside body
 					advance();
 					expect(APColon);
-					final bodyName = expectIdentifier();
+					final bodyName = spanned('$path.name', expectIdentifier);
 					if (ret.name != null && ret.name != bodyName)
 						syntaxError('animation name "${ret.name}" (in header) conflicts with name: "${bodyName}" (in body)');
 					ret.name = bodyName;
@@ -1411,21 +1745,25 @@ class AnimParser implements AnimParserResult {
 				case APIdentifier(_, APLoop, AITString):
 					advance();
 					expect(APColon);
-					ret.loop = parseLoopValue();
+					ret.loop = spanned('$path.loop', parseLoopValue);
 				case APIdentifier(_, APFps, AITString):
 					advance();
 					expect(APColon);
 					if (ret.fps != null) syntaxError("fps already set");
-					final parsedFps = parseIntNumber();
+					final parsedFps = spanned('$path.fps', parseIntNumber);
 					if (parsedFps <= 0) syntaxError("fps must be greater than 0");
 					ret.fps = parsedFps;
 				case APIdentifier(_, APExtrapoints, AITString):
+					final blockToken = tpos;
 					advance();
 					expect(APCurlyOpen);
 					if (extraPoints.count() > 0) syntaxError("extraPoints already defined");
-					parseExtraPoints(statesDefinitions, animationStates, extraPoints, allowedExtraPointsList);
+					parseExtraPoints(statesDefinitions, animationStates, extraPoints, allowedExtraPointsList, '$path.extrapoints');
 					if (extraPoints.count() == 0) syntaxError("extraPoints must not be empty");
+					markSpan('$path.extrapoints', blockToken);
 				case APIdentifier(_, APPlaylist, AITString):
+					final blockToken = tpos;
+					final playlistPath = '$path.playlist#${ret.playlist.length}';
 					advance();
 					final playlistStates = parseStates(); // (#1) @else/@default in playlist
 					for (key => value in playlistStates)
@@ -1433,22 +1771,54 @@ class AnimParser implements AnimParserResult {
 					checkForUnreachableState(animationStates, playlistStates);
 					expect(APCurlyOpen);
 					var playlist:Playlist = {anims: [], states: playlistStates};
-					parseFrames(playlist.anims);
+					parseFrames(playlist.anims, playlistPath);
 					ret.playlist.push(playlist);
+					markSpan(playlistPath, blockToken);
+				case APIdentifier(_, APTimeline, AITString):
+					advance();
+					expect(APColon);
+					if (ret.timeline != null) syntaxError("timeline already set");
+					final timelineName = spanned('$path.timeline', expectIdentifier);
+					if (!layerNames.contains(timelineName))
+						syntaxError('timeline $timelineName is not one of the layers (${layerNames.join(", ")})');
+					ret.timeline = timelineName;
+				case APIdentifier(_, APLayer, AITString):
+					final blockToken = tpos;
+					advance();
+					final layerName = expectIdentifier();
+					if (layerNames.length == 0)
+						syntaxError('layer $layerName: the file declares no layers (layers: shadow, body, …)');
+					if (!layerNames.contains(layerName))
+						syntaxError('layer $layerName is not one of the layers (${layerNames.join(", ")})');
+					final layerStates = parseStates();
+					for (key => value in layerStates)
+						parserValidateConditionalState(statesDefinitions, key, value);
+					checkForUnreachableState(animationStates, layerStates);
+					expect(APCurlyOpen);
+					var written = 0;
+					for (l in ret.layers)
+						if (l.name == layerName) written++;
+					final layerPath = '$path.layer.$layerName#$written';
+					final layer:AnimLayer = {name: layerName, states: layerStates, anims: []};
+					parseFrames(layer.anims, layerPath, layer);
+					ret.layers.push(layer);
+					markSpan(layerPath, blockToken);
 				case APIdentifier(_, APFilters, AITString): // (#12) filter declarations
+					final blockToken = tpos;
 					advance();
 					expect(APCurlyOpen);
 					ret.filters = parseFilterBlock(statesDefinitions, animationStates);
+					markSpan('$path.filters', blockToken);
 				case APIdentifier(_, APFlipX, AITString): // (#13) horizontal flip
 					advance();
 					expect(APColon);
 					if (ret.flipX != null) syntaxError("flipX already set");
-					ret.flipX = parseBoolValue();
+					ret.flipX = spanned('$path.flipX', parseBoolValue);
 				case APIdentifier(_, APFlipY, AITString): // (#13) vertical flip
 					advance();
 					expect(APColon);
 					if (ret.flipY != null) syntaxError("flipY already set");
-					ret.flipY = parseBoolValue();
+					ret.flipY = spanned('$path.flipY', parseBoolValue);
 				default:
 					unexpectedError();
 			}
@@ -1456,14 +1826,50 @@ class AnimParser implements AnimParserResult {
 
 		if (ret.name == null) syntaxError("animation name not set (use 'animation name { }' or 'name:' inside body)");
 		if (!animationNames.contains(ret.name)) animationNames.push(ret.name);
-		if (ret.playlist.length == 0) syntaxError("animation requires playlist");
+		if (ret.layers.length > 0)
+			resolveLayers(ret.name, ret);
+		else if (ret.timeline != null)
+			syntaxError('animation ${ret.name}: timeline: needs layer blocks');
+		else if (layerNames.length > 0)
+			syntaxError('animation ${ret.name}: the file has layers, so its frames are written in layer blocks, not a playlist');
+		if (ret.playlist.length == 0) syntaxError("animation requires playlist (or, in a file with layers, layer blocks)");
 		return ret;
+	}
+
+	/**
+		A layered animation: its timeline (named, or the first of `layers:` it has a block of) becomes
+		its playlist, so it plays and is checked as any playlist is; the other layers may only name
+		frames, since the timeline alone says how long they last and what happens on them.
+	**/
+	function resolveLayers(animName:String, ret:{layers:Array<AnimLayer>, timeline:Null<String>, playlist:Array<Playlist>}):Void {
+		if (ret.playlist.length > 0)
+			syntaxError('animation $animName: a playlist or layer blocks, not both');
+		var timeline = ret.timeline;
+		if (timeline == null) {
+			for (n in layerNames)
+				if (timeline == null && Lambda.exists(ret.layers, l -> l.name == n)) timeline = n;
+			ret.timeline = timeline;
+		} else if (!Lambda.exists(ret.layers, l -> l.name == timeline))
+			syntaxError('animation $animName: the timeline, $timeline, has no layer block');
+		for (l in ret.layers) {
+			if (l.name == timeline) {
+				ret.playlist.push({anims: l.anims, states: l.states});
+				continue;
+			}
+			for (entry in l.anims)
+				switch entry {
+					case SheetFrameAnim(_, d, _) | SheetFrameAnimWithIndex(_, _, _, d, _) | FileSingleFrame(_, d, _):
+						if (d != null) syntaxError('animation $animName, layer ${l.name}: only the timeline ($timeline) sets durations');
+					default:
+						syntaxError('animation $animName, layer ${l.name}: only the timeline ($timeline) has events and filters');
+				}
+		}
 	}
 
 	// (#5) Parse compact animation shorthand: anim name(fps:N, loop:yes, flipX:yes, flipY:yes): "sheet"
 	@:nullSafety(Off)
-	function parseAnimShorthand():Void {
-		final name = expectIdentifier();
+	function parseAnimShorthand(path:String):Void {
+		final name = spanned('$path.name', expectIdentifier);
 		var overrideFps:Null<Int> = null;
 		var overrideLoop:Null<Int> = null;
 		var overrideFlipX:Null<Bool> = null; // (#13)
@@ -1478,21 +1884,21 @@ class AnimParser implements AnimParserResult {
 					case APIdentifier(_, APFps, _):
 						advance();
 						expect(APColon);
-						final fps = parseIntNumber();
+						final fps = spanned('$path.fps', parseIntNumber);
 						if (fps <= 0) syntaxError("fps must be greater than 0");
 						overrideFps = fps;
 					case APIdentifier(_, APLoop, _):
 						advance();
 						expect(APColon);
-						overrideLoop = parseLoopValue();
+						overrideLoop = spanned('$path.loop', parseLoopValue);
 					case APIdentifier(_, APFlipX, _): // (#13)
 						advance();
 						expect(APColon);
-						overrideFlipX = parseBoolValue();
+						overrideFlipX = spanned('$path.flipX', parseBoolValue);
 					case APIdentifier(_, APFlipY, _): // (#13)
 						advance();
 						expect(APColon);
-						overrideFlipY = parseBoolValue();
+						overrideFlipY = spanned('$path.flipY', parseBoolValue);
 					default:
 						unexpectedError("expected fps, loop, flipX, or flipY modifier in anim shorthand");
 				}
@@ -1500,9 +1906,12 @@ class AnimParser implements AnimParserResult {
 		}
 
 		expect(APColon);
-		final sheetStr = expectIdentifier();
+		final sheetStr = spanned('$path.playlist#0.0.sheet', expectIdentifier);
+		markSpan('$path.playlist#0.0', tpos - 1); // the shorthand's one line is its sheet
 		final sheetPos = curPos();
 		validateSheetName(sheetStr, sheetPos);
+		if (layerNames.length > 0)
+			syntaxError('anim $name: the file has layers, so its animations are written with layer blocks', sheetPos);
 
 		final animFps = overrideFps ?? defaultFps;
 		if (animFps == null) syntaxError('anim shorthand "${name}" requires fps (set in modifiers or file-level default)');
@@ -1518,19 +1927,21 @@ class AnimParser implements AnimParserResult {
 			playlist: [playlist],
 			flipX: overrideFlipX ?? defaultFlipX,
 			flipY: overrideFlipY ?? defaultFlipY,
+			annotations: [],
 		};
 		if (!animationNames.contains(name)) animationNames.push(name);
 		animations.push(anim);
 	}
 
 	function parseExtraPoints(statesDefinitions:Map<String, Array<String>>, animationStates:AnimConditionalSelector,
-			extraPoints:Map<String, Array<ExtraPoints>>, allowedExtraPointsList:Array<String>):Void {
+			extraPoints:Map<String, Array<ExtraPoints>>, allowedExtraPointsList:Array<String>, path:String):Void {
 		while (true) {
 			if (match(APCurlyClosed)) break;
 			final states = parseStates(); // (#1) @else/@default in extrapoints
 			final pointName = expectIdentifier();
 			expect(APColon);
-			final c = parseCoordinates();
+			final written = extraPoints.get(pointName);
+			final c = spanned('$path.$pointName#${written != null ? written.length : 0}', parseCoordinates);
 
 			if (allowedExtraPointsList.contains(pointName) == false)
 				syntaxError('extraPoint ${pointName} not declared in allowedExtraPoints');
@@ -1545,20 +1956,32 @@ class AnimParser implements AnimParserResult {
 		}
 	}
 
-	function parseFrames(anims:Array<AnimPlaylistFrames>):Void {
+	function parseFrames(anims:Array<AnimPlaylistFrames>, path:String, ?layer:AnimLayer):Void {
 		while (true) {
+			final entryToken = tpos;
+			final entryPath = '$path.${anims.length}';
 			switch (peek()) {
 				case APCurlyClosed:
 					advance();
 					return;
+				case APIdentifier(_, APBlend, AITString) if (layer != null):
+					advance();
+					expect(APColon);
+					if (layer.blend != null) syntaxError("blend already set");
+					final blend = spanned('$path.blend', expectIdentifier);
+					if (bh.multianim.MacroCompatTypes.MacroBlendModes.fromName(blend) == null)
+						syntaxError('blend: expected one of ${bh.multianim.MacroCompatTypes.MacroBlendModes.NAMES.join(", ")}, got $blend');
+					layer.blend = blend;
+					continue;
 				case APIdentifier(_, APFile, AITString):
 					advance();
 					expect(APColon);
 					switch (peek()) {
 						case APIdentifier(frameFilename, _, AITQuotedString):
 							advance();
-							var duration:Null<Int> = tryParseDuration();
-							anims.push(FileSingleFrame(frameFilename, duration));
+							markSpan('$entryPath.file', tpos - 1);
+							final modifiers = parseFrameModifiers(entryPath, false);
+							anims.push(FileSingleFrame(frameFilename, modifiers.duration, modifiers.offset));
 						default:
 							unexpectedError("expected filename");
 					}
@@ -1568,7 +1991,7 @@ class AnimParser implements AnimParserResult {
 					switch (peek()) {
 						case APIdentifier(_, APRandom, AITString):
 							advance();
-							final p = parseCoordinates();
+							final p = spanned('$entryPath.at', parseCoordinates);
 							expect(APComma);
 							switch (peek()) {
 								case APNumber(randomRadius):
@@ -1585,7 +2008,7 @@ class AnimParser implements AnimParserResult {
 									unexpectedError("expected radius");
 							}
 						case APNumber(_):
-							final p = parseCoordinates();
+							final p = spanned('$entryPath.at', parseCoordinates);
 							if (peek() == APCurlyOpen) {
 								// The event payload cannot carry both a point and
 								// metadata — accepting this used to silently drop the point.
@@ -1606,47 +2029,14 @@ class AnimParser implements AnimParserResult {
 				case APIdentifier(_, APSheet, AITString):
 					advance();
 					expect(APColon);
-					final frameName = expectIdentifier();
+					final frameName = spanned('$entryPath.sheet', expectIdentifier);
 					final sheetPos = curPos();
 					validateSheetName(frameName, sheetPos); // (#4) validate ${state} and error on $$
-					match(APComma); // optional comma
-					var start:Null<Int> = null;
-					var end:Null<Int> = null;
-					var duration:Null<Int> = null;
-					switch (peek()) {
-						case APIdentifier(_, APFrames, AITString):
-							advance();
-							expect(APColon);
-							switch (peek()) {
-								case APNumber(startIndex):
-									advance();
-									final startN = Std.parseInt(startIndex) ?? 0;
-									start = startN;
-									expect(APDoubleDot);
-									switch (peek()) {
-										case APNumber(endIndex):
-											advance();
-											final endN = Std.parseInt(endIndex) ?? 0;
-											end = endN;
-											if (startN < 0) syntaxError('frame index must be non-negative, was $startN');
-											if (endN < 0) syntaxError('frame index must be non-negative, was $endN');
-										default:
-											unexpectedError("expected end index");
-									}
-								default:
-									unexpectedError("expected start index");
-							}
-							match(APComma);
-							duration = tryParseDuration();
-						case APCurlyClosed | APEof | APIdentifier(_, APSheet | APFile | APEvent | APFilter, _):
-							// sheet name is self-terminating in context
-						default:
-							duration = tryParseDuration();
-					}
-					if (start == null && end == null)
-						anims.push(SheetFrameAnim(frameName, duration));
+					final modifiers = parseFrameModifiers(entryPath, true);
+					if (modifiers.from == null && modifiers.to == null)
+						anims.push(SheetFrameAnim(frameName, modifiers.duration, modifiers.offset));
 					else
-						anims.push(SheetFrameAnimWithIndex(frameName, start, end, duration));
+						anims.push(SheetFrameAnimWithIndex(frameName, modifiers.from, modifiers.to, modifiers.duration, modifiers.offset));
 				case APIdentifier(_, APFilter, AITString): // (#12) per-frame filter
 					advance();
 					final filter = parseFilterEntry();
@@ -1654,6 +2044,67 @@ class AnimParser implements AnimParserResult {
 				default:
 					unexpectedError();
 			}
+			markSpan(entryPath, entryToken);
+		}
+	}
+
+	/**
+		What may follow a `sheet:` or a `file:` line, each at most once, in any order, commas
+		between optional: `frames: a..b` (sheet lines only), `duration: 50ms`, `offset: x, y`.
+		The line ends at anything else: the next line's keyword, or the playlist's `}`.
+	**/
+	function parseFrameModifiers(entryPath:String, allowFrames:Bool):{from:Null<Int>, to:Null<Int>, duration:Null<Int>, offset:Null<Point>} {
+		var from:Null<Int> = null;
+		var to:Null<Int> = null;
+		var duration:Null<Int> = null;
+		var offset:Null<Point> = null;
+		var sawFrames = false;
+		while (true) {
+			match(APComma); // optional comma
+			switch (peek()) {
+				case APIdentifier(_, APFrames, AITString) if (allowFrames):
+					advance();
+					expect(APColon);
+					if (sawFrames) syntaxError("frames already set");
+					sawFrames = true;
+					final range = spanned('$entryPath.frames', parseFrameRange);
+					from = range.from;
+					to = range.to;
+				case APIdentifier(_, APDuration, AITString):
+					advance();
+					expect(APColon);
+					if (duration != null) syntaxError("duration already set");
+					duration = spanned('$entryPath.duration', parseDurationValue);
+				case APIdentifier(_, APOffset, AITString):
+					advance();
+					expect(APColon);
+					if (offset != null) syntaxError("offset already set");
+					offset = spanned('$entryPath.offset', parseCoordinates);
+				default:
+					return {from: from, to: to, duration: duration, offset: offset};
+			}
+		}
+	}
+
+	/** `frames: a..b`, after its colon: the first and last frame, each 0 or more. **/
+	function parseFrameRange():{from:Int, to:Int} {
+		switch (peek()) {
+			case APNumber(startIndex):
+				advance();
+				final startN = Std.parseInt(startIndex) ?? 0;
+				expect(APDoubleDot);
+				switch (peek()) {
+					case APNumber(endIndex):
+						advance();
+						final endN = Std.parseInt(endIndex) ?? 0;
+						if (startN < 0) syntaxError('frame index must be non-negative, was $startN');
+						if (endN < 0) syntaxError('frame index must be non-negative, was $endN');
+						return {from: startN, to: endN};
+					default:
+						return unexpectedError("expected end index");
+				}
+			default:
+				return unexpectedError("expected start index");
 		}
 	}
 
@@ -1819,17 +2270,6 @@ class AnimParser implements AnimParserResult {
 		}
 		if (colors.length == 0) syntaxError("color list must not be empty");
 		return colors;
-	}
-
-	function tryParseDuration():Null<Int> {
-		switch (peek()) {
-			case APIdentifier(_, APDuration, AITString):
-				advance();
-				expect(APColon);
-				return parseDurationValue();
-			default:
-				return null;
-		}
 	}
 
 	function parseDurationValue():Null<Int> {
@@ -2069,22 +2509,35 @@ class AnimParser implements AnimParserResult {
 			return cloned;
 		}
 
-		function tileToFrame(tile:h2d.Tile, duration:Float):AnimationFrameState {
+		function tileToFrame(tile:h2d.Tile, duration:Float, offset:Null<Point>):AnimationFrameState {
 			if (_center != null) {
 				tile.dx = -_center.x;
 				tile.dy = -_center.y;
+			}
+			if (offset != null) {
+				// A nudge, before any flip, so it mirrors with the art
+				tile = tile.clone();
+				tile.dx += offset.x;
+				tile.dy += offset.y;
 			}
 			// Raw single-frame tiles have no trim — orig dimensions == tile dimensions
 			final outTile = maybeFlipClone(tile, tile.width, tile.height);
 			return Frame(new AnimationFrame(outTile, duration, 0, 0, outTile.iwidth, outTile.iheight));
 		}
 
-		function AFtoFrame(f:AnimationFrame, duration:Float):AnimationFrameState {
+		function AFtoFrame(f:AnimationFrame, duration:Float, offset:Null<Point>):AnimationFrameState {
 			if (_center != null) {
 				// Clone tile to avoid mutating the shared cached sheet tile
 				var tile = f.tile.clone();
 				tile.dx = f.offsetx - _center.x;
 				tile.dy = (f.height - tile.height) - f.offsety - _center.y;
+				f = f.cloneWithNewTile(tile);
+			}
+			if (offset != null) {
+				// A nudge, before any flip, so it mirrors with the art; a clone, as above
+				final tile = f.tile.clone();
+				tile.dx += offset.x;
+				tile.dy += offset.y;
 				f = f.cloneWithNewTile(tile);
 			}
 			if (_flipX || _flipY) {
@@ -2098,7 +2551,7 @@ class AnimParser implements AnimParserResult {
 		final duration = 1.0 / _fps;
 		for (frames in anims) {
 			switch frames {
-				case SheetFrameAnim(name, overrideDuration):
+				case SheetFrameAnim(name, overrideDuration, offset):
 					final expandedName = replaceState(name, stateSelector);
 					final sheet = resourceLoader.loadSheet2(_sheetName);
 					if (sheet == null) throw 'sheet ${_sheetName} not found';
@@ -2106,8 +2559,8 @@ class AnimParser implements AnimParserResult {
 					if (tiles == null) throw 'tiles ${name}->${expandedName} not found';
 					final _od = overrideDuration;
 					var d = _od == null ? duration : _od / 1000.0;
-					retVal = retVal.concat(Lambda.map(tiles, t -> AFtoFrame(t, d)));
-				case SheetFrameAnimWithIndex(name, from, to, overrideDuration):
+					retVal = retVal.concat(Lambda.map(tiles, t -> AFtoFrame(t, d, offset)));
+				case SheetFrameAnimWithIndex(name, from, to, overrideDuration, offset):
 					final sheet = resourceLoader.loadSheet2(_sheetName);
 					if (sheet == null) throw 'sheet ${_sheetName} not found';
 					final expandedName = replaceState(name, stateSelector);
@@ -2117,13 +2570,13 @@ class AnimParser implements AnimParserResult {
 					var d = _od == null ? duration : _od / 1000.0;
 					for (i in 0...animTiles.length) {
 						if ((from == null || i >= from) && (to == null || i <= to)) {
-							retVal.push(AFtoFrame(animTiles[i], d));
+							retVal.push(AFtoFrame(animTiles[i], d, offset));
 						}
 					}
-				case FileSingleFrame(filename, overrideDuration):
+				case FileSingleFrame(filename, overrideDuration, offset):
 					final _od = overrideDuration;
 					var d = _od == null ? duration : _od / 1000.0;
-					retVal.push(tileToFrame(resourceLoader.loadTile(filename), d));
+					retVal.push(tileToFrame(resourceLoader.loadTile(filename), d, offset));
 				case PlaylistEvent(playlistEvent):
 					retVal.push(Event(playlistEvent));
 				case PlaylistEventData(name, meta): // (#9) convert MetadataValue map to String map for AnimationSM
@@ -2134,6 +2587,7 @@ class AnimParser implements AnimParserResult {
 							case MVFloat(f): Std.string(f);
 							case MVString(s): s;
 							case MVColor(c): '#${StringTools.hex(c, 6)}';
+							case MVList(vs): vs.join(","); // never parsed in an event's data; for completeness
 						});
 					}
 					retVal.push(Event(TriggerData(name, strMeta)));
@@ -2345,7 +2799,8 @@ class AnimParser implements AnimParserResult {
 					}
 				}
 				final loopCount:Int = anim.loop ?? 0;
-				cacheArray.push({name: name, states: states, loopCount: loopCount, extraPoints: extraPoints, filters: anim.filters});
+				cacheArray.push({name: name, states: states, loopCount: loopCount, extraPoints: extraPoints, filters: anim.filters,
+					layers: layerFramesOf(anim, states, stateSelector)});
 			}
 			cache.set(hex, cacheArray);
 		}
@@ -2361,12 +2816,68 @@ class AnimParser implements AnimParserResult {
 			for (k => p in e.extraPoints)
 				pts.set(k, new h2d.col.IPoint(p.x, p.y));
 			final resolved = resolveAnimFilters(e.filters, stateSelector);
-			animSM.addAnimationState(e.name, e.states, e.loopCount, pts, resolved.filter, resolved.tintColor);
+			animSM.addAnimationState(e.name, e.states, e.loopCount, pts, resolved.filter, resolved.tintColor, e.layers);
 		}
+	}
+
+	/**
+		A layered animation's other layers for these states: one frame per frame of the timeline,
+		for every layer of the file (null where the layer draws nothing, and for the timeline's own).
+	**/
+	function layerFramesOf(anim:AnimationState, timelineStates:Array<AnimationFrameState>, stateSelector:AnimationStateSelector):Null<AnimationLayerFrames> {
+		final animLayers = anim.layers;
+		if (animLayers == null || layerNames.length == 0)
+			return null;
+		var timelineFrames = 0;
+		for (s in timelineStates)
+			switch s {
+				case Frame(_): timelineFrames++;
+				default:
+			}
+		final frames:Array<Null<Array<AnimationFrame>>> = [];
+		final blends:Array<Null<h2d.BlendMode>> = [];
+		var timelineIndex = -1;
+		for (li in 0...layerNames.length) {
+			final layerName = layerNames[li];
+			final blocks = animLayers.filter(l -> l.name == layerName);
+			final block = blocks.length == 0 ? null : findBestStateMatch(blocks, stateSelector, 'layer $layerName of ${anim.name}');
+			final blendName = block != null ? block.blend : null;
+			blends.push(blendName != null ? blendModeOf(blendName) : null);
+			if (layerName == anim.timeline) {
+				timelineIndex = li;
+				frames.push(null);
+				continue;
+			}
+			if (block == null) {
+				frames.push(null);
+				continue;
+			}
+			final layerFrames:Array<AnimationFrame> = [];
+			for (s in createStates(block.anims, anim, stateSelector))
+				switch s {
+					case Frame(f): layerFrames.push(f);
+					default:
+				}
+			if (layerFrames.length != timelineFrames)
+				throw 'anim ${anim.name}: layer $layerName has ${layerFrames.length} frames and the timeline, ${anim.timeline}, has $timelineFrames, for $stateSelector';
+			frames.push(layerFrames);
+		}
+		return {frames: frames, blends: blends, timeline: timelineIndex};
+	}
+
+	/** A layer's `blend:`, which the parse checked; a name it does not know is an error, never quietly alpha. **/
+	static function blendModeOf(name:String):h2d.BlendMode {
+		final mode = bh.multianim.MacroCompatTypes.MacroBlendModes.fromName(name);
+		if (mode == null)
+			throw 'blend: expected one of ${bh.multianim.MacroCompatTypes.MacroBlendModes.NAMES.join(", ")}, got $name';
+		return bh.multianim.MacroCompatTypes.MacroCompatConvert.toH2dBlendMode(mode);
 	}
 
 	public function createAnimSM(stateSelector:AnimationStateSelector):AnimationSM {
 		var animSM = new AnimationSM(stateSelector);
+		animSM.source = this;
+		if (layerNames.length > 0)
+			animSM.setupLayers(layerNames);
 		load(stateSelector, animSM);
 		return animSM;
 	}
@@ -2502,7 +3013,7 @@ class AnimParserLsp {
 									stateDeclarations.push({name: name, values: values});
 								default:
 							}
-						case APSheet | APCenter | APFps | APLoop | APAllowedExtraPoints | APFlipX | APFlipY:
+						case APSheet | APCenter | APFps | APLoop | APAllowedExtraPoints | APFlipX | APFlipY | APLayers:
 							advance();
 							if (!match(APColon)) throw new InvalidSyntax("expected ':'", currentPos());
 							skipToNextTopLevel();
