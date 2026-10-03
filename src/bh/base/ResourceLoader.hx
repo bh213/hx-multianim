@@ -14,7 +14,7 @@ enum ResolvedGeneratedTileType {
     Cross(width:Int, height:Int, color:Int, thickness:Int);
 	SolidColor(width:Int, height:Int, color:Int);
 	SolidColorWithText(width:Int, height:Int, color:Int, text:String, textColor:Int, font:String);
-	AutotileRegionSheet(baseTile:h2d.Tile, regionX:Int, regionY:Int, regionW:Int, regionH:Int, tileSize:Int, tileCount:Int, scale:Int, font:String, fontColor:Int);
+	AutotileRegionSheet(baseTile:h2d.Tile, regionX:Int, regionY:Int, regionW:Int, regionH:Int, tileSize:Int, tileCount:Int, scale:Int, font:String, fontColor:Int, margin:Int, spacing:Int);
 }
 
 interface ResourceLoader {

@@ -1496,6 +1496,20 @@ mapping: [0:4, 1:7, 5:1, 13:5, 15: 9 | 10 | 11 | 11]
 ```
 `generated(autotile(name, index))` takes the first; `builder.getAutotileTile(name, index, x, y)` the one a position draws.
 
+**Turned tiles:** after a source index, `flipX`, `flipY` and one of `rot90`, `rot180`, `rot270`
+(clockwise), in any order, for a pack that ships one edge and expects the rest mirrored:
+```
+mapping: [0: 4, 1: 4 flipX, 2: 4 rot90, 3: 4 flipX rot90, 15: 9 | 9 flipX | 9 flipY]
+```
+A flip is in the tile (`getAutotileTile` gives it flipped); a rotation is drawn, and
+`getAutotileRotation(name, index, x, y)` says it, so `generated(autotile(name, index))` shows a
+rotated tile unturned.
+
+**Margin and spacing** of a `file:` source: `margin: 1` pixels from the region's edge (or the image's)
+to its first tile, `spacing: 2` between tiles, as sheets exported with gutters have. The region must
+then hold whole tiles that way: `n` tiles take `2 * margin + n * tileSize + (n - 1) * spacing`.
+`autotileRegionSheet` draws its numbered grid on the tiles as they sit.
+
 Every autotile index needs a tile, otherwise building fails with a `BuilderError` naming the index - with two exceptions: `corner` index 0 (never drawn) and `blob47` with `allowPartialMapping: true`. A mapping target outside the source (e.g. past the end of the region) is an error too.
 
 Use `generated(autotileRegionSheet(...))` (below) to see the source indices of a `file:` region.
@@ -1636,7 +1650,8 @@ which way a level's side is drawn and what a cell means to the game are all writ
 | `rise any { … }` | The same for every number of levels that has no rise of its own: a fence behind a plateau is the same however high it is |
 | `rise n <terrain> { … }` | The same where the higher cell is of that terrain. A terrain with rises of its own toward a side uses only those there |
 | `platform name { … }` | A kind of higher level that is not the ground raised: a tree top, a roof (below) |
-| `cell name { … }` | What a named cell of a map's layers is, wherever it is placed: `draw:` and `metadata` |
+| `cell name { … }` | What a named cell of a map's layers is, wherever it is placed: `draw:` (`under`, `over`, `top`, or `actors`: among them, sorted by its feet) and `metadata` |
+| `cell name { size: w, h anchor: x, y }` | An object of several cells (a tree, a house) whose frames are `w` by `h` cells: the layer's character marks its `anchor` cell (its bottom-left one unless given, counted from its top-left), it is drawn among the actors standing on its feet unless `draw:` says otherwise, and every cell it covers is it (`cellAt`, `metadataAt`; `objectAt` says where its anchor is). It must lie inside the map and cover no other cell of its layer |
 
 | In a terrain | |
 |---|---|
@@ -1734,20 +1749,31 @@ map.toCell(hero.x, hero.y);                 // the cell a point is in
 map.terrainAt(cx, cy);                      // "grass", or null for none
 map.levelAt(cx, cy); map.sideAt(cx, cy);    // a cell's level; the rise of a side over it, or 0
 map.platformAt(cx, cy);                     // the platform a higher cell is of, or null: the ground
-map.cellAt("deco", cx, cy);                 // a layer's cell name, or null
+map.cellAt("deco", cx, cy);                 // a layer's cell name, or null (an object's on every cell it covers)
+map.objectAt("deco", cx, cy);               // {name, anchorX, anchorY, x, y, width, height} of what covers the cell, or null
 map.metadataAt(cx, cy).getBoolOrDefault("wall", false);  // getIntOrDefault, getStringOrDefault, has, keys…
 map.mark("exit");                           // {name, x, y, w?, h?}
 map.setTerrain(cx, cy, "~"); map.setLevel(cx, cy, 1); map.setCell("deco", cx, cy, "s");
 ```
 
 `setTerrain`, `setLevel` and `setCell` change the map's own copy of the rows, so a map can be painted
-while the game runs. However many cells change, the map is drawn again once, as it is next drawn or
-asked what it draws (`terrainAt`, `sideAt`, `metadataAt`); `redraw()` draws it sooner. `setLevel`
+while the game runs. The map is drawn in chunks of `chunkSize` cells a side (`TileMap.defaultChunkSize`,
+32; `setChunkSize`), each as it is first in view or asked what it draws (`sideAt`, `metadataAt`), so
+a big map costs what is seen of it; `terrainAt`, `levelAt` and `cellAt` read the rows and draw
+nothing. However many cells change, the chunks they are in (and, at a chunk's border, the neighbours
+an autotile's corners or a rise's sides reach) are drawn again once, as they are next in view or
+asked; `redraw()` draws it all now. The view is `map.cull(x, y, w, h)`, in the map's pixels (a game
+with a camera calls it as the camera moves, since a camera is not in an object's place), or, with
+`cullToScene` on (the default) and no `cull`, the scene's size seen through the map's place and
+scale; `cullNone()` has every chunk in view, `isChunkVisible(col, row)` says what is drawn. `setLevel`
 raises the ground: a digit for 0–9, else a character of the levels legend that is not a platform's.
-A cell outside the map, a character the legend has not, a level no character stands for and a layer
-the map has not are `BuilderError`s (`tilemap_outside`, `tilemap_legend`, `tilemap_level`,
-`tilemap_layer`). Hot reload of the file redraws every map from it in a scene and keeps the actors;
-a map not in a scene is not. The DevBridge answers `map_list` and `map_get`.
+`setCell` places and removes an object of several cells at its anchor. A cell outside the map, a
+character the legend has not, a level no character stands for, a layer the map has not, a cell
+another object covers, and an object that would reach outside the map or over another cell of its
+layer are `BuilderError`s (`tilemap_outside`, `tilemap_legend`, `tilemap_level`, `tilemap_layer`,
+`tilemap_object_covered`, `tilemap_object_outside`, `tilemap_object_overlap`); the last two are
+checked as the rows are read too. Hot reload of the file redraws every map from it in a scene and
+keeps the actors; a map not in a scene is not. The DevBridge answers `map_list` and `map_get`.
 
 ---
 

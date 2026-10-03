@@ -143,6 +143,7 @@ throw BuilderError.of('Slot "$name" not found in BuilderResult');
 - **String interpolation uses SINGLE quotes, not double.** `'hello $name'` interpolates; `"hello $name"` is literal. In test code, use `"..."` (double quotes) for manim source strings to avoid Haxe interpolation of `$`.
 - **Map has no `.count()` method.** Use a separate counter variable to track size.
 - **`Null<Bool> == false` is false when the value is null.** Optional Bool fields (`var ?flag:Bool`) default to null, so a check like `if (x.visited == false) error(...)` can never fire for never-written entries — this made AnimParser's reachability validation dead code for years. Flag-style checks on nullable Bools must use `!= true` (or `== true`).
+- **A `Dynamic` field read does not run a property getter on HashLink.** `(chunk : Dynamic).ground.numChildren` is null, since `numChildren` is `(get, never)`; `.dirty` (a plain var) reads fine. In tests, reach a module-private class through inference instead of `Array<Dynamic>`: `@:privateAccess map.chunks[i].ground.numChildren` is typed and works.
 - **A `Null<Int>` stored into an `Int` field reads as 0 on HashLink** (JS keeps null). `lastIndex = hit == null ? null : idx` into an `Int` field silently becomes index 0 — the scrollable list armed a double-click on item 0 this way. Store a sentinel (`?? -1`) or type the field `Null<Int>`.
 
 ## Environment Notes

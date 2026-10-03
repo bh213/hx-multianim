@@ -779,7 +779,8 @@ Access: `palette(name, index)` or `palette(name, x, y)` for 2D.
 | `tileSize` | Tile size in pixels |
 | source (exactly one) | `file: "img.png"` (tiles of `region:`, row-major), `sheet: "atlas", prefix: "p"` (atlas tile `p<j>`), `sheet: "atlas", name: "n"` (frame `j` of atlas tile `n`, by `index:` from 0), `tiles: <src> <src> ...` (listed tile sources), `demo: edgeColor, fillColor` (generated placeholders) |
 | `region` | `[x, y, w, h]`, `file:` source only; must fit the image and be whole tiles. Default: whole image |
-| `mapping` | Autotile index -> source index: `[a, b, ...]` (position = index) or `[i:j, ...]`; several for one index, `[15: 7 \| 8 \| 9]`, drawn by turns per position (the same every time; a source given twice is drawn twice as often). Keys validated per format; duplicates rejected; not allowed with `demo:` |
+| `mapping` | Autotile index -> source index: `[a, b, ...]` (position = index) or `[i:j, ...]`; several for one index, `[15: 7 \| 8 \| 9]`, drawn by turns per position (the same every time; a source given twice is drawn twice as often); a source turned, `[1: 4 flipX rot90]` (`flipX`, `flipY`, one of `rot90`/`rot180`/`rot270`, clockwise). Keys validated per format; duplicates rejected; not allowed with `demo:` |
+| `margin`, `spacing` | `file:` source only: pixels from the region's edge to its first tile, and between tiles; the region must hold whole tiles that way |
 | `allowPartialMapping` | `blob47` only: unmapped indices use the closest mapped tile instead of a build error |
 
 Every index must resolve to a tile (build-time `BuilderError` codes `autotile_missing_tile`, `autotile_index`, `autotile_region`), except corner index 0 and blob47 with `allowPartialMapping`. Removed: `depth:` / `buildAutotileElevation`, `sheet: ..., region: [...]` (use `file:` + `region:`).
@@ -799,7 +800,8 @@ Every index must resolve to a tile (build-time `BuilderError` codes `autotile_mi
 | `rise n { side: "name"[, "b"…] left: right: single: span: n toward: down\|up\|left\|right metadata {…} }` | A cell n levels above its neighbour `toward`: `side` covers `span` cells beyond it (several sides are taken in turn along the run); ends optional; one per number, direction and terrain |
 | `rise any { … }`, `rise n <terrain> { … }` | For every number of levels with no rise of its own; for a higher cell of that terrain (a terrain with rises of its own toward a side uses only those) |
 | `platform name { edge: autotile  rise n { … } }` | A higher level that is not the ground raised (a tree top, a roof): its `edge` over all of it, on whatever terrain is under it, and sides of its own; a map names it in its levels' legend |
-| `cell name { draw: under\|over\|top metadata {…} }` | What a named layer cell is, wherever placed |
+| `cell name { draw: under\|over\|top\|actors metadata {…} }` | What a named layer cell is, wherever placed; `actors`: among them, sorted by its feet |
+| `cell name { size: w, h anchor: x, y }` | An object of several cells, `w` by `h`, the layer's character at its anchor (bottom-left by default); drawn among the actors unless `draw:` says; its name and metadata on every cell it covers (`cellAt`, `metadataAt`, `objectAt`); inside the map, over no other cell of its layer (`tilemap_object_outside`, `tilemap_object_overlap`) |
 | `metadata { key:type => value, key => value }` | As `settings { }` are written, literals only; read with `metadataAt(x, y)`, a `BuilderResolvedSettings`; the engine gives no key a meaning |
 
 | Tile map | Description |
@@ -812,7 +814,7 @@ Every index must resolve to a tile (build-time `BuilderError` codes `autotile_mi
 | `decor { elements }` | Any elements, sorted with the actors by `y` |
 | `marks { name: x, y  other: x, y, w, h }` | Points and rectangles in cells |
 
-Runtime (`TileMap`): `actors` (`h2d.Layers`, y-sorted as it is drawn unless `sortActors = false`), `addActor`, `toCell`, `toPixel`, `terrainAt`, `levelAt`, `platformAt`, `sideAt`, `cellAt(layer, …)`, `metadataAt(x, y)` (a `BuilderResolvedSettings`: `getBoolOrDefault`, `getIntOrDefault`, …), `mark`, `setTerrain` / `setLevel` / `setCell` (drawn again once, as the map is next drawn or asked; `redraw()` now; `BuilderError`s `tilemap_outside`, `tilemap_legend`, `tilemap_level`, `tilemap_layer`), `describe()`; `TileMap.showing` (the maps in a scene) for the DevBridge (`map_list`, `map_get`) and hot reload, `sourceDef` the parse a map was read from.
+Runtime (`TileMap`): `actors` (`h2d.Layers`, y-sorted as it is drawn unless `sortActors = false`), `addActor`, `toCell`, `toPixel`, `terrainAt`, `levelAt`, `platformAt`, `sideAt`, `cellAt(layer, …)`, `objectAt(layer, …)` (a `TilemapObject`: what covers the cell and its anchor), `metadataAt(x, y)` (a `BuilderResolvedSettings`: `getBoolOrDefault`, `getIntOrDefault`, …), `mark`, `setTerrain` / `setLevel` / `setCell` (their chunk drawn again once, as it is next in view or asked by `sideAt` / `metadataAt`; `redraw()` all now; `BuilderError`s `tilemap_outside`, `tilemap_legend`, `tilemap_level`, `tilemap_layer`, `tilemap_object_covered`, `tilemap_object_outside`, `tilemap_object_overlap`), `describe()`; chunks of `chunkSize` cells (`TileMap.defaultChunkSize` 32, `setChunkSize`, `chunkCols`, `chunkRows`), each drawn as it is first seen, `cull(x, y, w, h)` / `cullNone()` / `cullToScene` / `isChunkVisible(col, row)` for what is in view; `TileMap.showing` (the maps in a scene) for the DevBridge (`map_list`, `map_get`) and hot reload, `sourceDef` the parse a map was read from.
 
 ---
 

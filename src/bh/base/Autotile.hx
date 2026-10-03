@@ -50,6 +50,20 @@ class Autotile {
 	public static inline var CORNER_SW:Int = 4;
 	public static inline var CORNER_SE:Int = 8;
 
+	// How a source tile is turned before it is drawn (`mapping: [2: 1 flipX rot90]`): flips, then
+	// quarter turns clockwise in the two bits above them
+	public static inline var FLIP_X:Int = 1;
+	public static inline var FLIP_Y:Int = 2;
+
+	public static inline function transform(flipX:Bool, flipY:Bool, quarterTurns:Int):Int {
+		return (flipX ? FLIP_X : 0) | (flipY ? FLIP_Y : 0) | ((quarterTurns & 3) << 2);
+	}
+
+	/** Quarter turns clockwise a transform asks for, 0 to 3. */
+	public static inline function rotationOf(transform:Int):Int {
+		return (transform >> 2) & 3;
+	}
+
 	public static inline var CROSS_TILE_COUNT:Int = 13;
 	public static inline var BLOB47_TILE_COUNT:Int = 47;
 	public static inline var CORNER_TILE_COUNT:Int = 16;

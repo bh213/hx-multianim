@@ -230,6 +230,12 @@ Type.enumEq = function(a,b) {
 };
 var bh_base_Autotile = function() { };
 bh_base_Autotile.__name__ = true;
+bh_base_Autotile.transform = function(flipX,flipY,quarterTurns) {
+	return (flipX ? 1 : 0) | (flipY ? 2 : 0) | (quarterTurns & 3) << 2;
+};
+bh_base_Autotile.rotationOf = function(transform) {
+	return transform >> 2 & 3;
+};
 bh_base_Autotile.variantAt = function(x,y,count) {
 	if(count <= 1) {
 		return 0;
@@ -10920,7 +10926,10 @@ bh_multianim_MacroManimParser.prototype = {
 		var tileSize = null;
 		var mapping = null;
 		var alternates = null;
+		var transforms = null;
 		var region = null;
+		var margin = null;
+		var spacing = null;
 		var allowPartialMapping = false;
 		var setSource = function(s) {
 			if(source != null) {
@@ -11041,31 +11050,52 @@ bh_multianim_MacroManimParser.prototype = {
 												var parsed = this.parseAutotileMapping();
 												mapping = parsed.mapping;
 												alternates = parsed.alternates;
+												transforms = parsed.transforms;
 											} else {
 												var s9 = _g1;
-												if(bh_multianim_MacroManimParser.isKeyword(s9,"allowpartialmapping")) {
+												if(bh_multianim_MacroManimParser.isKeyword(s9,"margin")) {
 													this.advance();
 													this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
-													allowPartialMapping = this.parseBool();
+													if(margin != null) {
+														this.error("autotile margin already set");
+													}
+													margin = this.parseIntegerOrReference();
 												} else {
 													var s10 = _g1;
-													if(bh_multianim_MacroManimParser.isKeyword(s10,"region")) {
+													if(bh_multianim_MacroManimParser.isKeyword(s10,"spacing")) {
 														this.advance();
 														this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
-														this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TBracketOpen);
-														region = [];
-														while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TBracketClosed)) {
-															this.eatComma();
-															if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TBracketClosed)) {
-																break;
-															}
-															region.push(this.parseIntegerOrReference());
+														if(spacing != null) {
+															this.error("autotile spacing already set");
 														}
-														if(region.length != 4) {
-															this.error("autotile region: expects [x, y, width, height], got " + region.length + " values");
-														}
+														spacing = this.parseIntegerOrReference();
 													} else {
-														this.error("unexpected autotile property: " + Std.string(this.tokens[this.tpos].type));
+														var s11 = _g1;
+														if(bh_multianim_MacroManimParser.isKeyword(s11,"allowpartialmapping")) {
+															this.advance();
+															this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+															allowPartialMapping = this.parseBool();
+														} else {
+															var s12 = _g1;
+															if(bh_multianim_MacroManimParser.isKeyword(s12,"region")) {
+																this.advance();
+																this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+																this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TBracketOpen);
+																region = [];
+																while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TBracketClosed)) {
+																	this.eatComma();
+																	if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TBracketClosed)) {
+																		break;
+																	}
+																	region.push(this.parseIntegerOrReference());
+																}
+																if(region.length != 4) {
+																	this.error("autotile region: expects [x, y, width, height], got " + region.length + " values");
+																}
+															} else {
+																this.error("unexpected autotile property: " + Std.string(this.tokens[this.tpos].type));
+															}
+														}
 													}
 												}
 											}
@@ -11099,6 +11129,13 @@ bh_multianim_MacroManimParser.prototype = {
 				var _g = src.filename;
 			} else {
 				this.error("autotile region: only applies to a file: source");
+			}
+		}
+		if(margin != null || spacing != null) {
+			if(src._hx_index == 2) {
+				var _g = src.filename;
+			} else {
+				this.error("autotile margin: and spacing: only apply to a file: source (an atlas names its tiles where they are)");
 			}
 		}
 		if(allowPartialMapping && fmt != bh_multianim_AutotileFormat.Blob47) {
@@ -11159,11 +11196,12 @@ bh_multianim_MacroManimParser.prototype = {
 				}
 			}
 		}
-		return { format : fmt, source : src, tileSize : tileSize, mapping : mapping, alternates : alternates, region : region, allowPartialMapping : allowPartialMapping};
+		return { format : fmt, source : src, tileSize : tileSize, mapping : mapping, alternates : alternates, transforms : transforms, region : region, margin : margin, spacing : spacing, allowPartialMapping : allowPartialMapping};
 	}
 	,parseAutotileMapping: function() {
 		var map = new haxe_ds_IntMap();
 		var alternates = null;
+		var transforms = null;
 		var seqIdx = 0;
 		while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TBracketClosed)) {
 			this.eatComma();
@@ -11181,17 +11219,70 @@ bh_multianim_MacroManimParser.prototype = {
 				this.error("autotile mapping has more than one entry for index " + key);
 			}
 			map.h[key] = target;
+			var turned = [this.parseAutotileTransform(key)];
 			if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TPipe)) {
 				var more = [];
-				do more.push(this.parseInteger()); while(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TPipe));
+				do {
+					more.push(this.parseInteger());
+					turned.push(this.parseAutotileTransform(key));
+				} while(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TPipe));
 				if(alternates == null) {
 					alternates = new haxe_ds_IntMap();
 				}
 				alternates.h[key] = more;
 			}
+			if(Lambda.exists(turned,function(t) {
+				return t != 0;
+			})) {
+				if(transforms == null) {
+					transforms = new haxe_ds_IntMap();
+				}
+				transforms.h[key] = turned;
+			}
 			++seqIdx;
 		}
-		return { mapping : map, alternates : alternates};
+		return { mapping : map, alternates : alternates, transforms : transforms};
+	}
+	,parseAutotileTransform: function(key) {
+		var flipX = false;
+		var flipY = false;
+		var turns = -1;
+		while(true) {
+			var _g = this.tokens[this.tpos].type;
+			if(_g._hx_index == 32) {
+				var _g1 = _g.s;
+				var s = _g1;
+				if(bh_multianim_MacroManimParser.isKeyword(s,"flipx")) {
+					this.advance();
+					if(flipX) {
+						this.error("autotile mapping " + key + ": flipX given twice");
+					}
+					flipX = true;
+				} else {
+					var s1 = _g1;
+					if(bh_multianim_MacroManimParser.isKeyword(s1,"flipy")) {
+						this.advance();
+						if(flipY) {
+							this.error("autotile mapping " + key + ": flipY given twice");
+						}
+						flipY = true;
+					} else {
+						var s2 = _g1;
+						if(bh_multianim_MacroManimParser.isKeyword(s2,"rot90") || bh_multianim_MacroManimParser.isKeyword(s2,"rot180") || bh_multianim_MacroManimParser.isKeyword(s2,"rot270")) {
+							this.advance();
+							if(turns >= 0) {
+								this.error("autotile mapping " + key + ": one rotation only (rot90, rot180 or rot270)");
+							}
+							turns = bh_multianim_MacroManimParser.isKeyword(s2,"rot90") ? 1 : bh_multianim_MacroManimParser.isKeyword(s2,"rot180") ? 2 : 3;
+						} else {
+							return (flipX ? 1 : 0) | (flipY ? 2 : 0) | ((turns < 0 ? 0 : turns) & 3) << 2;
+						}
+					}
+				}
+			} else {
+				return (flipX ? 1 : 0) | (flipY ? 2 : 0) | ((turns < 0 ? 0 : turns) & 3) << 2;
+			}
+		}
 	}
 	,parseTileset: function() {
 		var _gthis = this;
@@ -11663,6 +11754,10 @@ bh_multianim_MacroManimParser.prototype = {
 	}
 	,parseTilesetCell: function(name) {
 		var draw = null;
+		var width = null;
+		var height = null;
+		var anchorX = null;
+		var anchorY = null;
 		var metadata = new haxe_ds_StringMap();
 		while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed)) {
 			var _g = this.tokens[this.tpos].type;
@@ -11672,25 +11767,76 @@ bh_multianim_MacroManimParser.prototype = {
 				if(bh_multianim_MacroManimParser.isKeyword(s,"draw")) {
 					this.advance();
 					this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
-					var where = this.expectIdentifierOrString();
-					if(where != "under" && where != "over" && where != "top") {
-						this.error("cell " + name + ": draw: is under (the actors), over (them) or top (above everything), got " + where);
-					}
-					draw = where;
+					draw = this.parseTilemapDraw("cell " + name);
 				} else {
 					var s1 = _g1;
-					if(bh_multianim_MacroManimParser.isKeyword(s1,"metadata")) {
+					if(bh_multianim_MacroManimParser.isKeyword(s1,"size")) {
 						this.advance();
-						metadata = this.parseTileMetadata();
+						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+						if(width != null) {
+							this.error("cell " + name + ": size already set");
+						}
+						width = this.parseInteger();
+						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
+						height = this.parseInteger();
+						if(width <= 0 || height <= 0) {
+							this.error("cell " + name + ": size is a width and a height in cells, each 1 or more");
+						}
 					} else {
-						this.error("unexpected cell property: " + Std.string(this.tokens[this.tpos].type));
+						var s2 = _g1;
+						if(bh_multianim_MacroManimParser.isKeyword(s2,"anchor")) {
+							this.advance();
+							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+							if(anchorX != null) {
+								this.error("cell " + name + ": anchor already set");
+							}
+							anchorX = this.parseInteger();
+							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
+							anchorY = this.parseInteger();
+						} else {
+							var s3 = _g1;
+							if(bh_multianim_MacroManimParser.isKeyword(s3,"metadata")) {
+								this.advance();
+								metadata = this.parseTileMetadata();
+							} else {
+								this.error("unexpected cell property: " + Std.string(this.tokens[this.tpos].type));
+							}
+						}
 					}
 				}
 			} else {
 				this.error("unexpected cell property: " + Std.string(this.tokens[this.tpos].type));
 			}
 		}
-		return { name : name, draw : draw, metadata : metadata};
+		if(anchorX != null && width == null) {
+			this.error("cell " + name + ": anchor: is for a cell with a size: (an object of several cells)");
+		}
+		if(width != null) {
+			var w = width;
+			var tmp = height;
+			var h = tmp != null ? tmp : 1;
+			if(anchorX == null) {
+				anchorX = 0;
+				anchorY = h - 1;
+			}
+			var ax = anchorX;
+			var tmp = anchorY;
+			var ay = tmp != null ? tmp : 0;
+			if(ax < 0 || ay < 0 || ax >= w || ay >= h) {
+				this.error("cell " + name + ": anchor " + ax + ", " + ay + " is outside its " + w + "x" + h + " cells (from 0, 0 at the top left)");
+			}
+			if(draw == null) {
+				draw = "actors";
+			}
+		}
+		return { name : name, draw : draw, width : width, height : height, anchorX : anchorX, anchorY : anchorY, metadata : metadata};
+	}
+	,parseTilemapDraw: function(what) {
+		var where = this.expectIdentifierOrString();
+		if(where != "under" && where != "over" && where != "top" && where != "actors") {
+			this.error("" + what + ": draw: is under (the actors), over (them), top (above everything) or actors (among them, sorted by its feet), got " + where);
+		}
+		return where;
 	}
 	,parseTileMetadata: function() {
 		var metadata = new haxe_ds_StringMap();
@@ -11831,11 +11977,7 @@ bh_multianim_MacroManimParser.prototype = {
 													if(bh_multianim_MacroManimParser.isKeyword(s24,"draw")) {
 														this.advance();
 														this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
-														var draw = this.expectIdentifierOrString();
-														if(draw != "under" && draw != "over" && draw != "top") {
-															this.error("layer " + layerName + ": draw: is under (the actors), over (them) or top (above everything), got " + draw);
-														}
-														layer.draw = draw;
+														layer.draw = this.parseTilemapDraw("layer " + layerName);
 													} else {
 														var s25 = _g8;
 														if(bh_multianim_MacroManimParser.isKeyword(s25,"legend")) {
@@ -18319,6 +18461,8 @@ bh_base_Autotile.CORNER_NW = 1;
 bh_base_Autotile.CORNER_NE = 2;
 bh_base_Autotile.CORNER_SW = 4;
 bh_base_Autotile.CORNER_SE = 8;
+bh_base_Autotile.FLIP_X = 1;
+bh_base_Autotile.FLIP_Y = 2;
 bh_base_Autotile.CROSS_TILE_COUNT = 13;
 bh_base_Autotile.BLOB47_TILE_COUNT = 47;
 bh_base_Autotile.CORNER_TILE_COUNT = 16;

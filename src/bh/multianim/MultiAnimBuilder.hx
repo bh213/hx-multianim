@@ -52,6 +52,12 @@ using bh.multianim.ParseUtils;
 using StringTools;
 using bh.base.ColorUtils;
 
+/** A tile an autotile index draws at a position, turned as its mapping says: the flips are in the tile, the quarter turns clockwise beside it. **/
+typedef AutotileTile = {
+	final tile:h2d.Tile;
+	final rotation:Int;
+}
+
 // Place this after imports, before any class definitions
 @:nullSafety
 private enum ComputedShape {
@@ -2711,8 +2717,8 @@ class MultiAnimBuilder {
 	 *  Built once per builder so repeated buildAutotile() / generated(autotile()) calls neither
 	 *  regenerate demo textures nor redo the blob47 fallback search. Safe to keep for the builder's
 	 *  lifetime: multiParserResult never changes (hot reload creates a new builder). */
-	// Per autotile index, its tiles: one, or several drawn by turns (`mapping: [15: 7 | 8 | 9]`)
-	var autotileTileCache:Map<String, Array<Null<Array<h2d.Tile>>>> = [];
+	// Per autotile index, its tiles: one, or several drawn by turns (`mapping: [15: 7 | 8 | 9]`), each turned as its mapping says
+	var autotileTileCache:Map<String, Array<Null<Array<AutotileTile>>>> = [];
 	var incrementalMode:Bool = false;
 	/** Set true while iterating a constant-count repeatable body in incremental mode (the loop has
 	 *  no settable-param dependency, so `hasIncrementalRepeat` is false but `incrementalMode` stays
@@ -3603,9 +3609,9 @@ class MultiAnimBuilder {
 				// Create a solid color tile with centered text using font rendering
 				generateTileWithText(w, h, bgColor, text, textColor, fontName);
 
-			case AutotileRegionSheet(baseTile, regionX, regionY, regionW, regionH, tileSize, tileCount, scale, font, fontColor):
+			case AutotileRegionSheet(baseTile, regionX, regionY, regionW, regionH, tileSize, tileCount, scale, font, fontColor, margin, spacing):
 				// Generate a visual tile sheet showing the region with numbered grid overlay
-				generateAutotileRegionSheetTile(baseTile, regionX, regionY, regionW, regionH, tileSize, tileCount, scale, font, fontColor);
+				generateAutotileRegionSheetTile(baseTile, regionX, regionY, regionW, regionH, tileSize, tileCount, scale, font, fontColor, margin, spacing);
 
 		}
 	}
@@ -3631,7 +3637,7 @@ class MultiAnimBuilder {
 			case ATSFile(filename):
 				final baseTile = resourceLoader.loadTile(resolveAsString(filename));
 				final r = resolveAutotileRegion(name, at.node, at.def, baseTile, tileSize);
-				AutotileRegionSheet(baseTile, r.x, r.y, r.w, r.h, tileSize, tileCount, scaleVal, fontName, fontColorVal);
+				AutotileRegionSheet(baseTile, r.x, r.y, r.w, r.h, tileSize, tileCount, scaleVal, fontName, fontColorVal, r.margin, r.spacing);
 			case ATSDemo(_, _) | ATSTiles(_) | ATSAtlas(_, _) | ATSAtlasIndexed(_, _):
 				throw builderErrorAt(at.node, 'autotileRegionSheet: autotile "$name" has no image region to display (only file: sources do)');
 		};
@@ -3685,11 +3691,16 @@ class MultiAnimBuilder {
 	 * @param fontName Font name for the tile numbers
 	 * @param fontColor Color for the tile numbers
 	 */
-	function generateAutotileRegionSheetTile(baseTile:h2d.Tile, regionX:Int, regionY:Int, regionW:Int, regionH:Int, tileSize:Int, tileCount:Int, scale:Int, fontName:String, fontColor:Int):h2d.Tile {
+	function generateAutotileRegionSheetTile(baseTile:h2d.Tile, regionX:Int, regionY:Int, regionW:Int, regionH:Int, tileSize:Int, tileCount:Int, scale:Int, fontName:String, fontColor:Int, margin:Int = 0, spacing:Int = 0):h2d.Tile {
 		// Calculate scaled dimensions
 		final scaledW = regionW * scale;
 		final scaledH = regionH * scale;
 		final scaledTileSize = tileSize * scale;
+		// A tile's top-left in the region, with the margin and spacing a sheet may have
+		inline function tileX(col:Int):Int
+			return (margin + col * (tileSize + spacing)) * scale;
+		inline function tileY(row:Int):Int
+			return (margin + row * (tileSize + spacing)) * scale;
 
 		// Create container for the region + grid overlay
 		final container = new h2d.Object();
@@ -3701,16 +3712,17 @@ class MultiAnimBuilder {
 		regionBitmap.scaleY = scale;
 
 		// Calculate grid dimensions
-		final cols = Std.int(regionW / tileSize);
-		final rows = Std.int(regionH / tileSize);
+		final cols = Std.int((regionW - 2 * margin + spacing) / (tileSize + spacing));
+		final rows = Std.int((regionH - 2 * margin + spacing) / (tileSize + spacing));
 
-		// Draw grid lines using PixelLines (at scaled size)
+		// Draw grid lines using PixelLines (at scaled size): a line at each tile's left and top
+		// edge, and one past the last tile
 		final pl = new PixelLines(scaledW, scaledH);
 		final gridColor = 0xFFFFFFFF;  // White grid lines
 
 		// Draw vertical grid lines
 		for (col in 0...cols + 1) {
-			final x = col * scaledTileSize;
+			final x = col < cols ? tileX(col) : tileX(cols - 1) + scaledTileSize;
 			if (x < scaledW) {
 				pl.line(x, 0, x, scaledH - 1, gridColor);
 			}
@@ -3718,7 +3730,7 @@ class MultiAnimBuilder {
 
 		// Draw horizontal grid lines
 		for (row in 0...rows + 1) {
-			final y = row * scaledTileSize;
+			final y = row < rows ? tileY(row) : tileY(rows - 1) + scaledTileSize;
 			if (y < scaledH) {
 				pl.line(0, y, scaledW - 1, y, gridColor);
 			}
@@ -3734,8 +3746,8 @@ class MultiAnimBuilder {
 		for (i in 0...totalTilesInRegion) {
 			final col = i % cols;
 			final row = Std.int(i / cols);
-			final x = col * scaledTileSize + 1;
-			final y = row * scaledTileSize + 1;
+			final x = tileX(col) + 1;
+			final y = tileY(row) + 1;
 			final numStr = Std.string(i);
 
 			// Shadow text (black, offset by 1 pixel)
@@ -7972,59 +7984,85 @@ class MultiAnimBuilder {
 		final tiles = getAutotileTiles(name, at.node, at.def);
 		final tileSize = resolveAsInteger(at.def.tileSize);
 		final tileGroup = new h2d.TileGroup();
-		inline function tileAt(index:Int, x:Int, y:Int):Null<h2d.Tile> {
+		// A tile at (x, y), turned as its mapping says: a quarter turn is drawn about the tile's
+		// centre, so its origin moves to the corner that ends up at the top left
+		function place(index:Int, px:Int, py:Int, x:Float, y:Float):Void {
 			final variants = tiles[index];
-			return variants == null ? null : variants[bh.base.Autotile.variantAt(x, y, variants.length)];
+			if (variants == null)
+				return;
+			final v = variants[bh.base.Autotile.variantAt(px, py, variants.length)];
+			switch v.rotation {
+				case 0: tileGroup.add(x, y, v.tile);
+				case 1: tileGroup.addTransform(x + tileSize, y, 1, 1, Math.PI / 2, v.tile);
+				case 2: tileGroup.addTransform(x + tileSize, y + tileSize, 1, 1, Math.PI, v.tile);
+				default: tileGroup.addTransform(x, y + tileSize, 1, 1, -Math.PI / 2, v.tile);
+			}
 		}
-
+		// With a `where`, only its extent is walked: it may be sparse (empty rows, rows that stop
+		// short), which is how a map draws one chunk of itself
 		switch at.def.format {
 			case Corner:
 				final half = Std.int(tileSize / 2);
-				final width = bh.base.Autotile.gridWidth(grid);
-				for (cy in 0...grid.length + 1)
-					for (cx in 0...width + 1) {
-						if (where != null && !bh.base.Autotile.isFilled(where, cx, cy))
+				final rows = where != null ? where.length : grid.length + 1;
+				final fullWidth = bh.base.Autotile.gridWidth(grid) + 1;
+				for (cy in 0...rows) {
+					final cols = where != null ? where[cy].length : fullWidth;
+					for (cx in 0...cols) {
+						if (where != null && where[cy][cx] == 0)
 							continue;
 						final index = bh.base.Autotile.getCornerIndex(grid, cx, cy);
 						if (index == 0)
 							continue; // no filled cell around this corner
-						final tile = tileAt(index, cx, cy);
-						if (tile != null)
-							tileGroup.add(cx * tileSize - half, cy * tileSize - half, tile);
+						place(index, cx, cy, cx * tileSize - half, cy * tileSize - half);
 					}
+				}
 			case Cross | Blob47:
 				final isCross = at.def.format == AutotileFormat.Cross;
-				for (y in 0...grid.length)
-					for (x in 0...grid[y].length) {
-						if (grid[y][x] == 0)
+				final rows = where != null ? where.length : grid.length;
+				for (y in 0...rows) {
+					final cols = where != null ? where[y].length : (y < grid.length ? grid[y].length : 0);
+					for (x in 0...cols) {
+						if (where != null && where[y][x] == 0)
 							continue;
-						if (where != null && !bh.base.Autotile.isFilled(where, x, y))
+						if (!bh.base.Autotile.isFilled(grid, x, y))
 							continue;
 						final mask8 = bh.base.Autotile.getNeighborMask8(grid, x, y);
 						final index = isCross ? bh.base.Autotile.getCrossIndex(mask8) : bh.base.Autotile.getBlob47Index(mask8);
-						final tile = tileAt(index, x, y);
-						if (tile != null)
-							tileGroup.add(x * tileSize, y * tileSize, tile);
+						place(index, x, y, x * tileSize, y * tileSize);
 					}
+				}
 		}
 		return tileGroup;
 	}
 
 	/**
 	 * Resolved tile for one autotile index (after mapping and blob47 fallback) — the same tile
-	 * `buildAutotile` places at position (x, y), or the first of several when no position is given.
-	 * Corner index 0 (no filled cell) returns a transparent tile unless the source provides one.
+	 * `buildAutotile` places at position (x, y), or the first of several when no position is given,
+	 * flipped as its mapping says. A rotation (`rot90`) is not in the tile: `getAutotileRotation`
+	 * says it, and `generated(autotile(name, index))` shows such a tile unturned. Corner index 0
+	 * (no filled cell) returns a transparent tile unless the source provides one.
 	 */
 	public function getAutotileTile(name:String, index:Int, x = 0, y = 0):h2d.Tile {
 		final at = getAutotileDef(name);
+		final placed = autotilePlacement(name, at, index, x, y);
+		if (placed != null)
+			return placed.tile;
+		final tileSize = resolveAsInteger(at.def.tileSize);
+		return h2d.Tile.fromColor(0, tileSize, tileSize, 0.0);
+	}
+
+	/** Quarter turns clockwise `buildAutotile` gives the tile at position (x, y) of an index: 0 to 3. */
+	public function getAutotileRotation(name:String, index:Int, x = 0, y = 0):Int {
+		final placed = autotilePlacement(name, getAutotileDef(name), index, x, y);
+		return placed == null ? 0 : placed.rotation;
+	}
+
+	function autotilePlacement(name:String, at:{node:Node, def:AutotileDef}, index:Int, x:Int, y:Int):Null<AutotileTile> {
 		final tiles = getAutotileTiles(name, at.node, at.def);
 		if (index < 0 || index >= tiles.length)
 			throw builderErrorAt(at.node, 'autotile "$name": index $index is out of range for ${autotileFormatName(at.def.format)} (0-${tiles.length - 1})', "autotile_index");
 		final variants = tiles[index];
-		if (variants != null)
-			return variants[bh.base.Autotile.variantAt(x, y, variants.length)];
-		final tileSize = resolveAsInteger(at.def.tileSize);
-		return h2d.Tile.fromColor(0, tileSize, tileSize, 0.0);
+		return variants == null ? null : variants[bh.base.Autotile.variantAt(x, y, variants.length)];
 	}
 
 	/** The format of an autotile of this file; `missing_ref` for a name it has not. */
@@ -8071,7 +8109,10 @@ class MultiAnimBuilder {
 	public function buildTilemap(name:String):bh.base.TileMap {
 		final tm = getTilemapDef(name);
 		final parts = tilemapParts(name, tm.node, tm.def);
-		final map = new bh.base.TileMap(name, sourceName, tm.def, parts.tileset, parts.tiles);
+		// what the map finds reading its rows (an object of several cells outside it, two of them
+		// over one cell) is said where the map is written
+		final map = try new bh.base.TileMap(name, sourceName, tm.def, parts.tileset, parts.tiles) catch (e:BuilderError)
+			throw builderErrorAt(tm.node, e.message, e.code);
 		map.setDecor(buildTilemapDecor(tm.node));
 		return map;
 	}
@@ -8086,7 +8127,8 @@ class MultiAnimBuilder {
 		if (map.sourceDef == tm.def)
 			return;
 		final parts = tilemapParts(map.mapName, tm.node, tm.def);
-		map.setSource(tm.def, parts.tileset, parts.tiles);
+		try map.setSource(tm.def, parts.tileset, parts.tiles) catch (e:BuilderError)
+			throw builderErrorAt(tm.node, e.message, e.code);
 		map.setDecor(buildTilemapDecor(tm.node));
 	}
 
@@ -8179,9 +8221,21 @@ class MultiAnimBuilder {
 		}
 		for (l in def.layers) {
 			final sheet = l.sheet != null ? l.sheet : ts.atlas;
-			for (c => cell in l.legend)
+			for (c => cell in l.legend) {
 				if (!has(sheet, cell))
 					throw builderErrorAt(node, 'tilemap $name: layer ${l.name}: "$c" is $cell, which sheet $sheet has not', "tilemap_missing_cell");
+				// an object of several cells is as big as its size says, in every frame
+				final sized = Lambda.find(ts.cells, x -> x.name == cell && x.width != null);
+				if (sized != null) {
+					final w = (sized.width ?? 1) * ts.tileSize;
+					final h = (sized.height ?? 1) * ts.tileSize;
+					final frames = tiles.frames(sheet, cell);
+					if (frames != null)
+						for (f in frames)
+							if (Std.int(f.width) != w || Std.int(f.height) != h)
+								throw builderErrorAt(node, 'tileset ${def.tileset}: cell $cell is ${sized.width}x${sized.height} cells, ${w}x$h pixels, but sheet $sheet draws it ${Std.int(f.width)}x${Std.int(f.height)}', "tilemap_cell_size");
+				}
+			}
 		}
 		if (def.levels.length > 0) {
 			for (r in ts.rises)
@@ -8250,7 +8304,7 @@ class MultiAnimBuilder {
 	 *   (`Autotile.applyBlob47FallbackWithMap`);
 	 * - corner index 0 (no filled cell) is optional — it is never drawn.
 	 */
-	function getAutotileTiles(name:String, node:Node, def:AutotileDef):Array<Null<Array<h2d.Tile>>> {
+	function getAutotileTiles(name:String, node:Node, def:AutotileDef):Array<Null<Array<AutotileTile>>> {
 		final cached = autotileTileCache.get(name);
 		if (cached != null)
 			return cached;
@@ -8283,21 +8337,25 @@ class MultiAnimBuilder {
 		final optionalIndex = format == AutotileFormat.Corner ? 0 : -1;
 		final partial = format == AutotileFormat.Blob47 && def.allowPartialMapping == true;
 		final alternates = def.alternates;
-		// Every source index an autotile index draws from: mapping's, then its alternates
-		function sourcesOf(i:Int):Null<Array<Int>> {
+		final transforms = def.transforms;
+		// Every source index an autotile index draws from: mapping's, then its alternates; and how
+		// each is turned (0: as it is)
+		function sourcesOf(i:Int):Null<{sources:Array<Int>, turned:Array<Int>}> {
 			final first = mapping.get(i);
 			if (first == null)
 				return null;
 			final f:Int = first; // unboxed: an Array<Null<Int>> is another array type on HashLink
 			final more = alternates != null ? alternates.get(i) : null;
-			return more == null ? [f] : [f].concat(more);
+			final sources = more == null ? [f] : [f].concat(more);
+			final t = transforms != null ? transforms.get(i) : null;
+			return {sources: sources, turned: t != null ? t : [for (_ in sources) 0]};
 		}
-		final tiles:Array<Null<Array<h2d.Tile>>> = [];
+		final tiles:Array<Null<Array<AutotileTile>>> = [];
 		for (i in 0...count) {
-			var sources = sourcesOf(i);
-			if (sources == null && partial)
-				sources = sourcesOf(bh.base.Autotile.applyBlob47FallbackWithMap(i, mapping));
-			if (sources == null) {
+			var found = sourcesOf(i);
+			if (found == null && partial)
+				found = sourcesOf(bh.base.Autotile.applyBlob47FallbackWithMap(i, mapping));
+			if (found == null) {
 				if (i == optionalIndex) {
 					tiles.push(null);
 					continue;
@@ -8306,12 +8364,13 @@ class MultiAnimBuilder {
 				final hint = format == AutotileFormat.Blob47 ? " (or set allowPartialMapping: true to use the closest mapped tile)" : "";
 				throw builderErrorAt(node, 'autotile "$name": no tile for $formatName index $i - $where$hint', "autotile_missing_tile");
 			}
-			final variants:Array<h2d.Tile> = [];
+			final variants:Array<AutotileTile> = [];
 			var missing = false;
-			for (j in sources) {
+			for (k in 0...found.sources.length) {
+				final j = found.sources[k];
 				if (source.count >= 0 && j >= source.count)
 					throw builderErrorAt(node, 'autotile "$name": $formatName index $i maps to source tile $j, but ${source.desc} has only ${source.count} tiles (0-${source.count - 1})', "autotile_index");
-				final tile = source.get(j);
+				var tile = source.get(j);
 				if (tile == null) {
 					if (i == optionalIndex) {
 						missing = true;
@@ -8319,7 +8378,19 @@ class MultiAnimBuilder {
 					}
 					throw builderErrorAt(node, 'autotile "$name": ${source.desc} has no source tile $j (needed for $formatName index $i)', "autotile_missing_tile");
 				}
-				variants.push(tile);
+				final turned = found.turned[k];
+				var placed:h2d.Tile = tile;
+				if ((turned & (bh.base.Autotile.FLIP_X | bh.base.Autotile.FLIP_Y)) != 0) {
+					// a flip is in the tile's own coordinates: a clone, the source's tile untouched.
+					// Heaps' flipX/flipY mirror the tile about its origin, moving dx/dy a tile
+					// back; the tile is to stay where its source sits, so they are put back
+					placed = placed.clone();
+					if ((turned & bh.base.Autotile.FLIP_X) != 0) placed.flipX();
+					if ((turned & bh.base.Autotile.FLIP_Y) != 0) placed.flipY();
+					placed.dx = tile.dx;
+					placed.dy = tile.dy;
+				}
+				variants.push({tile: placed, rotation: bh.base.Autotile.rotationOf(turned)});
 			}
 			tiles.push(missing ? null : variants);
 		}
@@ -8344,13 +8415,14 @@ class MultiAnimBuilder {
 				final file = resolveAsString(filename);
 				final base = resourceLoader.loadTile(file);
 				final r = resolveAutotileRegion(name, node, def, base, tileSize);
-				final cols = Std.int(r.w / tileSize);
-				final regionCount = cols * Std.int(r.h / tileSize);
+				final pitch = tileSize + r.spacing;
+				final cols = Std.int((r.w - 2 * r.margin + r.spacing) / pitch);
+				final regionCount = cols * Std.int((r.h - 2 * r.margin + r.spacing) / pitch);
 				{
 					count: regionCount,
 					exact: false,
-					desc: 'file: "$file" region [${r.x}, ${r.y}, ${r.w}, ${r.h}]',
-					get: j -> base.sub(r.x + (j % cols) * tileSize, r.y + Std.int(j / cols) * tileSize, tileSize, tileSize)
+					desc: 'file: "$file" region [${r.x}, ${r.y}, ${r.w}, ${r.h}]' + (r.margin != 0 || r.spacing != 0 ? ' margin ${r.margin} spacing ${r.spacing}' : ""),
+					get: j -> base.sub(r.x + r.margin + (j % cols) * pitch, r.y + r.margin + Std.int(j / cols) * pitch, tileSize, tileSize)
 				};
 			case ATSAtlas(sheet, prefix):
 				final sheetName = resolveAsString(sheet);
@@ -8388,23 +8460,48 @@ class MultiAnimBuilder {
 	 * Pixel region of a file: source. Explicit `region:` must lie inside the image and be a whole
 	 * number of tiles; without one the whole image is used (rounded down to whole tiles).
 	 */
-	function resolveAutotileRegion(name:String, node:Node, def:AutotileDef, base:h2d.Tile, tileSize:Int):{x:Int, y:Int, w:Int, h:Int} {
+	/**
+	 * The region of a `file:` source and how its tiles sit in it: `margin` pixels from the region's
+	 * edge to the first tile, `spacing` between tiles. Without a region, the whole image, cut to
+	 * whole tiles.
+	 */
+	function resolveAutotileRegion(name:String, node:Node, def:AutotileDef, base:h2d.Tile, tileSize:Int):{x:Int, y:Int, w:Int, h:Int, margin:Int, spacing:Int} {
 		final imageW = Std.int(base.width);
 		final imageH = Std.int(base.height);
+		final margin = def.margin != null ? resolveAsInteger(def.margin) : 0;
+		final spacing = def.spacing != null ? resolveAsInteger(def.spacing) : 0;
+		if (margin < 0 || spacing < 0)
+			throw builderErrorAt(node, 'autotile "$name": margin and spacing are 0 or more pixels, got margin $margin spacing $spacing', "autotile_region");
+		final pitch = tileSize + spacing;
+		// whole tiles across a span: n tiles take 2 * margin + n * tileSize + (n - 1) * spacing
+		inline function tilesAcross(span:Int):Int
+			return Std.int((span - 2 * margin + spacing) / pitch);
+		inline function spanOf(tiles:Int):Int
+			return 2 * margin + tiles * pitch - spacing;
 		final region = def.region;
-		if (region == null)
-			return {x: 0, y: 0, w: imageW - imageW % tileSize, h: imageH - imageH % tileSize};
+		if (region == null) {
+			final cols = tilesAcross(imageW);
+			final rows = tilesAcross(imageH);
+			if (cols <= 0 || rows <= 0)
+				throw builderErrorAt(node, 'autotile "$name": the ${imageW}x${imageH} image holds no ${tileSize}px tile with margin $margin and spacing $spacing', "autotile_region");
+			return {x: 0, y: 0, w: spanOf(cols), h: spanOf(rows), margin: margin, spacing: spacing};
+		}
 
 		final r = {
 			x: resolveAsInteger(region[0]),
 			y: resolveAsInteger(region[1]),
 			w: resolveAsInteger(region[2]),
-			h: resolveAsInteger(region[3])
+			h: resolveAsInteger(region[3]),
+			margin: margin,
+			spacing: spacing,
 		};
 		if (r.x < 0 || r.y < 0 || r.w <= 0 || r.h <= 0 || r.x + r.w > imageW || r.y + r.h > imageH)
 			throw builderErrorAt(node, 'autotile "$name": region [${r.x}, ${r.y}, ${r.w}, ${r.h}] does not fit the ${imageW}x${imageH} image', "autotile_region");
-		if (r.w % tileSize != 0 || r.h % tileSize != 0)
-			throw builderErrorAt(node, 'autotile "$name": region size ${r.w}x${r.h} is not a whole number of ${tileSize}px tiles', "autotile_region");
+		final cols = tilesAcross(r.w);
+		final rows = tilesAcross(r.h);
+		if (cols <= 0 || rows <= 0 || spanOf(cols) != r.w || spanOf(rows) != r.h)
+			throw builderErrorAt(node, 'autotile "$name": region size ${r.w}x${r.h} is not a whole number of ${tileSize}px tiles'
+				+ (margin != 0 || spacing != 0 ? ' with margin $margin and spacing $spacing (n tiles take ${2 * margin} + n * $pitch - $spacing)' : ""), "autotile_region");
 		return r;
 	}
 

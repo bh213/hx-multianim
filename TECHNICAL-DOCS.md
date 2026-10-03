@@ -479,7 +479,32 @@ as settings are, `resolveSettingValue`) so the map needs no builder of its own.
 Decor is built with `buildSingleNodeWithParams`. Codegen delegates `tilemap(name)` to
 `ProgrammableBuilder.buildTilemap`, as autotile tiles are.
 
-`TileMap.redraw()` draws from its own copy of the rows: the terrains (a mask per terrain of the cells
+`TileMap` draws in chunks (`Chunk`: a rectangle of cells with its own ground, over and top objects
+under the map's, the objects of several cells it anchors, and its frames of each animated terrain).
+Every chunk starts dirty and nothing is drawn as the map is built: `sync` first culls
+(`applyCulling` hides chunks outside `cull`'s view or the scene's, through `globalToLocal` of its
+corners; a camera is not in that chain, so a game with one calls `cull`), then `drawDirty(true)`
+draws the dirty chunks in view; `sideAt`/`metadataAt` draw the asked cell's chunk if dirty
+(`drawCellsChunk`), since `sides` and `metadata` are written as a chunk is drawn; `terrainAt`,
+`levelAt` and `cellAt` read `terrainIndex`, the rows and `covers`, kept as the rows change, and
+draw nothing. `setTerrain`/`setLevel`/`setCell` mark the chunks within reach dirty (`touch`: one
+cell for an autotile's corners; `touchRises` for a level or, with levels, a terrain: the longest
+rise `span` plus one, and for a rise of several `side` pieces every chunk along the run's axis,
+since a piece's turn is counted from the run's start). `drawChunks` draws some chunks in one pass
+whose masks (per terrain, per level, per platform; `highestLevel` too) are made once, as a chunk
+first asks (`beginPass`/`endPass`), over `passRect` alone: the chunks and a cell around them,
+as far as an autotile's index looks, as `rectGrid`s with empty rows above and zeros before. A chunk
+draws only its own positions: `positionsOf` (its cells, or for the corner format its corners up to
+the next chunk's, the map's last column and row going to the last chunks) and `sparse`, a `where`
+grid of the same shape, so `buildAutotile` walks the rectangle alone.
+
+Each layer has a cover (`covers`): per cell, the index of the cell whose character is there, its
+own or the anchor's of an object of several cells, made by `coverOf` as the rows are read
+(`placeCover` throws `tilemap_object_outside` / `tilemap_object_overlap`, which the builder says
+at the map's node) and kept by `setCell`, which frees the old object's cells, places the new one
+and puts the old back if that throws. `cellAt`, `objectAt` and `mergeMetadata` read it.
+
+`TileMap.redraw()` draws every chunk again from its own copy of the rows: the terrains (a mask per terrain of the cells
 of it and of every terrain after it; a `transition a, b` adds b's pair autotile over b's own at the
 positions `meetingPositions` finds, where the cells around a position are some of b-or-above and
 otherwise all a, computed in the autotile's own positions by its format and passed as `where`), each

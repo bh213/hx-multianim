@@ -6602,7 +6602,10 @@ class MacroManimParser {
 		var tileSize:Null<ReferenceableValue> = null;
 		var mapping:Null<Map<Int, Int>> = null;
 		var alternates:Null<Map<Int, Array<Int>>> = null;
+		var transforms:Null<Map<Int, Array<Int>>> = null;
 		var region:Null<Array<ReferenceableValue>> = null;
+		var margin:Null<ReferenceableValue> = null;
+		var spacing:Null<ReferenceableValue> = null;
 		var allowPartialMapping:Bool = false;
 
 		function setSource(s:AutotileSource) {
@@ -6682,6 +6685,17 @@ class MacroManimParser {
 					final parsed = parseAutotileMapping();
 					mapping = parsed.mapping;
 					alternates = parsed.alternates;
+					transforms = parsed.transforms;
+				case TIdentifier(s) if (isKeyword(s, "margin")):
+					advance();
+					expect(TColon);
+					if (margin != null) error("autotile margin already set");
+					margin = parseIntegerOrReference();
+				case TIdentifier(s) if (isKeyword(s, "spacing")):
+					advance();
+					expect(TColon);
+					if (spacing != null) error("autotile spacing already set");
+					spacing = parseIntegerOrReference();
 				case TIdentifier(s) if (isKeyword(s, "allowpartialmapping")):
 					advance();
 					expect(TColon);
@@ -6715,6 +6729,12 @@ class MacroManimParser {
 				default: error("autotile region: only applies to a file: source");
 			}
 		}
+		if (margin != null || spacing != null) {
+			switch (src) {
+				case ATSFile(_):
+				default: error("autotile margin: and spacing: only apply to a file: source (an atlas names its tiles where they are)");
+			}
+		}
 		if (allowPartialMapping && fmt != Blob47)
 			error("autotile allowPartialMapping: only applies to format: blob47");
 		if (mapping != null) {
@@ -6746,7 +6766,10 @@ class MacroManimParser {
 			tileSize: cast tileSize,
 			mapping: mapping,
 			alternates: alternates,
+			transforms: transforms,
 			region: region,
+			margin: margin,
+			spacing: spacing,
 			allowPartialMapping: allowPartialMapping
 		};
 	}
@@ -6756,9 +6779,10 @@ class MacroManimParser {
 		may be several, `7 | 8 | 9`: the first goes to `mapping`, the rest to `alternates`, and a
 		position draws one of them by turns (a source index given twice is drawn that much more often).
 	**/
-	function parseAutotileMapping():{mapping:Map<Int, Int>, alternates:Null<Map<Int, Array<Int>>>} {
+	function parseAutotileMapping():{mapping:Map<Int, Int>, alternates:Null<Map<Int, Array<Int>>>, transforms:Null<Map<Int, Array<Int>>>} {
 		var map:Map<Int, Int> = new Map();
 		var alternates:Null<Map<Int, Array<Int>>> = null;
+		var transforms:Null<Map<Int, Array<Int>>> = null;
 		var seqIdx = 0;
 		while (!match(TBracketClosed)) {
 			eatComma();
@@ -6773,18 +6797,50 @@ class MacroManimParser {
 			if (map.exists(key))
 				error('autotile mapping has more than one entry for index $key');
 			map.set(key, target);
+			final turned = [parseAutotileTransform(key)];
 			if (match(TPipe)) {
 				final more:Array<Int> = [];
-				do
-					more.push(parseInteger())
-				while (match(TPipe));
+				do {
+					more.push(parseInteger());
+					turned.push(parseAutotileTransform(key));
+				} while (match(TPipe));
 				if (alternates == null)
 					alternates = new Map();
 				alternates.set(key, more);
 			}
+			if (Lambda.exists(turned, t -> t != 0)) {
+				if (transforms == null)
+					transforms = new Map();
+				transforms.set(key, turned);
+			}
 			seqIdx++;
 		}
-		return {mapping: map, alternates: alternates};
+		return {mapping: map, alternates: alternates, transforms: transforms};
+	}
+
+	/** After a source index: `flipX`, `flipY` and one of `rot90`, `rot180`, `rot270`, in any order, each once. **/
+	function parseAutotileTransform(key:Int):Int {
+		var flipX = false;
+		var flipY = false;
+		var turns = -1;
+		while (true) {
+			switch (peek()) {
+				case TIdentifier(s) if (isKeyword(s, "flipx")):
+					advance();
+					if (flipX) error('autotile mapping $key: flipX given twice');
+					flipX = true;
+				case TIdentifier(s) if (isKeyword(s, "flipy")):
+					advance();
+					if (flipY) error('autotile mapping $key: flipY given twice');
+					flipY = true;
+				case TIdentifier(s) if (isKeyword(s, "rot90") || isKeyword(s, "rot180") || isKeyword(s, "rot270")):
+					advance();
+					if (turns >= 0) error('autotile mapping $key: one rotation only (rot90, rot180 or rot270)');
+					turns = isKeyword(s, "rot90") ? 1 : isKeyword(s, "rot180") ? 2 : 3;
+				default:
+					return bh.base.Autotile.transform(flipX, flipY, turns < 0 ? 0 : turns);
+			}
+		}
 	}
 
 	// ---- Tilesets and tile maps ----
@@ -7059,16 +7115,32 @@ class MacroManimParser {
 
 	function parseTilesetCell(name:String):TilesetCellDef {
 		var draw:Null<String> = null;
+		var width:Null<Int> = null;
+		var height:Null<Int> = null;
+		var anchorX:Null<Int> = null;
+		var anchorY:Null<Int> = null;
 		var metadata:Map<String, ParsedSettingValue> = new Map();
 		while (!match(TCurlyClosed)) {
 			switch (peek()) {
 				case TIdentifier(s) if (isKeyword(s, "draw")):
 					advance();
 					expect(TColon);
-					final where = expectIdentifierOrString();
-					if (where != "under" && where != "over" && where != "top")
-						error('cell $name: draw: is under (the actors), over (them) or top (above everything), got $where');
-					draw = where;
+					draw = parseTilemapDraw('cell $name');
+				case TIdentifier(s) if (isKeyword(s, "size")):
+					advance();
+					expect(TColon);
+					if (width != null) error('cell $name: size already set');
+					width = parseInteger();
+					expect(TComma);
+					height = parseInteger();
+					if (width <= 0 || height <= 0) error('cell $name: size is a width and a height in cells, each 1 or more');
+				case TIdentifier(s) if (isKeyword(s, "anchor")):
+					advance();
+					expect(TColon);
+					if (anchorX != null) error('cell $name: anchor already set');
+					anchorX = parseInteger();
+					expect(TComma);
+					anchorY = parseInteger();
 				case TIdentifier(s) if (isKeyword(s, "metadata")):
 					advance();
 					metadata = parseTileMetadata();
@@ -7076,7 +7148,31 @@ class MacroManimParser {
 					error('unexpected cell property: ${peek()}');
 			}
 		}
-		return {name: name, draw: draw, metadata: metadata};
+		if (anchorX != null && width == null)
+			error('cell $name: anchor: is for a cell with a size: (an object of several cells)');
+		if (width != null) {
+			final w:Int = width;
+			final h:Int = height ?? 1;
+			if (anchorX == null) {
+				anchorX = 0;
+				anchorY = h - 1;
+			}
+			final ax:Int = anchorX;
+			final ay:Int = anchorY ?? 0;
+			if (ax < 0 || ay < 0 || ax >= w || ay >= h)
+				error('cell $name: anchor $ax, $ay is outside its ${w}x$h cells (from 0, 0 at the top left)');
+			if (draw == null)
+				draw = "actors";
+		}
+		return {name: name, draw: draw, width: width, height: height, anchorX: anchorX, anchorY: anchorY, metadata: metadata};
+	}
+
+	/** `draw:` of a layer or a cell: where it is drawn among what else the map draws. **/
+	function parseTilemapDraw(what:String):String {
+		final where = expectIdentifierOrString();
+		if (where != "under" && where != "over" && where != "top" && where != "actors")
+			error('$what: draw: is under (the actors), over (them), top (above everything) or actors (among them, sorted by its feet), got $where');
+		return where;
 	}
 
 	/**
@@ -7177,10 +7273,7 @@ class MacroManimParser {
 							case TIdentifier(s2) if (isKeyword(s2, "draw")):
 								advance();
 								expect(TColon);
-								final draw = expectIdentifierOrString();
-								if (draw != "under" && draw != "over" && draw != "top")
-									error('layer $layerName: draw: is under (the actors), over (them) or top (above everything), got $draw');
-								layer.draw = draw;
+								layer.draw = parseTilemapDraw('layer $layerName');
 							case TIdentifier(s2) if (isKeyword(s2, "legend")):
 								advance();
 								parseTilemapLegend(layer.legend);

@@ -32,6 +32,7 @@ class TilemapTest extends BuilderTestBase {
 				faceEnd: 288, 120, 8, 8, index: 1
 				stairs: 88, 160, 8, 8
 				roof: 24, 8, 8, 8
+				tree: 0, 0, 16, 16
 			}
 			#dirt autotile { format: corner tileSize: 8 demo: #886644, #664422 }
 			#water autotile { format: corner tileSize: 8 demo: #2A4A9A, #4A78D0 }
@@ -53,8 +54,11 @@ class TilemapTest extends BuilderTestBase {
 		';
 	}
 
+	/** A map built and drawn whole: a map draws a chunk as it is first seen or asked, and these tests look at what is drawn. **/
 	static function build(map:String, ?name:String = "m"):TileMap {
-		return builderFromSource(source(map)).buildTilemap(name);
+		final map = builderFromSource(source(map)).buildTilemap(name);
+		map.redraw();
+		return map;
 	}
 
 	static function builderErrorCode(fn:() -> Void):Null<String> {
@@ -66,8 +70,9 @@ class TilemapTest extends BuilderTestBase {
 		}
 	}
 
+	/** The index-th thing drawn on the ground of a map small enough for one chunk. **/
 	static function groundGroup(map:TileMap, index:Int):h2d.TileGroup {
-		return cast @:privateAccess map.ground.getChildAt(index);
+		return cast @:privateAccess map.ground.getChildAt(0).getChildAt(index);
 	}
 
 	// ===== Parsing =====
@@ -129,11 +134,11 @@ class TilemapTest extends BuilderTestBase {
 	public function testAnimatedTerrainSwapsItsFrames() {
 		final map = build('#m tilemap { tileset: plains size: 2, 2 legend { "~": water } terrain: ["~~", "~~"] }');
 		// water's two autotiles are its frames, whatever else is drawn under or over them
-		final animated:Array<{frames:Array<h2d.Object>}> = @:privateAccess map.animated;
-		Assert.equals(1, animated.length, "one animated terrain");
+		final animated:Array<{frames:Array<h2d.Object>}> = @:privateAccess map.chunks[0].animated;
+		Assert.equals(1, animated.length, "one animated terrain in the one chunk");
 		final first = animated[0].frames[0];
 		final second = animated[0].frames[1];
-		Assert.isTrue(first.parent == @:privateAccess map.ground && second.parent == first.parent, "both frames are on the ground");
+		Assert.isTrue(first.parent.parent == @:privateAccess map.ground && second.parent == first.parent, "both frames are on the chunk's ground");
 		Assert.isTrue(first.visible && !second.visible);
 		@:privateAccess map.step(0.2);
 		Assert.isTrue(first.visible, "not yet: 300 ms a frame");
@@ -183,7 +188,19 @@ class TilemapTest extends BuilderTestBase {
 			},
 			metadata: tiles.metadata,
 		});
+		map.redraw();
 		return asked;
+	}
+
+	/** How many positions a `where` grid marks. **/
+	static function positionsSet(where:Null<Array<Array<Int>>>):Int {
+		if (where == null)
+			return 0;
+		var n = 0;
+		for (row in where)
+			for (v in row)
+				n += v;
+		return n;
 	}
 
 	/** Every autotile a map asks for while it is drawn again: its name and, when only some positions, those. **/
@@ -199,6 +216,7 @@ class TilemapTest extends BuilderTestBase {
 			frames: tiles.frames,
 			metadata: tiles.metadata,
 		});
+		map.redraw();
 		return asked;
 	}
 
@@ -349,7 +367,7 @@ class TilemapTest extends BuilderTestBase {
 		final drawn = autotilesDrawn(map);
 		final tops = drawn.filter(a -> a.name == "top");
 		Assert.equals(1, tops.length);
-		Assert.isNull(tops[0].where, "its top is drawn over all of it, inside and rim");
+		Assert.equals(6, positionsSet(tops[0].where), "its top is drawn over all of it, inside and rim: every one of its 3 by 2 cells (a cell-format autotile)");
 		Assert.equals(0, drawn.filter(a -> a.name == "rim").length, "the ground's edge is not its outline");
 		Assert.equals(1, map.sideAt(2, 3), "its own side, one cell long");
 		Assert.equals(0, map.sideAt(2, 4), "not the ground's, two cells long");
@@ -525,10 +543,12 @@ class TilemapTest extends BuilderTestBase {
 		map.setTerrain(1, 0, "d");
 		map.setLevel(2, 0, 1);
 		Assert.isTrue(drawn == groundGroup(map, 0), "not drawn again for each change");
-		Assert.equals("dirt", map.terrainAt(1, 0), "asked, the map is drawn first");
+		Assert.equals("dirt", map.terrainAt(1, 0), "the rows say what is where at once");
+		Assert.isTrue(drawn == groundGroup(map, 0), "and reading them draws nothing");
+		Assert.equals(1, map.sideAt(2, 1), "asked what it draws, the map is drawn first: the side of the level raised");
 		Assert.isFalse(drawn == groundGroup(map, 0), "once");
 		final again = groundGroup(map, 0);
-		Assert.equals(1, map.sideAt(2, 1), "the side of the level raised");
+		Assert.equals(2, map.metadataAt(1, 0).getIntOrDefault("cost", 0), "the dirt's metadata");
 		Assert.isTrue(again == groundGroup(map, 0), "and not again while nothing changes");
 	}
 
@@ -622,7 +642,7 @@ class TilemapTest extends BuilderTestBase {
 		Assert.same(["dirt", "water", "shore", "waterB", "shoreB"], [for (a in drawn) a.name], "own first, then the transition, a frame each");
 		final where = drawn[2].where;
 		Assert.notNull(where, "the shore is drawn at some positions only");
-		Assert.isNull(drawn[1].where, "the terrain's own at every position");
+		Assert.equals(6, positionsSet(drawn[1].where), "the terrain's own at every corner around its two cells: 3 by 2");
 		// corners are 5 x 4; corner (cx, cy) is the top-left of cell (cx, cy)
 		Assert.equals(1, where[1][1], "grass and the first water cell");
 		Assert.equals(1, where[1][2], "grass above two water cells");
@@ -677,5 +697,293 @@ class TilemapTest extends BuilderTestBase {
 			builderErrorCode(() -> builderFromSource(source('#m tilemap { tileset: plains size: 1, 1 legend { ".": grass } terrain: ["."] }',
 				'transition grass, water { autotile: nope, nope2 }')).buildTilemap("m")),
 			"an autotile the file has not is said at build time, before anything is drawn");
+	}
+
+	// ===== Objects of several cells =====
+
+	@Test
+	public function testAnObjectOfSeveralCellsStandsAmongTheActorsOnItsAnchor() {
+		final map = builderFromSource(source('#m tilemap {
+			tileset: plains
+			size: 5, 3
+			legend { ".": grass }
+			terrain: [".....", ".....", "....."]
+			layer props { legend { "t": tree } rows: ["     ", " t   ", "     "] }
+		}', 'cell tree { size: 2, 2 metadata { wall:bool => true } }')).buildTilemap("m");
+		map.redraw();
+		// the character is at (1, 1), the tree's anchor is its bottom-left cell: its image covers (1, 0) to (2, 1)
+		final objects:Array<h2d.Object> = @:privateAccess map.chunks[0].objects;
+		Assert.equals(1, objects.length);
+		final tree = objects[0];
+		Assert.isTrue(tree.parent == map.actors, "among the actors");
+		Assert.floatEquals(8, tree.x);
+		Assert.floatEquals(16, tree.y, "its y is its feet, the bottom of its image, which sorts it");
+		Assert.equals("tree", map.cellAt("props", 1, 1));
+		Assert.equals("tree", map.cellAt("props", 2, 0), "every cell it covers is it");
+		Assert.isNull(map.cellAt("props", 0, 0));
+		Assert.isTrue(map.metadataAt(1, 1).getBoolOrDefault("wall", false), "its metadata is on its anchor cell");
+		Assert.isTrue(map.metadataAt(2, 0).getBoolOrDefault("wall", false), "and on every cell it covers");
+		Assert.isFalse(map.metadataAt(0, 0).getBoolOrDefault("wall", false));
+		map.setCell("props", 3, 2, "t"); // covers (3, 1) to (4, 2)
+		map.sideAt(0, 0); // drawn again
+		Assert.equals(2, (@:privateAccess map.chunks[0].objects : Array<h2d.Object>).length, "drawn again: the old sprite gone, two now");
+		Assert.isNull(tree.parent, "the first draw's sprite was removed");
+	}
+
+	@Test
+	public function testAnObjectIsPlacedAndRemovedAtItsAnchorAndCoversNoOther() {
+		final was = TileMap.defaultChunkSize;
+		TileMap.defaultChunkSize = 2;
+		final src = source('#m tilemap {
+			tileset: plains
+			size: 4, 3
+			legend { ".": grass }
+			terrain: ["....", "....", "...."]
+			layer props { legend { "t": tree, "f": flower } rows: ["    ", " t  ", "f   "] }
+		}', 'cell tree { size: 2, 2 metadata { wall:bool => true } }');
+		final map = try builderFromSource(src).buildTilemap("m") catch (e:Dynamic) {
+			TileMap.defaultChunkSize = was;
+			throw e;
+		}
+		TileMap.defaultChunkSize = was;
+		// the tree at (1, 1) covers (1, 0) to (2, 1), across the border of two chunks of 2 cells
+		final tree = map.objectAt("props", 2, 0);
+		Assert.notNull(tree);
+		Assert.same({name: "tree", anchorX: 1, anchorY: 1, x: 1, y: 0, width: 2, height: 2}, tree, "a covered cell says the object and where its anchor is");
+		Assert.same({name: "flower", anchorX: 0, anchorY: 2, x: 0, y: 2, width: 1, height: 1}, map.objectAt("props", 0, 2), "a cell of one is itself");
+		Assert.isNull(map.objectAt("props", 3, 0));
+		Assert.isTrue(map.metadataAt(2, 0).getBoolOrDefault("wall", false), "its metadata in the other chunk too");
+		Assert.equals("tilemap_object_covered", builderErrorCode(() -> map.setCell("props", 2, 0, " ")), "a covered cell is changed at the anchor");
+		Assert.equals("tree", map.cellAt("props", 2, 0), "nothing changed");
+		map.setCell("props", 1, 1, " ");
+		Assert.isNull(map.cellAt("props", 2, 0), "removed at its anchor, its cells are free");
+		Assert.isFalse(map.metadataAt(2, 0).getBoolOrDefault("wall", false), "and the other chunk is drawn again without it");
+		Assert.equals("tilemap_object_outside", builderErrorCode(() -> map.setCell("props", 3, 2, "t")), "a tree at the right edge would cover column 4");
+		Assert.isNull(map.cellAt("props", 3, 2), "nothing changed");
+		Assert.equals("   ", map.def.layers[0].rows[2].substr(1), "the rows neither");
+		map.setCell("props", 2, 2, "t"); // covers (2, 1) to (3, 2)
+		Assert.equals("tilemap_object_overlap", builderErrorCode(() -> map.setCell("props", 1, 2, "t")), "a tree at (1, 2) would cover (2, 1), the other tree's");
+		Assert.equals("tree", map.cellAt("props", 2, 1), "the one there stays");
+		Assert.isNull(map.cellAt("props", 1, 1), "the other was not placed");
+		Assert.equals("tilemap_object_covered", builderErrorCode(() -> map.setCell("props", 3, 1, "f")), "nor is a flower placed on a cell it covers");
+		map.setCell("props", 1, 2, "f");
+		Assert.equals("flower", map.cellAt("props", 1, 2), "beside it, a flower is");
+		// the same checks when the rows are read
+		Assert.equals("tilemap_object_overlap", builderErrorCode(() -> builderFromSource(source('#m tilemap { tileset: plains size: 4, 3 legend { ".": grass }
+			terrain: ["....", "....", "...."] layer props { legend { "t": tree } rows: ["    ", " tt ", "    "] } }', 'cell tree { size: 2, 2 }')).buildTilemap("m")));
+		Assert.equals("tilemap_object_outside", builderErrorCode(() -> builderFromSource(source('#m tilemap { tileset: plains size: 4, 3 legend { ".": grass }
+			terrain: ["....", "....", "...."] layer props { legend { "t": tree } rows: ["t   ", "    ", "    "] } }', 'cell tree { size: 2, 2 }')).buildTilemap("m")),
+			"a tree on the top row would cover row -1");
+	}
+
+	@Test
+	public function testAnObjectMayBeDrawnWithTheLayerInstead() {
+		final map = builderFromSource(source('#m tilemap {
+			tileset: plains
+			size: 4, 3
+			legend { ".": grass }
+			terrain: ["....", "....", "...."]
+			layer props { legend { "t": tree } rows: ["    ", "  t ", "    "] }
+		}', 'cell tree { size: 2, 2 anchor: 1, 0 draw: over }')).buildTilemap("m");
+		map.redraw();
+		Assert.equals(0, (@:privateAccess map.chunks[0].objects : Array<h2d.Object>).length);
+		final over:h2d.Object = @:privateAccess map.overLayer;
+		Assert.equals(1, over.getChildAt(0).numChildren, "one group over the actors, in the chunk");
+		Assert.equals("tree", map.cellAt("props", 2, 1));
+	}
+
+	@Test
+	public function testObjectErrors() {
+		final head = '#m tilemap { tileset: plains size: 2, 2 legend { ".": grass } terrain: ["..", ".."] layer p { legend { "f": flower } rows: ["f ", "  "] } }';
+		Assert.equals("tilemap_cell_size", builderErrorCode(() -> builderFromSource(source(head, 'cell flower { size: 2, 2 }')).buildTilemap("m")),
+			"a cell of two by two is drawn 16x16, the flower is 8x8");
+		Assert.stringContains("anchor 2, 0 is outside", parseExpectingError(source(head, 'cell tree { size: 2, 2 anchor: 2, 0 }')));
+		Assert.stringContains("anchor: is for a cell with a size:", parseExpectingError(source(head, 'cell tree { anchor: 0, 0 }')));
+		Assert.stringContains("or actors", parseExpectingError(source(head, 'cell tree { draw: sideways }')));
+	}
+
+	// ===== Chunks and culling =====
+
+	/** A 10 by 6 map in chunks of 4 cells: 3 by 2 chunks, the last column and row short; drawn whole unless `undrawn`. **/
+	static function chunked(?rows:String = "", ?extraTileset:String = "", ?undrawn:Bool = false):TileMap {
+		final was = TileMap.defaultChunkSize;
+		TileMap.defaultChunkSize = 4;
+		try {
+			final map = builderFromSource(source('#m tilemap { tileset: plains size: 10, 6 legend { ".": grass, "d": dirt } terrain: ["..........", "..........", "..........", "..........", "..........", ".........."] $rows }',
+				extraTileset)).buildTilemap("m");
+			TileMap.defaultChunkSize = was;
+			if (!undrawn)
+				map.redraw();
+			return map;
+		} catch (e:Dynamic) {
+			TileMap.defaultChunkSize = was;
+			throw e;
+		}
+	}
+
+	/** Records the cells (by name) a map asks its sheet for from now on. **/
+	static function recordFrames(map:TileMap):Array<String> {
+		final asked:Array<String> = [];
+		final tiles:TileMapTiles = @:privateAccess map.tiles;
+		@:privateAccess map.tiles = {
+			autotile: tiles.autotile,
+			autotileFormat: tiles.autotileFormat,
+			frames: (sheet, name) -> {
+				asked.push(name);
+				return tiles.frames(sheet, name);
+			},
+			metadata: tiles.metadata,
+		};
+		return asked;
+	}
+
+	/** Records which autotiles a map asks for from now on, without drawing it again first. **/
+	static function recordAutotiles(map:TileMap):Array<String> {
+		final asked:Array<String> = [];
+		final tiles:TileMapTiles = @:privateAccess map.tiles;
+		@:privateAccess map.tiles = {
+			autotile: (name, grid, where) -> {
+				asked.push(name);
+				return tiles.autotile(name, grid, where);
+			},
+			autotileFormat: tiles.autotileFormat,
+			frames: tiles.frames,
+			metadata: tiles.metadata,
+		};
+		return asked;
+	}
+
+	@Test
+	public function testAChangeIsDrawnAgainInItsChunkOnly() {
+		final map = chunked();
+		Assert.equals(3, map.chunkCols);
+		Assert.equals(2, map.chunkRows);
+		Assert.equals(4, map.chunkSize);
+		final asked = recordAutotiles(map);
+		map.setTerrain(1, 1, "d");
+		Assert.equals(0, asked.length, "nothing drawn until the chunk is seen or asked what it draws");
+		Assert.equals("dirt", map.terrainAt(1, 1), "the rows say the terrain");
+		Assert.equals(0, asked.length, "without a draw");
+		map.sideAt(1, 1);
+		Assert.same(["dirt"], asked, "asked what it draws: the chunk the cell is in, once, and no other");
+		asked.resize(0);
+		map.setTerrain(3, 1, "d");
+		@:privateAccess map.drawDirty(false);
+		Assert.equals(2, asked.length, "a cell at a chunk's border: its chunk and the neighbour the autotile's corners reach into");
+		asked.resize(0);
+		map.setTerrain(9, 5, "d");
+		@:privateAccess map.drawDirty(false);
+		Assert.equals(1, asked.length, "the last chunk, short, drawn on its own");
+		Assert.equals("dirt", map.terrainAt(9, 5));
+	}
+
+	@Test
+	public function testATerrainChangeReachesAsFarAsTheSidesItsRiseDraws() {
+		// A rise of the dirt's own, two cells long toward the right: a cell two columns before a
+		// chunk border turned to dirt changes the side piece in the next chunk
+		final map = chunked('levels: ["0000000000", "0010000000", "0000000000", "0000000000", "0000000000", "0000000000"]',
+			'rise 1 { side: "face" span: 2 toward: right }  rise 1 dirt { side: "stairs" span: 2 toward: right metadata { stairs:bool => true } }');
+		Assert.equals(1, map.sideAt(4, 1), "the side's second cell, in the second chunk");
+		Assert.isFalse(map.metadataAt(4, 1).getBoolOrDefault("stairs", false), "the grass's rise");
+		map.setTerrain(2, 1, "d");
+		Assert.isTrue(map.metadataAt(4, 1).getBoolOrDefault("stairs", false), "the dirt's rise now, drawn again in the next chunk too");
+	}
+
+	@Test
+	public function testSidesTakenInTurnAreNumberedFromTheRunsStartAcrossChunks() {
+		// A plateau's side across every chunk, of two pieces in turn: the run shortened at its start
+		// turns every piece after it, in every chunk along the run
+		final map = chunked('levels: ["0000000000", "2222222222", "0000000000", "0000000000", "0000000000", "0000000000"]',
+			'rise 2 { side: "stairs", "flower" span: 1 }');
+		final asked = recordFrames(map);
+		map.setLevel(0, 1, 0);
+		@:privateAccess map.drawDirty(false);
+		final pieces = asked.filter(n -> n == "stairs" || n == "flower");
+		Assert.same(["stairs", "flower", "stairs", "flower", "stairs", "flower", "stairs", "flower", "stairs"], pieces,
+			"the run of nine from column 1, chunk by chunk: the pieces in turn from its start");
+	}
+
+	@Test
+	public function testAChunkOutOfViewIsNotDrawnUntilSeenOrAsked() {
+		final map = chunked("", "", true);
+		inline function dirty(i:Int):Bool
+			return @:privateAccess map.chunks[i].dirty;
+		inline function drawn(i:Int):Int
+			return @:privateAccess map.chunks[i].ground.numChildren;
+		Assert.isTrue(dirty(0) && dirty(5), "nothing drawn as the map is built");
+		Assert.equals("grass", map.terrainAt(9, 5), "the rows are read without a draw");
+		Assert.isTrue(dirty(5));
+		map.cull(0, 0, 10, 10);
+		@:privateAccess map.drawDirty(true); // as sync does, with the view
+		Assert.isFalse(dirty(0), "the chunk in view is drawn");
+		Assert.isTrue(drawn(0) > 0);
+		Assert.isTrue(dirty(5), "the chunk out of view is not");
+		Assert.equals(0, drawn(5));
+		Assert.equals(0, map.sideAt(9, 5));
+		Assert.isFalse(dirty(5), "asked what it draws, drawn");
+		Assert.isTrue(dirty(2), "that chunk alone");
+		map.cullNone();
+		@:privateAccess map.drawDirty(true);
+		Assert.isFalse(dirty(2), "in view now, drawn");
+	}
+
+	/** How many tiles the index-th group on the ground of a chunk draws. **/
+	static function groundGroupCount(map:TileMap, chunk:Int, index:Int):Int {
+		final group:h2d.TileGroup = cast @:privateAccess map.chunks[chunk].ground.getChildAt(index);
+		return group.count();
+	}
+
+	@Test
+	public function testChunksAreDrawnWhereTheyAreAndTheMapReadsTheSame() {
+		final map = chunked('levels: ["0000000000", "0001111000", "0001111000", "0000000000", "0000000000", "0000000000"]');
+		Assert.equals(16, groundGroupCount(map, 0, 0), "the first chunk's grass, 4 by 4 cells");
+		Assert.equals(8, groundGroupCount(map, 2, 0), "the last column of chunks is 2 cells wide: 2 by 4");
+		Assert.equals(4, groundGroupCount(map, 5, 0), "the last chunk, 2 by 2");
+		for (cx in 3...7) {
+			Assert.equals(1, map.sideAt(cx, 3), 'column $cx: the plateau\'s side, across a chunk border');
+			Assert.equals(1, map.sideAt(cx, 4));
+		}
+		Assert.equals(0, map.sideAt(2, 3));
+		// a bigger chunk draws the same map
+		map.setChunkSize(32);
+		Assert.equals(1, map.chunkCols);
+		Assert.equals(1, map.sideAt(5, 4));
+		Assert.equals(60, groundGroupCount(map, 0, 0), "all the grass in one chunk");
+	}
+
+	@Test
+	public function testAnimatedTerrainsKeepOneClockAcrossChunks() {
+		final was = TileMap.defaultChunkSize;
+		TileMap.defaultChunkSize = 1;
+		final map = try build('#m tilemap { tileset: plains size: 2, 1 legend { "~": water } terrain: ["~~"] }') catch (e:Dynamic) {
+			TileMap.defaultChunkSize = was;
+			throw e;
+		}
+		TileMap.defaultChunkSize = was;
+		@:privateAccess map.step(0.35);
+		final frames0:Array<h2d.Object> = @:privateAccess map.chunks[0].animated[0].frames;
+		Assert.isTrue(!frames0[0].visible && frames0[1].visible, "after 350 ms the second frame, in every chunk");
+		map.setTerrain(1, 0, "~");
+		map.sideAt(1, 0);
+		final frames1:Array<h2d.Object> = @:privateAccess map.chunks[1].animated[0].frames;
+		Assert.isTrue(!frames1[0].visible && frames1[1].visible, "a chunk drawn again starts at the clock's frame, not the first");
+	}
+
+	@Test
+	public function testCullingHidesTheChunksOutOfView() {
+		final map = chunked();
+		map.cull(0, 0, 10, 10); // a chunk is 4 cells of 8px: 32px
+		Assert.isTrue(map.isChunkVisible(0, 0));
+		Assert.isFalse(map.isChunkVisible(2, 1), "the far chunk is out of view");
+		Assert.isFalse(map.isChunkVisible(1, 0));
+		map.cull(30, 0, 10, 10);
+		Assert.isTrue(map.isChunkVisible(0, 0), "a corner autotile reaches a tile past its chunk, so a chunk within a tile of the view stays");
+		Assert.isTrue(map.isChunkVisible(1, 0));
+		Assert.isFalse(map.isChunkVisible(2, 0));
+		map.cullNone();
+		Assert.isTrue(map.isChunkVisible(2, 1), "no view: every chunk");
+		final over:h2d.Object = @:privateAccess map.chunks[5].over;
+		map.cull(0, 0, 1, 1);
+		Assert.isFalse(over.visible, "what a chunk draws over the actors goes with it");
 	}
 }

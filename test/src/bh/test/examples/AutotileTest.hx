@@ -439,6 +439,55 @@ class AutotileTest extends BuilderTestBase {
 		Assert.equals(0, builder.buildAutotile("t", [[1, 1], [1, 1]], []).count(), "an empty where draws nothing");
 	}
 
+	// ==================== Turned tiles, margin and spacing ====================
+
+	@Test
+	public function testMappingTurnsParseAndFlipTheTile():Void {
+		final builder = builderFromSource('#t autotile { format: cross tileSize: 8 file: "$TILESET" region: [0, 0, 64, 8]
+			mapping: [1 flipX, 1 rot90, 1 flipY rot180, 1 | 2 flipX, 1 rot270 flipX, 1, 1, 1, 1, 1, 1, 1, 1] }');
+		final def = @:privateAccess builder.getAutotileDef("t").def;
+		Assert.same([Autotile.FLIP_X], def.transforms.get(0));
+		Assert.same([Autotile.transform(false, false, 1)], def.transforms.get(1));
+		Assert.same([Autotile.transform(false, true, 2)], def.transforms.get(2));
+		Assert.same([0, Autotile.FLIP_X], def.transforms.get(3), "a turn is one target's, not the whole index's");
+		Assert.same([Autotile.transform(true, false, 3)], def.transforms.get(4), "in any order");
+		Assert.isFalse(def.transforms.exists(5), "an index with no turn is not listed");
+
+		final plain = builder.getAutotileTile("t", 5);
+		final flipped = builder.getAutotileTile("t", 0);
+		Assert.isTrue(flipped != plain, "a flipped tile is a clone, the source's untouched");
+		Assert.floatEquals(@:privateAccess plain.u2, @:privateAccess flipped.u, "flipX swaps the tile's horizontal texture edges");
+		Assert.floatEquals(plain.dx, flipped.dx, "and the tile stays where its source sits (Heaps' flipX moves dx a tile back)");
+		final flippedY = builder.getAutotileTile("t", 2);
+		Assert.floatEquals(@:privateAccess plain.v2, @:privateAccess flippedY.v, "flipY swaps the vertical ones");
+		Assert.floatEquals(plain.dy, flippedY.dy);
+		Assert.equals(0, builder.getAutotileRotation("t", 0));
+		Assert.equals(1, builder.getAutotileRotation("t", 1), "a quarter turn is beside the tile, not in it");
+		Assert.equals(2, builder.getAutotileRotation("t", 2));
+		Assert.equals(3, builder.getAutotileRotation("t", 4));
+		Assert.equals(4, builder.buildAutotile("t", [[1, 1], [1, 1]]).count(), "turned tiles are drawn like the rest");
+
+		assertParseError('#t autotile { format: cross tileSize: 8 file: "$TILESET" mapping: [1 flipX flipX] }', "flipX given twice");
+		assertParseError('#t autotile { format: cross tileSize: 8 file: "$TILESET" mapping: [1 rot90 rot180] }', "one rotation only");
+	}
+
+	@Test
+	public function testFileSourceWithMarginAndSpacing():Void {
+		// three 8px tiles in a row take 1 + 8 + 2 + 8 + 2 + 8 + 1 = 30px with margin 1 and spacing 2
+		final builder = builderFromSource('#t autotile { format: cross tileSize: 8 file: "$TILESET" region: [0, 0, 30, 10] margin: 1 spacing: 2
+			mapping: [0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0] }');
+		final second = builder.getAutotileTile("t", 1);
+		Assert.equals(11, Std.int(second.x), "the second tile starts after the margin, a tile and a space");
+		Assert.equals(1, Std.int(second.y));
+		Assert.equals(8, Std.int(second.width));
+		assertBuilderError(() -> builderFromSource('#t autotile { format: cross tileSize: 8 file: "$TILESET" region: [0, 0, 31, 10] margin: 1 spacing: 2 mapping: [0] }')
+			.getAutotileTile("t", 0), "autotile_region");
+		assertParseError('#t autotile { format: cross tileSize: 8 demo: #fff, #000 spacing: 2 }', "only apply to a file: source");
+		// without a region, the whole image cut to whole tiles: 552 wide, (552 - 2 + 2) / 10 = 55 tiles
+		final whole = builderFromSource('#w autotile { format: cross tileSize: 8 file: "$TILESET" margin: 1 spacing: 2 mapping: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] }');
+		Assert.equals(1 + 12 * 10, Std.int(whole.getAutotileTile("w", 12).x));
+	}
+
 	// ==================== Helpers ====================
 
 	static function assertParseError(source:String, expectedFragment:String, ?pos:haxe.PosInfos):Void {

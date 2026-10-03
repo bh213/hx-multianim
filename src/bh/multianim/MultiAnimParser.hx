@@ -756,7 +756,12 @@ typedef AutotileDef = {
 	var ?mapping:Null<Map<Int, Int>>;     // autotile index -> source index (validated against the format at parse time)
 	/** Autotile index -> more source indices drawn in its place by turns (`mapping: [15: 7 | 8 | 9]` puts 8 and 9 here), chosen by position; `mapping` holds the first. **/
 	var ?alternates:Null<Map<Int, Array<Int>>>;
+	/** Autotile index -> how each of its source tiles is turned (`mapping: [2: 1 flipX, 4: 1 rot90]`), one entry per source as `mapping` then `alternates` list them: `Autotile.FLIP_X`, `FLIP_Y`, and quarter turns in `Autotile.rotationOf`. Only indices with a transform are present. **/
+	var ?transforms:Null<Map<Int, Array<Int>>>;
 	var ?region:Null<Array<ReferenceableValue>>;  // file source only: [x, y, w, h] in pixels
+	/** File source only: pixels from the region's edge to its first tile (`margin: 1`), and between tiles (`spacing: 2`). **/
+	var ?margin:Null<ReferenceableValue>;
+	var ?spacing:Null<ReferenceableValue>;
 	var ?allowPartialMapping:Bool;        // blob47 only: indices with no tile use the closest mapped tile instead of an error
 }
 
@@ -828,12 +833,23 @@ typedef TilesetPlatformDef = {
 	var ?edge:String;
 }
 
-/** `cell name { draw: over metadata { … } }`: what a named cell of the layers is, wherever it is placed. **/
+/**
+	`cell name { draw: over metadata { … } }`: what a named cell of the layers is, wherever it is placed.
+	`size: w, h` makes it an object of several cells (a tree, a house) whose image is `w` by `h` cells:
+	the layer's character marks its `anchor` cell (its bottom-left one unless given), it is drawn among
+	the actors sorted by its feet unless `draw:` says otherwise, and its metadata is the anchor cell's.
+**/
 @:nullSafety
 typedef TilesetCellDef = {
 	var name:String;
-	/** Where it is drawn, over the layer's own `draw:`: under, over or top. **/
+	/** Where it is drawn, over the layer's own `draw:`: under, over, top, or actors (among them, sorted by its feet). **/
 	var ?draw:String;
+	/** In cells; 1 by 1 when not given. **/
+	var ?width:Int;
+	var ?height:Int;
+	/** The cell of the object the layer's character marks, from its top-left: (0, height - 1) when not given. **/
+	var ?anchorX:Int;
+	var ?anchorY:Int;
 	var metadata:Map<String, ParsedSettingValue>;
 }
 

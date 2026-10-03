@@ -18,12 +18,16 @@ Added 2026-10-01: `transition a, b { autotile }` for a pair's own edge tiles; se
 autotile index (`mapping: [15: 7 | 8 | 9]`, drawn by position); `levels { legend { "A": 10 } rows }`
 beyond nine.
 
-Not done, by how many tilesets each blocks: flip and rotate in `mapping:` (packs that ship 4 or 5
-tiles and expect mirroring); multi-cell objects in a layer (`cell tree { size: 2, 3 anchor: 1, 2 }`,
-sorted by their feet); `spacing:` and `margin:` on `file:` sources and grid atlases; Wang 2-edge
-and 3-corner formats; a shared `shape:` vocabulary for collision (full, slopes, half, one-way);
-inner-corner side pieces where two cliffs meet; layer `offset:` and `parallax:`; hex and isometric
-cells (the map is square-cell only); chunked drawing with culling and a redraw of the chunk a change
-touches; a run-length or other compact form for very big maps; an importer from Tiled and LDtk in
+Added 2026-10-02: flips and quarter turns in `mapping:` (`1 flipX rot90`); `margin:` and `spacing:`
+on a `file:` source; objects of several cells (`cell tree { size: 2, 3 anchor: 1, 2 }`, among the
+actors on their feet, their name and metadata on every cell they cover, `objectAt`, inside the map
+and over no other); the map drawn in chunks, each as it is first in view (`cull(x, y, w, h)` or the
+scene) or asked, a change redrawing its chunk. Playground demos "Tile Map" and "Layers in .anim".
+
+Not done, by how many tilesets each blocks: Wang 2-edge and 3-corner formats; a shared `shape:`
+vocabulary for collision (full, slopes, half, one-way); inner-corner side pieces where two cliffs
+meet; layer `offset:` and `parallax:`; hex and isometric cells (the map is square-cell only); a
+run-length or other compact form for very big maps; an importer from Tiled and LDtk in
 hx-multianim-utils; marks and regions as data-block tables; where each row is written, for a tool
-(the parse keeps it only for its own errors).
+(the parse keeps it only for its own errors); objects culled with their chunk (they are among the
+actors, so every one is drawn).
