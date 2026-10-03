@@ -1,0 +1,18 @@
+version: 1.0
+
+layouts {
+  #rowPts list {
+    point: 0, 0
+    point: $gap, 0
+    point: $gap * 2, 0
+  }
+}
+
+// Layout points referencing a programmable param resolve at build time in the
+// builder; the codegen's static-only layout resolve must not silently drop
+// them to 0,0.
+#layoutParam programmable(gap:int=30) {
+  repeatable($i, layout("rowPts")) {
+    bitmap(generated(color(4, 4, #FF0000))): 0, 0
+  }
+}

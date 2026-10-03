@@ -126,8 +126,7 @@ class CodegenRepeatFallbackUntrackedTest extends BuilderTestBase {
 	/** Conditional visibility — `$mode` gates @() / @else on children inside the
 	 *  body. On the runtime side, `collectChildConditionalParamRefs` folds `mode`
 	 *  into `repeatParamRefs` so a setParameter triggers a full body rebuild —
-	 *  must NOT throw and must NOT be marked untracked. (Codegen has no equivalent
-	 *  conditional-rebuild wiring, so the codegen test below pins the throw.) */
+	 *  must NOT throw and must NOT be marked untracked. */
 	@Test
 	public function testParamDepRepeat_ConditionalRef_Builder_TriggersRebuild():Void {
 		final result = BuilderTestBase.buildFromFile(FIXTURE, "paramDepRepeatUntrackedCondition", null, Incremental);
@@ -136,17 +135,20 @@ class CodegenRepeatFallbackUntrackedTest extends BuilderTestBase {
 		Assert.isNull(msg, 'builder conditional rebuild: setParameter("mode", "b") must not throw (conditional refs are wired into repeatParamRefs) — got: $msg');
 	}
 
-	/** Codegen side: `_rebuildRepeat_X` only fires when the count value changes, so
-	 *  a body-only conditional flip is silently dropped — must throw untracked_param. */
+	/** Codegen side now mirrors the builder: body conditional-gate refs are wired
+	 *  as FORCED rebuild triggers of `_rebuildRepeat_X` (they force past the
+	 *  scalar early-out), so a gate flip rebuilds the body instead of throwing.
+	 *  (This used to pin the old fail-loud "untracked" policy; superseded by the
+	 *  conditional-gate rebuild parity fix — see CodegenRepeatGateTest.) */
 	@Test
-	public function testParamDepRepeat_ConditionalRef_Codegen_Throws():Void {
+	public function testParamDepRepeat_ConditionalRef_Codegen_TriggersRebuild():Void {
 		final mp = createMp();
 		final inst:Dynamic = mp.paramDepRepeatUntrackedCondition.create();
 		// `mode` is an enum [a,b] — codegen typed setter expects the int index.
-		assertUntrackedReject(runAndCatch(() -> inst.setMode(1)),
-			"mode", "param-dep repeat", "codegen conditional setter");
-		assertUntrackedReject(runAndCatch(() -> inst.setParameter("mode", "a")),
-			"mode", "param-dep repeat", "codegen conditional setParameter");
+		final msg = runAndCatch(() -> inst.setMode(1));
+		Assert.isNull(msg, 'codegen conditional rebuild: setMode(1) must not throw (gate refs force a body rebuild) — got: $msg');
+		final msg2 = runAndCatch(() -> inst.setParameter("mode", "a"));
+		Assert.isNull(msg2, 'codegen conditional rebuild: setParameter("mode", "a") must not throw — got: $msg2');
 	}
 
 	/** Child position — `$offX` is used as a body-child x coordinate. Outside the

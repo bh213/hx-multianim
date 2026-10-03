@@ -1,6 +1,7 @@
 package bh.ui;
 
 import bh.base.CursorManager;
+import bh.multianim.BuilderError;
 import bh.multianim.MultiAnimBuilder;
 import bh.multianim.MultiAnimBuilder.MultiAnimBuilder;
 import bh.ui.UIElement;
@@ -35,6 +36,26 @@ class UIStandardMultiAnimButton implements UIElement implements UIElementDisabla
 
 	public function getText():String {
 		return buttonText;
+	}
+
+	/** Set a styling parameter on the underlying programmable (e.g.
+		`tintColor`). Returns false (no-op) when the build has no such
+		parameter, so it is safe to call against any button design — assert
+		on the return value when the parameter is expected to exist. The
+		widget-managed parameters `status`, `buttonText` and `disabled`
+		are rejected: writing them here desyncs the widget's own state
+		(`getText()`, the hover state machine, event gating) — use
+		`setText()` / `disabled` instead. */
+	public function setStyleParameter(name:String, value:Dynamic):Bool {
+		switch name {
+			case "status" | "buttonText" | "disabled":
+				throw BuilderError.of('setStyleParameter("$name"): parameter is widget-managed — use setText()/disabled instead', "widget_managed_param");
+			default:
+		}
+		if (!result.hasParameter(name))
+			return false;
+		result.setParameter(name, value);
+		return true;
 	}
 
 	public function set_disabled(value:Bool):Bool {

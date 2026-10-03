@@ -166,6 +166,23 @@ Constants support:
 * Negative references: `@final NEG_X = -$X`
 * Used in coordinates: `fire: $OFFSET_X, $OFFSET_Y`
 
+### Annotations (for tools)
+`@name` or `@name(value, key: value, …)` at the top level is kept for tools and never acted on by
+the engine. Before an `animation` or `anim` it belongs to that animation; anywhere else, to the
+file. Values are numbers, quoted strings, bare words (read as strings), colours and `[lists]`.
+
+```anim
+@pack("Creatures")
+sheet: "lib/Creatures/wolf"
+
+@from("Beasts/Wolf/WolfWalk.png", grid: 32, rows: direction)
+animation walk { fps: 5 loop: yes playlist { sheet: "wolf_walk_${direction}" } }
+```
+
+A tool reads them from `parsed.loaded()` (see [the reference](anim-reference.md#what-the-file-says-for-tools-loaded)),
+which, parsed with spans (`AnimParser.parseString(text, name, loader, true)`), also says where every
+value is written, so the tool can change one in place.
+
 ### metadata
 Key-value pairs for storing animation metadata such as sprite dimensions, speeds, colors, etc. Supports conditional values based on state.
 
@@ -189,6 +206,7 @@ metadata {
 * Floats: `speed: 1.5`
 * Strings: `description: "Marine unit"` (quoted)
 * Colors: `tint: #FF0000` (`#RGB`, `#RRGGBB`, or `#RRGGBBAA`)
+* Lists of words: `tags: [beast, wolf]`, read with `getListOrDefault` / `getListOrException`
 
 **Conditional metadata:**
 Use `@(state=>value)` to define state-specific values:
@@ -201,7 +219,7 @@ Use `@(state=>value)` to define state-specific values:
 
 **Accessing metadata in code:**
 ```haxe
-var loadedAnim:LoadedAnimation = AnimParser.parseFile(...);
+var loadedAnim:LoadedAnimation = AnimParser.parseFile(...).loaded();
 var stateSelector:AnimationStateSelector = ["direction" => "l"];
 
 // Integer
@@ -279,6 +297,38 @@ This creates a full animation with a single sheet playlist entry. `fps`, `loop`,
 
 ---
 
+## Layers
+
+A file with `layers:` draws one clip per layer, bottom first, every one on the same frame of the
+animation's timeline: equipment that changes, shadows, glow.
+
+```anim
+sheet: "lib/NPCs/guard"
+states: direction(se, sw), hat(none, cap)
+layers: shadow, body, hat, glow
+fps: 5
+
+animation walk {
+    loop: yes
+    layer body { sheet: "body_walk_${direction}" }
+    layer shadow { sheet: "shadow_walk_${direction}" }
+    layer hat @(hat != none) { sheet: "hat_${hat}_walk_${direction}" }
+    layer glow { sheet: "glow_walk_${direction}" blend: add }
+}
+```
+
+* The timeline is `timeline: name`, or the first of `layers:` the animation has a block of; its
+  frames, durations and events are the animation's.
+* Every other layer names frames only, as many as the timeline has; a layer no block matches draws
+  nothing, so `@(hat != none)` is how a hat comes and goes.
+* `sm.setState("hat", "cap")` changes the hat mid-walk without restarting it; in `.manim`,
+  `stateanim("guard.anim", "walk", "hat"=>$hat, …)` does the same on `setParameter("hat", …)`.
+* `sm.detachLayer("shadow", mapShadows)` draws the shadow in another object, under every character.
+  It hides with the character (the machine or anything above it hidden), and `sm.layer("shadow")
+  .visible = false` holds there as among the layers.
+
+The reference has the rules: [Layers](anim-reference.md#layers).
+
 ## Playlist Elements
 
 ### Sheet Frame
@@ -287,11 +337,15 @@ This creates a full animation with a single sheet playlist entry. `fps`, `loop`,
 sheet: "myanimation"
 sheet: "myanimation" frames: 1..2
 sheet: "myanimation" frames: 1..2 duration: 25ms
+sheet: "myanimation" frames: 3..3 offset: 0, -1
 sheet: "marine_${direction}_idle"
 ```
 
 * Uses default `fps` setting when duration not specified
 * Takes all frames with the name from the atlas sheet
+* `frames:`, `duration:` and `offset:` each at most once, in any order
+* `offset: x, y` draws the line's frames that many pixels over, a nudge of the art; it is applied
+  before `flipX`/`flipY`, so a flip mirrors it with the art
 * `${stateName}` — State variable interpolation in sheet names (validated against defined states)
 
 ### File Frame
@@ -299,6 +353,7 @@ sheet: "marine_${direction}_idle"
 ```anim
 file: "filename.png"
 file: "filename.png" duration: 100ms
+file: "filename.png" offset: 1, 0
 ```
 
 Loads and plays a single frame PNG image.

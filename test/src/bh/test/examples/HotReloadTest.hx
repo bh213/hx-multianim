@@ -23,6 +23,8 @@ import bh.multianim.dev.HotReload;
  * NOTE: Use double-quoted strings ("...") for .manim source — single-quoted strings
  * trigger Haxe string interpolation which conflicts with .manim $ references.
  */
+@:access(bh.ui.screens.ScreenManager)
+@:access(bh.multianim.dev.DevBridge)
 class HotReloadTest extends BuilderTestBase {
 	// ===== Helper: simulate hot-reload cycle =====
 
@@ -1086,5 +1088,487 @@ class HotReloadTest extends BuilderTestBase {
 		Assert.notNull(drParams);
 		Assert.isTrue(drParams.exists("value"), "DynamicRef snapshot should have 'value' param");
 	}
+
+	// ==================== DynamicRef template swap: dev-resource lifetime ====================
+
+	@Test
+	public function testDynamicRefTemplateSwapWhileDetachedReleasesReloadHandle():Void {
+		// Handle lifetime must not depend on the ReloadSentinel's onRemove(): Heaps only
+		// fires onRemove for scene-ALLOCATED objects, and builder results in these tests
+		// (like off-screen game UI) are never attached to a scene. When a dynamicRef
+		// template swap discards the old child subtree, the discard path itself must
+		// release the old child's reload handle — otherwise the registry accumulates one
+		// dead handle per swap.
+		final source = "
+			#progA programmable() {
+				bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+			#progB programmable() {
+				bitmap(generated(color(20, 20, #00ff00))): 0, 0
+			}
+			#host programmable(template:string=\"progA\") {
+				#child dynamicRef($template): 0, 0
+			}
+		";
+		// Host root is NOT attached to any scene — the sentinel's onRemove never fires.
+		final result = buildFromSource(source, "host", null, Incremental);
+		Assert.notNull(result);
+
+		final child = result.getDynamicRef("child");
+		Assert.notNull(child, "named dynamicRef should be addressable as 'child'");
+
+		// Manually register the CHILD result (no loader registry is wired in tests,
+		// so nothing auto-registers — registration stays fully under test control).
+		final registry = new ReloadableRegistry();
+		final handle = registry.register("virtual.manim", child, "progA");
+		child.reloadHandle = handle;
+		Assert.equals(1, registry.getHandles("virtual.manim").length, "sanity: one handle after register");
+
+		// Swap the template — the old child subtree is discarded while detached.
+		result.setParameter("template", "progB");
+
+		// The discarded child's handle must be released. The new child was never
+		// registered by this test, so the registry must be empty.
+		Assert.equals(0, registry.getHandles("virtual.manim").length,
+			"discarding the old dynamicRef subtree must release its reload handle even when detached from any scene");
+
+		// Swap again — the registry must not grow with stale handles per swap.
+		result.setParameter("template", "progA");
+		Assert.equals(0, registry.getHandles("virtual.manim").length,
+			"repeated template swaps must not accumulate stale reload handles");
+	}
+
+	@Test
+	public function testDynamicRefTemplateSwapCancelsOldSubtreeTransitionTweens():Void {
+		// When a dynamicRef template swap discards the old child subtree, any in-flight
+		// transition tweens owned by the old child's incremental context must be cancelled.
+		// Otherwise they keep ticking against orphaned scene objects after the swap.
+		final tm = new bh.base.TweenManager();
+		final builder = builderFromSource("
+			#tplA programmable(status:[a,b]=a) {
+				transition {
+					status: crossfade(0.5)
+				}
+				@(status=>a) bitmap(generated(color(10, 10, #ff0000))): 0, 0
+				@(status=>b) bitmap(generated(color(10, 10, #00ff00))): 0, 0
+			}
+			#tplB programmable() {
+				bitmap(generated(color(20, 20, #0000ff))): 0, 0
+			}
+			#host programmable(template:string=\"tplA\") {
+				#child dynamicRef($template): 0, 0
+			}
+		");
+		builder.tweenManager = tm;
+		final result = builder.buildWithParameters("host", new Map(), null, null, true);
+		Assert.notNull(result);
+
+		final child = result.getDynamicRef("child");
+		Assert.notNull(child, "named dynamicRef should be addressable as 'child'");
+		final oldChildObject = child.object;
+
+		// Start a crossfade on the old child and advance it mid-flight.
+		child.setParameter("status", "b");
+		tm.update(0.0); // consumed by skipFirstDt
+		tm.update(0.1); // 0.1s into the 0.5s crossfade
+		Assert.isTrue(subtreeHasTweens(tm, oldChildObject),
+			"sanity: crossfade tweens must be active on the old child before the swap");
+
+		// Swap the template — old subtree discarded mid-transition.
+		result.setParameter("template", "tplB");
+
+		Assert.isFalse(subtreeHasTweens(tm, oldChildObject),
+			"discarding the old dynamicRef subtree must cancel its in-flight transition tweens");
+	}
+
+	// Recursive tween probe: TweenManager.hasTweens matches the exact target object,
+	// but transition tweens target descendants (the conditional bitmaps), not the root.
+	static function subtreeHasTweens(tm:bh.base.TweenManager, root:h2d.Object):Bool {
+		if (tm.hasTweens(root)) return true;
+		for (i in 0...root.numChildren) {
+			if (subtreeHasTweens(tm, root.getChildAt(i))) return true;
+		}
+		return false;
+	}
+
+	// ==================== reloadable=false opt-out ====================
+
+	@Test
+	public function testReloadableFalseSkipsInPlaceReload():Void {
+		// docs/hot-reload.md ("Controlling Reloadability") documents
+		// `result.reloadable = false` as an opt-out. The flag is set by callers
+		// AFTER buildWithParameters returns, so the reload loop itself must
+		// consult it — registration-time reads can never see the opt-out.
+		// Drives the real ScreenManager.hotReload() loop against a temp file.
+		final fileName = "hotreload-optout-tmp.manim";
+		final filePath = "test/res/" + fileName;
+		final v1 = "version: 1.0\n"
+			+ "#optout programmable() {\n"
+			+ "	bitmap(generated(color(10, 10, #ff0000))): 0, 0\n"
+			+ "}\n"
+			+ "#normal programmable() {\n"
+			+ "	bitmap(generated(color(10, 10, #00ff00))): 0, 0\n"
+			+ "}\n";
+		final v2 = "version: 1.0\n"
+			+ "#optout programmable() {\n"
+			+ "	bitmap(generated(color(99, 10, #ff0000))): 0, 0\n"
+			+ "}\n"
+			+ "#normal programmable() {\n"
+			+ "	bitmap(generated(color(99, 10, #00ff00))): 0, 0\n"
+			+ "}\n";
+		sys.io.File.saveContent(filePath, v1);
+		var caught:Null<Dynamic> = null;
+		try {
+			final sm = new bh.ui.screens.ScreenManager(bh.test.VisualTestBase.appInstance);
+			final builder = sm.buildFromResourceName(fileName, false);
+			final rOpt = builder.buildWithParameters("optout", new Map(), null, null, true);
+			final rNorm = builder.buildWithParameters("normal", new Map(), null, null, true);
+
+			Assert.equals(2, sm.hotReloadRegistry.getHandles(fileName).length,
+				"sanity: both incremental results register reload handles");
+			Assert.equals(10, Std.int(findVisibleBitmapDescendants(rOpt.object)[0].tile.width));
+
+			// The documented opt-out — set after build, as any real caller would.
+			rOpt.reloadable = false;
+
+			sys.io.File.saveContent(filePath, v2);
+			sm.hotReload();
+
+			final normBitmaps = findVisibleBitmapDescendants(rNorm.object);
+			Assert.equals(99, Std.int(normBitmaps[0].tile.width),
+				"control: a reloadable result must be rebuilt in place by hotReload()");
+
+			final optBitmaps = findVisibleBitmapDescendants(rOpt.object);
+			Assert.equals(10, Std.int(optBitmaps[0].tile.width),
+				"a result with reloadable=false must be skipped by the reload loop");
+		} catch (e:Dynamic) {
+			caught = e;
+		}
+		if (sys.FileSystem.exists(filePath))
+			sys.FileSystem.deleteFile(filePath);
+		if (caught != null)
+			throw caught;
+	}
+
+	// ==================== Reload registration ====================
+	// Which results a reload (and DevBridge) can reach: results of a screen that was switched
+	// away and back, every screen sharing a file, a file named by DevBridge `reload`, and no
+	// leftovers from `eval_manim`.
+
+	static final ITEM_V1 = "version: 1.0\n#item programmable() {\n\tbitmap(generated(color(10, 10, #ff0000))): 0, 0\n}\n";
+	static final ITEM_V2 = "version: 1.0\n#item programmable() {\n\tbitmap(generated(color(99, 10, #ff0000))): 0, 0\n}\n";
+
+	/** Runs `body` with `test/res/<fileName>` holding `content`; the file is deleted afterwards. */
+	static function withTempManim(fileName:String, content:String, body:String -> Void):Void {
+		final filePath = "test/res/" + fileName;
+		sys.io.File.saveContent(filePath, content);
+		var caught:Null<Dynamic> = null;
+		try {
+			body(filePath);
+		} catch (e:Dynamic) {
+			caught = e;
+		}
+		if (sys.FileSystem.exists(filePath))
+			sys.FileSystem.deleteFile(filePath);
+		if (caught != null)
+			throw caught;
+	}
+
+	static function itemWidth(result:BuilderResult):Int {
+		return Std.int(findVisibleBitmapDescendants(result.object)[0].tile.width);
+	}
+
+	/** A root marked as on stage. Heaps fires onAdd/onRemove only under an allocated scene, and the
+	 *  test app's s2d is allocated only after its first render — later than the unit tests run. */
+	static function allocatedStage():h2d.Object {
+		final stage = new h2d.Object();
+		@:privateAccess stage.onAdd();
+		return stage;
+	}
+
+	@Test
+	public function testResultBackInSceneIsReloadableAgain():Void {
+		final fileName = "hotreload-scene-tmp.manim";
+		withTempManim(fileName, ITEM_V1, filePath -> {
+			final sm = new bh.ui.screens.ScreenManager(bh.test.VisualTestBase.appInstance);
+			final s2d = allocatedStage();
+			final r = sm.buildFromResourceName(fileName, false).buildWithParameters("item", new Map(), null, null, true);
+			s2d.addChild(r.object);
+			Assert.equals(1, sm.hotReloadRegistry.getHandles(fileName).length, "sanity: registered while shown");
+
+			// A screen switch takes the root out of the scene and later puts it back.
+			r.object.remove();
+			s2d.addChild(r.object);
+			Assert.equals(1, sm.hotReloadRegistry.getHandles(fileName).length,
+				"back in the scene, the result must be registered again");
+
+			sys.io.File.saveContent(filePath, ITEM_V2);
+			sm.hotReload();
+			Assert.equals(99, itemWidth(r), "and a reload must reach it");
+			r.object.remove();
+		});
+	}
+
+	@Test
+	public function testExplicitlyUnregisteredHandleStaysGoneWhenItsObjectIsAddedAgain():Void {
+		final s2d = allocatedStage();
+		final registry = new ReloadableRegistry();
+		final r = buildFromSource("
+			#p programmable() {
+				bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+		", "p", null, Incremental);
+		final handle = registry.register("virtual.manim", r, "p");
+		registry.unregister(handle);
+
+		s2d.addChild(r.object);
+		Assert.equals(0, registry.getHandles("virtual.manim").length,
+			"a discarded result must not come back just because its object is added to the scene");
+		r.object.remove();
+	}
+
+	@Test
+	public function testHotReloadReloadsEveryScreenThatSharesTheFile():Void {
+		final fileName = "hotreload-shared-tmp.manim";
+		withTempManim(fileName, ITEM_V1, filePath -> {
+			final sm = new bh.ui.screens.ScreenManager(bh.test.VisualTestBase.appInstance);
+			final a = new SharedFileScreen(sm, fileName);
+			final b = new SharedFileScreen(sm, fileName);
+			sm.addScreen("sharedA", a);
+			sm.addScreen("sharedB", b);
+			Assert.equals(1, a.loads);
+			Assert.equals(1, b.loads);
+
+			sys.io.File.saveContent(filePath, ITEM_V2);
+			final report = sm.hotReload();
+
+			Assert.equals(2, a.loads, "the first screen reloads once");
+			Assert.equals(2, b.loads, "the second screen sharing the file reloads too");
+			Assert.isTrue(report.success);
+		});
+	}
+
+	@Test
+	public function testBuildFromResourceNameKeepsOneEntryPerFile():Void {
+		final fileName = "hotreload-cache-tmp.manim";
+		withTempManim(fileName, ITEM_V1, _ -> {
+			final sm = new bh.ui.screens.ScreenManager(bh.test.VisualTestBase.appInstance);
+			final b1 = sm.buildFromResourceName(fileName, false);
+			final b2 = sm.buildFromResourceName(fileName, false);
+			Assert.equals(b1, b2);
+			Assert.equals(1, sm.loadedManimPaths().length, "loading the same file twice keeps one builder entry");
+		});
+	}
+
+	@Test
+	public function testDevBridgeReloadByFileReloadsThatFile():Void {
+		final fileName = "hotreload-bridge-tmp.manim";
+		withTempManim(fileName, ITEM_V1, filePath -> {
+			final sm = new bh.ui.screens.ScreenManager(bh.test.VisualTestBase.appInstance);
+			final r = sm.buildFromResourceName(fileName, false).buildWithParameters("item", new Map(), null, null, true);
+			sys.io.File.saveContent(filePath, ITEM_V2);
+
+			final bridge = new bh.multianim.dev.DevBridge(sm, 0);
+			final report:Dynamic = bridge.dispatch("reload", {file: fileName});
+
+			Assert.equals(fileName, report.file, "the report names the reloaded file");
+			Assert.equals(1, report.rebuiltCount, "the file's live result is rebuilt");
+			Assert.equals(99, itemWidth(r));
+		});
+	}
+
+	// ==================== In-place reload as a transaction ====================
+	// A result built outside any screen is reloaded in place: the game keeps its `result.object`.
+	// A failed rebuild must leave the live result as it was; a successful one must leave a result
+	// whose later updates, re-shown elements and root properties reach the screen.
+
+	/** Builds `name` from `v1`, lets `setup` act on it, then writes `v2` and hot-reloads. */
+	static function reloadInPlace(fileName:String, v1:String, v2:String, name:String,
+			check:(sm:bh.ui.screens.ScreenManager, result:BuilderResult, report:ReloadReport) -> Void,
+			?params:Map<String, Dynamic>, ?setup:BuilderResult -> Void):Void {
+		withTempManim(fileName, v1, filePath -> {
+			final sm = new bh.ui.screens.ScreenManager(bh.test.VisualTestBase.appInstance);
+			final result = sm.buildFromResourceName(fileName, false).buildWithParameters(name, params ?? new Map(), null, null, true);
+			final stage = allocatedStage();
+			stage.addChild(result.object);
+			if (setup != null)
+				setup(result);
+			sys.io.File.saveContent(filePath, v2);
+			final report = sm.hotReload();
+			check(sm, result, report);
+			result.object.remove();
+		});
+	}
+
+	/** Product of the alphas from `obj` up to and including `root`. */
+	static function alphaUpTo(obj:h2d.Object, root:h2d.Object):Float {
+		var a = 1.0;
+		var o:Null<h2d.Object> = obj;
+		while (o != null) {
+			a *= o.alpha;
+			if (o == root)
+				break;
+			o = o.parent;
+		}
+		return a;
+	}
+
+	/** Whether any object from `obj` up to and including `root` carries a filter. */
+	static function hasFilterUpTo(obj:h2d.Object, root:h2d.Object):Bool {
+		var o:Null<h2d.Object> = obj;
+		while (o != null) {
+			if (o.filter != null)
+				return true;
+			if (o == root)
+				break;
+			o = o.parent;
+		}
+		return false;
+	}
+
+	@Test
+	public function testFailedInPlaceReloadLeavesTheLiveResultIntact():Void {
+		final v1 = "version: 1.0\n#host programmable() {\n\tbitmap(generated(color(10, 10, #ff0000))): 0, 0\n\t#s slot: 0, 20\n}\n";
+		// Parses, but a root tint throws at build time (the programmable root is not a Drawable).
+		final v2 = "version: 1.0\n#host programmable() {\n\ttint: #00ff00\n\tbitmap(generated(color(99, 10, #ff0000))): 0, 0\n\t#s slot: 0, 20\n}\n";
+		final content = new h2d.Object();
+		reloadInPlace("hotreload-fail-tmp.manim", v1, v2, "host", (sm, result, report) -> {
+			Assert.isFalse(report.success, "sanity: the rebuild fails");
+			Assert.equals(10, itemWidth(result), "the old tree stays on screen");
+			Assert.equals(content, result.getSlot("s").getContent(), "slot content stays in its slot");
+			Assert.notNull(content.parent, "and attached");
+			Assert.equals(1, sm.hotReloadRegistry.getHandles("hotreload-fail-tmp.manim").length,
+				"the result stays registered for the next reload");
+
+			final retry = sm.hotReload();
+			Assert.isFalse(retry.success, "reloading the same failing text fails again instead of reporting unchanged");
+		}, null, result -> result.getSlot("s").setContent(content));
+	}
+
+	@Test
+	public function testInPlaceReloadKeepsParamUsedInInteractiveId():Void {
+		final v1 = "version: 1.0\n#host programmable(n:int=1) {\n\tbitmap(generated(color(10, 10, #ff0000))): 0, 0\n\tinteractive(10, 10, $n): 0, 0\n}\n";
+		final v2 = "version: 1.0\n#host programmable(n:int=1) {\n\tbitmap(generated(color(99, 10, #ff0000))): 0, 0\n\tinteractive(10, 10, $n): 0, 0\n}\n";
+		var thrown:Null<String> = null;
+		try {
+			reloadInPlace("hotreload-untracked-tmp.manim", v1, v2, "host", (sm, result, report) -> {
+				Assert.isTrue(report.success, 'a param used in an interactive id must not break the reload: ${report.errors}');
+				Assert.equals(99, itemWidth(result));
+			}, ["n" => 2]);
+		} catch (e:Dynamic) {
+			thrown = Std.string(e);
+		}
+		Assert.isNull(thrown, 'hotReload must not throw: $thrown');
+	}
+
+	@Test
+	public function testReshownElementAfterInPlaceReloadIsOnScreen():Void {
+		final v1 = "version: 1.0\n#host programmable(show:bool=true) {\n\t@(show=>true) bitmap(generated(color(10, 10, #ff0000))): 0, 0\n}\n";
+		final v2 = "version: 1.0\n#host programmable(show:bool=true) {\n\t@(show=>true) bitmap(generated(color(99, 10, #ff0000))): 0, 0\n}\n";
+		reloadInPlace("hotreload-reshow-tmp.manim", v1, v2, "host", (sm, result, report) -> {
+			Assert.isTrue(report.success);
+			result.setParameter("show", false);
+			result.setParameter("show", true);
+			final bitmaps = findVisibleBitmapDescendants(result.object);
+			Assert.equals(1, bitmaps.length, "a hidden-then-shown element must come back under the live result");
+		});
+	}
+
+	@Test
+	public function testRootParamAfterInPlaceReloadReachesTheScreen():Void {
+		final v1 = "version: 1.0\n#host programmable(a:float=1.0) {\n\talpha: $a\n\tbitmap(generated(color(10, 10, #ff0000))): 0, 0\n}\n";
+		final v2 = "version: 1.0\n#host programmable(a:float=1.0) {\n\talpha: $a\n\tbitmap(generated(color(99, 10, #ff0000))): 0, 0\n}\n";
+		reloadInPlace("hotreload-rootparam-tmp.manim", v1, v2, "host", (sm, result, report) -> {
+			Assert.isTrue(report.success);
+			result.setParameter("a", 0.5);
+			final bitmap = findVisibleBitmapDescendants(result.object)[0];
+			Assert.floatEquals(0.5, alphaUpTo(bitmap, result.object), "a root-level $param set after reload must show");
+		});
+	}
+
+	@Test
+	public function testLiteralRootEditsApplyOnInPlaceReload():Void {
+		final v1 = "version: 1.0\n#host programmable() {\n\talpha: 0.5\n\tfilter: glow(#ffff00, 0.6, 4)\n\tbitmap(generated(color(10, 10, #ff0000))): 0, 0\n}\n";
+		final v2 = "version: 1.0\n#host programmable() {\n\talpha: 0.25\n\tbitmap(generated(color(99, 10, #ff0000))): 0, 0\n}\n";
+		reloadInPlace("hotreload-rootedit-tmp.manim", v1, v2, "host", (sm, result, report) -> {
+			Assert.isTrue(report.success);
+			final bitmap = findVisibleBitmapDescendants(result.object)[0];
+			Assert.floatEquals(0.25, alphaUpTo(bitmap, result.object),
+				"an edited root alpha applies once (not the old value, not both multiplied)");
+			Assert.isFalse(hasFilterUpTo(bitmap, result.object), "a root filter removed from the file is gone");
+		});
+	}
+
+	@Test
+	public function testRebuildListenersSurviveInPlaceReload():Void {
+		final v1 = "version: 1.0\n#host programmable(n:int=0) {\n\tbitmap(generated(color(10, 10, #ff0000))): $n, 0\n}\n";
+		final v2 = "version: 1.0\n#host programmable(n:int=0) {\n\tbitmap(generated(color(99, 10, #ff0000))): $n, 0\n}\n";
+		var fired = 0;
+		reloadInPlace("hotreload-listener-tmp.manim", v1, v2, "host", (sm, result, report) -> {
+			Assert.isTrue(report.success);
+			fired = 0;
+			result.setParameter("n", 5);
+			Assert.isTrue(fired > 0, "a rebuild listener added before the reload (screen sync, card resync) still fires");
+		}, null, result -> result.addRebuildListener(() -> fired++));
+	}
+
+	@Test
+	public function testTilemapThatNoLongerFitsItsTilesetFailsTheReload():Void {
+		final fileName = "hotreload-tilemap-tmp.manim";
+		final fits = "version: 1.0
+" + bh.test.examples.TilemapTest.source('#m tilemap { tileset: plains size: 2, 1 legend { ".": grass } terrain: [".."] }');
+		final unfit = "version: 1.0
+" + bh.test.examples.TilemapTest.source('#m tilemap { tileset: plains size: 2, 1 legend { ".": lava } terrain: [".."] }');
+		withTempManim(fileName, fits, filePath -> {
+			final sm = new bh.ui.screens.ScreenManager(bh.test.VisualTestBase.appInstance);
+			final map = sm.buildFromResourceName(fileName, false).buildTilemap("m");
+			final stage = allocatedStage();
+			stage.addChild(map);
+			var failed = 0;
+			sm.addReloadListener(event -> switch event {
+				case ReloadFailed(_): failed++;
+				default:
+			});
+			sys.io.File.saveContent(filePath, unfit);
+			final report = sm.hotReload();
+			Assert.isFalse(report.success, "the reload does not throw: it fails its report");
+			Assert.equals(1, failed, "and says so to the listeners");
+			Assert.equals("tilemap:m", report.errors[0].context);
+			Assert.stringContains("lava", report.errors[0].message);
+			Assert.equals("grass", map.terrainAt(0, 0), "the map stays as it was");
+			Assert.isFalse(sm.hotReload().success, "the same text is tried again, not taken as unchanged");
+			map.remove();
+		});
+	}
+
+	@Test
+	public function testEvalManimLeavesNoRegisteredResult():Void {
+		final sm = new bh.ui.screens.ScreenManager(bh.test.VisualTestBase.appInstance);
+		final bridge = new bh.multianim.dev.DevBridge(sm, 0);
+		final result:Dynamic = bridge.dispatch("eval_manim", {source: ITEM_V1});
+		Assert.isTrue(result.success, "sanity: the source builds");
+		Assert.equals(0, sm.hotReloadRegistry.getHandles("<eval>").length,
+			"an eval build must not stay registered as a live programmable");
+	}
+}
+
+/** Builds `item` from a shared file on every load, counting loads. */
+private class SharedFileScreen extends bh.ui.screens.UIScreen.UIScreenBase {
+	final fileName:String;
+
+	public var loads:Int = 0;
+
+	public function new(sm:bh.ui.screens.ScreenManager, fileName:String) {
+		super(sm);
+		this.fileName = fileName;
+	}
+
+	public function load():Void {
+		loads++;
+		final builder = screenManager.buildFromResourceName(fileName, false);
+		addObjectToLayer(builder.buildWithParameters("item", new Map(), null, null, true).object);
+	}
+
+	public function onScreenEvent(event:bh.ui.UIElement.UIScreenEvent, source:Null<bh.ui.UIElement>):Void {}
 }
 #end

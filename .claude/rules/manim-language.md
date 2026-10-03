@@ -13,7 +13,7 @@
 
 **Parameter types**: `uint`, `int`, `float`, `bool`, `string`, `color`, `tile`, enum (`[val1,val2]`), range (`1..5`), flags
 
-**Root-level properties on `programmable()`**: `pos:`, `scale:`, `rotate:`, `alpha:`, `tint:`, `filter:`, `blendMode:` may appear at the programmable body root (not just on child elements). Honoured identically in builder and codegen paths (prior to strict-D fix, codegen ignored them — see CHANGELOG). `$param`-dependent values re-fire on `setParameter()`. `pos:` composes additively with runtime `setPosition(x, y)` — the `.manim` offset stays as the origin.
+**Root-level properties on `programmable()`**: `pos:`, `scale:`, `rotate:`, `alpha:`, `filter:`, `blendMode:` may appear at the programmable body root (not just on child elements). Honoured identically in builder and codegen paths (prior to strict-D fix, codegen ignored them — see CHANGELOG). `$param`-dependent values re-fire on `setParameter()`. `pos:` composes additively with runtime `setPosition(x, y)` — the `.manim` offset stays as the origin. **`tint:` is NOT valid at the root**: the programmable root is an `h2d.Layers` (a non-Drawable, no `color`), so a root-level `tint:` now throws a `BuilderError` (`code="tint_requires_drawable"`) in both builder and codegen instead of silently no-oping. Put `tint:` on a Drawable child (`bitmap`/`text`/…) or `apply { tint: }` onto one.
 
 **Color format (strict-D)**: Internal storage is Heaps `0xAARRGGBB`. CSS `#` forms bake `0xFF` alpha on 3/6-digit shorthand (`#FF0000` → `0xFFFF0000`), alpha preserved on 8-digit `#RRGGBBAA`. Heaps `0x` forms preserve every byte verbatim — `0xFF0000` is transparent red (top byte = 0), not opaque. `transparent` / `0x00000000` is reachable from runtime code (`setColor(0)` no longer gets clobbered to opaque black). Migration from pre-strict-D: any `0xRRGGBB` literal meant for opaque → use `#RRGGBB` or `0xFFRRGGBB`.
 
@@ -40,7 +40,7 @@
 | `mask(w, h)` | Clipping mask rectangle |
 | `flow(...)` | Layout flow container |
 | `repeatable($var, iterator)` | Loop elements |
-| `tilegroup` | Optimized tile grouping (supports `bitmap`, `ninepatch`, `repeatable`, `repeatable2d`, `pixels`, `point`). Children are baked once at build time, so conditionals on programmable parameters are **rejected at build time** (`BuilderError code="tilegroup_conditional"`) — use conditionals outside the tileGroup, or key them on a `repeatable` loop variable inside it |
+| `tilegroup` | Optimized tile grouping (supports `bitmap`, `ninepatch`, `repeatable`, `repeatable2d`, `pixels`, `point`). Children are baked once at build time, so conditionals on programmable parameters are **rejected at build time** (`BuilderError code="tilegroup_conditional"`), in both the nested `tilegroup {}` element and the root `programmable tileGroup(...)` form — use conditionals outside the tileGroup, or key them on a `repeatable` loop variable inside it |
 | `stateanim construct(...)` | Inline state animation |
 | `point` | Positioning point |
 | `apply(...)` | Apply properties to parent |
@@ -50,6 +50,8 @@
 | `@final name = expr` | Immutable named constant |
 | `#name data {...}` | Static typed data block |
 | `#name atlas2("file") {...}` | Inline sprite atlas |
+| `#name autotile {...}` | Terrain tileset: `format: corner` (16, dual grid) / `blob47` / `cross`; source `file:`+`region:` / `sheet:`+`prefix:` / `sheet:`+`name:` (frames of one indexed name) / `tiles:` / `demo:`; `mapping:` autotile index -> source index, several per index with `\|` (drawn by position), each turned with `flipX`/`flipY`/`rot90`/`rot180`/`rot270`; `margin:`/`spacing:` for a `file:` source with gutters. Build with `builder.buildAutotile(name, grid, ?where)`; single tile `generated(autotile(name, index))` |
+| `#name tileset {...}` / `#name tilemap {...}` | Tileset: `atlas`, `edge` (every higher level's outline, along its rim; `edge <terrain>:` for one terrain on top), `terrain` (autotile / animated / `cells` variants, drawn bottom first), `transition a, b { autotile }` (where two meet), `rise n { side left right single span toward }` (`rise any`, `rise n <terrain>`, `side: "a", "b"` taken in turn), `platform name { edge rise }` (a top of its own over the ground, named in a map's levels legend: `"c": 1 canopy`), `cell name { draw size anchor }` (`draw: actors` sorted by feet; `size: w, h` an object of several cells at its anchor, its name and metadata on every cell it covers, inside the map and over no other), `metadata {}` on terrain / rise / cell. Tile map: `tileset`, `size`, `legend`, `terrain`/`levels` rows (`levels { legend rows }` beyond nine), `layer { sheet draw legend rows }`, `decor {}`, `marks {}`; placed with `tilemap(name)`; `builder.buildTilemap(name)` → `bh.base.TileMap`, drawn in chunks (`defaultChunkSize` 32) each as first in view (`cull(x, y, w, h)` or the scene) or asked (`sideAt`, `metadataAt`), a change redrawing its chunk; `objectAt` for what covers a cell |
 | `curves {...}` | 1D curve definitions |
 | `paths {...}` | Path definitions |
 | `#name animatedPath {...}` | Animated path with curves/events |
@@ -227,6 +229,8 @@ Operations reference other named curves **or built-in easing names** (e.g. `mult
 **Shutdown block:** Configures graceful particle stop. All curves use "progress" convention: `multiplier = 1.0 - curve(t)`. `curve` controls particle count (how many recycle vs die). `alphaCurve`/`sizeCurve`/`speedCurve` apply global multipliers during shutdown. `duration` is the default when `shutdown()` is called without arguments.
 
 **Runtime API:** `group.emitBurst(count)`, `group.addForceField(ff)`, `group.removeForceFieldAt(i)`, `group.clearForceFields()`, `group.shutdown(?duration, ?curve)`, `particles.shutdown(?duration, ?curve)`, `group.isShuttingDown()`, `group.getShutdownRate()`, `group.emitFilter = (x, y) -> Bool`, `particles.worldAnchor : Null<h2d.Object>` (non-relative groups bake/render through the anchor's local frame instead of full scene-space — set to the scene world-root for per-shot trail emitters under a camera; null = legacy screen-space), `group.advanceTime(dt)`, `particles.advanceTime(dt)`
+
+**`particles.onEnd()`** (default `remove()`) fires once when the last particle dies. A container whose groups are all burst-driven (`count: 0`, fed by `emitBurst`/`emitBurstAt`) stays alive between bursts and only ends after `shutdown()`.
 
 See `docs/manim.md` for full particles documentation.
 

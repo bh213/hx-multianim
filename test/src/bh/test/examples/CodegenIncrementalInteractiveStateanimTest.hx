@@ -2,6 +2,7 @@ package bh.test.examples;
 
 import utest.Assert;
 import bh.test.BuilderTestBase;
+import bh.multianim.MultiAnimBuilder.PlaceholderValues;
 
 /**
  * Regression — INTERACTIVE(w, h, ...) size and STATEANIM(filename, initialState, ...)
@@ -130,7 +131,7 @@ class CodegenIncrementalInteractiveStateanimTest extends BuilderTestBase {
 	}
 
 	// ==================== Untracked-ref rejection ====================
-	// Params referenced only in untracked slots (interactive id/metadata, stateanim selectors)
+	// Params referenced only in untracked slots (interactive id/metadata)
 	// are silently frozen at construction. To prevent footgun where setParameter succeeds in
 	// updating the field but has no visual effect, both setter and setParameter must throw.
 	//
@@ -194,19 +195,31 @@ class CodegenIncrementalInteractiveStateanimTest extends BuilderTestBase {
 			"price", "interactive metadata value", "codegen metadata");
 	}
 
+	// A param in a stateanim selector changes that state on the same state machine
+	// (AnimationSM.setState), keeping the animation playing: no rebuild, no throw.
+
 	@Test
-	public function testUntrackedSelector_Builder_Throws():Void {
-		final result = BuilderTestBase.buildFromFile(FIXTURE, "codegenIncUntrackedSelector", null, Incremental);
-		assertUntrackedReject(runAndCatch(() -> result.setParameter("dir", "r")),
-			"dir", "stateanim selector \"direction\"", "builder selector");
+	public function testSelector_Builder_ChangesStateInPlace():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "codegenIncSelector", null, Incremental);
+		final sm = findAnimationSM(result.object);
+		Assert.notNull(sm, "Should find AnimationSM child");
+		Assert.equals("l", sm.currentSelector.get("direction"));
+		result.setParameter("dir", "r");
+		Assert.isTrue(findAnimationSM(result.object) == sm, "the same state machine, not a rebuilt one");
+		Assert.equals("r", sm.currentSelector.get("direction"), "the selector changed");
+		Assert.equals("idle", sm.getCurrentAnimName(), "still playing idle");
 	}
 
 	@Test
-	public function testUntrackedSelector_Codegen_Throws():Void {
+	public function testSelector_Codegen_ChangesStateInPlace():Void {
 		final mp = createMp();
-		final inst:Dynamic = mp.codegenIncUntrackedSelector.create();
-		assertUntrackedReject(runAndCatch(() -> inst.setDir("r")),
-			"dir", "stateanim selector \"direction\"", "codegen selector");
+		final inst:Dynamic = mp.codegenIncSelector.create();
+		final sm = findAnimationSM(cast inst);
+		Assert.notNull(sm, "Should find AnimationSM child");
+		inst.setDir("r");
+		Assert.isTrue(findAnimationSM(cast inst) == sm, "the same state machine, not a rebuilt one");
+		Assert.equals("r", sm.currentSelector.get("direction"), "the selector changed");
+		Assert.equals("idle", sm.getCurrentAnimName(), "still playing idle");
 	}
 
 	// ==================== Metadata type compat (parse-time validation) ====================
@@ -323,5 +336,60 @@ class CodegenIncrementalInteractiveStateanimTest extends BuilderTestBase {
 			}"
 		);
 		Assert.isTrue(ok, "non-literal @final must not be validated (type unknown at parse time)");
+	}
+
+	// ==================== Untyped `key => true` (inferred bool) ====================
+	// The inferred bool keeps its literal as the string "true"; codegen lowered it as
+	// RSVBool("true" != 0) and the generated class did not compile (compile-checked by
+	// test/examples/152-codegenCompileErrors/hosts/Cg27Host.hx). Values must match the builder.
+
+	static inline var UNTYPED_BOOL_FIXTURE = "test/examples/152-codegenCompileErrors/cg27-untyped-bool.manim";
+
+	static function interactiveMetadata(o:bh.base.MAObject):bh.multianim.MultiAnimParser.ResolvedSettings {
+		switch o.multiAnimType {
+			case MAInteractive(_, _, _, metadata): return metadata;
+			default: throw "expected MAInteractive";
+		}
+	}
+
+	static function boolSetting(settings:bh.multianim.MultiAnimParser.ResolvedSettings, key:String):String {
+		if (settings == null) return "no settings";
+		return switch settings.get(key) {
+			case RSVBool(b): '$b';
+			case other: 'not a bool: $other';
+		};
+	}
+
+	@Test
+	public function testUntypedBoolMetadataAndSettings_CodegenMatchesBuilder():Void {
+		var builderSettings:bh.multianim.MultiAnimParser.ResolvedSettings = null;
+		final builderPlaceholders:Map<String, PlaceholderValues> = [
+			"slot" => PVFactory(s -> {
+				builderSettings = s;
+				return new h2d.Object();
+			})
+		];
+		final builder = BuilderTestBase.builderFromFile(UNTYPED_BOOL_FIXTURE);
+		final result = builder.buildWithParameters("untypedBool", new Map(), {placeholderObjects: builderPlaceholders});
+
+		var codegenSettings:bh.multianim.MultiAnimParser.ResolvedSettings = null;
+		final codegenPlaceholders:Map<String, PlaceholderValues> = [
+			"slot" => PVFactory(s -> {
+				codegenSettings = s;
+				return new h2d.Object();
+			})
+		];
+		final inst:h2d.Object = cast createMp().untypedBool.create(codegenPlaceholders);
+
+		final builderMeta = interactiveMetadata(findMAObject(result.object));
+		final codegenMeta = interactiveMetadata(findMAObject(inst));
+		for (entry in [{key: "selected", value: "true"}, {key: "locked", value: "false"}, {key: "typed", value: "true"}]) {
+			Assert.equals(entry.value, boolSetting(builderMeta, entry.key), 'builder: metadata ${entry.key}');
+			Assert.equals(entry.value, boolSetting(codegenMeta, entry.key), 'codegen: metadata ${entry.key}');
+		}
+		for (entry in [{key: "autoOpen", value: "true"}, {key: "closeOnPick", value: "false"}]) {
+			Assert.equals(entry.value, boolSetting(builderSettings, entry.key), 'builder: setting ${entry.key}');
+			Assert.equals(entry.value, boolSetting(codegenSettings, entry.key), 'codegen: setting ${entry.key}');
+		}
 	}
 }

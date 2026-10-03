@@ -230,7 +230,7 @@ ninepatch("cards", "card-base-patch9", 150,200) {
 }
 ```
 
-Supports `filter`, `scale`, `alpha`, and `blendMode`.
+Supports `filter`, `scale`, `alpha`, `rotation`, `blendMode`, `tint`, and `pos`. `pos` composes *additively* with the parent's existing placement (`parent.x += dx; parent.y += dy`) — same semantics as the builder's `addPosition`. `tint` requires a Drawable parent. Overlapping `apply` entries on the same parent compose by declaration order via a reset-and-replay pass: every entry's baseline is restored, then matched entries fire in order.
 
 ### text
 Creates simple text with font, content, and color. Always creates plain `h2d.Text`.
@@ -339,6 +339,8 @@ Optimized element for constructing objects with many elements (e.g., HP bars). A
 #name programmable tileGroup(...)
 ```
 
+Content is baked once at build time, so conditionals keyed on programmable parameters are rejected (`BuilderError code="tilegroup_conditional"`) — in both the root form above and the nested `tilegroup {}` element. Conditionals keyed on `repeatable` loop variables are allowed (they iterate at build time).
+
 ### programmable
 Core element of the library. Creates an instance of all children belonging to this programmable.
 
@@ -378,9 +380,9 @@ repeatable($varname, range(from: start, until: end[, step: s]))
 ```
 
 - `from:` — start value (required for named syntax)
-- `to:` — inclusive end (`to: 5` includes 5)
+- `to:` — inclusive end (`to: 5` includes 5), in either direction
 - `until:` — exclusive end (`until: 5` excludes 5, same as positional)
-- `step:` — step increment (optional, defaults to 1)
+- `step:` — step increment (optional, defaults to 1). A negative step counts down: `range(from: 5, to: 1, step: -1)` yields 5,4,3,2,1. A literal step of 0 is a parse error; a step expression or `$param` that resolves to 0 fails the build with a `BuilderError`
 
 **Stateanim iterator:**
 Iterates over all frames of an animation from a `.anim` file. Exposes `$bitmap` (the tile source) and `$index`.
@@ -1416,11 +1418,12 @@ Collections of colors accessed by index.
 
 **2D palette:**
 ```
-#main palette(2d, 4) {
+#main palette(2d: 4) {
   white 0xf12 0x332 0xfff
   red 0xf13 0x333 0xffa
 }
 ```
+The colors must fill whole rows of `width` (a partial last row is a build error). `palette(main, x, y)` reads column `x` of row `y`; `replacePalette(main, sourceRow, replacementRow)` recolours each colour of `sourceRow` to the colour in the same column of `replacementRow` (one way, not a swap).
 
 **File palette:**
 ```
@@ -1431,160 +1434,346 @@ Collections of colors accessed by index.
 
 ## Autotile
 
-Root-level element for procedural terrain/tileset generation. Autotiles automatically select the correct tile variant based on neighboring tiles.
+Root-level element for procedural terrain. An autotile names a tileset and an index scheme; `builder.buildAutotile(name, grid)` then picks the right tile for every cell (or grid corner) from its neighbours and returns an `h2d.TileGroup`.
 
 ### Basic Syntax
 
 ```
 #name autotile {
-    format: cross | blob47
+    format: corner | blob47 | cross
     tileSize: <int>
     <source>
-    [optional properties]
+    [mapping: [...]]
+    [region: [x, y, w, h]]          // file: source only
+    [allowPartialMapping: true]     // blob47 only
 }
 ```
 
 ### Formats
 
-| Format | Tiles | Description |
-|--------|-------|-------------|
-| `cross` | 13 | Cardinal directions + corners (N, E, S, W, C, outer corners, inner corners) |
-| `blob47` | 47 | Full 8-directional coverage with all edge/corner combinations |
+| Format | Tiles | Placement | Use when |
+|--------|-------|-----------|----------|
+| `corner` | 16 | One tile per grid **corner** (dual grid, offset by half a tile). Index = which of the 4 cells around the corner are terrain: `NW 1 + NE 2 + SW 4 + SE 8`. Index 0 is never drawn. | Your tileset is a 3x3 patch + 4 inner corners + 2 diagonals (15 tiles, the 16th is the plain background) - the most common two-terrain layout. Covers **every** grid configuration, including isolated cells, 1-wide strips and diagonal touches. |
+| `blob47` | 47 | One tile per filled cell, chosen from all 8 neighbours (a diagonal only counts when both adjacent sides are present). | Your tileset has the full 47-tile blob layout. With fewer tiles, see [Partial mapping](#partial-mapping-blob47). |
+| `cross` | 13 | One tile per filled cell: 4 edges, center, 4 outer + 4 inner corners (`0=N 1=W 2=C 3=E 4=S`, `5-8` = NW/NE/SW/SE outer, `9-12` = NE/NW/SE/SW inner). | Legacy 13-tile sets. Cannot express isolated cells, 1-wide strips or two missing diagonals (they render as the center tile). |
+
+Edge tiles are named after the side that **borders empty space**: the `N edge` tile is used for a cell with no terrain to its north. Inner corners are named after the missing diagonal.
+
+The `corner` format draws `(w + 1) x (h + 1)` tiles for a `w x h` grid, so the TileGroup extends half a tile past the grid on every side; the terrain itself still lines up with the cells. Use an even `tileSize`.
 
 ### Source Types
 
-One source type is required:
+Exactly one source is required. Every source is addressed by a **source index** `j`; `mapping:` maps autotile index -> source index (identity when absent).
 
-**Atlas with prefix:**
-```
-sheet: "sheetName", prefix: "tile_"
-```
-Loads tiles named `tile_0`, `tile_1`, etc. from atlas.
-
-**Atlas with region:**
-```
-sheet: "sheetName", region: [x, y, width, height]
-```
-Extracts tiles from a rectangular region of the atlas. **Requires `mapping:`** since region tiles are rarely in autotile index order.
-
-**Image file:**
-```
-file: "filename.png"
-```
-Loads tiles from an image file. Use with `region:` to specify tile area. **Requires `mapping:`** when using a region.
-
-**Explicit tiles:**
-```
-tiles: sheet("atlas", "tile1") sheet("atlas", "tile2") generated(color(16,16,red)) ...
-```
-List of explicit tile sources for full control.
-
-**Demo (auto-generated):**
-```
-demo: edgeColor, fillColor
-```
-Generates placeholder tiles for prototyping. Shows edge/fill colors to visualize tile variants.
-
-### Optional Properties
-
-| Property | Description |
-|----------|-------------|
-| `region: [x, y, w, h]` | For file source: extract tiles from this region only |
-| `depth: <int>` | Isometric elevation depth |
-| `mapping: [...]` | Remap tile indices (see below) |
-| `allowPartialMapping: true` | For blob47: missing tiles use fallback instead of error |
+| Source | Source index `j` |
+|--------|-----------------|
+| `file: "tileset.png"` | `j`-th tile (row-major) of `region: [x, y, w, h]`, or of the whole image without `region:`. The region must fit the image and be a whole number of tiles. |
+| `sheet: "atlasName", prefix: "tile_"` | atlas tile named `tile_<j>` (works with inline `atlas2` blocks). |
+| `sheet: "atlasName", name: "lava"` | frame `j` of the atlas tile `lava`, its frames in `index:` order from 0 (a run whose first index is 1 counts from it, as every atlas is read). How a packer writes a terrain's cells: one name, one `index` a cell. |
+| `tiles: <tile source> <tile source> ...` | `j`-th listed tile source (`sheet(...)`, `file(...)`, `generated(...)`, ...). |
+| `demo: edgeColor, fillColor` | Generated placeholder tiles, one per autotile index (all in one texture). Takes no `mapping:`. |
 
 ### Mapping
 
-Maps autotile indices to tileset indices. **Required for region-based sources** because tileset artists rarely arrange tiles in autotile index order.
+`mapping:` maps autotile indices to source indices. Keys must be valid indices for the format (checked at parse time); duplicate keys are an error.
 
-Autotile indices encode which neighbors are present:
-- **cross format**: 0-12, encoding cardinal directions and corners
-- **blob47 format**: 0-46, encoding all 8-directional neighbor combinations
-
-Two mapping formats:
-
-**Sequential:** Position in array = autotile index, value = tileset index
+**Sequential:** position in the list = autotile index
 ```
 mapping: [4, 7, 3, 6]  // autotile 0->4, 1->7, 2->3, 3->6
 ```
 
-**Explicit:** `autotileIndex:tilesetIndex` pairs (recommended for partial mapping)
+**Explicit:** `autotileIndex:sourceIndex` pairs (recommended when not every index is mapped)
 ```
 mapping: [0:4, 1:7, 5:1, 13:5]
 ```
 
+**Several tiles for one index:** `index: a | b | c` (or `a | b | c` in the sequential form). A position
+draws one of them, chosen by its position so the same map always draws the same way and repeats do
+not line up; a source given twice is drawn twice as often. The usual use is the full interior tile
+and the long edges, which most tilesets ship in several versions:
+```
+mapping: [0:4, 1:7, 5:1, 13:5, 15: 9 | 10 | 11 | 11]
+```
+`generated(autotile(name, index))` takes the first; `builder.getAutotileTile(name, index, x, y)` the one a position draws.
+
+**Turned tiles:** after a source index, `flipX`, `flipY` and one of `rot90`, `rot180`, `rot270`
+(clockwise), in any order, for a pack that ships one edge and expects the rest mirrored:
+```
+mapping: [0: 4, 1: 4 flipX, 2: 4 rot90, 3: 4 flipX rot90, 15: 9 | 9 flipX | 9 flipY]
+```
+A flip is in the tile (`getAutotileTile` gives it flipped); a rotation is drawn, and
+`getAutotileRotation(name, index, x, y)` says it, so `generated(autotile(name, index))` shows a
+rotated tile unturned.
+
+**Margin and spacing** of a `file:` source: `margin: 1` pixels from the region's edge (or the image's)
+to its first tile, `spacing: 2` between tiles, as sheets exported with gutters have. The region must
+then hold whole tiles that way: `n` tiles take `2 * margin + n * tileSize + (n - 1) * spacing`.
+`autotileRegionSheet` draws its numbered grid on the tiles as they sit.
+
+Every autotile index needs a tile, otherwise building fails with a `BuilderError` naming the index - with two exceptions: `corner` index 0 (never drawn) and `blob47` with `allowPartialMapping: true`. A mapping target outside the source (e.g. past the end of the region) is an error too.
+
+Use `generated(autotileRegionSheet(...))` (below) to see the source indices of a `file:` region.
+
 ### Partial Mapping (blob47)
 
-Full blob47 coverage requires 47 distinct tiles, but many tilesets only provide a subset (typically 13-20 tiles for basic terrain). Use `allowPartialMapping: true` to enable automatic fallback:
+Many tilesets only provide a subset of the 47 blob tiles. With `allowPartialMapping: true`, an unmapped blob47 index uses the closest mapped tile: same sides with the closest diagonal combination first (fewest mismatched diagonals), then fewer sides, then the full tile (46), then the isolated tile (0). The same applies to a `tiles:` list shorter than 47 without a mapping.
 
-```
-allowPartialMapping: true
-mapping: [
-    0:4,    // isolated tile
-    1:7,    // N neighbor only
-    // ... only map tiles that exist in your tileset
-]
-```
-
-**Fallback behavior:** When a blob47 index isn't mapped, the system finds a simpler tile that still looks correct:
-- Unmapped corner combinations fall back to edge-only tiles
-- Complex patterns fall back to simpler patterns with the same cardinal edges
-- This allows a 15-tile tileset to work with the full 47-tile system
-
-See [test/examples/32-blob47Fallback/](../test/examples/32-blob47Fallback/) for a working example with the Forgotten Plains tileset.
+Fallback can only approximate: a 15-tile patch has no tiles for isolated cells or 1-wide strips, so those render as plain center tiles. Many packs ship the missing pieces elsewhere on the sheet (single blob, strip caps, 1-wide paths, T-junctions) - point `region:` at the whole area and map them; [test/examples/30-blob47Fallback/](../test/examples/30-blob47Fallback/) maps 35 of the 47 indices from the Forgotten Plains dirt tiles this way. If your tileset is only a 3x3 patch + inner corners + diagonals, use `format: corner` instead - it needs no fallback.
 
 ### Examples
+
+**Corner set from a tileset region** (the Forgotten Plains dirt patch, see [test/examples/153-autotileCorner/](../test/examples/153-autotileCorner/)):
+```
+#dirt autotile {
+    format: corner
+    tileSize: 8
+    file: "Tileset/Minifantasy_ForgottenPlainsTiles.png"
+    region: [56, 24, 24, 40]    // 3x5 tiles: 3x3 patch, then inner corners + diagonals
+    mapping: [
+        1:8, 2:6, 3:7, 4:2, 5:5, 6:11, 7:13, 8:0,
+        9:14, 10:3, 11:12, 12:1, 13:10, 14:9, 15:4
+    ]
+}
+```
+
+**Corner set named by index in an inline atlas** (no mapping needed):
+```
+#fp atlas2("Tileset/Minifantasy_ForgottenPlainsTiles.png") {
+    dirt1: 72, 40, 8, 8     // dirt in the NW corner only
+    dirt2: 56, 40, 8, 8     // NE only
+    // ... dirt3 .. dirt15
+}
+#dirt autotile { format: corner  tileSize: 8  sheet: "fp", prefix: "dirt" }
+```
 
 **Demo autotile for prototyping:**
 ```
 #terrainDemo autotile {
     format: blob47
     tileSize: 16
-    demo: 0x66AA44, 0x886644    // green edges, brown fill
+    demo: #66AA44, #886644    // green edges, brown fill
 }
 ```
-See [test/examples/31-autotile/](../test/examples/31-autotile/) for cross and blob47 demo examples.
+See [test/examples/24-autotileCross/](../test/examples/24-autotileCross/), [25-autotileBlob47/](../test/examples/25-autotileBlob47/) and [28-autotileDemoSyntax/](../test/examples/28-autotileDemoSyntax/).
 
-**Tileset with region and partial mapping:**
+**Blob47 with partial mapping** (minimal sketch; [test/examples/30-blob47Fallback/](../test/examples/30-blob47Fallback/) has a full 35-tile mapping):
 ```
-#grassTerrain autotile {
+#dirtBlob autotile {
     format: blob47
     tileSize: 8
     file: "tileset.png"
     region: [56, 24, 24, 40]
     allowPartialMapping: true
     mapping: [
-        0:4,    // isolated tile
-        1:7,    // N neighbor
-        5:1,    // S neighbor
-        13:5,   // W neighbor
-        21:4    // all neighbors (center)
-        // unmapped tiles use fallback
+        0:4,    // isolated
+        1:7,    // dirt to the N -> S edge tile
+        5:1,    // dirt to the S -> N edge tile
+        46:4    // all neighbours -> center
+        // unmapped indices use the fallback
     ]
 }
 ```
-See [test/examples/32-blob47Fallback/](../test/examples/32-blob47Fallback/) for a complete partial mapping example.
+
+### Building terrain from code
+
+```haxe
+// grid[y][x], any non-zero value = terrain
+var grid = [
+    [0, 1, 1, 0],
+    [1, 1, 1, 1],
+    [0, 1, 1, 0]
+];
+var terrain:h2d.TileGroup = builder.buildAutotile("dirt", grid);
+scene.addChild(terrain);
+
+// Single resolved tile (after mapping / fallback):
+var tile:h2d.Tile = builder.getAutotileTile("dirt", 15);
+```
+
+Tiles are resolved once per builder and cached, so rebuilding the TileGroup on every edit is cheap. Index math (`getNeighborMask8`, `getCornerIndex`, `getBlob47Index`, `getCrossIndex`, `getBlob47FallbackChain`) is available in `bh.base.Autotile`.
 
 ### Using Autotile Tiles
 
-Reference autotile tiles in `generated()` expressions:
+Reference a resolved autotile tile in `generated()` expressions by index (0-12 cross, 0-46 blob47, 0-15 corner):
 
 ```
-// By index (0-12 for cross, 0-46 for blob47)
 bitmap(generated(autotile("terrainDemo", 0)))
-
-// By edge flags (N, E, S, W, NE, SE, SW, NW)
-bitmap(generated(autotile("terrainDemo", N|E|S|W)))
+bitmap(generated(autotile("dirt", $i)))
 ```
 
 ### Debugging with Region Sheet
 
-Visualize the tileset region with numbered grid:
+Visualize a `file:` source's region with each tile's source index overlaid:
 
 ```
-bitmap(generated(autotileRegionSheet("grassTerrain", 4, "f3x5", white)))
+bitmap(generated(autotileRegionSheet("dirt", 4, "f3x5", white)))
 ```
+
+---
+
+## Tilesets and Tile Maps
+
+A **tileset** says what maps are drawn with; a **tile map** is rows of characters, one a cell, drawn
+from one. Nothing in either is particular to an art pack: which sheet, which names, which autotile,
+which way a level's side is drawn and what a cell means to the game are all written in the file.
+
+### Tileset
+
+```manim
+#dirt autotile { format: corner tileSize: 8 sheet: "fp", name: "dirt" }
+#water autotile { format: corner tileSize: 8 sheet: "fp", name: "water" }
+#water2 autotile { format: corner tileSize: 8 sheet: "fp", name: "water2" }
+#edge1 autotile { format: corner tileSize: 8 sheet: "fp", name: "edge" }
+
+#plains tileset {
+    tileSize: 8
+    atlas: "fp"                                   // the sheet its named cells are in
+    edge: edge1                                   // the outline of every higher level
+    terrain grass { cells: "grass" metadata { cost:int => 1 } }
+    terrain dirt { autotile: dirt metadata { cost:int => 2 } }
+    terrain water { autotile: water, water2 duration: 300 metadata { swim:bool => true } }
+    rise 1 { side: "side1" left: "side1L" right: "side1R" span: 2 metadata { wall:bool => true } }
+    cell stairs { metadata { wall:bool => false, climb:bool => true } }
+    cell treetop { draw: over }
+}
+```
+
+| In a tileset | |
+|---|---|
+| `tileSize: n` | Pixels a cell |
+| `atlas: "sheet"` | The sheet (an atlas2 file or inline block) its named cells come from |
+| `edge: autotile` | The outline of a higher level, drawn along the rim of every level above 0 (not its inside, so the terrains on it show); needed when there are rises |
+| `edge <terrain>: autotile` | The outline where that terrain is on top, in place of `edge`: for a tileset whose cliff rim is drawn with the ground it holds (a rim of stone round grass, another round dirt) |
+| `terrain name { … }` | A terrain, drawn in the order written, bottom first; each is drawn under every terrain after it (its autotile covers their cells too, so what is drawn over it has something under it) |
+| `transition a, b { autotile: … }` | Where terrain `b` meets terrain `a` (or `none`, the map's edge included) and nothing else, this autotile is drawn over `b`'s own there: for a tileset whose edge between those two is its own tile set (grass to water, not grass to anything). `a` is below `b`; one autotile a frame when `b` is animated |
+| `rise n { … }` | How a cell `n` levels above its neighbour is drawn (below) |
+| `rise any { … }` | The same for every number of levels that has no rise of its own: a fence behind a plateau is the same however high it is |
+| `rise n <terrain> { … }` | The same where the higher cell is of that terrain. A terrain with rises of its own toward a side uses only those there |
+| `platform name { … }` | A kind of higher level that is not the ground raised: a tree top, a roof (below) |
+| `cell name { … }` | What a named cell of a map's layers is, wherever it is placed: `draw:` (`under`, `over`, `top`, or `actors`: among them, sorted by its feet) and `metadata` |
+| `cell name { size: w, h anchor: x, y }` | An object of several cells (a tree, a house) whose frames are `w` by `h` cells: the layer's character marks its `anchor` cell (its bottom-left one unless given, counted from its top-left), it is drawn among the actors standing on its feet unless `draw:` says otherwise, and every cell it covers is it (`cellAt`, `metadataAt`; `objectAt` says where its anchor is). It must lie inside the map and cover no other cell of its layer |
+
+| In a terrain | |
+|---|---|
+| `autotile: a` | An autotile definition of the tileset's file |
+| `autotile: a, b, c` with `duration: ms` | An animated terrain: one autotile a frame |
+| `cells: "name"` | Or the frames of an atlas name, as variants: each cell takes one by its position, the same every time |
+| `metadata { … }` | What the game reads of a cell of this terrain |
+
+**Height is levels, and nothing is lifted.** A map's `levels:` give each cell a level: a digit, or
+for more than ten levels a character of a legend, `levels { legend { "A": 10, "B": 11 } rows: [ … ] }`
+(a digit is always itself). A higher level is outlined by the tileset's `edge` autotile, and beyond a higher cell,
+toward the neighbour its rise faces, its `side` is drawn over `span` cells: the cliff face, the wall,
+the front of a platform. What stands on a higher level stands on its cells, where they are drawn, so
+sorting by feet stays right.
+
+| In a rise | |
+|---|---|
+| `side: "name"` | The side's middle: `span` frames of the name, from the edge outward |
+| `side: "a", "b", "c"` | Several middles, taken in turn along the run (after its first end): a wall drawn as columns that differ |
+| `left:`, `right:`, `single:` | Optional: the side's run's first end (left, or top), its last end, and a side one cell wide |
+| `span: n` | How many cells the side covers |
+| `toward: down` | Which neighbour the side faces: `down` (the default), `up`, `left`, `right`. One rise a number and direction |
+| `metadata { … }` | What the game reads of the cells the side covers |
+
+**A platform** is a higher level with a top of its own, drawn over whatever terrain the map has
+there: the ground under a tree top is still grass. Its `edge` autotile is drawn over all of it,
+inside and rim, and its sides are its own: where it has none toward a side, none is drawn.
+
+```manim
+platform canopy {
+    edge: canopyTop                                 // its top, every cell of it
+    rise 1 { side: "face", "face2" left: "faceL" right: "faceR" span: 6 }
+}
+```
+
+A map says where a platform is in its levels: a character of the levels' legend stands for a level
+and the platform there (`"c": 1 canopy`; `"c": canopy` is one level up). `map.platformAt(cx, cy)`
+is its name, or null for the ground.
+
+### Metadata
+
+`metadata { key:type => value, key => value, … }` on a terrain, a rise or a cell, written as
+`settings { }` and an interactive's metadata are (`int`, `float`, `string`, `bool`, `color`; without
+a type it is inferred), with literals only: a tileset has no parameters. A cell's metadata is its
+terrain's, then a rise's side over it, then each layer's cell there, a later one winning, and it is
+read as settings are: `map.metadataAt(x, y)` is a `BuilderResolvedSettings`. The engine gives no key
+a meaning: the game says what `wall`, `swim` or `cost` are for.
+
+### Tile map
+
+```manim
+#meadow tilemap {
+    tileset: plains                               // or tileset: external(tiles), plains
+    size: 20, 12
+    legend { ".": grass, "d": dirt, "~": water, " ": none }
+    terrain: [
+        "....................",
+        "..dddd.......~~~~...",
+        …
+    ]
+    levels: [                                     // optional: a digit a cell; levels { legend { "A": 10, "c": 1 canopy } rows: [ … ] } for more, and for platforms
+        "00000000000000000000",
+        "00000011111100000000",
+        …
+    ]
+    layer deco { legend { "s": stairs, "t": treetop } rows: [ … ] }   // a space is no cell
+    layer shade { sheet: "shadows" draw: top legend { "x": shade } rows: [ … ] }
+    decor {                                       // any element, sorted with the actors
+        bitmap(sheet("props", "rock")): 40, 80
+    }
+    marks { spawn: 1, 1  exit: 16, 9, 3, 2 }      // a point, or x, y, w, h: in cells
+}
+
+#level programmable() {
+    tilemap(meadow): 0, 0                         // or tilemap(external(maps), meadow)
+}
+```
+
+- Rows are checked when parsed: every row the map's width, every character in its legend, the right
+  number of rows, levels as digits or characters of their legend. The builder checks the rest, since the tileset may be in another
+  file: every terrain, cell and side piece is there (`tilemap_terrain`, `tilemap_missing_cell`), and
+  every rise the map has in a direction the tileset draws sides toward has its `rise` (`tilemap_rise`).
+- A layer's cells come from its `sheet:` (the tileset's `atlas` when not given) and are drawn `under`
+  the actors (the default), `over` them, or at the `top`, above everything; a `cell` with its own
+  `draw:` goes there instead.
+- Drawing order: terrains, the levels' edges and sides, the `under` layers; the decor and the actors in
+  one layer sorted by their feet every frame; `over`; `top`.
+
+### From code
+
+```haxe
+final map:bh.base.TileMap = builder.buildTilemap("meadow");
+map.addActor(hero);                         // sorted by its y with the decor, every frame (map.sortActors = false: not)
+map.toCell(hero.x, hero.y);                 // the cell a point is in
+map.terrainAt(cx, cy);                      // "grass", or null for none
+map.levelAt(cx, cy); map.sideAt(cx, cy);    // a cell's level; the rise of a side over it, or 0
+map.platformAt(cx, cy);                     // the platform a higher cell is of, or null: the ground
+map.cellAt("deco", cx, cy);                 // a layer's cell name, or null (an object's on every cell it covers)
+map.objectAt("deco", cx, cy);               // {name, anchorX, anchorY, x, y, width, height} of what covers the cell, or null
+map.metadataAt(cx, cy).getBoolOrDefault("wall", false);  // getIntOrDefault, getStringOrDefault, has, keys…
+map.mark("exit");                           // {name, x, y, w?, h?}
+map.setTerrain(cx, cy, "~"); map.setLevel(cx, cy, 1); map.setCell("deco", cx, cy, "s");
+```
+
+`setTerrain`, `setLevel` and `setCell` change the map's own copy of the rows, so a map can be painted
+while the game runs. The map is drawn in chunks of `chunkSize` cells a side (`TileMap.defaultChunkSize`,
+32; `setChunkSize`), each as it is first in view or asked what it draws (`sideAt`, `metadataAt`), so
+a big map costs what is seen of it; `terrainAt`, `levelAt` and `cellAt` read the rows and draw
+nothing. However many cells change, the chunks they are in (and, at a chunk's border, the neighbours
+an autotile's corners or a rise's sides reach) are drawn again once, as they are next in view or
+asked; `redraw()` draws it all now. The view is `map.cull(x, y, w, h)`, in the map's pixels (a game
+with a camera calls it as the camera moves, since a camera is not in an object's place), or, with
+`cullToScene` on (the default) and no `cull`, the scene's size seen through the map's place and
+scale; `cullNone()` has every chunk in view, `isChunkVisible(col, row)` says what is drawn. `setLevel`
+raises the ground: a digit for 0–9, else a character of the levels legend that is not a platform's.
+`setCell` places and removes an object of several cells at its anchor. A cell outside the map, a
+character the legend has not, a level no character stands for, a layer the map has not, a cell
+another object covers, and an object that would reach outside the map or over another cell of its
+layer are `BuilderError`s (`tilemap_outside`, `tilemap_legend`, `tilemap_level`, `tilemap_layer`,
+`tilemap_object_covered`, `tilemap_object_outside`, `tilemap_object_overlap`); the last two are
+checked as the rows are read too. Hot reload of the file redraws every map from it in a scene and
+keeps the actors; a map not in a scene is not. The DevBridge answers `map_list` and `map_get`.
 
 ---
 
@@ -1962,8 +2151,111 @@ Records are considered identical when they have the same fields (name, type, opt
 - Enum and record names must be unique within a data block
 - Enums must be defined before records or fields that reference them
 - Commas between array elements and record fields are optional
-- Optional fields (`?name: type`) default to `null` when omitted from record values
+- Optional fields (`?name: type`) default to `null` when omitted from record values, or to their `@default`
 - Runtime builder returns enum values as strings; macro codegen returns typed Haxe `enum` values
+
+### Tables
+
+A record with a `key` field is a row type, and an array of it is a **table**: its rows are found by
+their id, and an id used twice is an error.
+
+```
+#cards data {
+    #category enum(basic, catalog, chaos)
+    #card record(key id, name: string, category: category, cost: int @range(0, 3) @unit("energy"),
+        ?starter: int @default(0) @says("copies in the starting deck"), ?requires: ref card[])
+
+    @says("every card a meeting can deal")
+    all: card[] [
+        { id: agree, name: "Agree in principle", category: basic, cost: 1, starter: 5 }
+        @by(claude) { id: nod-along, name: "Nod along", category: basic, cost: 1, requires: [agree] }
+        { id: "1-on-1", name: "One on one", category: catalog, cost: 2 }
+    ]
+}
+```
+
+- `key id` is a string field every row has (`key id: string` says the same). A record has one key at most.
+- An id is a bare word (`agree`, `nod-along`), or a quoted string for one a word cannot be (`"1-on-1"`).
+- A field named `key` is still a field: `key: string`.
+
+### Refs
+
+`ref <record>` holds the id of a row of a keyed record: `?requires: ref card[]`, `tier: ref tier`. Every
+ref is checked once the whole block is read, so a row may name one written after it; a ref to an id no
+table of that record has, or to a record with no key, is an error. A record may have more than one table,
+and a ref names a row of any of them, but of one only: an id that two tables of the record both have is an
+error for a ref to it. A record may name its own rows.
+
+A table whose record names its own rows is a **tree** (an upgrade or tech tree): `requires` above makes
+`all` one, and the DevBridge gives its edges (see below).
+
+### Annotations
+
+`@name` or `@name(value, …)` after a record field's type, before a field of the block (`@range(1, 10)
+handSize: 5`) or a pick, or before a row of a table. Arguments are numbers, strings, `true`/`false`, or
+bare words (read as strings). The parser checks the ones it knows, on a field of the block as on a field of
+a record, and keeps every other as it is, for tools to read:
+
+| Annotation | On | Checked |
+|------------|----|---------|
+| `@range(min, max)` | a number field | every value written is within it |
+| `@step(n)` | a number field | above 0 |
+| `@default(value)` | an optional field of a record | of the field's type, within its `@range`; a row that leaves the field out gets it |
+| `@unit("…")`, `@says("…")` | a field or a pick | one word or string |
+| anything else (`@by(claude)`, `@note("…")`) | a field, a pick or a row | kept |
+
+### Picks
+
+A pick says how a table is drawn from:
+
+```
+reward: pick(all, weight: weight, draws: 3)                 // each row as often as its weight; 3 different rows a draw
+loot: pick(drops, chance: chance, otherwise: nothing)      // each row at its chance, the otherwise row with the rest
+relic: pick(relics, weight: tier.weight, repeats: true)    // the weight of the tier row each relic links to
+```
+
+- `weight: <column>` or `chance: <column>`, a number column of the table's rows, or `<ref>.<column>` of the rows a ref field links to (in whichever table of their record each is).
+- `draws: n` (1 when not given) is how many rows one draw takes; `repeats: true` lets a draw hold a row twice.
+- `otherwise: <id>` (with `chance:`) is the row that takes what the other chances leave; without one, the leftover chance is nothing.
+- Checked when the block is read: the table exists and has a key, the column is a number, chances add up to 1 at most.
+
+By weight a weight of 0 or less never comes up. Without repeats, a row drawn is out of the pool for the rest
+of the draw. The seeded random `bh.multianim.data.DataRandom` is Mulberry32: the same numbers on every target,
+and the same as the usual JavaScript `mulberry32`, so the same seed draws the same rows.
+
+### Tables and picks at runtime
+
+`@:data` makes a table a `bh.multianim.data.DataTable<Row>` and a pick a `bh.multianim.data.DataPick<Row>`,
+with a class of each keyed record's ids as constants, so code that names a row the file does not have does
+not compile:
+
+```haxe
+final cards = screen.cards;                          // @:data("res/cards.manim", "cards")
+final agree = cards.all.get(CardsCardId.Agree);      // "agree"; CardsCardId.Id1On1 is "1-on-1"
+trace(agree.cost, cards.all.length, cards.all.ids());
+final offer = cards.reward.draw(new DataRandom(seed).float);   // 3 rows, the same for the same seed
+final one = cards.reward.pick();                                // Math.random when no random is given
+trace(cards.reward.odds().chances.get("agree"));                // each row's chance of being picked
+```
+
+The ids class holds the ids of every table of the record, named by their letters and digits (`"very rare!"`
+is `VeryRare`). A second `@:data` of a block of the same name in the same package (with `mergeTypes`)
+shares the class when the ids are the same, and does not compile when they are not.
+
+`getData` gives the same with `Dynamic` rows: `data.all.get("agree").category` is `"basic"`.
+
+### The game's data over the DevBridge
+
+Every `DataTable` and `DataPick` made, by `@:data` or `getData`, lists itself in
+`bh.multianim.data.DataRegistry` with its .manim file, block and line. A table the game builds in its own
+code is registered by hand, and its place is the registering call:
+
+```haxe
+DataRegistry.registerTable("AllCards", () -> [for (c in Cards.ALL) {id: c.id, name: c.name, cost: c.cost}]);
+```
+
+The DevBridge answers `data_list`, `data_get` and `data_pick` from it (see `docs/devbridge.md`), so a tool
+reads what the game has, from a .manim file or from code, and where each is.
 
 ---
 
@@ -2405,9 +2697,10 @@ group.shutdownAlphaCurve = myCurve;
 ```
 
 **Notes:**
-- No-op on non-looping groups
+- No-op on non-looping groups, except that it marks a burst-driven (`count: 0`) group done so its container can end
 - `emitBurstAt()` still works during shutdown (for manual one-shot effects)
-- Default `onEnd()` is `this.remove()` — no change needed
+- Default `onEnd()` is `this.remove()` — no change needed. It fires once, when the last particle dies
+- A container whose groups are all burst-driven (`count: 0`, fed by `emitBurst`/`emitBurstAt`) does not end when a burst dies out — it is idle until the next burst, so one container can serve every shot without overriding `onEnd`. `shutdown()` lets it end once its last particle dies
 
 ### Multiple Tiles
 
@@ -2494,16 +2787,12 @@ updatable.setObject(particles);
 * `generated(cross(width, height, color[, thickness]))` - generated cross (thickness default: 1)
 * `generated(color(width, height, color))` - solid color
 * `generated(colorWithText(width, height, color, text, textColor, font))` - solid color with text
-* `generated(autotile("name", selector))` - demo tile from autotile definition
-  - By index: `autotile("grassTerrain", 0)` - select tile by index (0-12 for cross, 0-46 for blob47)
-  - By edges: `autotile("grassTerrain", N+E+S+W)` - select tile by neighbor flags
-  - Edge flags: `N`, `E`, `S`, `W` (cardinals), `NE`, `SE`, `SW`, `NW` (corners)
-  - Requires autotile with `demo: edgeColor, fillColor` defined
-* `generated(autotileRegionSheet("name", scale, "font", fontColor))` - visualization of autotile region with numbered grid
-  - Displays the complete region of an autotile with tile indices overlaid
-  - Useful for debugging and identifying which tile index corresponds to which visual
+* `generated(autotile("name", index))` - resolved tile of an autotile definition (after mapping / fallback), any source
+  - Index range: 0-12 for cross, 0-46 for blob47, 0-15 for corner (corner 0 is transparent unless the source provides it)
+* `generated(autotileRegionSheet("name", scale, "font", fontColor))` - visualization of an autotile's image region with numbered grid
+  - Displays the region of a `file:` autotile with each tile's source index (the numbers `mapping:` targets) overlaid
   - `scale` - scale factor for tiles (font remains at original size for readability)
-  - Requires autotile with `region` defined (file source or atlas region)
+  - Requires a `file:` source (whole image when no `region:` is set)
 
 ### Tile Source Modifiers
 
@@ -2629,6 +2918,11 @@ var btn = UIStandardMultiAnimButton.create(builder, "button", "Click Me", ["widt
 // Via UIScreenBase (with macro settings injection)
 var btn = addButtonWithSingleBuilder(builder, "button", "Click Me");
 var btn = addButton(builder.createElementBuilder("button"), "Click Me", settings);
+
+// Runtime styling — drive a design-specific parameter on a live button.
+// Returns false (no-op) when the design has no such parameter; throws for
+// the widget-managed status/buttonText/disabled (use setText() / disabled).
+btn.setStyleParameter("accent", "silver");
 ```
 
 **`.manim` settings override example (in parent placeholder):**

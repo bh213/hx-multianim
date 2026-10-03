@@ -91,6 +91,14 @@ class UIComponentTest extends BuilderTestBase {
 		}
 	";
 
+	// Button design with an extra style parameter, for setStyleParameter tests.
+	static final STYLED_BUTTON_MANIM = "
+		#button programmable(buttonText:string=Click, status:[normal,hover,pressed]=normal, disabled:bool=false, accent:[gold,silver]=gold) {
+			@(accent=>gold) bitmap(generated(color(100, 30, #AA8800))): 0, 0
+			@(accent=>silver) bitmap(generated(color(100, 30, #888899))): 0, 0
+		}
+	";
+
 	static final CHECKBOX_MANIM = "
 		#checkbox programmable(status:[normal,hover,pressed]=normal, disabled:bool=false, checked:bool=false) {
 			bitmap(generated(color(20, 20, #666666))): 0, 0
@@ -191,6 +199,57 @@ class UIComponentTest extends BuilderTestBase {
 
 		button.setText("Updated");
 		Assert.equals("Updated", getStringParam(result, "buttonText"));
+	}
+
+	@Test
+	public function testButtonSetStyleParameterAppliesDeclaredParam():Void {
+		var builder = BuilderTestBase.builderFromSource(STYLED_BUTTON_MANIM);
+		var button = UIStandardMultiAnimButton.create(builder, "button", "Test");
+
+		@:privateAccess var result = button.result;
+		Assert.equals("gold", getStringParam(result, "accent"));
+
+		Assert.isTrue(button.setStyleParameter("accent", "silver"));
+		Assert.equals("silver", getStringParam(result, "accent"));
+	}
+
+	@Test
+	public function testButtonSetStyleParameterUnknownReturnsFalse():Void {
+		var builder = BuilderTestBase.builderFromSource(STYLED_BUTTON_MANIM);
+		var button = UIStandardMultiAnimButton.create(builder, "button", "Test");
+
+		// Undeclared parameter: no-op signalled via return value — never throws,
+		// so callers can probe any button design safely.
+		Assert.isFalse(button.setStyleParameter("noSuchParam", 42));
+		@:privateAccess var result = button.result;
+		Assert.equals("gold", getStringParam(result, "accent"));
+	}
+
+	@Test
+	public function testButtonSetStyleParameterRejectsWidgetManagedParams():Void {
+		var builder = BuilderTestBase.builderFromSource(STYLED_BUTTON_MANIM);
+		var button = UIStandardMultiAnimButton.create(builder, "button", "Original");
+
+		// status/buttonText/disabled are owned by the widget — writing them via
+		// setStyleParameter would desync getText(), the hover state machine, and
+		// event gating. Each must throw and leave widget state untouched.
+		for (managed in ["status", "buttonText", "disabled"]) {
+			var threw = false;
+			try {
+				button.setStyleParameter(managed, "whatever");
+			} catch (e:bh.multianim.BuilderError) {
+				threw = true;
+				Assert.equals("widget_managed_param", e.code);
+				Assert.isTrue(Std.string(e).indexOf(managed) >= 0, 'Expected error to name "$managed", got: $e');
+			}
+			Assert.isTrue(threw, 'setStyleParameter("$managed") must throw');
+		}
+
+		Assert.equals("Original", button.getText());
+		Assert.isFalse(button.disabled);
+		@:privateAccess var result = button.result;
+		Assert.equals("normal", getStatusParam(result));
+		Assert.equals("Original", getStringParam(result, "buttonText"));
 	}
 
 	// ============== Checkbox Tests ==============
@@ -1515,6 +1574,31 @@ class UIComponentTest extends BuilderTestBase {
 			}
 		}
 		Assert.isTrue(hasClickItem);
+	}
+
+	@Test
+	public function testScrollableListEmptySpacePressDoesNotArmDoubleClick():Void {
+		var list = createScrollableList();
+		var mock = new MockControllable();
+		function doubleClickCount():Int {
+			var count = 0;
+			for (e in mock.recordedEvents)
+				switch e.event {
+					case UIDoubleClickItem(_, _): count++;
+					default:
+				}
+			return count;
+		}
+
+		// Press on the empty tail below the last item (5 items x 20px, panel 200px) ...
+		UITestHarness.simulateClick(list, mock, new h2d.col.Point(60, 150));
+		// ... then on item 0 within the double-click window: one press on item 0 is not a double-click.
+		UITestHarness.simulateClick(list, mock, new h2d.col.Point(60, 5));
+		Assert.equals(0, doubleClickCount(), "a press on empty space followed by a press on item 0 must not double-click item 0");
+
+		// Control: a second press on item 0 is a double-click.
+		UITestHarness.simulateClick(list, mock, new h2d.col.Point(60, 5));
+		Assert.equals(1, doubleClickCount(), "two presses on item 0 double-click it");
 	}
 
 	@Test

@@ -27,6 +27,7 @@ class ManimKeywordInfo {
 		"DYNAMIC_REF" => "dynamicRef", "SLOT" => "slot", "SLOT_CONTENT" => "slotContent",
 		"INTERACTIVE" => "interactive", "GRAPHICS" => "graphics",
 		"DATA" => "data", "AUTOTILE" => "autotile", "ATLAS2" => "atlas2",
+		"TILESET" => "tileset", "TILEMAP" => "tilemap", "TILEMAP_REF" => "tilemap",
 		"PALETTE" => "palette", "FINAL_VAR" => "@final", "NINEPATCH" => "ninepatch",
 		"SWITCH" => "@switch",
 	];
@@ -62,6 +63,9 @@ class ManimKeywordInfo {
 		"GRAPHICS" => "Vector graphics drawing",
 		"DATA" => "Static typed data block",
 		"AUTOTILE" => "Autotile terrain pattern",
+		"TILESET" => "What tile maps are drawn with: terrains, transitions where two meet, how each rise between levels is drawn, and what named cells are (where drawn, their metadata)",
+		"TILEMAP" => "A tile map: rows of characters for terrain, levels and layers of cells, decor and marks",
+		"TILEMAP_REF" => "Places a tile map: tilemap(name) or tilemap(external(file), name)",
 		"ATLAS2" => "Inline sprite atlas definition",
 		"PALETTE" => "Color palette definition",
 		"FINAL_VAR" => "Immutable named constant",
@@ -81,6 +85,9 @@ class ManimKeywordInfo {
 		"LAYERS" => "layers {\n\t$0\n}",
 		"SLOT" => "#${1:name} slot",
 		"ATLAS2" => "#${1:name} atlas2(\"$2\") {\n\t$0\n}",
+		"TILESET" => "#${1:name} tileset {\n\ttileSize: ${2:8}\n\tatlas: \"$3\"\n\tterrain ${4:ground} { cells: \"$5\" }\n\t$0\n}",
+		"TILEMAP" => "#${1:name} tilemap {\n\ttileset: $2\n\tsize: ${3:16}, ${4:9}\n\tlegend { \".\": $5 }\n\tterrain: [\n\t\t$0\n\t]\n}",
+		"TILEMAP_REF" => "tilemap(${1:name}): ${2:0}, ${3:0}",
 		"PALETTE" => "#${1:name} palette {\n\t$0\n}",
 		"FINAL_VAR" => "@final ${1:NAME} = $0",
 		"REPEAT" => "repeatable(\\$$1, ${2:iterator}) {\n\t$0\n}",
@@ -89,7 +96,7 @@ class ManimKeywordInfo {
 
 	static final topLevelElements:Array<String> = [
 		"PROGRAMMABLE", "DATA", "CURVES", "PATHS", "ANIMATED_PATH",
-		"ATLAS2", "PALETTE", "FINAL_VAR", "RELATIVE_LAYOUTS",
+		"ATLAS2", "PALETTE", "FINAL_VAR", "RELATIVE_LAYOUTS", "TILESET", "TILEMAP",
 	];
 
 	static final childElements:Array<String> = [
@@ -97,7 +104,7 @@ class ManimKeywordInfo {
 		"LAYERS", "MASK", "TILEGROUP", "INTERACTIVE", "SLOT", "SLOT_CONTENT", "SPACER",
 		"POINT", "APPLY", "GRAPHICS", "PIXELS", "PARTICLES", "REPEAT", "REPEAT2D",
 		"STATIC_REF", "DYNAMIC_REF", "PLACEHOLDER", "STATEANIM", "STATEANIM_CONSTRUCT",
-		"AUTOTILE", "FINAL_VAR", "SWITCH",
+		"AUTOTILE", "FINAL_VAR", "SWITCH", "TILEMAP_REF",
 	];
 
 	public static function elementName(ctor:String):Null<String> {
@@ -127,7 +134,7 @@ class ManimKeywordInfo {
 		"PATHS", "ANIMATED_PATH", "CURVES", "PARTICLES", "APPLY", "LAYERS", "MASK",
 		"REPEAT", "REPEAT2D", "STATIC_REF", "PLACEHOLDER", "DYNAMIC_REF",
 		"SLOT", "SLOT_CONTENT", "INTERACTIVE", "GRAPHICS", "DATA", "AUTOTILE",
-		"ATLAS2", "PALETTE", "FINAL_VAR", "NINEPATCH", "SWITCH",
+		"ATLAS2", "PALETTE", "FINAL_VAR", "NINEPATCH", "SWITCH", "TILESET", "TILEMAP", "TILEMAP_REF",
 	];
 
 	// ---- Parameter types (from DefinitionType — exhaustive switch) ----
@@ -297,7 +304,7 @@ class ManimKeywordInfo {
 			case Forward(_): "forward";
 			case TurnDegrees(_): "turn";
 			case Checkpoint(_): "checkpoint";
-			case Bezier2To(_, _, _, _): "quadratic";
+			case Bezier2To(_, _, _, _): "bezier"; // 2-point form of bezier() — "quadratic" is not a parser keyword
 			case Bezier3To(_, _, _, _, _): "bezier";
 			case Arc(_, _): "arc";
 			case Close: "close";
@@ -313,8 +320,8 @@ class ManimKeywordInfo {
 			case Forward(_): "Move forward: forward(distance)";
 			case TurnDegrees(_): "Turn angle: turn(degrees)";
 			case Checkpoint(_): "Named checkpoint: checkpoint(\"name\")";
-			case Bezier2To(_, _, _, _): "Quadratic curve: quadratic(cpx, cpy, endx, endy)";
-			case Bezier3To(_, _, _, _, _): "Cubic bezier: bezier(cp1x, cp1y, cp2x, cp2y[, ex, ey])";
+			case Bezier2To(_, _, _, _): "Quadratic bezier: bezier(endX, endY, cpX, cpY)";
+			case Bezier3To(_, _, _, _, _): "Bezier curve: bezier(endX, endY, cp1X, cp1Y[, cp2X, cp2Y]) — one control point = quadratic, two = cubic";
 			case Arc(_, _): "Arc segment: arc(radius, angleDelta)";
 			case Close: "Close path back to start";
 			case Spiral(_, _, _): "Spiral: spiral(radiusStart, radiusEnd, angleDelta)";
@@ -322,9 +329,12 @@ class ManimKeywordInfo {
 		};
 	}
 
+	// Completion source. Bezier2To is intentionally absent: both bezier forms share
+	// the "bezier" keyword, so the Bezier3To entry (whose description covers the
+	// quadratic 2-point form) is the single completion for it.
 	public static final allPathCommands:Array<ParsedPaths> = [
 		MoveTo(null, null), LineTo(null, null), Forward(null), TurnDegrees(null),
-		Checkpoint(""), Bezier2To(null, null, null, null), Bezier3To(null, null, null, null, null),
+		Checkpoint(""), Bezier3To(null, null, null, null, null),
 		Arc(null, null), Close, Spiral(null, null, null), Wave(null, null, null),
 	];
 

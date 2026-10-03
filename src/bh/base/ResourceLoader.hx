@@ -3,7 +3,6 @@ package bh.base;
 import bh.multianim.MultiAnimBuilder;
 import bh.multianim.MultiAnimParser.GeneratedTileType;
 import bh.multianim.MultiAnimParser.PlaceholderTypes;
-import bh.multianim.MultiAnimParser.AutotileFormat;
 import h2d.Font;
 import bh.stateanim.AnimationSM;
 import bh.stateanim.AnimParser.AnimationStateSelector;
@@ -15,9 +14,7 @@ enum ResolvedGeneratedTileType {
     Cross(width:Int, height:Int, color:Int, thickness:Int);
 	SolidColor(width:Int, height:Int, color:Int);
 	SolidColorWithText(width:Int, height:Int, color:Int, text:String, textColor:Int, font:String);
-	AutotileRef(format:AutotileFormat, tileIndex:Int, tileSize:Int, edgeColor:Int, fillColor:Int);
-	AutotileRegionSheet(baseTile:h2d.Tile, regionX:Int, regionY:Int, regionW:Int, regionH:Int, tileSize:Int, tileCount:Int, scale:Int, font:String, fontColor:Int);
-	PreloadedTile(tile:h2d.Tile);
+	AutotileRegionSheet(baseTile:h2d.Tile, regionX:Int, regionY:Int, regionW:Int, regionH:Int, tileSize:Int, tileCount:Int, scale:Int, font:String, fontColor:Int, margin:Int, spacing:Int);
 }
 
 interface ResourceLoader {
@@ -160,7 +157,13 @@ class CachingResourceLoader implements ResourceLoader {
         if (multiAnimCycleDetection.contains(key)) throw 'cyclic dependency in multiAnim $key: path ${multiAnimCycleDetection}';
         multiAnimCycleDetection.push(key);
 
-        var retVal =  cachedGet(multiAnimCache, key, k ->loadMultiAnimImpl(k));
+        var retVal = try {
+            cachedGet(multiAnimCache, key, k ->loadMultiAnimImpl(k));
+        } catch (e) {
+            // A failed load must leave the path, or every retry reports a cyclic dependency.
+            multiAnimCycleDetection.remove(key);
+            throw e;
+        }
 
         multiAnimCycleDetection.remove(key);
         return retVal;

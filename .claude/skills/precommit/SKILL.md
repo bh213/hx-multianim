@@ -65,7 +65,7 @@ Format:
 ...
 ```
 
-**Never hide these warnings in the summary** — they belong in both section 5 output and the final summary (section 10). Do not regenerate reference images to "fix" a failing test without confirming with the user that the visual change is intentional (see section 6).
+**Never hide these warnings in the summary** — they belong in both section 5 output and the final summary (section 11). Do not regenerate reference images to "fix" a failing test without confirming with the user that the visual change is intentional (see section 6).
 
 ### 5b. Test Impact Analysis
 
@@ -136,7 +136,23 @@ If changes affect the `.manim` parser (keywords, syntax, settings), LSP, or lang
 - If LSP sources changed, rebuild: `haxe lsp/lsp-server.hxml` and verify `vscode/server/server.js` is updated
 - Check if `vscode/package.json` version or configuration needs updating
 
-## 8. Check for Missing Items
+## 8. Playground Impact Check
+
+The web playground is a separate sibling repo: `../hx-multianim-playground`. **If that directory does not exist, skip this entire section** (note "playground not present — skipped" in the summary).
+
+Analyze the diff for changes that could affect the playground:
+
+- **Parser / builder / codegen** (`src/bh/multianim/`, `src/bh/stateanim/`) — the playground compiles this library to JS and live-parses `.manim`/`.anim` files. New syntax, changed defaults, stricter validation, or changed error messages all surface there.
+- **Public API changes** in `src/bh/**` — playground screens (`../hx-multianim-playground/src/screens/`) compile against the library via relative classpath. Renamed/removed methods, changed signatures, or new required parameters will break its build.
+- **New or changed `.manim`/`.anim` language features** — playground demo files (`../hx-multianim-playground/public/assets/demos/`) may need updating for compatibility, and new features may deserve a demo showcasing them.
+- **Keyword / LSP / tooling metadata** (`ManimKeywordInfo.hx`, LSP sources) — playground editor highlighting/completion may need syncing.
+- **Behavioral/rendering changes** (filters, particles, paths, color semantics, layout) — existing demos may render differently even if they still parse.
+
+If any of the above apply, report which changes affect the playground and why, then **ask the user** whether the playground should be updated (fix demos, update screens, verify its build). Do NOT modify the playground repo without confirmation — it is a separate git repo with its own commit flow.
+
+If nothing applies, state "no playground impact" and move on.
+
+## 9. Check for Missing Items
 
 Verify:
 - No sensitive files (.env, credentials) in the diff
@@ -144,7 +160,7 @@ Verify:
 - MEMORY.md is up to date with any new patterns or pitfalls discovered.
 - Check if anything can be removed from MEMORY.md because it is no longer relevant. Ask user if unsure.
 
-### 8a. Identify Temporary Files
+### 9a. Identify Temporary Files
 
 Scan both tracked and untracked files for scratch/debug/temp artifacts that should not be committed. Do not rely on a fixed extension or filename list — judge each file in context at the time precommit is running.
 
@@ -181,7 +197,7 @@ Suggested action: `rm <files>` (or `git rm --cached <files>` if tracked). Confir
 - Do NOT delete files automatically — list them and ask the user. A "tmp-looking" file may be an in-progress experiment the user wants to keep locally.
 - If a tmp file is *tracked* (showed up in `git diff --name-only HEAD`), flag it with extra emphasis — committing it would persist scratch state. Suggest `git rm` (or `git rm --cached` if it should stay on disk).
 
-### 8b. Allocation Watchdog Hygiene
+### 9b. Allocation Watchdog Hygiene
 
 The hot-path allocation counters (`creationCount`) and their increments must be gated behind `#if MULTIANIM_ALLOC_TRACK` so production builds carry zero overhead. Commit `ab7e4f2` shows what happens when the gate is forgotten — every constructor call paid for a static int increment in production.
 
@@ -210,7 +226,7 @@ If a `creationCount` declaration or `creationCount++` line appears outside an `#
 
 A failing `testAllocationTrackingFlagIsDefinedInTestBuilds` test indicates the flag was dropped from `test-common.hxml`; restore it.
 
-### 8c. Shared Mutable Scratch State
+### 9c. Shared Mutable Scratch State
 
 The codebase uses static/instance scratch objects (`_scratchPt`, `_pool`, scratch arrays) to dodge per-frame allocations — see `UIInteractiveWrapper._scratchPt`, `UICardHandTargeting._scratchPt`, `TweenManager._pool`, `UICardHandLayout` sample buffers. The codebase is single-threaded (Heaps main loop), so the hazard is **re-entrancy**, not concurrency: same scratch reached twice on the same callstack silently corrupts state.
 
@@ -243,7 +259,7 @@ git diff HEAD -- 'src/**/*.hx' | grep -E '^\+.*_scratch|_pool\.(pop|push)'
 
 Do NOT auto-fix. List hits and ask the user — some are intentional (a scratch deliberately handed to a mutating API where the caller wants the mutated value).
 
-## 9. Suggest Commit Message
+## 10. Suggest Commit Message
 
 - Follow the project's commit message style (see recent commits)
 - Format: `area: short description` on first line
@@ -251,7 +267,7 @@ Do NOT auto-fix. List hits and ask the user — some are intentional (a scratch 
 - Keep the first line under 72 characters
 - Do not include TODO file changes.
 
-## 10. Report Summary
+## 11. Report Summary
 
 Present a summary table:
 - Files changed (count)
@@ -261,8 +277,9 @@ Present a summary table:
 - Tests added / updated / removed
 - **Reference images changed** (count + links from 5a — do not omit)
 - **Existing tests modified** (count + links from 5a — do not omit)
-- **Temporary files detected** (count + links from 8a — do not omit; flag tracked vs untracked)
-- **Shared scratch hazards** (count + links from 8c — do not omit)
+- **Playground impact** (from section 8: affected + user decision / no impact / not present — skipped)
+- **Temporary files detected** (count + links from 9a — do not omit; flag tracked vs untracked)
+- **Shared scratch hazards** (count + links from 9c — do not omit)
 - Test run result (pass/fail)
 - Any issues found
 - Suggested commit message
