@@ -1735,8 +1735,8 @@ a meaning: the game says what `wall`, `swim` or `cost` are for.
   file: every terrain, cell and side piece is there (`tilemap_terrain`, `tilemap_missing_cell`), and
   every rise the map has in a direction the tileset draws sides toward has its `rise` (`tilemap_rise`).
 - A layer's cells come from its `sheet:` (the tileset's `atlas` when not given) and are drawn `under`
-  the actors (the default), `over` them, or at the `top`, above everything; a `cell` with its own
-  `draw:` goes there instead.
+  the actors (the default), `over` them, at the `top`, above everything, or as `actors`: each among
+  them, sorted by its feet; a `cell` with its own `draw:` goes there instead.
 - Drawing order: terrains, the levels' edges and sides, the `under` layers; the decor and the actors in
   one layer sorted by their feet every frame; `over`; `top`.
 
@@ -1758,11 +1758,13 @@ map.setTerrain(cx, cy, "~"); map.setLevel(cx, cy, 1); map.setCell("deco", cx, cy
 
 `setTerrain`, `setLevel` and `setCell` change the map's own copy of the rows, so a map can be painted
 while the game runs. The map is drawn in chunks of `chunkSize` cells a side (`TileMap.defaultChunkSize`,
-32; `setChunkSize`), each as it is first in view or asked what it draws (`sideAt`, `metadataAt`), so
-a big map costs what is seen of it; `terrainAt`, `levelAt` and `cellAt` read the rows and draw
-nothing. However many cells change, the chunks they are in (and, at a chunk's border, the neighbours
-an autotile's corners or a rise's sides reach) are drawn again once, as they are next in view or
-asked; `redraw()` draws it all now. The view is `map.cull(x, y, w, h)`, in the map's pixels (a game
+32; `setChunkSize`), each as it is first in view, so a big map costs what is seen of it, and a chunk
+far into the map costs as much as the first. Reading a cell draws nothing: `terrainAt`, `levelAt`
+and `cellAt` read the rows, and `sideAt` and `metadataAt` work out a changed chunk's sides and
+metadata by themselves, so a game that reads the whole map (pathfinding) does not draw the whole
+map. However many cells change, the chunks they are in (and, at a chunk's border, the neighbours
+an autotile's corners or a rise's sides reach) are drawn again once, as they are next in view;
+`redraw()` draws it all now. The view is `map.cull(x, y, w, h)`, in the map's pixels (a game
 with a camera calls it as the camera moves, since a camera is not in an object's place), or, with
 `cullToScene` on (the default) and no `cull`, the scene's size seen through the map's place and
 scale; `cullNone()` has every chunk in view, `isChunkVisible(col, row)` says what is drawn. `setLevel`

@@ -480,45 +480,64 @@ Decor is built with `buildSingleNodeWithParams`. Codegen delegates `tilemap(name
 `ProgrammableBuilder.buildTilemap`, as autotile tiles are.
 
 `TileMap` draws in chunks (`Chunk`: a rectangle of cells with its own ground, over and top objects
-under the map's, the objects of several cells it anchors, and its frames of each animated terrain).
-Every chunk starts dirty and nothing is drawn as the map is built: `sync` first culls
-(`applyCulling` hides chunks outside `cull`'s view or the scene's, through `globalToLocal` of its
-corners; a camera is not in that chain, so a game with one calls `cull`), then `drawDirty(true)`
-draws the dirty chunks in view; `sideAt`/`metadataAt` draw the asked cell's chunk if dirty
-(`drawCellsChunk`), since `sides` and `metadata` are written as a chunk is drawn; `terrainAt`,
-`levelAt` and `cellAt` read `terrainIndex`, the rows and `covers`, kept as the rows change, and
-draw nothing. `setTerrain`/`setLevel`/`setCell` mark the chunks within reach dirty (`touch`: one
-cell for an autotile's corners; `touchRises` for a level or, with levels, a terrain: the longest
-rise `span` plus one, and for a rise of several `side` pieces every chunk along the run's axis,
-since a piece's turn is counted from the run's start). `drawChunks` draws some chunks in one pass
-whose masks (per terrain, per level, per platform; `highestLevel` too) are made once, as a chunk
-first asks (`beginPass`/`endPass`), over `passRect` alone: the chunks and a cell around them,
-as far as an autotile's index looks, as `rectGrid`s with empty rows above and zeros before. A chunk
+under the map's, the objects of several cells it anchors, its frames of each animated terrain,
+`dirty` for its tiles and `resolved` for its cells' sides and metadata). Every chunk starts dirty
+and unresolved and nothing is drawn as the map is built: `sync` first culls (`applyCulling` hides
+chunks outside `cull`'s view or the scene's, through `globalToLocal` of its corners; a camera is
+not in that chain, so a game with one calls `cull`; only the columns and rows of chunks the view
+reached last time and reaches now are looked at, and `cull` writes one rectangle), then
+`drawDirty(true)` draws the dirty chunks in view. Reading a cell draws nothing: `terrainAt`,
+`levelAt`, `platformAt` and `cellAt` read per-cell arrays kept as the rows change (`terrainIndex`,
+`levelIndex`, `platformIndex`, `covers`; a character read from a row string is a string allocated
+on HashLink, so the rows are read once), and `sideAt`/`metadataAt` resolve the asked cell's chunk
+if it is not (`resolveCellsChunk` → `resolveChunk`: `scanRises` with no groups to draw into, then
+`mergeMetadata`), so a game that reads the whole map does not draw it. `setTerrain`/`setLevel`/
+`setCell` mark the chunks within reach dirty and unresolved (`touchChunks`, from the range of chunk
+columns and rows, never a walk over every chunk; `touch`: one cell for an autotile's corners;
+`touchRises` for a level or, with levels, a terrain: the longest rise `span` plus one, and for a
+rise of several `side` pieces every chunk along the run's axis, since a piece's turn is counted
+from the run's start). `drawChunks` draws some chunks in one pass whose masks (per terrain, per
+level, per platform; `highestLevel` too) are made once, as a chunk first asks
+(`beginPass`/`endPass`), over `passRect` alone: the chunks and a cell around them, as far as an
+autotile's index looks. The masks and the `where` grids are chunk-local (`gridOver`: the pass
+rectangle's corner is `[0][0]`), and `TileMapTiles.autotile` / `buildAutotile(name, grid, where,
+x0, y0)` are told that origin, so a chunk far into the map costs as much as the first. A chunk
 draws only its own positions: `positionsOf` (its cells, or for the corner format its corners up to
-the next chunk's, the map's last column and row going to the last chunks) and `sparse`, a `where`
-grid of the same shape, so `buildAutotile` walks the rectangle alone.
+the next chunk's, the map's last column and row going to the last chunks); `drawnPositions`,
+`meetingPositions` and `rimPositions` fill a `where` grid of that shape with flat loops, no array
+or closure per position, so `buildAutotile` walks the rectangle alone.
 
-Each layer has a cover (`covers`): per cell, the index of the cell whose character is there, its
-own or the anchor's of an object of several cells, made by `coverOf` as the rows are read
-(`placeCover` throws `tilemap_object_outside` / `tilemap_object_overlap`, which the builder says
-at the map's node) and kept by `setCell`, which frees the old object's cells, places the new one
-and puts the old back if that throws. `cellAt`, `objectAt` and `mergeMetadata` read it.
+Each layer's legend is resolved once as the rows are read (`layerEntries`: a `LayerEntry` a
+character, with its frames, `draw`, anchor, tileset cell and metadata), and each layer has, per
+cell, the entry whose character is there (`layerCell`, -1 elsewhere) and a cover (`covers`): the
+index of the cell whose character covers it, its own or the anchor's of an object of several
+cells, made by `readLayer` (`placeCover` throws `tilemap_object_outside` /
+`tilemap_object_overlap`, which the builder says at the map's node) and kept by `setCell`, which
+frees the old object's cells, places the new one and puts the old back if that throws. `cellAt`,
+`objectAt`, `drawLayers` and `mergeMetadata` read them.
 
-`TileMap.redraw()` draws every chunk again from its own copy of the rows: the terrains (a mask per terrain of the cells
+`drawChunk` draws a chunk from the map's own copy of the rows: the terrains (a mask per terrain of the cells
 of it and of every terrain after it; a `transition a, b` adds b's pair autotile over b's own at the
 positions `meetingPositions` finds, where the cells around a position are some of b-or-above and
-otherwise all a, computed in the autotile's own positions by its format and passed as `where`), each
-level's edge (along its rim only: `rimPositions`, by the edge's format, of the cells whose terrain
-has that edge, `edges[terrain]` or the tileset's own; a platform's cells are left out, and each
-platform's own edge is drawn over all of its cells), each rise's sides (per direction and cell:
-`riseFor` picks the rise, a platform's own for a cell of one, else the terrain's own in that
+otherwise all a, computed in the autotile's own positions by its format, once a format rather than
+once an animation frame, and passed as `where`), each level's edge (along its rim only:
+`rimPositions`, by the edge's format, of the cells whose terrain has that edge, `edges[terrain]` or
+the tileset's own; a platform's cells are left out, and each platform's own edge is drawn over all
+of its cells), each rise's sides (`scanRises`, per direction, the cells scanned along the run's
+axis: `riseFor` picks the rise, a platform's own for a cell of one, else the terrain's own in that
 direction when it has any, else the tileset's, of that many levels or `any`; the run's ends from the
 neighbours across the side's direction that take the same rise, in reading order, and of several
-`sides` the one whose turn it is along the run), the layers into
-`ground`, `overLayer` or `topLayer` (a `TileGroups` helper keeps one `TileGroup` a texture), and merges
-each cell's metadata once, into a `BuilderResolvedSettings` a cell (one shared empty one for the rest). `sync` steps the animated terrains and y-sorts `actors` with the frame's time (the private `step(dt)`), the one place it is done, so a game calls nothing each frame. `setTerrain`/`setLevel`/`setCell` only
-mark the map `changed`; `redraw` runs once, from `sync` or from the first `terrainAt`/`sideAt`/
-`metadataAt` after, so a brush over many cells draws once. Maps in a scene are in `TileMap.showing`
+`sides` the one whose turn it is along the run, carried from the cell before, so only the first
+cell of a run the scan meets walks back to the run's start and a long cliff costs its length, not
+its square; a piece's frames are looked up once a name, `pieceFrames`), the layers into the chunk's
+ground, over or top (a `TileGroups` helper keeps one `TileGroup` a texture) or, for `draw: actors`,
+a bitmap among the map's `actors` standing on its feet, and merges each cell's metadata once
+(`mergeMetadata`: a cell with its terrain's alone shares that terrain's `BuilderResolvedSettings`;
+any other combination of terrain, side and layer cells is merged once and shared by every cell of
+it, `mergedSettings`; one shared empty one for the rest). `sync` steps the animated terrains and
+y-sorts `actors` with the frame's time (the private `step(dt)`), the one place it is done, so a
+game calls nothing each frame. `redraw()` marks every chunk dirty and draws them all now, whatever
+the view. Maps in a scene are in `TileMap.showing`
 (`onAdd`/`onRemove`; a Heaps object has no other sign of its lifetime, so a map off-scene is not
 reloaded): `ScreenManager.hotReloadFile` calls `TileMap.builderReplaced` after the file's screens are
 reloaded (their `load()` builds new maps and the old ones leave the scene), which `refreshTilemap`s

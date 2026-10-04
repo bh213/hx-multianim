@@ -18,12 +18,14 @@ import bh.multianim.MultiAnimParser.TilesetRiseDef;
 **/
 typedef TileMapTiles = {
 	/**
-		The TileGroup of an autotile over a grid (`grid[y][x]`, non-zero is the terrain), drawn at
-		every position or only those set in `where` (the autotile's own positions: corners for the
-		corner format, cells otherwise). Both may be sparse: empty rows, rows that stop short, a
-		missing cell being 0; a map gives the grid of the cells around the chunks it draws and no more.
+		The TileGroup of an autotile over a grid (`grid[y][x]`, non-zero is the terrain) whose `[0][0]`
+		is the map's cell (`x0`, `y0`), drawn at every position or only those set in `where` (the
+		autotile's own positions: corners for the corner format, cells otherwise; the same origin).
+		Both may be sparse: empty rows, rows that stop short, a missing cell being 0; a map gives the
+		grid of the cells around the chunks it draws and no more, so a chunk costs its own size
+		wherever it is in the map.
 	**/
-	var autotile:(name:String, grid:Array<Array<Int>>, where:Null<Array<Array<Int>>>) -> h2d.TileGroup;
+	var autotile:(name:String, grid:Array<Array<Int>>, where:Null<Array<Array<Int>>>, x0:Int, y0:Int) -> h2d.TileGroup;
 
 	/** An autotile's format, which says what its positions are; throws for a name the file has not. **/
 	var autotileFormat:(name:String) -> AutotileFormat;
@@ -37,6 +39,9 @@ typedef TileMapTiles = {
 
 /** A rectangle of cells, `x1` and `y1` one past the last. **/
 private typedef CellRect = {x0:Int, y0:Int, x1:Int, y1:Int};
+
+/** A rectangle of the map's pixels, as `cull` is given one. **/
+private typedef PixelRect = {x:Float, y:Float, w:Float, h:Float};
 
 /**
 	What a layer has at a cell, as `objectAt` says it: the cell's name, the anchor cell the layer's
@@ -54,6 +59,21 @@ typedef TilemapObject = {
 }
 
 /**
+	A character of a layer's legend, resolved once as the rows are read, so a cell drawn costs no
+	lookup: what it draws, where about its cell (`draw`, the anchor of an object of several cells),
+	its tileset cell and that cell's metadata.
+**/
+private typedef LayerEntry = {
+	final name:String;
+	final frames:Array<h2d.Tile>;
+	final draw:String;
+	final anchorX:Int;
+	final anchorY:Int;
+	final cell:Null<TilesetCellDef>;
+	final metadata:ResolvedSettings;
+}
+
+/**
 	A square of the map drawn on its own, so a change is drawn again where it is and only that, and
 	what is off screen is not drawn at all. Its ground, over and top are children of the map's.
 **/
@@ -66,7 +86,10 @@ private class Chunk {
 	public var objects:Array<h2d.Object> = [];
 	/** An animated terrain's frames in this chunk, by the terrain's index. **/
 	public var animated:Array<{terrain:Int, frames:Array<h2d.Object>}> = [];
+	/** Its tiles are to be drawn again. **/
 	public var dirty = true;
+	/** Its cells' sides and metadata are as the rows are now; worked out without drawing when asked. **/
+	public var resolved = false;
 
 	public function new(rect:CellRect, ground:h2d.Object, over:h2d.Object, top:h2d.Object) {
 		this.rect = rect;
@@ -109,9 +132,10 @@ private class Chunk {
 	read as settings are (`metadataAt(x, y).getBoolOrDefault("wall", false)`). The map says what is
 	where (`terrainAt`, `levelAt`, `cellAt`, `objectAt`, `sideAt`, `mark`) and may be changed while
 	the game runs (`setTerrain`, `setLevel`, `setCell`): however many cells change, the chunks they
-	are in are drawn again once, as they are next in view or asked what they draw (`sideAt`,
-	`metadataAt`; `terrainAt`, `levelAt` and `cellAt` read the rows and draw nothing); `redraw()`
-	draws it all now.
+	are in are drawn again once, as they are next in view; `redraw()` draws it all now. Reading a
+	cell draws nothing: `terrainAt`, `levelAt` and `cellAt` read the rows, and `sideAt` and
+	`metadataAt` work out a changed chunk's sides and metadata by themselves, so a game that reads
+	the whole map (pathfinding) does not draw the whole map.
 **/
 class TileMap extends h2d.Object {
 	/** Every tile map in a scene: what the DevBridge's `map_list` and `map_get` read, and hot reload redraws. **/
@@ -169,36 +193,70 @@ class TileMap extends h2d.Object {
 	var decor:Array<h2d.Object> = [];
 	// Per terrain: the clock of its animation, shared by every chunk
 	var animClocks:Array<{time:Float, index:Int}> = [];
-	// Per cell: its terrain's index in the tileset, -1 for none; kept as the rows are, not drawn
+	// Per cell, kept as the rows are and read without a draw: its terrain's index in the tileset
+	// (-1 for none), its level (0 without levels), and its platform's index in `platformNames` (-1
+	// for the ground); the rows are strings, and a character read from one is a string made
 	var terrainIndex:Array<Int> = [];
-	// Per layer (as `def.layers`), per cell: the index (`cy * width + cx`) of the cell whose character
-	// is there - its own for a cell of one, the anchor's for the cells an object covers - or -1
+	var levelIndex:Array<Int> = [];
+	var platformIndex:Array<Int> = [];
+	// The platforms the map's levels legend names, each once
+	var platformNames:Array<String> = [];
+	// Per layer (as `def.layers`): its legend resolved, each character an entry, and per cell the
+	// entry whose character is there (-1 elsewhere) and the index (`cy * width + cx`) of the cell
+	// whose character covers it - its own for a cell of one, the anchor's for an object - or -1
+	var layerEntries:Array<Array<LayerEntry>> = [];
+	var layerEntryOf:Array<Map<String, Int>> = [];
+	var layerCell:Array<Array<Int>> = [];
 	var covers:Array<Array<Int>> = [];
 	// Per cell: the rise of a side drawn over it, 0 for none; and which of the tileset's rises drew it, -1 for none
 	var sides:Array<Int> = [];
 	var sideRises:Array<Int> = [];
-	// The tileset's metadata, resolved once a source: per terrain, per rise (as tileset.rises) and per cell name
+	// The tileset's metadata, resolved once a source: per terrain and per rise (as tileset.rises);
+	// a cell's is in its layer entries
 	var terrainMetadata:Array<ResolvedSettings> = [];
 	var riseMetadata:Array<ResolvedSettings> = [];
-	var cellMetadata:Map<String, ResolvedSettings> = [];
-	// Per cell: its metadata, merged; one shared empty where it has none
+	// Per cell: its metadata, merged; one object a combination of sources, shared by every cell of
+	// it: a terrain's own where nothing else is on the cell, else in `mergedSettings` by the combination
 	var metadata:Array<BuilderResolvedSettings> = [];
-	// Some chunk is dirty: drawn when next in view or asked what it draws
+	var terrainSettings:Array<BuilderResolvedSettings> = [];
+	var mergedSettings:Map<String, BuilderResolvedSettings> = [];
+	// The frames of a terrain's `cells:`, and of a rise's side pieces as they are first drawn, once a source
+	var terrainFrames:Array<Null<Array<h2d.Tile>>> = [];
+	var pieceFrames:Map<String, Array<h2d.Tile>> = [];
+	// Some chunk is dirty: drawn when next in view
 	var changed = false;
-	// The view `cull` was given, in the map's pixels, or null for the scene's
-	var cullRect:Null<{x:Float, y:Float, w:Float, h:Float}> = null;
+	// The view `cull` was given, in the map's pixels, or null for the scene's; one rectangle, written over
+	var cullRect:Null<PixelRect> = null;
+	// The chunks shown last: every one, or the columns and rows (ends included) the view reached,
+	// so culling touches the chunks that come into or go out of view and no other
+	var shownAll = true;
+	var shownCol0 = 0;
+	var shownCol1 = -1;
+	var shownRow0 = 0;
+	var shownRow1 = -1;
 	// Masks of a draw pass, shared by the chunks it draws and made over `passRect` alone (the chunks
-	// and a cell around them, as far as an autotile's index looks): per terrain, per level, per
-	// platform and level
+	// and a cell around them, as far as an autotile's index looks), the rectangle's corner their
+	// `[0][0]`: per terrain, per level, per platform and level
 	var passRect:CellRect = {x0: 0, y0: 0, x1: 0, y1: 0};
 	var passTerrainMasks:Array<Null<Array<Array<Int>>>> = [];
 	var passLevelMasks:Map<Int, Array<Array<Int>>> = [];
-	var passPlatformMasks:Map<String, Array<Array<Int>>> = [];
+	var passPlatformMasks:Map<Int, Null<Array<Array<Int>>>> = [];
 	var passHighest = -1;
 
 	static final NO_METADATA = new BuilderResolvedSettings(null);
 	static final EMPTY_ROW:Array<Int> = [];
 	static final scratchPoint = new h2d.col.Point();
+	// One rectangle for the scene's view, written by `localRectOf` and read by `applyCulling` in the
+	// same call, which runs no callbacks: `sync` is single-threaded and never re-enters it. Never
+	// kept past that call (`cullRect` is the map's own).
+	static final sceneRect:PixelRect = {x: 0, y: 0, w: 0, h: 0};
+
+	// Watchdog for tests: how often a chunk being drawn asks which rise a cell takes. Gated behind
+	// MULTIANIM_ALLOC_TRACK so the increment vanishes from production builds; a side's run is numbered
+	// from its start, so a long cliff must not cost a walk back from every one of its cells.
+	#if MULTIANIM_ALLOC_TRACK
+	public static var riseLookups:Int = 0;
+	#end
 
 	public function new(mapName:String, sourceName:String, def:TilemapDef, tileset:TilesetDef, tiles:TileMapTiles, ?parent:h2d.Object) {
 		super(parent);
@@ -230,11 +288,50 @@ class TileMap extends h2d.Object {
 		height = def.height;
 		terrainMetadata = [for (t in tileset.terrains) tiles.metadata(t.metadata)];
 		riseMetadata = [for (r in tileset.rises) tiles.metadata(r.metadata)];
-		cellMetadata = [for (c in tileset.cells) c.name => tiles.metadata(c.metadata)];
+		terrainSettings = [for (m in terrainMetadata) m != null ? new BuilderResolvedSettings(m) : NO_METADATA];
+		mergedSettings = [];
+		terrainFrames = [for (t in tileset.terrains) t.cells != null ? framesOf(tileset.atlas, t.cells) : null];
+		pieceFrames = [];
 		animClocks = [for (_ in tileset.terrains) {time: 0.0, index: 0}];
 		final cells = width * height;
 		terrainIndex = [for (cy in 0...height) for (cx in 0...width) terrainIndexOf(this.def.legend.get(this.def.terrain[cy].charAt(cx)))];
-		covers = [for (l in this.def.layers) coverOf(l)];
+		platformNames = [];
+		for (_ => platform in this.def.levelPlatforms)
+			if (!platformNames.contains(platform)) platformNames.push(platform);
+		final levels = this.def.levels;
+		levelIndex = [for (cy in 0...height) for (cx in 0...width) levels.length > 0 ? levelOf(this.def.levelLegend, levels[cy].charAt(cx)) : 0];
+		platformIndex = [
+			for (cy in 0...height)
+				for (cx in 0...width)
+					levels.length > 0 ? platformNames.indexOf(this.def.levelPlatforms.get(levels[cy].charAt(cx))) : -1
+		];
+		final cellMetadata:Map<String, ResolvedSettings> = [for (c in tileset.cells) c.name => tiles.metadata(c.metadata)];
+		layerEntries = [];
+		layerEntryOf = [];
+		for (l in this.def.layers) {
+			final sheet = l.sheet != null ? l.sheet : tileset.atlas;
+			final entries:Array<LayerEntry> = [];
+			final of:Map<String, Int> = [];
+			for (ch => name in l.legend) {
+				final cell = cellDef(name);
+				of.set(ch, entries.length);
+				entries.push({
+					name: name,
+					frames: framesOf(sheet, name),
+					draw: cell != null && cell.draw != null ? cell.draw : (l.draw != null ? l.draw : "under"),
+					anchorX: cell != null && cell.anchorX != null ? cell.anchorX : 0,
+					anchorY: cell != null && cell.anchorY != null ? cell.anchorY : 0,
+					cell: cell,
+					metadata: cellMetadata.get(name),
+				});
+			}
+			layerEntries.push(entries);
+			layerEntryOf.push(of);
+		}
+		layerCell = [];
+		covers = [];
+		for (li in 0...this.def.layers.length)
+			readLayer(li);
 		sides = [for (_ in 0...cells) 0];
 		sideRises = [for (_ in 0...cells) -1];
 		metadata = [for (_ in 0...cells) NO_METADATA];
@@ -249,7 +346,7 @@ class TileMap extends h2d.Object {
 		makeChunks();
 	}
 
-	/** New chunks, every one dirty: drawn as it is next in view or asked. **/
+	/** New chunks, every one dirty: drawn as it is next in view, its cells worked out as they are asked. **/
 	function makeChunks():Void {
 		for (c in chunks) {
 			c.ground.remove();
@@ -272,6 +369,7 @@ class TileMap extends h2d.Object {
 					y1: y0 + chunkSize < height ? y0 + chunkSize : height,
 				}, ground, overLayer, topLayer));
 			}
+		shownAll = true;
 		changed = true;
 	}
 
@@ -301,7 +399,16 @@ class TileMap extends h2d.Object {
 		forgets the view; the scene's is used again with `cullToScene = true` after it.
 	**/
 	public function cull(x:Float, y:Float, w:Float, h:Float):Void {
-		cullRect = {x: x, y: y, w: w, h: h};
+		var r = cullRect;
+		if (r == null) {
+			r = {x: x, y: y, w: w, h: h};
+			cullRect = r;
+		} else {
+			r.x = x;
+			r.y = y;
+			r.w = w;
+			r.h = h;
+		}
 		applyCulling();
 	}
 
@@ -341,16 +448,15 @@ class TileMap extends h2d.Object {
 
 	/** 0 where the map has no levels. **/
 	public function levelAt(cx:Int, cy:Int):Int {
-		if (!inside(cx, cy) || def.levels.length == 0)
-			return 0;
-		return levelOf(def.levelLegend, def.levels[cy].charAt(cx));
+		return inside(cx, cy) ? levelIndex[cy * width + cx] : 0;
 	}
 
 	/** The platform a cell is of (the tileset's `platform name { … }`, where the map's levels legend says one), or null: the ground, at its level. **/
 	public function platformAt(cx:Int, cy:Int):Null<String> {
-		if (!inside(cx, cy) || def.levels.length == 0)
+		if (!inside(cx, cy))
 			return null;
-		return def.levelPlatforms.get(def.levels[cy].charAt(cx));
+		final p = platformIndex[cy * width + cx];
+		return p < 0 ? null : platformNames[p];
 	}
 
 	/** The level a character of the levels rows stands for: a digit is itself, any other is in the legend. **/
@@ -368,7 +474,7 @@ class TileMap extends h2d.Object {
 		if (li < 0 || !inside(cx, cy))
 			return null;
 		final anchor = covers[li][cy * width + cx];
-		return anchor < 0 ? null : nameAt(def.layers[li], anchor);
+		return anchor < 0 ? null : entryAt(li, anchor).name;
 	}
 
 	/**
@@ -384,28 +490,29 @@ class TileMap extends h2d.Object {
 			return null;
 		final ax = anchor % width;
 		final ay = Std.int(anchor / width);
-		final name = nameAt(def.layers[li], anchor);
-		final r = footprintOf(cellDef(name), ax, ay);
-		return {name: name, anchorX: ax, anchorY: ay, x: r.x0, y: r.y0, width: r.x1 - r.x0, height: r.y1 - r.y0};
+		final entry = entryAt(li, anchor);
+		final r = footprintOf(entry.cell, ax, ay);
+		return {name: entry.name, anchorX: ax, anchorY: ay, x: r.x0, y: r.y0, width: r.x1 - r.x0, height: r.y1 - r.y0};
 	}
 
-	/** The rise of a side drawn over the cell, or 0. **/
+	/** The rise of a side drawn over the cell, or 0. Worked out for the cell's chunk if it changed; nothing is drawn. **/
 	public function sideAt(cx:Int, cy:Int):Int {
 		if (!inside(cx, cy))
 			return 0;
-		drawCellsChunk(cx, cy);
+		resolveCellsChunk(cx, cy);
 		return sides[cy * width + cx];
 	}
 
 	/**
 		The cell's metadata: its terrain's, a side's over it, then each layer's cell there (an object's
 		on every cell it covers), a later one winning; read as settings are (`getBoolOrDefault`,
-		`getIntOrDefault`, `getFloatOrDefault`, `getStringOrDefault`, `has`, `keys`). Empty outside the map.
+		`getIntOrDefault`, `getFloatOrDefault`, `getStringOrDefault`, `has`, `keys`). Empty outside the
+		map. Worked out for the cell's chunk if it changed; nothing is drawn.
 	**/
 	public function metadataAt(cx:Int, cy:Int):BuilderResolvedSettings {
 		if (!inside(cx, cy))
 			return NO_METADATA;
-		drawCellsChunk(cx, cy);
+		resolveCellsChunk(cx, cy);
 		return metadata[cy * width + cx];
 	}
 
@@ -448,6 +555,8 @@ class TileMap extends h2d.Object {
 		if (def.levels.length == 0)
 			def.levels = [for (_ in 0...height) StringTools.lpad("", "0", width)];
 		def.levels[cy] = replaceAt(def.levels[cy], cx, c);
+		levelIndex[cy * width + cx] = level;
+		platformIndex[cy * width + cx] = -1;
 		touchRises(cx, cy);
 	}
 
@@ -465,28 +574,30 @@ class TileMap extends h2d.Object {
 		if (li < 0)
 			throw BuilderError.of('tilemap $mapName has no layer $layer', "tilemap_layer");
 		final l = def.layers[li];
-		if (char != " " && !l.legend.exists(char))
+		final entries = layerEntries[li];
+		final newEntry:Int = char == " " ? -1 : (layerEntryOf[li].exists(char) ? layerEntryOf[li].get(char) : -2);
+		if (newEntry == -2)
 			throw BuilderError.of('tilemap $mapName: "$char" is not in the legend of layer $layer', "tilemap_legend");
 		final cover = covers[li];
+		final at = layerCell[li];
 		final i = cy * width + cx;
 		if (cover[i] >= 0 && cover[i] != i) {
 			final a = cover[i];
-			throw BuilderError.of('tilemap $mapName: layer $layer: column $cx, row $cy is covered by ${nameAt(l, a)} at column ${a % width}, row ${Std.int(a / width)}: change it there',
+			throw BuilderError.of('tilemap $mapName: layer $layer: column $cx, row $cy is covered by ${entries[at[a]].name} at column ${a % width}, row ${Std.int(a / width)}: change it there',
 				"tilemap_object_covered");
 		}
 		// the old object's cells freed; put back if the new one cannot be placed
 		var old:Null<CellRect> = null;
-		final oldName = cover[i] == i ? nameAt(l, i) : null;
-		if (oldName != null) {
-			old = footprintOf(cellDef(oldName), cx, cy);
+		if (cover[i] == i) {
+			old = footprintOf(entries[at[i]].cell, cx, cy);
 			fillCover(cover, old, -1);
 		}
 		var placed:Null<CellRect> = null;
-		if (char != " ") {
-			final name:String = l.legend.get(char);
-			placed = footprintOf(cellDef(name), cx, cy);
+		if (newEntry >= 0) {
+			final entry = entries[newEntry];
+			placed = footprintOf(entry.cell, cx, cy);
 			try {
-				placeCover(cover, l, name, cx, cy, placed);
+				placeCover(cover, li, entry.name, cx, cy, placed);
 			} catch (e:BuilderError) {
 				if (old != null)
 					fillCover(cover, old, i);
@@ -494,6 +605,7 @@ class TileMap extends h2d.Object {
 			}
 		}
 		l.rows[cy] = replaceAt(l.rows[cy], cx, char);
+		at[i] = newEntry;
 		// drawn again where the old and the new one are: their metadata is on every cell they cover
 		if (old != null)
 			touchRect(old, 0);
@@ -514,9 +626,9 @@ class TileMap extends h2d.Object {
 		return -1;
 	}
 
-	/** The name of the cell at a cell index of a layer, which has one there. **/
-	function nameAt(l:TilemapLayerDef, index:Int):String {
-		return l.legend.get(l.rows[Std.int(index / width)].charAt(index % width));
+	/** The legend entry of a layer at a cell index, which has a character there. **/
+	inline function entryAt(li:Int, index:Int):LayerEntry {
+		return layerEntries[li][layerCell[li][index]];
 	}
 
 	/** The cells a cell placed at (cx, cy) covers: its own, or for an object of several its `size` about its anchor. **/
@@ -528,32 +640,42 @@ class TileMap extends h2d.Object {
 		return {x0: cx - ax, y0: cy - ay, x1: cx - ax + w, y1: cy - ay + h};
 	}
 
-	/** A layer's cover from its rows: every cell's anchor; the errors `setSource` says. **/
-	function coverOf(l:TilemapLayerDef):Array<Int> {
-		final cover = [for (_ in 0...width * height) -1];
-		for (cy in 0...height)
+	/** A layer's rows read: per cell the entry whose character is there, and every cell's anchor (its cover); the errors `setSource` says. **/
+	function readLayer(li:Int):Void {
+		final l = def.layers[li];
+		final entries = layerEntries[li];
+		final of = layerEntryOf[li];
+		final cells = width * height;
+		final at = [for (_ in 0...cells) -1];
+		final cover = [for (_ in 0...cells) -1];
+		layerCell.push(at);
+		covers.push(cover);
+		for (cy in 0...height) {
+			final row = l.rows[cy];
 			for (cx in 0...width) {
-				final ch = l.rows[cy].charAt(cx);
+				final ch = row.charAt(cx);
 				if (ch == " ")
 					continue;
-				final name = l.legend.get(ch);
-				if (name == null)
+				final e = of.get(ch);
+				if (e == null)
 					continue; // the builder has checked the legend
-				placeCover(cover, l, name, cx, cy, footprintOf(cellDef(name), cx, cy));
+				at[cy * width + cx] = e;
+				placeCover(cover, li, entries[e].name, cx, cy, footprintOf(entries[e].cell, cx, cy));
 			}
-		return cover;
+		}
 	}
 
 	/** Marks the cells a cell at (cx, cy) covers as its, once they are inside the map and free. **/
-	function placeCover(cover:Array<Int>, l:TilemapLayerDef, name:String, cx:Int, cy:Int, r:CellRect):Void {
+	function placeCover(cover:Array<Int>, li:Int, name:String, cx:Int, cy:Int, r:CellRect):Void {
+		final layer = def.layers[li].name;
 		if (r.x0 < 0 || r.y0 < 0 || r.x1 > width || r.y1 > height)
-			throw BuilderError.of('tilemap $mapName: layer ${l.name}: $name at column $cx, row $cy covers columns ${r.x0} to ${r.x1 - 1}, rows ${r.y0} to ${r.y1 - 1}, outside the map (${width}x$height)',
+			throw BuilderError.of('tilemap $mapName: layer $layer: $name at column $cx, row $cy covers columns ${r.x0} to ${r.x1 - 1}, rows ${r.y0} to ${r.y1 - 1}, outside the map (${width}x$height)',
 				"tilemap_object_outside");
 		for (y in r.y0...r.y1)
 			for (x in r.x0...r.x1) {
 				final other = cover[y * width + x];
 				if (other >= 0)
-					throw BuilderError.of('tilemap $mapName: layer ${l.name}: $name at column $cx, row $cy covers column $x, row $y, where ${nameAt(l, other)} at column ${other % width}, row ${Std.int(other / width)} is already',
+					throw BuilderError.of('tilemap $mapName: layer $layer: $name at column $cx, row $cy covers column $x, row $y, where ${entryAt(li, other).name} at column ${other % width}, row ${Std.int(other / width)} is already',
 						"tilemap_object_overlap");
 			}
 		fillCover(cover, r, cy * width + cx);
@@ -567,14 +689,31 @@ class TileMap extends h2d.Object {
 
 	/** A cell changed: the chunks within `reach` cells of it are drawn again, next time. **/
 	function touch(cx:Int, cy:Int, reach:Int):Void {
-		touchRect({x0: cx, y0: cy, x1: cx + 1, y1: cy + 1}, reach);
+		touchChunks(chunkOf(cx - reach), chunkOf(cx + reach), chunkOf(cy - reach), chunkOf(cy + reach));
 	}
 
 	/** Cells changed: the chunks within `reach` cells of the rectangle are drawn again, next time. **/
 	function touchRect(r:CellRect, reach:Int):Void {
-		for (c in chunks)
-			if (r.x1 + reach > c.rect.x0 && r.x0 - reach < c.rect.x1 && r.y1 + reach > c.rect.y0 && r.y0 - reach < c.rect.y1)
+		touchChunks(chunkOf(r.x0 - reach), chunkOf(r.x1 - 1 + reach), chunkOf(r.y0 - reach), chunkOf(r.y1 - 1 + reach));
+	}
+
+	/** The column (or row) of chunks a cell's column (or row) is in, however far outside the map. **/
+	inline function chunkOf(cell:Int):Int {
+		return Math.floor(cell / chunkSize);
+	}
+
+	/** The chunks of some columns and rows (both ends included, those outside the map left out) are drawn again, their cells worked out again, next time. **/
+	function touchChunks(col0:Int, col1:Int, row0:Int, row1:Int):Void {
+		if (col0 < 0) col0 = 0;
+		if (row0 < 0) row0 = 0;
+		if (col1 >= chunkCols) col1 = chunkCols - 1;
+		if (row1 >= chunkRows) row1 = chunkRows - 1;
+		for (row in row0...row1 + 1)
+			for (col in col0...col1 + 1) {
+				final c = chunks[row * chunkCols + col];
 				c.dirty = true;
+				c.resolved = false;
+			}
 		changed = true;
 	}
 
@@ -590,9 +729,10 @@ class TileMap extends h2d.Object {
 			if (rise.sides.length < 2)
 				continue;
 			final step = towardStep(rise.toward);
-			for (c in chunks)
-				if (step.dy != 0 ? (cy + reach >= c.rect.y0 && cy - reach < c.rect.y1) : (cx + reach >= c.rect.x0 && cx - reach < c.rect.x1))
-					c.dirty = true;
+			if (step.dy != 0)
+				touchChunks(0, chunkCols - 1, chunkOf(cy - reach), chunkOf(cy + reach));
+			else
+				touchChunks(chunkOf(cx - reach), chunkOf(cx + reach), 0, chunkRows - 1);
 		}
 	}
 
@@ -687,7 +827,11 @@ class TileMap extends h2d.Object {
 
 	// ===================== Culling =====================
 
-	/** Shows the chunks the view reaches and hides the rest; every chunk when there is no view. **/
+	/**
+		Shows the chunks the view reaches and hides the rest; every chunk when there is no view.
+		Only the chunks the view reached last time and those it reaches now are looked at: the rest
+		are hidden already.
+	**/
 	function applyCulling():Void {
 		var view = cullRect;
 		if (view == null && cullToScene) {
@@ -695,21 +839,60 @@ class TileMap extends h2d.Object {
 			if (scene != null)
 				view = localRectOf(scene);
 		}
-		for (c in chunks) {
-			// a corner autotile reaches half a tile past its cells
-			final visible = view == null
-				|| (c.rect.x1 * tileSize + tileSize > view.x && c.rect.x0 * tileSize - tileSize < view.x + view.w
-					&& c.rect.y1 * tileSize + tileSize > view.y && c.rect.y0 * tileSize - tileSize < view.y + view.h);
-			if (c.ground.visible != visible) {
-				c.ground.visible = visible;
-				c.over.visible = visible;
-				c.top.visible = visible;
-			}
+		if (view == null) {
+			if (!shownAll)
+				for (c in chunks)
+					showChunk(c, true);
+			shownAll = true;
+			return;
+		}
+		// the columns and rows of chunks the view may reach: a corner autotile reaches half a tile
+		// past its cells, so a chunk within a tile of the view is shown
+		final side = chunkSize * tileSize;
+		var col0 = Math.floor((view.x - tileSize) / side);
+		var col1 = Math.floor((view.x + view.w + tileSize) / side);
+		var row0 = Math.floor((view.y - tileSize) / side);
+		var row1 = Math.floor((view.y + view.h + tileSize) / side);
+		if (col0 < 0) col0 = 0;
+		if (row0 < 0) row0 = 0;
+		if (col1 >= chunkCols) col1 = chunkCols - 1;
+		if (row1 >= chunkRows) row1 = chunkRows - 1;
+		if (shownAll) {
+			for (c in chunks)
+				showChunk(c, inView(c, view));
+		} else {
+			for (row in shownRow0...shownRow1 + 1)
+				for (col in shownCol0...shownCol1 + 1)
+					showChunk(chunks[row * chunkCols + col], false);
+			for (row in row0...row1 + 1)
+				for (col in col0...col1 + 1) {
+					final c = chunks[row * chunkCols + col];
+					showChunk(c, inView(c, view));
+				}
+		}
+		shownAll = false;
+		shownCol0 = col0;
+		shownCol1 = col1;
+		shownRow0 = row0;
+		shownRow1 = row1;
+	}
+
+	/** Whether a view reaches a chunk: within a tile of its cells, as far as a corner autotile draws past them. **/
+	inline function inView(c:Chunk, view:PixelRect):Bool {
+		return c.rect.x1 * tileSize + tileSize > view.x && c.rect.x0 * tileSize - tileSize < view.x + view.w
+			&& c.rect.y1 * tileSize + tileSize > view.y && c.rect.y0 * tileSize - tileSize < view.y + view.h;
+	}
+
+	static function showChunk(c:Chunk, visible:Bool):Void {
+		if (c.ground.visible != visible) {
+			c.ground.visible = visible;
+			c.over.visible = visible;
+			c.top.visible = visible;
 		}
 	}
 
-	/** The scene's whole view in the map's own coordinates: a box around its four corners. **/
-	function localRectOf(scene:h2d.Scene):{x:Float, y:Float, w:Float, h:Float} {
+	/** The scene's whole view in the map's own coordinates: a box around its four corners, in `sceneRect`. **/
+	function localRectOf(scene:h2d.Scene):PixelRect {
 		var minX = Math.POSITIVE_INFINITY, minY = Math.POSITIVE_INFINITY;
 		var maxX = Math.NEGATIVE_INFINITY, maxY = Math.NEGATIVE_INFINITY;
 		final p = scratchPoint;
@@ -721,15 +904,20 @@ class TileMap extends h2d.Object {
 			if (p.y < minY) minY = p.y;
 			if (p.y > maxY) maxY = p.y;
 		}
-		return {x: minX, y: minY, w: maxX - minX, h: maxY - minY};
+		final r = sceneRect;
+		r.x = minX;
+		r.y = minY;
+		r.w = maxX - minX;
+		r.h = maxY - minY;
+		return r;
 	}
 
 	// ===================== Drawing =====================
 
 	/**
 		Draws everything again from the rows, now: new definitions, or cells changed since. A chunk
-		is drawn by itself when it is next in view or asked what it draws, so this is for drawing
-		them all sooner, whatever the view.
+		is drawn by itself when it is next in view, so this is for drawing them all sooner, whatever
+		the view.
 	**/
 	public function redraw():Void {
 		for (c in chunks)
@@ -752,13 +940,11 @@ class TileMap extends h2d.Object {
 			drawChunks(todo);
 	}
 
-	/** Draws the chunk a cell is in if it is dirty: what `sideAt` and `metadataAt` read is drawn with it. **/
-	function drawCellsChunk(cx:Int, cy:Int):Void {
-		if (!changed)
-			return;
+	/** Works out the sides and metadata of the chunk a cell is in, if they changed: what `sideAt` and `metadataAt` read, drawing nothing. **/
+	function resolveCellsChunk(cx:Int, cy:Int):Void {
 		final c = chunks[Std.int(cy / chunkSize) * chunkCols + Std.int(cx / chunkSize)];
-		if (c.dirty)
-			drawChunks([c]);
+		if (!c.resolved)
+			resolveChunk(c);
 	}
 
 	/** Draws some chunks in one pass, whose masks cover them and a cell around: as far as an autotile's index looks. **/
@@ -802,11 +988,30 @@ class TileMap extends h2d.Object {
 		passPlatformMasks = [];
 	}
 
+	/**
+		Rows for a grid over a rectangle of positions, the pass rectangle's corner its `[0][0]`: the
+		rows above it empty, each row's positions before it 0 (a cell at most, the margin around a
+		chunk), the rest 0 to be set. An autotile walks just the rectangle, and what reads it
+		(`Autotile.isFilled`) takes a missing position as 0.
+	**/
+	function gridOver(r:CellRect):Array<Array<Int>> {
+		final rows:Array<Array<Int>> = [for (_ in 0...r.y0 - passRect.y0) EMPTY_ROW];
+		final cols = r.x1 - passRect.x0;
+		for (_ in r.y0...r.y1)
+			rows.push([for (_ in 0...cols) 0]);
+		return rows;
+	}
+
 	/** Terrain `i`'s cells and those of every terrain above it, within the pass. **/
 	function terrainMask(i:Int):Array<Array<Int>> {
 		var mask = passTerrainMasks[i];
 		if (mask == null) {
-			mask = rectGrid(passRect, (cx, cy) -> terrainIndex[cy * width + cx] >= i ? 1 : 0);
+			mask = gridOver(passRect);
+			for (cy in passRect.y0...passRect.y1) {
+				final row = mask[cy - passRect.y0];
+				for (cx in passRect.x0...passRect.x1)
+					row[cx - passRect.x0] = terrainIndex[cy * width + cx] >= i ? 1 : 0;
+			}
 			passTerrainMasks[i] = mask;
 		}
 		return mask;
@@ -816,20 +1021,38 @@ class TileMap extends h2d.Object {
 	function levelMask(level:Int):Array<Array<Int>> {
 		var mask = passLevelMasks.get(level);
 		if (mask == null) {
-			mask = rectGrid(passRect, (cx, cy) -> levelAt(cx, cy) >= level && platformAt(cx, cy) == null ? 1 : 0);
+			mask = gridOver(passRect);
+			for (cy in passRect.y0...passRect.y1) {
+				final row = mask[cy - passRect.y0];
+				for (cx in passRect.x0...passRect.x1) {
+					final i = cy * width + cx;
+					row[cx - passRect.x0] = levelIndex[i] >= level && platformIndex[i] < 0 ? 1 : 0;
+				}
+			}
 			passLevelMasks.set(level, mask);
 		}
 		return mask;
 	}
 
-	/** A platform's cells at `level` or above, within the pass; null when it has none there. **/
-	function platformMask(platform:String, level:Int):Null<Array<Array<Int>>> {
-		final key = '$platform#$level';
+	/** A platform's cells (by its index in `platformNames`) at `level` or above, within the pass; null when it has none there. **/
+	function platformMask(platform:Int, level:Int):Null<Array<Array<Int>>> {
+		final key = level * platformNames.length + platform;
 		if (passPlatformMasks.exists(key))
 			return passPlatformMasks.get(key);
-		final mask = sparse(passRect, (cx, cy) -> levelAt(cx, cy) >= level && platformAt(cx, cy) == platform ? 1 : 0);
-		passPlatformMasks.set(key, mask);
-		return mask;
+		final mask = gridOver(passRect);
+		var any = false;
+		for (cy in passRect.y0...passRect.y1) {
+			final row = mask[cy - passRect.y0];
+			for (cx in passRect.x0...passRect.x1) {
+				final i = cy * width + cx;
+				if (levelIndex[i] >= level && platformIndex[i] == platform) {
+					row[cx - passRect.x0] = 1;
+					any = true;
+				}
+			}
+		}
+		passPlatformMasks.set(key, any ? mask : null);
+		return any ? mask : null;
 	}
 
 	/** The highest level within the pass: a level nowhere near the chunks drawn has nothing to draw in them. **/
@@ -837,13 +1060,16 @@ class TileMap extends h2d.Object {
 		if (passHighest < 0) {
 			var highest = 0;
 			for (cy in passRect.y0...passRect.y1)
-				for (cx in passRect.x0...passRect.x1)
-					if (levelAt(cx, cy) > highest) highest = levelAt(cx, cy);
+				for (cx in passRect.x0...passRect.x1) {
+					final level = levelIndex[cy * width + cx];
+					if (level > highest) highest = level;
+				}
 			passHighest = highest;
 		}
 		return passHighest;
 	}
 
+	/** A chunk's tiles drawn again, and its cells worked out with them. **/
 	function drawChunk(c:Chunk):Void {
 		c.dirty = false;
 		c.ground.removeChildren();
@@ -853,15 +1079,28 @@ class TileMap extends h2d.Object {
 			o.remove();
 		c.objects = [];
 		c.animated = [];
+		clearSides(c);
+		drawTerrains(c);
+		drawRises(c);
+		drawLayers(c);
+		mergeMetadata(c);
+		c.resolved = true;
+	}
+
+	/** A chunk's cells worked out again, nothing drawn: the sides over them, then their metadata. **/
+	function resolveChunk(c:Chunk):Void {
+		clearSides(c);
+		scanRises(c, null);
+		mergeMetadata(c);
+		c.resolved = true;
+	}
+
+	function clearSides(c:Chunk):Void {
 		for (cy in c.rect.y0...c.rect.y1)
 			for (cx in c.rect.x0...c.rect.x1) {
 				sides[cy * width + cx] = 0;
 				sideRises[cy * width + cx] = -1;
 			}
-		drawTerrains(c);
-		drawRises(c);
-		drawLayers(c);
-		mergeMetadata(c);
 	}
 
 	/**
@@ -882,51 +1121,36 @@ class TileMap extends h2d.Object {
 	}
 
 	/**
-		A grid over a rectangle of positions only: the rows above it empty, each row's positions
-		before it 0, so an autotile walks just the rectangle, and what reads it (`Autotile.isFilled`)
-		takes a missing position as 0.
-	**/
-	function rectGrid(r:CellRect, at:(x:Int, y:Int) -> Int):Array<Array<Int>> {
-		final rows:Array<Array<Int>> = [for (_ in 0...r.y0) EMPTY_ROW];
-		for (y in r.y0...r.y1) {
-			final row:Array<Int> = [for (_ in 0...r.x0) 0];
-			for (x in r.x0...r.x1)
-				row.push(at(x, y));
-			rows.push(row);
-		}
-		return rows;
-	}
-
-	/** A `where` grid over a rectangle of positions, as `rectGrid`; null when nothing in it is set. **/
-	function sparse(r:CellRect, at:(x:Int, y:Int) -> Int):Null<Array<Array<Int>>> {
-		var any = false;
-		final rows = rectGrid(r, (x, y) -> {
-			final v = at(x, y);
-			if (v != 0)
-				any = true;
-			v;
-		});
-		return any ? rows : null;
-	}
-
-	/**
 		The positions of a rectangle an autotile over `mask` draws anything at: corners with a filled
 		cell around them, or filled cells. Null when none, so a terrain absent from a chunk is not
 		asked for at all.
 	**/
 	function drawnPositions(mask:Array<Array<Int>>, format:AutotileFormat, r:CellRect):Null<Array<Array<Int>>> {
-		return switch format {
-			case Corner: sparse(r, (x, y) -> Autotile.getCornerIndex(mask, x, y) != 0 ? 1 : 0);
-			case Cross | Blob47: sparse(r, (x, y) -> Autotile.isFilled(mask, x, y) ? 1 : 0);
-		};
+		final ox = passRect.x0;
+		final oy = passRect.y0;
+		final where = gridOver(r);
+		var any = false;
+		for (cy in r.y0...r.y1) {
+			final row = where[cy - oy];
+			for (cx in r.x0...r.x1) {
+				final drawn = switch format {
+					case Corner: Autotile.getCornerIndex(mask, cx - ox, cy - oy) != 0;
+					case Cross | Blob47: Autotile.isFilled(mask, cx - ox, cy - oy);
+				};
+				if (drawn) {
+					row[cx - ox] = 1;
+					any = true;
+				}
+			}
+		}
+		return any ? where : null;
 	}
 
 	function drawTerrains(c:Chunk):Void {
 		for (i in 0...tileset.terrains.length) {
 			final terrain = tileset.terrains[i];
-			final cells = terrain.cells;
-			if (cells != null) {
-				final frames = framesOf(tileset.atlas, cells);
+			final frames = terrainFrames[i];
+			if (frames != null) {
 				final groups = new TileGroups(c.ground);
 				for (cy in c.rect.y0...c.rect.y1)
 					for (cx in c.rect.x0...c.rect.x1)
@@ -943,23 +1167,32 @@ class TileMap extends h2d.Object {
 				continue; // none of the terrain near this chunk
 			// The terrain's own autotile over its cells and those of the terrains above it; then,
 			// where it meets a terrain it has a transition from, that pair's autotile over the
-			// meeting positions. An animated terrain has one of each a frame.
+			// meeting positions. An animated terrain has one of each a frame; the meeting positions
+			// depend on the autotile's format alone, so they are found once a format, not once a frame.
 			final transitions = [for (t in tileset.transitions) if (t.to == terrain.name) t];
+			final from = [for (t in transitions) terrainIndexOf(t.from)];
+			final meeting:Array<Array<Null<Array<Array<Int>>>>> = [for (_ in transitions) [null, null, null]];
+			final meetingFound:Array<Array<Bool>> = [for (_ in transitions) [false, false, false]];
 			final frameGroups:Array<h2d.Object> = [];
 			for (k in 0...terrain.autotiles.length) {
-				final ownGroup = tiles.autotile(terrain.autotiles[k], mask, ownWhere);
+				final ownGroup = tiles.autotile(terrain.autotiles[k], mask, ownWhere, passRect.x0, passRect.y0);
 				if (transitions.length == 0) {
 					frameGroups.push(ownGroup);
 					continue;
 				}
 				final frame = new h2d.Object();
 				frame.addChild(ownGroup);
-				for (t in transitions) {
-					final autotile = t.autotiles[k];
+				for (ti in 0...transitions.length) {
+					final autotile = transitions[ti].autotiles[k];
 					final format = tiles.autotileFormat(autotile);
-					final where = meetingPositions(i, terrainIndexOf(t.from), format, positionsOf(c, format));
+					final fi = Type.enumIndex(format);
+					if (!meetingFound[ti][fi]) {
+						meeting[ti][fi] = meetingPositions(i, from[ti], format, positionsOf(c, format));
+						meetingFound[ti][fi] = true;
+					}
+					final where = meeting[ti][fi];
 					if (where != null)
-						frame.addChild(tiles.autotile(autotile, mask, where));
+						frame.addChild(tiles.autotile(autotile, mask, where, passRect.x0, passRect.y0));
 				}
 				frameGroups.push(frame);
 			}
@@ -988,27 +1221,39 @@ class TileMap extends h2d.Object {
 	function meetingPositions(i:Int, from:Int, format:AutotileFormat, r:CellRect):Null<Array<Array<Int>>> {
 		inline function terrainAtCell(cx:Int, cy:Int):Int
 			return inside(cx, cy) ? terrainIndex[cy * width + cx] : -1;
-		function meets(cells:Array<Int>):Int {
-			var insideCount = 0;
-			var outsideCount = 0;
-			for (t in cells) {
-				if (t >= i)
-					insideCount++;
-				else if (t == from)
-					outsideCount++;
-				else
-					return 0;
+		final ox = passRect.x0;
+		final oy = passRect.y0;
+		final where = gridOver(r);
+		var any = false;
+		// the cells around a position: the four about a corner, the nine about a cell
+		final corner = format == Corner;
+		final d0 = -1;
+		final d1 = corner ? 1 : 2;
+		for (cy in r.y0...r.y1) {
+			final row = where[cy - oy];
+			for (cx in r.x0...r.x1) {
+				if (!corner && terrainAtCell(cx, cy) < i)
+					continue;
+				var insideCount = 0;
+				var outsideCount = 0;
+				var other = false;
+				for (dy in d0...d1)
+					for (dx in d0...d1) {
+						final t = terrainAtCell(cx + dx, cy + dy);
+						if (t >= i)
+							insideCount++;
+						else if (t == from)
+							outsideCount++;
+						else
+							other = true;
+					}
+				if (!other && insideCount > 0 && outsideCount > 0) {
+					row[cx - ox] = 1;
+					any = true;
+				}
 			}
-			return insideCount == 0 || outsideCount == 0 ? 0 : 1;
 		}
-		return switch format {
-			case Corner:
-				sparse(r, (cx, cy) -> meets([terrainAtCell(cx - 1, cy - 1), terrainAtCell(cx, cy - 1), terrainAtCell(cx - 1, cy), terrainAtCell(cx, cy)]));
-			case Cross | Blob47:
-				sparse(r, (cx, cy) -> terrainAtCell(cx, cy) < i ? 0 : meets([
-					for (dy in -1...2) for (dx in -1...2) terrainAtCell(cx + dx, cy + dy)
-				]));
-		};
+		return any ? where : null;
 	}
 
 	/** The step from a cell to its neighbour, by `toward:`. **/
@@ -1021,6 +1266,7 @@ class TileMap extends h2d.Object {
 		};
 	}
 
+	/** The levels' edges, the platforms' tops and the rises' sides of a chunk, the sides noted as they are drawn. **/
 	function drawRises(c:Chunk):Void {
 		if (def.levels.length == 0)
 			return;
@@ -1039,27 +1285,38 @@ class TileMap extends h2d.Object {
 				final format = tiles.autotileFormat(name);
 				final where = rimPositions(mask, name, format, positionsOf(c, format));
 				if (where != null)
-					c.ground.addChild(tiles.autotile(name, mask, where));
+					c.ground.addChild(tiles.autotile(name, mask, where, passRect.x0, passRect.y0));
 			}
 		}
 		// Every platform's top: its own autotile over all of it, on whatever terrain is under it
 		for (platform in tileset.platforms) {
 			final edge = platform.edge;
-			if (edge == null)
+			final pi = platformNames.indexOf(platform.name);
+			if (edge == null || pi < 0)
 				continue;
 			final format = tiles.autotileFormat(edge);
 			for (level in 1...highest + 1) {
-				final mask = platformMask(platform.name, level);
+				final mask = platformMask(pi, level);
 				if (mask == null)
 					continue;
 				final where = drawnPositions(mask, format, positionsOf(c, format));
 				if (where != null)
-					c.ground.addChild(tiles.autotile(edge, mask, where));
+					c.ground.addChild(tiles.autotile(edge, mask, where, passRect.x0, passRect.y0));
 			}
 		}
-		// Beyond a higher cell, toward the neighbour its rise faces, the side over `span` cells;
-		// drawn where it lands, so the higher cells looked at reach `span` outside the chunk
-		final groups = new TileGroups(c.ground);
+		scanRises(c, new TileGroups(c.ground));
+	}
+
+	/**
+		Beyond a higher cell, toward the neighbour its rise faces, the side over `span` cells: noted
+		in `sides` and `sideRises` for the cells it lands on in the chunk, and drawn there into
+		`groups` when given one. The higher cells looked at reach `span` outside the chunk. The cells
+		are scanned along a side's run, so how far along it a cell is follows from the cell before:
+		only the first cell of a run the scan meets walks back to the run's start.
+	**/
+	function scanRises(c:Chunk, groups:Null<TileGroups>):Void {
+		if (def.levels.length == 0)
+			return;
 		final towards:Array<String> = [];
 		for (rise in tileset.rises)
 			if (!towards.contains(rise.toward)) towards.push(rise.toward);
@@ -1069,21 +1326,43 @@ class TileMap extends h2d.Object {
 			// its neighbours along the side's run, in reading order (left or above first)
 			final px = step.dy != 0 ? 1 : 0;
 			final py = step.dx != 0 ? 1 : 0;
-			for (cy in c.rect.y0 - span...c.rect.y1 + span)
-				for (cx in c.rect.x0 - span...c.rect.x1 + span) {
-					if (!inside(cx, cy))
+			// the run's axis is the inner loop
+			final alongX = px == 1;
+			final a0 = alongX ? c.rect.y0 - span : c.rect.x0 - span;
+			final a1 = alongX ? c.rect.y1 + span : c.rect.x1 + span;
+			final b0 = alongX ? c.rect.x0 - span : c.rect.y0 - span;
+			final b1 = alongX ? c.rect.x1 + span : c.rect.y1 + span;
+			for (a in a0...a1) {
+				var previous = -1;
+				var along = 0;
+				for (b in b0...b1) {
+					final cx = alongX ? b : a;
+					final cy = alongX ? a : b;
+					if (!inside(cx, cy)) {
+						previous = -1;
 						continue;
+					}
 					final index = riseIndexAt(cx, cy, toward, step.dx, step.dy);
-					if (index < 0)
+					if (index < 0) {
+						previous = -1;
 						continue;
+					}
 					final rise = tileset.rises[index];
-					final before = riseIndexAt(cx - px, cy - py, toward, step.dx, step.dy) == index;
+					final before = index == previous || riseIndexAt(cx - px, cy - py, toward, step.dx, step.dy) == index;
 					final after = riseIndexAt(cx + px, cy + py, toward, step.dx, step.dy) == index;
 					// how far along the run the cell is, for a middle of several taken in turn
-					var along = 0;
-					if (before && rise.sides.length > 1)
-						while (riseIndexAt(cx - px * (along + 1), cy - py * (along + 1), toward, step.dx, step.dy) == index)
-							along++;
+					if (!before)
+						along = 0;
+					else if (index == previous)
+						along++;
+					else {
+						along = 0;
+						if (rise.sides.length > 1)
+							while (riseIndexAt(cx - px * (along + 1), cy - py * (along + 1), toward, step.dx, step.dy) == index)
+								along++;
+					}
+					previous = index;
+					final levels = riseToward(cx, cy, step.dx, step.dy);
 					var frames:Null<Array<h2d.Tile>> = null;
 					for (k in 0...rise.span) {
 						final sx = cx + step.dx * (k + 1);
@@ -1092,13 +1371,16 @@ class TileMap extends h2d.Object {
 							break;
 						if (sx < c.rect.x0 || sx >= c.rect.x1 || sy < c.rect.y0 || sy >= c.rect.y1)
 							continue;
-						if (frames == null)
-							frames = framesOf(tileset.atlas, sidePiece(rise, before, after, along));
-						groups.add(sx * tileSize, sy * tileSize, frames[k < frames.length ? k : frames.length - 1]);
-						sides[sy * width + sx] = riseToward(cx, cy, step.dx, step.dy);
+						if (groups != null) {
+							if (frames == null)
+								frames = pieceFramesOf(sidePiece(rise, before, after, along));
+							groups.add(sx * tileSize, sy * tileSize, frames[k < frames.length ? k : frames.length - 1]);
+						}
+						sides[sy * width + sx] = levels;
 						sideRises[sy * width + sx] = index;
 					}
 				}
+			}
 		}
 	}
 
@@ -1116,49 +1398,75 @@ class TileMap extends h2d.Object {
 		terrains show. Null when nowhere.
 	**/
 	function rimPositions(mask:Array<Array<Int>>, name:String, format:AutotileFormat, r:CellRect):Null<Array<Array<Int>>> {
+		final ox = passRect.x0;
+		final oy = passRect.y0;
 		inline function filled(cx:Int, cy:Int):Bool
-			return Autotile.isFilled(mask, cx, cy);
-		return switch format {
-			case Corner:
-				sparse(r, (cx, cy) -> {
-					// the cells around the corner, the one below and right of it first
-					final around = [[cx, cy], [cx - 1, cy], [cx, cy - 1], [cx - 1, cy - 1]];
-					var count = 0;
-					var edge:Null<String> = null;
-					for (cell in around)
-						if (filled(cell[0], cell[1])) {
+			return Autotile.isFilled(mask, cx - ox, cy - oy);
+		final where = gridOver(r);
+		var any = false;
+		for (cy in r.y0...r.y1) {
+			final row = where[cy - oy];
+			for (cx in r.x0...r.x1) {
+				final rim = switch format {
+					case Corner:
+						// the cells around the corner, the one below and right of it first: on the
+						// rim when some are filled and some not, with the first filled one's edge
+						var count = 0;
+						var edge:Null<String> = null;
+						if (filled(cx, cy)) {
 							count++;
-							if (edge == null) edge = edgeOfCell(cell[0], cell[1]);
+							edge = edgeOfCell(cx, cy);
 						}
-					count > 0 && count < 4 && edge == name ? 1 : 0;
-				});
-			case Cross | Blob47:
-				sparse(r, (cx, cy) -> {
-					var rim = false;
-					if (filled(cx, cy) && edgeOfCell(cx, cy) == name)
-						for (dy in -1...2)
-							for (dx in -1...2)
-								if (!filled(cx + dx, cy + dy)) rim = true;
-					rim ? 1 : 0;
-				});
-		};
+						if (filled(cx - 1, cy)) {
+							count++;
+							if (edge == null) edge = edgeOfCell(cx - 1, cy);
+						}
+						if (filled(cx, cy - 1)) {
+							count++;
+							if (edge == null) edge = edgeOfCell(cx, cy - 1);
+						}
+						if (filled(cx - 1, cy - 1)) {
+							count++;
+							if (edge == null) edge = edgeOfCell(cx - 1, cy - 1);
+						}
+						count > 0 && count < 4 && edge == name;
+					case Cross | Blob47:
+						var rim = false;
+						if (filled(cx, cy) && edgeOfCell(cx, cy) == name)
+							for (dy in -1...2)
+								for (dx in -1...2)
+									if (!filled(cx + dx, cy + dy)) rim = true;
+						rim;
+				};
+				if (rim) {
+					row[cx - ox] = 1;
+					any = true;
+				}
+			}
+		}
+		return any ? where : null;
 	}
 
 	/** How many levels a cell stands above its neighbour one step away; 0 at the map's edge or when it does not. **/
 	function riseToward(cx:Int, cy:Int, dx:Int, dy:Int):Int {
 		if (!inside(cx, cy) || !inside(cx + dx, cy + dy))
 			return 0;
-		final d = levelAt(cx, cy) - levelAt(cx + dx, cy + dy);
+		final d = levelIndex[cy * width + cx] - levelIndex[(cy + dy) * width + cx + dx];
 		return d > 0 ? d : 0;
 	}
 
 	/** Which of the tileset's rises draws the side of a cell toward a neighbour; -1 when it stands no higher, or the tileset has none for it. **/
 	function riseIndexAt(cx:Int, cy:Int, toward:String, dx:Int, dy:Int):Int {
+		#if MULTIANIM_ALLOC_TRACK
+		riseLookups++;
+		#end
 		final levels = riseToward(cx, cy, dx, dy);
 		if (levels <= 0)
 			return -1;
-		final t = terrainIndex[cy * width + cx];
-		return riseFor(tileset, levels, toward, t >= 0 ? tileset.terrains[t].name : null, platformAt(cx, cy));
+		final i = cy * width + cx;
+		final t = terrainIndex[i];
+		final p = platformIndex[i];
+		return riseFor(tileset, levels, toward, t >= 0 ? tileset.terrains[t].name : null, p < 0 ? null : platformNames[p]);
 	}
 
 	/**
@@ -1209,30 +1517,24 @@ class TileMap extends h2d.Object {
 	}
 
 	function drawLayers(c:Chunk):Void {
-		for (layer in def.layers) {
-			final sheet = layer.sheet != null ? layer.sheet : tileset.atlas;
+		for (li in 0...def.layers.length) {
+			final entries = layerEntries[li];
+			final at = layerCell[li];
 			final under = new TileGroups(c.ground);
 			final over = new TileGroups(c.over);
 			final top = new TileGroups(c.top);
-			for (cy in c.rect.y0...c.rect.y1) {
-				final row = layer.rows[cy];
+			for (cy in c.rect.y0...c.rect.y1)
 				for (cx in c.rect.x0...c.rect.x1) {
-					final ch = row.charAt(cx);
-					if (ch == " ")
+					final e = at[cy * width + cx];
+					if (e < 0)
 						continue;
-					final name = layer.legend.get(ch);
-					if (name == null)
-						continue;
-					final frames = framesOf(sheet, name);
+					final entry = entries[e];
+					final frames = entry.frames;
 					final tile = frames[Autotile.variantAt(cx, cy, frames.length)];
-					final cell = cellDef(name);
-					final draw = cell != null && cell.draw != null ? cell.draw : layer.draw;
 					// an object of several cells is drawn from its top-left, the layer's character at its anchor
-					final ax = cell != null && cell.anchorX != null ? cell.anchorX : 0;
-					final ay = cell != null && cell.anchorY != null ? cell.anchorY : 0;
-					final x = (cx - ax) * tileSize;
-					final y = (cy - ay) * tileSize;
-					switch draw {
+					final x = (cx - entry.anchorX) * tileSize;
+					final y = (cy - entry.anchorY) * tileSize;
+					switch entry.draw {
 						case "actors":
 							// among the actors, standing on its feet: its y is its bottom edge, which sorts it
 							final t = tile.clone();
@@ -1247,35 +1549,71 @@ class TileMap extends h2d.Object {
 						default: under.add(x, y, tile);
 					}
 				}
-			}
 		}
 	}
 
-	/** A chunk's cells' metadata, merged once a draw: the terrain's, a side's over it, then each layer's cell there (an object's on every cell it covers). **/
+	/**
+		A chunk's cells' metadata, merged once a draw: the terrain's, a side's over it, then each
+		layer's cell there (an object's on every cell it covers). A cell with its terrain's alone
+		shares the terrain's settings; any other combination of sources is merged once and shared
+		by every cell of it.
+	**/
 	function mergeMetadata(c:Chunk):Void {
+		final layers = def.layers.length;
 		for (cy in c.rect.y0...c.rect.y1)
 			for (cx in c.rect.x0...c.rect.x1) {
 				final i = cy * width + cx;
-				var merged:Null<Map<String, SettingValue>> = null;
-				function take(from:ResolvedSettings) {
-					if (from == null)
-						return;
-					if (merged == null)
-						merged = new Map();
-					for (k => v in from)
-						merged.set(k, v);
-				}
-				if (terrainIndex[i] >= 0)
-					take(terrainMetadata[terrainIndex[i]]);
-				if (sideRises[i] >= 0)
-					take(riseMetadata[sideRises[i]]);
-				for (li in 0...def.layers.length) {
+				final t = terrainIndex[i];
+				final r = sideRises[i];
+				var more = r >= 0 && riseMetadata[r] != null;
+				for (li in 0...layers) {
 					final anchor = covers[li][i];
-					if (anchor >= 0)
-						take(cellMetadata.get(nameAt(def.layers[li], anchor)));
+					if (anchor >= 0 && entryAt(li, anchor).metadata != null)
+						more = true;
 				}
-				metadata[i] = merged != null ? new BuilderResolvedSettings(merged) : NO_METADATA;
+				if (!more) {
+					metadata[i] = t >= 0 ? terrainSettings[t] : NO_METADATA;
+					continue;
+				}
+				var key = '$t|$r';
+				for (li in 0...layers) {
+					final anchor = covers[li][i];
+					key += '|' + (anchor >= 0 ? layerCell[li][anchor] : -1);
+				}
+				var settings = mergedSettings.get(key);
+				if (settings == null) {
+					final merged = new Map<String, SettingValue>();
+					if (t >= 0)
+						takeMetadata(merged, terrainMetadata[t]);
+					if (r >= 0)
+						takeMetadata(merged, riseMetadata[r]);
+					for (li in 0...layers) {
+						final anchor = covers[li][i];
+						if (anchor >= 0)
+							takeMetadata(merged, entryAt(li, anchor).metadata);
+					}
+					settings = new BuilderResolvedSettings(merged);
+					mergedSettings.set(key, settings);
+				}
+				metadata[i] = settings;
 			}
+	}
+
+	static function takeMetadata(into:Map<String, SettingValue>, from:ResolvedSettings):Void {
+		if (from == null)
+			return;
+		for (k => v in from)
+			into.set(k, v);
+	}
+
+	/** The frames of a rise's side piece, looked up as it is first drawn and kept until the source changes. **/
+	function pieceFramesOf(name:String):Array<h2d.Tile> {
+		var frames = pieceFrames.get(name);
+		if (frames == null) {
+			frames = framesOf(tileset.atlas, name);
+			pieceFrames.set(name, frames);
+		}
+		return frames;
 	}
 
 	/** The frames of a name, which the builder checked were there. **/

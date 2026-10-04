@@ -837,7 +837,8 @@ typedef TilesetPlatformDef = {
 	`cell name { draw: over metadata { … } }`: what a named cell of the layers is, wherever it is placed.
 	`size: w, h` makes it an object of several cells (a tree, a house) whose image is `w` by `h` cells:
 	the layer's character marks its `anchor` cell (its bottom-left one unless given), it is drawn among
-	the actors sorted by its feet unless `draw:` says otherwise, and its metadata is the anchor cell's.
+	the actors sorted by its feet unless `draw:` says otherwise, and its name and metadata are on every
+	cell it covers.
 **/
 @:nullSafety
 typedef TilesetCellDef = {

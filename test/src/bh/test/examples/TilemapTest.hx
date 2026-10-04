@@ -192,6 +192,37 @@ class TilemapTest extends BuilderTestBase {
 		return asked;
 	}
 
+	/**
+		The side pieces (of `names`) drawn on the chunks' ground, in the order they were placed, read
+		from the TileGroups' vertices: a tile is four of x, y, u, v, r, g, b, a. A piece of several
+		frames is counted once, by its first. The map is to be drawn already.
+	**/
+	static function piecesDrawn(map:TileMap, names:Array<String>):Array<String> {
+		final tiles:TileMapTiles = @:privateAccess map.tiles;
+		final pieces = [for (n in names) {name: n, tile: tiles.frames("fp", n)[0]}];
+		final drawn:Array<String> = [];
+		for (c in @:privateAccess map.chunks) {
+			final ground:h2d.Object = c.ground;
+			for (k in 0...ground.numChildren) {
+				final group = Std.downcast(ground.getChildAt(k), h2d.TileGroup);
+				if (group == null || group.tile == null)
+					continue; // an autotile's group has no tile of its own, and no side pieces
+				final texture = group.tile.getTexture();
+				final buffer:hxd.FloatBuffer = @:privateAccess group.content.tmp;
+				var i = 0;
+				while (i + 3 < buffer.length) {
+					final u = buffer[i + 2];
+					final v = buffer[i + 3];
+					for (p in pieces)
+						if (p.tile.getTexture() == texture && @:privateAccess Math.abs(p.tile.u - u) < 1e-6 && @:privateAccess Math.abs(p.tile.v - v) < 1e-6)
+							drawn.push(p.name);
+					i += 32;
+				}
+			}
+		}
+		return drawn;
+	}
+
 	/** How many positions a `where` grid marks. **/
 	static function positionsSet(where:Null<Array<Array<Int>>>):Int {
 		if (where == null)
@@ -208,9 +239,9 @@ class TilemapTest extends BuilderTestBase {
 		final asked:Array<{name:String, where:Null<Array<Array<Int>>>}> = [];
 		final tiles:TileMapTiles = @:privateAccess map.tiles;
 		map.setSource(map.def, map.tileset, {
-			autotile: (name, grid, where) -> {
+			autotile: (name, grid, where, x0, y0) -> {
 				asked.push({name: name, where: where});
-				return tiles.autotile(name, grid, where);
+				return tiles.autotile(name, grid, where, x0, y0);
 			},
 			autotileFormat: tiles.autotileFormat,
 			frames: tiles.frames,
@@ -224,11 +255,12 @@ class TilemapTest extends BuilderTestBase {
 	public function testASideIsDrawnWithTheEndPiecesTheRiseNames() {
 		// The rise names left: only. The plateau's side is a run of three cells: its first end is the
 		// left piece, its middle and its last end (no right:) the side itself.
-		final plateau = cellsDrawn(build(PLATEAU));
+		final plateau = piecesDrawn(build(PLATEAU), ["faceEnd", "face"]);
 		Assert.equals(1, plateau.filter(n -> n == "faceEnd").length, "one left end");
 		Assert.equals(2, plateau.filter(n -> n == "face").length, "the middle and the last end");
 		// A side one cell wide, with no single: given, is the side itself
-		final bump = cellsDrawn(build('#m tilemap { tileset: plains size: 3, 3 legend { ".": grass } terrain: ["...", "...", "..."] levels: ["000", "010", "000"] }'));
+		final bump = piecesDrawn(build('#m tilemap { tileset: plains size: 3, 3 legend { ".": grass } terrain: ["...", "...", "..."] levels: ["000", "010", "000"] }'),
+			["faceEnd", "face"]);
 		Assert.equals(0, bump.filter(n -> n == "faceEnd").length);
 		Assert.equals(1, bump.filter(n -> n == "face").length);
 	}
@@ -337,15 +369,15 @@ class TilemapTest extends BuilderTestBase {
 	@Test
 	public function testSeveralSidesAreTakenInTurn() {
 		// A run of five: its first end, then the middles in the order written, round again.
-		final asked = cellsDrawn(builderFromSource(source('#m tilemap {
+		final map = builderFromSource(source('#m tilemap {
 			tileset: plains
 			size: 7, 3
 			legend { ".": grass }
 			terrain: [".......", ".......", "......."]
 			levels:  ["0222220", "0000000", "0000000"]
-		}', 'rise 2 { side: "stairs", "flower", "roof" left: "faceEnd" span: 1 }')).buildTilemap("m"));
-		final sides = asked.filter(n -> n == "stairs" || n == "flower" || n == "roof" || n == "faceEnd");
-		Assert.same(["faceEnd", "stairs", "flower", "roof", "stairs"], sides);
+		}', 'rise 2 { side: "stairs", "flower", "roof" left: "faceEnd" span: 1 }')).buildTilemap("m");
+		map.redraw();
+		Assert.same(["faceEnd", "stairs", "flower", "roof", "stairs"], piecesDrawn(map, ["stairs", "flower", "roof", "faceEnd"]));
 	}
 
 	@Test
@@ -545,11 +577,14 @@ class TilemapTest extends BuilderTestBase {
 		Assert.isTrue(drawn == groundGroup(map, 0), "not drawn again for each change");
 		Assert.equals("dirt", map.terrainAt(1, 0), "the rows say what is where at once");
 		Assert.isTrue(drawn == groundGroup(map, 0), "and reading them draws nothing");
-		Assert.equals(1, map.sideAt(2, 1), "asked what it draws, the map is drawn first: the side of the level raised");
-		Assert.isFalse(drawn == groundGroup(map, 0), "once");
-		final again = groundGroup(map, 0);
+		Assert.equals(1, map.sideAt(2, 1), "asked what a cell is, the map works it out: the side of the level raised");
 		Assert.equals(2, map.metadataAt(1, 0).getIntOrDefault("cost", 0), "the dirt's metadata");
-		Assert.isTrue(again == groundGroup(map, 0), "and not again while nothing changes");
+		Assert.isTrue(drawn == groundGroup(map, 0), "without drawing anything");
+		map.redraw();
+		Assert.isFalse(drawn == groundGroup(map, 0), "drawn again once, for every change");
+		final again = groundGroup(map, 0);
+		Assert.equals(1, map.sideAt(2, 1), "the same side");
+		Assert.isTrue(again == groundGroup(map, 0), "and not drawn again while nothing changes");
 	}
 
 	@Test
@@ -725,7 +760,7 @@ class TilemapTest extends BuilderTestBase {
 		Assert.isTrue(map.metadataAt(2, 0).getBoolOrDefault("wall", false), "and on every cell it covers");
 		Assert.isFalse(map.metadataAt(0, 0).getBoolOrDefault("wall", false));
 		map.setCell("props", 3, 2, "t"); // covers (3, 1) to (4, 2)
-		map.sideAt(0, 0); // drawn again
+		map.redraw();
 		Assert.equals(2, (@:privateAccess map.chunks[0].objects : Array<h2d.Object>).length, "drawn again: the old sprite gone, two now");
 		Assert.isNull(tree.parent, "the first draw's sprite was removed");
 	}
@@ -821,30 +856,14 @@ class TilemapTest extends BuilderTestBase {
 		}
 	}
 
-	/** Records the cells (by name) a map asks its sheet for from now on. **/
-	static function recordFrames(map:TileMap):Array<String> {
-		final asked:Array<String> = [];
-		final tiles:TileMapTiles = @:privateAccess map.tiles;
-		@:privateAccess map.tiles = {
-			autotile: tiles.autotile,
-			autotileFormat: tiles.autotileFormat,
-			frames: (sheet, name) -> {
-				asked.push(name);
-				return tiles.frames(sheet, name);
-			},
-			metadata: tiles.metadata,
-		};
-		return asked;
-	}
-
 	/** Records which autotiles a map asks for from now on, without drawing it again first. **/
 	static function recordAutotiles(map:TileMap):Array<String> {
 		final asked:Array<String> = [];
 		final tiles:TileMapTiles = @:privateAccess map.tiles;
 		@:privateAccess map.tiles = {
-			autotile: (name, grid, where) -> {
+			autotile: (name, grid, where, x0, y0) -> {
 				asked.push(name);
-				return tiles.autotile(name, grid, where);
+				return tiles.autotile(name, grid, where, x0, y0);
 			},
 			autotileFormat: tiles.autotileFormat,
 			frames: tiles.frames,
@@ -864,8 +883,10 @@ class TilemapTest extends BuilderTestBase {
 		Assert.equals(0, asked.length, "nothing drawn until the chunk is seen or asked what it draws");
 		Assert.equals("dirt", map.terrainAt(1, 1), "the rows say the terrain");
 		Assert.equals(0, asked.length, "without a draw");
-		map.sideAt(1, 1);
-		Assert.same(["dirt"], asked, "asked what it draws: the chunk the cell is in, once, and no other");
+		Assert.equals(0, map.sideAt(1, 1), "nor does asking what a cell is");
+		Assert.equals(0, asked.length);
+		@:privateAccess map.drawDirty(false);
+		Assert.same(["dirt"], asked, "drawn: the chunk the cell is in, once, and no other");
 		asked.resize(0);
 		map.setTerrain(3, 1, "d");
 		@:privateAccess map.drawDirty(false);
@@ -895,11 +916,9 @@ class TilemapTest extends BuilderTestBase {
 		// turns every piece after it, in every chunk along the run
 		final map = chunked('levels: ["0000000000", "2222222222", "0000000000", "0000000000", "0000000000", "0000000000"]',
 			'rise 2 { side: "stairs", "flower" span: 1 }');
-		final asked = recordFrames(map);
 		map.setLevel(0, 1, 0);
 		@:privateAccess map.drawDirty(false);
-		final pieces = asked.filter(n -> n == "stairs" || n == "flower");
-		Assert.same(["stairs", "flower", "stairs", "flower", "stairs", "flower", "stairs", "flower", "stairs"], pieces,
+		Assert.same(["stairs", "flower", "stairs", "flower", "stairs", "flower", "stairs", "flower", "stairs"], piecesDrawn(map, ["stairs", "flower"]),
 			"the run of nine from column 1, chunk by chunk: the pieces in turn from its start");
 	}
 
@@ -920,11 +939,12 @@ class TilemapTest extends BuilderTestBase {
 		Assert.isTrue(dirty(5), "the chunk out of view is not");
 		Assert.equals(0, drawn(5));
 		Assert.equals(0, map.sideAt(9, 5));
-		Assert.isFalse(dirty(5), "asked what it draws, drawn");
-		Assert.isTrue(dirty(2), "that chunk alone");
+		Assert.isTrue(dirty(5), "asked what a cell is, the chunk is worked out, not drawn");
+		Assert.equals(0, drawn(5));
 		map.cullNone();
 		@:privateAccess map.drawDirty(true);
-		Assert.isFalse(dirty(2), "in view now, drawn");
+		Assert.isFalse(dirty(2) || dirty(5), "in view now, drawn");
+		Assert.isTrue(drawn(5) > 0);
 	}
 
 	/** How many tiles the index-th group on the ground of a chunk draws. **/
@@ -948,6 +968,7 @@ class TilemapTest extends BuilderTestBase {
 		map.setChunkSize(32);
 		Assert.equals(1, map.chunkCols);
 		Assert.equals(1, map.sideAt(5, 4));
+		map.redraw();
 		Assert.equals(60, groundGroupCount(map, 0, 0), "all the grass in one chunk");
 	}
 
@@ -964,7 +985,7 @@ class TilemapTest extends BuilderTestBase {
 		final frames0:Array<h2d.Object> = @:privateAccess map.chunks[0].animated[0].frames;
 		Assert.isTrue(!frames0[0].visible && frames0[1].visible, "after 350 ms the second frame, in every chunk");
 		map.setTerrain(1, 0, "~");
-		map.sideAt(1, 0);
+		@:privateAccess map.drawDirty(false);
 		final frames1:Array<h2d.Object> = @:privateAccess map.chunks[1].animated[0].frames;
 		Assert.isTrue(!frames1[0].visible && frames1[1].visible, "a chunk drawn again starts at the clock's frame, not the first");
 	}
@@ -985,5 +1006,117 @@ class TilemapTest extends BuilderTestBase {
 		final over:h2d.Object = @:privateAccess map.chunks[5].over;
 		map.cull(0, 0, 1, 1);
 		Assert.isFalse(over.visible, "what a chunk draws over the actors goes with it");
+	}
+
+	// ===== What a chunk costs =====
+
+	/** How many ints a grid holds: every row's length added up. **/
+	static function intsOf(grid:Null<Array<Array<Int>>>):Int {
+		if (grid == null)
+			return 0;
+		var n = 0;
+		for (row in grid)
+			n += row.length;
+		return n;
+	}
+
+	@Test
+	public function testAChunkIsDrawnFromGridsOverItselfAndACellAroundOnly() {
+		// A 10 by 6 map in chunks of 4, dirt in the last chunk alone (cells 8..9, 4..5). The chunk is
+		// drawn by itself, so the grids the autotile is given cover it and a cell around it: 3 by 3
+		// cells, 4 by 4 corners at most. Rows padded from the map's first column would make a chunk
+		// far to the right cost its column in ints, for every mask and every where-grid.
+		final was = TileMap.defaultChunkSize;
+		TileMap.defaultChunkSize = 4;
+		final map = try builderFromSource(source('#m tilemap { tileset: plains size: 10, 6 legend { ".": grass, "d": dirt }
+			terrain: ["..........", "..........", "..........", "..........", "..........", "........dd"] }')).buildTilemap("m") catch (e:Dynamic) {
+			TileMap.defaultChunkSize = was;
+			throw e;
+		}
+		TileMap.defaultChunkSize = was;
+		final asked:Array<{grid:Array<Array<Int>>, where:Null<Array<Array<Int>>>}> = [];
+		final tiles:TileMapTiles = @:privateAccess map.tiles;
+		@:privateAccess map.tiles = {
+			autotile: (name, grid, where, x0, y0) -> {
+				asked.push({grid: grid, where: where});
+				return tiles.autotile(name, grid, where, x0, y0);
+			},
+			autotileFormat: tiles.autotileFormat,
+			frames: tiles.frames,
+			metadata: tiles.metadata,
+		};
+		map.cull(72, 40, 8, 8); // the last chunk's own pixels: no neighbour within a tile of the view
+		@:privateAccess map.drawDirty(true);
+		Assert.isFalse(@:privateAccess map.chunks[5].dirty, "the last chunk is drawn");
+		Assert.isTrue(@:privateAccess map.chunks[4].dirty && @:privateAccess map.chunks[2].dirty, "and no other");
+		Assert.isTrue(asked.length > 0, "the dirt's autotile is drawn");
+		for (a in asked) {
+			Assert.isTrue(intsOf(a.grid) <= 16, 'the mask holds the chunk and a cell around it: ${intsOf(a.grid)} ints for 3 by 3 cells');
+			Assert.isTrue(intsOf(a.where) <= 16, 'the positions drawn are the chunk\'s own: ${intsOf(a.where)} ints for 4 by 4 corners');
+		}
+	}
+
+	@Test
+	public function testRiseLookupsAlongACliffGrowWithItsLength() {
+		#if MULTIANIM_ALLOC_TRACK
+		// A cliff 62 cells long of two side pieces taken in turn: every cell's piece is numbered from
+		// the run's start, which must be found once a run, not by walking back from every cell.
+		final width = 64;
+		final map = builderFromSource(source('#m tilemap { tileset: plains size: $width, 2 legend { ".": grass }
+			terrain: ["${StringTools.rpad("", ".", width)}", "${StringTools.rpad("", ".", width)}"]
+			levels: ["0${StringTools.rpad("", "2", width - 2)}0", "${StringTools.rpad("", "0", width)}"] }',
+			'rise 2 { side: "stairs", "flower" span: 1 }')).buildTilemap("m");
+		TileMap.riseLookups = 0;
+		map.redraw();
+		final lookups = TileMap.riseLookups;
+		final budget = 8 * width * 2;
+		Assert.isTrue(lookups <= budget, 'a few lookups a cell: $lookups for ${width * 2} cells, the budget is $budget');
+		Assert.equals(2, map.sideAt(30, 1), "the side is there");
+		#else
+		Assert.pass("counts need MULTIANIM_ALLOC_TRACK");
+		#end
+	}
+
+	@Test
+	public function testASheetIsAskedForACellOnceNotForEveryCellDrawn() {
+		// Six flowers in a layer, and the plateau's side of three cells: the frames of a name are
+		// looked up once as the map reads its rows, not for every cell that shows them.
+		final flowers = cellsDrawn(build('#m tilemap {
+			tileset: plains
+			size: 4, 3
+			legend { ".": grass }
+			terrain: ["....", "....", "...."]
+			layer deco { legend { "f": flower } rows: ["ffff", "ff  ", "    "] }
+		}'));
+		Assert.equals(1, flowers.filter(n -> n == "flower").length, 'flower asked for once, got ${flowers.filter(n -> n == "flower").length} times');
+		final plateau = cellsDrawn(build(PLATEAU));
+		Assert.equals(1, plateau.filter(n -> n == "face").length, 'the side piece asked for once, got ${plateau.filter(n -> n == "face").length} times');
+	}
+
+	@Test
+	public function testCellsWithTheSameMetadataShareOneSettings() {
+		// Most cells are the same combination of terrain, side and layer cells: one settings
+		// object serves them all, made once a combination, not once a cell.
+		final map = build('#m tilemap { tileset: plains size: 3, 1 legend { ".": grass, "d": dirt } terrain: [".d."] }');
+		Assert.isTrue(map.metadataAt(0, 0) == map.metadataAt(2, 0), "two grass cells read the same settings object");
+		Assert.isFalse(map.metadataAt(0, 0) == map.metadataAt(1, 0), "the dirt cell its own");
+		Assert.equals(1, map.metadataAt(2, 0).getIntOrDefault("cost", 0));
+		Assert.equals(2, map.metadataAt(1, 0).getIntOrDefault("cost", 0));
+	}
+
+	@Test
+	public function testReadingACellsSideOrMetadataDrawsNoTiles() {
+		// A game that reads the whole map (pathfinding) must not draw the whole map: what a cell is
+		// (its side, its metadata) is worked out without building its chunk's tiles.
+		final map = chunked('levels: ["0000000000", "0000000000", "0000000000", "0000000000", "0000000010", "0000000000"]', "", true);
+		final asked = recordAutotiles(map);
+		Assert.equals(1, map.sideAt(8, 5), "the side below the raised cell, in the last chunk");
+		Assert.isTrue(map.metadataAt(8, 5).getBoolOrDefault("wall", false), "with the rise's metadata");
+		Assert.equals(1, map.metadataAt(9, 5).getIntOrDefault("cost", 0), "and the grass's beside it");
+		Assert.equals(0, asked.length, "no autotile drawn for a read");
+		Assert.equals(0, (@:privateAccess map.chunks[5].ground : h2d.Object).numChildren, "nothing on the chunk's ground");
+		@:privateAccess map.drawDirty(false);
+		Assert.isTrue(asked.length > 0, "drawn when the map is drawn");
+		Assert.equals(1, map.sideAt(8, 5), "and the same side then");
 	}
 }

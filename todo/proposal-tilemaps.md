@@ -22,7 +22,11 @@ Added 2026-10-02: flips and quarter turns in `mapping:` (`1 flipX rot90`); `marg
 on a `file:` source; objects of several cells (`cell tree { size: 2, 3 anchor: 1, 2 }`, among the
 actors on their feet, their name and metadata on every cell they cover, `objectAt`, inside the map
 and over no other); the map drawn in chunks, each as it is first in view (`cull(x, y, w, h)` or the
-scene) or asked, a change redrawing its chunk. Playground demos "Tile Map" and "Layers in .anim".
+scene), a change redrawing its chunk. Playground demos "Tile Map" and "Layers in .anim".
+
+Added 2026-10-04: a chunk costs its own size wherever it is (chunk-local masks, `buildAutotile`'s
+origin), per-cell level and platform arrays, lookups once a name, sides numbered along a run in one
+pass, metadata shared a combination; `sideAt` / `metadataAt` work a chunk out without drawing it.
 
 Not done, by how many tilesets each blocks: Wang 2-edge and 3-corner formats; a shared `shape:`
 vocabulary for collision (full, slopes, half, one-way); inner-corner side pieces where two cliffs

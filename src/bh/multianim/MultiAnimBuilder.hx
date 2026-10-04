@@ -7974,12 +7974,15 @@ class MultiAnimBuilder {
 	 * @param where only the positions set in it are drawn, in the format's own positions (corners
 	 *   for `corner`, `where[cy][cx]` for the corner at the top-left of cell (cx, cy); cells
 	 *   otherwise); the indices still come from the whole grid. Null draws every position.
+	 * @param x0, y0 the map cell `grid[0][0]` (and `where[0][0]`) stands for: tiles are placed, and
+	 *   of several the one by position picked, at (x + x0, y + y0), so a map draws one chunk of itself
+	 *   from grids over that chunk alone. 0 by default.
 	 * @return h2d.TileGroup in cell space: cell (x, y) covers (x * tileSize, y * tileSize).
 	 *   cross/blob47 draw one tile per filled cell. corner draws one tile per grid corner, offset by
 	 *   half a tile, so its tiles extend half a tile past the grid edge. An index with several tiles
 	 *   (`mapping: [15: 7 | 8 | 9]`) draws one of them by position, the same every time.
 	 */
-	public function buildAutotile(name:String, grid:Array<Array<Int>>, ?where:Array<Array<Int>>):h2d.TileGroup {
+	public function buildAutotile(name:String, grid:Array<Array<Int>>, ?where:Array<Array<Int>>, x0 = 0, y0 = 0):h2d.TileGroup {
 		final at = getAutotileDef(name);
 		final tiles = getAutotileTiles(name, at.node, at.def);
 		final tileSize = resolveAsInteger(at.def.tileSize);
@@ -8013,7 +8016,7 @@ class MultiAnimBuilder {
 						final index = bh.base.Autotile.getCornerIndex(grid, cx, cy);
 						if (index == 0)
 							continue; // no filled cell around this corner
-						place(index, cx, cy, cx * tileSize - half, cy * tileSize - half);
+						place(index, cx + x0, cy + y0, (cx + x0) * tileSize - half, (cy + y0) * tileSize - half);
 					}
 				}
 			case Cross | Blob47:
@@ -8028,7 +8031,7 @@ class MultiAnimBuilder {
 							continue;
 						final mask8 = bh.base.Autotile.getNeighborMask8(grid, x, y);
 						final index = isCross ? bh.base.Autotile.getCrossIndex(mask8) : bh.base.Autotile.getBlob47Index(mask8);
-						place(index, x, y, x * tileSize, y * tileSize);
+						place(index, x + x0, y + y0, (x + x0) * tileSize, (y + y0) * tileSize);
 					}
 				}
 		}
@@ -8175,7 +8178,7 @@ class MultiAnimBuilder {
 		final tsBuilder = importedBuilder(def.tilesetImport, node);
 		final ts = tsBuilder.getTilesetDef(def.tileset).def;
 		final tiles:bh.base.TileMap.TileMapTiles = {
-			autotile: (autotileName, grid, where) -> tsBuilder.buildAutotile(autotileName, grid, where),
+			autotile: (autotileName, grid, where, x0, y0) -> tsBuilder.buildAutotile(autotileName, grid, where, x0, y0),
 			autotileFormat: autotileName -> tsBuilder.autotileFormat(autotileName),
 			frames: (sheet, cell) -> tsBuilder.atlasTiles(sheet, cell),
 			metadata: metadata -> tsBuilder.resolveMetadata(metadata),

@@ -771,7 +771,7 @@ Access: `palette(name, index)` or `palette(name, x, y)` for 2D.
 
 ## Autotile
 
-`#name autotile { ... }` (root level). Build terrain with `builder.buildAutotile(name, grid)` (`grid[y][x]`, non-zero = terrain); single tiles with `builder.getAutotileTile(name, index)` or `generated(autotile(name, index))`.
+`#name autotile { ... }` (root level). Build terrain with `builder.buildAutotile(name, grid, ?where, x0 = 0, y0 = 0)` (`grid[y][x]`, non-zero = terrain; `where` the positions drawn, in the format's own; `x0`, `y0` the cell `grid[0][0]` stands for, so a tile map draws one chunk of itself from grids over that chunk alone); single tiles with `builder.getAutotileTile(name, index, x, y)` or `generated(autotile(name, index))`; `builder.getAutotileRotation(name, index, x, y)` says the quarter turns (0–3) a turned mapping gives the tile a position draws, which `generated(autotile(name, index))` shows unturned.
 
 | Property | Description |
 |----------|-------------|
@@ -810,11 +810,11 @@ Every index must resolve to a tile (build-time `BuilderError` codes `autotile_mi
 | `size: w, h` | Cells |
 | `legend { "c": terrain, " ": none }` | One character a cell |
 | `terrain: ["…", …]`, `levels: ["0011", …]` or `levels { legend { "A": 10, "c": 1 canopy } rows: […] }` | Rows; levels are digits, or characters of their legend: a level beyond nine, or a level and the platform there; optional |
-| `layer name { sheet: "s" draw: under\|over\|top legend {…} rows: [...] }` | Cells as they are; a space is none |
+| `layer name { sheet: "s" draw: under\|over\|top\|actors legend {…} rows: [...] }` | Cells as they are; a space is none; `actors`: each among them, sorted by its feet |
 | `decor { elements }` | Any elements, sorted with the actors by `y` |
 | `marks { name: x, y  other: x, y, w, h }` | Points and rectangles in cells |
 
-Runtime (`TileMap`): `actors` (`h2d.Layers`, y-sorted as it is drawn unless `sortActors = false`), `addActor`, `toCell`, `toPixel`, `terrainAt`, `levelAt`, `platformAt`, `sideAt`, `cellAt(layer, …)`, `objectAt(layer, …)` (a `TilemapObject`: what covers the cell and its anchor), `metadataAt(x, y)` (a `BuilderResolvedSettings`: `getBoolOrDefault`, `getIntOrDefault`, …), `mark`, `setTerrain` / `setLevel` / `setCell` (their chunk drawn again once, as it is next in view or asked by `sideAt` / `metadataAt`; `redraw()` all now; `BuilderError`s `tilemap_outside`, `tilemap_legend`, `tilemap_level`, `tilemap_layer`, `tilemap_object_covered`, `tilemap_object_outside`, `tilemap_object_overlap`), `describe()`; chunks of `chunkSize` cells (`TileMap.defaultChunkSize` 32, `setChunkSize`, `chunkCols`, `chunkRows`), each drawn as it is first seen, `cull(x, y, w, h)` / `cullNone()` / `cullToScene` / `isChunkVisible(col, row)` for what is in view; `TileMap.showing` (the maps in a scene) for the DevBridge (`map_list`, `map_get`) and hot reload, `sourceDef` the parse a map was read from.
+Runtime (`TileMap`): `actors` (`h2d.Layers`, y-sorted as it is drawn unless `sortActors = false`), `addActor`, `toCell`, `toPixel`, `terrainAt`, `levelAt`, `platformAt`, `sideAt`, `cellAt(layer, …)`, `objectAt(layer, …)` (a `TilemapObject`: what covers the cell and its anchor), `metadataAt(x, y)` (a `BuilderResolvedSettings`: `getBoolOrDefault`, `getIntOrDefault`, …), `mark`, `setTerrain` / `setLevel` / `setCell` (their chunk drawn again once, as it is next in view; `redraw()` all now; reading a cell draws nothing: `sideAt` / `metadataAt` work out a changed chunk's sides and metadata by themselves; `BuilderError`s `tilemap_outside`, `tilemap_legend`, `tilemap_level`, `tilemap_layer`, `tilemap_object_covered`, `tilemap_object_outside`, `tilemap_object_overlap`), `describe()`; chunks of `chunkSize` cells (`TileMap.defaultChunkSize` 32, `setChunkSize`, `chunkCols`, `chunkRows`), each drawn as it is first seen, `cull(x, y, w, h)` / `cullNone()` / `cullToScene` / `isChunkVisible(col, row)` for what is in view; `TileMap.showing` (the maps in a scene) for the DevBridge (`map_list`, `map_get`) and hot reload, `sourceDef` the parse a map was read from.
 
 ---
 
