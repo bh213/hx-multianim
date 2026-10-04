@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-10-03 15:14:49</div>
+    <div class="timestamp">Generated: 2026-10-04 12:54:08</div>
     <div class="summary">
         <strong>Summary:</strong> 104 tests,         <span style="color: #4CAF50;">104 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 0.8s, visual 20.9s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.1s, visual 24.8s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>9932 assertions:</strong>             <span style="color: #4CAF50;">9932 passed</span>
+            <strong>9957 assertions:</strong>             <span style="color: #4CAF50;">9957 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -2937,15 +2937,17 @@
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">TilemapTest</div>
-                <div class="unit-method pass">testAChangeIsDrawnAgainInItsChunkOnly: OK <span class="dots">..........</span></div>
+                <div class="unit-method pass">testAChangeIsDrawnAgainInItsChunkOnly: OK <span class="dots">............</span></div>
                 <div class="unit-method pass">testAChangeOutsideTheMapIsAnError: OK <span class="dots">..........</span></div>
-                <div class="unit-method pass">testAChunkOutOfViewIsNotDrawnUntilSeenOrAsked: OK <span class="dots">...........</span></div>
+                <div class="unit-method pass">testAChunkIsDrawnFromGridsOverItselfAndACellAroundOnly: OK <span class="dots">.....</span></div>
+                <div class="unit-method pass">testAChunkOutOfViewIsNotDrawnUntilSeenOrAsked: OK <span class="dots">............</span></div>
                 <div class="unit-method pass">testAHigherLevelGetsItsEdgeAndASideWithItsMetadata: OK <span class="dots">.................</span></div>
                 <div class="unit-method pass">testAPlatformIsDrawnOverTheGroundWithItsOwnSides: OK <span class="dots">................</span></div>
                 <div class="unit-method pass">testARefreshFromTheSameParseLeavesTheMapAlone: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testAReloadRedrawsAndKeepsTheActors: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testARiseForAnyLevelAndATerrainsOwn: OK <span class="dots">.........</span></div>
                 <div class="unit-method pass">testARiseTheTilesetHasNotIsAnError: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testASheetIsAskedForACellOnceNotForEveryCellDrawn: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testASideIsDrawnWithTheEndPiecesTheRiseNames: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testASideTowardAnotherDirection: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testATerrainChangeReachesAsFarAsTheSidesItsRiseDraws: OK <span class="dots">...</span></div>
@@ -2958,6 +2960,7 @@
                 <div class="unit-method pass">testAnObjectOfSeveralCellsStandsAmongTheActorsOnItsAnchor: OK <span class="dots">............</span></div>
                 <div class="unit-method pass">testAnimatedTerrainSwapsItsFrames: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testAnimatedTerrainsKeepOneClockAcrossChunks: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testCellsWithTheSameMetadataShareOneSettings: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testChangesRedrawAndLeaveTheFileAlone: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testChunksAreDrawnWhereTheyAreAndTheMapReadsTheSame: OK <span class="dots">...............</span></div>
                 <div class="unit-method pass">testCullingHidesTheChunksOutOfView: OK <span class="dots">........</span></div>
@@ -2972,8 +2975,10 @@
                 <div class="unit-method pass">testNoneIsNoTerrain: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testObjectErrors: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testParseErrors: OK <span class="dots">........................................</span></div>
+                <div class="unit-method pass">testReadingACellsSideOrMetadataDrawsNoTiles: OK <span class="dots">.......</span></div>
+                <div class="unit-method pass">testRiseLookupsAlongACliffGrowWithItsLength: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSetLevelRaisesTheGroundNotAPlatform: OK <span class="dots">.....</span></div>
-                <div class="unit-method pass">testSeveralChangesAreDrawnOnce: OK <span class="dots">.......</span></div>
+                <div class="unit-method pass">testSeveralChangesAreDrawnOnce: OK <span class="dots">.........</span></div>
                 <div class="unit-method pass">testSeveralSidesAreTakenInTurn: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testSidesTakenInTurnAreNumberedFromTheRunsStartAcrossChunks: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testTransitionErrors: OK <span class="dots">.................</span></div>
