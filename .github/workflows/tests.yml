@@ -79,6 +79,8 @@ jobs:
       # parser. Regenerate with `npm run build` in vscode/ and commit the result.
       # A float constant the compiler folds (`-1.0 / 3.0`) prints differently on Windows
       # and Linux: write such constants as literals, or this gate fails on a Windows build.
+      # A string literal spanning source lines embeds the checkout's line endings (CRLF on
+      # Windows, LF here): write newlines as escape sequences, or the gate fails the same way.
       run: |
         haxe lsp/lsp-server.hxml
         if ! cmp -s lsp/bin/server.js vscode/server/server.js; then

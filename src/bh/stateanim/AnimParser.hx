@@ -163,11 +163,10 @@ class AnimKeywordInfo {
 			"filters {\n\t$0\n}", true),
 		new AnimKeywordInfo("flipX", AKAnimationBody, "Horizontal flip (yes/no)", "flipX: yes"),
 		new AnimKeywordInfo("flipY", AKAnimationBody, "Vertical flip (yes/no)", "flipY: yes"),
+		// Escaped newlines, never a literal spanning lines: a CRLF checkout would embed "\r\n" and the
+		// packaged LSP server would differ from the one CI builds on Linux (the drift gate)
 		new AnimKeywordInfo("layer", AKAnimationBody, "A layer's frames, in place of a playlist: `layer hat @(hat != none) { sheet: \"hat_walk\" }`",
-			"layer ${1:name} {
-	sheet: \"${2:name}\"
-	$0
-}", true),
+			"layer ${1:name} {\n\tsheet: \"${2:name}\"\n\t$0\n}", true),
 		new AnimKeywordInfo("timeline", AKAnimationBody, "The layer whose frames, durations and events are the animation's (default: the first in `layers:` order)", "timeline: "),
 		// Playlist body
 		new AnimKeywordInfo("sheet", AKPlaylistBody, "Sheet name. Supports `${stateName}` interpolation", "sheet: \""),
