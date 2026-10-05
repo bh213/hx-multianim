@@ -55,4 +55,29 @@ class CursorManager {
 	public static function getDefaultCursor():hxd.Cursor {
 		return defaultCursor;
 	}
+
+	/**
+		A cursor shown whatever the UI under the mouse would show (the card hand hides the cursor
+		this way while its arrow targets): set now, and the one controllers set while it lasts.
+		`null` clears it, setting nothing itself: a controller sets the hovered element's cursor
+		again on its next move or frame.
+	**/
+	public static function setOverrideCursor(cursor:Null<hxd.Cursor>):Void {
+		overrideCursor = cursor;
+		overrideVersion++;
+		if (cursor != null)
+			hxd.System.setCursor(cursor);
+	}
+
+	public static function getOverrideCursor():Null<hxd.Cursor> {
+		return overrideCursor;
+	}
+
+	/** Changes every time the override is set or cleared, so a controller knows to set its cursor again. **/
+	public static function getOverrideVersion():Int {
+		return overrideVersion;
+	}
+
+	private static var overrideCursor:Null<hxd.Cursor> = null;
+	private static var overrideVersion:Int = 0;
 }

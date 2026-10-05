@@ -19,8 +19,10 @@ interactive-wrapper cluster (UI-28, UI-52, UI-54, UI-55, UI-57, UI-58, UI-53) an
 transitions `c388b14` (UI-29, UI-51, UI-30, UI-31, UI-47); `a128c22` (UI-37, CG-27, CG-32, BLD-25, BLD-28,
 VFX-20); grid teardown and zero-length paths `8b734f0` (UI-16, UI-17, UI-59, VFX-33, UI-27, UI-26). Found
 while fixing those and filed below: UI-65..UI-71, BLD-33. A pre-push review of those three commits
-(2026-09-29) confirmed every claimed fix and filed UI-72..UI-74 and VFX-37 (UI-71 widened). The
-summaries below list open items only.
+(2026-09-29) confirmed every claimed fix and filed UI-72..UI-74 and VFX-37 (UI-71 widened). Fixed
+2026-10-05 on `bugfix/tilemap-chunk-borders-and-runtime-fixes`: VFX-23, VFX-24 (with tween order,
+`clearHand` drag state and the cursor while targeting, from a separate report). The summaries below
+list open items only.
 
 **Legend:** same as `release-1.0-audit.md` — `[ ]` open, **P1** fix before 1.0, **P2** should fix,
 **P3** acceptable post-1.0. 🤖 marks agent-facing defects: they break DevBridge/MCP, hot reload, the LSP
@@ -774,18 +776,20 @@ small HashLink programs that build the same programmable through both backends.
   `releaseTweens` empties the sequence, `step()` then reports done (:386-394) and `update()` fires the
   callback before its clear check (:508-529). Fix: `seq.step(dt) && !seq.cancelled` (also fixes the
   UI-15 cancel variant).
-- [ ] `VFX-23` **P2** **A zero-duration tween inside a `group()` is never applied** — `TweenGroup.step`
+- [x] `VFX-23` **P2** **A zero-duration tween inside a `group()` is never applied** — `TweenGroup.step`
   only steps `elapsed < duration` (:452-468), so the member never snaps and `removeOnComplete` never
   runs, yet the group completes.
+  **FIXED 2026-10-05**: `Tween.completed` (set by a finishing step or `finish()`, reset as the pool reuses it); the group steps every member not completed. `TweenManagerTest.testAZeroDurationTweenInAGroupReachesItsEnd`.
 - [ ] `VFX-21` **P2** **Externally driven particles fast-forward while hidden** — the accumulated dt is
   consumed every sync but reset only in `draw()` (:169-172, :1664-1665); Heaps syncs invisible objects,
   so 60 hidden frames simulate ~30 s.
 - [ ] `VFX-22` **P2** **`colorStops` with back/elastic easings produce garbage colours** — `lerpColor`
   packs unclamped channels (:1135-1146): black→white with `easeInBack` renders white for 63% of the
   segment.
-- [ ] `VFX-24` **P2** **A burst before the first frame suppresses a looping group's continuous particles** —
+- [x] `VFX-24` **P2** **A burst before the first frame suppresses a looping group's continuous particles** —
   `emitBurstAt` sets `started` without calling `start()` (:843-849), and `start()` is the only place
   `count` particles are created.
+  **FIXED 2026-10-05**: a burst into a `count > 0` group not started yet starts it first (a switched-off one is left for `sync()` to start once on); burst-only groups as before. `ParticleRuntimeTest.testABurstBeforeTheFirstSyncLeavesTheEmitterItsOwnCount`, `testADisabledGroupHitByABurstStartsWhenEnabled`.
 - [ ] `VFX-18` **P2** **FloatingTextHelper paints the text white until the first colour stop** —
   regression from 963a2a5: with a color curve starting after rate 0.0 the spawn colour is overwritten by
   the path's default white (FloatingTextHelper.hx:124-127, AnimatedPath.hx:447-454). Particles hold the

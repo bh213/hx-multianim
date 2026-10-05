@@ -814,7 +814,7 @@ Every index must resolve to a tile (build-time `BuilderError` codes `autotile_mi
 | `decor { elements }` | Any elements, sorted with the actors by `y` |
 | `marks { name: x, y  other: x, y, w, h }` | Points and rectangles in cells |
 
-Runtime (`TileMap`): `actors` (`h2d.Layers`, y-sorted as it is drawn unless `sortActors = false`), `addActor`, `toCell`, `toPixel`, `terrainAt`, `levelAt`, `platformAt`, `sideAt`, `cellAt(layer, …)`, `objectAt(layer, …)` (a `TilemapObject`: what covers the cell and its anchor), `metadataAt(x, y)` (a `BuilderResolvedSettings`: `getBoolOrDefault`, `getIntOrDefault`, …), `mark`, `setTerrain` / `setLevel` / `setCell` (their chunk drawn again once, as it is next in view; `redraw()` all now; reading a cell draws nothing: `sideAt` / `metadataAt` work out a changed chunk's sides and metadata by themselves; `BuilderError`s `tilemap_outside`, `tilemap_legend`, `tilemap_level`, `tilemap_layer`, `tilemap_object_covered`, `tilemap_object_outside`, `tilemap_object_overlap`), `describe()`; chunks of `chunkSize` cells (`TileMap.defaultChunkSize` 32, `setChunkSize`, `chunkCols`, `chunkRows`), each drawn as it is first seen, `cull(x, y, w, h)` / `cullNone()` / `cullToScene` / `isChunkVisible(col, row)` for what is in view; `TileMap.showing` (the maps in a scene) for the DevBridge (`map_list`, `map_get`) and hot reload, `sourceDef` the parse a map was read from.
+Runtime (`TileMap`): `actors` (`h2d.Layers`, y-sorted as it is drawn unless `sortActors = false`), `addActor`, `toCell`, `toPixel`, `terrainAt`, `levelAt`, `platformAt`, `sideAt`, `cellAt(layer, …)`, `objectAt(layer, …)` (a `TilemapObject`: what covers the cell and its anchor), `metadataAt(x, y)` (a `BuilderResolvedSettings`: `getBoolOrDefault`, `getIntOrDefault`, …), `mark`, `setTerrain` / `setLevel` / `setCell` (their chunk drawn again once, as it is next in view; `redraw()` all now, a map drawn whole already too; reading a cell draws nothing: `sideAt` / `metadataAt` work out a changed chunk's sides and metadata by themselves; `BuilderError`s `tilemap_outside`, `tilemap_legend`, `tilemap_level`, `tilemap_layer`, `tilemap_object_covered`, `tilemap_object_outside`, `tilemap_object_overlap`), `describe()`; chunks of `chunkSize` cells (`TileMap.defaultChunkSize` 32, `setChunkSize`, `chunkCols`, `chunkRows`), each drawn as it is first seen, the map looking as it does in one piece at their borders too, `cull(x, y, w, h)` / `cullNone()` / `cullToScene` / `isChunkVisible(col, row)` for what is in view (a chunk within a tile of the view, or as far as the map's furthest-reaching object of several cells reaches past its anchor, so an object is drawn and shown once any of it is in view; one among the actors is hidden with its chunk); `TileMap.showing` (the maps in a scene) for the DevBridge (`map_list`, `map_get`) and hot reload, `sourceDef` the parse a map was read from.
 
 ---
 
@@ -1150,6 +1150,7 @@ group.shutdownSpeedCurve = myCurve;
 **Behavior:**
 - No-op on non-looping groups, except that it marks a burst-driven (`count: 0`) group done so its container can end
 - After shutdown, `emitBurstAt()` still works (manual one-shot effects)
+- A burst (`emitBurst`/`emitBurstAt`, or a sub-emitter) into a group with particles of its own (`count > 0`) not drawn yet starts that group first, as its first frame would: its own particles plus the burst's
 - `group.emitFilter = (x:Float, y:Float) -> Bool` — filter particles by world-space spawn position (return `false` to discard). Works for both relative and non-relative groups
 - `particles.worldAnchor : Null<h2d.Object>` — designated world-space anchor for `relative: false` groups. When non-null, non-relative emit position/velocity/scale/rotation bake into `worldAnchor`'s local frame (not full scene space) and the draw branch renders through `worldAnchor`'s transform. Set this on a per-emitter trail's `Particles` container with the scene's world-root so the trail stays anchored to the world during camera pan/zoom. Null (default) preserves legacy screen-space baking. Runtime-only — no DSL surface
 - Existing `onEnd()` callback fires when last particle dies (default: `this.remove()`) — once per live → empty transition, not on every idle frame
@@ -1537,6 +1538,8 @@ interactive(200, 30, "dragArea", cursor => "move", cursor.hover => "move", curso
 | `cursor.disabled` | Cursor when disabled. Default: `CursorManager.getDefaultCursor()` |
 
 Pre-registered cursor names: `default`, `pointer`/`button`, `move`, `text`, `hide`/`none`. Register custom cursors via `CursorManager.registerCursor("name", cursor)`.
+
+The controller sets the hovered element's cursor on every move and every frame, so a cursor that follows the element's state (`cursor.disabled` once it is disabled) changes without the mouse leaving it; it calls `hxd.System.setCursor` only when the cursor changed. `CursorManager.setOverrideCursor(cursor)` shows one cursor whatever is hovered until `setOverrideCursor(null)` (the card hand's hidden cursor while it targets, `hideCursorWhileTargeting`).
 
 ### Event Priority
 

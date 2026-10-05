@@ -1265,4 +1265,95 @@ class TweenManagerTest extends utest.Test {
 		Assert.floatEquals(200.0, obj.y,     "zero-duration tween must snap y to target on first step");
 		Assert.isTrue(completed, "zero-duration tween must complete (fire onComplete) on first step");
 	}
+
+	// ==================== Groups and order ====================
+
+	@Test
+	public function testAZeroDurationTweenInAGroupReachesItsEnd():Void {
+		var mgr = new TweenManager();
+		var snapped = createObject();
+		snapped.alpha = 1.0;
+		var running = createObject();
+		var removed = createObject();
+		var parent = createObject();
+		parent.addChild(removed);
+		var instant = mgr.createTween(snapped, 0.0, [Alpha(0.0)]);
+		var instantRemove = mgr.createTween(removed, 0.0, [X(10.0)]);
+		instantRemove.removeTargetOnComplete = true;
+		mgr.group([instant, instantRemove, mgr.createTween(running, 1.0, [X(100.0)])]);
+
+		mgr.update(0.1);
+		Assert.floatEquals(0.0, snapped.alpha, "a zero-duration tween in a group is at its end after the first step");
+		Assert.floatEquals(10.0, removed.x);
+		Assert.isNull(removed.parent, "and its target is removed when it says so");
+
+		var alone = createObject();
+		var groupDone = false;
+		mgr.group([mgr.createTween(alone, 0.0, [Y(50.0)])]).setOnComplete(() -> groupDone = true);
+		mgr.update(0.1);
+		Assert.isTrue(groupDone);
+		Assert.floatEquals(50.0, alone.y, "a group of one zero-duration tween ends with it applied");
+	}
+
+	@Test
+	public function testTweensOfTheSamePropertyKeepTheirOrderWhenAnotherEnds():Void {
+		// Two tweens drive x; the one started last wins each frame. A third, shorter tween ending
+		// (and leaving the list) must not change which of the two runs last.
+		var mgr = new TweenManager();
+		var obj = createObject();
+		mgr.tween(createObject(), 0.01, [Alpha(0.0)]);
+		mgr.tween(obj, 1.0, [X(100.0)]);
+		mgr.tween(obj, 1.0, [X(200.0)]);
+
+		mgr.update(0.5);
+		Assert.floatEquals(100.0, obj.x, "the later tween (to 200, halfway) wins in the frame the short one ends");
+		mgr.update(0.25);
+		Assert.floatEquals(150.0, obj.x, "and in every frame after");
+	}
+
+	@Test
+	public function testHasTweensIgnoresATweenFinishedEarlierInTheSameUpdate():Void {
+		// Finished tweens leave the list as update() goes on; a callback later in the same update
+		// asks about the target of one that finished before it, whose slot is not closed up yet.
+		var mgr = new TweenManager();
+		var faded = createObject();
+		var other = createObject();
+		mgr.tween(faded, 0.01, [Alpha(0.0)]);
+		var asked:Null<Bool> = null;
+		mgr.tween(other, 0.01, [X(10.0)]).setOnComplete(() -> asked = mgr.hasTweens(faded));
+		mgr.update(0.1);
+		Assert.isFalse(asked == null, "the second tween's callback ran");
+		Assert.isFalse(asked == true, "the first tween finished: nothing tweens its target any more");
+		Assert.isFalse(mgr.hasTweens(faded));
+	}
+
+	@Test
+	public function testACallbackThatThrowsLeavesEveryOtherTweenInOnce():Void {
+		// A tween before a throwing callback has been moved down the list; the error must not leave
+		// it there twice, stepped twice a frame from then on.
+		var mgr = new TweenManager();
+		mgr.tween(createObject(), 0.01, [Alpha(0.0)]); // ends first, so the next one moves down
+		var before = createObject();
+		mgr.tween(before, 1.0, [X(100.0)]);
+		var thrower = mgr.tween(createObject(), 0.01, [Alpha(0.0)]);
+		thrower.setOnComplete(() -> throw "a game error");
+		var after = createObject();
+		mgr.tween(after, 1.0, [X(100.0)]);
+
+		var threw = false;
+		try {
+			mgr.update(0.1);
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw, "the callback's error goes on to the caller");
+		Assert.floatEquals(10.0, before.x, "the tween before it stepped once");
+		Assert.floatEquals(0.0, after.x, "the one after it not yet");
+
+		thrower.onComplete = null;
+		mgr.update(0.1);
+		Assert.floatEquals(20.0, before.x, "next frame, each one stepped once: not twice");
+		Assert.floatEquals(10.0, after.x);
+		Assert.equals(2, @:privateAccess mgr.handles.length, "the two still running, each once");
+	}
 }

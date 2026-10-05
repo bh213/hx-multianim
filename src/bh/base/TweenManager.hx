@@ -103,6 +103,9 @@ class Tween {
 	public var elapsed(default, null):Float = 0.0;
 	public var onComplete:Null<Void -> Void> = null;
 	public var cancelled(default, null):Bool = false;
+	/** It reached its end: a step finished it, or `finish()`. A zero-duration tween is complete
+	    after its first step, though its `elapsed` never passes its `duration`. */
+	public var completed(default, null):Bool = false;
 	/** Changes every time this instance goes back to the pool. A finished or cancelled Tween is
 	    reused for a later tween(), so code that keeps a Tween past its end records `generation`
 	    when it starts it and only touches it (cancel/finish) while the two still match. */
@@ -111,6 +114,7 @@ class Tween {
 	    that runs clear() recycles the still-completing handle, then control
 	    returns to update() which recycles it again — without this flag the same
 	    instance lands in _pool twice and two later acquire() calls alias it. */
+	@:allow(bh.base.TweenManager)
 	var pooled:Bool = false;
 
 	var easing:Null<EasingType>;
@@ -146,6 +150,7 @@ class Tween {
 			t.elapsed = 0.0;
 			t.onComplete = null;
 			t.cancelled = false;
+			t.completed = false;
 			t.initialized = false;
 			t.skipFirstDt = false;
 			t.removeTargetOnComplete = false;
@@ -266,6 +271,7 @@ class Tween {
 				setPropertyValue(entry.kind, entry.to);
 			}
 			elapsed = duration;
+			completed = true;
 			return true;
 		}
 
@@ -291,7 +297,9 @@ class Tween {
 			setPropertyValue(entry.kind, value);
 		}
 
-		return elapsed >= duration;
+		if (elapsed >= duration)
+			completed = true;
+		return completed;
 	}
 
 	/** Jump to the final state immediately. */
@@ -302,6 +310,7 @@ class Tween {
 			setPropertyValue(entry.kind, entry.to);
 		}
 		elapsed = duration;
+		completed = true;
 	}
 
 	function getPropertyValue(kind:TweenPropertyKind):Float {
@@ -451,7 +460,9 @@ class TweenGroup {
 
 		var allDone = true;
 		for (tween in tweens) {
-			if (!tween.cancelled && tween.elapsed < tween.duration) {
+			// `completed`, not `elapsed < duration`: a zero-duration tween's elapsed is never
+			// below its duration, and it is still to be stepped once, to its end
+			if (!tween.cancelled && !tween.completed) {
 				if (tween.step(dt)) {
 					// Per-tween onComplete is fired only in finish() for groups
 					// (intentional pre-existing asymmetry with TweenSequence);
@@ -490,52 +501,69 @@ class TweenManager {
 
 	public function new() {}
 
-	/** Step all active tweens. Call from ScreenManager.update(dt). */
+	/**
+		Step all active tweens. Call from ScreenManager.update(dt).
+
+		The ones done leave the list in order: two tweens of one property keep which of them is
+		applied last (wins) when another one ends. Until the loop is over, the slots between
+		`kept` and `i` hold handles already moved down or recycled; `hasTweens` passes over a
+		recycled tween, and a callback that throws closes the list up before the error goes on.
+	**/
 	public function update(dt:Float):Void {
 		final clears = clearCount;
 		var i = 0;
-		while (i < handles.length) {
-			var handle = handles[i];
-			var done = false;
-			switch handle {
-				case HTween(tween):
-					if (tween.cancelled) {
-						done = true;
-					} else if (tween.step(dt)) {
-						done = true;
-						tween.runCompletionHooks();
-					}
-				case HSequence(seq):
-					if (seq.cancelled) {
-						done = true;
-					} else if (seq.step(dt)) {
-						done = true;
-						var cb = seq.onComplete;
-						if (cb != null)
-							cb();
-					}
-				case HGroup(group):
-					if (group.cancelled) {
-						done = true;
-					} else if (group.step(dt)) {
-						done = true;
-						var cb = group.onComplete;
-						if (cb != null)
-							cb();
-					}
-			}
-			// A callback ran clear(): every handle, this one included, is already recycled and
-			// the list may hold tweens started after it. They run from the next update().
-			if (clearCount != clears)
-				return;
-			if (done) {
-				recycleHandle(handle);
-				handles[i] = handles[handles.length - 1];
-				handles.pop();
-			} else {
+		var kept = 0;
+		try {
+			while (i < handles.length) {
+				var handle = handles[i];
+				var done = false;
+				switch handle {
+					case HTween(tween):
+						if (tween.cancelled) {
+							done = true;
+						} else if (tween.step(dt)) {
+							done = true;
+							tween.runCompletionHooks();
+						}
+					case HSequence(seq):
+						if (seq.cancelled) {
+							done = true;
+						} else if (seq.step(dt)) {
+							done = true;
+							var cb = seq.onComplete;
+							if (cb != null)
+								cb();
+						}
+					case HGroup(group):
+						if (group.cancelled) {
+							done = true;
+						} else if (group.step(dt)) {
+							done = true;
+							var cb = group.onComplete;
+							if (cb != null)
+								cb();
+						}
+				}
+				// A callback ran clear(): every handle, this one included, is already recycled and
+				// the list may hold tweens started after it. They run from the next update().
+				if (clearCount != clears)
+					return;
+				if (done)
+					recycleHandle(handle);
+				else
+					handles[kept++] = handle;
 				i++;
 			}
+		} catch (e:haxe.Exception) {
+			// The handle that threw stays, as it is not known to be done, and so do those after it
+			if (clearCount == clears) {
+				for (j in i...handles.length)
+					handles[kept++] = handles[j];
+				handles.resize(kept);
+			}
+			throw e;
 		}
+		handles.resize(kept);
 	}
 
 	static function recycleHandle(handle:TweenHandle):Void {
@@ -643,7 +671,8 @@ class TweenManager {
 		for (handle in handles) {
 			switch handle {
 				case HTween(tween):
-					if (tween.target == target && !tween.cancelled)
+					// a pooled tween is one update() has finished with, its slot not yet closed up
+					if (tween.target == target && !tween.cancelled && !tween.pooled)
 						return true;
 				case HSequence(seq):
 					if (!seq.cancelled) {

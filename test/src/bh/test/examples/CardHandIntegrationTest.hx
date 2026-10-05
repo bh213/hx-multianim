@@ -1706,4 +1706,90 @@ class CardHandIntegrationTest extends BuilderTestBase {
 				Assert.isTrue(wrapper.disabled, '${card.buildName}: disabling the card must disable $remainingId too');
 		}
 	}
+
+	// ==================== A new hand during a drag ====================
+
+	@Test
+	public function testSetHandDuringACardToCardDragLeavesNoOldCardOnScreen():Void {
+		var h = createHelper({allowCardToCard: true});
+		h.helper.setHand([desc("a"), desc("b"), desc("c")]);
+		final target = h.helper.cards[2];
+		Assert.isTrue(h.helper.startDragFromInteractive(h.helper.cards[0]));
+		final at = h.helper.handContainer.localToGlobal(new h2d.col.Point(target.layoutPos.x, target.layoutPos.y));
+		h.helper.onMouseMove(at.x, at.y);
+		Assert.isTrue(h.helper.cardToCardTarget == target, "precondition: card a is dragged over card c");
+
+		h.helper.setHand([desc("x"), desc("y")]);
+		Assert.isNull(h.helper.cardToCardTarget, "the new hand has no drag over a card");
+		Assert.isNull(h.helper.currentTargetId);
+		h.helper.drawCard(desc("z"), 0); // re-layers the hand from the insert point
+		Assert.isNull(target.container.parent, "card c went with the old hand and is not put back on screen");
+		final shown = [for (e in h.helper.cards) e.container];
+		var strangers = 0;
+		for (i in 0...h.helper.handContainer.numChildren)
+			if (shown.indexOf(h.helper.handContainer.getChildAt(i)) < 0)
+				strangers++;
+		Assert.equals(0, strangers, "the hand shows its own cards only");
+	}
+
+	// ==================== The cursor while targeting ====================
+
+	@Test
+	public function testTheCursorStaysHiddenWhileTargetingOverAnElement():Void {
+		// The hand hides the cursor while its arrow targets. Moving onto an element with a cursor of
+		// its own (a target) must not bring the cursor back; once targeting ends, it is the
+		// element's again without leaving the element first.
+		var h = createHelper();
+		h.helper.hideCursorWhileTargeting = true;
+		h.helper.setHand([desc("a")]);
+		h.screen.testAddElement(new CursorElement(hxd.Cursor.Button));
+		final controller = new bh.ui.controllers.UIDefaultController(h.screen);
+		final applied:Array<hxd.Cursor> = [];
+		final was = hxd.System.setCursor;
+		hxd.System.setCursor = c -> applied.push(c);
+		inline function last():String
+			return applied.length == 0 ? "none" : Std.string(applied[applied.length - 1]);
+		inline function move(x:Float):Void
+			controller.handleMove(new h2d.col.Point(x, 50), {sourceEvent: new hxd.Event(EMove), mousePoint: new h2d.col.Point(x, 50), scene: null});
+		try {
+			final entry = h.helper.cards[0];
+			h.helper.startDragFromInteractive(entry);
+			h.helper.enterTargetingMode(entry);
+			move(50);
+			controller.update(0.016);
+			Assert.equals("Hide", last(), "over an element while targeting, the cursor stays hidden");
+			h.helper.exitTargetingMode(entry);
+			move(51);
+			controller.update(0.016);
+			Assert.equals("Button", last(), "targeting over, the element's cursor again");
+		} catch (e:Dynamic) {
+			hxd.System.setCursor = was;
+			throw e;
+		}
+		hxd.System.setCursor = was;
+	}
+}
+
+/** An element over (0, 0) to (100, 100) with the cursor it is given. **/
+private class CursorElement implements bh.ui.UIElement implements bh.ui.UIElement.StandardUIElementEvents implements bh.ui.UIElement.UIElementCursor {
+	public var cursor:hxd.Cursor;
+
+	final object = new h2d.Object();
+
+	public function new(cursor:hxd.Cursor) {
+		this.cursor = cursor;
+	}
+
+	public function getObject():h2d.Object
+		return object;
+
+	public function containsPoint(pos:h2d.col.Point):Bool
+		return pos.x >= 0 && pos.x <= 100 && pos.y >= 0 && pos.y <= 100;
+
+	public function clear():Void {}
+
+	public function onEvent(wrapper:bh.ui.UIElement.UIElementEventWrapper):Void {}
+
+	public function getCursor():hxd.Cursor
+		return cursor;
 }

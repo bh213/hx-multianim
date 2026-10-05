@@ -1,5 +1,6 @@
 package bh.ui;
 
+import bh.base.CursorManager;
 import bh.base.FPoint;
 import bh.multianim.MultiAnimBuilder;
 import bh.multianim.MultiAnimBuilder.BuilderResult;
@@ -233,6 +234,8 @@ class UICardHandHelper implements UIHigherOrderComponent {
 
 	/** When true, the system cursor is hidden while in targeting mode (arrow replaces cursor). */
 	public var hideCursorWhileTargeting:Bool = false;
+	// The hand hid the cursor (hideCursor) and has not shown it again
+	var cursorHidden = false;
 
 	// Scene graph
 	final handContainer:h2d.Layers;
@@ -931,7 +934,7 @@ class UICardHandHelper implements UIHigherOrderComponent {
 	function clearHand():Void {
 		if (isTargeting) {
 			if (hideCursorWhileTargeting)
-				hxd.System.setCursor(Default);
+				restoreCursor();
 			// Hide the arrow visual and clear any lingering target highlight — otherwise
 			// the arrow stays visible and `activeTargetId` outlives the cards it tracked.
 			targeting.clearLine();
@@ -966,6 +969,13 @@ class UICardHandHelper implements UIHigherOrderComponent {
 		draggedEntry = null;
 		isDragging = false;
 		isTargeting = false;
+		// The drag's targets went with the old hand: a card-to-card target left set would be put
+		// back on screen by the next re-layering (restoreHandLayers)
+		cardToCardTarget = null;
+		currentTargetId = null;
+		cachedTargetResult = NoTarget;
+		cachedTargetResultId = null;
+		targeting.forceValid = null;
 	}
 
 	// === Internal: Layout ===
@@ -1293,7 +1303,22 @@ class UICardHandHelper implements UIHigherOrderComponent {
 		entry.container.scaleY = hoverScale;
 		// Arrow is already in dragContainer — no reparenting needed
 		if (hideCursorWhileTargeting)
-			hxd.System.setCursor(Hide);
+			hideCursor();
+	}
+
+	/** Hides the cursor while the arrow targets, through `CursorManager`'s override, so an element hovered meanwhile (a target) does not show its own. **/
+	function hideCursor():Void {
+		cursorHidden = true;
+		CursorManager.setOverrideCursor(hxd.Cursor.Hide);
+	}
+
+	/** The cursor back, if the hand hid it: the override cleared; a controller shows the cursor of what is hovered again. **/
+	function restoreCursor():Void {
+		if (!cursorHidden)
+			return;
+		cursorHidden = false;
+		CursorManager.setOverrideCursor(null);
+		hxd.System.setCursor(Default);
 	}
 
 	function exitTargetingMode(entry:CardEntry):Void {
@@ -1303,7 +1328,7 @@ class UICardHandHelper implements UIHigherOrderComponent {
 		dragContainer.addChild(entry.container);
 		entry.container.rotation = 0;
 		if (hideCursorWhileTargeting)
-			hxd.System.setCursor(Default);
+			restoreCursor();
 	}
 
 	function endDrag():Bool {
@@ -1317,7 +1342,7 @@ class UICardHandHelper implements UIHigherOrderComponent {
 		targeting.clearLine();
 		entry.container.alpha = 1.0;
 		if (wasTargeting && hideCursorWhileTargeting)
-			hxd.System.setCursor(Default);
+			restoreCursor();
 
 		// Un-highlight card-to-card target
 		restoreCardToCardEffects();
@@ -1420,7 +1445,7 @@ class UICardHandHelper implements UIHigherOrderComponent {
 
 		targeting.clearLine();
 		if (isTargeting && hideCursorWhileTargeting)
-			hxd.System.setCursor(Default);
+			restoreCursor();
 
 		// Un-highlight card-to-card target
 		restoreCardToCardEffects();

@@ -1738,7 +1738,8 @@ a meaning: the game says what `wall`, `swim` or `cost` are for.
   the actors (the default), `over` them, at the `top`, above everything, or as `actors`: each among
   them, sorted by its feet; a `cell` with its own `draw:` goes there instead.
 - Drawing order: terrains, the levels' edges and sides, the `under` layers; the decor and the actors in
-  one layer sorted by their feet every frame; `over`; `top`.
+  one layer sorted by their feet every frame; `over`; `top`. The order holds across the map's
+  chunks: a map drawn in chunks looks as it does drawn in one piece, at their borders too.
 
 ### From code
 
@@ -1764,10 +1765,14 @@ and `cellAt` read the rows, and `sideAt` and `metadataAt` work out a changed chu
 metadata by themselves, so a game that reads the whole map (pathfinding) does not draw the whole
 map. However many cells change, the chunks they are in (and, at a chunk's border, the neighbours
 an autotile's corners or a rise's sides reach) are drawn again once, as they are next in view;
-`redraw()` draws it all now. The view is `map.cull(x, y, w, h)`, in the map's pixels (a game
-with a camera calls it as the camera moves, since a camera is not in an object's place), or, with
-`cullToScene` on (the default) and no `cull`, the scene's size seen through the map's place and
-scale; `cullNone()` has every chunk in view, `isChunkVisible(col, row)` says what is drawn. `setLevel`
+`redraw()` draws it all now, a map drawn whole already too. The view is `map.cull(x, y, w, h)`, in
+the map's pixels (a game with a camera calls it as the camera moves, since a camera is not in an
+object's place), or, with `cullToScene` on (the default) and no `cull`, the scene's size seen
+through the map's place and scale; `cullNone()` has every chunk in view, `isChunkVisible(col, row)`
+says what is drawn. A chunk is in view when the view reaches within a tile of it, or, on a map with
+objects of several cells, as far past it as the furthest of them reaches past its anchor (by its
+`size`, or its image when that is bigger): an object is drawn by the chunk its anchor is in, and so
+is drawn and shown as soon as any of it is in view; one among the actors is hidden with its chunk. `setLevel`
 raises the ground: a digit for 0–9, else a character of the levels legend that is not a platform's.
 `setCell` places and removes an object of several cells at its anchor. A cell outside the map, a
 character the legend has not, a level no character stands for, a layer the map has not, a cell
@@ -2579,7 +2584,7 @@ With `tangent`, particle initial velocity follows the path tangent direction at 
 | `attachTo` | string | Emitter position tracks a named animated path |
 | `spawnCurve` | curve ref | Modulate emission rate over attached path's lifetime |
 
-**Runtime API:** `group.emitBurst(count)` forces N particles immediately. `group.emitFilter = (x, y) -> Bool` filters particles by world-space spawn position (return `false` to discard).
+**Runtime API:** `group.emitBurst(count)` forces N particles immediately. A group with particles of its own (`count > 0`) that has not been drawn yet starts with them first, so a burst (or a sub-emitter) before its first frame adds to its own particles rather than replacing them. `group.emitFilter = (x, y) -> Bool` filters particles by world-space spawn position (return `false` to discard).
 
 **`particles.worldAnchor:Null<h2d.Object>`** — designated world-space anchor for non-relative groups. When set on a `Particles` container, groups with `relative: false` bake their emit positions/velocity/scale/rotation into `worldAnchor`'s local frame (instead of full scene-space) and render through `worldAnchor`'s transform. Use case: a per-shot trail emitter parented to a moving sprite — set `worldAnchor` to the scene's world-root (the object below the camera), and trail particles will stay glued to the world points where they were emitted instead of sliding against the world during camera pan/zoom. Null (default) preserves legacy screen-space baking. No DSL surface — set in runtime code:
 ```haxe

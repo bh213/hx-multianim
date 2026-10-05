@@ -479,14 +479,28 @@ as settings are, `resolveSettingValue`) so the map needs no builder of its own.
 Decor is built with `buildSingleNodeWithParams`. Codegen delegates `tilemap(name)` to
 `ProgrammableBuilder.buildTilemap`, as autotile tiles are.
 
-`TileMap` draws in chunks (`Chunk`: a rectangle of cells with its own ground, over and top objects
-under the map's, the objects of several cells it anchors, its frames of each animated terrain,
-`dirty` for its tiles and `resolved` for its cells' sides and metadata). Every chunk starts dirty
-and unresolved and nothing is drawn as the map is built: `sync` first culls (`applyCulling` hides
-chunks outside `cull`'s view or the scene's, through `globalToLocal` of its corners; a camera is
-not in that chain, so a game with one calls `cull`; only the columns and rows of chunks the view
-reached last time and reaches now are looked at, and `cull` writes one rectangle), then
-`drawDirty(true)` draws the dirty chunks in view. Reading a cell draws nothing: `terrainAt`,
+`TileMap` draws in chunks (`Chunk`: a rectangle of cells, its part of each of the map's passes, the
+objects of several cells it anchors, its frames of each animated terrain, `shown`, `dirty` for its
+tiles and `resolved` for its cells' sides and metadata). The passes are the map's draw order, one
+object each, made once a source (`makePasses`): every terrain in turn, the levels' edges with the
+platforms' tops, the sides, and each layer's cells under the actors, in `ground`; each layer's cells
+over the actors in `overLayer` and at the top in `topLayer`. A chunk's part of a pass is made as it
+first draws there (`partOf`; `TileGroups` makes it with its first tile), so a chunk costs objects
+for what it draws only and a chunk never drawn costs none. What a chunk draws past its cells — a
+corner autotile's tile, half a cell up and left of its corner, over the last column and row of the
+chunk before; an object reaching into the next chunk — is under every later pass of every chunk
+and over every earlier one, as when the map is drawn in one piece; with one object per chunk, a
+later chunk's terrain was drawn over an earlier chunk's layer cells and sides along every border.
+Every chunk starts dirty and unresolved and nothing is drawn as the map is built: `sync` first culls
+(`applyCulling` shows or hides a chunk's parts and its `draw: actors` objects, `showChunk`, for
+`cull`'s view or the scene's, through `globalToLocal` of its corners; a camera is not in that chain,
+so a game with one calls `cull`; the view reaches `cullMargin` past a chunk, a tile for a corner
+autotile's half tile plus `objectReach`: the furthest any layer entry draws past its anchor, by its
+footprint and its frames, since only the anchor's chunk draws an object, so an object is drawn and
+shown once any of it is in view; only the columns and rows of chunks the view reached last time and
+reaches now are looked at, and `cull` writes one rectangle), then `drawDirty(true)` draws the dirty
+chunks in view, looking at the chunks culling showed only, so a chunk dirty off screen costs no
+frame a look at every chunk. Reading a cell draws nothing: `terrainAt`,
 `levelAt`, `platformAt` and `cellAt` read per-cell arrays kept as the rows change (`terrainIndex`,
 `levelIndex`, `platformIndex`, `covers`; a character read from a row string is a string allocated
 on HashLink, so the rows are read once), and `sideAt`/`metadataAt` resolve the asked cell's chunk
@@ -524,20 +538,26 @@ once an animation frame, and passed as `where`), each level's edge (along its ri
 `rimPositions`, by the edge's format, of the cells whose terrain has that edge, `edges[terrain]` or
 the tileset's own; a platform's cells are left out, and each platform's own edge is drawn over all
 of its cells), each rise's sides (`scanRises`, per direction, the cells scanned along the run's
-axis: `riseFor` picks the rise, a platform's own for a cell of one, else the terrain's own in that
-direction when it has any, else the tileset's, of that many levels or `any`; the run's ends from the
-neighbours across the side's direction that take the same rise, in reading order, and of several
-`sides` the one whose turn it is along the run, carried from the cell before, so only the first
-cell of a run the scan meets walks back to the run's start and a long cliff costs its length, not
-its square; a piece's frames are looked up once a name, `pieceFrames`), the layers into the chunk's
-ground, over or top (a `TileGroups` helper keeps one `TileGroup` a texture) or, for `draw: actors`,
-a bitmap among the map's `actors` standing on its feet, and merges each cell's metadata once
-(`mergeMetadata`: a cell with its terrain's alone shares that terrain's `BuilderResolvedSettings`;
-any other combination of terrain, side and layer cells is merged once and shared by every cell of
-it, `mergedSettings`; one shared empty one for the rest). `sync` steps the animated terrains and
-y-sorts `actors` with the frame's time (the private `step(dt)`), the one place it is done, so a
+axis: the rise from `riseTable`, `riseFor`'s answer by direction, terrain, platform and levels
+worked out once a source (`readRises`) — a platform's own for a cell of one, else the terrain's
+own in that direction when it has any, else the tileset's, of that many levels or `any`; each
+cell's rise is looked up once, as the cell before looks at it to see whether its run goes on; the
+run's ends from the neighbours across the side's direction that take the same rise, in reading
+order, and of several `sides` the one whose turn it is along the run, carried from the cell before;
+the first cell of a run a scan meets reads where the run starts from what a scan before noted on
+its line (`runAlong`: `runStart`/`runEnd` per direction and line, good while `rowsVersion`, bumped
+by every change, holds) and walks back to it only when none did, so a long cliff costs its length,
+not its square, in any chunk size; a piece's frames are looked up once a name, `pieceFrames`), the
+layers into the chunk's parts of that layer's under, over or top pass (a `TileGroups` helper keeps
+one `TileGroup` a texture) or, for `draw: actors`, a bitmap among the map's `actors` standing on
+its feet, shown as its chunk is, and merges each cell's metadata once (`mergeMetadata`: a cell with
+its terrain's alone shares that terrain's `BuilderResolvedSettings`; any other combination of
+terrain, side and layer cells is merged once and shared by every cell of it, found by its sources'
+indices in a mixed radix, an Int key in `mergedByKey` while the combinations fit in one, else a
+string in `mergedSettings`; one shared empty one for the rest). `sync` steps the animated terrains
+and y-sorts `actors` with the frame's time (the private `step(dt)`), the one place it is done, so a
 game calls nothing each frame. `redraw()` marks every chunk dirty and draws them all now, whatever
-the view. Maps in a scene are in `TileMap.showing`
+the view, a map drawn whole already too. Maps in a scene are in `TileMap.showing`
 (`onAdd`/`onRemove`; a Heaps object has no other sign of its lifetime, so a map off-scene is not
 reloaded): `ScreenManager.hotReloadFile` calls `TileMap.builderReplaced` after the file's screens are
 reloaded (their `load()` builds new maps and the old ones leave the scene), which `refreshTilemap`s

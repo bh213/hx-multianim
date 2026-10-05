@@ -47,6 +47,14 @@ class ParticleRuntimeTest extends utest.Test {
 		return g;
 	}
 
+	/** A group with no particles of its own (`count: 0`), fed by bursts only. **/
+	static function createBurstGroup(id:String, p:Particles):ParticleGroup {
+		var g = createGroup(id, p);
+		var dg:Dynamic = g;
+		dg.nparts = 0;
+		return g;
+	}
+
 	static function seededRandom(seed:Int):() -> Float {
 		var rng = new hxd.Rand(seed);
 		return rng.rand;
@@ -203,7 +211,7 @@ class ParticleRuntimeTest extends utest.Test {
 	@Test
 	public function testEmitBurst():Void {
 		var p = createParticles();
-		var g = createGroup("main", p);
+		var g = createBurstGroup("main", p);
 		// Don't start() — use emitBurst directly
 		g.emitBurst(5);
 
@@ -212,9 +220,39 @@ class ParticleRuntimeTest extends utest.Test {
 	}
 
 	@Test
+	public function testABurstBeforeTheFirstSyncLeavesTheEmitterItsOwnCount():Void {
+		// An emitter of its own 20 particles (looping or once) hit by a burst, or a sub-emitter,
+		// before it was first synced still emits its 20, with the burst on top.
+		for (loop in [true, false]) {
+			var p = createParticles();
+			var g = createGroup("main", p, loop);
+			g.emitBurst(1);
+			advanceGroup(g, 0.016); // starts a group not started yet, as Particles.sync does
+			Assert.equals(21, countParticles(g), 'loop: $loop: the group\'s own 20 and the burst\'s 1');
+		}
+	}
+
+	@Test
+	public function testADisabledGroupHitByABurstStartsWhenEnabled():Void {
+		// A group switched off (enabled has no setter: written as code that switches it does) is not
+		// drawn, nor started by sync. A burst into it meanwhile must not mark it started, or it
+		// never emits its own particles once switched on.
+		var p = createParticles();
+		var g = createGroup("main", p, true);
+		var dg:Dynamic = g;
+		dg.enabled = false;
+		g.emitBurst(1);
+		advanceGroup(g, 0.016);
+		Assert.equals(1, countParticles(g), "switched off: the burst's 1 alone, the group not started");
+		dg.enabled = true;
+		advanceGroup(g, 0.016); // starts a group not started yet, as Particles.sync does
+		Assert.equals(20, countParticles(g), "switched on: its own 20 (starting clears the burst it was hit by while off, never drawn)");
+	}
+
+	@Test
 	public function testEmitBurstAt():Void {
 		var p = createParticles();
-		var g = createGroup("main", p);
+		var g = createBurstGroup("main", p);
 		var dg:Dynamic = g;
 		dg.speed = 0; // No initial speed — particles stay near spawn point
 		dg.emitMode = Point(0.0, 0.0); // No random offset
@@ -250,7 +288,7 @@ class ParticleRuntimeTest extends utest.Test {
 		// allocate a fresh Particle instance for every spawn. After particles die naturally,
 		// a subsequent burst is expected to recycle the dead Particle objects from a pool.
 		var p = createParticles();
-		var g = createGroup("main", p);
+		var g = createBurstGroup("main", p);
 		var dg:Dynamic = g;
 		dg.life = 0.1; // short life so particles die quickly
 
@@ -286,7 +324,7 @@ class ParticleRuntimeTest extends utest.Test {
 		// grow linearly with burst count. Without pooling the unique instance count grows
 		// to ~burstCount * cycles.
 		var p = createParticles();
-		var g = createGroup("main", p);
+		var g = createBurstGroup("main", p);
 		var dg:Dynamic = g;
 		dg.life = 0.1;
 
@@ -1032,7 +1070,7 @@ class ParticleRuntimeTest extends utest.Test {
 	@Test
 	public function testEmitFilterAcceptsAll():Void {
 		var p = createParticles();
-		var g = createGroup("main", p);
+		var g = createBurstGroup("main", p);
 		var dg:Dynamic = g;
 		dg.speed = 0;
 

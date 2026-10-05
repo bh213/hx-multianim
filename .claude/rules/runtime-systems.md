@@ -102,7 +102,9 @@ paths {
 **Drag state machine:**
 1. `interactive()` emits `UIPush` → helper starts drag (left button only — it notes the button of the raw `onMouseClick` push the screen dispatches first, and forgets it on release, so a `UIPush` with no raw push in front of it counts as left), reparents card to `dragContainer`
 2. Mouse move: card-to-card check first → targeting zone check (bounds + target fallback) → normal drag
-3. Release: card-to-card hover → `CardCombined`; targeting mode + target → `CardPlayed(TargetZone)`; in zone no target → `CardPlayed(NoTarget)`; outside zones → return animation. Left-button release only; the drag state is cleared before `CardPlayed`/`CardCombined` fire, so a handler may `discardCard()`/`setHand()`
+3. Release: card-to-card hover → `CardCombined`; targeting mode + target → `CardPlayed(TargetZone)`; in zone no target → `CardPlayed(NoTarget)`; outside zones → return animation. Left-button release only; the drag state is cleared before `CardPlayed`/`CardCombined` fire, so a handler may `discardCard()`/`setHand()`. `setHand()` mid-drag clears the drag's targets too (the card-to-card target, the target id, the forced arrow validity), so no card of the old hand comes back on screen
+
+**Cursor while targeting:** `hideCursorWhileTargeting = true` hides the cursor through `CursorManager.setOverrideCursor(Hide)` while the arrow targets, so hovering a target (an element with a cursor of its own) keeps it hidden; it is cleared, and the hovered element's cursor set again, when targeting ends.
 
 **Hover detection:** Position-based via `getCardAtBasePosition()` in `onMouseMove` — uses base layout (no hover pop) with nearest-center selection among overlapping OBBs. Does NOT rely on Interactive UIEntering/UILeaving events (which would be blocked by z-order changes). Hovered card is brought to top render layer; z-order restored on un-hover. Card-to-card targets also z-reordered during highlight.
 
@@ -215,6 +217,8 @@ mgr.hasTweens(obj);
 - Cancelled tweens do not fire `onComplete`
 - `Tween` instances are pooled: a finished or cancelled tween is reused by the next `tween()`. Code that keeps a `Tween` past its end records `tween.generation` when it starts and cancels through `Tween.cancelIfCurrent(tween, generation)` — a plain `cancel()` on a stale reference cancels whatever animation now reuses the instance. A finished `TweenSequence`/`TweenGroup` no longer reaches its tweens
 - `clear()` is safe from an `onComplete` callback: `update()` stops after that callback, and tweens started after the clear run from the next `update()`
+- Tweens run in the order they were started, every frame: of two tweens driving one property the later one wins, and keeps winning when another tween ends (finished ones leave the list in order, not by swapping in the last). A callback that throws leaves the list whole
+- `Tween.completed` — reached its end (a step or `finish()`). A zero-duration tween is snapped to its end by its first step, inside a `group()` too (its `removeTargetOnComplete` honoured)
 
 **`.manim` transition integration:**
 - `transition {}` block in programmable body declares animated transitions for parameter changes

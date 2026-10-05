@@ -28,10 +28,15 @@ Added 2026-10-04: a chunk costs its own size wherever it is (chunk-local masks, 
 origin), per-cell level and platform arrays, lookups once a name, sides numbered along a run in one
 pass, metadata shared a combination; `sideAt` / `metadataAt` work a chunk out without drawing it.
 
+Added 2026-10-05: chunk borders drawn as the map in one piece (one object a draw pass, a chunk's part
+of each made as it first draws there); objects of several cells culled by their reach (the view
+reaches that far past a chunk) and among the actors hidden with their chunk; each cell's rise looked
+up once, from a table, and a run's start kept between chunks; metadata keyed by an Int; a frame looks
+only at the chunks in view; `redraw()` on a map drawn already.
+
 Not done, by how many tilesets each blocks: Wang 2-edge and 3-corner formats; a shared `shape:`
 vocabulary for collision (full, slopes, half, one-way); inner-corner side pieces where two cliffs
 meet; layer `offset:` and `parallax:`; hex and isometric cells (the map is square-cell only); a
 run-length or other compact form for very big maps; an importer from Tiled and LDtk in
 hx-multianim-utils; marks and regions as data-block tables; where each row is written, for a tool
-(the parse keeps it only for its own errors); objects culled with their chunk (they are among the
-actors, so every one is drawn).
+(the parse keeps it only for its own errors).

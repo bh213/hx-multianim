@@ -848,8 +848,17 @@ class ParticleGroup {
 			// Note: batch.visible must stay false — group batches are children of
 			// the Particles object but are drawn explicitly in Particles.draw();
 			// a visible batch would be rendered a second time by the child pass.
-			started = true;
-			globalTime = 0;
+			if (nparts > 0) {
+				// A group of its own particles starts as sync() would have: sync() starts only a
+				// group not started yet, so marking it started here left it without them for good.
+				// Switched off, it is left for sync() to start once it is on (which clears the
+				// burst, never drawn while it was off).
+				if (enabled)
+					start();
+			} else {
+				started = true;
+				globalTime = 0;
+			}
 		}
 		for (i in 0...count) {
 			var p = allocParticle();

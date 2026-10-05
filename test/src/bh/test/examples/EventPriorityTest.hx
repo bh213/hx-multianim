@@ -596,4 +596,58 @@ class EventPriorityTest extends utest.Test {
 			+ "handler — production code path must stream via forEachElement to avoid "
 			+ "per-event Array allocation. Got " + integ.getElementsCallCount + " calls.");
 	}
+
+	// ==================== Cursor ====================
+
+	@Test
+	public function testAHoveredElementsCursorFollowsItsState():Void {
+		// An element's cursor may change while the mouse stays on it (disabled by a click, a state
+		// set from code): the cursor follows on the next move, or the next frame without one.
+		var element = new MockCursorInteractive(hxd.Cursor.Button);
+		integration.elements = [element];
+		final applied:Array<hxd.Cursor> = [];
+		final was = hxd.System.setCursor;
+		hxd.System.setCursor = c -> applied.push(c);
+		inline function last():String
+			return applied.length == 0 ? "none" : Std.string(applied[applied.length - 1]);
+		try {
+			controller.handleMove(new Point(50, 50), eventWrapper());
+			Assert.equals("Button", last(), "the element's cursor as the mouse enters it");
+			element.cursor = hxd.Cursor.Default;
+			controller.handleMove(new Point(51, 50), eventWrapper());
+			Assert.equals("Default", last(), "its new cursor on the next move, still over it");
+			element.cursor = hxd.Cursor.Move;
+			controller.update(0.016);
+			Assert.equals("Move", last(), "or on the next frame, the mouse still");
+			final count = applied.length;
+			controller.handleMove(new Point(52, 50), eventWrapper());
+			controller.update(0.016);
+			Assert.equals(count, applied.length, "an unchanged cursor is not set again");
+		} catch (e:Dynamic) {
+			hxd.System.setCursor = was;
+			throw e;
+		}
+		hxd.System.setCursor = was;
+	}
+}
+
+/** An element over (0, 0) to (100, 100) with the cursor it is given. **/
+private class MockCursorInteractive implements UIElement implements StandardUIElementEvents implements UIElementCursor {
+	public var cursor:hxd.Cursor;
+
+	public function new(cursor:hxd.Cursor) {
+		this.cursor = cursor;
+	}
+
+	public function getObject():h2d.Object return new h2d.Object();
+
+	public function containsPoint(pos:Point):Bool {
+		return pos.x >= 0 && pos.x <= 100 && pos.y >= 0 && pos.y <= 100;
+	}
+
+	public function clear():Void {}
+
+	public function onEvent(wrapper:UIElementEventWrapper):Void {}
+
+	public function getCursor():hxd.Cursor return cursor;
 }
