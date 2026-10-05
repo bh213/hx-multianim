@@ -297,9 +297,15 @@ haxe lsp/lsp-server.hxml
 `npm run build` (and therefore `npm run package`) in `vscode/` does this automatically:
 `vscode/build.js` rebuilds the server and copies `lsp/bin/server.js` into `vscode/server/server.js`
 before bundling the extension client. CI enforces the copy with the "LSP server drift gate" in
-`tests.yml` (rebuild + byte-compare against the committed `vscode/server/server.js`) and runs the
-LSP unit tests (`lsp/test-lsp.hxml` + `node lsp/bin/test.js`). If the gate fails, run
-`npm run build` in `vscode/` and commit the refreshed `server.js`.
+`tests.yml`: a rebuild compared against the committed `vscode/server/server.js` by
+`vscode/drift-check.js`, which ignores line endings (the files' own, and `\r\n` escapes inside
+string literals, which a literal spanning source lines picks up from a CRLF checkout) so a server
+regenerated on Windows passes; anything else that differs fails. `npm run drift-check` in `vscode/`
+(or `node vscode/drift-check.js --build` from the repo root) is the same check, to run before
+committing a parser change. CI then runs the LSP unit tests (`lsp/test-lsp.hxml` +
+`node lsp/bin/test.js`). If the gate fails, run `npm run build` in `vscode/` and commit the
+refreshed `server.js`. A float constant the compiler folds (`-1.0 / 3.0`) prints differently on
+Windows and Linux and would fail the gate: write such constants as literals.
 
 The build uses `-D noheaps` to exclude Heaps framework dependencies. The parser runs in pure-data mode (parsing only, no rendering).
 

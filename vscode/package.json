@@ -64,6 +64,7 @@
   },
   "scripts": {
     "build": "node build.js",
+    "drift-check": "node drift-check.js --build",
     "package": "npm run build && vsce package --allow-missing-repository",
     "sync-check": "node sync-check.js"
   }

@@ -133,7 +133,7 @@ If changes affect the `.manim` parser (keywords, syntax, settings), LSP, or lang
 - Run `node vscode/sync-check.js` to detect keyword mismatches between the parser and the VS Code grammar (`vscode/syntaxes/multianim.tmLanguage.json`)
 - If mismatches are found, update the grammar file to match the parser
 - Check if LSP source files (`lsp/src/manim/lsp/`) need updating — e.g. `CompletionProvider.hx` for new keywords/completions, `HoverProvider.hx` for hover docs
-- If LSP sources changed, rebuild: `haxe lsp/lsp-server.hxml` and verify `vscode/server/server.js` is updated
+- If LSP sources changed, rebuild: `haxe lsp/lsp-server.hxml` and verify `vscode/server/server.js` is updated; `npm run drift-check` in `vscode/` (or `node vscode/drift-check.js --build`) is CI's comparison, line endings ignored
 - Check if `vscode/package.json` version or configuration needs updating
 
 ## 8. Playground Impact Check
