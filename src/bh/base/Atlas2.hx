@@ -127,22 +127,26 @@ class Atlas2 extends hxd.res.Resource.Resource implements IAtlas2 {
 
 		contents = new Map();
 		sourceTiles = [];
+		// Read by index: shift() copies the rest of a large array on every line, which made a
+		// sheet of thousands of frames take seconds to read.
 		var lines = entry.getText().split("\n");
+		var count = lines.length;
+		var i = 0;
 
 		var basePath = entry.path.split("/");
 		basePath.pop();
 		var basePath = basePath.join("/");
 		if( basePath.length > 0 ) basePath += "/";
-		while( lines.length > 0 ) {
-			var line = StringTools.trim(lines.shift());
+		while( i < count ) {
+			var line = StringTools.trim(lines[i++]);
 			if ( line == "" ) continue;
             final tileFilename = basePath + line;
 			var tileFile = hxd.res.Loader.currentInstance.load(tileFilename)?.toTile();
 			if (tileFile == null) throw 'Could not load tile ${tileFilename}';
 			sourceTiles.push(tileFile);
-			while( lines.length > 0 ) {
-				if( lines[0].indexOf(":") < 0 ) break;
-				var line = StringTools.trim(lines.shift()).split(": ");
+			while( i < count ) {
+				if( lines[i].indexOf(":") < 0 ) break;
+				var line = StringTools.trim(lines[i++]).split(": ");
 				switch( line[0] ) {
 				case "size":
 					var wh = line[1].split(",");
@@ -152,21 +156,20 @@ class Atlas2 extends hxd.res.Resource.Resource implements IAtlas2 {
 				default:
 				}
 			}
-			while( lines.length > 0 ) {
-				var line = StringTools.trim(lines.shift());
+			while( i < count ) {
+				var line = StringTools.trim(lines[i++]);
 				if( line == "" ) break;
 				var prop = line.split(": ");
 				if( prop.length > 1 ) continue;
 				var key = line;
 				var tileX = 0, tileY = 0, tileW = 0, tileH = 0, origW = 0, origH = 0, index = 0, offsetX = 0, offsetY = 0;
 				var split:Array<Int> = [];
-				while( lines.length > 0 ) {
-					var line = StringTools.trim(lines.shift());
+				while( i < count ) {
+					var line = StringTools.trim(lines[i]);
 					var prop = line.split(": ");
-					if( prop.length == 1 ) {
-						lines.unshift(line);
+					if( prop.length == 1 )
 						break;
-					}
+					i++;
 					var v = prop[1];
 					switch( prop[0] ) {
 					case "rotate":
