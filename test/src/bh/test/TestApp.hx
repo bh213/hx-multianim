@@ -143,6 +143,7 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.CodegenRootTintTest());
 		testRunner.addCase(new bh.test.examples.CodegenHasSlotDynRefTest());
 		testRunner.addCase(new bh.test.examples.CodegenStaticRefDynamicNameTest());
+		testRunner.addCase(new bh.test.examples.StaticRefIncrementalTest());
 		testRunner.addCase(new bh.test.examples.CodegenSwitchInactiveArmTest());
 		testRunner.addCase(new bh.test.examples.CodegenRepeatConditionalTest());
 		testRunner.addCase(new bh.test.examples.CodegenIntTruncationParityTest());

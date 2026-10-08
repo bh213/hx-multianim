@@ -4774,6 +4774,66 @@ class MultiAnimBuilder {
 		}
 	}
 
+	/** A staticRef is built once, as a whole, never incrementally. Inside an incremental build, a
+	 *  target or argument that uses the enclosing programmable's parameters must still follow them:
+	 *  the reference is put in a container and built again into it when one of those parameters
+	 *  changes. Returns the container, or null when there is nothing to follow (not an incremental
+	 *  build, or a target and arguments that use no parameter). A staticRef with children of its own
+	 *  is not rebuilt (they would be lost with the old build): changing such a parameter is refused. */
+	function trackStaticRefRebuild(node:Node, externalReference:Null<String>, progRefRV:ReferenceableValue,
+			parameters:Map<String, ReferenceableValue>, built:h2d.Object, ir:InternalBuilderResults):Null<h2d.Object> {
+		final ctx = incrementalContext;
+		if (!incrementalMode || ctx == null)
+			return null;
+		final names:Array<String> = [];
+		collectParamRefs(progRefRV, names);
+		for (value in parameters)
+			collectParamRefs(value, names);
+		// Only the programmable's own params can change: a loop variable (`num=>$i`) or a @final is
+		// fixed at build time, and a staticRef using only those is left as built (codegen does the
+		// same). The parser rejects a loop variable named like a param, so a name is one or the other.
+		final refs:Array<String> = [];
+		for (n in names)
+			if (ctx.hasParameter(n) && refs.indexOf(n) < 0)
+				refs.push(n);
+		if (refs.length == 0)
+			return null;
+		if (node.children != null && node.children.length > 0) {
+			for (r in refs)
+				ctx.markParamUntracked(r, "staticRef with children: target or parameter");
+			return null;
+		}
+		final container = new h2d.Object();
+		container.addChild(built);
+		// Loop variables and nested @finals are gone by the time a parameter changes: keep their
+		// values from now, under the context's live parameters.
+		final scope = indexedParams.copy();
+		final capturedBP = builderParams;
+		var current = built;
+		ctx.trackExpression(() -> {
+			final live = scope.copy();
+			for (k => v in indexedParams)
+				live.set(k, v);
+			final saved = indexedParams;
+			indexedParams = live;
+			try {
+				final reference = resolveRefName(progRefRV);
+				final fresh = importedBuilder(externalReference, node).buildWithParameters(reference, parameters, capturedBP, live)?.object;
+				if (fresh == null)
+					throw builderErrorAt(node, 'could not build staticRef ${reference}');
+				ctx.cleanupDestroyedSubtree(ir, current);
+				current.remove();
+				container.addChild(fresh);
+				current = fresh;
+			} catch (e:Dynamic) {
+				indexedParams = saved;
+				throw e;
+			}
+			indexedParams = saved;
+		}, refs, container);
+		return container;
+	}
+
 	/** Collect param refs from node types whose ReferenceableValues live in the enum payload
 	 *  rather than in children (DYNAMIC_REF, STATIC_REF, INTERACTIVE, STATEANIM,
 	 *  STATEANIM_CONSTRUCT). Used only by the @switch arm to feed `switchParamRefs` so
@@ -4870,6 +4930,15 @@ class MultiAnimBuilder {
 				for (arm in arms)
 					for (child in arm.children)
 						addRefs(collectNodeParamRefs(child));
+			case STATIC_REF(_, programmableRef, parameters):
+				// A deferred conditional materializes non-incrementally, so a staticRef in it is not
+				// tracked on its own: the wrapper's rebuild must follow its target and arguments.
+				// (DYNAMIC_REF stays out — see collectSwitchArmExtraParamRefs.)
+				final staticRefs:Array<String> = [];
+				collectParamRefs(programmableRef, staticRefs);
+				for (value in parameters)
+					collectParamRefs(value, staticRefs);
+				addRefs(staticRefs);
 			default:
 		}
 		// Position refs
@@ -5954,7 +6023,8 @@ class MultiAnimBuilder {
 					}
 				}
 
-				HeapsObject(object);
+				final rebuilt = trackStaticRefRebuild(node, externalReference, progRefRV, parameters, object, internalResults);
+				HeapsObject(rebuilt != null ? rebuilt : object);
 
 			case DYNAMIC_REF(externalReference, progRefRV, parameters):
 				final isDynamicName = progRefRV.match(RVReference(_)) && indexedParams.exists(switch progRefRV {
@@ -8761,6 +8831,17 @@ class MultiAnimBuilder {
 		buildingRefs.push(name);
 
 		pushBuilderState();
+		// A build that is not incremental must not inherit an enclosing incremental build's state: a
+		// staticRef built inside one would otherwise register its tracked expressions on the outer
+		// context, where they re-resolve against the outer programmable's parameters by name
+		// (`staticRef($sail, dir=>e)` inside a programmable with its own `dir` redrew the sail with the
+		// outer value). pushBuilderState saved both; popBuilderState restores them.
+		final savedForwardingCtx = deferredForwardingCtx;
+		if (!incremental) {
+			this.incrementalMode = false;
+			this.incrementalContext = null;
+			this.deferredForwardingCtx = null;
+		}
 		try {
 			if (builderParams == null)
 				builderParams = {callback: defaultCallback};
@@ -8820,6 +8901,7 @@ class MultiAnimBuilder {
 			#end
 
 			popBuilderState();
+			deferredForwardingCtx = savedForwardingCtx;
 			buildingRefs.pop();
 			return retVal;
 		} catch (e:Dynamic) {
@@ -8829,6 +8911,7 @@ class MultiAnimBuilder {
 			// builder; without this unwind, stateStack and the live indexedParams/currentNode
 			// would stay pinned to the failed call's transient state and corrupt every later build.
 			popBuilderState();
+			deferredForwardingCtx = savedForwardingCtx;
 			buildingRefs.pop();
 			throw e;
 		}

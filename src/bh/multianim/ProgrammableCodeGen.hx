@@ -96,6 +96,7 @@ class ProgrammableCodeGen {
 	// explicit name wins over the live template name and survives template swaps.
 	static var dynamicNameRefFields:Array<{fieldName:String, explicitName:Null<String>}> = [];
 	static var literalDynamicRefSiteFields:Array<String> = []; // fieldNames of literal-name dynamicRefs with forwarded $param values
+	static var staticRefRebuildFields:Array<String> = []; // fieldNames of staticRefs rebuilt when a $param they use changes
 	// Indexed #name[$i] dynamicRefs in a static-unrolled repeat. Map key "base idx" -> the per-site
 	// result field ("_dynref_lit_<fieldName>"), so each iteration is addressable as getDynamicRef("base idx"),
 	// matching the builder's resolveDynamicRefKey (MultiAnimBuilder.hx). The shared _comp_<prog> field is
@@ -197,6 +198,7 @@ class ProgrammableCodeGen {
 		dynamicRefFields = new Map();
 		dynamicNameRefFields = [];
 		literalDynamicRefSiteFields = [];
+		staticRefRebuildFields = [];
 		indexedDynamicRefFields = new Map();
 		hasBuilderParameterPlaceholders = false;
 		untrackedParamRefs = new Map();
@@ -1542,6 +1544,11 @@ class ProgrammableCodeGen {
 		for (fn in literalDynamicRefSiteFields) {
 			instanceFields.push(makeField("_dynref_lit_" + fn, FVar(macro :bh.multianim.MultiAnimBuilder.BuilderResult, null), [APrivate], pos));
 		}
+		// A rebuilt staticRef's target and arguments as last built: an update that changes none of
+		// them (the constructor's full pass, a batch naming two of its params) builds nothing.
+		for (fn in staticRefRebuildFields) {
+			instanceFields.push(makeField("_sref_vals_" + fn, FVar(macro :Array<Dynamic>, null), [APrivate], pos));
+		}
 		final hasDynamicRefs = Lambda.count(dynamicRefFields) > 0 || Lambda.count(indexedDynamicRefFields) > 0 || dynamicNameRefFields.length > 0;
 		// @switch arms and param-dependent repeat bodies both register dynamicRefs into a runtime
 		// sink rather than a static field, so generate the dispatcher (with a sink fallthrough) even
@@ -2081,7 +2088,8 @@ class ProgrammableCodeGen {
 		// Children
 		if (createResult.isContainer) {
 			if (node.children != null && node.children.length > 0)
-				processChildren(node.children, fieldName, fields, ctorExprs, [], pos);
+				processChildren(node.children, createResult.childrenParentField != null ? createResult.childrenParentField : fieldName, fields, ctorExprs,
+					[], pos);
 		}
 	}
 
@@ -4358,7 +4366,7 @@ class ProgrammableCodeGen {
 					case RVReference(s): macro $v{s}; // $progName backward compat: treat as literal
 					default: throw 'unexpected ReferenceableValue for staticRef reference';
 				};
-				generateStaticRefCreate(node, fieldName, externalReference, refNameExpr, parameters, pos);
+				generateStaticRefCreate(node, fieldName, externalReference, programmableRefRV, refNameExpr, parameters, pos);
 
 			case DYNAMIC_REF(externalReference, programmableRefRV, parameters):
 				switch programmableRefRV {
@@ -4413,12 +4421,13 @@ class ProgrammableCodeGen {
 	// ==================== StaticRef ====================
 
 	static function generateStaticRefCreate(node:Node, fieldName:String, externalReference:Null<String>,
-			refNameExpr:Expr, parameters:Map<String, ReferenceableValue>, pos:Position):CreateResult {
+			programmableRefRV:ReferenceableValue, refNameExpr:Expr, parameters:Map<String, ReferenceableValue>, pos:Position):CreateResult {
 		final fieldRef = macro $p{["this", fieldName]};
 		final createExprs:Array<Expr> = [];
 
 		// Build parameter map at runtime: new Map<String,Dynamic>()
 		final mapBuildExprs:Array<Expr> = [macro final _refParams = new Map<String, Dynamic>()];
+		final keys:Array<String> = [];
 		if (parameters != null) {
 			for (key => val in parameters) {
 				final keyExpr:Expr = macro $v{key};
@@ -4426,16 +4435,94 @@ class ProgrammableCodeGen {
 				// dynamicValueToIndex accepts them — same as the dynamicRef sites.
 				final valExpr = dynamicRefForwardValueExpr(val);
 				mapBuildExprs.push(macro _refParams.set($keyExpr, $valExpr));
+				keys.push(key);
 			}
 		}
 		final extRefExpr:Expr = externalReference != null ? macro $v{externalReference} : macro null;
-		mapBuildExprs.push(macro {
-			final _result = this._pb.buildStaticRef($refNameExpr, _refParams, $extRefExpr);
-			$fieldRef = _result != null ? _result.object : new h2d.Object();
+
+		// The params of this programmable its target and arguments use (loop variables of an
+		// unrolled repeat are constants here). Builder parity: MultiAnimBuilder.trackStaticRefRebuild.
+		final refs:Array<String> = [];
+		final candidates = collectParamRefs(programmableRefRV);
+		if (parameters != null)
+			for (val in parameters)
+				for (r in collectParamRefs(val))
+					candidates.push(r);
+		for (r in candidates)
+			if (paramNames.contains(r) && !loopVarSubstitutions.exists(r) && refs.indexOf(r) < 0)
+				refs.push(r);
+		if (refs.length > 0 && node.children != null && node.children.length > 0) {
+			// Its own children would be lost with the old build: changing such a param is refused.
+			recordUntrackedParams(refs, "staticRef with children: target or parameter");
+			refs.resize(0);
+		}
+
+		if (refs.length == 0) {
+			mapBuildExprs.push(macro {
+				final _result = this._pb.buildStaticRef($refNameExpr, _refParams, $extRefExpr);
+				$fieldRef = _result != null ? _result.object : new h2d.Object();
+			});
+			// Its own children go inside it. Builder parity (MultiAnimBuilder STATIC_REF): a target
+			// with a root pos is built as holder(0,0) -> root(pos), and the children go into that root
+			// so they move with it.
+			final hasChildren = node.children != null && node.children.length > 0;
+			final kidsField = "_sref_kids_" + fieldName;
+			if (hasChildren)
+				mapBuildExprs.push(macro {
+					final _o:h2d.Object = $fieldRef;
+					final _inner = _o.numChildren == 1 ? _o.getChildAt(0) : null;
+					$p{["this", kidsField]} = _inner != null && (_inner.x != 0 || _inner.y != 0) ? _inner : _o;
+				});
+			createExprs.push(macro $b{mapBuildExprs});
+			return {
+				fieldType: macro :h2d.Object,
+				createExprs: createExprs,
+				isContainer: hasChildren,
+				exprUpdates: [],
+				extraFields: hasChildren ? [makeField(kidsField, FVar(macro :h2d.Object, null), [APrivate], pos)] : null,
+				childrenParentField: hasChildren ? kidsField : null,
+			};
+		}
+
+		// A staticRef is built once, as a whole; one that uses this programmable's params is put in a
+		// container and built again into it when its target or an argument changes.
+		staticRefRebuildFields.push(fieldName);
+		final valsField = "_sref_vals_" + fieldName;
+		final valsExpr:Expr = macro $a{[macro _name].concat([for (k in keys) macro _refParams.get($v{k})])};
+		createExprs.push(macro $b{mapBuildExprs.concat([
+			macro {
+				final _name:String = $refNameExpr;
+				final _result = this._pb.buildStaticRef(_name, _refParams, $extRefExpr);
+				final _container = new h2d.Object();
+				_container.addChild(_result != null ? _result.object : new h2d.Object());
+				$fieldRef = _container;
+				$p{["this", valsField]} = $valsExpr;
+			}
+		])});
+		expressionUpdates.push({
+			fieldName: fieldName,
+			updateExpr: macro $b{mapBuildExprs.concat([
+				macro {
+					final _name:String = $refNameExpr;
+					final _vals:Array<Dynamic> = $valsExpr;
+					final _prev = $p{["this", valsField]};
+					var _same = _prev != null && _prev.length == _vals.length;
+					if (_same)
+						for (_i in 0..._vals.length)
+							if (_prev[_i] != _vals[_i]) {
+								_same = false;
+								break;
+							}
+					if (!_same) {
+						final _result = this._pb.buildStaticRef(_name, _refParams, $extRefExpr);
+						$fieldRef.removeChildren();
+						$fieldRef.addChild(_result != null ? _result.object : new h2d.Object());
+						$p{["this", valsField]} = _vals;
+					}
+				}
+			])},
+			paramRefs: refs,
 		});
-
-		createExprs.push(macro $b{mapBuildExprs});
-
 		return {
 			fieldType: macro :h2d.Object,
 			createExprs: createExprs,
@@ -10841,5 +10928,8 @@ private typedef CreateResult = {
 	isContainer:Bool,
 	exprUpdates:Array<{fieldName:String, updateExpr:Expr, paramRefs:Array<String>}>,
 	?extraFields:Array<Field>,
+	// The field the children are added to, when not the element itself (a staticRef's children
+	// go into its target's root).
+	?childrenParentField:String,
 };
 #end

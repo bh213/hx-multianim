@@ -62,7 +62,7 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | Element | Description |
 |---------|-------------|
 | `placeholder(type, source)` | Dynamic content slot resolved at build time |
-| `staticRef($ref, params)` | Static embed of another programmable. `$ref` may name the target literally or via a string/enum parameter (`staticRef($which)`) — the parameter value resolves the target programmable at build time in both builder and codegen |
+| `staticRef($ref, params)` | Static embed of another programmable. `$ref` may name the target literally or via a string/enum parameter (`staticRef($which)`) — the parameter value resolves the target programmable at build time in both builder and codegen. Built once, as a whole (no `setParameter()` of its own); inside an incremental build or a codegen instance, one whose target or arguments use the enclosing parameters is built again when one of them changes (codegen: only when the target or an argument's value changed); loop variables and `@final`s are fixed, so one using only those is never rebuilt. `staticRef(...) { children }` adds the children inside it (into the target's root when that has a root `pos:`); with children it is not rebuilt — changing such a parameter throws `untracked_param` |
 | `staticRef(external("importName"), $ref, params)` | Static embed from imported .manim file |
 | `dynamicRef($ref, params)` | Dynamic embed with runtime `setParameter()` support |
 | `#name dynamicRef($ref, params)` | Named dynamic embed — `BuilderResult.getDynamicRef("name")` returns this specific site |

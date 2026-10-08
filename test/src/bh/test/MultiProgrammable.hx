@@ -691,4 +691,37 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/151-codegenForwardConcat/forwardConcat.manim", "concatHost")
 	public var concatHost;
+
+	@:manim("test/examples/156-staticRefIncremental/staticRefIncremental.manim", "sriLiteral")
+	public var sriLiteral;
+
+	@:manim("test/examples/156-staticRefIncremental/staticRefIncremental.manim", "sriRenamed")
+	public var sriRenamed;
+
+	@:manim("test/examples/156-staticRefIncremental/staticRefIncremental.manim", "sriNested")
+	public var sriNested;
+
+	@:manim("test/examples/156-staticRefIncremental/staticRefIncremental.manim", "sriDefer")
+	public var sriDefer;
+
+	@:manim("test/examples/156-staticRefIncremental/staticRefIncremental.manim", "sriRepeat")
+	public var sriRepeat;
+
+	@:manim("test/examples/156-staticRefIncremental/staticRefIncremental.manim", "sriByName")
+	public var sriByName;
+
+	@:manim("test/examples/156-staticRefIncremental/staticRefIncremental.manim", "sriDemo")
+	public var sriDemo;
+
+	@:manim("test/examples/156-staticRefIncremental/staticRefIncremental.manim", "sriWithKids")
+	public var sriWithKids;
+
+	@:manim("test/examples/156-staticRefIncremental/staticRefIncremental.manim", "sriExternal")
+	public var sriExternal;
+
+	@:manim("test/examples/156-staticRefIncremental/staticRefIncremental.manim", "sriKidsAt")
+	public var sriKidsAt;
+
+	@:manim("test/examples/156-staticRefIncremental/staticRefIncremental.manim", "sriFixedOnly")
+	public var sriFixedOnly;
 }

@@ -628,12 +628,17 @@ placeholder(name, [onNoData], [source])
 * Sources: `callback("name")`, `callback("name", $i)`, `builderParameter("name")`
 
 ### staticRef
-Embeds another programmable with parameters. The result is built **once** and is static — parameters cannot be changed after building.
+Embeds another programmable with parameters. The result is built **once**, as a whole — it is not incremental itself, has no `setParameter()` of its own and is not stored in the `BuilderResult`.
+
+Inside a programmable built incrementally (or a codegen instance), a `staticRef` whose target or arguments use the enclosing programmable's parameters (`staticRef($ship, dir=>$dir)`, `staticRef($which)`) is built again when one of them changes, so it follows the enclosing `setParameter()`; one that uses none (only literals, loop variables and `@final`s, which are fixed at build time) is never touched. A rebuild throws the old build away (its animations start over). A `staticRef` with children of its own is not rebuilt: changing such a parameter throws `untracked_param`.
 
 ```
 staticRef($reference [, <params>])
 staticRef(external(externalName), $reference [, <params>])
+staticRef($reference [, <params>]) { <children> }
 ```
+
+Children are added inside the built reference — into its root when the referenced programmable has a root `pos:`, so they move with it.
 
 Use for reusable visual templates that don't need runtime updates.
 
@@ -683,7 +688,7 @@ When `template` is a parameter of the enclosing programmable (string or enum typ
 
 | | `staticRef` | `dynamicRef` |
 |---|---|---|
-| Mutable at runtime | No | Yes (`setParameter()`) |
+| Mutable at runtime | Built again when the enclosing parameters it uses change | Yes (`setParameter()`, changes in place) |
 | Stored in BuilderResult | No | Yes (`getDynamicRef()`) |
 | Overhead | Minimal | Higher (tracks changes) |
 
@@ -3625,7 +3630,7 @@ fx.setTintColor(0xFF0000);
 }
 ```
 
-Static refs are resolved at runtime — the macro generates a `buildStaticRef()` call that uses the runtime builder to construct the referenced programmable's tree dynamically.
+Static refs are resolved at runtime — the macro generates a `buildStaticRef()` call that uses the runtime builder to construct the referenced programmable's tree dynamically. One whose target or arguments use the instance's parameters is wrapped in a container and built again by the setters of those parameters, when its target or an argument's value changed.
 
 #### Range and flags parameters
 
