@@ -8,10 +8,12 @@ import bh.multianim.MultiAnimParser.InvalidSyntax;
 import bh.base.ParsePosition;
 import bh.multianim.CoordinateSystems;
 import bh.multianim.MacroCompatTypes.MacroBlendMode;
+import bh.multianim.MacroCompatTypes.MacroBlendModes;
 import bh.multianim.MacroCompatTypes.MacroFlowLayout;
 import bh.multianim.MacroCompatTypes.MacroFlowOverflow;
 import bh.multianim.MacroCompatTypes.MacroFlowAlign;
 import bh.multianim.layouts.LayoutTypes;
+import bh.multianim.data.DataSchema;
 import bh.base.Hex;
 
 using StringTools;
@@ -304,6 +306,9 @@ private class MacroLexer {
 								// Hit string terminator before closing } — interpolation is unclosed
 								throw '$sourceName:$interpLine:$interpCol: Unclosed string interpolation, expected }';
 							}
+							// Newlines inside ${...} must advance the line counter, or every
+							// token after this string reports a stale line number.
+							else if (bc == '\n'.code) { line++; lineStart = pos + 1; }
 							if (depth > 0) pos++;
 						}
 						if (depth > 0) {
@@ -346,10 +351,13 @@ private class MacroLexer {
 							codeTokens.push(st);
 						}
 						if (codeTokens.length == 0) continue; // skip empty code
-						// Adjust token positions to the interpolation start in the original source
+						// Adjust token positions to the interpolation start in the original
+						// source. codeCol is the 1-based column of the `$`; the code text
+						// starts two chars later (past `${`), and sub-lexer columns are
+						// 1-based — hence the +1.
 						for (ct in codeTokens) {
 							ct.line = part.codeLine;
-							ct.col = part.codeCol + ct.col;
+							ct.col = part.codeCol + 1 + ct.col;
 						}
 						// Inside ${...}, bare identifiers are parameter references
 						// (allow ${test} as shorthand for ${$test})
@@ -423,8 +431,15 @@ private class MacroLexer {
 				return new Token(TIdentifier(src.substring(idStart, pos)), startLine, startCol);
 			}
 
-			// Unknown character - skip
-			pos++;
+			// Byte-order mark: tolerated (editors prepend it), not a token.
+			if (c == 0xFEFF) {
+				pos++;
+				continue;
+			}
+
+			// Unknown character — error loudly; silently skipping made typos
+			// (stray backticks, smart quotes) vanish without a diagnostic.
+			throw '$sourceName:$startLine:$startCol: Unknown character "${String.fromCharCode(c)}" (code $c)';
 		}
 		return new Token(TEof, line, pos - lineStart + 1);
 	}
@@ -834,8 +849,11 @@ class MacroManimParser {
 						return value; // already degrees
 					case "rad":
 						advance();
-						// Convert radians to degrees: value * (180 / PI)
-						return EBinop(OpMul, value, RVFloat(180.0 / 3.14159265358979323));
+						// Convert radians to degrees: value * (180 / PI). Written as a literal, not
+						// `180.0 / PI`: the compiler prints a folded float differently on Windows and
+						// Linux, and the packaged LSP server (vscode/server/server.js) must build the
+						// same on both for the CI drift gate.
+						return EBinop(OpMul, value, RVFloat(57.29577951308232));
 					case "turn" | "turns":
 						advance();
 						// Convert turns to degrees: value * 360
@@ -1118,7 +1136,7 @@ class MacroManimParser {
 	function tryParseColor():Null<Int> {
 		switch (peek()) {
 			case THexInteger(n):
-				final c = tryStringToColor("0x" + n);
+				final c = tryStringToColor("0x" + n.split("_").join(""));
 				if (c != null) { advance(); return c; }
 				return null;
 			case TName(s):
@@ -1215,12 +1233,34 @@ class MacroManimParser {
 	function parseXY():Coordinates {
 		var coord:Coordinates = switch (peek()) {
 			case TReference(s):
-				// Check if this is $ref.method() (coordinate method chain) or just $ref as part of OFFSET
-				// We need to peek ahead: if the token after $ref is TDot, it's a coordinate method chain
+				// Check if this is $ref.method() (coordinate method chain), a scalar
+				// $ref.property used as the X value, or just $ref as part of OFFSET.
 				advance();
 				if (match(TDot)) {
 					validateRef(s);
-					parseCoordinateMethodChain(s);
+					// A full coordinate method chain has an argument list after the
+					// identifier ($grid.pos(1, 2)); extraPoint and $ctx.hex/$ctx.grid
+					// are chains too. A bare property ($grid.width, $ctx.height) is a
+					// scalar — parse it as the X value so the X position accepts the
+					// same expressions the Y position already does.
+					final isCoordChain = switch peek() {
+						case TIdentifier(m):
+							if (isKeyword(m, "extrapoint")) true;
+							else if (s == "ctx" && (m == "hex" || m == "grid")) true;
+							else if (tpos + 1 < tokens.length) switch tokens[tpos + 1].type {
+								case TOpen: true;
+								default: false;
+							} else false;
+						default: false;
+					};
+					if (isCoordChain) {
+						parseCoordinateMethodChain(s);
+					} else {
+						final x = parseExpressionFromAtom(parsePropertyOrMethodChain(s), 0, EInt);
+						expect(TComma);
+						final y = parseIntegerOrReference();
+						OFFSET(x, y);
+					}
 				} else {
 					validateRef(s);
 					// Not a dot — this is a plain reference used in OFFSET(x, y) position
@@ -1685,9 +1725,9 @@ class MacroManimParser {
 				expect(TOpen);
 				final name = parseStringOrReference();
 				expect(TComma);
-				final selector = parseAutotileTileSelector();
+				final index = parseIntegerOrReference();
 				expect(TClosed);
-				return AutotileRef(name, selector);
+				return AutotileRef(name, index);
 			case TIdentifier(s) if (isKeyword(s, "autotileregionsheet")):
 				advance();
 				expect(TOpen);
@@ -1703,10 +1743,6 @@ class MacroManimParser {
 			default:
 				return error("unknown generated tile type");
 		}
-	}
-
-	function parseAutotileTileSelector():AutotileTileSelector {
-		return ByIndex(parseIntegerOrReference());
 	}
 
 	// ===================== Parameter Definitions =====================
@@ -1848,20 +1884,21 @@ class MacroManimParser {
 					case TQuotedString(str):
 						advance();
 						s = str;
+					// Number tokens keep their `_` digit separators; strip them as stringToInt/stringToFloat do.
 					case THexInteger(str):
 						advance();
-						s = '0x' + str;
+						s = '0x' + str.split("_").join("");
 					case TMinus:
 						advance();
 						switch (peek()) {
 							case TInteger(n) | TFloat(n):
 								advance();
-								s = '-' + n;
+								s = '-' + n.split("_").join("");
 							default: error("expected number after minus");
 						}
 					case TInteger(n) | TFloat(n):
 						advance();
-						s = n;
+						s = n.split("_").join("");
 					default:
 						error('unexpected default value: ${peek()}');
 				}
@@ -1923,10 +1960,30 @@ class MacroManimParser {
 
 	// ===================== Conditional Parsing =====================
 
+	// Reject enum members that don't exist in the parameter's declared enum (typos).
+	// Multi-value [a,b] and pipe @switch arms build CoEnums from raw lexemes; without this
+	// an unknown name silently diverges — codegen matches enum index 0, builder never matches.
+	// String params accept any value; loop vars (no def) have no type to validate against.
+	function validateConditionalEnumValues(paramName:String, defs:ParametersDefinitions, values:Array<String>):Void {
+		final def = defs.get(paramName);
+		if (def == null) return;
+		switch (def.type) {
+			case PPTEnum(members):
+				for (v in values)
+					if (!members.contains(v))
+						error('conditional value "$v" is not a valid value for enum parameter "$paramName", expected one of: ${members.join(", ")}');
+			default:
+		}
+	}
+
 	function parseConditionalParameters(defs:ParametersDefinitions):Map<String, ConditionalValues> {
 		var result:Map<String, ConditionalValues> = new Map();
 		while (true) {
-			if (match(TClosed)) return result;
+			if (match(TClosed)) {
+				// Empty would be always true for @()/@all(), never true for @any().
+				if (!result.keys().hasNext()) error("empty conditional — list at least one condition, e.g. @(param=>value)");
+				return result;
+			}
 			if (result.keys().hasNext()) expect(TComma);
 
 			final paramName = switch (peek()) {
@@ -1974,11 +2031,12 @@ class MacroManimParser {
 							var enums:Array<String> = [];
 							while (!match(TBracketClosed)) {
 								if (enums.length > 0) eatComma();
-								enums.push(expectIdentifierOrString());
+								enums.push(parseConditionalValue());
 							}
-							result.set(paramName, CoNot(CoEnums(enums)));
+							result.set(paramName, CoNot(makeBracketMultiValue(paramName, defs, enums)));
 						default:
 							final val = parseConditionalValue();
+							validateConditionalEnumValues(paramName, defs, [val]);
 							final paramDef = defs.get(paramName);
 							final cv = paramDef != null ? stringToConditional(val, paramDef.type) : stringToConditionalGeneric(val);
 							result.set(paramName, CoNot(cv));
@@ -1995,13 +2053,14 @@ class MacroManimParser {
 							var enums:Array<String> = [];
 							while (!match(TBracketClosed)) {
 								if (enums.length > 0) eatComma();
-								enums.push(expectIdentifierOrString());
+								enums.push(parseConditionalValue());
 							}
-							result.set(paramName, CoEnums(enums));
+							result.set(paramName, makeBracketMultiValue(paramName, defs, enums));
 						case TExclamation:
 							// Backward compat: @(param => !value) negate syntax
 							advance();
 							final val = parseConditionalValue();
+							validateConditionalEnumValues(paramName, defs, [val]);
 							final paramDef = defs.get(paramName);
 							final cv = paramDef != null ? stringToConditional(val, paramDef.type) : stringToConditionalGeneric(val);
 							result.set(paramName, CoNot(cv));
@@ -2037,6 +2096,7 @@ class MacroManimParser {
 										result.set(paramName, CoRange(val, to, false, false));
 									} else {
 										final valStr = rvToCondString(val);
+										validateConditionalEnumValues(paramName, defs, [valStr]);
 										final paramDef = defs.get(paramName);
 										if (paramDef != null) {
 											final cv = stringToConditional(valStr, paramDef.type);
@@ -2096,14 +2156,47 @@ class MacroManimParser {
 				switch (val.toLowerCase()) {
 					case "true" | "yes" | "1": CoValue(1);
 					case "false" | "no" | "0": CoValue(0);
-					default: CoStringValue(val);
+					// A non-boolean string previously fell to CoStringValue: the builder
+					// silently never matched (Std.string(0/1) != "maybe") and codegen emitted
+					// `_field == "maybe"` over an Int field (Int == String compile error that
+					// broke the whole @:manim build). Reject at parse time, parallel to the
+					// PPTFloat guard.
+					default: error('non-boolean conditional value "$val" for a bool parameter — use true/false (or yes/no, 1/0)');
 				}
-			case PPTFlags(bits):
+			case PPTInt | PPTUnsignedInt | PPTRange(_, _) | PPTHexDirection | PPTGridDirection:
+				// Numeric param types only match numeric conditional values. A non-numeric
+				// string previously fell to CoStringValue: the builder silently never matched
+				// and codegen emitted `_field == "foo"` over an Int field (Int == String
+				// compile error). Reject at parse time, parallel to the PPTFloat/PPTBool guards.
 				final n = Std.parseInt(val);
-				if (n != null) CoFlag(n) else CoStringValue(val);
+				if (n != null) CoValue(n) else
+					error('non-numeric conditional value "$val" for a numeric parameter — int/uint/range/direction parameters only match numeric values, not strings');
+			case PPTFlags(bits):
+				// Flags only match numeric values or bit[N] tests. A non-numeric
+				// string previously fell to CoStringValue: the builder silently
+				// never matched and codegen emitted `_field == "foo"` over an Int
+				// field (compile error). Reject at parse time, parallel to the
+				// PPTFloat/PPTBool/PPTInt guards.
+				final n = Std.parseInt(val);
+				if (n != null) CoFlag(n) else
+					error('non-numeric conditional value "$val" for a flags parameter — flags parameters only match numeric values or bit[N] tests');
 			case PPTColor:
 				final c = tryStringToColor(val);
 				if (c != null) CoValue(c) else CoValue(val.toInt());
+			case PPTString:
+				// String params always compare as strings. Without this, an
+				// integer-parseable value (e.g. `@(version => 2)`) fell into the
+				// `default` Std.parseInt branch and produced CoValue(int): the
+				// builder then threw 'invalid param types' against a StringValue and
+				// codegen emitted `String == Int` (compile error).
+				CoStringValue(val);
+			case PPTFloat:
+				// Equality conditionals (=> / !=) are unsupported for float params —
+				// float equality is unreliable and the builder/codegen backends
+				// diverge (builder throws, codegen silently matches). Comparisons
+				// (>=, <=, >, <) and ranges (a..b) do not route through here and
+				// remain supported. Consistent with @switch rejecting float params.
+				error('float parameters do not support equality conditionals (=> / !=) — float equality is unreliable; use a comparison (>=, <=, >, <) or a range (a..b) instead');
 			default:
 				final n = Std.parseInt(val);
 				if (n != null) CoValue(n) else CoStringValue(val);
@@ -2114,6 +2207,27 @@ class MacroManimParser {
 	function stringToConditionalGeneric(val:String):ConditionalValues {
 		final n = Std.parseInt(val);
 		return if (n != null) CoValue(n) else CoStringValue(val);
+	}
+
+	/**
+	 * Builds a type-aware multi-value conditional from a parsed bracket list `[a, b, ...]`,
+	 * mirroring the single-value routing: enum params keep raw-string CoEnums (codegen's
+	 * enumValueToIndex maps each name to its index, builder matches Index/StringValue as-is),
+	 * while every other discrete type — string, int/uint, color, bool, flags, and loop vars
+	 * with no definition — routes each value through stringToConditional and ORs them via
+	 * CoAnyOf. Without this, bracket conditionals diverge between builder and codegen: bool
+	 * never matches at runtime, int collapses to `== 0` in codegen, and string CoEnums fails
+	 * to compile in codegen (`String == 0`).
+	 */
+	function makeBracketMultiValue(paramName:String, defs:ParametersDefinitions, values:Array<String>):ConditionalValues {
+		validateConditionalEnumValues(paramName, defs, values);
+		final paramDef = defs.get(paramName);
+		if (paramDef == null)
+			return CoAnyOf([for (v in values) stringToConditionalGeneric(v)]);
+		return switch (paramDef.type) {
+			case PPTEnum(_): CoEnums(values);
+			default: CoAnyOf([for (v in values) stringToConditional(v, paramDef.type)]);
+		}
 	}
 
 	/** Converts a simple ReferenceableValue back to a string for stringToConditional fallback. */
@@ -2131,21 +2245,7 @@ class MacroManimParser {
 	function tryParseBlendMode():Null<MacroBlendMode> {
 		switch (peek()) {
 			case TIdentifier(s):
-				final bm = switch (s.toLowerCase()) {
-					case "none": MBNone;
-					case "alpha": MBAlpha;
-					case "add": MBAdd;
-					case "alphaadd": MBAlphaAdd;
-					case "softadd": MBSoftAdd;
-					case "multiply": MBMultiply;
-					case "alphamultiply": MBAlphaMultiply;
-					case "erase": MBErase;
-					case "screen": MBScreen;
-					case "sub": MBSub;
-					case "max": MBMax;
-					case "min": MBMin;
-					default: null;
-				}
+				final bm = MacroBlendModes.fromName(s);
 				if (bm != null) { advance(); return bm; }
 				return null;
 			default: return null;
@@ -2689,6 +2789,8 @@ class MacroManimParser {
 				if (layoutType == null) { error('expected layout content for $name'); return; }
 				final align = parseLayoutAlign();
 				eatSemicolon();
+				if (layouts.exists(name))
+					error('layout "$name" already defined — duplicate names silently shadow each other');
 				layouts.set(name, {name: name, type: cast layoutType, grid: grid, hex: hex, offset: foldOffsets(offsets),
 					alignX: align.alignX, alignY: align.alignY});
 			default:
@@ -2795,7 +2897,7 @@ class MacroManimParser {
 			// consumers that rely on the detailed name (ProgrammableBuilder.buildNodeByUniqueName,
 			// findNodeByUniqueName for REPEAT-child runtime forwarding).
 			uniqueNodeName: generateUniqueName(uniqueCounter, nameStr,
-				switch type { case SWITCH(_, _): Type.enumConstructor(type); default: Std.string(type); }),
+				switch type { case SWITCH(_, _) | TILESET(_) | TILEMAP(_): Type.enumConstructor(type); default: Std.string(type); }),
 			settings: null,
 			transitions: null,
 			flowProperties: null,
@@ -2886,6 +2988,7 @@ class MacroManimParser {
 						expect(TClosed);
 						atCount++;
 					case TIdentifier(s) if (isKeyword(s, "else")):
+						if (!conditional.match(NoConditional)) error("stacked conditionals are not allowed — use @all() or @any() with comma-separated parameters");
 						advance();
 						if (match(TOpen)) {
 							conditional = ConditionalElse(parseConditionalParameters(currentDefs));
@@ -2894,12 +2997,17 @@ class MacroManimParser {
 						}
 						atCount++;
 					case TIdentifier(s) if (isKeyword(s, "default")):
+						if (!conditional.match(NoConditional)) error("stacked conditionals are not allowed — use @all() or @any() with comma-separated parameters");
 						advance();
 						conditional = ConditionalDefault;
 						atCount++;
 					case TIdentifier(s) if (isKeyword(s, "switch")):
 						if (atCount > 0) error("@switch cannot be combined with other @ modifiers");
 						if (parent == null) error("@switch cannot be used at root level");
+						// A #name in front of @switch was previously parsed and silently
+						// discarded — the block registers nothing under that name.
+						if (!updatableName.match(UNTObject(null)))
+							error("#name cannot be applied to @switch — name the elements inside the arms instead");
 						advance();
 						expect(TOpen);
 						final switchParam = expectIdentifierOrString();
@@ -2954,6 +3062,10 @@ class MacroManimParser {
 						hasFlowProps = true;
 						atCount++;
 					case TIdentifier(s) if (isKeyword(s, "final")):
+						// A @final is always unconditional — a preceding conditional or
+						// inline property was previously parsed and silently discarded.
+						if (atCount > 0)
+							error("@final cannot be combined with other @ modifiers or conditionals — a @final is always unconditional");
 						advance();
 						final name = expectIdentifierOrString();
 						expect(TEquals);
@@ -3096,15 +3208,42 @@ class MacroManimParser {
 			case TIdentifier(s) if (isKeyword(s, "ninepatch")):
 				advance();
 				expect(TOpen);
-				final sheet = expectIdentifierOrString();
+				// The sheet and the cell are string expressions, as bitmap(sheet(…)) takes them:
+				// a literal, a $param, or `"button_" + $style + "_hover"`.
+				final sheet = parseStringOrReference();
 				expect(TComma);
-				final tilename = expectIdentifierOrString();
+				final tilename = parseStringOrReference();
 				expect(TComma);
 				final width = parseIntegerOrReference();
 				expect(TComma);
 				final height = parseIntegerOrReference();
+				// After the size, in any order, each once: `stretch` | `tile` (how the middle and
+				// edges fill), `index: n` (a frame of an indexed name), `fps: n` (play the frames).
+				var mode:Null<NinePatchMode> = null;
+				var npIndex:Null<ReferenceableValue> = null;
+				var npFps:Null<ReferenceableValue> = null;
+				while (match(TComma)) {
+					switch (peek()) {
+						case TIdentifier(w) if (isKeyword(w, "stretch") || isKeyword(w, "tile")):
+							if (mode != null) error('ninepatch: stretch or tile given twice');
+							advance();
+							mode = isKeyword(w, "stretch") ? NPStretch : NPTile;
+						case TIdentifier(w) if (isKeyword(w, "index")):
+							if (npIndex != null) error('ninepatch: index given twice');
+							advance();
+							expect(TColon);
+							npIndex = parseIntegerOrReference();
+						case TIdentifier(w) if (isKeyword(w, "fps")):
+							if (npFps != null) error('ninepatch: fps given twice');
+							advance();
+							expect(TColon);
+							npFps = parseFloatOrReference();
+						default:
+							error('ninepatch: expected stretch, tile, index: or fps: after the size, got ${peek()}');
+					}
+				}
 				expect(TClosed);
-				createNode(NINEPATCH(sheet, tilename, width, height), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
+				createNode(NINEPATCH(sheet, tilename, width, height, mode, npIndex, npFps), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "text")):
 				advance();
@@ -3352,9 +3491,17 @@ class MacroManimParser {
 					slotScopeSaved = true;
 					currentDefs = parsed.defs;
 					activeDefs = parsed.defs;
-					scopeVars = [];
+					// Enclosing @final constants stay visible inside the slot body —
+					// the builder merges them into the slot's param map, and
+					// buildSlotContent replays them for setParameter rebuilds.
+					// Enclosing params and loop vars stay hidden: a slot rebuild
+					// only receives the slot's own parameters.
+					scopeVars = slotSavedActiveFinalNames != null ? slotSavedActiveFinalNames.copy() : [];
 					activeFinals = new Map();
-					activeFinalNames = [];
+					if (slotSavedActiveFinals != null)
+						for (k => v in slotSavedActiveFinals)
+							activeFinals.set(k, v);
+					activeFinalNames = slotSavedActiveFinalNames != null ? slotSavedActiveFinalNames.copy() : [];
 					namedElements = [];
 					createNode(SLOT(parsed.defs, parsed.order), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 				} else {
@@ -3425,6 +3572,7 @@ class MacroManimParser {
 				var multiline = false;
 				var bgSheet:Null<ReferenceableValue> = null;
 				var bgTile:Null<ReferenceableValue> = null;
+				var bgMode:Null<NinePatchMode> = null;
 				var overflow:Null<MacroFlowOverflow> = null;
 				var fillWidth = false;
 				var fillHeight = false;
@@ -3467,6 +3615,14 @@ class MacroManimParser {
 							bgSheet = parseStringOrReference();
 							expect(TComma);
 							bgTile = parseStringOrReference();
+							// A flow's background stretches unless told `tile` (Heaps' Flow default).
+							if (match(TComma)) {
+								switch (peek()) {
+									case TIdentifier(w) if (isKeyword(w, "stretch")): advance(); bgMode = NPStretch;
+									case TIdentifier(w) if (isKeyword(w, "tile")): advance(); bgMode = NPTile;
+									default: error('flow background: expected stretch or tile, got ${peek()}');
+								}
+							}
 							expect(TClosed);
 						case "overflow": overflow = parseFlowOverflow();
 						case "fillwidth": fillWidth = parseBool();
@@ -3477,10 +3633,15 @@ class MacroManimParser {
 						default: error('unknown flow param: $pname');
 					}
 				}
-				createNode(FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, hSpacing, vSpacing, debug, multiline, bgSheet, bgTile, overflow, fillWidth, fillHeight, reverse, hAlign, vAlign), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
+				createNode(FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, hSpacing, vSpacing, debug, multiline, bgSheet, bgTile, overflow, fillWidth, fillHeight, reverse, hAlign, vAlign, bgMode), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "programmable")):
 				advance();
+				// Root-only guard (matches palette/paths/curves/animatedPath): a nested
+				// programmable would silently clobber the outer programmable's scope
+				// (activeDefs/scopeVars/@finals/named elements) with no restore.
+				if (parent != null)
+					error("programmable must be a root node — programmables cannot be nested; embed one via staticRef/dynamicRef instead");
 				// Check for tilegroup
 				var isTileGroup = false;
 				switch (peek()) {
@@ -3696,6 +3857,38 @@ class MacroManimParser {
 				final elements = parseGraphicsElements();
 				createNode(GRAPHICS(elements), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
+			case TIdentifier(s) if (isKeyword(s, "cursor")):
+				// #name cursor { pointer: sheet("ui", "hand"), hot: 3, 1  sword: file("sword.png") }
+				// Bitmap cursors from the file's art; the screen manager registers them by name
+				// when the file loads, so `cursor => "sword"` on an interactive finds them.
+				advance();
+				if (currentName == null) error("cursor requires a #name");
+				if (parent != null) error("cursor must be a root node");
+				expect(TCurlyOpen);
+				final cursors:Array<CursorDef> = [];
+				while (!match(TCurlyClosed)) {
+					final entryLine = peekToken().line;
+					final cursorName = expectIdentifierOrString();
+					expect(TColon);
+					final cursorTile = parseTileSource();
+					var hotX = 0, hotY = 0;
+					if (match(TComma)) {
+						expectKeyword("hot");
+						expect(TColon);
+						hotX = parseInteger();
+						expect(TComma);
+						hotY = parseInteger();
+					}
+					if (hotX < 0 || hotY < 0) error('cursor "$cursorName": hot: x, y must not be negative');
+					for (c in cursors)
+						if (c.name.toLowerCase() == cursorName.toLowerCase()) error('cursor "$cursorName" is defined twice');
+					cursors.push({name: cursorName, tile: cursorTile, hotX: hotX, hotY: hotY, line: entryLine});
+					match(TSemiColon);
+				}
+				if (cursors.length == 0) error("cursor block has no cursors (name: tileSource[, hot: x, y])");
+				final cursorNode = createNode(CURSORS(cursors), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
+				return cursorNode;
+
 			case TIdentifier(s) if (isKeyword(s, "palette")):
 				advance();
 				if (currentName == null) error("palette requires a #name");
@@ -3705,8 +3898,16 @@ class MacroManimParser {
 					case TOpen:
 						advance();
 						switch (peek()) {
-							case TIdentifier(s2) if (isKeyword(s2, "2d")):
+							case TInteger("2"):
+								// `2d` lexes as TInteger("2") + TIdentifier("d") — identifiers
+								// cannot start with a digit — so match the token pair.
 								advance();
+								switch (peek()) {
+									case TIdentifier(d) if (d.toLowerCase() == "d"):
+										advance();
+									default:
+										error("expected 2d or file in palette()");
+								}
 								expect(TColon);
 								final width = parseInteger();
 								expect(TClosed);
@@ -3774,6 +3975,55 @@ class MacroManimParser {
 				});
 				return n;
 
+			case TIdentifier(s) if (isKeyword(s, "tileset")):
+				advance();
+				if (currentName == null) error("tileset requires a #name");
+				if (parent != null) error("tileset must be a root node");
+				expect(TCurlyOpen);
+				final n = createNode(TILESET(parseTileset()), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
+				return n;
+
+			case TIdentifier(s) if (isKeyword(s, "tilemap")):
+				advance();
+				switch (peek()) {
+					case TCurlyOpen: // #name tilemap { … }: a map
+						if (currentName == null) error("tilemap requires a #name");
+						if (parent != null) error("a tilemap { } definition must be a root node; place it with tilemap(name)");
+						final tilemapLine = peekToken().line;
+						advance();
+						final tmDef:TilemapDef = {
+							tileset: "",
+							width: 0,
+							height: 0,
+							legend: new Map(),
+							terrain: [],
+							levels: [],
+							levelLegend: new Map(),
+							levelPlatforms: new Map(),
+							layers: [],
+							marks: [],
+							line: tilemapLine,
+						};
+						final n = createNode(TILEMAP(tmDef), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
+						parseTilemap(tmDef, n, currentDefs);
+						return n;
+					default: // tilemap(name) or tilemap(external(file), name): places a map
+						expect(TOpen);
+						var extRef:Null<String> = null;
+						switch (peek()) {
+							case TIdentifier(s2) if (isKeyword(s2, "external")):
+								advance();
+								expect(TOpen);
+								extRef = expectIdentifierOrString();
+								expect(TClosed);
+								expect(TComma);
+							default:
+						}
+						final mapName = expectIdentifierOrString();
+						expect(TClosed);
+						createNode(TILEMAP_REF(extRef, mapName), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
+				}
+
 			case TIdentifier(s) if (isKeyword(s, "autotile")):
 				advance();
 				if (currentName == null) error("autotile requires a #name");
@@ -3827,6 +4077,10 @@ class MacroManimParser {
 
 			case TIdentifier(s) if (isKeyword(s, "transition")):
 				advance();
+				// Modifiers were previously parsed and silently discarded — the block
+				// is declarative and unconditional.
+				if (!conditional.match(NoConditional) || alpha != null || scale != null || rotation != null || tint != null || layerIndex != -1 || hasFlowProps)
+					error("@ modifiers are not supported on transition {} — transition declarations are unconditional");
 				expect(TCurlyOpen);
 				if (parent == null) error("transition must be inside a programmable");
 				final transParamDefs = switch (parent.type) {
@@ -3866,6 +4120,10 @@ class MacroManimParser {
 
 			case TIdentifier(s) if (isKeyword(s, "settings")):
 				advance();
+				// Modifiers were previously parsed and silently discarded — the block
+				// is declarative and unconditional.
+				if (!conditional.match(NoConditional) || alpha != null || scale != null || rotation != null || tint != null || layerIndex != -1 || hasFlowProps)
+					error("@ modifiers are not supported on settings {} — settings are static and unconditional");
 				expect(TCurlyOpen);
 				if (parent == null) error("settings must have a parent");
 				if (parent.settings == null) parent.settings = new Map();
@@ -3949,25 +4207,50 @@ class MacroManimParser {
 				}
 				parseNodes(node, currentDefs);
 				for (_ in 0...loopVarsToPop) scopeVars.pop();
-				if (slotScopeSaved) {
-					currentDefs = slotSavedCurrentDefs;
-					activeDefs = slotSavedActiveDefs;
-					scopeVars = slotSavedScopeVars;
-					activeFinals = slotSavedActiveFinals;
-					activeFinalNames = slotSavedActiveFinalNames;
-					namedElements = slotSavedNamedElements;
-					slotScopeSaved = false;
-				}
 			case TEof:
 				error("unexpected end of file");
 			default:
 				error('expected : or { or ;, got ${peek()}');
 		}
 
+		// Restore the outer scope saved by a parameterized slot — must run for ALL
+		// terminators. A bodyless slot (`: x,y` / `;`) has no `{` branch, and leaving
+		// the slot's param scope installed makes every following sibling lose the
+		// enclosing programmable's params, loop vars, and @finals.
+		if (slotScopeSaved) {
+			currentDefs = slotSavedCurrentDefs;
+			activeDefs = slotSavedActiveDefs;
+			scopeVars = slotSavedScopeVars;
+			activeFinals = slotSavedActiveFinals;
+			activeFinalNames = slotSavedActiveFinalNames;
+			namedElements = slotSavedNamedElements;
+			slotScopeSaved = false;
+		}
+
 		return node;
 	}
 
 	// ===================== Repeat Iterator =====================
+
+	/** A `range` step. A literal 0 never advances (the builder's iteration count divides by
+	 *  it), so it is rejected here; a `$param` step of 0 is caught when the range is built. */
+	function parseRangeStep():ReferenceableValue {
+		final step = parseIntegerOrReference();
+		switch (step) {
+			case RVInteger(0): error("range step must not be 0");
+			default:
+		}
+		return step;
+	}
+
+	/** +1 or -1: the direction a `range` step counts in. Folded for a literal step, otherwise
+	 *  an expression resolved with the step (`$step < 0 ? -1 : 1`). */
+	static function rangeStepDirection(step:ReferenceableValue):ReferenceableValue {
+		return switch (step) {
+			case RVInteger(s): RVInteger(s < 0 ? -1 : 1);
+			default: RVTernary(EBinop(OpLess, step, RVInteger(0)), RVInteger(-1), RVInteger(1));
+		};
+	}
 
 	function parseRepeatIterator(defs:ParametersDefinitions):RepeatType {
 		switch (peek()) {
@@ -4020,28 +4303,30 @@ class MacroManimParser {
 						final endKeyword = expectIdentifierOrString();
 						expect(TColon);
 						final endVal = parseIntegerOrReference();
-						final adjustedEnd = switch (endKeyword.toLowerCase()) {
-							case "to": EBinop(OpAdd, endVal, RVInteger(1));
-							case "until": endVal;
-							default: error('expected "to" or "until", got "$endKeyword"'); endVal;
+						final inclusive = switch (endKeyword.toLowerCase()) {
+							case "to": true;
+							case "until": false;
+							default: error('expected "to" or "until", got "$endKeyword"'); false;
 						};
+						var step:ReferenceableValue = RVInteger(1);
 						if (match(TComma)) {
 							final stepKeyword = expectIdentifierOrString();
 							if (!isKeyword(stepKeyword, "step")) error('expected "step", got "$stepKeyword"');
 							expect(TColon);
-							final step = parseIntegerOrReference();
-							expect(TClosed);
-							return RangeIterator(start, adjustedEnd, step);
+							step = parseRangeStep();
 						}
 						expect(TClosed);
-						return RangeIterator(start, adjustedEnd, RVInteger(1));
+						// `to:` is inclusive in either direction: the exclusive end is one past it
+						// in the step's direction (+1 counting up, -1 counting down)
+						final end = inclusive ? EBinop(OpAdd, endVal, rangeStepDirection(step)) : endVal;
+						return RangeIterator(start, end, step);
 					default:
 						// Positional syntax: range(start, end [, step])
 						final start = parseIntegerOrReference();
 						expect(TComma);
 						final end = parseIntegerOrReference();
 						if (match(TComma)) {
-							final step = parseIntegerOrReference();
+							final step = parseRangeStep();
 							expect(TClosed);
 							return RangeIterator(start, end, step);
 						}
@@ -4752,7 +5037,8 @@ class MacroManimParser {
 					case "burstcount": burstCount = parseFloatOrReference();
 					default: parseStringOrReference(); // skip unknown
 				}
-				eatSemicolon();
+				// Fields are separated by `,` (documented form) or `;`.
+				if (!match(TComma)) eatSemicolon();
 			}
 			if (groupId == null) { error('subEmitter requires groupId'); continue; }
 			if (trigger == null) { error('subEmitter requires trigger'); continue; }
@@ -4831,7 +5117,10 @@ class MacroManimParser {
 	}
 
 	function parseTypedSettingValue():{type:SettingValueType, value:ReferenceableValue} {
-		final typeName = expectIdentifierOrString();
+		final typeName = switch (peek()) {
+			case TIdentifier(_) | TQuotedString(_): expectIdentifierOrString();
+			default: error('expected a type after ":" (int, float, string, color or bool), as in key:int => 1; or no type: key => 1');
+		};
 		expect(TArrow);
 		return switch (typeName.toLowerCase()) {
 			case "int": {type: SVTInt, value: parseIntegerOrReference()};
@@ -5337,13 +5626,18 @@ class MacroManimParser {
 						while (match(TPipe)) {
 							values.push(parseSwitchArmValue());
 						}
-						// PPTEnum / PPTString match correctly via raw-string CoEnums (Index/StringValue
-						// runtime parameters compare to the lexeme as-is). For other discrete types
-						// (color, int, uint, bool), the raw lexeme never matches Std.string(int), so we
-						// route each value through stringToConditional to get a typed inner conditional
-						// and OR them at match/codegen time via CoAnyOf.
+						// PPTEnum matches correctly via raw-string CoEnums (Index runtime parameter
+						// compares to the lexeme as-is, codegen maps each value to its enum index).
+						// Every other discrete type routes each value through stringToConditional to
+						// get a typed inner conditional, OR'd via CoAnyOf. String params in particular
+						// must NOT use CoEnums: codegen's all-enum switch resolves arm values with
+						// findEnumIndex (Std.parseInt), which drops non-numeric string arms and emits
+						// `case <int>:` over a String subject for numeric ones — so a string pipe arm
+						// silently never matched. CoAnyOf(CoStringValue) compiles to plain string
+						// equality on both backends.
 						switch (paramType) {
-							case PPTEnum(_) | PPTString:
+							case PPTEnum(_):
+								validateConditionalEnumValues(paramName, defs, values);
 								pattern = CoEnums(values);
 							default:
 								final inner:Array<ConditionalValues> = [];
@@ -5355,6 +5649,7 @@ class MacroManimParser {
 						// This makes @switch on PPTColor/PPTBool/PPTEnum produce the same conditional
 						// as @(p => value), instead of a string-only CoEnums that fails to match
 						// integer-backed values (color, bool).
+						validateConditionalEnumValues(paramName, defs, [values[0]]);
 						pattern = stringToConditional(values[0], paramType);
 					}
 			}
@@ -5739,6 +6034,8 @@ class MacroManimParser {
 						break;
 				}
 			}
+			if (constructs.exists(stateName))
+				error('stateanim construct "$stateName" already defined — duplicate names silently shadow each other');
 			constructs.set(stateName, IndexedSheet(sheet, name, fps, loop, center));
 		}
 		return constructs;
@@ -5848,7 +6145,8 @@ class MacroManimParser {
 						final control1 = parseXY();
 						if (match(TClosed)) {
 							pathElements.push(Bezier2To(end, control1, PCMAbsolute, null));
-						} else if (match(TComma)) {
+						} else {
+							expect(TComma);
 							switch (peek()) {
 								case TIdentifier(s2) if (isKeyword(s2, "smoothing")):
 									final smoothing = parsePathSmoothing();
@@ -5875,7 +6173,8 @@ class MacroManimParser {
 						final control1 = parseXY();
 						if (match(TClosed)) {
 							pathElements.push(Bezier2To(end, control1, bezierMode, null));
-						} else if (match(TComma)) {
+						} else {
+							expect(TComma);
 							// Check for smoothing or second control point
 							switch (peek()) {
 								case TIdentifier(s2) if (isKeyword(s2, "smoothing")):
@@ -5898,6 +6197,8 @@ class MacroManimParser {
 						error('unexpected path element: ${peek()}');
 				}
 			}
+			if (paths.exists(pathName))
+				error('path "$pathName" already defined — duplicate names silently shadow each other');
 			paths.set(pathName, pathElements);
 		}
 		return paths;
@@ -6308,6 +6609,7 @@ class MacroManimParser {
 						var explicit = [false];
 						segments.push(parseCurveSegment(explicit));
 						segExplicit.push(explicit[0]);
+						eatComma(); // segments may be comma-separated (documented form)
 					default:
 						error('expected easing, points, multiply, apply, invert, scale, or segment [start..end] in curve definition, got ${peek()}');
 				}
@@ -6328,6 +6630,8 @@ class MacroManimParser {
 					}
 				}
 			}
+			if (curves.exists(curveName))
+				error('curve "$curveName" already defined — duplicate names silently shadow each other');
 			curves.set(curveName, {easing: easing, points: points, segments: segments, operation: operation});
 		}
 		return curves;
@@ -6364,10 +6668,19 @@ class MacroManimParser {
 		var format:Null<AutotileFormat> = null;
 		var source:Null<AutotileSource> = null;
 		var tileSize:Null<ReferenceableValue> = null;
-		var depth:Null<ReferenceableValue> = null;
 		var mapping:Null<Map<Int, Int>> = null;
+		var alternates:Null<Map<Int, Array<Int>>> = null;
+		var transforms:Null<Map<Int, Array<Int>>> = null;
 		var region:Null<Array<ReferenceableValue>> = null;
+		var margin:Null<ReferenceableValue> = null;
+		var spacing:Null<ReferenceableValue> = null;
 		var allowPartialMapping:Bool = false;
+
+		function setSource(s:AutotileSource) {
+			if (source != null)
+				error("autotile has more than one source (use exactly one of sheet:, file:, tiles:, demo:)");
+			source = s;
+		}
 
 		while (!match(TCurlyClosed)) {
 			switch (peek()) {
@@ -6381,8 +6694,11 @@ class MacroManimParser {
 						case TIdentifier(s2) if (isKeyword(s2, "blob47")):
 							advance();
 							format = Blob47;
+						case TIdentifier(s2) if (isKeyword(s2, "corner")):
+							advance();
+							format = Corner;
 						default:
-							error("expected cross or blob47");
+							error("expected cross, blob47 or corner");
 					}
 				case TIdentifier(s) if (isKeyword(s, "sheet")):
 					advance();
@@ -6394,51 +6710,60 @@ class MacroManimParser {
 							advance();
 							expect(TColon);
 							final prefix = parseStringOrReference();
-							source = ATSAtlas(sheet, prefix);
-						case TIdentifier(s2) if (isKeyword(s2, "region")):
+							setSource(ATSAtlas(sheet, prefix));
+						case TIdentifier(s2) if (isKeyword(s2, "name")):
 							advance();
 							expect(TColon);
-							expect(TBracketOpen);
-							var regionVals:Array<ReferenceableValue> = [];
-							while (!match(TBracketClosed)) {
-								eatComma();
-								if (match(TBracketClosed)) break;
-								regionVals.push(parseIntegerOrReference());
-							}
-							source = ATSAtlasRegion(sheet, regionVals);
+							final name = parseStringOrReference();
+							setSource(ATSAtlasIndexed(sheet, name));
+						case TIdentifier(s2) if (isKeyword(s2, "region")):
+							error('autotile "sheet: ..., region: [...]" is not supported - use file: "image.png" with region: [x, y, w, h]');
 						default:
-							error("expected prefix or region after sheet");
+							error("expected prefix: or name: after sheet");
 					}
 				case TIdentifier(s) if (isKeyword(s, "file")):
 					advance();
 					expect(TColon);
 					final filename = parseStringOrReference();
-					source = ATSFile(filename);
+					setSource(ATSFile(filename));
 				case TIdentifier(s) if (isKeyword(s, "tiles")):
 					advance();
 					expect(TColon);
 					final tiles = parseTileSources();
-					source = ATSTiles(tiles);
+					if (tiles.length == 0)
+						error("autotile tiles: needs at least one tile source");
+					setSource(ATSTiles(tiles));
 				case TIdentifier(s) if (isKeyword(s, "demo")):
 					advance();
 					expect(TColon);
 					final edgeColor = parseColorOrReference();
 					expect(TComma);
 					final fillColor = parseColorOrReference();
-					source = ATSDemo(edgeColor, fillColor);
+					setSource(ATSDemo(edgeColor, fillColor));
 				case TIdentifier(s) if (isKeyword(s, "tilesize")):
 					advance();
 					expect(TColon);
 					tileSize = parseIntegerOrReference();
 				case TIdentifier(s) if (isKeyword(s, "depth")):
-					advance();
-					expect(TColon);
-					depth = parseIntegerOrReference();
+					error("autotile depth: was removed (elevation rendering is not supported)");
 				case TIdentifier(s) if (isKeyword(s, "mapping")):
 					advance();
 					expect(TColon);
 					expect(TBracketOpen);
-					mapping = parseAutotileMapping();
+					final parsed = parseAutotileMapping();
+					mapping = parsed.mapping;
+					alternates = parsed.alternates;
+					transforms = parsed.transforms;
+				case TIdentifier(s) if (isKeyword(s, "margin")):
+					advance();
+					expect(TColon);
+					if (margin != null) error("autotile margin already set");
+					margin = parseIntegerOrReference();
+				case TIdentifier(s) if (isKeyword(s, "spacing")):
+					advance();
+					expect(TColon);
+					if (spacing != null) error("autotile spacing already set");
+					spacing = parseIntegerOrReference();
 				case TIdentifier(s) if (isKeyword(s, "allowpartialmapping")):
 					advance();
 					expect(TColon);
@@ -6453,42 +6778,714 @@ class MacroManimParser {
 						if (match(TBracketClosed)) break;
 						region.push(parseIntegerOrReference());
 					}
+					if (region.length != 4)
+						error('autotile region: expects [x, y, width, height], got ${region.length} values');
 				default:
 					error('unexpected autotile property: ${peek()}');
 			}
 		}
 
 		if (format == null) { error("autotile requires format"); return cast null; }
-		if (source == null) { error("autotile requires source"); return cast null; }
+		if (source == null) { error("autotile requires a source (sheet:, file:, tiles: or demo:)"); return cast null; }
 		if (tileSize == null) { error("autotile requires tileSize"); return cast null; }
 
+		final fmt:AutotileFormat = cast format;
+		final src:AutotileSource = cast source;
+		if (region != null) {
+			switch (src) {
+				case ATSFile(_):
+				default: error("autotile region: only applies to a file: source");
+			}
+		}
+		if (margin != null || spacing != null) {
+			switch (src) {
+				case ATSFile(_):
+				default: error("autotile margin: and spacing: only apply to a file: source (an atlas names its tiles where they are)");
+			}
+		}
+		if (allowPartialMapping && fmt != Blob47)
+			error("autotile allowPartialMapping: only applies to format: blob47");
+		if (mapping != null) {
+			switch (src) {
+				case ATSDemo(_, _): error("autotile demo: source generates its own tiles and does not take mapping:");
+				default:
+			}
+			final indexCount = switch (fmt) {
+				case Cross: bh.base.Autotile.CROSS_TILE_COUNT;
+				case Blob47: bh.base.Autotile.BLOB47_TILE_COUNT;
+				case Corner: bh.base.Autotile.CORNER_TILE_COUNT;
+			};
+			for (key => target in mapping) {
+				if (key < 0 || key >= indexCount)
+					error('autotile mapping key $key is not a valid index for this format (0-${indexCount - 1})');
+				if (target < 0)
+					error('autotile mapping $key:$target - source index must be >= 0');
+			}
+			if (alternates != null)
+				for (key => more in alternates)
+					for (target in more)
+						if (target < 0)
+							error('autotile mapping $key: a source index must be >= 0, got $target');
+		}
+
 		return {
-			format: cast format,
-			source: cast source,
+			format: fmt,
+			source: src,
 			tileSize: cast tileSize,
-			depth: depth,
 			mapping: mapping,
+			alternates: alternates,
+			transforms: transforms,
 			region: region,
+			margin: margin,
+			spacing: spacing,
 			allowPartialMapping: allowPartialMapping
 		};
 	}
 
-	function parseAutotileMapping():Map<Int, Int> {
+	/**
+		Two entry forms, may be mixed: `target` (key = position in the list) or `key:target`. A target
+		may be several, `7 | 8 | 9`: the first goes to `mapping`, the rest to `alternates`, and a
+		position draws one of them by turns (a source index given twice is drawn that much more often).
+	**/
+	function parseAutotileMapping():{mapping:Map<Int, Int>, alternates:Null<Map<Int, Array<Int>>>, transforms:Null<Map<Int, Array<Int>>>} {
 		var map:Map<Int, Int> = new Map();
+		var alternates:Null<Map<Int, Array<Int>>> = null;
+		var transforms:Null<Map<Int, Array<Int>>> = null;
 		var seqIdx = 0;
 		while (!match(TBracketClosed)) {
 			eatComma();
 			if (match(TBracketClosed)) break;
 			final idx = parseInteger();
+			var key = seqIdx;
+			var target = idx;
 			if (match(TColon)) {
-				final target = parseInteger();
-				map.set(idx, target);
-			} else {
-				map.set(seqIdx, idx);
+				key = idx;
+				target = parseInteger();
+			}
+			if (map.exists(key))
+				error('autotile mapping has more than one entry for index $key');
+			map.set(key, target);
+			final turned = [parseAutotileTransform(key)];
+			if (match(TPipe)) {
+				final more:Array<Int> = [];
+				do {
+					more.push(parseInteger());
+					turned.push(parseAutotileTransform(key));
+				} while (match(TPipe));
+				if (alternates == null)
+					alternates = new Map();
+				alternates.set(key, more);
+			}
+			if (Lambda.exists(turned, t -> t != 0)) {
+				if (transforms == null)
+					transforms = new Map();
+				transforms.set(key, turned);
 			}
 			seqIdx++;
 		}
-		return map;
+		return {mapping: map, alternates: alternates, transforms: transforms};
+	}
+
+	/** After a source index: `flipX`, `flipY` and one of `rot90`, `rot180`, `rot270`, in any order, each once. **/
+	function parseAutotileTransform(key:Int):Int {
+		var flipX = false;
+		var flipY = false;
+		var turns = -1;
+		while (true) {
+			switch (peek()) {
+				case TIdentifier(s) if (isKeyword(s, "flipx")):
+					advance();
+					if (flipX) error('autotile mapping $key: flipX given twice');
+					flipX = true;
+				case TIdentifier(s) if (isKeyword(s, "flipy")):
+					advance();
+					if (flipY) error('autotile mapping $key: flipY given twice');
+					flipY = true;
+				case TIdentifier(s) if (isKeyword(s, "rot90") || isKeyword(s, "rot180") || isKeyword(s, "rot270")):
+					advance();
+					if (turns >= 0) error('autotile mapping $key: one rotation only (rot90, rot180 or rot270)');
+					turns = isKeyword(s, "rot90") ? 1 : isKeyword(s, "rot180") ? 2 : 3;
+				default:
+					return bh.base.Autotile.transform(flipX, flipY, turns < 0 ? 0 : turns);
+			}
+		}
+	}
+
+	// ---- Tilesets and tile maps ----
+
+	/** `#name tileset { … }`, after its `{`. **/
+	function parseTileset():TilesetDef {
+		var tileSize:Null<Int> = null;
+		var atlas:Null<String> = null;
+		var edge:Null<String> = null;
+		final edges:Map<String, String> = [];
+		final terrains:Array<TilesetTerrainDef> = [];
+		final transitions:Array<TilesetTransitionDef> = [];
+		final rises:Array<TilesetRiseDef> = [];
+		final platforms:Array<TilesetPlatformDef> = [];
+		final cells:Array<TilesetCellDef> = [];
+		// `rise <n> | rise any`, then the terrain it is for when it is for one, then its `{ … }`
+		function parseRise(platform:Null<String>):Void {
+			var rise = 0;
+			switch (peek()) {
+				case TIdentifier(a) if (isKeyword(a, "any")):
+					advance();
+				default:
+					rise = parseInteger();
+					if (rise <= 0) error("a rise is 1 level or more (or any)");
+			}
+			var riseTerrain:Null<String> = null;
+			if (!match(TCurlyOpen)) {
+				if (platform != null) error('platform $platform: a platform\'s rise is its own, whatever terrain is under it');
+				riseTerrain = expectIdentifierOrString();
+				expect(TCurlyOpen);
+			}
+			final riseName = (platform != null ? 'platform $platform: ' : "") + (rise == 0 ? "any" : Std.string(rise)) + (riseTerrain != null ? ' $riseTerrain' : "");
+			final parsed = parseTilesetRise(rise, riseTerrain, riseName);
+			parsed.platform = platform;
+			for (r in rises)
+				if (r.rise == rise && r.toward == parsed.toward && r.terrain == riseTerrain && r.platform == platform)
+					error('rise $riseName toward ${parsed.toward} is defined twice');
+			rises.push(parsed);
+		}
+		while (!match(TCurlyClosed)) {
+			switch (peek()) {
+				case TIdentifier(s) if (isKeyword(s, "tilesize")):
+					advance();
+					expect(TColon);
+					if (tileSize != null) error("tileSize already set");
+					final size = parseInteger();
+					if (size <= 0) error("tileSize must be greater than 0");
+					tileSize = size;
+				case TIdentifier(s) if (isKeyword(s, "atlas")):
+					advance();
+					expect(TColon);
+					atlas = expectIdentifierOrString();
+				case TIdentifier(s) if (isKeyword(s, "edge")):
+					advance();
+					if (match(TColon)) {
+						if (edge != null) error("edge already set");
+						edge = expectIdentifierOrString();
+					} else {
+						// edge <terrain>: <autotile> - the outline where that terrain is on top
+						final edgeTerrain = expectIdentifierOrString();
+						expect(TColon);
+						if (edges.exists(edgeTerrain)) error('edge $edgeTerrain already set');
+						edges.set(edgeTerrain, expectIdentifierOrString());
+					}
+				case TIdentifier(s) if (isKeyword(s, "terrain")):
+					advance();
+					final terrainName = expectIdentifierOrString();
+					if (terrainName == "none") error('"none" means no terrain in a legend; name the terrain otherwise');
+					for (t in terrains)
+						if (t.name == terrainName) error('terrain $terrainName is defined twice');
+					expect(TCurlyOpen);
+					terrains.push(parseTilesetTerrain(terrainName));
+				case TIdentifier(s) if (isKeyword(s, "transition")):
+					advance();
+					final from = expectIdentifierOrString();
+					expect(TComma);
+					final to = expectIdentifierOrString();
+					for (t in transitions)
+						if (t.from == from && t.to == to) error('transition $from, $to is defined twice');
+					expect(TCurlyOpen);
+					final autotiles:Array<String> = [];
+					while (!match(TCurlyClosed)) {
+						switch (peek()) {
+							case TIdentifier(s2) if (isKeyword(s2, "autotile")):
+								advance();
+								expect(TColon);
+								parseNameList(autotiles);
+							default:
+								error('unexpected transition property: ${peek()} (a transition has autotile: only)');
+						}
+					}
+					if (autotiles.length == 0) error('transition $from, $to needs autotile:');
+					transitions.push({from: from, to: to, autotiles: autotiles});
+				case TIdentifier(s) if (isKeyword(s, "rise")):
+					advance();
+					parseRise(null);
+				case TIdentifier(s) if (isKeyword(s, "platform")):
+					advance();
+					final platformName = expectIdentifierOrString();
+					for (p in platforms)
+						if (p.name == platformName) error('platform $platformName is defined twice');
+					expect(TCurlyOpen);
+					var platformEdge:Null<String> = null;
+					while (!match(TCurlyClosed)) {
+						switch (peek()) {
+							case TIdentifier(s2) if (isKeyword(s2, "edge")):
+								advance();
+								expect(TColon);
+								if (platformEdge != null) error('platform $platformName: edge already set');
+								platformEdge = expectIdentifierOrString();
+							case TIdentifier(s2) if (isKeyword(s2, "rise")):
+								advance();
+								parseRise(platformName);
+							default:
+								error('unexpected platform property: ${peek()} (edge: and rise <n> { })');
+						}
+					}
+					platforms.push({name: platformName, edge: platformEdge});
+				case TIdentifier(s) if (isKeyword(s, "cell")):
+					advance();
+					final cellName = expectIdentifierOrString();
+					for (c in cells)
+						if (c.name == cellName) error('cell $cellName is defined twice');
+					expect(TCurlyOpen);
+					cells.push(parseTilesetCell(cellName));
+				default:
+					error('unexpected tileset property: ${peek()}');
+			}
+		}
+		if (tileSize == null) error("tileset requires tileSize");
+		if (atlas == null) error("tileset requires atlas");
+		if (terrains.length == 0) error("tileset requires at least one terrain");
+		if (Lambda.exists(rises, r -> r.platform == null) && edge == null && !edges.keys().hasNext())
+			error("a tileset with rises needs edge: the autotile that outlines a higher level");
+		for (edgeTerrain in edges.keys())
+			if (Lambda.findIndex(terrains, x -> x.name == edgeTerrain) < 0) error('edge $edgeTerrain: tileset has no terrain $edgeTerrain');
+		for (r in rises) {
+			final riseTerrain = r.terrain;
+			if (riseTerrain != null && Lambda.findIndex(terrains, x -> x.name == riseTerrain) < 0)
+				error('rise ${r.rise == 0 ? "any" : Std.string(r.rise)} $riseTerrain: tileset has no terrain $riseTerrain');
+		}
+		for (p in platforms)
+			if (p.edge == null && !Lambda.exists(rises, r -> r.platform == p.name))
+				error('platform ${p.name} needs edge: (the autotile its top is drawn with) or a rise');
+		// by rise, the smallest first, `any` last
+		rises.sort((a, b) -> (a.rise == 0 ? 0x7FFFFFFF : a.rise) - (b.rise == 0 ? 0x7FFFFFFF : b.rise));
+		for (t in transitions) {
+			final toIndex = Lambda.findIndex(terrains, x -> x.name == t.to);
+			if (toIndex < 0) error('transition ${t.from}, ${t.to}: tileset has no terrain ${t.to}');
+			final to = terrains[toIndex];
+			if (to.autotiles.length == 0)
+				error('transition ${t.from}, ${t.to}: terrain ${t.to} is drawn from cells:, not an autotile, so it has no edge to draw otherwise');
+			if (t.autotiles.length != to.autotiles.length)
+				error('transition ${t.from}, ${t.to}: ${t.autotiles.length} autotile(s) for terrain ${t.to}, which has ${to.autotiles.length} (one a frame)');
+			if (t.from != "none") {
+				final fromIndex = Lambda.findIndex(terrains, x -> x.name == t.from);
+				if (fromIndex < 0) error('transition ${t.from}, ${t.to}: tileset has no terrain ${t.from} (or none)');
+				if (fromIndex >= toIndex)
+					error('transition ${t.from}, ${t.to}: ${t.from} is drawn over ${t.to}; a transition is from the terrain below to the one above it');
+			}
+		}
+		return {tileSize: cast tileSize, atlas: cast atlas, edge: edge, edges: edges, terrains: terrains, transitions: transitions, rises: rises, platforms: platforms, cells: cells};
+	}
+
+	/** `a, b, "c"`: one name or more. **/
+	function parseNameList(into:Array<String>):Void {
+		into.push(expectIdentifierOrString());
+		while (match(TComma))
+			into.push(expectIdentifierOrString());
+	}
+
+	function parseTilesetTerrain(name:String):TilesetTerrainDef {
+		final autotiles:Array<String> = [];
+		var cells:Null<String> = null;
+		var duration:Null<Int> = null;
+		var metadata:Map<String, ParsedSettingValue> = new Map();
+		while (!match(TCurlyClosed)) {
+			switch (peek()) {
+				case TIdentifier(s) if (isKeyword(s, "autotile")):
+					advance();
+					expect(TColon);
+					parseNameList(autotiles);
+				case TIdentifier(s) if (isKeyword(s, "cells")):
+					advance();
+					expect(TColon);
+					cells = expectIdentifierOrString();
+				case TIdentifier(s) if (isKeyword(s, "duration")):
+					advance();
+					expect(TColon);
+					final ms = parseInteger();
+					if (ms <= 0) error("duration must be greater than 0 (milliseconds a frame)");
+					duration = ms;
+				case TIdentifier(s) if (isKeyword(s, "metadata")):
+					advance();
+					metadata = parseTileMetadata();
+				default:
+					error('unexpected terrain property: ${peek()}');
+			}
+		}
+		if ((autotiles.length == 0) == (cells == null))
+			error('terrain $name needs autotile: or cells:, one of them');
+		if (duration != null && autotiles.length < 2)
+			error('terrain $name: duration: is for an animated terrain, one autotile a frame');
+		if (autotiles.length > 1 && duration == null)
+			error('terrain $name: an animated terrain needs duration: (milliseconds a frame)');
+		return {name: name, autotiles: autotiles, cells: cells, duration: duration, metadata: metadata};
+	}
+
+	function parseTilesetRise(riseLevels:Int, terrain:Null<String>, rise:String):TilesetRiseDef {
+		final sides:Array<String> = [];
+		var left:Null<String> = null;
+		var right:Null<String> = null;
+		var single:Null<String> = null;
+		var span:Null<Int> = null;
+		var toward = "down";
+		var metadata:Map<String, ParsedSettingValue> = new Map();
+		while (!match(TCurlyClosed)) {
+			switch (peek()) {
+				case TIdentifier(s) if (isKeyword(s, "edge")):
+					error('rise $rise: edge: is the tileset\'s; write it beside tileSize: (edge: name, or edge <terrain>: name for one terrain)');
+				case TIdentifier(s) if (isKeyword(s, "side")):
+					advance();
+					expect(TColon);
+					if (sides.length > 0) error('rise $rise: side: is given twice (several are one list: side: "a", "b")');
+					parseNameList(sides);
+				case TIdentifier(s) if (isKeyword(s, "left")):
+					advance();
+					expect(TColon);
+					left = expectIdentifierOrString();
+				case TIdentifier(s) if (isKeyword(s, "right")):
+					advance();
+					expect(TColon);
+					right = expectIdentifierOrString();
+				case TIdentifier(s) if (isKeyword(s, "single")):
+					advance();
+					expect(TColon);
+					single = expectIdentifierOrString();
+				case TIdentifier(s) if (isKeyword(s, "span")):
+					advance();
+					expect(TColon);
+					final cells = parseInteger();
+					if (cells <= 0) error("span is 1 cell or more");
+					span = cells;
+				case TIdentifier(s) if (isKeyword(s, "toward")):
+					advance();
+					expect(TColon);
+					toward = expectIdentifierOrString();
+					if (toward != "down" && toward != "up" && toward != "left" && toward != "right")
+						error('rise $rise: toward: is down, up, left or right, got $toward');
+				case TIdentifier(s) if (isKeyword(s, "metadata")):
+					advance();
+					metadata = parseTileMetadata();
+				default:
+					error('unexpected rise property: ${peek()}');
+			}
+		}
+		if (sides.length == 0 || span == null)
+			error('rise $rise needs side: and span:');
+		return {
+			rise: riseLevels,
+			terrain: terrain,
+			side: sides[0],
+			sides: sides,
+			left: left,
+			right: right,
+			single: single,
+			span: cast span,
+			toward: toward,
+			metadata: metadata,
+		};
+	}
+
+	function parseTilesetCell(name:String):TilesetCellDef {
+		var draw:Null<String> = null;
+		var width:Null<Int> = null;
+		var height:Null<Int> = null;
+		var anchorX:Null<Int> = null;
+		var anchorY:Null<Int> = null;
+		var metadata:Map<String, ParsedSettingValue> = new Map();
+		while (!match(TCurlyClosed)) {
+			switch (peek()) {
+				case TIdentifier(s) if (isKeyword(s, "draw")):
+					advance();
+					expect(TColon);
+					draw = parseTilemapDraw('cell $name');
+				case TIdentifier(s) if (isKeyword(s, "size")):
+					advance();
+					expect(TColon);
+					if (width != null) error('cell $name: size already set');
+					width = parseInteger();
+					expect(TComma);
+					height = parseInteger();
+					if (width <= 0 || height <= 0) error('cell $name: size is a width and a height in cells, each 1 or more');
+				case TIdentifier(s) if (isKeyword(s, "anchor")):
+					advance();
+					expect(TColon);
+					if (anchorX != null) error('cell $name: anchor already set');
+					anchorX = parseInteger();
+					expect(TComma);
+					anchorY = parseInteger();
+				case TIdentifier(s) if (isKeyword(s, "metadata")):
+					advance();
+					metadata = parseTileMetadata();
+				default:
+					error('unexpected cell property: ${peek()}');
+			}
+		}
+		if (anchorX != null && width == null)
+			error('cell $name: anchor: is for a cell with a size: (an object of several cells)');
+		if (width != null) {
+			final w:Int = width;
+			final h:Int = height ?? 1;
+			if (anchorX == null) {
+				anchorX = 0;
+				anchorY = h - 1;
+			}
+			final ax:Int = anchorX;
+			final ay:Int = anchorY ?? 0;
+			if (ax < 0 || ay < 0 || ax >= w || ay >= h)
+				error('cell $name: anchor $ax, $ay is outside its ${w}x$h cells (from 0, 0 at the top left)');
+			if (draw == null)
+				draw = "actors";
+		}
+		return {name: name, draw: draw, width: width, height: height, anchorX: anchorX, anchorY: anchorY, metadata: metadata};
+	}
+
+	/** `draw:` of a layer or a cell: where it is drawn among what else the map draws. **/
+	function parseTilemapDraw(what:String):String {
+		final where = expectIdentifierOrString();
+		if (where != "under" && where != "over" && where != "top" && where != "actors")
+			error('$what: draw: is under (the actors), over (them), top (above everything) or actors (among them, sorted by its feet), got $where');
+		return where;
+	}
+
+	/**
+		`{ key:type => value, key => value }`: what the game reads of a cell, written as settings and an
+		interactive's metadata are, and read the same way (`BuilderResolvedSettings`). A tileset has no
+		parameters, so a value is a literal.
+	**/
+	function parseTileMetadata():Map<String, ParsedSettingValue> {
+		final metadata:Map<String, ParsedSettingValue> = new Map();
+		expect(TCurlyOpen);
+		while (!match(TCurlyClosed)) {
+			final key = expectIdentifierOrString();
+			if (metadata.exists(key)) error('metadata $key is given twice');
+			final entry = parseMetadataValue(RVString(key));
+			switch (entry.value) {
+				case RVInteger(_) | RVFloat(_) | RVString(_):
+				default: error('metadata $key: a tileset has no parameters, so its metadata is a number, a string or a yes/no');
+			}
+			metadata.set(key, {type: entry.type, value: entry.value});
+			eatComma();
+		}
+		return metadata;
+	}
+
+	/** `#name tilemap { … }`, after its `{`; decor is parsed into the map's node as children. **/
+	function parseTilemap(def:TilemapDef, node:Node, defs:ParametersDefinitions):Void {
+		var sizeSet = false;
+		// Where each row is written, for the errors below
+		final terrainPos:Array<TilemapRowAt> = [];
+		final levelsPos:Array<TilemapRowAt> = [];
+		final layerPos:Map<String, Array<TilemapRowAt>> = [];
+		while (!match(TCurlyClosed)) {
+			switch (peek()) {
+				case TIdentifier(s) if (isKeyword(s, "tileset")):
+					advance();
+					expect(TColon);
+					switch (peek()) {
+						case TIdentifier(s2) if (isKeyword(s2, "external")):
+							advance();
+							expect(TOpen);
+							def.tilesetImport = expectIdentifierOrString();
+							expect(TClosed);
+							expect(TComma);
+						default:
+					}
+					def.tileset = expectIdentifierOrString();
+				case TIdentifier(s) if (isKeyword(s, "size")):
+					advance();
+					expect(TColon);
+					def.width = parseInteger();
+					expect(TComma);
+					def.height = parseInteger();
+					if (def.width <= 0 || def.height <= 0) error("size is a width and a height, each 1 cell or more");
+					sizeSet = true;
+				case TIdentifier(s) if (isKeyword(s, "legend")):
+					advance();
+					parseTilemapLegend(def.legend);
+				case TIdentifier(s) if (isKeyword(s, "terrain")):
+					advance();
+					expect(TColon);
+					parseTilemapRows(def.terrain, terrainPos);
+				case TIdentifier(s) if (isKeyword(s, "levels")):
+					advance();
+					// `levels: [rows]` of digits, or `levels { legend { "A": 10 } rows: [...] }` for more
+					if (match(TCurlyOpen)) {
+						while (!match(TCurlyClosed)) {
+							switch (peek()) {
+								case TIdentifier(s2) if (isKeyword(s2, "legend")):
+									advance();
+									parseTilemapLevelLegend(def.levelLegend, def.levelPlatforms);
+								case TIdentifier(s2) if (isKeyword(s2, "rows")):
+									advance();
+									expect(TColon);
+									parseTilemapRows(def.levels, levelsPos);
+								default:
+									error('unexpected levels property: ${peek()} (legend { } and rows: [ ])');
+							}
+						}
+					} else {
+						expect(TColon);
+						parseTilemapRows(def.levels, levelsPos);
+					}
+				case TIdentifier(s) if (isKeyword(s, "layer")):
+					advance();
+					final layerName = expectIdentifierOrString();
+					for (l in def.layers)
+						if (l.name == layerName) error('layer $layerName is defined twice');
+					expect(TCurlyOpen);
+					final layer:TilemapLayerDef = {name: layerName, legend: new Map(), rows: [], draw: "under"};
+					final rowsAt:Array<TilemapRowAt> = [];
+					layerPos.set(layerName, rowsAt);
+					while (!match(TCurlyClosed)) {
+						switch (peek()) {
+							case TIdentifier(s2) if (isKeyword(s2, "sheet")):
+								advance();
+								expect(TColon);
+								layer.sheet = expectIdentifierOrString();
+							case TIdentifier(s2) if (isKeyword(s2, "draw")):
+								advance();
+								expect(TColon);
+								layer.draw = parseTilemapDraw('layer $layerName');
+							case TIdentifier(s2) if (isKeyword(s2, "legend")):
+								advance();
+								parseTilemapLegend(layer.legend);
+							case TIdentifier(s2) if (isKeyword(s2, "rows")):
+								advance();
+								expect(TColon);
+								parseTilemapRows(layer.rows, rowsAt);
+							default:
+								error('unexpected tilemap layer property: ${peek()}');
+						}
+					}
+					def.layers.push(layer);
+				case TIdentifier(s) if (isKeyword(s, "decor")):
+					advance();
+					expect(TCurlyOpen);
+					parseNodes(node, defs);
+				case TIdentifier(s) if (isKeyword(s, "marks")):
+					advance();
+					expect(TCurlyOpen);
+					while (!match(TCurlyClosed)) {
+						final markName = expectIdentifierOrString();
+						for (m in def.marks)
+							if (m.name == markName) error('mark $markName is defined twice');
+						expect(TColon);
+						final x = parseInteger();
+						expect(TComma);
+						final y = parseInteger();
+						final mark:TilemapMarkDef = {name: markName, x: x, y: y};
+						if (match(TComma)) {
+							mark.w = parseInteger();
+							expect(TComma);
+							mark.h = parseInteger();
+						}
+						def.marks.push(mark);
+						eatSemicolon();
+					}
+				default:
+					error('unexpected tilemap property: ${peek()}');
+			}
+		}
+		if (def.tileset == "") error("tilemap requires tileset:");
+		if (!sizeSet) error("tilemap requires size: width, height");
+		if (def.terrain.length == 0) error("tilemap requires terrain: rows");
+		checkTilemapRows(def, "terrain", def.terrain, terrainPos, c -> def.legend.exists(c), "is not in the legend");
+		if (def.levels.length > 0)
+			checkTilemapRows(def, "levels", def.levels, levelsPos, c -> (c >= "0" && c <= "9") || def.levelLegend.exists(c),
+				"is not a level (a digit, or a character of the levels legend)");
+		for (l in def.layers) {
+			final legend = l.legend;
+			final rowsAt = layerPos.get(l.name) ?? [];
+			checkTilemapRows(def, 'layer ${l.name}', l.rows, rowsAt, c -> c == " " || legend.exists(c), "is not in the layer's legend (a space is no cell)");
+		}
+		for (m in def.marks) {
+			final w = m.w != null ? m.w : 1;
+			final h = m.h != null ? m.h : 1;
+			if (m.x < 0 || m.y < 0 || m.x + w > def.width || m.y + h > def.height)
+				error('mark ${m.name} is outside the ${def.width}x${def.height} map');
+		}
+	}
+
+	function parseTilemapLegend(into:Map<String, String>):Void {
+		expect(TCurlyOpen);
+		while (!match(TCurlyClosed)) {
+			final key:String = switch (peek()) {
+				case TQuotedString(k):
+					advance();
+					k;
+				default:
+					error('a legend key is one character in quotes: ".": ground');
+			};
+			if (key.length != 1) error('a legend key is one character, got "$key"');
+			if (into.exists(key)) error('"$key" is in the legend twice');
+			expect(TColon);
+			into.set(key, expectIdentifierOrString());
+			eatComma();
+		}
+	}
+
+	/** `{ "A": 10, "B": 11 }`: a character of the levels rows and the level it stands for; a digit is its own level and cannot be given another. **/
+	function parseTilemapLevelLegend(into:Map<String, Int>, platforms:Map<String, String>):Void {
+		expect(TCurlyOpen);
+		while (!match(TCurlyClosed)) {
+			final key:String = switch (peek()) {
+				case TQuotedString(k):
+					advance();
+					k;
+				default:
+					error('a levels legend key is one character in quotes: "A": 10');
+			};
+			if (key.length != 1) error('a levels legend key is one character, got "$key"');
+			if (key >= "0" && key <= "9") error('a digit is its own level; "$key" cannot stand for another');
+			if (into.exists(key)) error('"$key" is in the levels legend twice');
+			expect(TColon);
+			// a level, a level and the platform it is of (`"c": 1 canopy`), or a platform alone, one level up
+			var level = 1;
+			switch (peek()) {
+				case TInteger(_) | TMinus:
+					level = parseInteger();
+					if (level < 0) error('a level is 0 or more, got $level for "$key"');
+				default:
+			}
+			switch (peek()) {
+				case TIdentifier(_) | TQuotedString(_):
+					if (level < 1) error('"$key": a platform is 1 level up or more');
+					platforms.set(key, expectIdentifierOrString());
+				default:
+			}
+			into.set(key, level);
+			eatComma();
+		}
+	}
+
+	function parseTilemapRows(rows:Array<String>, pos:Array<TilemapRowAt>):Void {
+		if (rows.length > 0) error("rows already set");
+		expect(TBracketOpen);
+		while (!match(TBracketClosed)) {
+			final t = peekToken();
+			switch (peek()) {
+				case TQuotedString(row):
+					advance();
+					rows.push(row);
+					pos.push({line: t.line, col: t.col});
+				default:
+					error('a row is a quoted string of characters, one a cell: "..~~.."');
+			}
+			eatComma();
+		}
+	}
+
+	function checkTilemapRows(def:TilemapDef, what:String, rows:Array<String>, pos:Array<TilemapRowAt>, ok:String->Bool, bad:String):Void {
+		if (rows.length != def.height) {
+			final at = pos.length > 0 ? pos[pos.length - 1] : {line: def.line != null ? def.line : 0, col: 1};
+			errorAtLine(at.line, at.col, '$what has ${rows.length} rows, the map is ${def.height} high');
+		}
+		for (r in 0...rows.length) {
+			final row = rows[r];
+			if (row.length != def.width)
+				errorAtLine(pos[r].line, pos[r].col, '$what row ${r + 1} is ${row.length} characters, the map is ${def.width} wide');
+			for (i in 0...row.length) {
+				final c = row.charAt(i);
+				if (!ok(c))
+					errorAtLine(pos[r].line, pos[r].col + 1 + i, '$what row ${r + 1}: "$c" $bad');
+			}
+		}
 	}
 
 	// ===================== Atlas2 =====================
@@ -6564,10 +7561,16 @@ class MacroManimParser {
 
 	// ===================== Data =====================
 
+	/** The rows the block being read names by id (`ref card agree`), checked once all of it is read. */
+	var dataRefs:Array<{record:String, id:String, line:Int, col:Int}> = [];
+
 	function parseData():DataDef {
+		final blockLine = peekToken().line;
 		var enums:Map<String, DataEnumDef> = new Map();
 		var records:Map<String, DataRecordDef> = new Map();
 		var fields:Array<DataFieldDef> = [];
+		var picks:Array<DataPickDef> = [];
+		dataRefs = [];
 
 		while (!match(TCurlyClosed)) {
 			eatSemicolon();
@@ -6582,10 +7585,13 @@ class MacroManimParser {
 							// #name record(...) — record type definition
 							advance();
 							expect(TOpen);
-							final recordFields = parseDataRecordFields(enums, records);
 							if (records.exists(name)) error('record type "$name" already defined');
 							if (enums.exists(name)) error('"$name" is already defined as an enum');
-							records.set(name, {name: name, fields: recordFields});
+							final recordFields = parseDataRecordFields(name, enums, records);
+							var key:Null<String> = null;
+							for (f in recordFields)
+								if (f.key == true) key = f.name;
+							records.set(name, key != null ? {name: name, fields: recordFields, key: key} : {name: name, fields: recordFields});
 						case TIdentifier(s) if (isKeyword(s, "enum")):
 							// #name enum(...) — enum type definition
 							advance();
@@ -6599,16 +7605,39 @@ class MacroManimParser {
 					}
 
 				default:
-					// Regular field: name: [type] value
+					// Regular field: [@annotations] name: [type] value, or name: pick(table, …)
+					final meta = parseDataMetaList();
+					final start = peekToken();
 					final fieldName = expectIdentifierOrString();
 					expect(TColon);
-					final field = parseDataField(fieldName, enums, records);
-					fields.push(field);
+					for (f in fields)
+						if (f.name == fieldName) error('field "$fieldName" is in this data block twice');
+					for (p in picks)
+						if (p.name == fieldName) error('field "$fieldName" is in this data block twice');
+					// The annotations it knows are checked as on a field of a record: a @range holds for the value
+					if (isDataPickAhead()) {
+						checkDataMeta('pick $fieldName', null, meta, enums);
+						final pick = parseDataPick(fieldName, start.line);
+						if (meta.length > 0) pick.meta = meta;
+						picks.push(pick);
+					} else {
+						final at = peekToken();
+						final field = parseDataField(fieldName, enums, records);
+						checkDataMeta(fieldName, field.type, meta, enums);
+						checkDataRange(meta, fieldName, field.value, at);
+						field.line = start.line;
+						if (meta.length > 0) field.meta = meta;
+						fields.push(field);
+					}
 			}
 			eatSemicolon();
 		}
 
-		return {enums: enums, records: records, fields: fields};
+		final data:DataDef = {enums: enums, records: records, fields: fields, picks: picks, line: blockLine};
+		checkDataRefs(data);
+		for (pick in picks)
+			checkDataPick(pick, data);
+		return data;
 	}
 
 	function parseDataEnumValues():Array<String> {
@@ -6623,29 +7652,87 @@ class MacroManimParser {
 		}
 	}
 
-	function parseDataRecordFields(enums:Map<String, DataEnumDef>, records:Map<String, DataRecordDef>):Array<{name:String, type:DataValueType, optional:Bool}> {
-		var result:Array<{name:String, type:DataValueType, optional:Bool}> = [];
+	/** A record's fields. `key id` is the field its rows are found by: an array of the record is a
+	 *  table. A field may be followed by annotations: `cost: int @range(0, 3) @unit("energy")`. */
+	function parseDataRecordFields(recordName:String, enums:Map<String, DataEnumDef>, records:Map<String, DataRecordDef>):Array<DataRecordField> {
+		var result:Array<DataRecordField> = [];
 		if (match(TClosed)) return result;
+		var keyName:Null<String> = null;
+		var refsItself = false;
 		while (true) {
 			final isOptional = match(TQuestion);
+			// `key id` (a word after the keyword) is the key; `key: int` is a field called key.
+			var isKey = false;
+			switch (peek()) {
+				case TIdentifier(s) if (isKeyword(s, "key") && tpos + 1 < tokens.length):
+					switch (tokens[tpos + 1].type) {
+						case TIdentifier(_) | TQuotedString(_):
+							if (isOptional) error('a key cannot be optional: every row has one');
+							advance();
+							isKey = true;
+						default:
+					}
+				default:
+			}
 			final fieldName = expectIdentifierOrString();
-			expect(TColon);
-			final fieldType = parseDataType(enums, records);
-			result.push({name: fieldName, type: fieldType, optional: isOptional});
-			if (match(TClosed)) return result;
+			for (f in result)
+				if (f.name == fieldName) error('field "$fieldName" is in record "$recordName" twice');
+			var fieldType:DataValueType = DVTString;
+			if (isKey) {
+				if (keyName != null) error('record "$recordName" has two keys, $keyName and $fieldName: a row is found by one');
+				keyName = fieldName;
+				// `key id` is a word; `key id: string` says so
+				if (match(TColon)) {
+					fieldType = parseDataType(enums, records, recordName);
+					if (!Type.enumEq(fieldType, DVTString)) error('key "$fieldName" of record "$recordName" is a string: an id is a word');
+				}
+			} else {
+				expect(TColon);
+				fieldType = parseDataType(enums, records, recordName);
+			}
+			if (refersTo(fieldType, recordName)) refsItself = true;
+			final field:DataRecordField = {name: fieldName, type: fieldType, optional: isOptional};
+			if (isKey) field.key = true;
+			final meta = parseDataMetaList();
+			if (meta.length > 0) {
+				checkDataMeta('$recordName.$fieldName', fieldType, meta, enums, field);
+				field.meta = meta;
+			}
+			result.push(field);
+			if (match(TClosed)) break;
 			expect(TComma);
 		}
+		if (refsItself && keyName == null)
+			error('record "$recordName" refers to its own rows, so it needs a key to name them by: key id');
+		return result;
 	}
 
-	/** Parse a type keyword: int, float, string, bool, enum name, or a record name.
-	 *  If followed by [], it becomes an array type. */
-	function parseDataType(enums:Map<String, DataEnumDef>, records:Map<String, DataRecordDef>):DataValueType {
+	static function refersTo(type:DataValueType, recordName:String):Bool {
+		return switch (type) {
+			case DVTRef(r): r == recordName;
+			case DVTArray(e): refersTo(e, recordName);
+			default: false;
+		};
+	}
+
+	/** Parse a type keyword: int, float, string, bool, enum name, a record name, or `ref <record>`
+	 *  (the id of a row of a record with a key; `selfName` is the record being defined, whose rows
+	 *  it may name). If followed by [], it becomes an array type. */
+	function parseDataType(enums:Map<String, DataEnumDef>, records:Map<String, DataRecordDef>, ?selfName:String):DataValueType {
 		final typeName = expectIdentifierOrString();
 		var baseType:DataValueType = switch (typeName.toLowerCase()) {
 			case "int": DVTInt;
 			case "float": DVTFloat;
 			case "string": DVTString;
 			case "bool": DVTBool;
+			case "ref" if (!records.exists(typeName) && !enums.exists(typeName)):
+				final target = expectIdentifierOrString();
+				final def = records.get(target);
+				if (def == null && target != selfName)
+					error('ref $target: there is no record "$target"; a record is defined before a ref to it, but for its own rows');
+				if (def != null && def.key == null)
+					error('ref $target: record "$target" has no key, so its rows cannot be named; give it one: key id');
+				DVTRef(target);
 			default:
 				if (enums.exists(typeName)) DVTEnum(typeName)
 				else if (records.exists(typeName)) DVTRecord(typeName)
@@ -6657,6 +7744,164 @@ class MacroManimParser {
 			return DVTArray(baseType);
 		}
 		return baseType;
+	}
+
+	/** Annotations: `@name` or `@name(value, …)`, as many as are written. */
+	function parseDataMetaList():Array<DataMeta> {
+		final result:Array<DataMeta> = [];
+		while (match(TAt)) {
+			final name = expectIdentifierOrString();
+			final args:Array<DataValue> = [];
+			if (match(TOpen)) {
+				while (!match(TClosed)) {
+					eatComma();
+					if (match(TClosed)) break;
+					args.push(parseDataMetaArg());
+				}
+			}
+			result.push({name: name, args: args});
+		}
+		return result;
+	}
+
+	/** A number, a quoted string, or true or false, when one comes next; null, with nothing read, otherwise. */
+	function parseDataScalar():Null<DataValue> {
+		switch (peek()) {
+			case TInteger(n):
+				advance();
+				return DVInt(stringToInt(n));
+			case TFloat(n):
+				advance();
+				return DVFloat(stringToFloat(n));
+			case TMinus:
+				advance();
+				switch (peek()) {
+					case TInteger(n):
+						advance();
+						return DVInt(-stringToInt(n));
+					case TFloat(n):
+						advance();
+						return DVFloat(-stringToFloat(n));
+					default:
+						return error('expected number after minus');
+				}
+			case TQuotedString(s):
+				advance();
+				return DVString(s);
+			case TIdentifier(s) if (isKeyword(s, "true") || isKeyword(s, "false")):
+				return DVBool(parseBool());
+			default:
+				return null;
+		}
+	}
+
+	/** An annotation's argument: a number, a string, true or false, or a bare word (a string). */
+	function parseDataMetaArg():DataValue {
+		final scalar = parseDataScalar();
+		if (scalar != null) return scalar;
+		switch (peek()) {
+			case TIdentifier(s):
+				advance();
+				return DVString(s);
+			default:
+				return error('expected a number, a word or a string in an annotation');
+		}
+	}
+
+	/** The annotations the parser knows are checked where they are written: `@range(min, max)` and
+	 *  `@step(n)` on a number, `@unit(…)` and `@says(…)` with one word or string, and `@default(v)`
+	 *  on an optional field of a record (`field`), of its type, filled in where a row leaves the field
+	 *  out. `type` is null for a pick, which has no number of its own. Any other is kept as it is, for
+	 *  tools to read. */
+	function checkDataMeta(where:String, type:Null<DataValueType>, meta:Array<DataMeta>, enums:Map<String, DataEnumDef>, ?field:DataRecordField):Void {
+		final numeric = type != null && switch (type) {
+			case DVTInt | DVTFloat | DVTArray(DVTInt) | DVTArray(DVTFloat): true;
+			default: false;
+		};
+		for (m in meta) {
+			switch (m.name) {
+				case "range":
+					if (!numeric) error('@range on $where: only a number has a range');
+					final lo = m.args.length == 2 ? dataNumberOf(m.args[0]) : null;
+					final hi = m.args.length == 2 ? dataNumberOf(m.args[1]) : null;
+					if (lo == null || hi == null) error('@range on $where takes two numbers: @range(0, 10)');
+					else if (lo > hi) error('@range on $where: $lo is more than $hi');
+				case "step":
+					if (!numeric) error('@step on $where: only a number has a step');
+					final step = m.args.length == 1 ? dataNumberOf(m.args[0]) : null;
+					if (step == null || step <= 0) error('@step on $where takes one number above 0');
+				case "unit" | "says":
+					final word = m.args.length == 1 ? switch (m.args[0]) {
+						case DVString(_): true;
+						default: false;
+					} : false;
+					if (!word) error('@${m.name} on $where takes one word or string: @${m.name}("…")');
+				case "default":
+					if (field == null) error('@default on $where: a field of the block is written with its value; a default is for an optional field of a record');
+					else {
+						if (!field.optional) error('@default on $where: a field every row has has no default; make it optional: ?${field.name}');
+						if (m.args.length != 1) error('@default on $where takes one value');
+						m.args[0] = dataDefaultOf(where, field.type, m.args[0], enums);
+					}
+				default:
+			}
+		}
+		// A default is what a row that leaves the field out holds: it keeps to the range as a written value does.
+		final fallback = dataMetaOf(meta, "default");
+		final range = dataMetaOf(meta, "range");
+		if (fallback != null && range != null) {
+			final n = dataNumberOf(fallback.args[0]);
+			final lo = dataNumberOf(range.args[0]);
+			final hi = dataNumberOf(range.args[1]);
+			if (n != null && lo != null && hi != null && (n < lo || n > hi))
+				error('@default on $where: $n is outside its @range($lo, $hi)');
+		}
+	}
+
+	/** A default as the field's type has it: a number, a word, a yes-no, or one of an enum's values. */
+	function dataDefaultOf(where:String, type:DataValueType, arg:DataValue, enums:Map<String, DataEnumDef>):DataValue {
+		switch [type, arg] {
+			case [DVTInt, DVInt(_)] | [DVTFloat, DVFloat(_)] | [DVTString, DVString(_)] | [DVTBool, DVBool(_)]:
+				return arg;
+			case [DVTFloat, DVInt(v)]:
+				return DVFloat(v);
+			case [DVTEnum(enumName), DVString(v)]:
+				validateEnumValue(enumName, v, enums);
+				return DVEnumValue(enumName, v);
+			default:
+				return error('@default on $where: a default is a number, a word, true or false, or one of an enum\'s values, of the field\'s type');
+		}
+	}
+
+	static function dataNumberOf(value:Null<DataValue>):Null<Float> {
+		if (value == null) return null;
+		return switch (value) {
+			case DVInt(v): v;
+			case DVFloat(v): v;
+			default: null;
+		};
+	}
+
+	static function dataMetaOf(meta:Null<Array<DataMeta>>, name:String):Null<DataMeta> {
+		if (meta == null) return null;
+		for (m in meta)
+			if (m.name == name) return m;
+		return null;
+	}
+
+	/** A row's id, or a ref's: a word, or a string for an id a word cannot be (one that starts with a digit). */
+	function parseDataId(what:String):String {
+		switch (peek()) {
+			case TIdentifier(s) | TQuotedString(s):
+				advance();
+				return s;
+			default:
+				return error('$what: expected an id (a word, or a string)');
+		}
+	}
+
+	function errorAtLine(line:Int, col:Int, msg:String):Dynamic {
+		throw new InvalidSyntax('$sourceName: $msg', new ParsePosition(sourceName, line, col));
 	}
 
 	/** Parse a data field value, inferring type from value or using explicit type prefix for records/enums. */
@@ -6699,12 +7944,19 @@ class MacroManimParser {
 						final recordValue = parseDataRecordValue(s, recordDef, enums, records);
 						return {name: fieldName, type: DVTRecord(s), value: recordValue};
 					case TBracketOpen:
-						// recordName[] [ ... ]
+						// recordName[] [ ... ] — with a key, a table: each row may carry annotations
 						advance();
 						expect(TBracketClosed);
 						expect(TBracketOpen);
-						final elements = parseDataArrayElements(DVTRecord(s), enums, records);
-						return {name: fieldName, type: DVTArray(DVTRecord(s)), value: DVArray(elements)};
+						final rowMeta:Array<Array<DataMeta>> = [];
+						final elements = parseDataArrayElements(DVTRecord(s), enums, records, rowMeta);
+						final field:DataFieldDef = {name: fieldName, type: DVTArray(DVTRecord(s)), value: DVArray(elements)};
+						for (m in rowMeta)
+							if (m.length > 0) {
+								field.rowMeta = rowMeta;
+								break;
+							}
+						return field;
 					default:
 						// Not a type prefix, restore position
 						tpos = saved;
@@ -6714,28 +7966,12 @@ class MacroManimParser {
 		}
 
 		// Infer type from value
+		final scalar = parseDataScalar();
+		if (scalar != null) {
+			final value:DataValue = scalar;
+			return {name: fieldName, type: inferDataValueType(value), value: value};
+		}
 		switch (peek()) {
-			case TInteger(n):
-				advance();
-				return {name: fieldName, type: DVTInt, value: DVInt(stringToInt(n))};
-			case TMinus:
-				advance();
-				switch (peek()) {
-					case TInteger(n):
-						advance();
-						return {name: fieldName, type: DVTInt, value: DVInt(-stringToInt(n))};
-					case TFloat(n):
-						advance();
-						return {name: fieldName, type: DVTFloat, value: DVFloat(-stringToFloat(n))};
-					default:
-						return error('expected number after minus');
-				}
-			case TFloat(n):
-				advance();
-				return {name: fieldName, type: DVTFloat, value: DVFloat(stringToFloat(n))};
-			case TQuotedString(s):
-				advance();
-				return {name: fieldName, type: DVTString, value: DVString(s)};
 			case TBracketOpen:
 				advance();
 				// Array literal — infer element type from first element
@@ -6756,24 +7992,49 @@ class MacroManimParser {
 			final name = expectIdentifierOrString();
 			expect(TColon);
 			// Find expected type from record definition
-			var expectedType:Null<DataValueType> = null;
+			var recordField:Null<DataRecordField> = null;
 			for (rf in recordDef.fields) {
 				if (rf.name == name) {
-					expectedType = rf.type;
+					recordField = rf;
 					break;
 				}
 			}
-			if (expectedType == null) { error('unknown field "$name" in record "$recordName"'); return DVInt(0); }
-			final value = parseDataValueOfType(expectedType, enums, records);
+			if (recordField == null) { error('unknown field "$name" in record "$recordName"'); return DVInt(0); }
+			final at = peekToken();
+			final value = recordField.key == true ? DVString(parseDataId('key "$name" of record "$recordName"')) : parseDataValueOfType(recordField.type, enums, records);
 			if (fieldValues.exists(name)) error('duplicate field "$name" in record');
+			checkDataRange(recordField.meta, name, value, at, recordName);
 			fieldValues.set(name, value);
 		}
-		// Validate all required fields present (optional fields can be omitted)
+		// Validate all required fields present (optional fields can be omitted, and take their @default)
 		for (rf in recordDef.fields) {
-			if (!fieldValues.exists(rf.name) && !rf.optional)
-				error('missing required field "${rf.name}" in record "$recordName"');
+			if (fieldValues.exists(rf.name)) continue;
+			if (!rf.optional) error('missing required field "${rf.name}" in record "$recordName"');
+			final fallback = dataMetaOf(rf.meta, "default");
+			if (fallback != null && fallback.args.length == 1) fieldValues.set(rf.name, fallback.args[0]);
 		}
 		return DVRecord(recordName, fieldValues);
+	}
+
+	/** A number outside the `@range` its field says is an error where it is written: in a row of
+	 *  `inRecord`, or as a field of the block when that is null. */
+	function checkDataRange(meta:Null<Array<DataMeta>>, name:String, value:DataValue, at:Token, ?inRecord:String):Void {
+		final range = dataMetaOf(meta, "range");
+		if (range == null || range.args.length != 2) return;
+		final lo = dataNumberOf(range.args[0]);
+		final hi = dataNumberOf(range.args[1]);
+		if (lo == null || hi == null) return;
+		final values:Array<DataValue> = switch (value) {
+			case DVArray(elements): elements;
+			default: [value];
+		};
+		for (v in values) {
+			final n = dataNumberOf(v);
+			if (n != null && (n < lo || n > hi)) {
+				final inWhat = inRecord != null ? " in a " + inRecord : "";
+				errorAtLine(at.line, at.col, '$name is $n$inWhat, outside its @range($lo, $hi)');
+			}
+		}
 	}
 
 	function parseDataValueOfType(type:DataValueType, enums:Map<String, DataEnumDef>, records:Map<String, DataRecordDef>):DataValue {
@@ -6798,18 +8059,219 @@ class MacroManimParser {
 			case DVTArray(elemType):
 				expect(TBracketOpen);
 				DVArray(parseDataArrayElements(elemType, enums, records));
+			case DVTRef(recordName):
+				// Checked when the whole block is read: the row may come later in the file.
+				final at = peekToken();
+				final id = parseDataId('ref $recordName');
+				dataRefs.push({record: recordName, id: id, line: at.line, col: at.col});
+				DVRef(recordName, id);
 		};
 	}
 
+	/** An array's elements. `rowMeta`, for an array of records, takes each row's annotations
+	 *  (`@by(claude) { … }`); a record with a key makes the array a table, whose ids are unique. */
 	function parseDataArrayElements(elemType:DataValueType, enums:Map<String, DataEnumDef>,
-			records:Map<String, DataRecordDef>):Array<DataValue> {
+			records:Map<String, DataRecordDef>, ?rowMeta:Array<Array<DataMeta>>):Array<DataValue> {
 		var result:Array<DataValue> = [];
+		final keyed:Null<DataRecordDef> = switch (elemType) {
+			case DVTRecord(r):
+				final def = records.get(r);
+				def != null && def.key != null ? def : null;
+			default: null;
+		};
+		final seen:Map<String, Bool> = new Map();
 		while (!match(TBracketClosed)) {
 			eatComma();
 			if (match(TBracketClosed)) break;
-			result.push(parseDataValueOfType(elemType, enums, records));
+			final at = peekToken();
+			final meta = parseDataMetaList();
+			if (meta.length > 0 && rowMeta == null)
+				errorAtLine(at.line, at.col, 'annotations go before a row of a table of records: @by(claude) { … }');
+			final rowAt = peekToken();
+			final value = parseDataValueOfType(elemType, enums, records);
+			if (rowMeta != null) rowMeta.push(meta);
+			if (keyed != null) {
+				final id = DataSchema.rowId(value, keyed);
+				if (id != null) {
+					if (seen.exists(id)) errorAtLine(rowAt.line, rowAt.col, '"$id" is the id of two rows of ${keyed.name}');
+					seen.set(id, true);
+				}
+			}
+			result.push(value);
 		}
 		return result;
+	}
+
+	/** Every ref names a row of a table of its record in this block, wherever in the block the row
+	 *  is, and one row: an id that two tables of the record both have would leave the ref naming either. */
+	function checkDataRefs(data:DataDef):Void {
+		if (dataRefs.length == 0) return;
+		// Each record's ids, and the tables holding a row of each
+		final holders:Map<String, Map<String, Array<String>>> = new Map();
+		for (field in data.fields) {
+			final def = DataSchema.tableRecord(data, field);
+			if (def == null) continue;
+			var ids = holders.get(def.name);
+			if (ids == null) {
+				ids = new Map();
+				holders.set(def.name, ids);
+			}
+			for (row in DataSchema.rowsOf(field)) {
+				final id = DataSchema.rowId(row, def);
+				if (id == null) continue;
+				final tables = ids.get(id);
+				if (tables == null) ids.set(id, [field.name]);
+				else tables.push(field.name);
+			}
+		}
+		for (ref in dataRefs) {
+			final ids = holders.get(ref.record);
+			final tables = ids == null ? null : ids.get(ref.id);
+			if (ids == null)
+				errorAtLine(ref.line, ref.col, 'ref ${ref.record} "${ref.id}": this data block has no table of ${ref.record} rows');
+			else if (tables == null)
+				errorAtLine(ref.line, ref.col, 'ref ${ref.record} "${ref.id}": no ${ref.record} row has that id');
+			else if (tables.length > 1)
+				errorAtLine(ref.line, ref.col,
+					'ref ${ref.record} "${ref.id}": ${tables.join(" and ")} both have a row of that id, so the ref could name either; give one of them another id');
+		}
+		dataRefs = [];
+	}
+
+	/** `pick(` starts a pick; a record or an enum named pick is followed by `{`, `[` or a value. */
+	function isDataPickAhead():Bool {
+		return switch (peek()) {
+			case TIdentifier(s) if (isKeyword(s, "pick")):
+				tpos + 1 < tokens.length && Type.enumEq(tokens[tpos + 1].type, TOpen);
+			default: false;
+		};
+	}
+
+	/** `pick(all, weight: weight, draws: 3, repeats: no)` or `pick(loot, chance: chance, otherwise: nothing)`:
+	 *  how a table is drawn from. `weight: tier.weight` reads the weight of the row a ref field links to. */
+	function parseDataPick(name:String, line:Int):DataPickDef {
+		advance(); // pick
+		expect(TOpen);
+		final over = expectIdentifierOrString();
+		var by:Null<String> = null;
+		var through:Null<String> = null;
+		var chance = false;
+		var draws = 1;
+		var repeats = false;
+		var otherwise:Null<String> = null;
+		while (match(TComma)) {
+			final option = expectIdentifierOrString();
+			expect(TColon);
+			switch (option.toLowerCase()) {
+				case "weight" | "chance":
+					if (by != null) error('pick $name goes by one column: weight: or chance:, once');
+					chance = option.toLowerCase() == "chance";
+					final column = expectIdentifierOrString();
+					if (match(TDot)) {
+						through = column;
+						by = expectIdentifierOrString();
+					} else
+						by = column;
+				case "draws":
+					draws = parseInteger();
+					if (draws < 1) error('pick $name: draws is how many rows one draw takes, 1 or more');
+				case "repeats":
+					repeats = parseBool();
+				case "otherwise":
+					otherwise = parseDataId('pick $name, otherwise');
+				default:
+					error('pick $name: unknown option "$option"; a pick takes weight: or chance:, draws:, repeats: and otherwise:');
+			}
+		}
+		expect(TClosed);
+		final column:String = by == null ? error('pick $name: say what it goes by, weight: <column> or chance: <column>') : by;
+		if (otherwise != null && !chance) error('pick $name: otherwise is the row that takes what the chances leave, so it goes with chance:');
+		final pick:DataPickDef = {name: name, over: over, by: column, chance: chance, draws: draws, repeats: repeats, line: line};
+		if (through != null) pick.through = through;
+		if (otherwise != null) pick.otherwise = otherwise;
+		return pick;
+	}
+
+	/** A pick draws from a table of this block, by a number of its rows (or of the rows they link
+	 *  to), and chances add up to 1 at most: what they leave is the otherwise row's, or nothing. */
+	function checkDataPick(pick:DataPickDef, data:DataDef):Void {
+		final fail = (msg:String) -> errorAtLine(pick.line, 1, 'pick ${pick.name}: $msg');
+		final table = DataSchema.fieldNamed(data, pick.over);
+		if (table == null) {
+			fail('there is no field "${pick.over}" to draw from');
+			return;
+		}
+		final def = DataSchema.tableRecord(data, table);
+		if (def == null) {
+			fail('${pick.over} is not a table: a pick draws from an array of a record with a key');
+			return;
+		}
+		// Whose rows hold the number: the table's own, or those a ref field links them to, in any table
+		// of their record (a ref names a row of one of them).
+		var holder:DataRecordDef = def;
+		final linkedRows:Map<String, DataValue> = new Map();
+		final through = pick.through;
+		if (through != null) {
+			final target = DataSchema.throughRecord(data, pick);
+			final targetDef = target == null ? null : data.records.get(target);
+			if (target == null || targetDef == null) {
+				fail('${def.name} has no ref field "$through" to read ${pick.by} through');
+				return;
+			}
+			holder = targetDef;
+			final tables = DataSchema.tablesOf(data, target);
+			if (tables.length == 0) {
+				fail('this data block has no table of $target rows for $through to link to');
+				return;
+			}
+			for (linked in tables)
+				for (row in DataSchema.rowsOf(linked)) {
+					final id = DataSchema.rowId(row, targetDef);
+					if (id != null) linkedRows.set(id, row);
+				}
+		}
+		var column:Null<DataRecordField> = null;
+		for (f in holder.fields)
+			if (f.name == pick.by) column = f;
+		if (column == null) {
+			fail('${holder.name} has no field "${pick.by}"');
+			return;
+		}
+		switch (column.type) {
+			case DVTInt | DVTFloat:
+			default:
+				fail('${holder.name}.${pick.by} is not a number, so it cannot be a ${pick.chance ? "chance" : "weight"}');
+		}
+		final rows = DataSchema.rowsOf(table);
+		final otherwise = pick.otherwise;
+		if (otherwise != null) {
+			var found = false;
+			for (row in rows)
+				if (DataSchema.rowId(row, def) == otherwise) found = true;
+			if (!found) fail('otherwise "$otherwise" is not a row of ${pick.over}');
+		}
+		if (!pick.chance) return;
+		// The chances besides otherwise add up to 1 at most.
+		var sum = 0.0;
+		for (row in rows) {
+			if (otherwise != null && DataSchema.rowId(row, def) == otherwise) continue;
+			var source:Null<DataValue> = row;
+			if (through != null)
+				source = switch (row) {
+					case DVRecord(_, f):
+						switch (f.get(through)) {
+							case DVRef(_, id): linkedRows.get(id);
+							default: null;
+						}
+					default: null;
+				};
+			final share = switch (source) {
+				case DVRecord(_, f): dataNumberOf(f.get(pick.by));
+				default: null;
+			};
+			if (share != null && share > 0) sum += share;
+		}
+		if (sum > 1 + 1e-9) fail('the chances add up to ${Math.round(sum * 1000) / 1000}, more than 1');
 	}
 
 	function validateEnumValue(enumName:String, value:String, enums:Map<String, DataEnumDef>):Void {
@@ -6824,33 +8286,9 @@ class MacroManimParser {
 		while (!match(TBracketClosed)) {
 			eatComma();
 			if (match(TBracketClosed)) break;
-			switch (peek()) {
-				case TInteger(n):
-					advance();
-					result.push(DVInt(stringToInt(n)));
-				case TFloat(n):
-					advance();
-					result.push(DVFloat(stringToFloat(n)));
-				case TQuotedString(s):
-					advance();
-					result.push(DVString(s));
-				case TMinus:
-					advance();
-					switch (peek()) {
-						case TInteger(n):
-							advance();
-							result.push(DVInt(-stringToInt(n)));
-						case TFloat(n):
-							advance();
-							result.push(DVFloat(-stringToFloat(n)));
-						default:
-							error('expected number after minus');
-					}
-				case TIdentifier(s) if (isKeyword(s, "true") || isKeyword(s, "false")):
-					result.push(DVBool(parseBool()));
-				default:
-					error('expected value in array literal');
-			}
+			final scalar = parseDataScalar();
+			if (scalar == null) error('expected value in array literal');
+			else result.push(scalar);
 		}
 		return result;
 	}
@@ -6864,6 +8302,7 @@ class MacroManimParser {
 			case DVEnumValue(enumName, _): DVTEnum(enumName);
 			case DVRecord(name, _): DVTRecord(name);
 			case DVArray(elements): DVTArray(if (elements.length > 0) inferDataValueType(elements[0]) else DVTInt);
+			case DVRef(recordName, _): DVTRef(recordName);
 		};
 	}
 
@@ -6925,4 +8364,10 @@ class MacroManimParser {
 		final parser = new MacroManimParser(tokens, sourceName, resourceLoader);
 		return parser.parse();
 	}
+}
+
+/** Where a row of a tile map is written: the parse's own, for its errors. **/
+private typedef TilemapRowAt = {
+	var line:Int;
+	var col:Int;
 }

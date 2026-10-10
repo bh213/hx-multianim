@@ -1,0 +1,20 @@
+version: 1.0
+
+// Bracket multi-value conditionals on non-enum discrete params. Arms are
+// distinguished by tile WIDTH so the test can count which fired:
+//   width 10 = int affirmative    @(level => [1, 3])
+//   width 20 = int negated        @(level != [2, 4])
+//   width 30 = bool affirmative   @(flag  => [true, false])
+//   width 40 = string affirmative @(name  => ["a", "b"])
+//
+// Pre-fix the bracket path built raw string-keyed CoEnums for every type:
+//   - bool never matched in the builder (Value(1) vs "true"/"false")
+//   - int collapsed to `_level == 0` in codegen (enumValueToIndex -> 0)
+//   - string emitted `String == 0` in codegen (compile error)
+// and integer literals like [1, 3] failed to parse at all.
+#bracketMultiValueConditional programmable(level:int=3, flag:bool=true, name:string="a") {
+  @(level => [1, 3]) bitmap(generated(color(10, 10, #0a0)));
+  @(level != [2, 4]) bitmap(generated(color(20, 10, #060)));
+  @(flag => [true, false]) bitmap(generated(color(30, 10, #00a)));
+  @(name => ["a", "b"]) bitmap(generated(color(40, 10, #a0a)));
+}

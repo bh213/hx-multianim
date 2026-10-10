@@ -5,6 +5,9 @@ import bh.ui.UIMultiAnimScrollableList.ClickMode;
 import bh.ui.UIMultiAnimDropdown.UIStandardMultiAnimDropdown;
 import bh.ui.UIMultiAnimCheckbox.UIStandardMultiCheckbox;
 import bh.ui.UIMultiAnimSlider.UIStandardMultiAnimSlider;
+import bh.ui.UIMultiAnimSlider.SliderDirection;
+import bh.ui.UIMultiAnimScrollbar;
+import bh.ui.UIMultiAnimScrollbar.ScrollbarDirection;
 import bh.ui.UIMultiAnimProgressBar.UIMultiAnimProgressBar;
 import bh.ui.UIMultiAnimButton.UIStandardMultiAnimButton;
 import bh.ui.UIMultiAnimTextInput;
@@ -78,6 +81,17 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	var tweens(get, never):TweenManager;
 	var groups:Map<String, Array<UIElement>> = [];
 	var postCustomAddToLayer:Map<h2d.Object, UIElementCustomAddToLayer> = [];
+	// True while at least one element awaits a customAddToLayer drain in update().
+	// Lets update() skip iterating (and allocating a key-value iterator over) the
+	// postponed map on the common empty steady-state path.
+	var postCustomAddToLayerPending:Bool = false;
+	// Allocation watchdog for tests. Gated behind MULTIANIM_ALLOC_TRACK so the
+	// per-frame increment vanishes from production builds; counts how often
+	// update() allocates a key-value iterator to drain postponed
+	// customAddToLayer elements (should be 0 per frame in the empty steady state).
+	#if MULTIANIM_ALLOC_TRACK
+	public static var postponedDrainCount:Int = 0;
+	#end
 	var interactiveWrappers:Array<UIInteractiveWrapper> = [];
 	var interactiveMap:Map<String, UIInteractiveWrapper> = [];
 	/** Tracks (source, prefix) pairs registered via addInteractives so we can resync wrappers
@@ -182,13 +196,18 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 			comp.dispose();
 		higherOrderComponents = [];
 		postCustomAddToLayer.clear();
+		postCustomAddToLayerPending = false;
 		contentTarget = null;
 		contentTargetOwnership.clear();
 		inElementRouting = false;
 		initialSyncDone = false;
-		for (c in controllersStack) {
-			c.clearState();
+		while (controllersStack.length > 1) {
+			final c = controllersStack.pop();
+			if (c != null)
+				c.lifecycleEvent(LifecycleControllerFinished);
 		}
+		if (controllersStack.length > 0)
+			controllersStack[0].clearState();
 		getSceneRoot().removeChildren();
 		onClear();
 	}
@@ -250,7 +269,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	public function dispatchMouseClick(pos:h2d.col.Point, button:Int, release:Bool):Bool {
 		if (release) {
 			for (comp in higherOrderComponents)
-				if (comp.onMouseRelease(pos.x, pos.y))
+				if (comp.onMouseRelease(pos.x, pos.y, button))
 					return false;
 		} else {
 			for (comp in higherOrderComponents)
@@ -286,13 +305,19 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		for (comp in higherOrderComponents)
 			comp.update(dt);
 		// controller.update(dt) is already called by ScreenManager.update() before screen.update()
-		for (obj => v in postCustomAddToLayer) {
-			var insertedLayer = findLayerFromObject(obj);
-			if (insertedLayer == null)
-				throw 'could not find layer for object $obj';
-			v.customAddToLayer(insertedLayer, this, true);
+		if (postCustomAddToLayerPending) {
+			#if MULTIANIM_ALLOC_TRACK
+			postponedDrainCount++;
+			#end
+			for (obj => v in postCustomAddToLayer) {
+				var insertedLayer = findLayerFromObject(obj);
+				if (insertedLayer == null)
+					throw 'could not find layer for object $obj';
+				v.customAddToLayer(insertedLayer, this, true);
+			}
+			postCustomAddToLayer.clear();
+			postCustomAddToLayerPending = false;
 		}
-		postCustomAddToLayer.clear();
 	}
 
 	static inline function elementMatchesType(e:UIElement, type:SubElementsType):Bool {
@@ -538,10 +563,29 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		return UIStandardMultiAnimButton.create(builder.builder, builder.name, buttonText, split.main);
 	}
 
+	/** `prefixed` without the multi-forward settings (`font`, `fontColor`) that `splitSettings`
+	 *  copies into every registered prefix, keeping one written as `prefix.key` itself. A list's
+	 *  or a dropdown's scrollbar draws no text, so a bare `font` is not its business — an
+	 *  undeclared parameter would be a build error there. */
+	static function explicitlyPrefixed(settings:ResolvedSettings, prefixed:Null<Map<String, Dynamic>>, prefix:String,
+			multiForward:Array<String>):Null<Map<String, Dynamic>> {
+		if (prefixed == null)
+			return null;
+		for (key in multiForward)
+			if (prefixed.exists(key) && (settings == null || !settings.exists('$prefix.$key')))
+				prefixed.remove(key);
+		var any = false;
+		for (_ in prefixed) {
+			any = true;
+			break;
+		}
+		return any ? prefixed : null;
+	}
+
 	function addSlider(providedBuilder, settings:ResolvedSettings, initialValue:Float = 0) {
 		final sliderBuildName = getSettings(settings, "buildName", "slider");
 		final size = getIntSettings(settings, "size", 200);
-		final split = splitSettings(settings, ["buildName", "size"], ["min", "max", "step"], [], [], "slider");
+		final split = splitSettings(settings, ["buildName", "size"], ["min", "max", "step", "direction"], [], [], "slider");
 		final slider = UIStandardMultiAnimSlider.create(providedBuilder, sliderBuildName, size, initialValue, split.main);
 		if (hasSettings(settings, "min"))
 			slider.min = getFloatSettings(settings, "min", 0);
@@ -549,7 +593,30 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 			slider.max = getFloatSettings(settings, "max", 100);
 		if (hasSettings(settings, "step"))
 			slider.step = getFloatSettings(settings, "step", 0);
+		if (hasSettings(settings, "direction"))
+			slider.direction = switch getSettings(settings, "direction", "auto").toLowerCase() {
+				case "vertical": Vertical;
+				case "horizontal": Horizontal;
+				case "auto": Auto;
+				case other: throw 'slider direction => "$other": expected vertical, horizontal or auto';
+			};
 		return slider;
+	}
+
+	/** A scrollbar on its own (`UIMultiAnimScrollbar`): `buildName` (`scrollbar`), `direction`
+	 *  (`vertical`), `arrowStep`; anything else goes to the programmable. */
+	function addScrollbar(providedBuilder:MultiAnimBuilder, settings:ResolvedSettings, panelLength:Int, scrollableLength:Int, initialPosition:Int = 0) {
+		final buildName = getSettings(settings, "buildName", "scrollbar");
+		final direction:ScrollbarDirection = switch getSettings(settings, "direction", "vertical").toLowerCase() {
+			case "horizontal": Horizontal;
+			case "vertical": Vertical;
+			case other: throw 'scrollbar direction => "$other": expected vertical or horizontal';
+		};
+		final split = splitSettings(settings, ["buildName", "direction"], ["arrowStep"], [], [], "scrollbar");
+		final bar = UIMultiAnimScrollbar.create(providedBuilder, buildName, panelLength, scrollableLength, initialPosition, direction, split.main);
+		if (hasSettings(settings, "arrowStep"))
+			bar.arrowStep = getIntSettings(settings, "arrowStep", bar.arrowStep);
+		return bar;
 	}
 
 	function addProgressBar(providedBuilder, settings:ResolvedSettings, initialValue:Int = 0) {
@@ -867,7 +934,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		final itemPrefixed = split.prefixed.get("item");
 		if (itemPrefixed != null)
 			itemBuilder = itemBuilder.withExtraParams(itemPrefixed);
-		final scrollbarPrefixed = split.prefixed.get("scrollbar");
+		final scrollbarPrefixed = explicitlyPrefixed(settings, split.prefixed.get("scrollbar"), "scrollbar", ["font", "fontColor"]);
 		if (scrollbarPrefixed != null)
 			scrollbarBuilder = scrollbarBuilder.withExtraParams(scrollbarPrefixed);
 
@@ -922,7 +989,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		final itemPrefixed = split.prefixed.get("item");
 		if (itemPrefixed != null)
 			itemBuilder = itemBuilder.withExtraParams(itemPrefixed);
-		final scrollbarPrefixed = split.prefixed.get("scrollbar");
+		final scrollbarPrefixed = explicitlyPrefixed(settings, split.prefixed.get("scrollbar"), "scrollbar", ["font", "fontColor"]);
 		if (scrollbarPrefixed != null)
 			scrollbarBuilder = scrollbarBuilder.withExtraParams(scrollbarPrefixed);
 
@@ -1008,13 +1075,50 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		return r;
 	}
 
-	/** Wraps a single interactive MAObject as a UIElement. Events arrive in `onScreenEvent` as `UIInteractiveEvent(event, id, metadata)`. */
-	public function addInteractive(obj:MAObject, ?prefix:String):UIInteractiveWrapper {
-		var wrapper = new UIInteractiveWrapper(obj, prefix);
+	/** Wraps a single interactive MAObject as a UIElement. Events arrive in `onScreenEvent` as `UIInteractiveEvent(event, id, metadata)`.
+	 *  The object is not added to the scene (it already sits in its builder's tree); `source` is the
+	 *  result it came from, which scopes the rebuild sync of `addInteractives`. */
+	public function addInteractive(obj:MAObject, ?prefix:String, ?source:bh.ui.UIInteractiveSource):UIInteractiveWrapper {
+		var wrapper = new UIInteractiveWrapper(obj, prefix, source);
 		interactiveWrappers.push(wrapper);
 		interactiveMap.set(wrapper.id, wrapper);
 		addElement(wrapper, null);
 		return wrapper;
+	}
+
+	/** Drop a wrapper without touching its object. Interactive objects belong to their builder (or
+	 *  codegen instance): detaching one would take it out of a hidden container for good. */
+	function unregisterInteractiveWrapper(w:UIInteractiveWrapper):Void {
+		interactiveWrappers.remove(w);
+		if (interactiveMap.get(w.id) == w) {
+			interactiveMap.remove(w.id);
+			// Another source under the same prefix may use the same id: it takes over the entry.
+			for (other in interactiveWrappers)
+				if (other.id == w.id) {
+					interactiveMap.set(w.id, other);
+					break;
+				}
+		}
+		w.clear();
+		final owner = contentTargetOwnership.get(w);
+		if (owner != null) {
+			owner.unregisterElement(w);
+			contentTargetOwnership.remove(w);
+		} else {
+			elements.remove(w);
+		}
+	}
+
+	static function hasAutoStatusInteractive(interactives:Array<MAObject>):Bool {
+		for (obj in interactives) {
+			switch obj.multiAnimType {
+				case MAInteractive(_, _, _, meta):
+					if (meta != null && new BuilderResolvedSettings(meta).getStringOrDefault(UIRichInteractiveHelper.RESERVED_KEY, "") != "")
+						return true;
+				default:
+			}
+		}
+		return false;
 	}
 
 	/** Registers all `interactive()` elements from a source for event dispatch. Events arrive in
@@ -1024,31 +1128,23 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	 *  Interactives with `autoStatus` metadata are automatically wired for Normal→Hover→Pressed
 	 *  state management.
 	 *
-	 *  Also installs a rebuild listener on the source so that `@switch` arm flips and param-
-	 *  dependent `repeatable` rebuilds automatically resync the screen's interactive map (and
-	 *  autoStatus bindings) to match the new arm/iteration set. */
-	public function addInteractives(source:bh.ui.UIInteractiveSource, ?prefix:String):Array<UIInteractiveWrapper> {
+	 *  Also installs a rebuild listener on the source so that `@switch` arm flips, param-dependent
+	 *  `repeatable` rebuilds and shown/hidden conditional containers automatically resync the
+	 *  screen's wrappers (and autoStatus bindings) with the interactives the source exposes.
+	 *
+	 *  `eventPriority`, when given, is set on every wrapper of this source — including the ones a
+	 *  later rebuild creates (e.g. `UIPanelHelper` raises its panels to `UIEventPriority.Overlay`). */
+	public function addInteractives(source:bh.ui.UIInteractiveSource, ?prefix:String, ?eventPriority:Int):Array<UIInteractiveWrapper> {
 		final interactives = source.getInteractives();
 		var wrappers:Array<UIInteractiveWrapper> = [];
 		for (obj in interactives) {
-			wrappers.push(addInteractive(obj, prefix));
+			final w = addInteractive(obj, prefix, source);
+			if (eventPriority != null)
+				w.eventPriority = eventPriority;
+			wrappers.push(w);
 		}
 		// Auto-wire interactives with autoStatus metadata
-		var hasAutoStatus = false;
-		for (obj in interactives) {
-			switch obj.multiAnimType {
-				case MAInteractive(_, _, _, meta):
-					if (meta != null) {
-						final brs = new BuilderResolvedSettings(meta);
-						if (brs.getStringOrDefault(UIRichInteractiveHelper.RESERVED_KEY, "") != "") {
-							hasAutoStatus = true;
-							break;
-						}
-					}
-				default:
-			}
-		}
-		if (hasAutoStatus) {
+		if (hasAutoStatusInteractive(interactives)) {
 			if (autoStatusHelper == null)
 				autoStatusHelper = new UIRichInteractiveHelper(this);
 			autoStatusHelper.registerAutoStatus(source, prefix);
@@ -1060,7 +1156,8 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		if (source.isIncremental) {
 			final capturedSource = source;
 			final capturedPrefix = prefix;
-			final listener = () -> syncInteractivesFrom(capturedSource, capturedPrefix);
+			final capturedPriority = eventPriority;
+			final listener = () -> syncInteractivesFrom(capturedSource, capturedPrefix, capturedPriority);
 			source.addRebuildListener(listener);
 			interactiveSubscriptions.push({source: source, prefix: prefix, listener: listener});
 		}
@@ -1068,48 +1165,52 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		return wrappers;
 	}
 
-	/** Diff the screen's interactive wrappers against the source's current `getInteractives()`
-	 *  list and bring them back in sync: remove stale wrappers (whose ids no longer exist), add
-	 *  new ones, and resync the autoStatus helper's bindings. Called automatically by the rebuild
-	 *  listener installed by `addInteractives`. */
-	function syncInteractivesFrom(source:bh.ui.UIInteractiveSource, prefix:Null<String>):Void {
+	/** Bring the wrappers of one `(source, prefix)` registration back in line with the interactives
+	 *  the source exposes now. Wrappers of other sources are never touched, even under the same
+	 *  prefix. A wrapper whose object a rebuild replaced with a new one of the same id follows it
+	 *  (`rebind`), so the element — its hover, `disabled` and priority — survives; other stale
+	 *  wrappers are dropped without detaching their objects, and new interactives are wrapped.
+	 *  Called by the rebuild listener installed by `addInteractives`. */
+	function syncInteractivesFrom(source:bh.ui.UIInteractiveSource, prefix:Null<String>, eventPriority:Null<Int>):Void {
 		final interactives = source.getInteractives();
 
-		// 1. Build expected fully-qualified id set from current interactives
-		final expectedIds = new Map<String, Bool>();
+		// Wrappers of this registration by the object they wrap. After the pass below only the
+		// stale ones (object no longer exposed by the source) are left in it.
+		final stale = new Map<MAObject, UIInteractiveWrapper>();
+		for (w in interactiveWrappers)
+			if (w.source == source && w.prefix == prefix)
+				stale.set(w.interactive, w);
+		final unwrapped:Array<MAObject> = [];
 		for (obj in interactives) {
-			switch obj.multiAnimType {
-				case MAInteractive(_, _, identifier, _):
-					final fullId = prefix != null ? '$prefix.$identifier' : identifier;
-					expectedIds.set(fullId, true);
-				default:
+			if (stale.exists(obj))
+				stale.remove(obj);
+			else
+				unwrapped.push(obj);
+		}
+
+		for (obj in unwrapped) {
+			final id = UIInteractiveWrapper.interactiveId(obj, prefix);
+			var rebound = false;
+			for (oldObj => w in stale) {
+				if (w.id == id) {
+					stale.remove(oldObj);
+					w.rebind(obj);
+					rebound = true;
+					break;
+				}
+			}
+			if (!rebound) {
+				final w = addInteractive(obj, prefix, source);
+				if (eventPriority != null)
+					w.eventPriority = eventPriority;
 			}
 		}
+		for (w in stale)
+			unregisterInteractiveWrapper(w);
 
-		// 2. Remove wrappers with matching prefix whose id is no longer in the expected set
-		final toRemove:Array<UIInteractiveWrapper> = [];
-		for (w in interactiveWrappers) {
-			if (w.prefix != prefix) continue;
-			if (!expectedIds.exists(w.id)) toRemove.push(w);
-		}
-		for (w in toRemove) {
-			interactiveWrappers.remove(w);
-			interactiveMap.remove(w.id);
-			removeElement(w);
-		}
-
-		// 3. Add wrappers for newly-appearing ids
-		for (obj in interactives) {
-			switch obj.multiAnimType {
-				case MAInteractive(_, _, identifier, _):
-					final fullId = prefix != null ? '$prefix.$identifier' : identifier;
-					if (!interactiveMap.exists(fullId))
-						addInteractive(obj, prefix);
-				default:
-			}
-		}
-
-		// 4. Resync autoStatus helper bindings (handles arm flip with `autoStatus` metadata)
+		// An autoStatus interactive can appear only after registration (a new arm, a shown block).
+		if (autoStatusHelper == null && hasAutoStatusInteractive(interactives))
+			autoStatusHelper = new UIRichInteractiveHelper(this);
 		if (autoStatusHelper != null)
 			autoStatusHelper.resyncAutoStatus(source, prefix);
 	}
@@ -1143,22 +1244,23 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		}
 	}
 
+	/** Unregister the interactives added under `prefix` (all of them when null). The objects stay in
+	 *  their builder's tree, so `addInteractives` on the same source can wrap them again. */
 	public function removeInteractives(?prefix:String):Void {
 		var toRemove:Array<UIInteractiveWrapper> = [];
 		for (w in interactiveWrappers) {
 			if (prefix == null || w.prefix == prefix)
 				toRemove.push(w);
 		}
-		for (w in toRemove) {
-			interactiveWrappers.remove(w);
-			interactiveMap.remove(w.id);
-			removeElement(w);
-		}
-		// Auto-unregister from autoStatus helper
+		for (w in toRemove)
+			unregisterInteractiveWrapper(w);
+		// Auto-unregister from autoStatus helper: only the removed wrappers' bindings, so a child
+		// prefix ("hud.settings" under "hud") keeps its hover states.
 		if (autoStatusHelper != null) {
-			if (prefix != null)
-				autoStatusHelper.unregisterByPrefix(prefix);
-			else
+			if (prefix != null) {
+				for (w in toRemove)
+					autoStatusHelper.unbind(w.id);
+			} else
 				autoStatusHelper.unbindAll();
 		}
 		// Drop rebuild listener subscriptions matching the prefix
@@ -1210,6 +1312,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 						if (postCustomAddToLayer.exists(element.getObject()))
 							throw 'element already is in postCustomAddToLayer';
 						postCustomAddToLayer.set(element.getObject(), customElement);
+						postCustomAddToLayerPending = true;
 				}
 			}
 			if (layer != null && element.getObject().parent == null) {
@@ -1233,6 +1336,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 					if (postCustomAddToLayer.exists(element.getObject()))
 						throw 'element already is in postCustomAddToLayer';
 					postCustomAddToLayer.set(element.getObject(), customElement);
+					postCustomAddToLayerPending = true;
 			}
 		}
 		if (layer != null && element.getObject().parent == null) {

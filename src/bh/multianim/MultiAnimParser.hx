@@ -700,19 +700,12 @@ enum RepeatType {
 	TilesIterator(bitmapVarName:String, tilenameVarName:Null<String>, sheetName:String, tileFilter:Null<String>);
 }
 
-// Selector for which tile to get from an autotile
-@:nullSafety
-enum AutotileTileSelector {
-	ByIndex(index:ReferenceableValue);     // Select by tile index (0-46 for blob47)
-	ByEdges(edges:Int);                    // Select by edge bitmask (N|E|S|W|NE|SE|SW|NW)
-}
-
 @:nullSafety
 enum GeneratedTileType {
 	Cross(width:ReferenceableValue, height:ReferenceableValue, color:ReferenceableValue, thickness:ReferenceableValue);
 	SolidColor(width:ReferenceableValue, height:ReferenceableValue, color:ReferenceableValue);
 	SolidColorWithText(width:ReferenceableValue, height:ReferenceableValue, color:ReferenceableValue, text:ReferenceableValue, textColor:ReferenceableValue, font:ReferenceableValue);
-	AutotileRef(autotileName:ReferenceableValue, selector:AutotileTileSelector);
+	AutotileRef(autotileName:ReferenceableValue, index:ReferenceableValue);  // Resolved tile for autotile index (0-12 cross, 0-46 blob47, 0-15 corner)
 	AutotileRegionSheet(autotileName:ReferenceableValue, scale:ReferenceableValue, font:ReferenceableValue, fontColor:ReferenceableValue);  // Shows entire region with numbered grid overlay
 }
 
@@ -736,20 +729,42 @@ enum PaletteType {
 	PaletteImageFile(filename:ReferenceableValue);
 }
 
-// Autotile formats for terrain generation
+/** How a nine-patch fills its middle and edges: repeated (`tile`, the `ninepatch()` default)
+ *  or stretched (`stretch`, the `flow(background:)` default). `null` on a node means "not
+ *  said here", so the programmable's `settings { ninepatch => … }` or the element's default applies. */
 @:nullSafety
-enum AutotileFormat {
-	Cross;      // Cross layout + corners for elevation (with depth)
-	Blob47;     // Full 47-tile autotile with all edge/corner combinations
+enum NinePatchMode {
+	NPStretch;
+	NPTile;
 }
 
+/** One entry of a `#name cursor { … }` block: `name: tileSource, hot: x, y`. */
+@:nullSafety
+typedef CursorDef = {
+	var name:String;
+	var tile:TileSource;
+	var hotX:Int;
+	var hotY:Int;
+	var line:Int;
+}
+
+// Autotile formats for terrain generation (index math in bh.base.Autotile)
+@:nullSafety
+enum AutotileFormat {
+	Cross;      // 13 tiles, one per filled cell: edges, center, outer + inner corners
+	Blob47;     // 47 tiles, one per filled cell: every 8-neighbour edge/corner combination
+	Corner;     // 16 tiles, dual grid: one per grid corner, index = filled cells NW=1|NE=2|SW=4|SE=8
+}
+
+// Where an autotile's tiles come from. Every source is addressed by a *source index*; `mapping:`
+// maps autotile index -> source index (identity when absent).
 @:nullSafety
 enum AutotileSource {
-	ATSAtlas(sheet:ReferenceableValue, prefix:ReferenceableValue);
-	ATSAtlasRegion(sheet:ReferenceableValue, region:Array<ReferenceableValue>);
-	ATSFile(filename:ReferenceableValue);
-	ATSTiles(tiles:Array<TileSource>);  // explicit tile list for full control
-	ATSDemo(edgeColor:ReferenceableValue, fillColor:ReferenceableValue);  // auto-generated demo tiles
+	ATSAtlas(sheet:ReferenceableValue, prefix:ReferenceableValue);  // source index j -> atlas tile "<prefix><j>"
+	ATSAtlasIndexed(sheet:ReferenceableValue, name:ReferenceableValue);  // source index j -> frame j (by `index:`) of atlas tile "<name>"
+	ATSFile(filename:ReferenceableValue);  // source index j -> j-th tile (row-major) of `region:` (default: whole image)
+	ATSTiles(tiles:Array<TileSource>);  // source index j -> j-th listed tile
+	ATSDemo(edgeColor:ReferenceableValue, fillColor:ReferenceableValue);  // auto-generated demo tiles, one per autotile index
 }
 
 @:nullSafety
@@ -757,10 +772,171 @@ typedef AutotileDef = {
 	var format:AutotileFormat;
 	var source:AutotileSource;
 	var tileSize:ReferenceableValue;
-	var ?depth:Null<ReferenceableValue>;  // for isometric elevation
-	var ?mapping:Null<Map<Int, Int>>;     // custom index mapping: blob47Index -> tilesetIndex
-	var ?region:Null<Array<ReferenceableValue>>;  // optional region [x, y, w, h] for file source
-	var ?allowPartialMapping:Bool;        // blob47 only: if true, missing tiles use fallback instead of error
+	var ?mapping:Null<Map<Int, Int>>;     // autotile index -> source index (validated against the format at parse time)
+	/** Autotile index -> more source indices drawn in its place by turns (`mapping: [15: 7 | 8 | 9]` puts 8 and 9 here), chosen by position; `mapping` holds the first. **/
+	var ?alternates:Null<Map<Int, Array<Int>>>;
+	/** Autotile index -> how each of its source tiles is turned (`mapping: [2: 1 flipX, 4: 1 rot90]`), one entry per source as `mapping` then `alternates` list them: `Autotile.FLIP_X`, `FLIP_Y`, and quarter turns in `Autotile.rotationOf`. Only indices with a transform are present. **/
+	var ?transforms:Null<Map<Int, Array<Int>>>;
+	var ?region:Null<Array<ReferenceableValue>>;  // file source only: [x, y, w, h] in pixels
+	/** File source only: pixels from the region's edge to its first tile (`margin: 1`), and between tiles (`spacing: 2`). **/
+	var ?margin:Null<ReferenceableValue>;
+	var ?spacing:Null<ReferenceableValue>;
+	var ?allowPartialMapping:Bool;        // blob47 only: indices with no tile use the closest mapped tile instead of an error
+}
+
+/** A terrain of a tileset (`terrain name { … }`): an autotile, several for an animated one, or the variants of one atlas name. **/
+@:nullSafety
+typedef TilesetTerrainDef = {
+	var name:String;
+	/** Autotile definitions of the tileset's file; several are the frames of an animated terrain. **/
+	var autotiles:Array<String>;
+	/** Or an atlas name whose frames are variants, each cell taking one by its position. **/
+	var ?cells:String;
+	/** Milliseconds a frame of an animated terrain. **/
+	var ?duration:Int;
+	/** What the game reads of a cell of this terrain: `metadata { cost:int => 2, swim:bool => true }`, as settings are written. **/
+	var metadata:Map<String, ParsedSettingValue>;
+}
+
+/**
+	`transition a, b { autotile: … }`: where terrain `b` meets terrain `a` (or `none`), this autotile is
+	drawn over `b`'s own at the meeting positions, for a tileset whose edge between two terrains is
+	drawn for that pair. `a` is below `b` in the tileset; the autotiles are one a frame when `b` is animated.
+**/
+@:nullSafety
+typedef TilesetTransitionDef = {
+	var from:String;
+	var to:String;
+	var autotiles:Array<String>;
+}
+
+/**
+	`rise <n> { side: "name" span: s }`: how a cell that many levels above its neighbour `toward` it is
+	drawn. Nothing is lifted: the tileset's `edge` outlines the higher level, and the rise's `side` is
+	drawn on the `span` cells beyond it, toward that neighbour. `rise any` is for every rise that has
+	none of its own; `rise <n> <terrain>` is for a higher cell of that terrain.
+**/
+@:nullSafety
+typedef TilesetRiseDef = {
+	/** How many levels; 0 for `any`: every rise with none of its own. **/
+	var rise:Int;
+	/** The terrain of the higher cell this is for; null: every terrain that has no rises of its own in this direction. **/
+	var ?terrain:String;
+	/** The platform it is a side of (`platform name { rise … }`); null: a level of the ground. **/
+	var ?platform:String;
+	/** An atlas name, `span` frames from the edge outward: the side's middle (the first of `sides`). **/
+	var side:String;
+	/** The side's middle, one name or several taken in turn along the run: `side: "a", "b"`. **/
+	var sides:Array<String>;
+	/** The side's two ends and a side one cell wide, when the tileset draws them apart (else `side`). **/
+	var ?left:String;
+	var ?right:String;
+	var ?single:String;
+	var span:Int;
+	/** Where the side is drawn from the higher cell: down (the default), up, left or right. **/
+	var toward:String;
+	/** What the game reads of the cells a side covers: `metadata { wall:bool => true }`. **/
+	var metadata:Map<String, ParsedSettingValue>;
+}
+
+/**
+	`platform name { edge: autotile  rise <n> { … } }`: a kind of higher level that is not the ground
+	raised: a tree top, a roof. Its `edge` is drawn over all of it, inside and rim, on whatever terrain
+	is under it, and its sides are its own. A map puts it where a character of its levels legend says
+	(`levels { legend { "c": 1 canopy } rows: [ … ] }`).
+**/
+@:nullSafety
+typedef TilesetPlatformDef = {
+	var name:String;
+	/** The autotile its top is drawn with, every cell of it. **/
+	var ?edge:String;
+}
+
+/**
+	`cell name { draw: over metadata { … } }`: what a named cell of the layers is, wherever it is placed.
+	`size: w, h` makes it an object of several cells (a tree, a house) whose image is `w` by `h` cells:
+	the layer's character marks its `anchor` cell (its bottom-left one unless given), it is drawn among
+	the actors sorted by its feet unless `draw:` says otherwise, and its name and metadata are on every
+	cell it covers.
+**/
+@:nullSafety
+typedef TilesetCellDef = {
+	var name:String;
+	/** Where it is drawn, over the layer's own `draw:`: under, over, top, or actors (among them, sorted by its feet). **/
+	var ?draw:String;
+	/** In cells; 1 by 1 when not given. **/
+	var ?width:Int;
+	var ?height:Int;
+	/** The cell of the object the layer's character marks, from its top-left: (0, height - 1) when not given. **/
+	var ?anchorX:Int;
+	var ?anchorY:Int;
+	var metadata:Map<String, ParsedSettingValue>;
+}
+
+/** `#name tileset { … }`: what a tile map is drawn with. **/
+@:nullSafety
+typedef TilesetDef = {
+	var tileSize:Int;
+	/** The sheet the named cells are in (an atlas2 file or inline block). **/
+	var atlas:String;
+	/** An autotile drawn along the rim of "level >= L" for every level L above 0: a higher level's outline. **/
+	var ?edge:String;
+	/** By terrain: the outline of a higher level where that terrain is on top (`edge grass: rim`), in place of `edge`. **/
+	var edges:Map<String, String>;
+	/** Drawn in this order, bottom first; each is drawn under every terrain after it. **/
+	var terrains:Array<TilesetTerrainDef>;
+	/** Pairs of terrains drawn with their own autotile where they meet. **/
+	var transitions:Array<TilesetTransitionDef>;
+	/** By rise, the smallest first; a platform's sides are among them, with its name. **/
+	var rises:Array<TilesetRiseDef>;
+	/** The kinds of higher level that are not the ground raised. **/
+	var platforms:Array<TilesetPlatformDef>;
+	var cells:Array<TilesetCellDef>;
+}
+
+/** `layer name { legend { "s": skull } rows: [ … ] }`: cells placed as they are; a space is no cell. **/
+@:nullSafety
+typedef TilemapLayerDef = {
+	var name:String;
+	var legend:Map<String, String>;
+	var rows:Array<String>;
+	/** The sheet its cells are in; the tileset's atlas when not given. **/
+	var ?sheet:String;
+	/** `under` the actors (the default; a cell the tileset lists in `over` still goes above them), `over` them, or `top`, above everything (shadows). **/
+	var draw:String;
+}
+
+/** A mark the game reads by name, in cells: a point, or a rectangle with `w` and `h`. **/
+@:nullSafety
+typedef TilemapMarkDef = {
+	var name:String;
+	var x:Int;
+	var y:Int;
+	var ?w:Int;
+	var ?h:Int;
+}
+
+/** `#name tilemap { … }`: rows of characters, one a cell. **/
+@:nullSafety
+typedef TilemapDef = {
+	var tileset:String;
+	/** `tileset: external(name), tileset`: the tileset is in an imported file. **/
+	var ?tilesetImport:String;
+	var width:Int;
+	var height:Int;
+	/** Character -> terrain name, or `none`. **/
+	var legend:Map<String, String>;
+	var terrain:Array<String>;
+	/** One character a cell, the cell's level: a digit is itself, any other character is in `levelLegend`; empty for a flat map. **/
+	var levels:Array<String>;
+	/** `levels { legend { "A": 10 } rows: [...] }`: what a character that is not a digit stands for. **/
+	var levelLegend:Map<String, Int>;
+	/** `levels { legend { "c": 1 canopy } … }`: the platform a character of the levels legend stands for, with its level. **/
+	var levelPlatforms:Map<String, String>;
+	var layers:Array<TilemapLayerDef>;
+	var marks:Array<TilemapMarkDef>;
+	/** Where the map is defined in its file (the DevBridge's `map_list` says it). **/
+	var ?line:Int;
 }
 
 @:nullSafety
@@ -844,6 +1020,8 @@ enum DataValueType {
 	DVTEnum(enumName:String);
 	DVTRecord(recordName:String);
 	DVTArray(elementType:DataValueType);
+	/** The id of a row of a keyed record (`ref card`): checked against the block's tables of it. */
+	DVTRef(recordName:String);
 }
 
 @:nullSafety
@@ -855,6 +1033,8 @@ enum DataValue {
 	DVArray(elements:Array<DataValue>);
 	DVRecord(recordName:String, fields:Map<String, DataValue>);
 	DVEnumValue(enumName:String, value:String);
+	/** A row of a keyed record named by its id. */
+	DVRef(recordName:String, id:String);
 }
 
 @:nullSafety
@@ -863,10 +1043,31 @@ typedef DataEnumDef = {
 	var values:Array<String>;
 }
 
+/** An annotation: `@unit("energy")`, `@range(0, 3)`, `@by(claude)`. Its arguments are plain values;
+ *  a bare word is a string. The parser checks the ones it knows (`range`, `default`, `step`, `unit`,
+ *  `says`) and keeps every other as it is, for tools to read. */
+@:nullSafety
+typedef DataMeta = {
+	var name:String;
+	var args:Array<DataValue>;
+}
+
+@:nullSafety
+typedef DataRecordField = {
+	var name:String;
+	var type:DataValueType;
+	var optional:Bool;
+	/** The field rows of this record are found by (`key id`). */
+	var ?key:Bool;
+	var ?meta:Array<DataMeta>;
+}
+
 @:nullSafety
 typedef DataRecordDef = {
 	var name:String;
-	var fields:Array<{name:String, type:DataValueType, optional:Bool}>;
+	var fields:Array<DataRecordField>;
+	/** The name of its key field: an array of it is a table, its rows found by that field. */
+	var ?key:String;
 }
 
 @:nullSafety
@@ -874,6 +1075,31 @@ typedef DataFieldDef = {
 	var name:String;
 	var type:DataValueType;
 	var value:DataValue;
+	/** The line of the .manim file the field starts on. */
+	var ?line:Int;
+	/** Annotations written before the field. */
+	var ?meta:Array<DataMeta>;
+	/** For an array of records: each row's annotations, in the rows' order. */
+	var ?rowMeta:Array<Array<DataMeta>>;
+}
+
+/** How a table is drawn from: `reward: pick(all, weight: weight, draws: 3)`. */
+@:nullSafety
+typedef DataPickDef = {
+	var name:String;
+	/** The field holding the table it draws from. */
+	var over:String;
+	/** The column the odds are read from: the table's own, or with `through`, the linked row's. */
+	var by:String;
+	/** A `ref` field of the table's rows whose linked row holds `by` (`weight: tier.weight`). */
+	var ?through:String;
+	/** Each row at its chance (the `otherwise` row with what is left); otherwise, by weight. */
+	var chance:Bool;
+	var draws:Int;
+	var repeats:Bool;
+	var ?otherwise:String;
+	var line:Int;
+	var ?meta:Array<DataMeta>;
 }
 
 @:nullSafety
@@ -881,6 +1107,9 @@ typedef DataDef = {
 	var enums:Map<String, DataEnumDef>;
 	var records:Map<String, DataRecordDef>;
 	var fields:Array<DataFieldDef>;
+	var ?picks:Array<DataPickDef>;
+	/** The line the block's body starts on. */
+	var ?line:Int;
 }
 
 @:nullSafety
@@ -891,7 +1120,8 @@ enum NodeType {
 		horizontalSpacing:Null<ReferenceableValue>, verticalSpacing:Null<ReferenceableValue>, debug:Bool, multiline:Bool,
 		bgSheet:Null<ReferenceableValue>, bgTile:Null<ReferenceableValue>,
 		overflow:Null<MacroFlowOverflow>, fillWidth:Bool, fillHeight:Bool, reverse:Bool,
-		hAlign:Null<MacroFlowAlign>, vAlign:Null<MacroFlowAlign>
+		hAlign:Null<MacroFlowAlign>, vAlign:Null<MacroFlowAlign>,
+		bgMode:Null<NinePatchMode>
 		);
 	SPACER(width:Null<ReferenceableValue>, height:Null<ReferenceableValue>);
 	BITMAP(tileSource:TileSource, hAlign:HorizontalAlign, vAlign:VerticalAlign);
@@ -915,12 +1145,22 @@ enum NodeType {
 	REPEAT2D(varNameX:String, varNameY:String, repeatTypeX:RepeatType, repeatTypeY:RepeatType);
 	STATIC_REF(externalReference:Null<String>, programmableReference:ReferenceableValue, parameters:Map<String, ReferenceableValue>);
 	PLACEHOLDER(type:PlaceholderTypes, replacementSource:PlaceholderReplacementSource);
-	NINEPATCH(sheet:String, tilename:String, width:ReferenceableValue, height:ReferenceableValue);
+	/** `ninepatch(sheet, tile, w, h [, stretch|tile] [, index: i] [, fps: f])`: sheet and tile are
+	 *  string expressions (`$style + "_hover"`), `mode` null when the element does not say,
+	 *  `index` the frame of an indexed atlas name (0), `fps` plays the name's frames in a loop. */
+	NINEPATCH(sheet:ReferenceableValue, tilename:ReferenceableValue, width:ReferenceableValue, height:ReferenceableValue,
+		mode:Null<NinePatchMode>, index:Null<ReferenceableValue>, fps:Null<ReferenceableValue>);
 	INTERACTIVE(width:ReferenceableValue, height:ReferenceableValue, id:ReferenceableValue, debug:Bool,
 		metadata:Null<Array<{key:ReferenceableValue, type:SettingValueType, value:ReferenceableValue}>>);
 	PALETTE(paletteType:PaletteType);
+	/** `#name cursor { pointer: sheet("ui", "hand"), hot: 3, 1 }`: bitmap cursors the screen
+	 *  manager registers with `CursorManager` when the file loads. Root node only. */
+	CURSORS(cursors:Array<CursorDef>);
 	GRAPHICS(elements:Array<PositionedGraphicsElement>);
 	AUTOTILE(autotileDef:AutotileDef);
+	TILESET(tilesetDef:TilesetDef);
+	TILEMAP(tilemapDef:TilemapDef);
+	TILEMAP_REF(externalReference:Null<String>, name:String);
 	ATLAS2(atlas2Def:Atlas2Def);
 	DATA(dataDef:DataDef);
 	SLOT(parameters:Null<ParametersDefinitions>, paramOrder:Null<Array<String>>);

@@ -401,9 +401,11 @@ animation @(level < 3) {
 		// Regression: comparison conditionals used expectIdentifier() which
 		// rejected a leading minus, so @(level >= -1) failed to parse.
 		// expectSignedIdentifier() now accepts an optional leading APMinus.
+		// -2 keeps the @(level < -1) arm reachable — the reachability validation
+		// rejects animations that can never be selected for any declared state.
 		var result = parseAnimExpectingSuccess('
 sheet: testSheet
-states: level(-1, 0, 1, 2)
+states: level(-2, -1, 0, 1, 2)
 animation @(level >= -1) {
     name: idle
     fps: 4
@@ -1221,7 +1223,8 @@ animation {
     }
 }
 ');
-		Assert.equals(0xFF0000, meta.getColorOrDefault("tint", 0));
+		// #FF0000 bakes opaque alpha (strict-D parity) → 0xFFFF0000.
+		Assert.equals(0xFFFF0000, meta.getColorOrDefault("tint", 0));
 		Assert.equals(0xFFFFFF, meta.getColorOrDefault("missing", 0xFFFFFF));
 	}
 
@@ -1241,7 +1244,8 @@ animation {
     }
 }
 ');
-		Assert.equals(0x00FF00, meta.getColorOrException("tint"));
+		// #00FF00 bakes opaque alpha (strict-D parity) → 0xFF00FF00.
+		Assert.equals(0xFF00FF00, meta.getColorOrException("tint"));
 		var threw = false;
 		try {
 			meta.getColorOrException("missing");
@@ -1557,6 +1561,91 @@ animation {
 		}
 	}
 
+	@Test
+	public function testAnimSMEventOpensPlaylist() {
+		// An event before the first frame: fired as the animation starts, then the frame shows.
+		// It used to be read over and over until the loop guard threw "animation loop detected".
+		var sm = new bh.stateanim.AnimationSM([], true);
+		var dummyTile = h2d.Tile.fromColor(0xFF0000, 8, 8);
+		var frame = new bh.stateanim.AnimationFrame(dummyTile, 0.1, 0, 0, 8, 8);
+		var events:Array<bh.stateanim.AnimationSM.AnimationEvent> = [];
+		sm.onAnimationEvent = function(e) { events.push(e); };
+		sm.addAnimationState("fire", [
+			Event(PointEvent("muzzle", new h2d.col.IPoint(48, -1))),
+			Frame(frame),
+			Event(PointEvent("muzzle", new h2d.col.IPoint(35, -1))),
+			Frame(frame)
+		], 0, []);
+		sm.play("fire");
+		Assert.equals(1, events.length, "the opening event fires as the animation starts");
+		Assert.notNull(sm.getCurrentFrame(), "and the first frame shows");
+		sm.update(0.15);
+		Assert.equals(2, events.length, "the next frame's event fires as it comes up");
+		switch events[1] {
+			case PointEvent(name, pt):
+				Assert.equals("muzzle", name);
+				Assert.equals(35, pt.x);
+			default: Assert.fail("Expected PointEvent");
+		}
+	}
+
+	@Test
+	public function testAnimSMLoopingEventOpensPlaylist() {
+		// Looping back to an opening event goes through it again, once per loop.
+		var sm = new bh.stateanim.AnimationSM([], true);
+		var dummyTile = h2d.Tile.fromColor(0xFF0000, 8, 8);
+		var frame = new bh.stateanim.AnimationFrame(dummyTile, 0.1, 0, 0, 8, 8);
+		var ticks = 0;
+		sm.onAnimationEvent = function(e) { ticks++; };
+		sm.addAnimationState("idle", [Event(Trigger("tick")), Frame(frame)], -1, []);
+		sm.play("idle");
+		Assert.equals(1, ticks);
+		sm.update(0.25);
+		Assert.equals(3, ticks, "one tick per pass through the playlist");
+	}
+
+	@Test
+	public function testAnimSMPlayFromOpeningEventShowsNewAnimFirstFrame() {
+		// A handler that switches animation on an opening event: the new animation starts at its
+		// own first frame, not one past it.
+		var sm = new bh.stateanim.AnimationSM([], true);
+		var first = new bh.stateanim.AnimationFrame(h2d.Tile.fromColor(0xFF0000, 8, 8), 0.1, 0, 0, 8, 8);
+		var second = new bh.stateanim.AnimationFrame(h2d.Tile.fromColor(0x00FF00, 8, 8), 0.1, 0, 0, 8, 8);
+		var opening = new bh.stateanim.AnimationFrame(h2d.Tile.fromColor(0x0000FF, 8, 8), 0.1, 0, 0, 8, 8);
+		sm.addAnimationState("start", [Event(Trigger("go")), Frame(opening)], 0, []);
+		sm.addAnimationState("next", [Frame(first), Frame(second)], 0, []);
+		sm.onAnimationEvent = function(e) {
+			if (sm.getCurrentAnimName() == "start")
+				sm.play("next");
+		};
+		sm.play("start");
+		Assert.equals("next", sm.getCurrentAnimName());
+		Assert.equals(0, sm.currentStateIndex, "the new animation is on its first state");
+		Assert.isTrue(sm.getCurrentFrame() != null && sm.getCurrentFrame().tile == first.tile, "and shows its first frame");
+	}
+
+	@Test
+	public function testAnimSMPlayFromOpeningEventDoesNotFinishOneFrameAnim() {
+		// Same switch into a one-frame, non-looping animation: it must show its frame for the
+		// frame's duration, not report finished straight away.
+		var sm = new bh.stateanim.AnimationSM([], true);
+		var only = new bh.stateanim.AnimationFrame(h2d.Tile.fromColor(0xFF0000, 8, 8), 0.1, 0, 0, 8, 8);
+		var opening = new bh.stateanim.AnimationFrame(h2d.Tile.fromColor(0x0000FF, 8, 8), 0.1, 0, 0, 8, 8);
+		sm.addAnimationState("start", [Event(Trigger("go")), Frame(opening)], 0, []);
+		sm.addAnimationState("single", [Frame(only)], 0, []);
+		var finished = 0;
+		sm.onFinished = function() finished++;
+		sm.onAnimationEvent = function(e) {
+			if (sm.getCurrentAnimName() == "start")
+				sm.play("single");
+		};
+		sm.play("start");
+		Assert.equals(0, finished, "a one-frame animation just started is not finished");
+		Assert.isFalse(sm.isFinished());
+		sm.update(0.15);
+		Assert.equals(1, finished, "it finishes once its frame has shown");
+	}
+
 	// ===== Full integration: parse .anim and create AnimSM =====
 
 	@Test
@@ -1640,8 +1729,9 @@ animation {
 		var result = AnimParser.parseFile(input, "test-input", loader);
 		var meta = result.metadata;
 		Assert.notNull(meta);
-		Assert.equals(0xFF0000, meta.getColorOrDefault("tint", 0, ["type" => "fire"]));
-		Assert.equals(0x0000FF, meta.getColorOrDefault("tint", 0, ["type" => "ice"]));
+		// Color literals bake opaque alpha (strict-D parity).
+		Assert.equals(0xFFFF0000, meta.getColorOrDefault("tint", 0, ["type" => "fire"]));
+		Assert.equals(0xFF0000FF, meta.getColorOrDefault("tint", 0, ["type" => "ice"]));
 		Assert.equals(0xFFFFFF, meta.getColorOrDefault("missing", 0xFFFFFF));
 	}
 
@@ -2093,9 +2183,10 @@ animation {
 		var loader = new bh.base.ResourceLoader.CachingResourceLoader();
 		var result = AnimParser.parseFile(input, "test-input", loader);
 		Assert.notNull(result.metadata, "Should have metadata");
-		Assert.equals(0xFF0000, result.metadata.getColorOrDefault("tint", 0, ["team" => "red"]));
-		Assert.equals(0x0000FF, result.metadata.getColorOrDefault("tint", 0, ["team" => "blue"]));
-		Assert.equals(0xFFFFFF, result.metadata.getColorOrDefault("tint", 0, ["team" => "green"]));
+		// Color literals bake opaque alpha (strict-D parity).
+		Assert.equals(0xFFFF0000, result.metadata.getColorOrDefault("tint", 0, ["team" => "red"]));
+		Assert.equals(0xFF0000FF, result.metadata.getColorOrDefault("tint", 0, ["team" => "blue"]));
+		Assert.equals(0xFFFFFFFF, result.metadata.getColorOrDefault("tint", 0, ["team" => "green"]));
 		Assert.equals(10, result.metadata.getIntOrDefault("speed", 0));
 	}
 
@@ -2165,23 +2256,10 @@ animation {
 		Assert.equals("hit", d.animations[0].name);
 	}
 
-	@Test
-	public function testEventMetadataPoint() {
-		var result = parseAnimExpectingSuccess('
-sheet: testSheet
-animation {
-    name: hit
-    fps: 10
-    playlist {
-        sheet: "test_hit"
-        event spark 10, -5 { intensity:float => 0.8, color => "red" }
-    }
-}
-');
-		Assert.notNull(result, "point event with typed metadata should parse");
-		var d:Dynamic = result;
-		Assert.equals("hit", d.animations[0].name);
-	}
+	// Note: `event name x,y { meta }` and `event name random x,y,r { meta }`
+	// are rejected at parse time — the runtime event payload cannot carry both,
+	// and the point/random spec used to be silently dropped. Covered by
+	// testEventWithPointSpecAndMetadataBlockIsRejected.
 
 	@Test
 	public function testEventMetadataAllTypes() {
@@ -2199,24 +2277,6 @@ animation {
 		Assert.notNull(result, "event metadata with int, float, string, color, bool types should parse");
 		var d:Dynamic = result;
 		Assert.equals("hit", d.animations[0].name);
-	}
-
-	@Test
-	public function testEventMetadataRandomPoint() {
-		var result = parseAnimExpectingSuccess('
-sheet: testSheet
-animation {
-    name: explode
-    fps: 10
-    playlist {
-        sheet: "test_explode"
-        event debris random 0, 0, 50 { count:int => 3, size:float => 0.5 }
-    }
-}
-');
-		Assert.notNull(result, "random point event with metadata should parse");
-		var d:Dynamic = result;
-		Assert.equals("explode", d.animations[0].name);
 	}
 
 	// ===== Playlist reachability validation (bug 1.1) =====
@@ -2299,6 +2359,270 @@ animation idle {
 ');
 		Assert.notNull(error, "Should throw error for unterminated block comment at EOF");
 		Assert.stringContains("Unterminated block comment", error);
+	}
+
+	// ===== Color literal alpha semantics (strict-D parity with .manim) =====
+
+	@Test
+	public function testAnimColorLiteralsBakeOpaqueAlpha() {
+		// .manim strict-D bakes 0xFF alpha on 3- and 6-digit CSS color forms.
+		// .anim color literals must match — otherwise replaceColor writes fully
+		// transparent pixels and getColorOr* returns alpha-0 ints.
+		var meta = parseAnimWithMetadata('
+sheet: testSheet
+metadata {
+    tint: #FF0000
+    shade: #F00
+}
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+    }
+}
+');
+		Assert.equals(0xFF, meta.getColorOrException("tint") >>> 24,
+			'#FF0000 must carry baked opaque alpha (0xFFFF0000), got 0x${StringTools.hex(meta.getColorOrException("tint"), 8)}');
+		Assert.equals(0xFF, meta.getColorOrException("shade") >>> 24,
+			'#F00 must carry baked opaque alpha (0xFFFF0000), got 0x${StringTools.hex(meta.getColorOrException("shade"), 8)}');
+	}
+
+	@Test
+	public function testAnimEightDigitColorKeepsExplicitAlpha() {
+		// Pin: the 8-digit #RRGGBBAA form already stores explicit alpha — the
+		// opaque-alpha bake for short forms must not disturb it.
+		var meta = parseAnimWithMetadata('
+sheet: testSheet
+metadata {
+    glow: #FF000080
+}
+animation {
+    name: idle
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+    }
+}
+');
+		Assert.equals(0x80, meta.getColorOrException("glow") >>> 24,
+			'#FF000080 must keep its explicit alpha 0x80, got 0x${StringTools.hex(meta.getColorOrException("glow"), 8)}');
+	}
+
+	// ===== Per-instance extraPoints / filters (load cache must not share mutable state) =====
+
+	@Test
+	public function testCreateAnimSMInstancesDoNotShareExtraPointsOrFilters() {
+		// The load() cache may share immutable parse data, but each AnimationSM
+		// must get its own extraPoints IPoint map and its own filter instance —
+		// otherwise mutating one SM corrupts every SM built from the same cache.
+		var input = byte.ByteData.ofString('
+sheet: crew2
+allowedExtraPoints: [pt]
+states: direction(l, r)
+fps: 4
+animation walk {
+    fps: 4
+    loop: yes
+    playlist { sheet: "marine_${"${direction}"}_idle" }
+    extrapoints { pt: 3, 4 }
+    filters { brightness: 0.8 }
+}
+');
+		var loader:bh.base.ResourceLoader = bh.test.TestResourceLoader.createLoader(false);
+		var parsed = AnimParser.parseFile(input, "test-input", loader);
+		var sm1 = parsed.createAnimSM(["direction" => "l"]);
+		var sm2 = parsed.createAnimSM(["direction" => "l"]);
+
+		var p1 = sm1.getExtraPointForAnim("pt", "walk");
+		var p2 = sm2.getExtraPointForAnim("pt", "walk");
+		Assert.notNull(p1);
+		Assert.notNull(p2);
+		p1.x = 999;
+		Assert.equals(3, p2.x,
+			"mutating one AnimationSM's extra point must not corrupt another SM built from the same parse result");
+
+		@:privateAccess var f1 = sm1.animationStates.get("walk").filter;
+		@:privateAccess var f2 = sm2.animationStates.get("walk").filter;
+		Assert.notNull(f1);
+		Assert.isFalse(f1 == f2, "each AnimationSM must receive its own filter instance, not a shared cached one");
+	}
+
+	// ===== Event point/random spec combined with metadata block =====
+
+	@Test
+	public function testEventWithPointSpecAndMetadataBlockIsRejected() {
+		// `event name x,y { meta }` parses today but silently DROPS the point
+		// spec — the event is delivered with metadata only. Until the event
+		// payload can carry both, this must be a parse error, not silent data loss.
+		var error = parseAnimExpectingError('
+sheet: testSheet
+states: direction(l, r)
+animation idle {
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+        event boom 5,6 { power => 2 }
+    }
+}
+');
+		Assert.notNull(error, "event with BOTH a point spec and a metadata block must be rejected — the point is silently dropped today");
+
+		var errorRandom = parseAnimExpectingError('
+sheet: testSheet
+states: direction(l, r)
+animation idle {
+    fps: 4
+    loop: yes
+    playlist {
+        sheet: "test_idle"
+        event boom random 5,6,10 { power => 2 }
+    }
+}
+');
+		Assert.notNull(errorRandom, "event with BOTH a random spec and a metadata block must be rejected — the random spec is silently dropped today");
+	}
+
+	// ===== Stacked condition + @else in one animation header =====
+
+	@Test
+	public function testConditionFollowedByElseInOneHeaderIsRejected() {
+		// `animation name @(x=>a) @else(y=>b)` silently DISCARDS the first
+		// condition today (parseStates returns only the @else selector). The
+		// combination has no defined meaning and must be a parse error.
+		// The @default sibling keeps state coverage complete, so nothing else
+		// errors — today this parses fine with @(direction=>l) silently dropped.
+		var error = parseAnimExpectingError('
+sheet: testSheet
+states: direction(l, r)
+animation idle @(direction=>l) @else(direction=>r) {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+}
+animation idle @default {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle_default" }
+}
+');
+		Assert.notNull(error, "a condition followed by @else in the same animation header must be a parse error — the first condition is silently discarded today");
+	}
+
+	@Test
+	public function testAmbiguousAnimationSelectorErrorIsStructured() {
+		// When two animations tie for the best state match, parse-time
+		// validation throws. That error must be a structured parser error
+		// (positioned, typed) — not a raw string that catch sites (strict mode,
+		// hot reload, DevBridge) cannot classify or position.
+		// The multi-value arm and the single-value arm both match direction=l
+		// with equal score.
+		var caught:Dynamic = null;
+		try {
+			var input = byte.ByteData.ofString('
+sheet: testSheet
+states: direction(l, r)
+animation idle @(direction=>[l, r]) {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+}
+animation idle @(direction=>l) {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+}
+');
+			var loader = new bh.base.ResourceLoader.CachingResourceLoader();
+			AnimParser.parseFile(input, "test-input", loader);
+		} catch (e:Dynamic) {
+			caught = e;
+		}
+		Assert.notNull(caught, "ambiguous selectors must throw");
+		Assert.isTrue(Std.isOfType(caught, bh.base.ParseError),
+			'ambiguity error must be a structured ParseError, got: $caught');
+	}
+
+	// ===== Comparison/range conditionals require numeric state values =====
+
+	@Test
+	public function testComparisonConditionalOnNonNumericStatesIsRejected() {
+		// `@(level >= 3)` against `states: level(low, high)` can never match —
+		// every declared value parses to NaN. That arm is silently dead today;
+		// it must be a parse error.
+		var error = parseAnimExpectingError('
+sheet: testSheet
+states: level(low, high)
+animation idle @(level >= 3) {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+}
+animation idle @default {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+}
+');
+		Assert.notNull(error, "comparison conditional on a state with only non-numeric declared values must be a parse error — the arm is silently dead today");
+
+		var errorRange = parseAnimExpectingError('
+sheet: testSheet
+states: level(low, high)
+animation idle @(level => 1..5) {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+}
+animation idle @default {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+}
+');
+		Assert.notNull(errorRange, "range conditional on a state with only non-numeric declared values must be a parse error — the arm is silently dead today");
+	}
+
+	// ===== Long comment runs must lex iteratively =====
+
+	@Test
+	public function testManyConsecutiveCommentsParse() {
+		// The lexer used to recurse once per comment — a long run of comments in
+		// a generated file was a stack-overflow risk. Pin the iterative version.
+		var buf = new StringBuf();
+		buf.add('sheet: testSheet\n');
+		for (i in 0...5000) {
+			buf.add('// filler comment $i\n');
+			buf.add('/* block $i */\n');
+		}
+		buf.add('animation idle {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+}
+');
+		var result = parseAnimExpectingSuccess(buf.toString());
+		Assert.notNull(result, "a file with 10k consecutive comments must lex without recursion issues");
+	}
+
+	// ===== Unknown characters must not be silently skipped =====
+
+	@Test
+	public function testAnimLexerRejectsUnknownCharacters() {
+		// The lexer silently skips characters it does not recognize, so typos
+		// like a stray backtick vanish without a diagnostic.
+		var error = parseAnimExpectingError('
+sheet: testSheet
+animation idle {
+    fps: 4 `
+    loop: yes
+    playlist { sheet: "test_idle" }
+}
+');
+		Assert.notNull(error, "an unknown character (backtick) must produce a lexer error, not be silently skipped");
 	}
 
 	// ===== flipX / flipY tests (#13) =====
@@ -2406,5 +2730,300 @@ flipX: yes
 ');
 		Assert.notNull(error, "file-level flipX after animations should error");
 		Assert.stringContains("flipX", error);
+	}
+
+	// ===== Reachability: fully-shadowed animations/playlists must be rejected =====
+	// The validation pass marks visited animations/extra points but compares
+	// `visited == false` on a null-default optional field (`null == false` is false),
+	// and never sets `visited` on playlists at all — so a selector that is shadowed
+	// by a more specific sibling for every state parses silently.
+
+	@Test
+	public function testFullyShadowedAnimationIsRejected() {
+		// The multi-value selector scores 1 for both states, the unconditional
+		// `idle` scores 0 — it can never be selected.
+		var error = parseAnimExpectingError('
+sheet: testSheet
+states: direction(l, r)
+animation idle @(direction=>[l, r]) {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+}
+animation idle {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle2" }
+}
+');
+		Assert.notNull(error, "fully-shadowed animation must be a parse error");
+		Assert.stringContains("not reachable", error);
+	}
+
+	@Test
+	public function testFullyShadowedPlaylistIsRejected() {
+		var error = parseAnimExpectingError('
+sheet: testSheet
+states: direction(l, r)
+animation idle {
+    fps: 4
+    loop: yes
+    playlist @(direction=>[l, r]) { sheet: "test_a" }
+    playlist { sheet: "test_b" }
+}
+');
+		Assert.notNull(error, "fully-shadowed playlist must be a parse error");
+		Assert.stringContains("not reachable", error);
+	}
+
+	// ===== Lexer: unterminated strings must error at the opening quote =====
+	// The quoted-string loop falls out at EOF without an error, swallowing the rest
+	// of the file into one token; the parser then fails far away (or not at all).
+
+	@Test
+	public function testUnterminatedStringIsRejected() {
+		var error = parseAnimExpectingError('
+sheet: testSheet
+states: direction(l)
+animation idle {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle }
+}
+');
+		Assert.notNull(error, "unterminated string must be a parse error");
+		Assert.stringContains("Unterminated string", error);
+	}
+
+	@Test
+	public function testNewlineInsideStringKeepsLineNumbersInSync() {
+		// An embedded newline inside a quoted string must bump the lexer line
+		// counter; the unknown-character error below sits on source line 5.
+		var error = parseAnimExpectingError('sheet: testSheet\nstates: direction(l)\nmetadata { note: "two\nline" }\n`\n');
+		Assert.notNull(error, "unknown character should produce a parse error");
+		Assert.isTrue(error.indexOf("test-input:5:") >= 0,
+			'Error must be reported on line 5 (the stray backtick), got: $error');
+	}
+
+	// ===== For tools: annotations, lists of words, where each value is written =====
+
+	/** As a tool parses: with where each value is written. **/
+	static function loadedOf(animSource:String):LoadedAnimation {
+		try {
+			final loader = new bh.base.ResourceLoader.CachingResourceLoader();
+			return AnimParser.parseFile(byte.ByteData.ofString(animSource), "test-input", loader, true).loaded();
+		} catch (e:Dynamic) {
+			Assert.fail('Unexpected parse error: $e');
+			return null;
+		}
+	}
+
+	static function annotationNamed(list:Array<AnimAnnotation>, name:String):Null<AnimAnnotation> {
+		for (a in list)
+			if (a.name == name) return a;
+		return null;
+	}
+
+	@Test
+	public function testAnnotationsBelongToTheAnimationAfterThemOrToTheFile() {
+		final loaded = loadedOf('
+@pack("Creatures")
+sheet: testSheet
+@from("WolfIdle.png", grid: 32, rows: direction)
+@note
+animation idle {
+    fps: 4
+    loop: yes
+    playlist { sheet: "test_idle" }
+}
+@from(layer: shadow, "ShadowWolf.png", merged, [a, b])
+anim walk(fps:4): "test_walk"
+@trailing(1.5, #FF0000)
+');
+		Assert.equals(2, loaded.annotations.length, "@pack before sheet: and @trailing after the last animation are the file's");
+		Assert.same(MVString("Creatures"), annotationNamed(loaded.annotations, "pack").args[0]);
+		Assert.same([MVFloat(1.5), MVColor(0xFFFF0000)], annotationNamed(loaded.annotations, "trailing").args);
+
+		final idle = loaded.animations[0].annotations;
+		Assert.equals(2, idle.length, "@from and @note belong to idle");
+		final from = annotationNamed(idle, "from");
+		Assert.same([MVString("WolfIdle.png")], from.args);
+		Assert.same(MVInt(32), from.named.get("grid"));
+		Assert.same(MVString("direction"), from.named.get("rows"), "a bare word is a string");
+		Assert.equals(0, annotationNamed(idle, "note").args.length);
+		Assert.equals(4, from.line, "an annotation says where it is");
+
+		final walk = loaded.animations[1].annotations;
+		Assert.equals(1, walk.length, "an annotation before an anim shorthand belongs to it");
+		Assert.same(MVString("shadow"), walk[0].named.get("layer"));
+		Assert.same([MVString("ShadowWolf.png"), MVString("merged"), MVList(["a", "b"])], walk[0].args);
+	}
+
+	@Test
+	public function testBadAnnotationsAreErrors() {
+		Assert.stringContains("belong to a condition", parseAnimExpectingError('
+sheet: testSheet
+@else
+animation idle { fps: 4 playlist { sheet: "test_idle" } }
+'));
+		Assert.stringContains("given twice", parseAnimExpectingError('
+sheet: testSheet
+@from(grid: 8, grid: 16)
+animation idle { fps: 4 playlist { sheet: "test_idle" } }
+'));
+		Assert.notNull(parseAnimExpectingError('
+sheet: testSheet
+@from("a.png" "b.png")
+animation idle { fps: 4 playlist { sheet: "test_idle" } }
+'), "arguments are separated by commas");
+		Assert.notNull(parseAnimExpectingError('
+sheet: testSheet
+@(direction=>l)
+animation idle { fps: 4 playlist { sheet: "test_idle" } }
+'), "a condition is not an annotation");
+	}
+
+	@Test
+	public function testMetadataTakesListsOfWords() {
+		final parsed = parseAnimExpectingSuccess('
+sheet: testSheet
+metadata {
+    tags: [beast, wolf, "big one", 3]
+    kind: "sprite"
+    none: []
+}
+animation idle { fps: 4 loop: yes playlist { sheet: "test_idle" } }
+');
+		final meta = parsed.metadata;
+		Assert.same(["beast", "wolf", "big one", "3"], meta.getListOrException("tags"));
+		Assert.same(["sprite"], meta.getListOrDefault("kind", []), "a single string is a list of one");
+		Assert.same([], meta.getListOrException("none"));
+		Assert.same(["x"], meta.getListOrDefault("missing", ["x"]));
+		Assert.equals("beast, wolf, big one, 3", meta.getStringOrDefault("tags", ""));
+		Assert.raises(() -> meta.getIntOrException("tags"));
+		Assert.raises(() -> meta.getColorOrDefault("tags", 0));
+	}
+
+	@Test
+	public function testLoadedSaysWhereEachValueIsWritten() {
+		final source = '@pack("Creatures")
+sheet: testSheet
+allowedExtraPoints: [fire]
+center: 16, 26
+fps: 5
+metadata {
+    tags: [beast, wolf]
+    tags: [pup]
+}
+@from("WolfIdle.png")
+animation idle {
+    loop: yes
+    playlist {
+        sheet: "test_idle" frames: 0..1 offset: 0, -1
+        event step 3, 4
+        sheet: "test_idle2", duration: 50ms
+    }
+    extrapoints { fire: 5, -3 }
+}
+anim walk(fps:4): "test_walk"
+';
+		final loaded = loadedOf(source);
+		function text(path:String):Null<String> {
+			for (s in loaded.spans)
+				if (s.path == path) return source.substring(s.start, s.end);
+			return null;
+		}
+		Assert.equals("testSheet", text("sheet"));
+		Assert.equals("[fire]", text("allowedExtraPoints"));
+		Assert.equals("16, 26", text("center"));
+		Assert.equals("5", text("fps"));
+		Assert.equals("[beast, wolf]", text("metadata.tags#0"));
+		Assert.equals("[pup]", text("metadata.tags#1"), "a key written twice: #n counts its entries");
+		Assert.isTrue(text("metadata").indexOf("metadata {") == 0);
+		Assert.equals('@pack("Creatures")', text("@pack#0"));
+		Assert.equals('@from("WolfIdle.png")', text("animations.0.@from#0"));
+		Assert.equals("yes", text("animations.0.loop"));
+		Assert.equals("idle", text("animations.0.name"));
+		Assert.equals('"test_idle"', text("animations.0.playlist#0.0.sheet"));
+		Assert.equals('sheet: "test_idle" frames: 0..1 offset: 0, -1', text("animations.0.playlist#0.0"));
+		Assert.equals("0..1", text("animations.0.playlist#0.0.frames"));
+		Assert.equals("0, -1", text("animations.0.playlist#0.0.offset"));
+		Assert.equals("event step 3, 4", text("animations.0.playlist#0.1"));
+		Assert.equals("3, 4", text("animations.0.playlist#0.1.at"));
+		Assert.equals("50ms", text("animations.0.playlist#0.2.duration"));
+		Assert.equals("5, -3", text("animations.0.extrapoints.fire#0"));
+		Assert.isTrue(StringTools.startsWith(text("animations.0"), "animation idle {"));
+		Assert.isTrue(StringTools.endsWith(text("animations.0"), "}"));
+		Assert.equals("walk", text("animations.1.name"));
+		Assert.equals("4", text("animations.1.fps"));
+		Assert.equals('"test_walk"', text("animations.1.playlist#0.0.sheet"));
+		Assert.equals('anim walk(fps:4): "test_walk"', text("animations.1"));
+
+		Assert.equals(5, loaded.defaults.fps);
+		Assert.equals("testSheet", loaded.sheet);
+		Assert.equals(2, loaded.metadataEntries.get("tags").length);
+		final lineOfFps = Lambda.find(loaded.spans, s -> s.path == "fps");
+		Assert.equals(5, lineOfFps.line);
+		Assert.equals(6, lineOfFps.col);
+
+		// A game's parse keeps none: only a tool that asks for them gets them
+		final played = parseAnimExpectingSuccess(source).loaded();
+		Assert.equals(0, played.spans.length, "no spans unless asked for");
+		Assert.equals(2, played.metadataEntries.get("tags").length, "the rest is there as it is");
+		Assert.equals(1, played.annotations.length, "and so are the annotations");
+	}
+
+	@Test
+	public function testPlaylistLineModifiersInAnyOrderOnce() {
+		Assert.notNull(parseAnimExpectingSuccess('
+sheet: testSheet
+animation idle {
+    fps: 4
+    playlist {
+        sheet: "a" offset: 1, 1 duration: 50ms frames: 0..1
+        sheet: "b", frames: 0..0, duration: 20ms, offset: -2, 3
+        file: "c.png" offset: 0, 1
+        sheet: "d"
+    }
+}
+'));
+		Assert.stringContains("offset already set", parseAnimExpectingError('
+sheet: testSheet
+animation idle { fps: 4 playlist { sheet: "a" offset: 1, 1 offset: 2, 2 } }
+'));
+		Assert.notNull(parseAnimExpectingError('
+sheet: testSheet
+animation idle { fps: 4 playlist { file: "c.png" frames: 0..1 } }
+'), "a file: line is one frame and takes no frames:");
+	}
+
+	@Test
+	public function testPlaylistOffsetMovesTheFramesAndMirrorsWithFlip() {
+		function firstTile(source:String):h2d.Tile {
+			final loader:bh.base.ResourceLoader = bh.test.TestResourceLoader.createLoader(false);
+			final parsed = AnimParser.parseFile(byte.ByteData.ofString(source), "test-input", loader);
+			final sm = parsed.createAnimSM([]);
+			for (state in sm.animationStates.get("idle").states)
+				switch state {
+					case Frame(f): return f.tile;
+					default:
+				}
+			return null;
+		}
+		function anim(line:String, flip:String):String
+			return 'sheet: crew2\ncenter: 16, 16\nanimation idle { fps: 4 flipX: $flip playlist { $line } }\n';
+
+		final plain = firstTile(anim('sheet: "marine_l_dead"', "no"));
+		final nudged = firstTile(anim('sheet: "marine_l_dead" offset: 3, -2', "no"));
+		Assert.equals(plain.dx + 3, nudged.dx);
+		Assert.equals(plain.dy - 2, nudged.dy);
+
+		final flipped = firstTile(anim('sheet: "marine_l_dead"', "yes"));
+		final flippedNudged = firstTile(anim('sheet: "marine_l_dead" offset: 3, -2', "yes"));
+		Assert.equals(flipped.dx - 3, flippedNudged.dx, "the nudge is part of the art, so a flip mirrors it");
+		Assert.equals(flipped.dy - 2, flippedNudged.dy);
+
+		final again = firstTile(anim('sheet: "marine_l_dead"', "no"));
+		Assert.equals(plain.dx, again.dx, "a nudge never moves the atlas's shared tile");
 	}
 }

@@ -177,7 +177,7 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 		if (this.disabled)
 			return;
 
-		if (isOpen() && this.panelObject.getBounds().contains(wrapper.eventPos)) {
+		if (isOpen() && (this.panelObject.getBounds().contains(wrapper.eventPos) || this.panel.isScrollbarDragging())) {
 			this.panel.onEvent(wrapper);
 			return;
 		}

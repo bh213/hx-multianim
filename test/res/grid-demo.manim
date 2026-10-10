@@ -1,0 +1,217 @@
+version: 1.0
+
+// Grid Component Demo — Rect drag-drop, Hex + cards, Grid-to-grid transfers
+
+curves {
+    #elasticBounce curve { easing: easeoutelastic }
+    #easeOut curve { easing: easeoutcubic }
+}
+
+paths {
+    #straightLine path { lineTo(100, 0) }
+    #cardArc path { bezier(100, 0, 50, -40) }
+    #arrowCurve path { bezier(100, 0, 50, -30) }
+}
+
+// Drag-drop animated paths
+#returnAnim animatedPath {
+    path: straightLine
+    type: time
+    duration: 0.4
+    0.0: progressCurve: elasticBounce
+}
+
+#snapAnim animatedPath {
+    path: straightLine
+    type: time
+    duration: 0.12
+    0.0: progressCurve: easeOut
+}
+
+#swapAnim animatedPath {
+    path: cardArc
+    type: time
+    duration: 3.0
+    0.0: progressCurve: easeOut
+}
+
+#expensiveSnap animatedPath {
+    path: straightLine
+    type: time
+    duration: 0.5
+    0.0: progressCurve: elasticBounce
+    0.0: scaleCurve: elasticBounce
+}
+
+// Card hand animated paths
+#drawAnim animatedPath {
+    path: cardArc
+    type: time
+    duration: 0.3
+    easing: easeOutBack
+}
+
+#discardAnim animatedPath {
+    path: cardArc
+    type: time
+    duration: 0.25
+    easing: easeInQuad
+}
+
+#returnCardAnim animatedPath {
+    path: cardArc
+    type: time
+    duration: 0.2
+    easing: easeOutCubic
+}
+
+#rearrangeAnim animatedPath {
+    path: cardArc
+    type: time
+    duration: 0.15
+    easing: easeInOutCubic
+}
+
+// ===== Cell programmables =====
+
+#rectCell programmable(col:int=0, row:int=0, status:[normal,hover]=normal,
+                       highlight:[none,accept,reject,expensive,locked,swap]=none,
+                       itemType:[none,weapon,potion]=none) {
+    bitmap(generated(color(52, 52, #1a1a2e))): 0, 0
+    @(highlight=>accept)     bitmap(generated(color(52, 52, #2a3a2a))): 0, 0
+    @(highlight=>reject)     bitmap(generated(color(52, 52, #3a2020))): 0, 0
+    @(highlight=>expensive)  bitmap(generated(color(52, 52, #3a3a1a))): 0, 0
+    @(highlight=>locked)     bitmap(generated(color(52, 52, #1a1a1a))): 0, 0
+    @(highlight=>accept)     apply { filter: glow(#44FF44, 0.4, 6) }
+    @(highlight=>reject)     apply { filter: glow(#FF4444, 0.4, 6) }
+    @(highlight=>expensive)  apply { filter: glow(#CCAA22, 0.3, 5) }
+    @(highlight=>locked)     apply { filter: group(grayscale(0.6), brightness(0.6)) }
+    @(highlight=>swap)       bitmap(generated(color(52, 52, #1a2a3e))): 0, 0
+    @(highlight=>swap)       apply { filter: glow(#44AAFF, 0.4, 6) }
+    // Highlight icons
+    @(highlight=>expensive)  graphics(polygon(#CCAA22, filled, 26, 16, 32, 26, 26, 36, 20, 26)): 0, 0
+    @(highlight=>expensive)  text(m3x6, "$", #CCAA22, center, 52): 0, 36
+    @(highlight=>locked)     graphics(rect(#666666, 1.0, 12, 10); rect(#666666, filled, 16, 12)): 20, 14
+    @(highlight=>locked)     text(m3x6, "X", #666666, center, 52): 0, 36
+    @(highlight=>swap)       text(m3x6, "<swap>", #44AAFF, center, 52): 0, 36
+    @(status=>hover)         apply { filter: glow(#FFFF00, 0.3, 4) }
+    // Item type icons
+    @(itemType=>weapon)  graphics(polygon(#AAAACC, filled, 26, 4, 30, 18, 26, 48, 22, 18)): 0, 0
+    @(itemType=>potion)  graphics(polygon(#77AAFF, filled, 26, 8, 38, 26, 26, 44, 14, 26)): 0, 0
+    graphics(rect(#333355, 1.0, 52, 52)): 0, 0
+}
+
+#hexCell programmable(col:int=0, row:int=0, status:[normal,hover]=normal,
+                      highlight:[none,accept,reject,expensive,locked]=none,
+                      occupied:bool=false, cellColor:color=#222244) {
+    @(highlight=>accept)    graphics(polygon(#2a3a2a, filled, 24, 0, 45, 12, 45, 36, 24, 48, 3, 36, 3, 12)): -24, -24
+    @(highlight=>none)      graphics(polygon(#1a1a2e, filled, 24, 0, 45, 12, 45, 36, 24, 48, 3, 36, 3, 12)): -24, -24
+    @(highlight=>reject)    graphics(polygon(#3a2020, filled, 24, 0, 45, 12, 45, 36, 24, 48, 3, 36, 3, 12)): -24, -24
+    @(highlight=>expensive) graphics(polygon(#3a3a1a, filled, 24, 0, 45, 12, 45, 36, 24, 48, 3, 36, 3, 12)): -24, -24
+    @(highlight=>locked)    graphics(polygon(#1a1a1a, filled, 24, 0, 45, 12, 45, 36, 24, 48, 3, 36, 3, 12)): -24, -24
+    @(highlight=>accept)    apply { filter: glow(#44FF44, 0.3, 4) }
+    @(highlight=>reject)    apply { filter: glow(#FF4444, 0.3, 4) }
+    @(highlight=>expensive) apply { filter: glow(#CCAA22, 0.3, 4) }
+    @(highlight=>locked)    apply { filter: group(grayscale(0.6), brightness(0.6)) }
+    @(occupied=>true)   graphics(polygon($cellColor, filled, 24, 6, 39, 15, 39, 33, 24, 42, 9, 33, 9, 15)): -24, -24
+    @(status=>hover) apply { filter: glow(#44FFFF, 0.3, 4) }
+    graphics(polygon(#334466, 1.0, 24, 0, 45, 12, 45, 36, 24, 48, 3, 36, 3, 12)): -24, -24
+}
+
+// Grid layer: damage preview overlay (positioned at cell center)
+#dmgOverlay programmable(dmg:string="0") {
+    text(m6x11, $dmg, #FF4444, center, 48): -24, -12
+    apply { filter: outline(1, #000000) }
+}
+
+// Grid layer: splash area indicator (hex-shaped translucent overlay)
+#splashOverlay programmable() {
+    graphics(polygon(#6666CC, filled, 24, 6, 39, 15, 39, 33, 24, 42, 9, 33, 9, 15)): -24, -24
+    apply { filter: glow(#8888FF, 0.4, 6) }
+}
+
+// Grid layer: primary target indicator (brighter, distinct from splash)
+#targetOverlay programmable() {
+    graphics(polygon(#CC6644, filled, 24, 6, 39, 15, 39, 33, 24, 42, 9, 33, 9, 15)): -24, -24
+    apply { filter: glow(#FF8844, 0.5, 8) }
+}
+
+// Tooltip for hex cell info
+#hexTooltip programmable(infoText:string="") {
+    bitmap(generated(color(120, 24, #222244))): 0, 0
+    graphics(rect(#445577, 1.0, 120, 24)): 0, 0
+    text(m5x7, $infoText, #CCCCDD, center, 120): 0, 8
+}
+
+// ===== Card programmables =====
+
+#gridCard programmable(status:[normal,hover,pressed,disabled]=normal, cardName:string="Spell", cardColor:color=#3366AA, targetInfo:string="") {
+    interactive(100, 140, "card", bind => "status", events: [hover, click, push]): 0, 0
+    bitmap(generated(color(100, 140, #16162a))): 0, 0
+    bitmap(generated(color(96, 4, $cardColor))): 2, 2
+    text(m5x7, $cardName, #ffffff, center, 100): 0, 106
+    text(m3x6, $targetInfo, #aaaacc, center, 100): 0, 120
+    @(status=>hover)    graphics(rect(#FFDD44, 2.0, 98, 138)): 1, 1
+    @(status=>pressed)  graphics(rect(#FFFFFF, 2.0, 98, 138)): 1, 1
+    @(status=>disabled) apply { filter: group(grayscale(0.9), brightness(0.5)) }
+    @(status=>normal)   graphics(rect(#334466, 1.0, 100, 140)): 0, 0
+}
+
+#arrowSegment programmable(valid:bool=false) {
+    @(valid=>false) graphics(line(#FF4444, 2.0, -4, -4, 4, 0); line(#FF4444, 2.0, -4, 4, 4, 0)): 0, 0
+    @(valid=>true)  graphics(line(#44FF88, 2.0, -4, -4, 4, 0); line(#44FF88, 2.0, -4, 4, 4, 0)): 0, 0
+}
+
+#arrowHead programmable(valid:bool=false) {
+    @(valid=>false) graphics(polygon(#FF4444, filled, 10, 0, -6, -6, -6, 6)): 0, 0
+    @(valid=>true)  graphics(polygon(#44FF88, filled, 10, 0, -6, -6, -6, 6)): 0, 0
+}
+
+// ===== Small button =====
+
+#smallBtn programmable(status:[normal,hover,pressed]=normal, disabled:bool=false, buttonText:string="Btn") {
+    interactive(50, 18, "btn", bind => "status", events: [hover, click, push]): 0, 0
+    @(status=>normal)  bitmap(generated(color(50, 18, #333355))): 0, 0
+    @(status=>hover)   bitmap(generated(color(50, 18, #444477))): 0, 0
+    @(status=>pressed) bitmap(generated(color(50, 18, #555599))): 0, 0
+    @(disabled=>true)  apply { filter: group(grayscale(0.8), brightness(0.5)) }
+    text(m5x7, $buttonText, #aaaacc, center, 50): 0, 4
+    graphics(rect(#555577, 1.0, 50, 18)): 0, 0
+}
+
+// ===== Main layout =====
+
+#gridDemo programmable() {
+    pos: 10, 70
+
+    // === LEFT: Rect Grid Drag-Drop ===
+    text(m5x7, "Rect Grid + Swap", #7fdbda): 0, -4
+    text(m5x7, "R1:weapons R2:potions R3:premium", #555555): 0, 8
+    #rectLog(updatable) text(m5x7, "Drag items between rows", #888888): 0, 22
+    placeholder(generated(cross(10, 10, #FF0000)), builderParameter("resetBtn")): 0, 36
+    placeholder(generated(cross(10, 10, #FF0000)), builderParameter("addRowBtn")): 56, 36
+    placeholder(generated(cross(10, 10, #FF0000)), builderParameter("remRowBtn")): 112, 36
+
+    // === CENTER: Hex Grid + Cards ===
+    text(m5x7, "Hex Grid + Cards", #cc9966): 370, -4
+    text(m5x7, "Layers: dmg preview + splash", #555555): 370, 8
+    #hexLog(updatable) text(m5x7, "Play cards, click to clear", #888888): 370, 22
+    placeholder(generated(cross(10, 10, #FF0000)), builderParameter("drawBtn")): 370, 36
+    placeholder(generated(cross(10, 10, #FF0000)), builderParameter("addRingBtn")): 426, 36
+    placeholder(generated(cross(10, 10, #FF0000)), builderParameter("remRingBtn")): 482, 36
+    placeholder(generated(cross(10, 10, #FF0000)), builderParameter("snapChk")): 544, 38
+    text(m5x7, "Snap", #aaaacc): 562, 40
+
+    // === RIGHT: Grid-to-Grid ===
+    text(m5x7, "Grid to Grid + Swap", #66cc99): 770, -4
+    text(m5x7, "Source tracking + swap + typed items", #555555): 770, 8
+    #g2gLog(updatable) text(m5x7, "Move items between grids", #888888): 770, 22
+    placeholder(generated(cross(10, 10, #FF0000)), builderParameter("addStorBtn")): 770, 36
+    placeholder(generated(cross(10, 10, #FF0000)), builderParameter("remStorBtn")): 826, 36
+    placeholder(generated(cross(10, 10, #FF0000)), builderParameter("addLoadBtn")): 882, 36
+    placeholder(generated(cross(10, 10, #FF0000)), builderParameter("remLoadBtn")): 938, 36
+    #storageCount(updatable) text(m5x7, "Storage: 5", #7799aa): 770, 56
+    #loadoutCount(updatable) text(m5x7, "Loadout: 0", #7799aa): 870, 56
+    text(m5x7, "Weapons", #8888aa): 770, 68
+    text(m5x7, "Potions", #7799bb): 870, 68
+}

@@ -85,7 +85,7 @@ hotReload("ui.manim")
 
 **When**: A `.manim` file has registered incremental handles but no screen mapping.
 
-**What happens**: Each live `BuilderResult` is snapshotted, rebuilt with the new definition, state restored, and children swapped into the stable scene node. Game references remain valid.
+**What happens**: Each live `BuilderResult` is snapshotted and rebuilt with the new definition, and its state is restored into the rebuild — all before the live result is touched. Only when that succeeded is the rebuilt root shown inside the stable scene node the game holds. A failure leaves the live result exactly as it was. Game references remain valid.
 
 ```
 hotReload("sidebar.manim")
@@ -97,76 +97,44 @@ hotReload("sidebar.manim")
   │   │
   │   ├─ 1. SNAPSHOT current state
   │   │   ├─ params: incrementalContext.snapshotParams()
-  │   │   │   → Map<String, ResolvedIndexParameters>
   │   │   ├─ slots: each slot's content object + data
   │   │   ├─ dynamicRefs: recursively capture sub-result params
-  │   │   └─ placeholders: devCapturedPlaceholders (h2d.Objects from callbacks/factories)
+  │   │   └─ placeholders: devCapturedPlaceholders (+ where each one sits now)
   │   │
-  │   ├─ 2. DETACH slot contents
-  │   │   └─ slot.clear() on each slot (releases h2d.Objects for reparenting)
+  │   ├─ 2. BUILD + RESTORE (fallible; the live result is untouched)
+  │   │   ├─ newBuilder.buildWithParameters(name, snapshotToInputMap(params),
+  │   │   │       PlaceholderReuser.wrapBuilderParams(...), null, incremental: true)
+  │   │   └─ StateRestorer.restoreState(): params that differ from the rebuild's
+  │   │       (none for the top level — it was built from them; a setParameter on a
+  │   │       param used in an interactive id would throw untracked_param) and
+  │   │       dynamicRef children's params
+  │   │   ON FAILURE: borrowed placeholders are put back (PlaceholderReuser.putBack),
+  │   │       the rebuild's auto-registration is dropped, the error is reported, and the
+  │   │       live result keeps its tree, slot contents and registration
   │   │
-  │   ├─ 3. REMOVE sentinel + unregister
-  │   │   ├─ ReloadableRegistry.removeSentinel(oldResult.object)
-  │   │   └─ hotReloadRegistry.unregister(handle)
-  │   │   (prevents stale auto-unregister during scene swap)
+  │   ├─ 3. COMMIT
+  │   │   ├─ drop the rebuild's own registration and both sentinels
+  │   │   ├─ safeDetach slot contents out of the old tree
+  │   │   ├─ SceneSwapper.nest(oldResult.object, newResult.object, devBuilderRootProps)
+  │   │   │     old children removed; the rebuilt root becomes the stable object's child.
+  │   │   │     On the first reload the root properties the original build set on the
+  │   │   │     stable object (devBuilderRootProps) are reset there — the rebuilt root
+  │   │   │     carries them now; game-set x, y, visible and other transforms stay
+  │   │   ├─ StateRestorer.moveSlotContents(): contents into the new, now-live slots
+  │   │   ├─ oldResult.adoptFrom(newResult) — internals, incrementalContext; the rebuild
+  │   │   │     listeners move to the adopted context; oldResult.object stays the stable node
+  │   │   ├─ re-register oldResult (new sentinel on oldResult.object)
+  │   │   └─ oldResult.fireRebuildListeners() — screen interactive sync, card-hand resync
   │   │
-  │   ├─ 3b. WRAP BuilderParameters for placeholder reuse
-  │   │   └─ PlaceholderReuser.wrapBuilderParams(devBuilderParams, placeholders)
-  │   │       ├─ Builds lookup maps from captured placeholders (by name, by name+index)
-  │   │       ├─ Wraps placeholderObjects: PVFactory/PVComponent → PVObject for captured entries
-  │   │       ├─ Wraps callback: returns cached object for Placeholder/PlaceholderWithIndex requests
-  │   │       ├─ safeDetach(): sets allocated=false, removeChild without onRemove()
-  │   │       ├─ Resets position (x=0, y=0) to prevent accumulation from builder's addPosition
-  │   │       └─ Falls through to original callback/factory for unmatched names (new placeholders)
-  │   │
-  │   ├─ 4. REBUILD with new builder
-  │   │   └─ newBuilder.buildWithParameters(
-  │   │         programmableName,
-  │   │         snapshotToInputMap(snapshot.params),  ← restored values
-  │   │         wrappedBuilderParams,                 ← reuses captured placeholders
-  │   │         null,
-  │   │         incremental: true
-  │   │       )
-  │   │
-  │   ├─ 5. RESTORE state into new result
-  │   │   ├─ restoreParams: beginUpdate() → setParameter() each → endUpdate()
-  │   │   ├─ restoreSlots: reparent content objects into matching new slots
-  │   │   └─ restoreDynamicRefs: restore sub-result params
-  │   │
-  │   ├─ 6. UNREGISTER auto-registration
-  │   │   └─ newResult auto-registered itself during build
-  │   │       → removeSentinel(newResult.object)
-  │   │       → unregister(newResult.reloadHandle)
-  │   │   (we'll re-register the stable oldResult instead)
-  │   │
-  │   ├─ 7. SWAP children in scene
-  │   │   └─ SceneSwapper.replaceChildren(oldResult.object, newResult.object)
-  │   │       ├─ Remove all old children from oldResult.object
-  │   │       ├─ Move all new children from newResult.object → oldResult.object
-  │   │       └─ Copy filter property (from apply() nodes)
-  │   │       NOTE: oldResult.object stays in scene at same position
-  │   │       NOTE: Game transforms (x, y, scale, alpha) preserved
-  │   │
-  │   ├─ 8. ADOPT internals
-  │   │   ├─ stableObject = oldResult.object  ← save stable reference
-  │   │   ├─ oldResult.adoptFrom(newResult)   ← copies all internals:
-  │   │   │     name, names, interactives, layouts, palettes,
-  │   │   │     rootSettings, gridCoordinateSystem, hexCoordinateSystem,
-  │   │   │     slots, dynamicRefs, incrementalContext,
-  │   │   │     devBuilderParams, devCapturedPlaceholders
-  │   │   └─ oldResult.object = stableObject  ← restore stable reference
-  │   │
-  │   ├─ 9. RE-REGISTER stable result
-  │   │   └─ oldResult.reloadHandle = hotReloadRegistry.register(...)
-  │   │       (plants new ReloadSentinel on oldResult.object)
-  │   │
-  │   └─ 10. DEFER onReload callback
-  │       └─ If oldResult.onReload is set, queue for after report
+  │   └─ 4. DEFER onReload callback
   │
   ├─ Fire deferred onReload callbacks with final report
+  ├─ Any failure: FileChangeDetector.invalidate(path) — reloading the same text retries
   │
   └─ Notify listeners: ReloadSucceeded or ReloadFailed
 ```
+
+Nesting (instead of moving the rebuilt children into the old root) keeps the rebuilt tree whole: its incremental context, conditional parents, root-level `$param` tracking and `@layer` order all point at the rebuilt root, which is live. Hiding and re-showing an element, a root `alpha: $a`, and edits to the root's own `alpha:`/`scale:`/`filter:` therefore reach the screen after a reload. `result.object` is a plain container of the rebuilt root from the first reload on.
 
 **What is preserved:**
 - Parameter values (uint, int, float, bool, string, enum, flags)
@@ -175,8 +143,9 @@ hotReload("sidebar.manim")
 - Placeholder objects (grids, card hands, etc. — reused via PlaceholderReuser)
 - Dynamic ref parameter values (recursively)
 - Scene graph position (stable root stays in parent's child list)
-- Game-applied transforms (x, y, scale, alpha, rotation, visible)
+- Game-applied transforms (x, y, visible, and scale/alpha/rotation the `.manim` root does not declare)
 - Game-held `BuilderResult` reference (same object, updated internals)
+- Rebuild listeners registered on the result (fired once after the swap)
 
 **What is NOT preserved:**
 - `ExpressionAlias` parameters (unsnappable — returns null)
@@ -301,6 +270,14 @@ result.onReload = (result, report) -> {
 };
 ```
 
+`reloadable = false` is consulted per reload by the in-place rebuild loop (Strategy B): the
+result is skipped — no snapshot, no rebuild — but its handle stays registered, so setting the
+flag back to `true` re-enables reload on the next file change. An opted-out handle is also
+excluded from the signature-compatibility check, so an incompatible signature change to a
+programmable that only opted-out results use won't block the file's reload with
+`ReloadNeedsRestart`. The flag has no effect on Strategy A (nuclear screen reload) — screens
+rebuild wholesale via `screen.load()`.
+
 ### Transient Build Consumers
 
 For game code that creates non-incremental builds (unit bodies, etc.):
@@ -339,10 +316,10 @@ screenManager.addScreen("combat", combatScreen);
 FNV-1a hash-based content comparison. Prevents unnecessary reloads when file timestamp changes but content doesn't (e.g., editor auto-save).
 
 ### ReloadableRegistry
-Tracks live incremental `BuilderResult` instances by source file path. Uses `ReloadSentinel` (invisible child on `result.object`) for automatic unregistration when the object is removed from scene.
+Tracks live incremental `BuilderResult` instances by source file path. `unregister(handle)` drops a handle for good (a discarded or replaced result); `detach`/`attach` take a handle off the list and back while its root is out of the scene. `ScreenManager.builders` holds one entry per file path (`hxd.Res.load` returns a new resource object per call, so entries are matched by path) — `buildFromResourceName` of an already loaded file returns the cached builder, and every screen that loads the file while loading is recorded in `screenSourceMap`, so a reload reloads each of them once.
 
 ### ReloadSentinel
-An invisible `h2d.Object` child planted on each registered `BuilderResult.object`. Its `onRemove()` callback triggers `registry.unregister()`. During hot-reload, sentinels are manually removed before `SceneSwapper.replaceChildren()` to prevent stale auto-unregistration.
+An invisible `h2d.Object` child planted on each registered `BuilderResult.object`. `onRemove()` detaches the handle (the result is not a reload target and not listed by DevBridge while it is off screen); `onAdd()` attaches it again, so a screen switched away and back — or a revived dialog — keeps its programmables reloadable. A handle that was unregistered stays gone. Heaps fires these only under an allocated scene. During hot-reload, sentinels are removed before the swap and a new one is planted on re-registration.
 
 ### SignatureChecker
 Validates parameter compatibility between old and new definitions:
@@ -361,8 +338,8 @@ Captures and restores `BuilderResult` state across rebuilds:
 
 | Captured | Restored Via | Notes |
 |----------|-------------|-------|
-| Parameter values | `beginUpdate()` + `setParameter()` + `endUpdate()` | Batch mode for efficiency |
-| Slot contents | `reparent to matching new slot` | Matched by `SlotKey` |
+| Parameter values | `beginUpdate()` + `setParameter()` + `endUpdate()` | Batch mode; only values that differ from the rebuild's (so `untracked_param` params are never set) |
+| Slot contents | `reparent to matching new slot` | Matched by `SlotKey`; moved last (`moveSlotContents`), after everything that can fail |
 | Slot data | `newHandle.data = saved.data` | Arbitrary payload |
 | DynamicRef params | Recursive `restoreParams()` | Matched by name |
 | Placeholder objects | `PlaceholderReuser.wrapBuilderParams()` | Reused via wrapped BuilderParameters |
@@ -386,17 +363,19 @@ Wraps `BuilderParameters` to reuse previously-captured placeholder objects durin
 **Why `safeDetach()`**: Heaps' `onRemove()` cascades to all descendants, destroying `h2d.Graphics` content and invalidating GPU resources. During hot-reload, we're reparenting live objects — not actually removing them — so `onRemove()` must be bypassed. The `allocated` flag is restored to `true` when `SceneSwapper` moves children into the allocated `oldRoot` via `addChild`.
 
 ### SceneSwapper
-Replaces children of a stable root with children from a new root:
-1. Remove all old children from `oldRoot`
-2. Move all new children from `newRoot` → `oldRoot` via `addChild` (auto-reparents without triggering `onRemove()`)
-3. Copy `filter` property if set (from `apply()` nodes)
-4. Does NOT touch game-applied transforms (x, y, scale, alpha, rotation, visible)
+`nest(stable, newRoot, builderRootProps)` — what in-place reload uses:
+1. Remove all old children from `stable`
+2. Reset on `stable` the root properties the original build set there (`BuilderResult.devBuilderRootProps`: the root node's and root-level `apply {}` children's `scale`/`rotation`/`alpha`/`blendMode`/`filter`; empty after the first reload and when the build used an offset holder)
+3. Add `newRoot` as `stable`'s child — the rebuilt tree stays whole and live
+4. Does NOT touch x, y, visible or undeclared transforms (game-owned)
+
+`replaceChildren(oldRoot, newRoot)` (move the new children into the old root, copy a root filter) is the older swap, kept for tests; it loses `@layer` order and leaves the adopted context pointing at the discarded root.
 
 ### BuilderResult.adoptFrom()
 Transfers all internal state from one result to another:
 - `name`, `names`, `interactives`, `layouts`, `palettes`
 - `rootSettings`, `gridCoordinateSystem`, `hexCoordinateSystem`
-- `slots`, `dynamicRefs`, `incrementalContext`
+- `slots`, `dynamicRefs`, `incrementalContext` (rebuild listeners move to it; `fireRebuildListeners()` runs them)
 
 The `object` field is deliberately overwritten back to the stable reference by the caller.
 
@@ -506,13 +485,16 @@ haxe test-hx-multianim-dev.hxml
 
 **Strategy A (Nuclear):**
 - [ ] Integration test: screen loaded via `screen.load()`, file change triggers nuclear reload
-- [ ] Multiple screens sharing same `.manim` file — both reloaded
+- [x] Multiple screens sharing same `.manim` file — both reloaded (`HotReloadTest.testHotReloadReloadsEveryScreenThatSharesTheFile`)
 - [ ] Screen with failed reload → fix file → successful reload
 
 **Strategy B (In-Place) edge cases:**
 - [ ] Multiple handles from same file — all rebuilt independently
-- [ ] Handle with `reloadable = false` — skipped during reload
-- [ ] Result removed from scene between reloads — sentinel auto-unregisters
+- [x] Handle with `reloadable = false` — skipped during reload (`HotReloadTest.testReloadableFalseSkipsInPlaceReload`)
+- [x] Result removed from scene and added back between reloads — reloadable again (`testResultBackInSceneIsReloadableAgain`)
+- [x] Build or restore error — live result untouched, same text retried (`testFailedInPlaceReloadLeavesTheLiveResultIntact`)
+- [x] Param used in an interactive id — reload succeeds (`testInPlaceReloadKeepsParamUsedInInteractiveId`)
+- [x] After reload: re-shown element, root `$param`, root literal edits, rebuild listeners (`testReshownElementAfterInPlaceReloadIsOnScreen`, `testRootParamAfterInPlaceReloadReachesTheScreen`, `testLiteralRootEditsApplyOnInPlaceReload`, `testRebuildListenersSurviveInPlaceReload`)
 - [ ] `onReload` callback — verify it fires with correct report
 - [ ] `onReload` callback throws — doesn't break other handles
 
@@ -544,7 +526,7 @@ haxe test-hx-multianim-dev.hxml
 - [ ] Parse error → fix → successful reload → verify state
 
 **Filter/Apply preservation:**
-- [ ] `apply(alpha: 0.5)` on root — filter copied via SceneSwapper
+- [ ] `apply(alpha: 0.5)` on root — applied once after reload (reset on the stable root, carried by the rebuilt root)
 - [ ] Game-applied filter on root — NOT overwritten by reload
 
 **Placeholder reuse edge cases:**

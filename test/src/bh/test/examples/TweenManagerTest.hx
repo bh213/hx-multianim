@@ -1153,6 +1153,100 @@ class TweenManagerTest extends utest.Test {
 		Assert.isFalse(Math.isNaN(obj.rotation), "zero-duration tween must not write NaN to rotation");
 	}
 
+	// Calling clear() from a tween's onComplete must not push the completing tween
+	// onto the shared pool twice. TweenManager.update() fires onComplete BEFORE its
+	// own cleanup; if that callback runs clear() (a realistic screen-transition
+	// teardown), clear() already recycles the completing handle, then update()
+	// recycles it again. A non-idempotent release double-pushes the instance, so two
+	// later acquire() calls hand the SAME Tween to two logical tweens → cross-talk
+	// on target/elapsed/entries.
+	@Test
+	public function testClearFromOnCompleteDoesNotDoubleReleaseTween():Void {
+		var mgr = new TweenManager();
+		var triggerObj = createObject();
+
+		// Tween whose completion callback tears everything down via clear().
+		mgr.tween(triggerObj, 0.1, [Alpha(0.0)]).setOnComplete(() -> mgr.clear());
+		mgr.update(0.2); // completes → onComplete → clear() → (buggy) double release
+
+		// Two fresh tweens on distinct targets. If the completing tween was pushed
+		// to the pool twice, these two acquire() calls pop the same instance.
+		var objA = createObject();
+		var objB = createObject();
+		var tA = mgr.tween(objA, 1.0, [X(100.0)]);
+		var tB = mgr.tween(objB, 1.0, [Y(200.0)]);
+
+		Assert.isTrue(tA != tB,
+			"clear() invoked from a tween's onComplete must not double-release the completing "
+			+ "tween into the pool; two subsequent tween() calls received the same Tween instance, "
+			+ "which causes cross-talk on target/elapsed/entries.");
+
+		// Direct consequence of the aliasing: configuring tB clobbers tA's target.
+		Assert.equals(objA, tA.target,
+			"Aliased tween instances share state — creating tB overwrote tA.target.");
+	}
+
+	// clear() from the onComplete of a tween that is not first in the manager's list: update()
+	// must not keep compacting its (now replaced) list, which left null handles behind that
+	// crashed the next update(). Tweens started after the clear() still run.
+	@Test
+	public function testClearFromOnCompleteOfLaterTweenKeepsManagerUsable():Void {
+		var mgr = new TweenManager();
+		mgr.tween(createObject(), 1.0, [Alpha(0.0)]);
+		mgr.tween(createObject(), 1.0, [Alpha(0.0)]);
+		var afterClear = createObject();
+		mgr.tween(createObject(), 0.1, [Alpha(0.0)]).setOnComplete(() -> {
+			mgr.clear();
+			mgr.tween(afterClear, 0.5, [X(100.0)]);
+		});
+
+		mgr.update(0.2); // third tween completes -> clear() -> a new tween starts
+
+		var error:Null<String> = null;
+		try {
+			mgr.update(0.25);
+			mgr.update(0.25);
+		} catch (e:Dynamic) {
+			error = Std.string(e);
+		}
+		Assert.isNull(error, 'update() after clear() in an onComplete must not fail: $error');
+		Assert.floatEquals(100.0, afterClear.x, "a tween started after clear() runs to its end");
+		Assert.isFalse(mgr.hasTweens(afterClear), "and is removed once finished");
+	}
+
+	// A finished (or cancelled) tween goes back to the pool and is handed out again. Code that
+	// keeps the Tween past its end (tweenCell's caller, a helper field) records its generation
+	// and must not be able to cancel the tween that now reuses the instance.
+	@Test
+	public function testCancelIfCurrentLeavesReusedTweenAlone():Void {
+		var mgr = new TweenManager();
+		var first = mgr.tween(createObject(), 0.1, [Alpha(0.0)]);
+		final firstGeneration = first.generation;
+		mgr.update(0.2); // finishes -> back to the pool
+
+		var other = createObject();
+		var reused = mgr.tween(other, 1.0, [X(100.0)]);
+		Assert.isTrue(reused == first, "precondition: the pooled instance is handed out again");
+		Assert.notEquals(firstGeneration, reused.generation, "a recycled tween has a new generation");
+
+		Tween.cancelIfCurrent(first, firstGeneration); // the old holder cancels "its" tween
+		mgr.update(1.0);
+		Assert.floatEquals(100.0, other.x, "the tween that reuses the instance runs to its end");
+	}
+
+	@Test
+	public function testCancellingAFinishedSequenceLeavesReusedTweensAlone():Void {
+		var mgr = new TweenManager();
+		var seq = mgr.sequence([mgr.createTween(createObject(), 0.1, [Alpha(0.0)])]);
+		mgr.update(0.2); // finishes -> its tween goes back to the pool
+
+		var other = createObject();
+		mgr.tween(other, 1.0, [X(100.0)]);
+		seq.cancel(); // through a kept reference to the finished sequence
+		mgr.update(1.0);
+		Assert.floatEquals(100.0, other.x, "a finished sequence no longer reaches the tweens it used to hold");
+	}
+
 	@Test
 	public function testZeroDurationTweenSnapsToFinalValue():Void {
 		var mgr = new TweenManager();
@@ -1170,5 +1264,96 @@ class TweenManagerTest extends utest.Test {
 		Assert.floatEquals(100.0, obj.x,     "zero-duration tween must snap x to target on first step");
 		Assert.floatEquals(200.0, obj.y,     "zero-duration tween must snap y to target on first step");
 		Assert.isTrue(completed, "zero-duration tween must complete (fire onComplete) on first step");
+	}
+
+	// ==================== Groups and order ====================
+
+	@Test
+	public function testAZeroDurationTweenInAGroupReachesItsEnd():Void {
+		var mgr = new TweenManager();
+		var snapped = createObject();
+		snapped.alpha = 1.0;
+		var running = createObject();
+		var removed = createObject();
+		var parent = createObject();
+		parent.addChild(removed);
+		var instant = mgr.createTween(snapped, 0.0, [Alpha(0.0)]);
+		var instantRemove = mgr.createTween(removed, 0.0, [X(10.0)]);
+		instantRemove.removeTargetOnComplete = true;
+		mgr.group([instant, instantRemove, mgr.createTween(running, 1.0, [X(100.0)])]);
+
+		mgr.update(0.1);
+		Assert.floatEquals(0.0, snapped.alpha, "a zero-duration tween in a group is at its end after the first step");
+		Assert.floatEquals(10.0, removed.x);
+		Assert.isNull(removed.parent, "and its target is removed when it says so");
+
+		var alone = createObject();
+		var groupDone = false;
+		mgr.group([mgr.createTween(alone, 0.0, [Y(50.0)])]).setOnComplete(() -> groupDone = true);
+		mgr.update(0.1);
+		Assert.isTrue(groupDone);
+		Assert.floatEquals(50.0, alone.y, "a group of one zero-duration tween ends with it applied");
+	}
+
+	@Test
+	public function testTweensOfTheSamePropertyKeepTheirOrderWhenAnotherEnds():Void {
+		// Two tweens drive x; the one started last wins each frame. A third, shorter tween ending
+		// (and leaving the list) must not change which of the two runs last.
+		var mgr = new TweenManager();
+		var obj = createObject();
+		mgr.tween(createObject(), 0.01, [Alpha(0.0)]);
+		mgr.tween(obj, 1.0, [X(100.0)]);
+		mgr.tween(obj, 1.0, [X(200.0)]);
+
+		mgr.update(0.5);
+		Assert.floatEquals(100.0, obj.x, "the later tween (to 200, halfway) wins in the frame the short one ends");
+		mgr.update(0.25);
+		Assert.floatEquals(150.0, obj.x, "and in every frame after");
+	}
+
+	@Test
+	public function testHasTweensIgnoresATweenFinishedEarlierInTheSameUpdate():Void {
+		// Finished tweens leave the list as update() goes on; a callback later in the same update
+		// asks about the target of one that finished before it, whose slot is not closed up yet.
+		var mgr = new TweenManager();
+		var faded = createObject();
+		var other = createObject();
+		mgr.tween(faded, 0.01, [Alpha(0.0)]);
+		var asked:Null<Bool> = null;
+		mgr.tween(other, 0.01, [X(10.0)]).setOnComplete(() -> asked = mgr.hasTweens(faded));
+		mgr.update(0.1);
+		Assert.isFalse(asked == null, "the second tween's callback ran");
+		Assert.isFalse(asked == true, "the first tween finished: nothing tweens its target any more");
+		Assert.isFalse(mgr.hasTweens(faded));
+	}
+
+	@Test
+	public function testACallbackThatThrowsLeavesEveryOtherTweenInOnce():Void {
+		// A tween before a throwing callback has been moved down the list; the error must not leave
+		// it there twice, stepped twice a frame from then on.
+		var mgr = new TweenManager();
+		mgr.tween(createObject(), 0.01, [Alpha(0.0)]); // ends first, so the next one moves down
+		var before = createObject();
+		mgr.tween(before, 1.0, [X(100.0)]);
+		var thrower = mgr.tween(createObject(), 0.01, [Alpha(0.0)]);
+		thrower.setOnComplete(() -> throw "a game error");
+		var after = createObject();
+		mgr.tween(after, 1.0, [X(100.0)]);
+
+		var threw = false;
+		try {
+			mgr.update(0.1);
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw, "the callback's error goes on to the caller");
+		Assert.floatEquals(10.0, before.x, "the tween before it stepped once");
+		Assert.floatEquals(0.0, after.x, "the one after it not yet");
+
+		thrower.onComplete = null;
+		mgr.update(0.1);
+		Assert.floatEquals(20.0, before.x, "next frame, each one stepped once: not twice");
+		Assert.floatEquals(10.0, after.x);
+		Assert.equals(2, @:privateAccess mgr.handles.length, "the two still running, each once");
 	}
 }

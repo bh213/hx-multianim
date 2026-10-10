@@ -3,8 +3,7 @@ package bh.ui.screens;
 import hxd.fs.BytesFileSystem.BytesFileEntry;
 import hxd.res.Resource;
 import bh.multianim.MultiAnimBuilder;
-import bh.multianim.MultiAnimParser.InvalidSyntax;
-import bh.multianim.MultiAnimParser.MultiAnimUnexpected;
+import bh.base.ParseError;
 import bh.multianim.BuilderError;
 import bh.stateanim.AnimParser;
 import bh.ui.controllers.UIController;
@@ -71,6 +70,18 @@ typedef ScreenChangeEvent = {
 
 typedef ScreenChangeListener = (event:ScreenChangeEvent) -> Void;
 
+/** What `ScreenManager.showing()` reports. Fields are null when that part is not showing. */
+typedef ScreensShowing = {
+	/** The main screen: the `Single` screen, or the single of `MasterAndSingle` — also while a dialog is open over it. */
+	base:Null<UIScreen>,
+	/** The master of `MasterAndSingle` — also while a dialog is open over it. */
+	master:Null<UIScreen>,
+	/** The open dialog (the top one when a dialog was opened over another). */
+	dialog:Null<UIScreen>,
+	/** The open dialog's name, as passed to `modalDialog`. */
+	dialogName:Null<String>,
+}
+
 @:nullSafety
 @:allow(bh.ui.screens.UIScreen)
 @:allow(bh.ui.ControllerEventHandler)
@@ -90,6 +101,13 @@ class ScreenManager {
 	var screenChangeListeners:Array<ScreenChangeListener> = [];
 	public var isTransitioning(default, null):Bool = false;
 	var transitionCleanup:Null<Void -> Void> = null;
+	/** Bumped when an animated transition starts and when finalizeTransition ends one: the onComplete
+	 *  of an ended transition must not run the cleanup of the transition that replaced it. */
+	var transitionSerial:Int = 0;
+	/** The running transition's tweens and the `generation` each had when started (a finished
+	 *  tween goes back to the pool), so finalizeTransition can jump them to their end. */
+	final transitionTweens:Array<Tween> = [];
+	final transitionTweenGenerations:Array<Int> = [];
 	var modalOverlay:Null<h2d.Bitmap> = null;
 	var modalOverlayTargetAlpha:Float = 0.0;
 	var modalOverlayBlurTargets:Array<{root:h2d.Object, saved:Null<h2d.filter.Filter>}> = [];
@@ -285,6 +303,7 @@ class ScreenManager {
 	public dynamic function onReload(?resource:hxd.res.Resource) {}
 
 	public function update(dt:Float):Void {
+		fitModalOverlayToScene();
 		tweens.update(dt);
 		#if MULTIANIM_DEV
 		if (devBridge != null) devBridge.tick();
@@ -294,10 +313,16 @@ class ScreenManager {
 			switch result {
 				case UIControllerRunning:
 				case UIControllerFinished(result):
+					// A running transition (the dialog's own open, say) ends first: removing the
+					// dialog cancels its tweens, which left the root part-faded and isTransitioning set.
+					finalizeTransition();
 					switch mode {
 						case Dialog(dialog, caller, previousMode, dialogName):
-							caller.onScreenEvent(UIOnControllerEvent(OnDialogResult(dialogName, result)), null);
+							// Close first, then deliver: the handler sees the dialog gone, so a dialog it
+							// opens goes over the screen below — not over this dialog, which delivered this
+							// result again and was then removed by this close.
 							updateScreenMode(previousMode);
+							caller.onScreenEvent(UIOnControllerEvent(OnDialogResult(dialogName, result)), null);
 						default: throw 'unhandled exit $result code in $mode';
 					}
 			}
@@ -310,10 +335,37 @@ class ScreenManager {
 		return buildFromResource(resource, enableReload);
 	}
 
+	/** The loaded resource of the file at `path`. `hxd.Res.load` returns a new object on every call,
+	 *  so `builders` holds one entry per file path and is matched by path, never by object. */
+	function loadedResource(path:String):Null<hxd.res.Resource> {
+		for (resource in builders.keys())
+			if (resource.entry.path == path)
+				return resource;
+		return null;
+	}
+
 	public function buildFromResource(resource:hxd.res.Resource, enableReload:Bool):MultiAnimBuilder {
-		var built = builders.get(resource);
-		if (built != null)
-			return built;
+		#if MULTIANIM_DEV
+		// Every screen that loads the file is recorded, cached builder or not, so a hot reload of
+		// the file reloads all of them.
+		final loadingScreen = currentlyLoadingScreen;
+		if (loadingScreen != null) {
+			final path = resource.entry.path;
+			var list = screenSourceMap.get(path);
+			if (list == null) {
+				list = [];
+				screenSourceMap.set(path, list);
+			}
+			if (!list.contains(loadingScreen))
+				list.push(loadingScreen);
+		}
+		#end
+		final known = loadedResource(resource.entry.path);
+		if (known != null) {
+			final cached = builders.get(known);
+			if (cached != null)
+				return cached;
+		}
 		if (enableReload)
 			resource.watch(() -> onReload(resource));
 
@@ -322,27 +374,18 @@ class ScreenManager {
 			throw 'failed to load multianim ${resource.name}';
 		// Auto-inject TweenManager for transition support in incremental builds
 		built.tweenManager = tweens;
+		// The file's `#name cursor { }` blocks: registered by name, so its interactives' `cursor =>`
+		// metadata and `CursorManager.getCursor(name)` find them (again on every reload).
+		built.registerCursors();
 		#if MULTIANIM_TRACE
 		trace('Built ${resource.entry.name} with reload $enableReload');
 		#end
 		builders.set(resource, built);
 		#if MULTIANIM_DEV
 		try {
-			#if hl
 			final content = resource.entry.getBytes().toString();
 			fileChangeDetector.storeInitialHash(resource.entry.path, content);
-			#end
 		} catch (_) {}
-		if (currentlyLoadingScreen != null) {
-			final path = resource.entry.path;
-			var list = screenSourceMap.get(path);
-			if (list == null) {
-				list = [];
-				screenSourceMap.set(path, list);
-			}
-			if (!list.contains(currentlyLoadingScreen))
-				list.push(currentlyLoadingScreen);
-		}
 		#end
 		return built;
 	}
@@ -358,7 +401,7 @@ class ScreenManager {
 		builders.clear();
 		try {
 			for (key => value in oldBuilders) {
-				if (resource != null && key != resource)
+				if (resource != null && key.entry.path != resource.entry.path)
 					continue;
 				#if MULTIANIM_TRACE
 				trace('rebuild $key'); // don't trace $value, js gets stack overflow
@@ -377,30 +420,20 @@ class ScreenManager {
 			if (throwOnError)
 				throw e;
 
-			if (Std.isOfType(e, InvalidSyntax)) {
-				final invalidSyntax = cast(e, InvalidSyntax);
+			final thrown = thrownValue(e);
+			if (Std.isOfType(thrown, ParseError)) {
+				final parseError = cast(thrown, ParseError);
 				return {
 					success: false,
-					error: invalidSyntax.toString(),
-					file: invalidSyntax.pos.psource,
-					line: invalidSyntax.pos.line,
-					col: invalidSyntax.pos.col,
+					error: parseError.toString(),
+					file: parseError.pos.psource,
+					line: parseError.pos.line,
+					col: parseError.pos.col,
 				}
 			}
 
-			if (Std.isOfType(e, MultiAnimUnexpected)) {
-				final multiAnimUnexpected = cast(e, MultiAnimUnexpected<Dynamic>);
-				return {
-					success: false,
-					error: multiAnimUnexpected.toString(),
-					file: multiAnimUnexpected.pos.psource,
-					line: multiAnimUnexpected.pos.line,
-					col: multiAnimUnexpected.pos.col,
-				}
-			}
-
-			if (Std.isOfType(e, BuilderError)) {
-				final builderErr = cast(e, BuilderError);
+			if (Std.isOfType(thrown, BuilderError)) {
+				final builderErr = cast(thrown, BuilderError);
 				final pos = builderErr.parsedPos();
 				return {
 					success: false,
@@ -518,6 +551,68 @@ class ScreenManager {
 		return null;
 	}
 
+	/** What is showing now: the base screen, the master beside it and the open dialog. During an
+	 *  animated switch this is the mode being switched to — the leaving screens are still drawn
+	 *  until the transition ends, but they are no longer showing. */
+	public function showing():ScreensShowing {
+		var base:Null<UIScreen> = null;
+		var master:Null<UIScreen> = null;
+		switch baseMode(mode) {
+			case Single(single):
+				base = single;
+			case MasterAndSingle(m, single):
+				master = m;
+				base = single;
+			case None | Dialog(_, _, _, _):
+		}
+		return switch mode {
+			case Dialog(dialog, _, _, dialogName): {base: base, master: master, dialog: dialog, dialogName: dialogName};
+			default: {base: base, master: master, dialog: null, dialogName: null};
+		};
+	}
+
+	/** Whether `screen` is one of those `showing()` reports: the base, the master or the open dialog.
+	 *  A dialog covered by another dialog is not showing. */
+	public function isShowing(screen:UIScreen):Bool {
+		switch mode {
+			case Dialog(dialog, _, _, _):
+				if (screen == dialog)
+					return true;
+			default:
+		}
+		return switch baseMode(mode) {
+			case Single(single): screen == single;
+			case MasterAndSingle(master, single): screen == master || screen == single;
+			case None | Dialog(_, _, _, _): false;
+		};
+	}
+
+	/** The mode under every open dialog. */
+	static function baseMode(m:ScreenManagerMode):ScreenManagerMode {
+		return switch m {
+			case Dialog(_, _, previousMode, _): baseMode(previousMode);
+			default: m;
+		};
+	}
+
+	/** Send a showing screen `UILeaving` and then `UIEntering(data)` without taking it out of the
+	 *  scene, so it sets itself up afresh as if entered again. Works for the base, the master or the
+	 *  open dialog; nothing else changes (mode, input routing, a dialog open over the screen). The
+	 *  screen's tweens are cancelled between the two, as when a screen leaves. A running transition
+	 *  is finished first. Throws when the screen is not showing. */
+	public function reenter(screen:UIScreen, ?data:Dynamic):Void {
+		finalizeTransition();
+		if (!isShowing(screen))
+			throw 'reenter: screen "${resolveScreenName(screen)}" is not showing';
+		screen.getController().lifecycleEvent(LifecycleControllerFinished);
+		screen.onScreenEvent(UILeaving, null);
+		screen.onScreenEvent(UIOnControllerEvent(Leaving), null);
+		tweens.cancelAllChildren(screen.getSceneRoot());
+		screen.onScreenEvent(UIEntering(data), null);
+		screen.onScreenEvent(UIOnControllerEvent(Entering), null);
+		screen.getController().lifecycleEvent(LifecycleControllerStarted);
+	}
+
 	function assertScreenNotFailed(screen:UIScreen) {
 		final error = getScreenFailedError(screen);
 		if (error != null) {
@@ -529,9 +624,21 @@ class ScreenManager {
 		}
 	}
 
+	/** The dialog's exit response, cleared: a result is used once. The controller clears it itself
+	 *  only in its own update(), which a dialog closed any other way no longer gets — the value then
+	 *  closed the dialog again on the first update() of its next opening. */
+	static function takeExitResponse(dialog:UIScreen):Null<Dynamic> {
+		final controller = dialog.getController();
+		final result = controller.exitResponse;
+		controller.exitResponse = null;
+		return result;
+	}
+
 	public function modalDialog(dialog:UIScreen, caller:UIScreen, dialogName:String, ?data:Dynamic) {
+		// A result left from the previous opening (a screen switch closes a dialog without reading it).
+		takeExitResponse(dialog);
 		dialog.load();
-		// Run the mode transition first so Dialog→Dialog's removeModalOverlay() at line 644
+		// Run the mode transition first so Dialog→Dialog's removeModalOverlay() in updateScreenMode
 		// tears down the previous overlay before we create a new one. Also means the new
 		// dialog is already in activeScreens when we apply blur, so pass it to exclude.
 		updateScreenMode(Dialog(dialog, caller, mode, dialogName), data);
@@ -615,8 +722,9 @@ class ScreenManager {
 					case None:
 						removedScreens = [oldMaster, oldSingle];
 					case Single(single):
+						removedScreens = [];
 						if (oldSingle != single) {
-							removedScreens = [oldSingle];
+							removedScreens.push(oldSingle);
 							addedScreens = [single => layerContent];
 						}
 						if (single == oldMaster)
@@ -644,9 +752,11 @@ class ScreenManager {
 				}
 
 			case Dialog(oldDialog, caller, previousMode, dialogName):
-				removeModalOverlay();
+				// The overlay is removed per-branch below: the same-dialog refresh
+				// (reload with a dialog open) must keep it alive.
 				switch newScreenMode {
 					case None:
+						removeModalOverlay();
 						removedScreens = [oldDialog];
 						// Also remove underlying screens that were kept in scene while dialog was open
 						switch previousMode {
@@ -656,6 +766,7 @@ class ScreenManager {
 						}
 
 					case Single(single):
+						removeModalOverlay();
 						removedScreens = [oldDialog];
 						if (!activeScreens.contains(single))
 							addedScreens = [single => layerContent];
@@ -671,6 +782,7 @@ class ScreenManager {
 							default:
 						}
 					case MasterAndSingle(master, single):
+						removeModalOverlay();
 						removedScreens = [oldDialog];
 						addedScreens = [];
 						if (!activeScreens.contains(single))
@@ -690,11 +802,38 @@ class ScreenManager {
 						}
 
 					case Dialog(newDialog, newCaller, newPreviousMode, newDialogName):
-						removedScreens = [oldDialog];
-						addedScreens = [newDialog => layerDialog];
-						overrideActiveScreenControllers = [newDialog];
-						final result = oldDialog.getController().exitResponse;
-						caller.onScreenEvent(UIOnControllerEvent(OnDialogResult(dialogName, result)), null);
+						if (newDialog == oldDialog) {
+							// Same-dialog refresh — what reload() triggers via
+							// updateScreenMode(mode) with a dialog open. The dialog is
+							// not closing or being covered: keep it in scene (no
+							// UILeaving/UIEntering round trip), keep the modal overlay,
+							// keep controllers, and deliver no OnDialogResult.
+						} else {
+							removeModalOverlay();
+							removedScreens = [oldDialog];
+							addedScreens = [newDialog => layerDialog];
+							overrideActiveScreenControllers = [newDialog];
+							// Distinguish closing back to an underlying dialog from
+							// opening a new dialog over this one: when returning, the
+							// target dialog is the one captured as this dialog's
+							// previousMode — and closeDialogWithTransition delivers
+							// OnDialogResult for the closing dialog itself, after this
+							// switch. Firing here as well double-delivered it (a
+							// purchase-confirm handler ran twice).
+							final returningToUnderlying = switch previousMode {
+								case Dialog(prevDialog, _, _, _): prevDialog == newDialog;
+								default: false;
+							};
+							if (!returningToUnderlying) {
+								// Opening a new dialog over this one: the covered
+								// dialog's OnDialogResult fires now (documented in
+								// runtime-systems.md "Dialog over dialog"). Taken, not
+								// read: the covered dialog comes back when this one
+								// closes and would deliver it again.
+								final result = takeExitResponse(oldDialog);
+								caller.onScreenEvent(UIOnControllerEvent(OnDialogResult(dialogName, result)), null);
+							}
+						}
 				}
 		}
 		if (removedScreens != null)
@@ -738,11 +877,33 @@ class ScreenManager {
 			// If opening, jump to target alpha.
 			overlay.alpha = modalOverlayTargetAlpha;
 		}
+		// Jump the transition's own tweens to their end. Left running, an entering root went on
+		// animating after the transition was over — against the next transition on the same root —
+		// or kept its part-faded state when a close removed it.
+		for (i in 0...transitionTweens.length) {
+			final tween = transitionTweens[i];
+			if (tween.generation == transitionTweenGenerations[i]) {
+				tween.finish();
+				tween.cancel();
+			}
+		}
+		clearTransitionTweens();
+		transitionSerial++;
 		final cleanup = transitionCleanup;
 		isTransitioning = false;
 		transitionCleanup = null;
 		if (cleanup != null)
 			cleanup();
+	}
+
+	function trackTransitionTween(tween:Tween):Void {
+		transitionTweens.push(tween);
+		transitionTweenGenerations.push(tween.generation);
+	}
+
+	function clearTransitionTweens():Void {
+		transitionTweens.resize(0);
+		transitionTweenGenerations.resize(0);
 	}
 
 	/** Switch to a new screen mode with an optional visual transition.
@@ -847,6 +1008,8 @@ class ScreenManager {
 	/** Open a modal dialog with an optional transition. */
 	public function modalDialogWithTransition(dialog:UIScreen, caller:UIScreen, dialogName:String, ?data:Dynamic,
 			?transition:ScreenTransition):Void {
+		// A result left from the previous opening (see modalDialog).
+		takeExitResponse(dialog);
 		dialog.load();
 		// Run the screen transition first so Dialog→Dialog's auto-close
 		// (switchScreen → closeDialogWithTransition(None)) tears down the previous overlay
@@ -863,18 +1026,20 @@ class ScreenManager {
 
 	/** Close the current dialog with an optional transition. Returns to previous mode. */
 	public function closeDialogWithTransition(?transition:ScreenTransition):Void {
+		// A running transition (the dialog's own open, say) ends first — on the instant path too:
+		// removing the dialog cancels its tweens, which left the root part-faded and isTransitioning set.
+		finalizeTransition();
 		switch mode {
 			case Dialog(dialog, caller, previousMode, dialogName):
-				final result = dialog.getController().exitResponse;
+				final result = takeExitResponse(dialog);
 				if (transition == null || transition.match(None)) {
 					removeModalOverlay();
-					caller.onScreenEvent(UIOnControllerEvent(OnDialogResult(dialogName, result)), null);
+					// Close first, then deliver (see update()).
 					updateScreenMode(previousMode);
+					caller.onScreenEvent(UIOnControllerEvent(OnDialogResult(dialogName, result)), null);
 					return;
 				}
 				// Animated close: transition the dialog out, then restore previous mode
-				finalizeTransition();
-
 				isTransitioning = true;
 				final dialogRoot = dialog.getSceneRoot();
 
@@ -892,6 +1057,20 @@ class ScreenManager {
 							activeScreenControllers.push(master);
 						if (!activeScreenControllers.contains(single))
 							activeScreenControllers.push(single);
+					case Dialog(prevDialog, _, _, _):
+						// Unlike Single/MasterAndSingle (whose screens stay in scene
+						// while a dialog is open), a previous dialog was removed from the
+						// scene when this dialog opened over it — so it must be re-added,
+						// not just have its controller restored. Mirrors the instant-close
+						// path, which routes through updateScreenMode's Dialog -> Dialog branch.
+						if (!activeScreens.contains(prevDialog)) {
+							app.s2d.add(prevDialog.getSceneRoot(), sceneLayers.dialog);
+							activeScreens.push(prevDialog);
+							prevDialog.onScreenEvent(UIEntering(null), null);
+							prevDialog.onScreenEvent(UIOnControllerEvent(Entering), null);
+							prevDialog.getController().lifecycleEvent(LifecycleControllerStarted);
+						}
+						activeScreenControllers = [prevDialog];
 					default:
 				}
 
@@ -956,6 +1135,9 @@ class ScreenManager {
 							screensToAdd.set(single, layerContent);
 						}
 					case MasterAndSingle(master, single):
+						// The instant path's guards (updateScreenMode): a screen that changes role
+						// would be both added and removed — detached by the cleanup yet still active.
+						if (master == oldSingle) throw 'Single -> MasterAndSingle: switching single with master';
 						screensToAdd.set(master, layerMaster);
 						if (single != oldSingle) {
 							screensToRemove.push(oldSingle);
@@ -970,12 +1152,14 @@ class ScreenManager {
 						screensToRemove.push(oldMaster);
 						screensToRemove.push(oldSingle);
 					case Single(single):
+						if (single == oldMaster) throw 'MasterAndSingle -> Single: switching master to single';
 						screensToRemove.push(oldMaster);
 						if (oldSingle != single) {
 							screensToRemove.push(oldSingle);
 							screensToAdd.set(single, layerContent);
 						}
 					case MasterAndSingle(master, single):
+						if (single == oldMaster || master == oldSingle) throw 'MasterAndSingle -> MasterAndSingle: mismatching master/single';
 						if (oldMaster != master) {
 							screensToRemove.push(oldMaster);
 							screensToAdd.set(master, layerMaster);
@@ -1012,7 +1196,13 @@ class ScreenManager {
 		final screenWidth:Float = app.s2d.width;
 		final screenHeight:Float = app.s2d.height;
 
+		final serial = ++transitionSerial;
 		final onComplete = () -> {
+			// Ended by finalizeTransition, which ran this transition's cleanup: transitionCleanup
+			// now belongs to a later transition.
+			if (serial != transitionSerial)
+				return;
+			clearTransitionTweens();
 			final cleanup = transitionCleanup;
 			isTransitioning = false;
 			transitionCleanup = null;
@@ -1035,11 +1225,13 @@ class ScreenManager {
 				enterStart(root);
 				lastTween = tweens.tween(root, duration, [enterProp(root)], easing);
 				lastTween.skipFirstDt = true;
+				trackTransitionTween(lastTween);
 			}
 			for (screen in screensToRemove) {
 				final root = screen.getSceneRoot();
 				lastTween = tweens.tween(root, duration, [exitProp(root)], easing);
 				lastTween.skipFirstDt = true;
+				trackTransitionTween(lastTween);
 			}
 			if (lastTween != null)
 				lastTween.setOnComplete(onComplete);
@@ -1109,7 +1301,12 @@ class ScreenManager {
 		final screenWidth:Float = app.s2d.width;
 		final screenHeight:Float = app.s2d.height;
 
+		final serial = ++transitionSerial;
 		final onComplete = () -> {
+			// Ended by finalizeTransition (see executeTransition).
+			if (serial != transitionSerial)
+				return;
+			clearTransitionTweens();
 			final cleanup = transitionCleanup;
 			isTransitioning = false;
 			transitionCleanup = null;
@@ -1119,15 +1316,15 @@ class ScreenManager {
 
 		switch transition {
 			case Fade(duration, easing):
-				tweens.tween(root, duration, [Alpha(0.0)], easing).setOnComplete(onComplete);
+				trackTransitionTween(tweens.tween(root, duration, [Alpha(0.0)], easing).setOnComplete(onComplete));
 			case SlideLeft(duration, easing):
-				tweens.tween(root, duration, [X(-screenWidth)], easing).setOnComplete(onComplete);
+				trackTransitionTween(tweens.tween(root, duration, [X(-screenWidth)], easing).setOnComplete(onComplete));
 			case SlideRight(duration, easing):
-				tweens.tween(root, duration, [X(screenWidth)], easing).setOnComplete(onComplete);
+				trackTransitionTween(tweens.tween(root, duration, [X(screenWidth)], easing).setOnComplete(onComplete));
 			case SlideUp(duration, easing):
-				tweens.tween(root, duration, [Y(-screenHeight)], easing).setOnComplete(onComplete);
+				trackTransitionTween(tweens.tween(root, duration, [Y(-screenHeight)], easing).setOnComplete(onComplete));
 			case SlideDown(duration, easing):
-				tweens.tween(root, duration, [Y(screenHeight)], easing).setOnComplete(onComplete);
+				trackTransitionTween(tweens.tween(root, duration, [Y(screenHeight)], easing).setOnComplete(onComplete));
 			case Custom(fn):
 				fn(tweens, root, root, onComplete);
 			case None:
@@ -1147,11 +1344,33 @@ class ScreenManager {
 	function createModalOverlay(config:ModalOverlayConfig):h2d.Bitmap {
 		final color = config.color ?? 0x000000;
 		// config.color is documented as 0xRRGGBB; bake opaque alpha for the tile — bitmap.alpha is tweened.
-		final overlay = solidBitmap(color | 0xFF000000, 4096, 4096);
+		// Sized to the scene rather than a fixed 4096×4096: a 5K canvas or an AutoZoom-scaled
+		// scene on a hi-DPI display is wider than that. update() refits it when the scene size changes.
+		final overlay = solidBitmap(color | 0xFF000000, Std.int(sceneWidth), Std.int(sceneHeight));
 		overlay.alpha = 0.0;
 		app.s2d.add(overlay, sceneLayers.overlay);
 		modalOverlayTargetAlpha = config.alpha ?? 0.5;
 		return overlay;
+	}
+
+	/**
+	 * Keep the modal overlay covering the whole scene after a resize.
+	 *
+	 * Polled from `update()` rather than registered as a `hxd.Window` resize
+	 * listener: `addResizeEvent` prepends (`List.push`), so a listener added after
+	 * the engine's own would run before that one has called `s2d.checkResize()`
+	 * and read the previous scene size — and a `scaleMode` change resizes the
+	 * scene with no window event at all. `update()` runs after both, before the
+	 * frame renders, and costs two compares when nothing changed.
+	 */
+	function fitModalOverlayToScene():Void {
+		final overlay = modalOverlay;
+		if (overlay == null) return;
+		final w = sceneWidth;
+		final h = sceneHeight;
+		if (overlay.tile.width == w && overlay.tile.height == h) return;
+		// scaleToSize keeps the 1×1 solid texture's UVs, the way Tile.fromColor sizes it; setSize would rewrite them.
+		overlay.tile.scaleToSize(w, h);
 	}
 
 	function removeModalOverlay():Void {
@@ -1249,9 +1468,10 @@ class ScreenManager {
 		final startTime = haxe.Timer.stamp();
 
 		// Determine which files to process
+		// Matched by path: a caller's resource (DevBridge `reload {file}`) is a new object.
 		var filesToProcess:Array<{resource:hxd.res.Resource, path:String}> = [];
 		for (key => _ in builders) {
-			if (resource != null && key != resource)
+			if (resource != null && key.entry.path != resource.entry.path)
 				continue;
 			filesToProcess.push({resource: key, path: key.entry.path});
 		}
@@ -1270,271 +1490,366 @@ class ScreenManager {
 				trace('[HotReload] Failed to read file: $path');
 				continue;
 			}
-
-			// 2. Content hash check — skip if unchanged
-			if (!fileChangeDetector.hasChanged(path, content))
-				continue;
-
-			// 3. Notify ReloadStarted
-			notifyReloadListeners(bh.multianim.dev.HotReload.ReloadEvent.ReloadStarted(path, bh.multianim.dev.HotReload.ReloadFileType.Manim));
-
-			// 4. Try re-parse
-			var newBuilder:MultiAnimBuilder;
-			try {
-				final byteData = ByteData.ofString(content);
-				newBuilder = MultiAnimBuilder.load(byteData, loader, path);
-			} catch (e) {
-				final report = makeHotReloadFailReport(path, e);
-				notifyReloadListeners(bh.multianim.dev.HotReload.ReloadEvent.ReloadFailed(report));
+			final report = hotReloadFile(fileEntry.resource, path, content, startTime);
+			if (report != null)
 				lastReport = report;
-				continue;
-			}
-
-			// 5. Signature check for each live handle
-			final handles = hotReloadRegistry.getHandles(path);
-			final oldBuilder = builders.get(fileEntry.resource);
-			var needsRestart:Null<String> = null;
-			var paramsAdded:Array<String> = [];
-
-			if (oldBuilder != null) {
-				for (handle in handles) {
-					final oldDefs = oldBuilder.getParameterDefinitions(handle.programmableName);
-					final newDefs = newBuilder.getParameterDefinitions(handle.programmableName);
-					final restartReason = bh.multianim.dev.HotReload.SignatureChecker.check(oldDefs, newDefs);
-					if (restartReason != null) {
-						needsRestart = restartReason;
-						break;
-					}
-					for (added in bh.multianim.dev.HotReload.SignatureChecker.getAddedParams(oldDefs, newDefs))
-						if (!paramsAdded.contains(added))
-							paramsAdded.push(added);
-				}
-			}
-
-			if (needsRestart != null) {
-				final restartMsg:String = needsRestart;
-				final report:bh.multianim.dev.HotReload.ReloadReport = {
-					success: false,
-					file: path,
-					fileType: bh.multianim.dev.HotReload.ReloadFileType.Manim,
-					programmablesRebuilt: [],
-					paramsAdded: [],
-					needsFullRestart: restartMsg,
-					errors: [{
-						message: restartMsg,
-						file: path,
-						line: 0,
-						col: 0,
-						errorType: bh.multianim.dev.HotReload.ReloadErrorType.SignatureIncompatible,
-						context: null,
-					}],
-					rebuiltCount: 0,
-					elapsedMs: 0,
-				};
-				notifyReloadListeners(bh.multianim.dev.HotReload.ReloadEvent.ReloadNeedsRestart(report));
-				lastReport = report;
-				continue;
-			}
-
-			// 6. Replace cached builder
-			builders.set(fileEntry.resource, newBuilder);
-			loader.replaceMultiAnim(path, newBuilder);
-
-			// 7. Update content hash
-			fileChangeDetector.updateHash(path, content);
-
-			// 8. Notify transient-build consumers
-			for (consumer in builderConsumers)
-				consumer.onBuilderReplaced(path, newBuilder);
-
-			// 9. Determine reload strategy: per-file nuclear for screens, in-place for non-screen handles
-			final screensForFile = screenSourceMap.get(path);
-
-			if (screensForFile != null && screensForFile.length > 0) {
-				// Per-file nuclear: clear + reload only affected screens
-				trace('[HotReload] Reloading ${screensForFile.length} screen(s) for ${path}');
-
-				// Unregister all handles for this path to prevent stale sentinel firing during clear
-				for (handle in handles)
-					hotReloadRegistry.unregister(handle);
-
-				loader.clearCache();
-				var screenErrors:Array<bh.multianim.dev.HotReload.ReloadError> = [];
-				for (screen in screensForFile) {
-					for (name => s in configuredScreens) {
-						if (s == screen) {
-							screen.clear();
-							clearScreenFromSourceMap(screen);
-							currentlyLoadingScreen = screen;
-							try {
-								screen.load();
-								failedScreens.remove(name);
-							} catch (e) {
-								failedScreens[name] = e.toString();
-								trace('[HotReload] Failed to reload screen ${name}: ${e}');
-								screenErrors.push(makeHotReloadFailError(path, 'screen:${name}', e));
-							}
-							currentlyLoadingScreen = null;
-							break;
-						}
-					}
-				}
-				updateScreenMode(this.mode);
-
-				final elapsed = (haxe.Timer.stamp() - startTime) * 1000;
-				lastReport = {
-					success: screenErrors.length == 0,
-					file: path,
-					fileType: bh.multianim.dev.HotReload.ReloadFileType.Manim,
-					programmablesRebuilt: [],
-					paramsAdded: paramsAdded,
-					needsFullRestart: null,
-					errors: screenErrors,
-					rebuiltCount: 0,
-					elapsedMs: elapsed,
-				};
-				notifyReloadListeners(screenErrors.length == 0
-					? bh.multianim.dev.HotReload.ReloadEvent.ReloadSucceeded(lastReport)
-					: bh.multianim.dev.HotReload.ReloadEvent.ReloadFailed(lastReport));
-				continue;
-			}
-
-			if (handles.length == 0) {
-				// No screens and no handles: transient builds only, builder already replaced
-				trace('[HotReload] Builder replaced for ${path} (no screens or handles)');
-				final elapsed = (haxe.Timer.stamp() - startTime) * 1000;
-				lastReport = {
-					success: true,
-					file: path,
-					fileType: bh.multianim.dev.HotReload.ReloadFileType.Manim,
-					programmablesRebuilt: [],
-					paramsAdded: paramsAdded,
-					needsFullRestart: null,
-					errors: [],
-					rebuiltCount: 0,
-					elapsedMs: elapsed,
-				};
-				notifyReloadListeners(bh.multianim.dev.HotReload.ReloadEvent.ReloadSucceeded(lastReport));
-				continue;
-			}
-
-			// 10. In-place rebuild for non-screen incremental handles
-			final rebuiltNames:Array<String> = [];
-			var buildErrors:Array<bh.multianim.dev.HotReload.ReloadError> = [];
-			var pendingCallbacks:Array<bh.multianim.dev.HotReload.ReloadReport->Void> = [];
-
-			for (handle in handles) {
-				final oldResult = handle.result;
-
-				// Snapshot state
-				final snapshot = bh.multianim.dev.HotReload.StateSnapshotter.capture(oldResult);
-
-				// Detach slot contents so they can be reparented
-				bh.multianim.dev.HotReload.StateRestorer.detachSlots(oldResult);
-
-				// Remove old sentinel to prevent stale auto-unregister during swap
-				bh.multianim.dev.HotReload.ReloadableRegistry.removeSentinel(oldResult.object);
-				hotReloadRegistry.unregister(handle);
-
-				// Try rebuild with new builder, preserving original builderParams.
-				// Wrap params to reuse captured placeholder objects instead of re-invoking callbacks.
-				// Use devBuilderParams (stored on result) — works even for non-incremental builds.
-				var newResult:BuilderResult;
-				final oldBuilderParams = oldResult.devBuilderParams;
-				final capturedPlaceholders = oldResult.devCapturedPlaceholders;
-				final reloadBuilderParams = if (oldBuilderParams != null && capturedPlaceholders != null && capturedPlaceholders.length > 0)
-					bh.multianim.dev.HotReload.PlaceholderReuser.wrapBuilderParams(oldBuilderParams, capturedPlaceholders);
-				else
-					oldBuilderParams;
-				try {
-					newResult = newBuilder.buildWithParameters(
-						handle.programmableName,
-						bh.multianim.dev.HotReload.StateRestorer.snapshotToInputMap(snapshot.params),
-						reloadBuilderParams,
-						null,
-						true
-					);
-				} catch (e) {
-					buildErrors.push(makeHotReloadFailError(path, handle.programmableName, e));
-					continue;
-				}
-
-				// Restore snapshot into new result
-				bh.multianim.dev.HotReload.StateRestorer.restore(newResult, snapshot);
-
-				// The new result auto-registered itself — unregister it and
-				// remove its sentinel before we move children.
-				if (newResult.reloadHandle != null) {
-					bh.multianim.dev.HotReload.ReloadableRegistry.removeSentinel(newResult.object);
-					hotReloadRegistry.unregister(newResult.reloadHandle);
-				}
-
-				// Replace children of stable root with rebuilt children.
-				// oldResult.object stays in the scene — game references remain valid.
-				bh.multianim.dev.HotReload.SceneSwapper.replaceChildren(oldResult.object, newResult.object);
-
-				// Adopt non-scene internals (incrementalContext, names, slots, etc.)
-				// but keep oldResult.object unchanged — it's the stable scene node.
-				final stableObject = oldResult.object;
-				oldResult.adoptFrom(newResult);
-				oldResult.object = stableObject;
-
-				// Re-register the stable result (plants sentinel on oldResult.object)
-				oldResult.reloadHandle = hotReloadRegistry.register(path, oldResult, handle.programmableName);
-
-				// Fire onReload callback if set (for any extra game-side bookkeeping)
-				final reloadCb = oldResult.onReload;
-				if (reloadCb != null) {
-					final stableResult = oldResult;
-					pendingCallbacks.push((report) -> {
-						try {
-							reloadCb(stableResult, report);
-						} catch (cbError) {
-							trace('[HotReload] onReload callback threw: ${cbError}');
-						}
-					});
-				}
-
-				rebuiltNames.push(handle.programmableName);
-			}
-
-			final elapsed = (haxe.Timer.stamp() - startTime) * 1000;
-			lastReport = {
-				success: buildErrors.length == 0,
-				file: path,
-				fileType: bh.multianim.dev.HotReload.ReloadFileType.Manim,
-				programmablesRebuilt: rebuiltNames,
-				paramsAdded: paramsAdded,
-				needsFullRestart: null,
-				errors: buildErrors,
-				rebuiltCount: rebuiltNames.length,
-				elapsedMs: elapsed,
-			};
-
-			// Fire deferred onReload callbacks with final report
-			for (cb in pendingCallbacks)
-				cb(lastReport);
-
-			if (lastReport.success)
-				notifyReloadListeners(bh.multianim.dev.HotReload.ReloadEvent.ReloadSucceeded(lastReport));
-			else
-				notifyReloadListeners(bh.multianim.dev.HotReload.ReloadEvent.ReloadFailed(lastReport));
 			#end // hl
 		}
 
 		if (lastReport == null)
-			lastReport = {
-				success: true,
-				file: "",
+			lastReport = unchangedReloadReport(resource != null ? resource.entry.path : "");
+
+		return lastReport;
+	}
+
+	/** Reloads a loaded `.manim` from text the caller supplies instead of reading the file: a
+	 *  browser page cannot read the file, so the DevBridge's `reload` passes `{file, content}` here.
+	 *  Returns null when no loaded builder came from `path` (the resource path, e.g. `ui/menu.manim`). */
+	public function hotReloadContent(path:String, content:String):Null<bh.multianim.dev.HotReload.ReloadReport> {
+		for (resource => _ in builders) {
+			if (resource.entry.path != path)
+				continue;
+			finalizeTransition();
+			final report = hotReloadFile(resource, resource.entry.path, content, haxe.Timer.stamp());
+			return report != null ? report : unchangedReloadReport(resource.entry.path);
+		}
+		return null;
+	}
+
+	/** The resource path of every loaded `.manim`, for an error that names what can be reloaded. */
+	public function loadedManimPaths():Array<String> {
+		return [for (resource => _ in builders) resource.entry.path];
+	}
+
+	function unchangedReloadReport(path:String):bh.multianim.dev.HotReload.ReloadReport {
+		return {
+			success: true,
+			file: path,
+			fileType: bh.multianim.dev.HotReload.ReloadFileType.Manim,
+			programmablesRebuilt: [],
+			paramsAdded: [],
+			needsFullRestart: null,
+			errors: [],
+			rebuiltCount: 0,
+			elapsedMs: 0,
+		};
+	}
+
+	/** Reloads one loaded `.manim` from `content`. Returns null when the content is unchanged
+	 *  (same hash as when last loaded), else the report it also sent to the reload listeners. */
+	function hotReloadFile(resource:hxd.res.Resource, path:String, content:String, startTime:Float):Null<bh.multianim.dev.HotReload.ReloadReport> {
+		final fileEntry = {resource: resource, path: path};
+
+		// 2. Content hash check — skip if unchanged
+		if (!fileChangeDetector.hasChanged(path, content))
+			return null;
+
+		// 3. Notify ReloadStarted
+		notifyReloadListeners(bh.multianim.dev.HotReload.ReloadEvent.ReloadStarted(path, bh.multianim.dev.HotReload.ReloadFileType.Manim));
+
+		// 4. Try re-parse
+		var newBuilder:MultiAnimBuilder;
+		try {
+			final byteData = ByteData.ofString(content);
+			newBuilder = MultiAnimBuilder.load(byteData, loader, path);
+		} catch (e:Dynamic) {
+			// catch (e:Dynamic): a bare `catch (e)` wraps the parser's InvalidSyntax (not a
+			// haxe.Exception) in haxe.ValueException, and the report loses its type and position.
+			final report = makeHotReloadFailReport(path, e);
+			notifyReloadListeners(bh.multianim.dev.HotReload.ReloadEvent.ReloadFailed(report));
+			return report;
+		}
+
+		// 5. Signature check for each live handle
+		final handles = hotReloadRegistry.getHandles(path);
+		final oldBuilder = builders.get(fileEntry.resource);
+		var needsRestart:Null<String> = null;
+		var paramsAdded:Array<String> = [];
+
+		if (oldBuilder != null) {
+			for (handle in handles) {
+				// reloadable=false handles never rebuild, so their signature
+				// compatibility must not block the reload of everything else.
+				if (!handle.result.reloadable)
+					continue;
+				final oldDefs = oldBuilder.getParameterDefinitions(handle.programmableName);
+				final newDefs = newBuilder.getParameterDefinitions(handle.programmableName);
+				final restartReason = bh.multianim.dev.HotReload.SignatureChecker.check(oldDefs, newDefs);
+				if (restartReason != null) {
+					needsRestart = restartReason;
+					break;
+				}
+				for (added in bh.multianim.dev.HotReload.SignatureChecker.getAddedParams(oldDefs, newDefs))
+					if (!paramsAdded.contains(added))
+						paramsAdded.push(added);
+			}
+		}
+
+		if (needsRestart != null) {
+			final restartMsg:String = needsRestart;
+			final report:bh.multianim.dev.HotReload.ReloadReport = {
+				success: false,
+				file: path,
 				fileType: bh.multianim.dev.HotReload.ReloadFileType.Manim,
 				programmablesRebuilt: [],
 				paramsAdded: [],
-				needsFullRestart: null,
-				errors: [],
+				needsFullRestart: restartMsg,
+				errors: [{
+					message: restartMsg,
+					file: path,
+					line: 0,
+					col: 0,
+					errorType: bh.multianim.dev.HotReload.ReloadErrorType.SignatureIncompatible,
+					context: null,
+				}],
 				rebuiltCount: 0,
 				elapsedMs: 0,
 			};
+			notifyReloadListeners(bh.multianim.dev.HotReload.ReloadEvent.ReloadNeedsRestart(report));
+			return report;
+		}
 
+		// 6. Replace cached builder
+		builders.set(fileEntry.resource, newBuilder);
+		loader.replaceMultiAnim(path, newBuilder);
+
+		// 7. Update content hash
+		fileChangeDetector.updateHash(path, content);
+
+		// 8. Notify transient-build consumers. The builder is swapped already: what fails here fails
+		// the report and leaves that consumer as it was, and the rest of the reload goes on.
+		final replacedErrors:Array<bh.multianim.dev.HotReload.ReloadError> = [];
+		for (consumer in builderConsumers) {
+			try {
+				consumer.onBuilderReplaced(path, newBuilder);
+			} catch (e:Dynamic) {
+				replacedErrors.push(makeHotReloadFailError(path, "builder consumer", e));
+			}
+		}
+		// The tile maps from this file in a scene are read again in place (rows, tileset, decor; the
+		// actors stay), as consumers are. Called once the screens of this file are reloaded: their
+		// load() builds its maps anew from the new builder and the old ones leave the scene, so none is
+		// drawn twice (and refreshTilemap leaves a map already read from this parse alone). A map that
+		// cannot be read fails the report and stays as it was.
+		function refreshTilemaps():Void {
+			bh.base.TileMap.builderReplaced(path, map -> {
+				try {
+					newBuilder.refreshTilemap(map);
+				} catch (e:Dynamic) {
+					replacedErrors.push(makeHotReloadFailError(path, 'tilemap:${map.mapName}', e));
+				}
+			});
+		}
+
+		// 9. Determine reload strategy: per-file nuclear for screens, in-place for non-screen handles.
+		// A copy: reloading a screen removes it from this list and its load() adds it back.
+		final screensForFile = screenSourceMap.get(path)?.copy();
+
+		if (screensForFile != null && screensForFile.length > 0) {
+			// Per-file nuclear: clear + reload only affected screens
+			trace('[HotReload] Reloading ${screensForFile.length} screen(s) for ${path}');
+
+			// Unregister all handles for this path to prevent stale sentinel firing during clear
+			for (handle in handles)
+				hotReloadRegistry.unregister(handle);
+
+			loader.clearCache();
+			var screenErrors:Array<bh.multianim.dev.HotReload.ReloadError> = [];
+			for (screen in screensForFile) {
+				for (name => s in configuredScreens) {
+					if (s == screen) {
+						screen.clear();
+						clearScreenFromSourceMap(screen);
+						currentlyLoadingScreen = screen;
+						try {
+							screen.load();
+							failedScreens.remove(name);
+						} catch (e:Dynamic) {
+							failedScreens[name] = Std.string(e);
+							trace('[HotReload] Failed to reload screen ${name}: ${e}');
+							screenErrors.push(makeHotReloadFailError(path, 'screen:${name}', e));
+						}
+						currentlyLoadingScreen = null;
+						break;
+					}
+				}
+			}
+			updateScreenMode(this.mode);
+			refreshTilemaps();
+
+			// A screen that failed to reload retries on the next reload of the same text.
+			final errors = replacedErrors.concat(screenErrors);
+			if (errors.length > 0)
+				fileChangeDetector.invalidate(path);
+			final elapsed = (haxe.Timer.stamp() - startTime) * 1000;
+			final report:bh.multianim.dev.HotReload.ReloadReport = {
+				success: errors.length == 0,
+				file: path,
+				fileType: bh.multianim.dev.HotReload.ReloadFileType.Manim,
+				programmablesRebuilt: [],
+				paramsAdded: paramsAdded,
+				needsFullRestart: null,
+				errors: errors,
+				rebuiltCount: 0,
+				elapsedMs: elapsed,
+			};
+			notifyReloadListeners(errors.length == 0
+				? bh.multianim.dev.HotReload.ReloadEvent.ReloadSucceeded(report)
+				: bh.multianim.dev.HotReload.ReloadEvent.ReloadFailed(report));
+			return report;
+		}
+
+		refreshTilemaps();
+
+		if (handles.length == 0) {
+			// No screens and no handles: transient builds only, builder already replaced
+			trace('[HotReload] Builder replaced for ${path} (no screens or handles)');
+			final elapsed = (haxe.Timer.stamp() - startTime) * 1000;
+			final report:bh.multianim.dev.HotReload.ReloadReport = {
+				success: replacedErrors.length == 0,
+				file: path,
+				fileType: bh.multianim.dev.HotReload.ReloadFileType.Manim,
+				programmablesRebuilt: [],
+				paramsAdded: paramsAdded,
+				needsFullRestart: null,
+				errors: replacedErrors,
+				rebuiltCount: 0,
+				elapsedMs: elapsed,
+			};
+			if (report.success)
+				notifyReloadListeners(bh.multianim.dev.HotReload.ReloadEvent.ReloadSucceeded(report));
+			else {
+				fileChangeDetector.invalidate(path);
+				notifyReloadListeners(bh.multianim.dev.HotReload.ReloadEvent.ReloadFailed(report));
+			}
+			return report;
+		}
+
+		// 10. In-place rebuild for non-screen incremental handles
+		final rebuiltNames:Array<String> = [];
+		var buildErrors:Array<bh.multianim.dev.HotReload.ReloadError> = replacedErrors.copy();
+		var pendingCallbacks:Array<bh.multianim.dev.HotReload.ReloadReport->Void> = [];
+
+		for (handle in handles) {
+			final oldResult = handle.result;
+
+			// result.reloadable = false is the documented opt-out
+			// (docs/hot-reload.md): callers set it after buildWithParameters
+			// returns, so it must be honored here, per reload. The handle stays
+			// registered — flipping the flag back to true re-enables reload.
+			if (!oldResult.reloadable)
+				continue;
+
+			// Snapshot state
+			final snapshot = bh.multianim.dev.HotReload.StateSnapshotter.capture(oldResult);
+
+			// Build the replacement and restore its state first; the live result is not touched
+			// until that succeeded. Wrap params to reuse captured placeholder objects instead of
+			// re-invoking callbacks (the wrapped callbacks move them into the new tree, so a failed
+			// build puts them back). devBuilderParams works even for non-incremental builds.
+			var rebuilt:BuilderResult;
+			var builtForCleanup:Null<BuilderResult> = null;
+			final oldBuilderParams = oldResult.devBuilderParams;
+			final capturedPlaceholders = oldResult.devCapturedPlaceholders;
+			final placeholderHomes = bh.multianim.dev.HotReload.PlaceholderReuser.recordHomes(capturedPlaceholders ?? []);
+			final reloadBuilderParams = if (oldBuilderParams != null && capturedPlaceholders != null && capturedPlaceholders.length > 0)
+				bh.multianim.dev.HotReload.PlaceholderReuser.wrapBuilderParams(oldBuilderParams, capturedPlaceholders);
+			else
+				oldBuilderParams;
+			try {
+				final built = newBuilder.buildWithParameters(
+					handle.programmableName,
+					bh.multianim.dev.HotReload.StateRestorer.snapshotToInputMap(snapshot.params),
+					reloadBuilderParams,
+					null,
+					true
+				);
+				builtForCleanup = built;
+				bh.multianim.dev.HotReload.StateRestorer.restoreState(built, snapshot);
+				rebuilt = built;
+			} catch (e) {
+				// The live result stays as it was: registered, its tree and slot contents in place.
+				bh.multianim.dev.HotReload.PlaceholderReuser.putBack(placeholderHomes);
+				final failed = builtForCleanup;
+				if (failed != null && failed.reloadHandle != null)
+					hotReloadRegistry.unregister(failed.reloadHandle);
+				buildErrors.push(makeHotReloadFailError(path, handle.programmableName, e));
+				continue;
+			}
+
+			// Commit. The new result auto-registered itself; the stable result is registered again below.
+			if (rebuilt.reloadHandle != null) {
+				bh.multianim.dev.HotReload.ReloadableRegistry.removeSentinel(rebuilt.object);
+				hotReloadRegistry.unregister(rebuilt.reloadHandle);
+			}
+			bh.multianim.dev.HotReload.ReloadableRegistry.removeSentinel(oldResult.object);
+			hotReloadRegistry.unregister(handle);
+
+			// Lift slot contents out of the old tree without Heaps' onRemove teardown, show the
+			// rebuilt root inside the stable object the game holds, then put the contents into the
+			// new (now live) slots.
+			for (saved in snapshot.slots)
+				if (saved.content != null)
+					bh.base.HeapsUtils.safeDetach(saved.content);
+			final stableObject = oldResult.object;
+			bh.multianim.dev.HotReload.SceneSwapper.nest(stableObject, rebuilt.object, oldResult.devBuilderRootProps);
+			bh.multianim.dev.HotReload.StateRestorer.moveSlotContents(rebuilt, snapshot);
+
+			// Adopt non-scene internals (incrementalContext, names, slots, etc.) but keep
+			// oldResult.object — the stable scene node, now a plain container of the rebuilt root.
+			oldResult.adoptFrom(rebuilt);
+			oldResult.object = stableObject;
+			oldResult.devBuilderRootProps = [];
+
+			// Re-register the stable result (plants sentinel on oldResult.object)
+			oldResult.reloadHandle = hotReloadRegistry.register(path, oldResult, handle.programmableName);
+
+			// Listeners that track the result's interactives (screen sync, card-hand resync) see the
+			// rebuilt objects now.
+			oldResult.fireRebuildListeners();
+
+			// Fire onReload callback if set (for any extra game-side bookkeeping)
+			final reloadCb = oldResult.onReload;
+			if (reloadCb != null) {
+				final stableResult = oldResult;
+				pendingCallbacks.push((report) -> {
+					try {
+						reloadCb(stableResult, report);
+					} catch (cbError) {
+						trace('[HotReload] onReload callback threw: ${cbError}');
+					}
+				});
+			}
+
+			rebuiltNames.push(handle.programmableName);
+		}
+
+		final elapsed = (haxe.Timer.stamp() - startTime) * 1000;
+		final lastReport:bh.multianim.dev.HotReload.ReloadReport = {
+			success: buildErrors.length == 0,
+			file: path,
+			fileType: bh.multianim.dev.HotReload.ReloadFileType.Manim,
+			programmablesRebuilt: rebuiltNames,
+			paramsAdded: paramsAdded,
+			needsFullRestart: null,
+			errors: buildErrors,
+			rebuiltCount: rebuiltNames.length,
+			elapsedMs: elapsed,
+		};
+
+		// Fire deferred onReload callbacks with final report
+		for (cb in pendingCallbacks)
+			cb(lastReport);
+
+		// A result that failed to rebuild still shows the old text: forget the new text's hash so
+		// reloading the same text retries instead of reporting it unchanged.
+		if (!lastReport.success)
+			fileChangeDetector.invalidate(path);
+
+		if (lastReport.success)
+			notifyReloadListeners(bh.multianim.dev.HotReload.ReloadEvent.ReloadSucceeded(lastReport));
+		else
+			notifyReloadListeners(bh.multianim.dev.HotReload.ReloadEvent.ReloadFailed(lastReport));
 		return lastReport;
 	}
 
@@ -1560,18 +1875,9 @@ class ScreenManager {
 	}
 
 	function makeHotReloadFailError(path:String, context:String, e:Dynamic):bh.multianim.dev.HotReload.ReloadError {
-		if (Std.isOfType(e, InvalidSyntax)) {
-			final ex = cast(e, InvalidSyntax);
-			return {
-				message: ex.toString(),
-				file: ex.pos.psource,
-				line: ex.pos.line,
-				col: ex.pos.col,
-				errorType: bh.multianim.dev.HotReload.ReloadErrorType.ParseError,
-				context: context,
-			};
-		} else if (Std.isOfType(e, MultiAnimUnexpected)) {
-			final ex:MultiAnimUnexpected<Dynamic> = cast e;
+		e = thrownValue(e);
+		if (Std.isOfType(e, ParseError)) {
+			final ex = cast(e, ParseError);
 			return {
 				message: ex.toString(),
 				file: ex.pos.psource,
@@ -1592,7 +1898,7 @@ class ScreenManager {
 				context: context,
 			};
 		} else {
-			final ex = Std.downcast(e, haxe.Exception);
+			final ex:Null<haxe.Exception> = Std.downcast(e, haxe.Exception);
 			final msg = ex != null ? '${ex.message}\n${ex.stack}' : Std.string(e);
 			return {
 				message: msg,
@@ -1628,20 +1934,21 @@ class ScreenManager {
 	}
 	#end
 
+	/** The value that was thrown. A bare `catch (e)` wraps a thrown value that is not a
+	 *  haxe.Exception (the parsers' ParseError subclasses) in haxe.ValueException. */
+	static function thrownValue(e:Dynamic):Dynamic {
+		return Std.isOfType(e, haxe.ValueException) ? (cast e : haxe.ValueException).value : e;
+	}
+
 	#if MULTIANIM_STRICT
 	function strictFail(context:String, e:Dynamic):Void {
 		var msg = new StringBuf();
 		msg.add("=== MANIM STRICT ERROR ===\n");
 		msg.add('context: $context\n');
 
-		if (Std.isOfType(e, InvalidSyntax)) {
-			final err = cast(e, InvalidSyntax);
-			msg.add('file: ${err.pos.psource}\n');
-			msg.add('line: ${err.pos.line}\n');
-			msg.add('col: ${err.pos.col}\n');
-			msg.add('error: ${err.toString()}\n');
-		} else if (Std.isOfType(e, MultiAnimUnexpected)) {
-			final err:MultiAnimUnexpected<Dynamic> = cast e;
+		e = thrownValue(e);
+		if (Std.isOfType(e, ParseError)) {
+			final err = cast(e, ParseError);
 			msg.add('file: ${err.pos.psource}\n');
 			msg.add('line: ${err.pos.line}\n');
 			msg.add('col: ${err.pos.col}\n');
@@ -1661,9 +1968,14 @@ class ScreenManager {
 		}
 
 		msg.add("=== END MANIM STRICT ERROR ===\n");
+		#if sys
 		Sys.stderr().writeString(msg.toString());
 		Sys.stderr().flush();
 		Sys.exit(1);
+		#else
+		// No stderr or exit code in a browser page: keep the report and fail loudly instead.
+		throw new haxe.Exception(msg.toString());
+		#end
 	}
 	#end
 }

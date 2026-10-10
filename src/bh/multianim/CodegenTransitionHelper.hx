@@ -22,8 +22,10 @@ class CodegenTransitionHelper {
 	// op. Called from cancelActiveTransition / cancelAllTransitions before nulling
 	// onComplete, so reverse-direction cancellation doesn't leave a mid-flight interpolated
 	// value in place — that value would otherwise be re-captured as the next transition's
-	// baseline, permanently shifting the element away from its natural state.
-	var activeTransitionTweens:Array<{obj:h2d.Object, tween:Null<Tween>, sequence:Null<TweenSequence>, target:Bool, restore:Null<Void -> Void>}> = [];
+	// baseline, permanently shifting the element away from its natural state. `gen` is the
+	// tween's generation when the transition started: the TweenManager can cancel it from
+	// outside (cancelAll / clear), and then the pooled Tween may already run another animation.
+	var activeTransitionTweens:Array<{obj:h2d.Object, tween:Null<Tween>, gen:Int, sequence:Null<TweenSequence>, target:Bool, restore:Null<Void -> Void>}> = [];
 
 	public function new(specs:Map<String, TransitionType>) {
 		this.transitionSpecs = specs;
@@ -36,6 +38,7 @@ class CodegenTransitionHelper {
 		// transition active and visibility already matches, or a transition active
 		// whose target equals newVisible (it converges on its own — replacing it
 		// would jump alpha/scale to 0 and restart). Mirrors IncrementalUpdateContext.
+		dropCancelledTransitions(obj); // before reading visibility: their restore may change it
 		if (obj.visible == newVisible) {
 			final activeTarget = getActiveTransitionTarget(obj);
 			if (activeTarget == null || activeTarget == newVisible) return;
@@ -56,6 +59,7 @@ class CodegenTransitionHelper {
 	 *  Uses addChildAt/removeChild instead of visible toggling.
 	 *  parent and sentinel define the insertion point. */
 	public function setPresenceWithTransition(obj:h2d.Object, newVisible:Bool, changedParam:String, parent:h2d.Object, sentinel:h2d.Object):Void {
+		dropCancelledTransitions(obj); // before reading presence: their restore may change it
 		final inGraph = obj.parent != null;
 		// See setVisibilityWithTransition above for the direction-aware skip rationale.
 		if (newVisible == inGraph) {
@@ -87,9 +91,10 @@ class CodegenTransitionHelper {
 				// (TransFade restores only alpha; TransSlide restores {x,y,alpha}; etc.) so
 				// user mutations on properties this transition wasn't writing are preserved.
 				if (entry.restore != null) entry.restore();
-				if (entry.tween != null) {
-					entry.tween.onComplete = null;
-					entry.tween.cancel();
+				final t = entry.tween;
+				if (t != null && t.generation == entry.gen) {
+					t.onComplete = null;
+					t.cancel();
 				}
 				if (entry.sequence != null) {
 					entry.sequence.onComplete = null;
@@ -106,15 +111,34 @@ class CodegenTransitionHelper {
 		while (activeTransitionTweens.length > 0) {
 			final entry = activeTransitionTweens[0];
 			if (entry.restore != null) entry.restore();
-			if (entry.tween != null) {
-				entry.tween.onComplete = null;
-				entry.tween.cancel();
+			final t = entry.tween;
+			if (t != null && t.generation == entry.gen) {
+				t.onComplete = null;
+				t.cancel();
 			}
 			if (entry.sequence != null) {
 				entry.sequence.onComplete = null;
 				entry.sequence.cancel();
 			}
 			activeTransitionTweens.splice(0, 1);
+		}
+	}
+
+	/** Drop `obj`'s transitions that the TweenManager cancelled from outside (cancelAll, clear):
+	 *  they never complete, and their pooled Tween may already run another animation. Their
+	 *  restore still runs, so obj lands on the transition's endpoint as a completed one would. */
+	function dropCancelledTransitions(obj:h2d.Object):Void {
+		var i = 0;
+		while (i < activeTransitionTweens.length) {
+			final entry = activeTransitionTweens[i];
+			final t = entry.tween;
+			final seq = entry.sequence;
+			final live = if (t != null) t.generation == entry.gen && !t.cancelled else seq != null && !seq.cancelled;
+			if (entry.obj == obj && !live) {
+				activeTransitionTweens.splice(i, 1);
+				if (entry.restore != null) entry.restore();
+			} else
+				i++;
 		}
 	}
 
@@ -133,11 +157,12 @@ class CodegenTransitionHelper {
 	}
 
 	function trackTransitionTween(obj:h2d.Object, tween:Tween, target:Bool, restore:Null<Void -> Void>):Void {
-		activeTransitionTweens.push({obj: obj, tween: tween, sequence: null, target: target, restore: restore});
+		final gen = tween.generation;
+		activeTransitionTweens.push({obj: obj, tween: tween, gen: gen, sequence: null, target: target, restore: restore});
 		tween.onComplete = () -> {
 			var i = 0;
 			while (i < activeTransitionTweens.length) {
-				if (activeTransitionTweens[i].tween == tween) {
+				if (activeTransitionTweens[i].tween == tween && activeTransitionTweens[i].gen == gen) {
 					activeTransitionTweens.splice(i, 1);
 					break;
 				}
@@ -152,7 +177,7 @@ class CodegenTransitionHelper {
 	}
 
 	function trackTransitionSequence(obj:h2d.Object, seq:TweenSequence, target:Bool, restore:Null<Void -> Void>):Void {
-		activeTransitionTweens.push({obj: obj, tween: null, sequence: seq, target: target, restore: restore});
+		activeTransitionTweens.push({obj: obj, tween: null, gen: 0, sequence: seq, target: target, restore: restore});
 		seq.onComplete = () -> {
 			var i = 0;
 			while (i < activeTransitionTweens.length) {

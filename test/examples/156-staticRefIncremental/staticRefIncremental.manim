@@ -1,0 +1,113 @@
+version: 1.0
+
+// Fixture: a staticRef inside a programmable built incrementally (or a codegen instance), with
+// setParameter on the enclosing programmable. A staticRef is built once, as a whole; one whose
+// target or arguments use the enclosing programmable's params is built again when one changes.
+// Before: the nested build inherited the enclosing incremental context, so its expressions were
+// re-run against the enclosing params by name (a literal `w=>5` turned into the outer `w`), and
+// its conditionals and renamed arguments never followed at all.
+
+import "test/examples/156-staticRefIncremental/sriImported.manim" as "ext"
+
+#sriLeaf programmable(w:uint=11) {
+  bitmap(generated(color($w, 4, #ff0000))): 0, 0
+}
+
+#sriLeafTall programmable(w:uint=11) {
+  bitmap(generated(color($w, 7, #ff00ff))): 0, 0
+}
+
+#sriLeafDir programmable(dir:[e, n]=e) {
+  @(dir => e) bitmap(generated(color(11, 4, #ff0000))): 0, 0
+  @(dir => n) bitmap(generated(color(22, 4, #00ff00))): 0, 0
+}
+
+// The outer `w` is the outer's own: the staticRef's literal must stay 5.
+#sriLiteral programmable(w:uint=11) {
+  bitmap(generated(color($w, 2, #0000ff))): 0, 10
+  staticRef($sriLeaf, w=>5): 0, 0
+}
+
+#sriRenamed programmable(size:uint=11) {
+  staticRef($sriLeaf, w=>$size): 0, 0
+}
+
+// Two levels, each choosing by `dir`, the inner with literal arguments.
+#sriMid programmable(dir:[e, n]=e) {
+  @(dir => e) staticRef($sriLeafDir, dir=>e): 0, 0
+  @(dir => n) staticRef($sriLeafDir, dir=>n): 0, 0
+}
+
+#sriNested programmable(dir:[e, n]=e) {
+  staticRef($sriMid, dir=>$dir): 0, 0
+}
+
+// The `w` arm is built late (deferred); after that it must still follow `c`.
+#sriDefer programmable(dir:[e, w]=e, c:uint=5) {
+  @(dir => e) staticRef($sriLeaf, w=>$c): 0, 0
+  @(dir => w) staticRef($sriLeaf, w=>$c + 1): 0, 0
+}
+
+// A loop variable in an argument is gone by the time `c` changes.
+#sriRepeat programmable(c:uint=5) {
+  repeatable($i, range(0, 2)) {
+    staticRef($sriLeaf, w=>$c + $i): 0, 0
+  }
+}
+
+#sriByName programmable(which:[sriLeaf, sriLeafTall]=sriLeaf) {
+  staticRef($which, w=>7): 0, 0
+}
+
+#sriShip programmable(dir:[e, n]=e, colour:uint=3) {
+  @(dir => e) {
+    bitmap(generated(color(40, 1, #888888))): 0, 0
+    staticRef($sriLeaf, w=>$colour): 0, 0
+  }
+  @(dir => n) {
+    bitmap(generated(color(1, 40, #888888))): 0, 0
+    staticRef($sriLeafTall, w=>$colour): 0, 0
+  }
+}
+
+#sriDemo programmable(dir:[e, n]=e, colour:uint=3) {
+  bitmap(generated(color(99, 99, #3a6ea5))): 0, 0
+  staticRef($sriShip, dir=>$dir, colour=>$colour): 0, 0
+}
+
+// A staticRef with children of its own is not rebuilt (its children would be lost with the old
+// build): changing `c` is refused, while `bar` (used outside it) still follows.
+#sriWithKids programmable(c:uint=5, bar:uint=2) {
+  bitmap(generated(color($bar, 1, #00ffff))): 0, 10
+  staticRef($sriLeaf, w=>$c) {
+    bitmap(generated(color(2, 2, #ffffff))): 0, 6
+  }
+}
+
+// A target with a root pos is built as holder -> root(pos): the staticRef's children go into that
+// root and move with it (codegen did not draw them at all).
+#sriLeafAt programmable(w:uint=11) {
+  pos: 3, 2
+  bitmap(generated(color($w, 4, #ff0000))): 0, 0
+}
+
+#sriKidsAt programmable() {
+  staticRef($sriLeafAt, w=>4) {
+    bitmap(generated(color(2, 2, #ffffff))): 1, 1
+  }
+}
+
+// Loop variables and @finals are fixed at build time: a staticRef that uses only those is left as
+// built, with nothing tracked for it.
+#sriFixedOnly programmable(c:uint=5) {
+  @final W = 3
+  bitmap(generated(color($c, 1, #00ffff))): 0, 10
+  repeatable($i, range(0, 2)) {
+    staticRef($sriLeaf, w=>$W + $i): 0, 0
+  }
+}
+
+// From an imported file: the rebuild goes through the imported builder.
+#sriExternal programmable(c:uint=5) {
+  staticRef(external(ext), $sriExtLeaf, w=>$c): 0, 0
+}

@@ -3,7 +3,7 @@
   "displayName": "MultiAnim Language Support",
   "description": "Language support for .manim and .anim files — syntax highlighting, diagnostics, completions, hover, symbols, and go-to-definition",
   "publisher": "bh213",
-  "version": "2.0.28",
+  "version": "2.0.33",
   "engines": {
     "vscode": "^1.87.0"
   },
@@ -64,6 +64,7 @@
   },
   "scripts": {
     "build": "node build.js",
+    "drift-check": "node drift-check.js --build",
     "package": "npm run build && vsce package --allow-missing-repository",
     "sync-check": "node sync-check.js"
   }

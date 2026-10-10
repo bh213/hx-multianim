@@ -5,7 +5,7 @@
 - **Generic settings pass-through**: Any setting not recognized as control or behavioral is automatically forwarded to the underlying programmable as an extra parameter. The programmable must declare a matching parameter; mismatches throw with programmable name + available params.
 - **Prefixed settings**: `item.fontColor`, `scrollbar.thickness` — dotted keys route to sub-builders in multi-programmable components (dropdown, scrollableList). Registered prefixes: dropdown has `dropdown`, `item`, `scrollbar` (main=panel); scrollableList has `item`, `scrollbar` (main=panel).
 - **Multi-forward settings**: Unprefixed `font`/`fontColor` on dropdown/scrollableList forward to ALL relevant sub-builders for backwards compatibility.
-- **Button**: `buildName` and `text` are control settings; everything else (e.g. `width`, `height`, `font`, `fontColor`) passes through to `#button` programmable. Uses incremental `BuilderResult` with `setParameter("status", ...)` for state changes.
+- **Button**: `buildName` and `text` are control settings; everything else (e.g. `width`, `height`, `font`, `fontColor`) passes through to `#button` programmable. Uses incremental `BuilderResult` with `setParameter("status", ...)` for state changes. `setStyleParameter(name, value):Bool` drives design-specific parameters at runtime — returns `false` (no-op) when the design doesn't declare the parameter; throws `BuilderError` (`code="widget_managed_param"`) for the widget-managed `status`/`buttonText`/`disabled` (use `setText()` / `disabled` instead).
 - **Checkbox**: Same incremental approach as button; uses `beginUpdate()`/`endUpdate()` when toggling both `status` and `checked` parameters.
 - **TabButton**: Same incremental approach; `selected`/`disabled` via `setParameter("checked"/"disabled", ...)`.
 - **Scrollable list / Dropdown**: `font`, `fontColor` forwarded to both item builder and dropdown button builder. The `#dropdown` programmable accepts `font`/`fontColor` params for the selected item text.
@@ -14,9 +14,10 @@
 - **UIScreen**: If elements don't show or react to events, check if added to UIScreen's elements
 - **Macros**: `MacroUtils.macroBuildWithParameters` maps `.manim` elements to Haxe code — auto-injects `ResolvedSettings` parameter
 - **Settings naming**: `buildName` for single builder override, `<element>BuildName` for multiple (e.g. `radioBuildName`, `radioButtonBuildName`)
-- **Slider**: Supports custom float range (`min`, `max`, `step` settings). Internally maps to 0-100 grid. Implements both `UIElementNumberValue` (int) and `UIElementFloatValue` (float). Uses incremental mode for efficient redraws. Emits both `UIChangeValue(Int)` and `UIChangeFloatValue(Float)`.
-- **Progress bar**: Display-only component (`UIMultiAnimProgressBar`). Uses full rebuild (not incremental) because `bitmap(generated(color(...)))` is not tracked. Screen helper: `addProgressBar(builder, settings, initialValue)`.
-- **Scrollable list scrollbar**: Built with incremental mode — scroll events use `setParameter("scrollPosition", ...)` instead of full rebuild.
+- **Slider**: Supports custom float range (`min`, `max`, `step` settings). Internally maps to 0-100 grid. Implements both `UIElementNumberValue` (int) and `UIElementFloatValue` (float). Uses incremental mode for efficient redraws. Emits both `UIChangeValue(Int)` and `UIChangeFloatValue(Float)`. `direction` setting / `slider.direction` (`Auto` reads `#start`/`#end`: vertical when they differ in y and not in x; `Vertical` drags along y).
+- **Progress bar**: Display-only component (`UIMultiAnimProgressBar`). Built once, incrementally; `setIntValue` changes `value` in place (`getResult()` stays the same object). Falls back to a whole rebuild on every change once `setParameter("value")` throws `untracked_param` (`incremental` false). The widget passes only `value` (plus pass-through settings). Screen helper: `addProgressBar(builder, settings, initialValue)`.
+- **Scrollable list scrollbar**: Built with incremental mode — scroll events use `setParameter("scrollPosition", ...)` instead of full rebuild. A scrollbar programmable with a `status` parameter and a `#thumb` is a dragged `UIMultiAnimScrollbar` (`list.scrollbarWidget`; the list forwards the mouse over the bar and every event while the thumb is held, `isScrollbarDragging()`), the position-only one shows where the list is. `scrollbar.*` settings reach the scrollbar programmable; the list's bare `font`/`fontColor` do not (`explicitlyPrefixed` in `UIScreen`). Widgets look up a `#name` that lives in `@()` arms with `BuilderResult.getNamedDrawn(name)` (an unmatched arm is out of the scene graph, not hidden, so a parent walk alone finds it).
+- **Scrollbar**: `UIMultiAnimScrollbar` — contract: `status:[normal,hover,pressed]`, `panelHeight`/`scrollableHeight`/`scrollPosition` (lengths along the bar), optional `disabled`/`direction` params, `#thumb` (hit-tested bounds), optional `#track`/`#up`/`#down`; root settings `arrowStep`, `scrollSpeed`. `create(builder, name, panelLength, scrollableLength, position, direction, extraParams)`, `fromResult`, `fits(builder, name)`, `buildParams`; `onChange`, `UIChangeValue`, `position`, `setRange`, `scrollBy`. Screen helper: `addScrollbar(builder, settings, panelLength, scrollableLength, position)` (`buildName`, `direction`, `arrowStep`).
 - **Scrollable list items**: Items built with incremental `BuilderResult` — state changes (`status`, `selected`, `disabled`) use `setParameter()` directly instead of pre-built combos.
 - **Scrollable list custom item params**: `UIElementListItem.params:Map<String, Dynamic>` passes arbitrary parameters to the item `.manim` template. Merged after built-in params (`title`, `status`, etc.) in `buildItem()`. The item programmable must declare matching parameters.
 - **Scrollable list per-item base status**: `UIElementListItem.baseStatus:String` defines the resting visual status (e.g. `"active"`, `"completed"`). Used as initial `status` in `buildItem()` and as reset target after hover/press ends. Falls back to `"disabled"` if `item.disabled`, then `"normal"`.
@@ -44,7 +45,8 @@ Metadata supports typed values matching the settings system: `key => val` (strin
 **UI integration:**
 - `UIInteractiveWrapper` — thin wrapper implementing `UIElement`, `StandardUIElementEvents`, `UIElementIdentifiable`
 - `UIElementIdentifiable` — opt-in interface with `id`, `prefix`, `metadata:BuilderResolvedSettings`
-- Screen methods: `addInteractive()`, `addInteractives(result, prefix)`, `removeInteractives(prefix)`, `getInteractive(id)` (O(1) map lookup), `getInteractivesByPrefix(prefix)`
+- Screen methods: `addInteractive()`, `addInteractives(result, prefix, ?eventPriority)`, `removeInteractives(prefix)`, `getInteractive(id)` (O(1) map lookup), `getInteractivesByPrefix(prefix)`
+- **Rebuild sync** — `addInteractives` on an incremental source installs a rebuild listener that keeps that `(source, prefix)` registration in line with `source.getInteractives()`: new interactives are wrapped (at `eventPriority` when one was given — `UIPanelHelper` passes `Overlay`), dropped ones unregistered, and a wrapper whose object a `@switch`/repeat rebuild recreated under the same id follows the new object (`UIInteractiveWrapper.rebind`), keeping its hover, `disabled` and priority. Other sources under the same prefix are never touched (`wrapper.source`). The screen never detaches interactive objects — they belong to the builder — so a hidden-then-shown container and `removeInteractives` → `addInteractives` on the same result both work. An `autoStatus` interactive that appears only after registration creates the auto helper then; `removeInteractives(prefix)` unbinds only the removed wrappers' autoStatus bindings (child prefixes keep theirs)
 - Events: emits `UIInteractiveEvent(event, id, metadata)` — pattern match in `onScreenEvent`:
   ```haxe
   case UIInteractiveEvent(UIClick, id, meta): // clicked interactive
@@ -56,7 +58,7 @@ Metadata supports typed values matching the settings system: `key => val` (strin
 - **Event filtering**: `events: [hover, click, push]` metadata controls which events are emitted. `EVENT_HOVER=1`, `EVENT_CLICK=2`, `EVENT_PUSH=4`, `EVENT_ALL=7` (default)
 - **autoStatus metadata**: `autoStatus => "status"` auto-wires Normal→Hover→Pressed state machine at screen level. `addInteractives()` detects it, creates internal `UIRichInteractiveHelper`, and handles events automatically via `dispatchScreenEvent()`. Advanced: `screen.getAutoInteractiveHelper()` for `setDisabled()`, `setParameter()`, etc.
 - **Bind metadata**: `bind => "status"` for manual wiring with a custom `UIRichInteractiveHelper` (e.g., `UICardHandHelper`). Cannot coexist with `autoStatus` on the same interactive.
-- **`UIRichInteractiveHelper`** — state binding helper: `register(result, ?prefix, metadataKey)` scans for given metadata key (default: `"bind"`); `handleEvent(event)` drives Normal→Hover→Pressed→Normal state machine via `setParameter()`; `setDisabled(id, disabled)` for disabled state; `hasBinding(id)`, `unregisterByPrefix(prefix)`, `bind()`/`unbind()`/`setParameter()`/`getResult()` for manual control. Key `"autoStatus"` is reserved for screen auto-wiring.
+- **`UIRichInteractiveHelper`** — state binding helper: `register(result, ?prefix, metadataKey)` scans for given metadata key (default: `"bind"`); `handleEvent(event)` drives Normal→Hover→Pressed→Normal state machine via `setParameter()`; `setDisabled(id, disabled)` for disabled state; ids are `'<prefix>.<identifier>'` when registered with a prefix — `getBindingIds(prefix, out)` lists them; `hasBinding(id)`, `unregisterByPrefix(prefix)`, `bind()`/`unbind()`/`setParameter()`/`getResult()` for manual control. Key `"autoStatus"` is reserved for screen auto-wiring.
   - `resync(source, ?prefix, metadataKey = "bind")` — re-diff bindings after structural changes (e.g. `@switch` arm flip, param-dependent `repeatable` rebuild). Drops ids no longer in `source.getInteractives()`, binds new ones; preserves `currentState` on existing bindings (does NOT reset to Normal). Screen-registered helpers (`autoStatus`) are resynced automatically via a rebuild listener installed in `addInteractives`; **manually-registered helpers must call `resync()` explicitly** — `UICardHandHelper` does this via a per-card rebuild listener. Use when a helper's source programmable contains `@switch` or param-dependent `repeatable` that may change the interactive set.
 - **`UIInteractiveSource` interface** (`src/bh/ui/UIInteractiveSource.hx`) — abstraction over "anything that exposes interactives and can notify on rebuilds". Methods: `getInteractives():Array<MAObject>`, `isIncremental:Bool` getter, `addRebuildListener(fn:Void->Void)` / `removeRebuildListener(fn)`, `setParameter(name, value)`. Implemented by `BuilderResult` (runtime builder path) and codegen-generated programmable instances (`@:manim`). Consumed by `UIRichInteractiveHelper.resync()` and `UIScreen.syncInteractivesFrom` to re-diff bindings after rebuilds. Use this type when writing helpers that should work against both builder and codegen results.
 - **`BuilderResult.addRebuildListener(fn:Void -> Void)` / `removeRebuildListener(fn)`** — fires once per rebuild cycle after parameters change and the incremental context has re-evaluated visibility/expressions. Snapshotted before dispatch, so listeners may unregister themselves during the callback. Throws if `isIncremental` is false (non-incremental results never rebuild). Codegen no-op setters short-circuit before firing, so repeated `setParameter(name, sameValue)` does not cascade. Use to resync helpers whose state depends on which interactives/slots/named elements are currently live (e.g. after `@switch` arm flips).
@@ -70,7 +72,8 @@ Metadata supports typed values matching the settings system: `key => val` (strin
   - All built-in components (Button, Checkbox, Slider, Dropdown, TabButton, ScrollableList) implement `UIElementCursor`
   - Interactive per-state cursors via metadata: `cursor => "pointer"`, `cursor.hover => "move"`, `cursor.disabled => "default"`
   - Unknown `cursor.*` suffixes throw (valid: `cursor.hover`, `cursor.disabled`)
-  - Controller plumbing in `UIDefaultController.handleMove()` — calls `hxd.System.setCursor()`
+  - `setOverrideCursor(cursor)` — a cursor shown whatever is hovered, set at once (the card hand hides the cursor this way while its arrow targets); `setOverrideCursor(null)` clears it and sets nothing itself, the controller sets the hovered element's cursor again. `getOverrideCursor()`, `getOverrideVersion()` (changes on every set or clear)
+  - Controller plumbing in `UIDefaultController.updateCursor()` — run on every move and every frame (`update`), so a hovered element's cursor follows its state without the mouse leaving it; calls `hxd.System.setCursor()` only when the override or the element's cursor changed since it last did, so a cursor game code sets directly lasts until the UI's own changes
 - **Event priority** — `UIElementPriority` opt-in interface with `eventPriority:Int`. Higher values receive events first when overlapping. Elements without it default to 0. `UIInteractiveWrapper` implements it, reads from `eventPriority:int` metadata (e.g. `interactive(w, h, id, eventPriority:int => 10)`). `UIInteractiveWrapper.eventPriority` is publicly writable for programmatic override. `UIDefaultController` sorts hit elements by priority (stable sort, registration order as tiebreaker). `UIEventPriority` class provides named tiers: `Content` (0), `Overlay` (100), `Modal` (200). Use arithmetic for fine-tuning (e.g. `Overlay + 2`). Dropdown sets `Overlay` when open, `Content` when closed. `UIPanelHelper` sets `Overlay` on panel interactives
 - **Event bubbling** — `UIElementEventWrapper.consumed:Bool` (default `true`). Handlers set `wrapper.consumed = false` to pass events to the next overlapping element. Click, release, key, wheel events bubble; hover (enter/leave) stays single-element (topmost only)
 
@@ -90,6 +93,7 @@ Metadata supports typed values matching the settings system: `key => val` (strin
 **Parameterized slots** — `#name slot(param:type=default, ...)` for visual state management:
 - Same parameter types as `programmable()`: `uint`, `int`, `float`, `bool`, `string`, `color`, enum, range, flags
 - Conditionals (`@()`, `@else`, `@default`) and expressions (`$param`) work inside the slot body
+- Scope: slot bodies see the slot's own params plus enclosing `@final` constants declared before the slot (works on build, `setParameter` rebuilds, and the codegen `buildSlotContent` path). Enclosing programmable params and loop vars are NOT visible — a slot rebuild only receives slot params
 - `SlotHandle.setParameter("name", value)` updates visuals via `IncrementalUpdateContext`
 - Content goes into a separate `contentRoot` (decoration always visible, not hidden by `setContent`)
 - Codegen: `setParameter()` supported — parameterized slots built via `buildParameterizedSlot()` at runtime with full incremental support
@@ -112,7 +116,7 @@ Metadata supports typed values matching the settings system: `key => val` (strin
 
 `UIHigherOrderComponent` interface (`src/bh/ui/UIHigherOrderComponent.hx`) — lifecycle auto-wiring for complex UI components (Grid, CardHand) that manage their own scene graph and span multiple layers.
 
-**Interface methods:** `update(dt)`, `onMouseMove(x, y):Bool`, `onMouseClick(x, y, button):Bool`, `onMouseRelease(x, y):Bool`, `handleScreenEvent(event):Bool`, `getObject():h2d.Object`, `dispose()`.
+**Interface methods:** `update(dt)`, `onMouseMove(x, y):Bool`, `onMouseClick(x, y, button):Bool`, `onMouseRelease(x, y, ?button):Bool` (`button` null = left; drags end on a left-button release only), `handleScreenEvent(event):Bool`, `getObject():h2d.Object`, `dispose()`.
 
 **Implementors:** `UIMultiAnimGrid`, `UICardHandHelper`
 
@@ -133,7 +137,7 @@ Metadata supports typed values matching the settings system: `key => val` (strin
 
 **Dispatch pattern:** `UIControllerScreenIntegration` uses `dispatchMouseMove()` / `dispatchMouseClick()` instead of direct `onMouseMove()` / `onMouseClick()` — enables component event interception before screen handlers. Key coexistence semantics:
 - `dispatchMouseMove()` — notifies components but always returns true (never blocks interactive processing)
-- `dispatchMouseClick()` — push (non-release) notifies components but never blocks; only release can block (returns false when consumed, e.g. card hand drag end). Controller preserves outside-click tracking even when consumed.
+- `dispatchMouseClick()` — push (non-release) notifies components but never blocks; only release can block (returns false when consumed, e.g. card hand drag end). The release is forwarded with its button (`onMouseRelease(x, y, button)`). Controller preserves outside-click tracking even when consumed.
 - `dispatchScreenEvent()` — runs autoStatus + panelHelpers first, then tries components. Skips `onScreenEvent()` when a component consumed the event.
 
 **UIComponentHost interface** (`src/bh/ui/UIComponentHost.hx`): Decouples CardHand, UIRichInteractiveHelper, UIPanelHelper, and UITooltipHelper from concrete UIScreenBase. Methods: `addObjectToLayer`, `addInteractives`, `removeInteractives`, `getInteractive`, `getAutoInteractiveHelper`, `onScreenEvent`. UIScreenBase implements it. `onScreenEvent` on the interface is used by `UIPanelHelper` to push its `EVENT_PANEL_CLOSE` notification back into the host.
@@ -263,6 +267,7 @@ var grid = new UIMultiAnimGrid(builder, {
 - The `draggable` in `CellSwap` is null for cell-drag-initiated swaps (same as programmatic swaps)
 - Self-drop: grid auto-registers its own cells as drop targets (source cell excluded)
 - Cross-grid drop: use `linkDropTarget()` to register other grids as drop targets
+- `removeCell()` / `removeCellAnimated()` on the cell being dragged ends the drag: the dragged visual is dropped and `CellDragEnd` fires. Removed while the item already snaps/returns, the drag finishes normally and skips the missing cell
 
 **Cross-grid linking** (for `cellDragEnabled`):
 - `linkDropTarget(target, ?accepts)` — register another grid as a drop target for this grid's cell drags. `accepts: (targetCell, sourceCell, data) -> Bool`
@@ -293,18 +298,19 @@ var grid = new UIMultiAnimGrid(builder, {
 - `removeExternalObject(obj)` — remove it
 
 **Cell animations** (require `tweenManager` in config):
-- `tweenCell(col, row, duration, properties, ?easing)` — animate cell object properties (e.g. shake, pulse). Non-destructive — cell stays in grid
-- `addCellAnimated(col, row, duration, properties, ?easing, ?data, ?params)` — add cell with entrance animation. Properties are FROM values (e.g. `[Scale(0.0), Alpha(0.0)]` → cell scales/fades in from 0)
-- `removeCellAnimated(col, row, duration, properties, ?easing)` — animate cell then remove. Properties are TO values (e.g. `[Scale(0.0), Alpha(0.0)]` → cell shrinks/fades out)
+- `tweenCell(col, row, duration, properties, ?easing)` — animate cell object properties (e.g. shake, pulse). Non-destructive — cell stays in grid. The returned `Tween` is pooled: to cancel it later keep `tween.generation` and use `Tween.cancelIfCurrent(tween, generation)`
+- `addCellAnimated(col, row, ?data, ?params, duration=0.3, ?initProperties, ?easing)` — add cell with entrance animation. `initProperties` are FROM values (e.g. `[Scale(0.0), Alpha(0.0)]` → cell scales/fades in from 0). Note `data`/`params` precede `duration`
+- `removeCellAnimated(col, row, duration, properties, ?easing, ?onComplete)` — animate cell then remove. Properties are TO values (e.g. `[Scale(0.0), Alpha(0.0)]` → cell shrinks/fades out)
+- `dispose()` cancels every cell tween and completes pending `removeCellAnimated` exits at once (object removed, `onComplete` called once, like swap animations); `rebuildCell()` cancels tweens on the visual it replaces
 
 **Detach/reattach cell visual:**
-- `detachCellVisual(col, row) -> h2d.Object` — remove visual from cell for free animation (e.g. fly to another location). Cell data preserved but shows empty
+- `detachCellVisual(col, row) -> Null<{object:h2d.Object, data, sceneX, sceneY}>` — remove visual from cell for free animation (e.g. fly to another location). Returns the detached object plus its data and scene position, or null if the cell doesn't exist. Cell data preserved but shows empty
 - `reattachCellVisual(col, row)` — rebuild cell visual from existing data
 
 **Lifecycle:**
 - `getObject()` — root `h2d.Object`, add to scene via `addObjectToLayer(grid.getObject(), layer)`
-- `update(dt)` — call from screen update for animation support
-- `dispose()` — clean up all resources, zones, and scene graph
+- `update(dt)` — call from screen update for animation support. Completions fire after all animations stepped, so an `onComplete` may dispose the grid
+- `dispose()` — clean up all resources, zones, and scene graph. In-flight work completes at once — each pending completion fires exactly once, at the latest when the grid that owns the animation is disposed (with linked grids, a target grid's `ctx` callbacks can fire from the source grid, which owns the snap): swap/snap animations (`ctx.onComplete` fires), `removeCellAnimated` exits, and accepted `acceptDrops` drops whose draggable is still snapping. Disposing one of two linked grids mid-swap (or both, in either order) is safe — the other grid's pending rebuild of the gone cell is skipped
 
 **Callbacks:**
 - `onGridEvent:(GridEvent) -> Void` — main event callback
@@ -397,7 +403,8 @@ override public function onMouseMove(pos) {
     return super.onMouseMove(pos);
 }
 override public function onMouseClick(pos, button, release) {
-    if (release && cardHand.onMouseRelease(pos.x, pos.y)) return false;
+    if (!release) cardHand.onMouseClick(pos.x, pos.y, button); // notes the button: the UIPush that follows drags for left only
+    if (release && cardHand.onMouseRelease(pos.x, pos.y, button)) return false;
     if (release) hexGrid.onMouseClick(pos.x, pos.y, button);
     return super.onMouseClick(pos, button, release);
 }
@@ -407,8 +414,8 @@ override public function onMouseClick(pos, button, release) {
 - Builder: `result.getDynamicRef("name").setParameter("param", value)`
 - Existence check: `result.hasDynamicRef("name")` — never throws, returns `false` when unknown. Reports presence only; a subsequent `getDynamicRef` may still throw if multiple unnamed sibling sites collide on the same key (disambiguate with `#name` / `#name[$i]`)
 - Batch updates: `beginUpdate()` / `endUpdate()` defers re-evaluation
-- Codegen: generates runtime builder call, returns `BuilderResult`
-- **Dynamic programmable references**: `dynamicRef($paramName, params)` where `$paramName` is a string/enum parameter of the enclosing programmable. The parameter value names the target programmable. Template change triggers full rebuild; forwarded params propagate incrementally. `getDynamicRef()` returns the current result (name changes at runtime)
+- Codegen: generates runtime builder call, returns `BuilderResult`. Lookup contract matches the builder: `getDynamicRef` on a collided unnamed key throws at lookup; a duplicate explicit `#name` is a compile-time error
+- **Dynamic programmable references**: `dynamicRef($paramName, params)` where `$paramName` is a string/enum parameter of the enclosing programmable. The parameter value names the target programmable. Template change triggers full rebuild; forwarded params propagate incrementally. `getDynamicRef()` returns the current result. With an explicit `#name`, the name is the stable lookup key across template swaps (builder and codegen); only unnamed sites are looked up by the live template name
 
 **Flow improvements** — new optional params on `flow()`:
 - `overflow: expand|limit|scroll|hidden`, `fillWidth: true`, `fillHeight: true`, `reverse: true`

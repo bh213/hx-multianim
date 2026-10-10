@@ -29,6 +29,7 @@ interface UIControllerScreenIntegration {
 }
 
 @:allow(bh.ui.screens.UIScreenBase)
+@:allow(bh.ui.screens.ScreenManager)
 interface UIController {
 	var exitResponse(default, null):Null<Dynamic>;
 	function handleClick(mousePos:Point, button:Int, release:Bool, eventWrapper:EventWrapper):Void;

@@ -9,8 +9,26 @@ import bh.ui.UIMultiAnimDraggable;
  *  For hex grids, col/row are axial coordinates (q/r), s = -q - r derived internally. */
 @:structInit
 class CellCoord {
+	// Allocation watchdog for tests. Gated behind MULTIANIM_ALLOC_TRACK so the
+	// per-construction increment vanishes from production builds; CellCoord is
+	// allocated on the per-mouse-move / per-drag-tick grid hit-test path.
+	#if MULTIANIM_ALLOC_TRACK
+	public static var creationCount:Int = 0;
+	#end
+
 	public var col:Int;
 	public var row:Int;
+
+	// Explicit constructor required for @:structInit when the watchdog needs to
+	// run extra code (the synthesized constructor cannot). Field order + defaults
+	// must match the declarations above so `{col: x, row: y}` still resolves here.
+	public inline function new(col:Int, row:Int) {
+		this.col = col;
+		this.row = row;
+		#if MULTIANIM_ALLOC_TRACK
+		creationCount++;
+		#end
+	}
 
 	public inline function toString():String {
 		return '${col}_${row}';

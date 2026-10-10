@@ -9,8 +9,28 @@ typedef AtlasEntry = { t : h2d.Tile, width : Int, height : Int, offsetX: Int, of
 interface IAtlas2 {
 	function get(name:String):AnimationFrame;
 	function getAnim(?name:String):Array<AnimationFrame>;
-	function getNinePatch(name:String):ScaleGrid;
+	/** A `ScaleGrid` of frame `index` (0 by default) of the nine-patch `name`; null when the name
+	 *  or the frame is not in the atlas; throws when the entry has no (or a bad) `split`. */
+	function getNinePatch(name:String, ?index:Int):ScaleGrid;
+	/** How many frames the name has (0 when it is not in the atlas). */
+	function ninePatchFrameCount(name:String):Int;
 	function getContents():Map<String, Array<AtlasEntry>>;
+}
+
+/** The `ScaleGrid` for one atlas entry, or null for a missing one. Shared by every atlas. */
+function ninePatchOfEntry(name:String, entries:Null<Array<AtlasEntry>>, index:Int):Null<ScaleGrid> {
+	if (entries == null || index < 0 || index >= entries.length)
+		return null;
+	final t = entries[index];
+	if (t == null)
+		return null;
+	final splitLen = t.split.length;
+	if (splitLen > 0) {
+		if (splitLen != 4)
+			throw '${name} has invalid 9-patch: ${t.split}';
+		return new ScaleGrid(t.t, t.split[0], t.split[2], t.split[1], t.split[3]);
+	}
+	throw '${name} is not a 9-patch';
 }
 
 class InlineAtlas2 implements IAtlas2 {
@@ -44,17 +64,13 @@ class InlineAtlas2 implements IAtlas2 {
 		return [for (t in c) if (t == null) null else toAnimationFrame(t)];
 	}
 
-	public function getNinePatch(name:String):ScaleGrid {
-		var c = contents.get(name);
-		if (c == null) return null;
-		var t = c[0];
-		if (t == null) return null;
-		var splitLen = t.split.length;
-		if (splitLen > 0) {
-			if (splitLen != 4) throw '${name} has invalid 9-patch: ${t.split}';
-			return new ScaleGrid(t.t, t.split[0], t.split[2], t.split[1], t.split[3]);
-		}
-		throw '${name} is not a 9-patch';
+	public function getNinePatch(name:String, ?index:Int):ScaleGrid {
+		return ninePatchOfEntry(name, contents.get(name), index ?? 0);
+	}
+
+	public function ninePatchFrameCount(name:String):Int {
+		final c = contents.get(name);
+		return c == null ? 0 : c.length;
 	}
 
 	public function getContents():Map<String, Array<AtlasEntry>> {
@@ -90,21 +106,13 @@ class Atlas2 extends hxd.res.Resource.Resource implements IAtlas2 {
 		return toAnimationFrame(t);
 	}
 
-	public function getNinePatch( name : String) : ScaleGrid {
-		var c = getContents().get(name);
-		if( c == null )
-			return null;
-		var t = c[0];
-		if( t == null )
-			return null;
+	public function getNinePatch( name : String, ?index : Int) : ScaleGrid {
+		return ninePatchOfEntry(name, getContents().get(name), index ?? 0);
+	}
 
-		var splitLen = t.split.length;
-		if (splitLen > 0) {
-			if (splitLen != 4)  throw '${name} has invalid 9-patch: ${t.split}';
-			return new ScaleGrid(t.t, t.split[0], t.split[2], t.split[1], t.split[3]);
-		}
-
-		throw '${name} is not a 9-patch';
+	public function ninePatchFrameCount( name : String) : Int {
+		final c = getContents().get(name);
+		return c == null ? 0 : c.length;
 	}
 
 	public function getAnim( ?name : String) : Array<AnimationFrame> {
@@ -127,22 +135,26 @@ class Atlas2 extends hxd.res.Resource.Resource implements IAtlas2 {
 
 		contents = new Map();
 		sourceTiles = [];
+		// Read by index: shift() copies the rest of a large array on every line, which made a
+		// sheet of thousands of frames take seconds to read.
 		var lines = entry.getText().split("\n");
+		var count = lines.length;
+		var i = 0;
 
 		var basePath = entry.path.split("/");
 		basePath.pop();
 		var basePath = basePath.join("/");
 		if( basePath.length > 0 ) basePath += "/";
-		while( lines.length > 0 ) {
-			var line = StringTools.trim(lines.shift());
+		while( i < count ) {
+			var line = StringTools.trim(lines[i++]);
 			if ( line == "" ) continue;
             final tileFilename = basePath + line;
 			var tileFile = hxd.res.Loader.currentInstance.load(tileFilename)?.toTile();
 			if (tileFile == null) throw 'Could not load tile ${tileFilename}';
 			sourceTiles.push(tileFile);
-			while( lines.length > 0 ) {
-				if( lines[0].indexOf(":") < 0 ) break;
-				var line = StringTools.trim(lines.shift()).split(": ");
+			while( i < count ) {
+				if( lines[i].indexOf(":") < 0 ) break;
+				var line = StringTools.trim(lines[i++]).split(": ");
 				switch( line[0] ) {
 				case "size":
 					var wh = line[1].split(",");
@@ -152,21 +164,20 @@ class Atlas2 extends hxd.res.Resource.Resource implements IAtlas2 {
 				default:
 				}
 			}
-			while( lines.length > 0 ) {
-				var line = StringTools.trim(lines.shift());
+			while( i < count ) {
+				var line = StringTools.trim(lines[i++]);
 				if( line == "" ) break;
 				var prop = line.split(": ");
 				if( prop.length > 1 ) continue;
 				var key = line;
 				var tileX = 0, tileY = 0, tileW = 0, tileH = 0, origW = 0, origH = 0, index = 0, offsetX = 0, offsetY = 0;
 				var split:Array<Int> = [];
-				while( lines.length > 0 ) {
-					var line = StringTools.trim(lines.shift());
+				while( i < count ) {
+					var line = StringTools.trim(lines[i]);
 					var prop = line.split(": ");
-					if( prop.length == 1 ) {
-						lines.unshift(line);
+					if( prop.length == 1 )
 						break;
-					}
+					i++;
 					var v = prop[1];
 					switch( prop[0] ) {
 					case "rotate":

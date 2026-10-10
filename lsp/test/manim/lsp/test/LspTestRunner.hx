@@ -15,6 +15,7 @@ class LspTestRunner {
 		ManimAnalyzerTest.run();
 		ContextAnalyzerTest.run();
 		AnimAnalyzerTest.run();
+		ManimLanguageServerTest.run();
 
 		trace('\n=== Results: $passed passed, $failed failed ===');
 		if (failed > 0) {

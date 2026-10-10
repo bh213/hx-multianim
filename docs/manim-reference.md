@@ -18,7 +18,9 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `#name layouts { ... }` | Define named coordinate layouts for positioning |
 | `#name atlas2("file") { ... }` | Define inline sprite atlas from image file |
 | `#name palette { ... }` | Define color palette |
-| `#name autotile { ... }` | Define procedural auto-tile set |
+| `#name autotile { ... }` | Autotile terrain set (`corner` / `blob47` / `cross`) |
+| `#name tileset { ... }` | What tile maps are drawn with: terrains, rises between levels, named cells, metadata |
+| `#name tilemap { ... }` | A tile map: legend, terrain and level rows, layers of cells, decor, marks |
 | `@final name = expr` | Declare immutable named constant |
 
 ---
@@ -28,9 +30,11 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | Element | Description |
 |---------|-------------|
 | `bitmap(source, hAlign, vAlign)` | Display image tile with optional alignment |
+| `tilemap(name)` / `tilemap(external(file), name)` | Place a tile map (`#name tilemap`) |
 | `text(font, text, color, align, maxWidth, options)` | Simple text with font, color, and formatting options |
 | `richText(font, text, color, align, maxWidth, options)` | Rich text with `[markup]`, styles, images — always `h2d.HtmlText` |
-| `ninepatch(sheet, tile, w, h)` | 9-patch scalable image for resizable panels |
+| `ninepatch(sheet, tile, w, h [, stretch\|tile] [, index: n] [, fps: n])` | 9-patch scalable image for resizable panels: repeated by default, `stretch` for art drawn to stretch, `settings { ninepatch => stretch }` as a programmable's default; sheet and tile are string expressions (`"button_" + $style`); `index:` a frame of an indexed name, `fps:` the frames played in a loop (`AnimatedScaleGrid`) |
+| `#name cursor { name: tileSource, hot: x, y … }` | Bitmap cursors from atlas cells, registered by name when the file loads (root only) — see Cursors |
 | `pixels(...)` | Pixel-level drawing primitives |
 | `graphics(...)` | Vector graphics shapes |
 | `stateanim("file", state, selector)` | State machine animation from .anim file |
@@ -47,7 +51,7 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `flow(params)` | Layout container (horizontal, vertical, stack) with padding, spacing, overflow |
 | `layers()` | Z-ordering container for explicit depth stacking |
 | `mask(w, h)` | Clipping rectangle that hides overflow |
-| `tilegroup` | Optimized tile grouping (GPU batching for bitmaps, ninepatch, pixels, point). Children are baked once at build time, so conditionals on programmable parameters are **rejected up front** — both at runtime (`BuilderError code="tilegroup_conditional"`) and at `@:manim` macro compile time (same message, raised at the `@:manim` field position). Use conditionals outside the tileGroup, or key them on a `repeatable` loop variable inside it |
+| `tilegroup` | Optimized tile grouping (GPU batching for bitmaps, ninepatch, pixels, point). Children are baked once at build time, so conditionals on programmable parameters are **rejected up front** — both at runtime (`BuilderError code="tilegroup_conditional"`) and at `@:manim` macro compile time (same message, raised at the `@:manim` field position). The root form `#name programmable tileGroup(...)` runs the same validation as the nested `tilegroup {}` element. Use conditionals outside the tileGroup, or key them on a `repeatable` loop variable inside it |
 | `spacer(w, h)` | Empty spacing element inside flow containers |
 | `point` | Positioning anchor/marker point |
 | `apply(...)` | Apply properties to parent element |
@@ -59,7 +63,7 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | Element | Description |
 |---------|-------------|
 | `placeholder(type, source)` | Dynamic content slot resolved at build time |
-| `staticRef($ref, params)` | Static embed of another programmable |
+| `staticRef($ref, params)` | Static embed of another programmable. `$ref` may name the target literally or via a string/enum parameter (`staticRef($which)`) — the parameter value resolves the target programmable at build time in both builder and codegen. Built once, as a whole (no `setParameter()` of its own); inside an incremental build or a codegen instance, one whose target or arguments use the enclosing parameters is built again when one of them changes (codegen: only when the target or an argument's value changed); loop variables and `@final`s are fixed, so one using only those is never rebuilt. `staticRef(...) { children }` adds the children inside it (into the target's root when that has a root `pos:`); with children it is not rebuilt — changing such a parameter throws `untracked_param` |
 | `staticRef(external("importName"), $ref, params)` | Static embed from imported .manim file |
 | `dynamicRef($ref, params)` | Dynamic embed with runtime `setParameter()` support |
 | `#name dynamicRef($ref, params)` | Named dynamic embed — `BuilderResult.getDynamicRef("name")` returns this specific site |
@@ -69,9 +73,10 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 
 **Builder API:**
 - `result.getDynamicRef("name")` — returns the `BuilderResult` for the named site; throws if the name is unknown or multiple unnamed sites collide on the key
-- `result.hasDynamicRef("name")` — existence check that never throws; returns true when at least one site is registered under the key. Reports presence only — does not detect colliding unnamed sites (a subsequent `getDynamicRef` may still throw)
+- `result.hasDynamicRef("name")` — existence check that never throws; returns true when at least one site is registered under the key. Reports presence only — does not detect colliding unnamed sites (a subsequent `getDynamicRef` may still throw). Also generated on `@:manim` codegen instances (`instance.hasDynamicRef(name)`) — consults the same sources as the codegen `getDynamicRef` dispatcher, including dynamicRefs declared inside `@switch` arms
+- `result.getDynamicRefByIndex("name", index)` — convenience for indexed `#name[$i] dynamicRef(...)`; resolves the `"name idx"` key the builder stores per `repeatable` iteration. Also generated on codegen instances (`instance.getDynamicRefByIndex(name, index)`); works for both static-count (unrolled at macro time) and param-dependent repeats
 
-**Disambiguating sibling dynamicRef sites** — `dynamicRefs` is a map keyed by the site's name. Unnamed sites fall back to the referenced programmable name, so two unnamed `dynamicRef($X)` siblings (e.g. `@(cond) dynamicRef($X)` + `@else dynamicRef($X)`, or N iterations of `repeatable { dynamicRef($X) }`) collide on key `"X"`. In that case `getDynamicRef("X")` throws with a hint to add `#name` — the last-writer-wins result is arbitrary with respect to which sibling is attached to the scene graph. Prefix each site with a distinct `#name`, or use `#name[$i]` inside a `repeatable` to key by iteration. Two explicit `#name` sites sharing the same name throw at build time.
+**Disambiguating sibling dynamicRef sites** — `dynamicRefs` is a map keyed by the site's name. Unnamed sites fall back to the referenced programmable name, so two unnamed `dynamicRef($X)` siblings (e.g. `@(cond) dynamicRef($X)` + `@else dynamicRef($X)`, or N iterations of `repeatable { dynamicRef($X) }`) collide on key `"X"`. In that case `getDynamicRef("X")` throws with a hint to add `#name` — the last-writer-wins result is arbitrary with respect to which sibling is attached to the scene graph. Prefix each site with a distinct `#name`, or use `#name[$i]` inside a `repeatable` to key by iteration. Two explicit `#name` sites sharing the same name throw at build time. `@:manim` codegen instances enforce the same contract: `getDynamicRef` on a collided unnamed key throws at lookup, and a duplicate explicit `#name` is a compile-time error. The explicit `#name` is also the stable key for the dynamic-name form — `#panel dynamicRef($tpl)` stays addressable as `"panel"` across template swaps in both builder and codegen.
 
 **Circular references** — a `staticRef`/`dynamicRef` chain that re-enters a programmable already being resolved (`A → A`, `A → B → A`, …) is rejected with `BuilderError code="circular_reference"` instead of recursing to a native stack overflow. The message names the offending programmable. The guard is maintained across nested builds even if an inner `startBuild` throws, so callers that catch a build error and retry are not falsely rejected.
 | `#name slot` | Swappable content container |
@@ -88,7 +93,7 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | Element | Description |
 |---------|-------------|
 | `repeatable($var, iterator)` | Repeat child elements over an iterator |
-| `repeatable2d($x, $y, iterX, iterY)` | 2D grid repetition with two iterators |
+| `repeatable2d($x, $y, iterX, iterY)` | 2D grid repetition with two iterators. Axis kinds: `step`/`range` on both backends; `layout(...)` axes work in the builder and in codegen (codegen unrolls the layout points at macro time and composes the other axis inside each — a param-dependent linear axis combined with a layout axis is a codegen macro error); `array(...)` axes are builder-only (codegen macro error); `tiles(...)`/`stateanim(...)` axes are rejected on both backends |
 
 **Loop variable naming** — loop vars and iterator-output vars (`$v` in `array($v, …)`, `$b`/`$t` in `tiles(...)`, `$b` in `stateanim(...)`) must not share a name with a programmable parameter, an outer loop var, or any `@final` constant in scope. `repeatable2d`'s two loop vars must be distinct, and `tiles($b, $t, …)`'s two outputs must be distinct. Violations are parse errors.
 
@@ -99,8 +104,8 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `step(count, dx: N, dy: N)` | Fixed step offset, repeated `count` times |
 | `layout("entryName")` | Position from named relative layout (entryName is the `#name` used in the `layouts {}` block) |
 | `array($valueVar, $arrayName)` | Iterate over data array |
-| `range(start, end [, step])` | Numeric range (exclusive end), optional step |
-| `range(from: X, to: Y [, step: S])` | Named range (inclusive end: `to: 5` includes 5) |
+| `range(start, end [, step])` | Numeric range (exclusive end), optional step. A negative step counts down; a literal step of `0` is a parse error (a step expression or `$param` that evaluates to 0 fails the build) |
+| `range(from: X, to: Y [, step: S])` | Named range (inclusive end: `to: 5` includes 5, counting down too: `range(from: 5, to: 1, step: -1)` is 5,4,3,2,1) |
 | `range(from: X, until: Y [, step: S])` | Named range (exclusive end: `until: 5` excludes 5) |
 | `stateanim($bitmapVar, "file.anim", "animName", key=>value)` | Iterate animation frames; exposes `$bitmapVar` and `$index` |
 | `tiles($bitmapVar, $tilenameVar, "sheetName")` | Iterate all tiles from sheet; exposes `$bitmapVar`, `$tilenameVar`, and `$index` |
@@ -119,8 +124,8 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `generated(color(w, h, #color))` | Solid color rectangle |
 | `generated(cross(w, h, color, thickness))` | Cross/X marker |
 | `generated(colorwithtext(w, h, color, text, textColor, font))` | Colored rect with text label |
-| `generated(autotile(name, selector))` | Tile from autotile definition |
-| `generated(autotileregionsheet(name, scale, font, color))` | Autotile debug visualization |
+| `generated(autotile(name, index))` | Resolved tile of an autotile definition |
+| `generated(autotileRegionSheet(name, scale, font, color))` | `file:` autotile region with source indices overlaid (debug) |
 | `$variable` | Tile from parameter or iterator variable |
 | `center(source)` | Set tile pivot to center (0.5, 0.5) — shorthand for `pivot(0.5, 0.5, source)`. Nested pivot/center rejected at parse time |
 | `pivot(x, y, source)` | Set tile pivot point (0–1 ratio, validated at parse time). Overrides bitmap's hAlign/vAlign. Nested pivot/center rejected at parse time |
@@ -314,7 +319,13 @@ Parse-time error when used outside a flow ancestor.
 
 A bare `@else` or `@default` is **terminal** — it closes the chain. Any `@else` / `@default` that follows one is unreachable and rejected at parse time. To start a fresh chain, open a new `@(...)` sibling first.
 
+One conditional per element: `@(a=>1) @(b=>2)` and `@(a=>1) @else` / `@(a=>1) @default` are parse errors (combine conditions with `@all()` / `@any()`). A condition list must not be empty — `@()`, `@if()`, `@all()`, `@any()` and `@else()` are parse errors.
+
 **`@final` constants cannot be conditional or `@switch` keys.** `@final` is a compile-time-only alias with no runtime value slot, so both the runtime matcher and codegen's condition emitter would fail on a reference to its name. Using a `@final` as a key in `@(MY_CONST=>…)`, `@if(…)`, `@any(…)`, `@all(…)`, `@else(…)`, or `@switch(MY_CONST)` is rejected at parse time with a message naming the offending `@final`. Use a programmable parameter (`param:type=default`) as the conditional key instead. The rule applies regardless of whether the `@final`'s RHS is a literal or a derived expression.
+
+**Unknown enum members in a conditional are rejected at parse time.** Multi-value (`@(p => [a, b])`), negated multi-value (`@(p != [a, b])`), and `@switch` pipe arms (`a | b { ... }`) build their match set from raw lexemes; a value not present in the parameter's declared enum is rejected with a message naming the offending value and listing the valid members. (String params accept any value; loop variables have no declared type to validate against.) This prevents the silent divergence where a typo never matched in the builder but matched enum index 0 in codegen.
+
+**Type-aware equality.** `@(param => value)` and `@(param != value)` match by the parameter's declared type. On a `string` param the value is compared as a string — `@(version => 2)` means `version == "2"` (an integer-parseable value does **not** become a numeric match). **Float params reject equality:** `@(floatParam => N)` / `@(floatParam != N)` is a parse error (float equality is unreliable and diverged between backends — consistent with `@switch` rejecting float params). Use a comparison (`>=`, `<=`, `>`, `<`) or a range (`a..b`) on float params instead. **Numeric params reject non-numeric values:** `@(intParam => foo)` / `uint` / `range` / hex- & grid-direction params reject a non-integer-parseable value at parse time (these only match numeric values, not strings). **Bool params reject non-boolean values:** `@(boolParam => maybe)` is a parse error — only `true`/`false` (or `yes`/`no`, `1`/`0`) are accepted. Both guards apply to single-value, quoted, bracket multi-value, and `@switch` arms, and exist because the previous string fallthrough silently never matched in the builder and was an `Int == String` compile error in codegen.
 
 Conditionals also work with **repeatable loop variables** (e.g., `@($i => 0)`, `@($i >= 3)`, `@($i != 1)`) inside `repeatable` bodies.
 
@@ -369,7 +380,7 @@ Works with `@()`, `@if()`, `@any()`, `@all()`, `@else`, `@else(cond)`, `@default
 | `N..M` | Range match, inclusive (numeric params only) |
 | `default` | Fallback when no arm matches |
 
-**Parameter type support:** `@switch` works on discrete types — `enum`, `int`, `uint`, `range`, `string`, `color`, `bool`. Single-value arms route through the same type-aware converter as `@(param => value)`, so a color arm like `#FF0000` produces an integer match and `true`/`false` arms on a `bool` param work as expected. `@switch` rejects `float`, `tile`, and `flags` parameters at parse time (use `@(param => bit[N])` for flag tests). Range/comparison arms (`<= N`, `N..M`, etc.) are rejected on non-numeric parameters.
+**Parameter type support:** `@switch` works on discrete types — `enum`, `int`, `uint`, `range`, `string`, `color`, `bool`. Single-value arms route through the same type-aware converter as `@(param => value)`, so a color arm like `#FF0000` produces an integer match and `true`/`false` arms on a `bool` param work as expected. Pipe arms on a `string` param (`"alpha" | "beta": …`) match as strings (OR of string equalities) on both backends. `@switch` rejects `float`, `tile`, and `flags` parameters at parse time (use `@(param => bit[N])` for flag tests). Range/comparison arms (`<= N`, `N..M`, etc.) are rejected on non-numeric parameters.
 
 **Block arms** for multiple elements per case:
 
@@ -408,6 +419,7 @@ Works with `@()`, `@if()`, `@any()`, `@all()`, `@else`, `@else(cond)`, `@default
 
 **Notes:**
 - `@switch` cannot be combined with other `@` modifiers (`@alpha`, `@scale`, etc.)
+- `#name` cannot be applied to `@switch` (parse error) — name the elements inside the arms instead
 - Cannot be used at root level (must be inside a programmable body)
 - Only one `default` arm per `@switch` block (duplicate rejected at parse time)
 - **Incremental mode:** `setParameter()` triggers full arm rebuild (teardown + rebuild of active arm). All param refs inside all arms are collected — changing any referenced param (not just the switch param) triggers rebuild. Supports nested `@switch`, `@()` conditionals, repeatables, and `$param` expressions inside arms
@@ -461,6 +473,8 @@ All binary operators are **left-associative** (`a - b - c` parses as `(a - b) - 
 | `[val1, val2, ...]` | Array literal |
 | `$ref[index]` | Array element access |
 
+**Callback result typing** — the context the callback appears in determines the accepted `CallbackResult`: string contexts (text content) stringify `CBRInteger`/`CBRFloat`/`CBRString`; float contexts (positions, alpha, scale) accept `CBRInteger`/`CBRFloat` and throw on `CBRString`/`CBRObject`; integer contexts (grid/hex coordinates, repeat counts) accept only `CBRInteger` and throw on `CBRFloat` — identical in builder and codegen. The optional `= default` after the callback is applied on `CBRNoResult` (and when no callback is installed); a numeric-literal default in a numeric context resolves numerically.
+
 ---
 
 ## Coordinate Systems
@@ -473,7 +487,7 @@ Define with `grid: spacingX, spacingY` (or named: `grid: #name spacingX, spacing
 
 | Method | Description |
 |--------|-------------|
-| `$grid.pos(x, y)` | Position at grid cell (use `.offset(x, y)` for pixel offsets) |
+| `$grid.pos(x, y)` | Position at grid cell (use `.offset(x, y)` for pixel offsets). Cell coordinates resolve as integers — fractional expressions truncate (`$grid.pos($i/2, 0)` with `$i=3` is cell 1), identically in builder and codegen |
 | `$grid.width` | Cell width |
 | `$grid.height` | Cell height |
 
@@ -541,6 +555,8 @@ Note: coordinates are static — resolved from the initial animation state at bu
 | `$ctx.font("name").lineHeight` | Font line height |
 | `$ctx.font("name").baseLine` | Font baseline |
 
+`$ctx.width`/`$ctx.height` need a scene to resolve. Runtime builder: pass it via `BuilderParameters.scene` (a missing scene throws a `BuilderError`). Codegen (`@:manim`): the generated constructor resolves through the live scene when the instance is already attached, else through the injectable `ProgrammableBuilder.scene` field (set it on the factory like `tweenManager`), else throws the same structured `BuilderError`.
+
 ---
 
 ## Element Properties
@@ -555,7 +571,7 @@ Applied to any element via long-form body or inline syntax.
 | `scale: value` | Scale factor |
 | `rotate: angle` | Rotation angle (supports `deg`, `rad`, `turn`, direction constants) |
 | `alpha: value` | Opacity (0.0-1.0) |
-| `tint: color` | Color tint overlay |
+| `tint: color` | Color tint overlay (maps to `h2d.Drawable.color`). Requires a Drawable target — a root-level/container `tint:` (programmable root is an `h2d.Layers`; `flow`/`layers`/`mask` are non-Drawable) throws a `BuilderError` (`code="tint_requires_drawable"`) in builder and codegen instead of silently no-oping. Put it on a Drawable child or `apply { tint: }` onto one. |
 | `layer: index` | Z-order index within layers/programmable |
 | `filter: filterType(...)` | Visual filter |
 | `blendMode: mode` | Blend mode |
@@ -578,6 +594,8 @@ Applied to any element via long-form body or inline syntax.
 - `result.getUpdatable("name")` / `result.getUpdatableByIndex("name", index)`
 - `result.hasName("name")` / `result.hasNameByIndex("name", index)` — check existence without throwing
 
+**Indexed names must resolve to a unique index.** A 1-D `#name[$i]` whose index recurs — e.g. `#tile[$j]` inside `repeatable($i) { repeatable($j) { … } }` (the inner index repeats once per outer iteration), or a duplicate-value array iterator — collides on the `"name idx"` key. This is rejected loudly on both backends: the builder throws `BuilderError` (`code="indexed_name_collision"`); codegen fails at macro time with a clear `Context.error`. Give the inner loop a unique index, or use a 2-D indexed name `#name[$x, $y]`. The same applies to indexed slots (`#name[$i] slot`, `code="indexed_slot_collision"`).
+
 ---
 
 ## Parameterized Slots
@@ -598,9 +616,11 @@ Slots with parameters support visual states via conditionals. `slotContent` mark
 
 **Body features:** Conditionals (`@()`, `@else`, `@default`), expressions (`$param`), all standard elements.
 
+**Scope:** The slot body is an isolated *parameter* scope — it sees the slot's own params, but NOT the enclosing programmable's params or `repeatable` loop vars (a slot rebuild only receives slot params). Enclosing `@final` constants declared before the slot ARE in scope (`bitmap(...): $OFF, 0` with a body-level `@final OFF = 7` works), on initial build, `slot.setParameter()` rebuilds, and the codegen `buildSlotContent` path alike. A slot param with the same name shadows the constant.
+
 **Runtime API:**
 - `result.getSlot("name", ?index, ?indexY)` — returns a `SlotHandle`; throws when the slot is not registered or kind/index doesn't match
-- `result.hasSlot("name", ?index, ?indexY)` — existence check that never throws. Useful when an indexed slot's iteration may shrink (`repeatable` count dropping under `setParameter`) and the caller wants to skip absent indices instead of wrapping `getSlot` in try/catch
+- `result.hasSlot("name", ?index, ?indexY)` — existence check that never throws. Useful when an indexed slot's iteration may shrink (`repeatable` count dropping under `setParameter`) and the caller wants to skip absent indices instead of wrapping `getSlot` in try/catch. Also generated on `@:manim` codegen instances (`instance.hasSlot(name, index, indexY)`) with identical never-throw semantics — including for slots declared inside `@switch` arms or param-dependent `repeatable` bodies
 - `slot.setParameter("status", "active")` — update visual state (incremental)
 - `slot.setContent(obj)` / `slot.clear()` — content independent of decorations
 - `slot.getInteractives()` — interactives declared inside the slot decoration body (returns a fresh copy each call). Empty for slots built via the runtime `BuilderResult` path
@@ -742,7 +762,7 @@ Read color settings with `BuilderResolvedSettings.getColorOrDefault(key, default
 | Type | Description |
 |------|-------------|
 | `palette { colors... }` | Indexed color list |
-| `palette(2d, width) { colors... }` | 2D color grid |
+| `palette(2d: width) { colors... }` | 2D color grid (`width` colors per row; the colors must fill whole rows) |
 | `palette(file: "image.png")` | Colors from image file |
 | `palette(external)` | External palette reference |
 
@@ -750,16 +770,65 @@ Access: `palette(name, index)` or `palette(name, x, y)` for 2D.
 
 ---
 
+## Cursors
+
+```manim
+#cursors cursor {
+  pointer: sheet("ui", "hand"), hot: 3, 1    // a name, a tile source, the pixel that clicks (0, 0 when left out)
+  sword:   file("sword.png")
+}
+```
+
+Root node, needs a `#name`; one entry a line or `;`-separated; a name twice is an error. `ScreenManager.buildFromResource` registers every entry with `CursorManager` (`builder.registerCursors()`), so `cursor => "sword"`, `cursor.hover`, `cursor.disabled` and `CursorManager.getCursor("sword")` find it; `builder.buildCursors(name)` gives a block's cursors without registering. From code: `CursorManager.registerTileCursor(name, tile, hotX, hotY)`, `getTileCursor(name)`, `getRegisteredCursorNames()`; DevBridge `list_cursors`.
+
+---
+
 ## Autotile
+
+`#name autotile { ... }` (root level). Build terrain with `builder.buildAutotile(name, grid, ?where, x0 = 0, y0 = 0)` (`grid[y][x]`, non-zero = terrain; `where` the positions drawn, in the format's own; `x0`, `y0` the cell `grid[0][0]` stands for, so a tile map draws one chunk of itself from grids over that chunk alone); single tiles with `builder.getAutotileTile(name, index, x, y)` or `generated(autotile(name, index))`; `builder.getAutotileRotation(name, index, x, y)` says the quarter turns (0–3) a turned mapping gives the tile a position draws, which `generated(autotile(name, index))` shows unturned.
 
 | Property | Description |
 |----------|-------------|
-| `format` | Tile format: `cross` (13 tiles) or `blob47` (47 tiles) |
-| `tileSize` | Size of each tile in pixels |
-| `source` | Tile source: `sheet(...)`, `file(...)`, `tiles: [...]`, or `demo(edgeColor, fillColor)` |
-| `depth` | Isometric elevation depth (cross format) |
-| `mapping` | Custom index-to-tile mapping (blob47) |
-| `allowPartialMapping` | Allow incomplete tile mappings with fallback |
+| `format` | `corner` (16 tiles, dual grid: one tile per grid corner, index `NW 1 + NE 2 + SW 4 + SE 8`, 0 never drawn), `blob47` (47 tiles, one per cell, 8 neighbours), `cross` (13 tiles, one per cell) |
+| `tileSize` | Tile size in pixels |
+| source (exactly one) | `file: "img.png"` (tiles of `region:`, row-major), `sheet: "atlas", prefix: "p"` (atlas tile `p<j>`), `sheet: "atlas", name: "n"` (frame `j` of atlas tile `n`, by `index:` from 0), `tiles: <src> <src> ...` (listed tile sources), `demo: edgeColor, fillColor` (generated placeholders) |
+| `region` | `[x, y, w, h]`, `file:` source only; must fit the image and be whole tiles. Default: whole image |
+| `mapping` | Autotile index -> source index: `[a, b, ...]` (position = index) or `[i:j, ...]`; several for one index, `[15: 7 \| 8 \| 9]`, drawn by turns per position (the same every time; a source given twice is drawn twice as often); a source turned, `[1: 4 flipX rot90]` (`flipX`, `flipY`, one of `rot90`/`rot180`/`rot270`, clockwise). Keys validated per format; duplicates rejected; not allowed with `demo:` |
+| `margin`, `spacing` | `file:` source only: pixels from the region's edge to its first tile, and between tiles; the region must hold whole tiles that way |
+| `allowPartialMapping` | `blob47` only: unmapped indices use the closest mapped tile instead of a build error |
+
+Every index must resolve to a tile (build-time `BuilderError` codes `autotile_missing_tile`, `autotile_index`, `autotile_region`), except corner index 0 and blob47 with `allowPartialMapping`. Removed: `depth:` / `buildAutotileElevation`, `sheet: ..., region: [...]` (use `file:` + `region:`).
+
+---
+
+## Tilesets and Tile Maps
+
+`#name tileset { … }`, `#name tilemap { … }` (root level); `tilemap(name)` or `tilemap(external(file), name)` places one. `builder.buildTilemap(name)` returns a `bh.base.TileMap`.
+
+| Tileset | Description |
+|---------|-------------|
+| `tileSize: n`, `atlas: "sheet"`, `edge: autotile` | Cell size; the sheet named cells come from; the outline of every higher level, drawn along its rim (needed with rises) |
+| `edge <terrain>: autotile` | The outline where that terrain is on top, in place of `edge` |
+| `terrain name { autotile: a[, b…] duration: ms \| cells: "name"; metadata {…} }` | Drawn in order, bottom first, each under the ones after it; several autotiles = animated; `cells` = variants by position |
+| `transition a, b { autotile: x[, y…] }` | Where `b` meets `a` (a terrain below it, or `none`: the map's edge too) and nothing else, drawn over `b`'s own autotile; one a frame when `b` is animated |
+| `rise n { side: "name"[, "b"…] left: right: single: span: n toward: down\|up\|left\|right metadata {…} }` | A cell n levels above its neighbour `toward`: `side` covers `span` cells beyond it (several sides are taken in turn along the run); ends optional; one per number, direction and terrain |
+| `rise any { … }`, `rise n <terrain> { … }` | For every number of levels with no rise of its own; for a higher cell of that terrain (a terrain with rises of its own toward a side uses only those) |
+| `platform name { edge: autotile  rise n { … } }` | A higher level that is not the ground raised (a tree top, a roof): its `edge` over all of it, on whatever terrain is under it, and sides of its own; a map names it in its levels' legend |
+| `cell name { draw: under\|over\|top\|actors metadata {…} }` | What a named layer cell is, wherever placed; `actors`: among them, sorted by its feet |
+| `cell name { size: w, h anchor: x, y }` | An object of several cells, `w` by `h`, the layer's character at its anchor (bottom-left by default); drawn among the actors unless `draw:` says; its name and metadata on every cell it covers (`cellAt`, `metadataAt`, `objectAt`); inside the map, over no other cell of its layer (`tilemap_object_outside`, `tilemap_object_overlap`) |
+| `metadata { key:type => value, key => value }` | As `settings { }` are written, literals only; read with `metadataAt(x, y)`, a `BuilderResolvedSettings`; the engine gives no key a meaning |
+
+| Tile map | Description |
+|----------|-------------|
+| `tileset: name` / `tileset: external(imp), name` | Its tileset |
+| `size: w, h` | Cells |
+| `legend { "c": terrain, " ": none }` | One character a cell |
+| `terrain: ["…", …]`, `levels: ["0011", …]` or `levels { legend { "A": 10, "c": 1 canopy } rows: […] }` | Rows; levels are digits, or characters of their legend: a level beyond nine, or a level and the platform there; optional |
+| `layer name { sheet: "s" draw: under\|over\|top\|actors legend {…} rows: [...] }` | Cells as they are; a space is none; `actors`: each among them, sorted by its feet |
+| `decor { elements }` | Any elements, sorted with the actors by `y` |
+| `marks { name: x, y  other: x, y, w, h }` | Points and rectangles in cells |
+
+Runtime (`TileMap`): `actors` (`h2d.Layers`, y-sorted as it is drawn unless `sortActors = false`), `addActor`, `toCell`, `toPixel`, `terrainAt`, `levelAt`, `platformAt`, `sideAt`, `cellAt(layer, …)`, `objectAt(layer, …)` (a `TilemapObject`: what covers the cell and its anchor), `metadataAt(x, y)` (a `BuilderResolvedSettings`: `getBoolOrDefault`, `getIntOrDefault`, …), `mark`, `setTerrain` / `setLevel` / `setCell` (their chunk drawn again once, as it is next in view; `redraw()` all now, a map drawn whole already too; reading a cell draws nothing: `sideAt` / `metadataAt` work out a changed chunk's sides and metadata by themselves; `BuilderError`s `tilemap_outside`, `tilemap_legend`, `tilemap_level`, `tilemap_layer`, `tilemap_object_covered`, `tilemap_object_outside`, `tilemap_object_overlap`), `describe()`; chunks of `chunkSize` cells (`TileMap.defaultChunkSize` 32, `setChunkSize`, `chunkCols`, `chunkRows`), each drawn as it is first seen, the map looking as it does in one piece at their borders too, `cull(x, y, w, h)` / `cullNone()` / `cullToScene` / `isChunkVisible(col, row)` for what is in view (a chunk within a tile of the view, or as far as the map's furthest-reaching object of several cells reaches past its anchor, so an object is drawn and shown once any of it is in view; one among the actors is hidden with its chunk); `TileMap.showing` (the maps in a scene) for the DevBridge (`map_list`, `map_get`) and hot reload, `sourceDef` the parse a map was read from.
 
 ---
 
@@ -781,8 +850,20 @@ Tile entry properties: `x, y, w, h`, plus optional `offset: ox, oy`, `orig: ow, 
 | `fieldName: recordName { ... }` | Record instance |
 | `fieldName: type[] [values]` | Typed array |
 | Optional fields with `?` prefix | Field not required |
+| `#name record(key id, ...)` | A row type: an array of it is a table, its rows found by id |
+| `field: ref record` | The id of a row of a keyed record (in any one of its tables), checked when the block is read |
+| `field: type @range(0, 3) @unit("s") @default(v) @says("…")` | Field annotations; unknown ones are kept |
+| `@range(1, 10) name: 5` | Annotations before a field of the block (or a pick), checked the same way |
+| `@by(claude) { ... }` | Row annotations, before a row of a table |
+| `name: pick(table, weight: col, draws: n, repeats: bool)` | How a table is drawn from, by weight |
+| `name: pick(table, chance: col, otherwise: id)` | By chance; `otherwise` takes what is left |
+| `name: pick(table, weight: ref.col)` | The weight of the row a ref field links to |
 
-Types: `int`, `float`, `string`, `bool`, enum names, record names, `type[]` arrays.
+Types: `int`, `float`, `string`, `bool`, enum names, record names, `ref record`, `type[]` arrays.
+
+A table is a `bh.multianim.data.DataTable` and a pick a `bh.multianim.data.DataPick` (`@:data` typed, with a
+class of ids as constants; `getData` Dynamic). A table whose record names its own rows is a tree. All of
+them are listed by `DataRegistry`, which the DevBridge's `data_list` / `data_get` / `data_pick` read.
 
 Enums generate Haxe `enum` types at compile time (via `@:data`). Runtime builder returns enum values as strings.
 
@@ -840,6 +921,9 @@ Bezier smoothing options: `auto`, `distance(value)`, or none.
 
 ### Events
 `event("name")` at any rate. Built-in events: `pathStart`, `pathEnd`, `cycleStart`, `cycleEnd`.
+
+### Zero-length paths
+A path of length 0 — `Stretch(p, p)` / `createProjectilePath(name, p, p)`, or a path of only `lineTo(0, 0)` — is valid: every rate is `p`, and an animated path over it stays at `p` for its duration while its curves play (`distance` mode ends on the first update). A zero-length segment inside a longer path (a leading `lineTo(0, 0)`) takes no share of the rate range. A path with no segments at all still throws when the animated path is created. On a zero-length path every checkpoint sits at rate 0, so checkpoint events fire on the first update, and a looping or ping-pong `distance`-mode path completes a whole cycle (with all its events) on every update.
 
 ---
 
@@ -934,7 +1018,9 @@ emit: circle(r: 50, rRand: 10, angle: 0deg, angleSpread: 180deg)
 | `speedRandom` | `speedRand` | Speed variance |
 | `speedIncrease` | `speedIncr`, `acceleration` | Acceleration |
 | `gravity` | | Gravity strength |
-| `gravityAngle` | | Gravity direction (angle) |
+| `gravityAngle` | | Gravity direction (angle; standard convention `0°`=right, `90°`=down; unset default = down) |
+
+`maxLife` must be greater than 0 (build error otherwise).
 
 ### Size & Rotation
 
@@ -993,6 +1079,13 @@ Each stop: `rate color [curve]`. Curve specifies interpolation to next stop (def
 bounds: kill, box(x: 0, y: 0, w: 800, h: 600)
 bounds: bounce(0.6), box(x: -50, y: -50, w: 250, h: 250), line(0, 0, 100, 0)
 ```
+
+Without a `box(...)`, the box defaults to infinite — line-only bounds are
+judged by the lines alone.
+
+Coordinate space: force fields, bounds, and sub-emitter offsets operate on
+particle positions — emitter-local for `relative: true` groups, scene space
+(or `worldAnchor`-local when set) for non-relative groups.
 
 ### Force Fields
 
@@ -1069,11 +1162,13 @@ group.shutdownSpeedCurve = myCurve;
 ```
 
 **Behavior:**
-- No-op on non-looping groups
+- No-op on non-looping groups, except that it marks a burst-driven (`count: 0`) group done so its container can end
 - After shutdown, `emitBurstAt()` still works (manual one-shot effects)
+- A burst (`emitBurst`/`emitBurstAt`, or a sub-emitter) into a group with particles of its own (`count > 0`) not drawn yet starts that group first, as its first frame would: its own particles plus the burst's
 - `group.emitFilter = (x:Float, y:Float) -> Bool` — filter particles by world-space spawn position (return `false` to discard). Works for both relative and non-relative groups
 - `particles.worldAnchor : Null<h2d.Object>` — designated world-space anchor for `relative: false` groups. When non-null, non-relative emit position/velocity/scale/rotation bake into `worldAnchor`'s local frame (not full scene space) and the draw branch renders through `worldAnchor`'s transform. Set this on a per-emitter trail's `Particles` container with the scene's world-root so the trail stays anchored to the world during camera pan/zoom. Null (default) preserves legacy screen-space baking. Runtime-only — no DSL surface
-- Existing `onEnd()` callback fires when last particle dies (default: `this.remove()`)
+- Existing `onEnd()` callback fires when last particle dies (default: `this.remove()`) — once per live → empty transition, not on every idle frame
+- A container whose groups are all burst-driven (`count: 0`, fed by `emitBurst`/`emitBurstAt`) is idle between bursts, not done: `onEnd()` does not fire when a burst dies out, so one container serves every shot. Call `shutdown()` on it to have it end (and auto-remove) once its last particle dies. A container with at least one `count > 0` group ends as before once every particle is dead, including those of its `count: 0` sub-emitter groups
 - Total visual clear time: `duration` (curve phase) + up to `maxLife` (natural die-off of remaining particles)
 
 ### Externally Driven
@@ -1204,8 +1299,9 @@ These are pre-built UI components used through the builder/screen system.
 | **Slider** | Draggable value selector with custom range (int or float) |
 | **Radio buttons** | Mutually exclusive selection group |
 | **Dropdown** | Collapsible selection list with scrollable panel |
-| **Scrollable list** | Scrollable list of selectable items with scrollbar. `setItems(newItems, selectedIndex=0, preserveScroll=false)`, `scrollToIndex()`, `clickMode`, disabled state |
-| **Progress bar** | Display-only value indicator (0-100) |
+| **Scrollable list** | Scrollable list of selectable items with scrollbar. `setItems(newItems, selectedIndex=0, preserveScroll=false)`, `scrollToIndex()`, `clickMode`, disabled state; a scrollbar design with `status` and `#thumb` is dragged |
+| **Scrollbar** | Dragged scrollbar (`UIMultiAnimScrollbar`): `#thumb`, optional `#track`/`#up`/`#down`, `status`/`disabled`, vertical or horizontal, pages on the track, `arrowStep`; `addScrollbar(builder, settings, panelLength, scrollableLength, position)` |
+| **Progress bar** | Display-only value indicator (0-100); `value` changed in place on the built result, rebuilt whole only when the design cannot follow it |
 | **Interactive** | Hit-test region with ID and optional typed metadata |
 | **Draggable** | Drag-and-drop with drop zones, slot integration, swap mode |
 | **Grid** | 2D grid (rect or hex) with cell state, drag-drop zones, card targeting |
@@ -1269,7 +1365,7 @@ When `tabPanel.contentRoot` is set, tab content coordinates are relative to the 
 
 **Cell swap:** `swapCells(col1, row1, col2, row2, ?animated)` — swap data and visuals between two cells. Animated mode uses `swapPathName` (fallback: `returnPathName`) for both items. Emits `CellSwap` with `ctx.programmatic=true`. Drag-drop swap: when `swapEnabled=true` and a draggable drops on a cell with a source cell, the `swapAccepts` delegate (or `isOccupied()` by default) decides whether to emit `CellSwap` or fall through to `CellDrop`.
 
-**Cell animations** (require `tweenManager`): `tweenCell(col, row, duration, props, ?easing)`, `addCellAnimated(col, row, ?data, ?params, duration, initProps, ?easing)`, `removeCellAnimated(col, row, duration, props, ?easing, ?onComplete)`. **Detach/reattach**: `detachCellVisual(col, row)` → `{object, data, sceneX, sceneY}`, `reattachCellVisual(col, row, ?obj)`.
+**Cell animations** (require `tweenManager`): `tweenCell(col, row, duration, props, ?easing)`, `addCellAnimated(col, row, ?data, ?params, duration, initProps, ?easing)`, `removeCellAnimated(col, row, duration, props, ?easing, ?onComplete)`. **Detach/reattach**: `detachCellVisual(col, row)` → `{object, data, sceneX, sceneY}`, `reattachCellVisual(col, row, ?obj)`. `tweenCell` returns a pooled `Tween` — keep `tween.generation` and cancel later with `Tween.cancelIfCurrent(tween, generation)`. `dispose()` cancels every cell tween and completes pending `removeCellAnimated` exits (object removed, `onComplete` called once), swap/snap animations, and accepted `acceptDrops` drops still snapping — each fires once, at the latest when the grid owning the animation is disposed (a linked target grid's callbacks can fire from the source grid). Removing the cell under an active built-in cell drag ends that drag (`CellDragEnd`).
 
 ### Common UI Settings
 
@@ -1279,6 +1375,9 @@ When `tabPanel.contentRoot` is set, tab content coordinates are relative to the 
 | `text` | Button text content |
 | `initialValue` | Starting value (checkbox, slider) |
 | `min`, `max`, `step` | Numeric range (slider) |
+| `direction` | `vertical`, `horizontal`, `auto` (slider: read from `#start`/`#end`); `vertical`, `horizontal` (scrollbar) |
+| `arrowStep` | Content pixels an arrow click or wheel notch scrolls (scrollbar) |
+| `ninepatch` | `stretch` or `tile`: how every nine-patch of the programmable fills unless it says itself |
 | `width`, `height` | Dimensions |
 | `font`, `fontColor` | Typography |
 | `panelMode` | `scrollable` or `scalable` (dropdown, scrollable list) |
@@ -1303,6 +1402,8 @@ When enabled, elements support efficient runtime updates without full rebuild:
 
 Used by: dynamic refs, slider, scrollbar, parameterized slots, button, checkbox, tab button.
 
+**Batch API on codegen instances.** `@:manim` codegen instances mirror `BuilderResult`'s batch API — `beginUpdate()` / `endUpdate()` / `batchMode` (a `(get, never)` flag). Between `beginUpdate()` and `endUpdate()`, typed setters (`setStatus`, `setDisabled`, …) update their backing field immediately but record the changed param NAME; `endUpdate()` replays the rebuild pass per changed param — the changed-param identity stays alive, so declared `transition {}` animations still fire, `@switch` arms rebuild only when a param they reference changed, and forced repeat rebuilds stay gated — then fires the rebuild listeners ONCE (matching the builder's changed-param set). Nesting `beginUpdate()` or an unbalanced `endUpdate()` throws. Outside a batch, setters apply immediately (non-batched behavior unchanged).
+
 ### Per-element tracked properties
 
 The builder (incremental mode) and codegen paths both re-fire the listed properties on `setParameter`. Properties not listed are resolved once at construction.
@@ -1311,13 +1412,13 @@ The builder (incremental mode) and codegen paths both re-fire the listed propert
 |---------|----------------------------|-------------------------|
 | `text` / `richText` | `text`, `color`, richText styles (`color`/`font`) and image tiles | font name, align, maxWidth, options |
 | `bitmap` | `tileSource` (including `generated(color(w, h, color))`) | hAlign, vAlign |
-| `ninepatch` | `width`, `height` | sheet name, tile name |
+| `ninepatch` | `width`, `height`, sheet, tile, `index:` (the cell reloaded into the same grid), `fps:` | mode (`stretch`/`tile`) |
 | `graphics` | every element's color/size/radius/coords + element position | — |
 | `pixels` | every shape's color/size/coords | — |
 | `mask` | `width`, `height` | — |
 | `flow` | `maxWidth`, `maxHeight`, `minWidth`, `minHeight`, `lineHeight`, `colWidth`, `padding*` (×4), `horizontalSpacing`, `verticalSpacing` | `layout`, `overflow`, `horizontalAlign`, `verticalAlign`, `debug`, `multiline`, `fillWidth`, `fillHeight`, `reverse`, 9-patch background |
 | `interactive` | `width`, `height` | `id`, metadata keys and values |
-| `stateanim` | `initialState` (fires `AnimationSM.play(newState)`) | filename, selectors |
+| `stateanim` | `initialState` (fires `AnimationSM.play(newState)`), selectors (fire `AnimationSM.setState(name, value)`, keeping the frame where the animation's length allows) | filename |
 | `stateanim(construct)` | `initialState` | sheet, animName, fps, loop, center |
 | Common to every element | `pos`, `scale`, `rotate`, `alpha`, `tint`, `filter`, `blendMode` | — |
 
@@ -1332,7 +1433,7 @@ rendered state inconsistent. Either rebuild the programmable or avoid
 runtime mutation of this param.
 ```
 
-Builder throws `BuilderError` with `code == "untracked_param"`; codegen throws a plain `String` from the generated setter. Params that appear in both tracked and frozen slots are also rejected (the tracked effect would apply while the frozen one would silently drift). Reasons surface the slot kind so the message is greppable: `interactive id`, `interactive metadata key`, `interactive metadata value`, `stateanim selector "<name>"`, `stateanim_construct animName "<key>"`, `stateanim_construct fps "<key>"`. Applies to param-dependent `repeatable` / `repeatable2d` bodies as well — the walker `markUntrackedParamsInSubtree` (builder) / `recordUntrackedParamsInSubtree` (codegen) seeds `untrackedParamRefs` before the repeat body is built non-incrementally, so the param-dep case is identical to the static-count case.
+Builder throws `BuilderError` with `code == "untracked_param"`; codegen throws a plain `String` from the generated setter. Params that appear in both tracked and frozen slots are also rejected (the tracked effect would apply while the frozen one would silently drift). Reasons surface the slot kind so the message is greppable: `interactive id`, `interactive metadata key`, `interactive metadata value`, `stateanim selector "<name>"` (in a param-dependent repeat body only), `stateanim_construct animName "<key>"`, `stateanim_construct fps "<key>"`. Applies to param-dependent `repeatable` / `repeatable2d` bodies as well — the walker `markUntrackedParamsInSubtree` (builder) / `recordUntrackedParamsInSubtree` (codegen) seeds `untrackedParamRefs` before the repeat body is built non-incrementally, so the param-dep case is identical to the static-count case. **Exception: conditional gates.** A param referenced only by `@()`/`@else`/`@default` gates inside a param-dependent repeat body is NOT untracked on either backend — it is a rebuild trigger: changing it rebuilds the repeat body (builder folds it into `repeatParamRefs`; codegen forces the `_rebuildRepeat_*` method past its scalar early-out), and the gates re-evaluate during the rebuild.
 
 ### Other `BuilderError` codes from `setParameter` / `beginUpdate` / `endUpdate`
 
@@ -1349,6 +1450,8 @@ Builder throws `BuilderError` with `code == "untracked_param"`; codegen throws a
 ## Transition Declarations
 
 Declare animated transitions for parameter changes inside programmable elements. When a parameter with a transition is changed via `setParameter()`, visibility changes are animated instead of instant.
+
+The `transition { }` block is declarative and unconditional — `@` modifiers (conditionals, `@alpha`, `@scale`, …) on it are parse errors. The same applies to `settings { }` and `@final` declarations (a `@final` is always unconditional).
 
 ```manim
 #button programmable(status:[normal,hover,pressed]=normal) {
@@ -1433,6 +1536,8 @@ interactive(200, 30, "shopBtn", bind => "status", events: [hover, click, push])
 
 `UIRichInteractiveHelper.register(result, ?prefix, metadataKey)` scans interactives for the given metadata key (default: `"bind"`) and auto-wires state transitions. The key `"autoStatus"` is reserved and throws if used manually.
 
+With a prefix, bindings are keyed `'<prefix>.<identifier>'` — pass that full id to `setHoverState` / `resetState` / `setDisabled`. `getBindingIds(prefix, out)` fills `out` with the ids registered under a prefix.
+
 **Important:** An interactive cannot have both `autoStatus` and `bind` — `register()` throws if the screen already manages the interactive via `autoStatus`.
 
 ### Cursor Metadata
@@ -1451,6 +1556,8 @@ interactive(200, 30, "dragArea", cursor => "move", cursor.hover => "move", curso
 | `cursor.disabled` | Cursor when disabled. Default: `CursorManager.getDefaultCursor()` |
 
 Pre-registered cursor names: `default`, `pointer`/`button`, `move`, `text`, `hide`/`none`. Register custom cursors via `CursorManager.registerCursor("name", cursor)`.
+
+The controller sets the hovered element's cursor on every move and every frame, so a cursor that follows the element's state (`cursor.disabled` once it is disabled) changes without the mouse leaving it; it calls `hxd.System.setCursor` only when the cursor changed. `CursorManager.setOverrideCursor(cursor)` shows one cursor whatever is hovered until `setOverrideCursor(null)` (the card hand's hidden cursor while it targets, `hideCursorWhileTargeting`).
 
 ### Event Priority
 

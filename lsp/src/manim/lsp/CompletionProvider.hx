@@ -174,7 +174,7 @@ class CompletionProvider {
 	static function referenceCompletions(paramNames:Array<String>, prefix:String):Array<LspCompletionItem> {
 		final items:Array<LspCompletionItem> = [];
 		for (name in paramNames)
-			items.push({label: '$$name', kind: CompletionKind.Variable, detail: "Parameter reference"});
+			items.push({label: "$" + name, kind: CompletionKind.Variable, detail: "Parameter reference"});
 		items.push({label: "$grid", kind: CompletionKind.Module, detail: "Grid coordinate system"});
 		items.push({label: "$hex", kind: CompletionKind.Module, detail: "Hex coordinate system"});
 		items.push({label: "$ctx", kind: CompletionKind.Module, detail: "Context (width, height, random, font)"});
