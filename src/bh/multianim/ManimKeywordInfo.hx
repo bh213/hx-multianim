@@ -29,7 +29,7 @@ class ManimKeywordInfo {
 		"DATA" => "data", "AUTOTILE" => "autotile", "ATLAS2" => "atlas2",
 		"TILESET" => "tileset", "TILEMAP" => "tilemap", "TILEMAP_REF" => "tilemap",
 		"PALETTE" => "palette", "FINAL_VAR" => "@final", "NINEPATCH" => "ninepatch",
-		"SWITCH" => "@switch",
+		"SWITCH" => "@switch", "CURSORS" => "cursor",
 	];
 
 	static final elementDescriptions:Map<String, String> = [
@@ -69,8 +69,9 @@ class ManimKeywordInfo {
 		"ATLAS2" => "Inline sprite atlas definition",
 		"PALETTE" => "Color palette definition",
 		"FINAL_VAR" => "Immutable named constant",
-		"NINEPATCH" => "9-patch scalable image: ninepatch(sheet, tile, w, h)",
+		"NINEPATCH" => "9-patch scalable image: ninepatch(sheet, tile, w, h [, stretch|tile] [, index: n] [, fps: n]) — sheet and tile may be $params",
 		"SWITCH" => "Parameter switch with O(1) enum dispatch",
+		"CURSORS" => "Bitmap cursors from atlas cells: #name cursor { pointer: sheet(\"ui\", \"hand\"), hot: 3, 1 }",
 	];
 
 	static final elementSnippets:Map<String, String> = [
@@ -89,6 +90,7 @@ class ManimKeywordInfo {
 		"TILEMAP" => "#${1:name} tilemap {\n\ttileset: $2\n\tsize: ${3:16}, ${4:9}\n\tlegend { \".\": $5 }\n\tterrain: [\n\t\t$0\n\t]\n}",
 		"TILEMAP_REF" => "tilemap(${1:name}): ${2:0}, ${3:0}",
 		"PALETTE" => "#${1:name} palette {\n\t$0\n}",
+		"CURSORS" => "#${1:cursors} cursor {\n\t${2:pointer}: sheet(\"${3:ui}\", \"${4:hand}\"), hot: ${5:0}, ${6:0}\n\t$0\n}",
 		"FINAL_VAR" => "@final ${1:NAME} = $0",
 		"REPEAT" => "repeatable(\\$$1, ${2:iterator}) {\n\t$0\n}",
 		"REPEAT2D" => "repeatable2d(\\$$1, \\$$2, ${3:iterX}, ${4:iterY}) {\n\t$0\n}",
@@ -96,7 +98,7 @@ class ManimKeywordInfo {
 
 	static final topLevelElements:Array<String> = [
 		"PROGRAMMABLE", "DATA", "CURVES", "PATHS", "ANIMATED_PATH",
-		"ATLAS2", "PALETTE", "FINAL_VAR", "RELATIVE_LAYOUTS", "TILESET", "TILEMAP",
+		"ATLAS2", "PALETTE", "FINAL_VAR", "RELATIVE_LAYOUTS", "TILESET", "TILEMAP", "CURSORS",
 	];
 
 	static final childElements:Array<String> = [
@@ -134,7 +136,7 @@ class ManimKeywordInfo {
 		"PATHS", "ANIMATED_PATH", "CURVES", "PARTICLES", "APPLY", "LAYERS", "MASK",
 		"REPEAT", "REPEAT2D", "STATIC_REF", "PLACEHOLDER", "DYNAMIC_REF",
 		"SLOT", "SLOT_CONTENT", "INTERACTIVE", "GRAPHICS", "DATA", "AUTOTILE",
-		"ATLAS2", "PALETTE", "FINAL_VAR", "NINEPATCH", "SWITCH", "TILESET", "TILEMAP", "TILEMAP_REF",
+		"ATLAS2", "PALETTE", "FINAL_VAR", "NINEPATCH", "SWITCH", "TILESET", "TILEMAP", "TILEMAP_REF", "CURSORS",
 	];
 
 	// ---- Parameter types (from DefinitionType — exhaustive switch) ----

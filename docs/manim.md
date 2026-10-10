@@ -175,7 +175,7 @@ flow([optional params])
 * `debug`: `true` | `false`
 * `multiline`: `true` | `false` — enables multi-line content wrapping
 * `horizontalSpacing:<int>`, `verticalSpacing:<int>`
-* `background: ninepatch(sheet, tile)` — adds a 9-patch background to the flow
+* `background: ninepatch(sheet, tile [, stretch | tile])` — adds a 9-patch background to the flow, stretched unless told `tile` (or the programmable's `settings { ninepatch => tile }` says so)
 * `overflow`: `expand` | `limit` | `scroll` | `hidden` — controls child overflow behavior (default: `limit`)
 * `fillWidth`: `true` | `false` — children fill available width
 * `fillHeight`: `true` | `false` — children fill available height
@@ -593,7 +593,34 @@ Draws 9-patch from atlas (requires `split` with 4 values in atlas).
 
 ```
 ninepatch(sheet, tilename, width, height)
+ninepatch("ui", "panel", 200, 100, stretch)        // the middle and the edges stretched
+ninepatch("ui", "panel", 200, 100, tile)           // repeated (the default, explicit)
+ninepatch("ui", "button_" + $style + "_hover", $w, $h)   // the sheet and the cell as expressions
+ninepatch("ui", "warning", 60, 30, index: 3)       // the fourth frame of an indexed name
+ninepatch("ui", "warning", 60, 30, fps: 8)         // the name's frames played in a loop
 ```
+
+**How it fills.** A `ninepatch()` repeats its middle and its edges (`h2d.ScaleGrid` with
+`tileCenter` and `tileBorders`), as it always did: a pattern or a plain fill looks the same at
+any size. Art drawn to be stretched — a gradient fill, a bevel along the edge, a glow fading
+inward — shows a seam at every repeat, and TexturePacker's `split` means stretch; say `stretch`
+for it. `settings { ninepatch => stretch }` (or `tile`) on the programmable is the default for
+every nine-patch in it, the element's own word winning. A `flow(background: ninepatch(…))`
+stretches by default (Heaps' Flow default) and takes the same word: `background: ninepatch("ui",
+"panel", tile)`. A nine-patch baked into a `tilegroup` stretches by default too, and `tile`
+repeats it there.
+
+**The sheet and the cell** are string expressions, as `bitmap(sheet(…))` takes them: a literal,
+a `$param`, or `"button_" + $style + "_hover"`, so a theme with three button styles is one
+`#button` with a `style` parameter, not three copies. `setParameter("style", …)` reloads the cell
+into the grid that is drawn, in the builder and in codegen. An error for a cell the sheet has not
+names the sheet and the cell.
+
+**Frames.** An atlas name with several frames (`index: 0..3` entries) is one nine-patch a frame:
+`index: n` draws frame `n` (a `$param` a game drives), `fps: n` plays them all in a loop from
+`sync`, nothing to call from the game loop (`bh.base.AnimatedScaleGrid`: `frames`, `fps`,
+`frameIndex`, `seek(i)`, `advance(dt)`); with both, `index:` is the frame it starts on. Every frame
+must be split alike. A tile group takes `index:` but not `fps:`.
 
 ### layers
 Enables children to use `layer` property for z-ordering.
@@ -1434,6 +1461,38 @@ The colors must fill whole rows of `width` (a partial last row is a build error)
 ```
 #file palette(file:"main-palette.png")
 ```
+
+---
+
+## Cursors
+
+Bitmap cursors from the file's art, registered by name when the file loads:
+
+```
+#cursors cursor {
+  pointer: sheet("ui", "hand"), hot: 3, 1
+  sword:   sheet("ui", "sword"), hot: 1, 1
+  dot:     file("dot.png")
+}
+```
+
+One entry a line (or `;`-separated): a name, a tile source (`sheet(…)`, `file(…)`, `generated(…)`,
+`center(…)`; no `$param`s, the block has none), and `hot: x, y`, the pixel of the tile that clicks
+(inside the tile; `0, 0` when left out). A root node with a `#name`; a name given twice is an
+error.
+
+`ScreenManager.buildFromResource` registers every cursor of every `cursor { }` block of the file
+with `CursorManager` (`builder.registerCursors()`, again on each reload), so a registered name
+then works wherever an OS cursor name does: an interactive's `cursor => "sword"`, `cursor.hover`,
+`cursor.disabled`, `CursorManager.getCursor("sword")`, `setOverrideCursor`. `builder.buildCursors(
+"cursors")` gives the block's cursors by name without registering them.
+
+From code, `CursorManager.registerTileCursor(name, tile, hotX, hotY)` does the same for any tile
+(an atlas cell, a generated tile): the tile is drawn to a texture of its size and read back once;
+on HashLink the cursor is an SDL/DirectX one, in the browser a CSS `url(data:…)` cursor made from
+the same pixels (`hxd.System.setCursor` does that for `Custom`). `CursorManager.getTileCursor(name)`
+says which tile a name came from, `getRegisteredCursorNames()` lists every name; the DevBridge's
+`list_cursors` lists them with their size and hot point.
 
 ---
 
@@ -2999,7 +3058,12 @@ var cb = addCheckbox(builder, false);
 | `min` | behavioral | float | `0` | Minimum value of the slider range |
 | `max` | behavioral | float | `100` | Maximum value of the slider range |
 | `step` | behavioral | float | `0` | Step size for snapping (0 = continuous) |
+| `direction` | behavioral | string | `"auto"` | `vertical`, `horizontal`, or `auto`: read from the design's `#start`/`#end` points (vertical when they differ in y and not in x) |
 | *any other* | pass-through | — | — | Forwarded to slider programmable |
+
+**Vertical sliders:** a design whose `#start` and `#end` sit one above the other is dragged along y
+(`slider.direction`, `SliderDirection.Auto | Horizontal | Vertical`; `slider.isVertical()`), the
+value growing from `#start` to `#end` whichever way they lie.
 
 **Events:**
 - `UIChangeValue(value:Int)` — integer value (rounded)
@@ -3061,6 +3125,14 @@ var radio = addRadio(builder, items, true, 0); // vertical, selected index 0
 
 A display-only component for health bars, XP bars, loading indicators, etc. The `.manim` definition receives a `value` (0-100) parameter and can use conditionals to change colors at different thresholds.
 
+**Contract.** The programmable is built once, with `value` (and any pass-through settings); the
+widget passes nothing else — a bar's width and height are the design's own (declare `width`/`height`
+parameters and pass them as settings if a design is to be sized from the screen). `setIntValue`
+changes `value` in place on the built result (`getResult()` stays the same object, `incremental`
+true), so a HUD can set it every frame; a design whose `value` the incremental context cannot
+follow (an `untracked_param` on the first change, such as an interactive id made from `value`
+inside a param-dependent repeat) is rebuilt whole on every change from then on.
+
 **Required `.manim` parameters:**
 
 | Parameter | Type | Description |
@@ -3096,7 +3168,15 @@ bar.setIntValue(50); // triggers redraw
 var v:Int = bar.getIntValue();
 ```
 
-> **Note:** The progress bar uses full rebuild (not incremental mode) because `bitmap(generated(color(...)))` elements are not tracked by the incremental expression system.
+A bar from an atlas, as the playground's `std.manim` draws it: a track nine-patch and a fill
+nine-patch stretched to the value.
+
+```manim
+#progressBar programmable(value:0..100=0, width:uint=200, height:uint=12) {
+    ninepatch("ui", "Sliderbar_H_3x1", $width, $height, stretch): 0, 0
+    @(value > 0) ninepatch("ui", "scrollbar-1", $value * ($width - 4) / 100, $height - 4, stretch): 2, 2
+}
+```
 
 ### Scrollable List
 
@@ -3172,6 +3252,13 @@ var items:Array<UIElementListItem> = [
 
 **Optional `.manim` root setting (scrollbar):** `scrollSpeed` — pixels per second (default: 100)
 
+A scrollbar programmable with only these shows where the list is. One that also declares a
+`status` parameter and a `#thumb` element is dragged (see [Scrollbar](#scrollbar) below): the list
+makes a `UIMultiAnimScrollbar` for it (`list.scrollbarWidget`), routes the mouse over the bar to
+it, and keeps its thumb in step with wheel and key scrolling. Either kind is chosen by its
+`scrollbarBuildName` / `scrollbar.*` settings as before. The `scrollbar.*` prefixed settings
+reach the scrollbar programmable as extra parameters; the list's bare `font`/`fontColor`, forwarded to its other sub-builders, are not (write `scrollbar.font` to pass one).
+
 **UIScreenBase settings:**
 
 | Setting | Category | Type | Default | Description |
@@ -3225,6 +3312,67 @@ list.disabled = true;
 ```
 
 **Performance:** The scrollbar is built with incremental mode. On scroll events (wheel, keyboard), only the `scrollPosition` parameter is updated via `setParameter()` instead of rebuilding the entire scrollbar visual. Full scrollbar rebuilds only happen when the item list changes (via `buildItems()` or `setItems()`).
+
+### Scrollbar
+
+**Haxe class:** `UIMultiAnimScrollbar`
+
+**Interfaces:** `UIElement`, `UIElementDisablable`, `StandardUIElementEvents`, `UIElementNumberValue`, `UIElementCursor`
+
+A scrollbar that is dragged: a track, a thumb with `status` normal/hover/pressed and `disabled`,
+optional arrow regions, clicked on the track to page, vertical or horizontal. On its own
+(`addScrollbar`, `UIMultiAnimScrollbar.create`) or inside a scrollable list and so a dropdown's
+panel, which use one when their scrollbar programmable fits this contract
+(`UIMultiAnimScrollbar.fits(builder, name)`).
+
+**Required `.manim` parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `status` | enum: `normal`, `hover`, `pressed` | The thumb's state (hover over the thumb, pressed while dragged) |
+| `panelHeight` | uint | The visible length along the bar, whichever way it runs (the names of the position-only contract) |
+| `scrollableHeight` | uint | The content's length |
+| `scrollPosition` | uint | Where the content is scrolled to, 0 … `scrollableHeight - panelHeight` |
+| `disabled` | bool (optional) | Passed when declared |
+| `direction` | enum: `vertical`, `horizontal` (optional) | Passed when declared, for art that draws both ways |
+
+**Required `.manim` named elements:** `#thumb` — what is dragged; its bounds on screen are hit-tested, so the art decides its size and the design places it (`$scrollPosition * …`). **Optional:** `#track` (where the thumb travels; the whole bar when absent), `#up` / `#down` (arrow regions: a click steps by `arrowStep`).
+
+**Optional `.manim` root settings:** `arrowStep` (content pixels an arrow click or a wheel notch scrolls, default 20), `scrollSpeed` (a list's keys).
+
+A drag reads the thumb's and the track's bounds on screen, so any art and any scale work: one
+pixel of drag moves the content by `(scrollable - panel) / (track - thumb)` pixels. A click on the
+track beyond the thumb pages by `panelHeight`.
+
+**UIScreenBase settings (`addScrollbar(builder, settings, panelLength, scrollableLength, position)`):**
+
+| Setting | Category | Type | Default | Description |
+|---------|----------|------|---------|-------------|
+| `buildName` | control | string | `"scrollbar"` | Programmable name |
+| `direction` | control | string | `"vertical"` | `vertical` or `horizontal` (reads y or x) |
+| `arrowStep` | behavioral | int | from `.manim` or `20` | Arrow and wheel step |
+| *any other* | pass-through | — | — | Forwarded to the scrollbar programmable |
+
+**Events:** `UIChangeValue(position:Int)` after a drag, a page or an arrow step; `onChange(position)` callback likewise. `position =` from code moves the thumb and tells nobody.
+
+**API:** `position`, `maxPosition()`, `setRange(panelLength, scrollableLength)` (the position kept where it still fits), `scrollBy(delta)`, `isDragging`, `disabled`, `result` (the built programmable).
+
+```manim
+#scrollbar programmable(status:[normal,hover,pressed]=normal, disabled:bool=false,
+    panelHeight:uint=100, scrollableHeight:uint=200, scrollPosition:uint=0) {
+    #track ninepatch("ui", "scrollbar-track", 8, $panelHeight, stretch): 0, 0
+    @(status=>normal)  #thumb ninepatch("ui", "scrollbar-thumb", 8, $panelHeight * $panelHeight / $scrollableHeight, stretch): 0, $scrollPosition * $panelHeight / $scrollableHeight
+    @(status=>hover)   #thumb ninepatch("ui", "scrollbar-thumb-hover", 8, $panelHeight * $panelHeight / $scrollableHeight, stretch): 0, $scrollPosition * $panelHeight / $scrollableHeight
+    @(status=>pressed) #thumb ninepatch("ui", "scrollbar-thumb-pressed", 8, $panelHeight * $panelHeight / $scrollableHeight, stretch): 0, $scrollPosition * $panelHeight / $scrollableHeight
+    settings { scrollSpeed:float => 250, arrowStep:int => 20 }
+}
+```
+
+```haxe
+var bar = UIMultiAnimScrollbar.create(builder, "scrollbar", 300, 1200, 0, Vertical);
+bar.onChange = (position) -> content.y = -position;
+var bar = addScrollbar(builder, settings, 300, 1200);
+```
 
 ### Dropdown
 

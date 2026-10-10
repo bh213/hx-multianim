@@ -3208,15 +3208,42 @@ class MacroManimParser {
 			case TIdentifier(s) if (isKeyword(s, "ninepatch")):
 				advance();
 				expect(TOpen);
-				final sheet = expectIdentifierOrString();
+				// The sheet and the cell are string expressions, as bitmap(sheet(…)) takes them:
+				// a literal, a $param, or `"button_" + $style + "_hover"`.
+				final sheet = parseStringOrReference();
 				expect(TComma);
-				final tilename = expectIdentifierOrString();
+				final tilename = parseStringOrReference();
 				expect(TComma);
 				final width = parseIntegerOrReference();
 				expect(TComma);
 				final height = parseIntegerOrReference();
+				// After the size, in any order, each once: `stretch` | `tile` (how the middle and
+				// edges fill), `index: n` (a frame of an indexed name), `fps: n` (play the frames).
+				var mode:Null<NinePatchMode> = null;
+				var npIndex:Null<ReferenceableValue> = null;
+				var npFps:Null<ReferenceableValue> = null;
+				while (match(TComma)) {
+					switch (peek()) {
+						case TIdentifier(w) if (isKeyword(w, "stretch") || isKeyword(w, "tile")):
+							if (mode != null) error('ninepatch: stretch or tile given twice');
+							advance();
+							mode = isKeyword(w, "stretch") ? NPStretch : NPTile;
+						case TIdentifier(w) if (isKeyword(w, "index")):
+							if (npIndex != null) error('ninepatch: index given twice');
+							advance();
+							expect(TColon);
+							npIndex = parseIntegerOrReference();
+						case TIdentifier(w) if (isKeyword(w, "fps")):
+							if (npFps != null) error('ninepatch: fps given twice');
+							advance();
+							expect(TColon);
+							npFps = parseFloatOrReference();
+						default:
+							error('ninepatch: expected stretch, tile, index: or fps: after the size, got ${peek()}');
+					}
+				}
 				expect(TClosed);
-				createNode(NINEPATCH(sheet, tilename, width, height), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
+				createNode(NINEPATCH(sheet, tilename, width, height, mode, npIndex, npFps), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "text")):
 				advance();
@@ -3545,6 +3572,7 @@ class MacroManimParser {
 				var multiline = false;
 				var bgSheet:Null<ReferenceableValue> = null;
 				var bgTile:Null<ReferenceableValue> = null;
+				var bgMode:Null<NinePatchMode> = null;
 				var overflow:Null<MacroFlowOverflow> = null;
 				var fillWidth = false;
 				var fillHeight = false;
@@ -3587,6 +3615,14 @@ class MacroManimParser {
 							bgSheet = parseStringOrReference();
 							expect(TComma);
 							bgTile = parseStringOrReference();
+							// A flow's background stretches unless told `tile` (Heaps' Flow default).
+							if (match(TComma)) {
+								switch (peek()) {
+									case TIdentifier(w) if (isKeyword(w, "stretch")): advance(); bgMode = NPStretch;
+									case TIdentifier(w) if (isKeyword(w, "tile")): advance(); bgMode = NPTile;
+									default: error('flow background: expected stretch or tile, got ${peek()}');
+								}
+							}
 							expect(TClosed);
 						case "overflow": overflow = parseFlowOverflow();
 						case "fillwidth": fillWidth = parseBool();
@@ -3597,7 +3633,7 @@ class MacroManimParser {
 						default: error('unknown flow param: $pname');
 					}
 				}
-				createNode(FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, hSpacing, vSpacing, debug, multiline, bgSheet, bgTile, overflow, fillWidth, fillHeight, reverse, hAlign, vAlign), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
+				createNode(FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, hSpacing, vSpacing, debug, multiline, bgSheet, bgTile, overflow, fillWidth, fillHeight, reverse, hAlign, vAlign, bgMode), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 
 			case TIdentifier(s) if (isKeyword(s, "programmable")):
 				advance();
@@ -3820,6 +3856,38 @@ class MacroManimParser {
 				expect(TOpen);
 				final elements = parseGraphicsElements();
 				createNode(GRAPHICS(elements), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
+
+			case TIdentifier(s) if (isKeyword(s, "cursor")):
+				// #name cursor { pointer: sheet("ui", "hand"), hot: 3, 1  sword: file("sword.png") }
+				// Bitmap cursors from the file's art; the screen manager registers them by name
+				// when the file loads, so `cursor => "sword"` on an interactive finds them.
+				advance();
+				if (currentName == null) error("cursor requires a #name");
+				if (parent != null) error("cursor must be a root node");
+				expect(TCurlyOpen);
+				final cursors:Array<CursorDef> = [];
+				while (!match(TCurlyClosed)) {
+					final entryLine = peekToken().line;
+					final cursorName = expectIdentifierOrString();
+					expect(TColon);
+					final cursorTile = parseTileSource();
+					var hotX = 0, hotY = 0;
+					if (match(TComma)) {
+						expectKeyword("hot");
+						expect(TColon);
+						hotX = parseInteger();
+						expect(TComma);
+						hotY = parseInteger();
+					}
+					if (hotX < 0 || hotY < 0) error('cursor "$cursorName": hot: x, y must not be negative');
+					for (c in cursors)
+						if (c.name.toLowerCase() == cursorName.toLowerCase()) error('cursor "$cursorName" is defined twice');
+					cursors.push({name: cursorName, tile: cursorTile, hotX: hotX, hotY: hotY, line: entryLine});
+					match(TSemiColon);
+				}
+				if (cursors.length == 0) error("cursor block has no cursors (name: tileSource[, hot: x, y])");
+				final cursorNode = createNode(CURSORS(cursors), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
+				return cursorNode;
 
 			case TIdentifier(s) if (isKeyword(s, "palette")):
 				advance();

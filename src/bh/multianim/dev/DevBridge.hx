@@ -35,7 +35,7 @@ class DevBridge implements IDevBridgeHost {
 		"set_parameter", "set_visibility", "reload", "eval_manim", "list_resources", "send_event", "send_events",
 		"pause", "step", "quit", "get_traces", "get_errors", "get_debugger_hits", "get_parameters",
 		"list_interactives", "list_slots", "get_tween_state", "get_screen_state", "find_element_at",
-		"inspect_programmable", "list_fonts", "list_atlases", "coordinate_transform", "wait_for_idle",
+		"inspect_programmable", "list_fonts", "list_atlases", "list_cursors", "coordinate_transform", "wait_for_idle",
 		"check_overlaps", "click_interactive", "click_button", "list_active_programmables", "list_game_ops",
 		"game_op", "get_game_events", "data_list", "data_get", "data_pick", "map_list", "map_get",
 	];
@@ -620,6 +620,7 @@ class DevBridge implements IDevBridgeHost {
 			case "ping": handlePing(params);
 			case "list_fonts": handleListFonts(params);
 			case "list_atlases": handleListAtlases(params);
+			case "list_cursors": handleListCursors(params);
 			case "coordinate_transform": handleCoordinateTransform(params);
 			case "wait_for_idle": handleWaitForIdle(params);
 			// v4: layout validation
@@ -1695,6 +1696,21 @@ class DevBridge implements IDevBridgeHost {
 
 	function handleListFonts(params:Dynamic):Dynamic {
 		return {fonts: bh.base.FontManager.getRegisteredFontNames()};
+	}
+
+	/** Every cursor name an interactive's `cursor =>` can use: the OS ones and the registered ones;
+	 *  a cursor made from a tile (`CursorManager.registerTileCursor`, a file's `cursor { }` block)
+	 *  says its size and hot point. */
+	function handleListCursors(params:Dynamic):Dynamic {
+		var cursors:Array<Dynamic> = [];
+		for (name in bh.base.CursorManager.getRegisteredCursorNames()) {
+			final tileCursor = bh.base.CursorManager.getTileCursor(name);
+			if (tileCursor != null)
+				cursors.push({name: name, kind: "tile", width: tileCursor.tile.iwidth, height: tileCursor.tile.iheight, hotX: tileCursor.hotX, hotY: tileCursor.hotY});
+			else
+				cursors.push({name: name, kind: Std.string(bh.base.CursorManager.getCursor(name)).split("(")[0].toLowerCase()});
+		}
+		return {cursors: cursors};
 	}
 
 	function handleListAtlases(params:Dynamic):Dynamic {

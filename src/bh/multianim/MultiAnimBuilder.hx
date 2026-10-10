@@ -2413,6 +2413,35 @@ class BuilderResult implements bh.ui.UIInteractiveSource {
 		return new Updatable(namesArray);
 	}
 
+	/** The object of `#name` that is drawn now: visible, under this result's root. A name given in
+	 *  several `@(…)` arms has one object an arm; an arm that does not match is taken out of the
+	 *  scene graph (not hidden), so its object still answers `getBounds()` in its own space. A
+	 *  widget that hit-tests a named element (a slider's `#start`, a scrollbar's `#thumb`) asks
+	 *  for the drawn one. Null when the name is unknown or no arm of it is drawn. */
+	public function getNamedDrawn(name:String):Null<h2d.Object> {
+		final items = names.get(name);
+		if (items == null)
+			return null;
+		for (item in items) {
+			final obj = item.getBuiltHeapsObject().toh2dObject();
+			if (obj != null && isDrawnUnder(obj, object))
+				return obj;
+		}
+		return null;
+	}
+
+	static function isDrawnUnder(obj:h2d.Object, root:h2d.Object):Bool {
+		var cur = obj;
+		while (cur != null) {
+			if (!cur.visible)
+				return false;
+			if (cur == root)
+				return true;
+			cur = cur.parent;
+		}
+		return false;
+	}
+
 	public function hasName(name:String):Bool {
 		return names.exists(name);
 	}
@@ -4483,19 +4512,48 @@ class MultiAnimBuilder {
 						}, textRefs, object);
 					}
 				}
-			case NINEPATCH(_, _, width, height):
+			case NINEPATCH(sheet, tilename, width, height, _, index, _):
 				final npRefs:Array<String> = [];
 				collectParamRefs(width, npRefs);
 				collectParamRefs(height, npRefs);
-				if (npRefs.length > 0) {
+				// The sheet, the cell and the frame: a change reloads the nine-patch and puts its
+				// tile and borders on the grid that is drawn (`ninepatch("ui", "button_" + $style, …)`).
+				final srcRefs:Array<String> = [];
+				collectParamRefs(sheet, srcRefs);
+				collectParamRefs(tilename, srcRefs);
+				if (index != null) collectParamRefs(index, srcRefs);
+				if (npRefs.length > 0 || srcRefs.length > 0) {
 					final sg = switch builtObject { case NinePatch(sg): sg; default: null; };
 					if (sg != null) {
-						final wCapture = width;
-						final hCapture = height;
-						ctx.trackExpression(() -> {
-							sg.width = resolveAsNumber(wCapture);
-							sg.height = resolveAsNumber(hCapture);
-						}, npRefs, object);
+						if (npRefs.length > 0) {
+							final wCapture = width;
+							final hCapture = height;
+							ctx.trackExpression(() -> {
+								sg.width = resolveAsNumber(wCapture);
+								sg.height = resolveAsNumber(hCapture);
+							}, npRefs, object);
+						}
+						if (srcRefs.length > 0) {
+							final sheetCapture = sheet;
+							final tileCapture = tilename;
+							final indexCapture = index;
+							ctx.trackExpression(() -> {
+								final sheetName = resolveAsString(sheetCapture);
+								final tileName = resolveAsString(tileCapture);
+								if (Std.isOfType(sg, bh.base.AnimatedScaleGrid)) {
+									final anim:bh.base.AnimatedScaleGrid = cast sg;
+									final fresh = load9PatchAnimated(sheetName, tileName, anim.fps);
+									anim.frames.resize(0);
+									for (t in fresh.frames) anim.frames.push(t);
+									copyNinePatchBorders(fresh, sg);
+									anim.seek(indexCapture == null ? 0 : resolveAsInteger(indexCapture));
+								} else {
+									final fresh = load9Patch(sheetName, tileName, indexCapture == null ? 0 : resolveAsInteger(indexCapture));
+									copyNinePatchBorders(fresh, sg);
+									sg.tile = fresh.tile;
+								}
+							}, srcRefs, object);
+						}
 					}
 				}
 			case BITMAP(tileSource, hAlign, vAlign):
@@ -4592,7 +4650,7 @@ class MultiAnimBuilder {
 					}
 				}
 			case FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, _, paddingTop, paddingBottom, paddingLeft, paddingRight,
-				horizontalSpacing, verticalSpacing, _, _, _, _, _, _, _, _, _, _):
+				horizontalSpacing, verticalSpacing, _, _, _, _, _, _, _, _, _, _, _):
 				final f = switch builtObject { case HeapsFlow(ff): ff; default: null; };
 				if (f != null) {
 					inline function trackInt(rv:ReferenceableValue, apply:Int -> Void):Void {
@@ -4901,9 +4959,13 @@ class MultiAnimBuilder {
 			case TEXT(textDef) | RICHTEXT(textDef):
 				collectParamRefs(textDef.text, refs);
 				collectParamRefs(textDef.color, refs);
-			case NINEPATCH(_, _, width, height):
+			case NINEPATCH(sheet, tilename, width, height, _, index, fps):
+				collectParamRefs(sheet, refs);
+				collectParamRefs(tilename, refs);
 				collectParamRefs(width, refs);
 				collectParamRefs(height, refs);
+				if (index != null) collectParamRefs(index, refs);
+				if (fps != null) collectParamRefs(fps, refs);
 			case BITMAP(tileSource, _, _):
 				collectTileSourceParamRefs(tileSource, refs);
 			case GRAPHICS(elements):
@@ -5390,8 +5452,11 @@ class MultiAnimBuilder {
 		currentPos.add(pos.x, pos.y);
 		var skipChildren = false;
 		var tileGroupTile = switch node.type {
-			case NINEPATCH(sheet, tilename, width, height):
-				addNinePatchToTileGroup(node, sheet, tilename, width, height, currentPos, tileGroup);
+			case NINEPATCH(sheet, tilename, width, height, mode, index, fps):
+				if (fps != null)
+					throw builderErrorAt(node, 'tileGroup does not support an animated ninepatch (fps:)');
+				addNinePatchToTileGroup(node, resolveAsString(sheet), resolveAsString(tilename), width, height, currentPos, tileGroup,
+					index == null ? 0 : resolveAsInteger(index), ninePatchTiled(mode, false));
 				null;
 			case BITMAP(tileSource, hAlign, vAlign):
 				var tile = loadTileSource(tileSource);
@@ -5535,15 +5600,19 @@ class MultiAnimBuilder {
 		}
 	}
 
+	/** A nine-patch baked into a tile group: frame `index` of the name, its edges and middle stretched
+	 *  (`tiled` false, the tile group's default since it bakes one tile each) or repeated. */
 	function addNinePatchToTileGroup(node:Node, sheet:String, tilename:String, widthRV:ReferenceableValue, heightRV:ReferenceableValue,
-			currentPos:Point, tileGroup:h2d.TileGroup):Void {
+			currentPos:Point, tileGroup:h2d.TileGroup, index:Int = 0, tiled:Bool = false):Void {
 		final atlasSheet = getOrLoadSheet(sheet);
 		if (atlasSheet == null)
 			throw builderError('sheet ${sheet} could not be loaded');
 		final entries = atlasSheet.getContents().get(tilename);
 		if (entries == null || entries.length == 0 || entries[0] == null)
 			throw builderError('tile ${tilename} in sheet ${sheet} could not be loaded');
-		final entry = entries[0];
+		if (index < 0 || index >= entries.length || entries[index] == null)
+			throw builderError('tile ${tilename} in sheet ${sheet} has no frame $index');
+		final entry = entries[index];
 		final srcTile = entry.t;
 		if (entry.split == null || entry.split.length != 4)
 			throw builderError('tile ${tilename} in sheet ${sheet} is not a valid 9-patch (needs split with 4 values)');
@@ -5593,34 +5662,83 @@ class MultiAnimBuilder {
 			tileGroup.addTransform(px + (targetW - br) * scale, py + (targetH - bb) * scale, scale, scale, 0, t);
 		}
 
-		// 4 edges (scaled in one direction to fill target dimensions)
-		if (srcInnerW > 0 && bt > 0 && innerW > 0) {
-			final t = srcTile.sub(bl, 0, srcInnerW, bt);
-			t.scaleToSize(innerW, bt);
-			tileGroup.addTransform(px + bl * scale, py, scale, scale, 0, t);
-		}
-		if (srcInnerW > 0 && bb > 0 && innerW > 0) {
-			final t = srcTile.sub(bl, srcTile.height - bb, srcInnerW, bb);
-			t.scaleToSize(innerW, bb);
-			tileGroup.addTransform(px + bl * scale, py + (targetH - bb) * scale, scale, scale, 0, t);
-		}
-		if (bl > 0 && srcInnerH > 0 && innerH > 0) {
-			final t = srcTile.sub(0, bt, bl, srcInnerH);
-			t.scaleToSize(bl, innerH);
-			tileGroup.addTransform(px, py + bt * scale, scale, scale, 0, t);
-		}
-		if (br > 0 && srcInnerH > 0 && innerH > 0) {
-			final t = srcTile.sub(srcTile.width - br, bt, br, srcInnerH);
-			t.scaleToSize(br, innerH);
-			tileGroup.addTransform(px + (targetW - br) * scale, py + bt * scale, scale, scale, 0, t);
+		// A piece of the source, `sx, sy, sw, sh`, filling `w × h` at `x, y`: stretched, or repeated
+		// (the last repeat cut to what is left, as ScaleGrid draws a tiled border).
+		inline function fill(sx:Float, sy:Float, sw:Float, sh:Float, x:Float, y:Float, w:Float, h:Float) {
+			if (!tiled) {
+				final t = srcTile.sub(sx, sy, sw, sh);
+				t.scaleToSize(w, h);
+				tileGroup.addTransform(x, y, scale, scale, 0, t);
+			} else {
+				var dy = 0.;
+				while (dy < h) {
+					final ph = Math.min(sh, h - dy);
+					var dx = 0.;
+					while (dx < w) {
+						final pw = Math.min(sw, w - dx);
+						tileGroup.addTransform(x + dx * scale, y + dy * scale, scale, scale, 0, srcTile.sub(sx, sy, pw, ph));
+						dx += sw;
+					}
+					dy += sh;
+				}
+			}
 		}
 
-		// Center (scaled in both directions)
-		if (srcInnerW > 0 && srcInnerH > 0 && innerW > 0 && innerH > 0) {
-			final t = srcTile.sub(bl, bt, srcInnerW, srcInnerH);
-			t.scaleToSize(innerW, innerH);
-			tileGroup.addTransform(px + bl * scale, py + bt * scale, scale, scale, 0, t);
-		}
+		// 4 edges (one direction fills the target)
+		if (srcInnerW > 0 && bt > 0 && innerW > 0)
+			fill(bl, 0, srcInnerW, bt, px + bl * scale, py, innerW, bt);
+		if (srcInnerW > 0 && bb > 0 && innerW > 0)
+			fill(bl, srcTile.height - bb, srcInnerW, bb, px + bl * scale, py + (targetH - bb) * scale, innerW, bb);
+		if (bl > 0 && srcInnerH > 0 && innerH > 0)
+			fill(0, bt, bl, srcInnerH, px, py + bt * scale, bl, innerH);
+		if (br > 0 && srcInnerH > 0 && innerH > 0)
+			fill(srcTile.width - br, bt, br, srcInnerH, px + (targetW - br) * scale, py + bt * scale, br, innerH);
+
+		// Center (both directions)
+		if (srcInnerW > 0 && srcInnerH > 0 && innerW > 0 && innerH > 0)
+			fill(bl, bt, srcInnerW, srcInnerH, px + bl * scale, py + bt * scale, innerW, innerH);
+	}
+
+	/** Whether a nine-patch repeats its edges and middle: the element's own word, else the
+	 *  programmable's `settings { ninepatch => stretch | tile }`, else `elementDefaultTiled`
+	 *  (`ninepatch()` tiles, a flow's `background:` and a tile group stretch). */
+	function ninePatchTiled(mode:Null<NinePatchMode>, elementDefaultTiled:Bool):Bool {
+		if (mode == null)
+			mode = defaultNinePatchMode();
+		return switch mode {
+			case null: elementDefaultTiled;
+			case NPTile: true;
+			case NPStretch: false;
+		};
+	}
+
+	/** The `settings { ninepatch => … }` of the programmable being built (the innermost one, for
+	 *  a `staticRef`), or null when it has none. */
+	function defaultNinePatchMode():Null<NinePatchMode> {
+		if (buildingRefs.length == 0)
+			return null;
+		final root = multiParserResult.nodes.get(buildingRefs[buildingRefs.length - 1]);
+		if (root == null || root.settings == null)
+			return null;
+		final setting = root.settings.get("ninepatch");
+		if (setting == null)
+			return null;
+		final word = switch setting.value {
+			case RVString(s): s.toLowerCase();
+			default: throw builderErrorAt(root, 'settings { ninepatch => … }: expected stretch or tile', "ninepatch_mode");
+		};
+		return switch word {
+			case "stretch": NPStretch;
+			case "tile": NPTile;
+			default: throw builderErrorAt(root, 'settings { ninepatch => $word }: expected stretch or tile', "ninepatch_mode");
+		};
+	}
+
+	static function copyNinePatchBorders(from:h2d.ScaleGrid, to:h2d.ScaleGrid):Void {
+		to.borderLeft = from.borderLeft;
+		to.borderRight = from.borderRight;
+		to.borderTop = from.borderTop;
+		to.borderBottom = from.borderBottom;
 	}
 
 	@:nullSafety(Off)
@@ -5689,7 +5807,7 @@ class MultiAnimBuilder {
 
 		final builtObject:BuiltHeapsComponent = switch node.type {
 			case FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight,
-				horizontalSpacing, verticalSpacing, debug, multiline, bgSheet, bgTile, overflow, fillWidth, fillHeight, reverse, hAlign, vAlign):
+				horizontalSpacing, verticalSpacing, debug, multiline, bgSheet, bgTile, overflow, fillWidth, fillHeight, reverse, hAlign, vAlign, bgMode):
 				var f = new h2d.Flow();
 
 				if (maxWidth != null)
@@ -5741,6 +5859,9 @@ class MultiAnimBuilder {
 					f.borderTop = sg.borderTop;
 					f.borderBottom = sg.borderBottom;
 					f.backgroundTile = sg.tile;
+					// A flow's background stretches (Heaps' default) unless the file says `tile`.
+					if (ninePatchTiled(bgMode, false))
+						@:privateAccess ProgrammableBuilder.setNinePatchMode(f.background, true);
 				}
 
 				HeapsFlow(f);
@@ -5763,14 +5884,20 @@ class MultiAnimBuilder {
 			case SLOT_CONTENT:
 				final obj = new SlotContentRoot();
 				HeapsObject(obj);
-			case NINEPATCH(sheet, tilename, width, height):
-				var sg = load9Patch(sheet, tilename);
-
+			case NINEPATCH(sheet, tilename, width, height, mode, index, fps):
+				final sheetName = resolveAsString(sheet);
+				final tileName = resolveAsString(tilename);
+				final frame = index == null ? 0 : resolveAsInteger(index);
+				final sg:h2d.ScaleGrid = if (fps != null) {
+					// Every frame of the name, played in a loop; `index:` is the frame it starts on.
+					final anim = load9PatchAnimated(sheetName, tileName, resolveAsNumber(fps));
+					if (frame != 0) anim.seek(frame);
+					anim;
+				} else
+					load9Patch(sheetName, tileName, frame);
 				sg.width = resolveAsNumber(width);
 				sg.height = resolveAsNumber(height);
-				sg.tileCenter = true;
-				sg.tileBorders = true;
-				sg.ignoreScale = false;
+				ProgrammableBuilder.setNinePatchMode(sg, ninePatchTiled(mode, true));
 				NinePatch(sg);
 			case BITMAP(tileSource, hAlign, vAlign):
 				var tile = loadTileSource(tileSource);
@@ -5934,6 +6061,7 @@ class MultiAnimBuilder {
 			case PARTICLES(particlesDef):
 				Particles(createParticleImpl(particlesDef, node.uniqueNodeName));
 			case PALETTE(_): throw builderErrorAt(node, 'palette not allowed as non-root node');
+			case CURSORS(_): throw builderErrorAt(node, 'cursor not allowed as non-root node');
 			case AUTOTILE(_): throw builderErrorAt(node, 'autotile not allowed as non-root node');
 			case TILESET(_): throw builderErrorAt(node, 'tileset not allowed as non-root node');
 			case TILEMAP(_): throw builderErrorAt(node, 'a tilemap { } definition is placed with tilemap(name)');
@@ -8935,6 +9063,33 @@ class MultiAnimBuilder {
 		return getProgrammableParameterDefinitions(node);
 	}
 
+	/** Whether the programmable has a `#elementName` element anywhere in its body (in a conditional
+	 *  or a `@switch` arm too), read from the parse, before any build: a widget asks this to know
+	 *  whether a design is drawn to its contract (`UIMultiAnimScrollbar.fits`). */
+	public function hasNamedElement(programmableName:String, elementName:String):Bool {
+		final root = multiParserResult.nodes?.get(programmableName);
+		if (root == null)
+			return false;
+		function walk(node:Node):Bool {
+			if (node != root && getNameString(node.updatableName) == elementName)
+				return true;
+			if (node.children != null)
+				for (child in node.children)
+					if (walk(child))
+						return true;
+			switch node.type {
+				case SWITCH(_, arms):
+					for (arm in arms)
+						for (child in arm.children)
+							if (walk(child))
+								return true;
+				default:
+			}
+			return false;
+		}
+		return walk(root);
+	}
+
 	/** Build a parameterized slot's children into its container with incremental mode.
 	 *  Used by codegen (via ProgrammableBuilder) for parameterized slots. */
 	public function buildSlotContent(programmableName:String, slotName:String,
@@ -9402,15 +9557,85 @@ class MultiAnimBuilder {
 		return tile;
 	}
 
-	function load9Patch(sheet, tilename) {
-		final sheet = getOrLoadSheet(sheet);
+	/** Frame `index` (0) of the nine-patch `tilename` in `sheetName`, as a fresh `ScaleGrid`. */
+	function load9Patch(sheetName:String, tilename:String, index:Int = 0):h2d.ScaleGrid {
+		final sheet = getOrLoadSheet(sheetName);
 		if (sheet == null)
-			throw builderError('sheet ${sheet} could not be loaded');
+			throw builderError('sheet ${sheetName} could not be loaded');
 
-		final ninePatch = sheet.getNinePatch(tilename);
+		final ninePatch = try sheet.getNinePatch(tilename, index) catch (e:String) throw builderError('tile ${tilename} in sheet ${sheetName}: $e');
 		if (ninePatch == null)
-			throw builderError('tile ${tilename} in sheet ${sheet} could not be loaded');
+			throw builderError(index == 0 ? 'tile ${tilename} in sheet ${sheetName} could not be loaded' : 'tile ${tilename} in sheet ${sheetName} has no frame $index');
 		return ninePatch;
+	}
+
+	/** Every frame of the nine-patch `tilename`, played in a loop at `fps`. */
+	function load9PatchAnimated(sheetName:String, tilename:String, fps:Float):bh.base.AnimatedScaleGrid {
+		final sheet = getOrLoadSheet(sheetName);
+		if (sheet == null)
+			throw builderError('sheet ${sheetName} could not be loaded');
+		return try bh.base.AnimatedScaleGrid.fromAtlas(sheet, sheetName, tilename, fps) catch (e:String) throw builderError(e);
+	}
+
+	// ---- Cursors ----
+
+	/** The cursors of the `#name cursor { … }` block, by name, each made from its tile's pixels
+	 *  (`CursorManager.cursorFromTile`); nothing is registered. */
+	public function buildCursors(name:String):Map<String, hxd.Cursor> {
+		final node = multiParserResult.nodes.get(name);
+		if (node == null)
+			throw builderError('could not get cursor node #${name}');
+		return switch node.type {
+			case CURSORS(cursors):
+				final out = new Map<String, hxd.Cursor>();
+				for (def in cursors) {
+					this.currentNode = node;
+					final tile = loadTileSource(def.tile);
+					try {
+						out.set(def.name, bh.base.CursorManager.cursorFromTile(tile, def.hotX, def.hotY));
+					} catch (e:String) {
+						throw builderErrorAt(node, 'cursor "${def.name}": $e', "cursor_tile");
+					}
+				}
+				out;
+			default: throw builderErrorAt(node, '$name has to be a cursor block');
+		}
+	}
+
+	/** The names of every `cursor { }` block in the file. */
+	public function cursorBlockNames():Array<String> {
+		final names:Array<String> = [];
+		for (name => node in multiParserResult.nodes)
+			if (node.type.match(CURSORS(_)))
+				names.push(name);
+		return names;
+	}
+
+	/** Registers every cursor of every `cursor { }` block in the file with `CursorManager`, under
+	 *  its name, so `cursor => "name"` on an interactive and `CursorManager.getCursor(name)` find
+	 *  it. `ScreenManager.buildFromResource` does this when a file loads (and again on reload). */
+	public function registerCursors():Int {
+		var count = 0;
+		for (name in cursorBlockNames()) {
+			final node = multiParserResult.nodes.get(name);
+			if (node == null)
+				continue;
+			switch node.type {
+				case CURSORS(cursors):
+					for (def in cursors) {
+						this.currentNode = node;
+						final tile = loadTileSource(def.tile);
+						try {
+							bh.base.CursorManager.registerTileCursor(def.name, tile, def.hotX, def.hotY);
+						} catch (e:String) {
+							throw builderErrorAt(node, 'cursor "${def.name}": $e', "cursor_tile");
+						}
+						count++;
+					}
+				default:
+			}
+		}
+		return count;
 	}
 
 	function getOrLoadSheet(sheetName:String):IAtlas2 {

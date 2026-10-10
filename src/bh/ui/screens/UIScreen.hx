@@ -5,6 +5,9 @@ import bh.ui.UIMultiAnimScrollableList.ClickMode;
 import bh.ui.UIMultiAnimDropdown.UIStandardMultiAnimDropdown;
 import bh.ui.UIMultiAnimCheckbox.UIStandardMultiCheckbox;
 import bh.ui.UIMultiAnimSlider.UIStandardMultiAnimSlider;
+import bh.ui.UIMultiAnimSlider.SliderDirection;
+import bh.ui.UIMultiAnimScrollbar;
+import bh.ui.UIMultiAnimScrollbar.ScrollbarDirection;
 import bh.ui.UIMultiAnimProgressBar.UIMultiAnimProgressBar;
 import bh.ui.UIMultiAnimButton.UIStandardMultiAnimButton;
 import bh.ui.UIMultiAnimTextInput;
@@ -560,10 +563,29 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		return UIStandardMultiAnimButton.create(builder.builder, builder.name, buttonText, split.main);
 	}
 
+	/** `prefixed` without the multi-forward settings (`font`, `fontColor`) that `splitSettings`
+	 *  copies into every registered prefix, keeping one written as `prefix.key` itself. A list's
+	 *  or a dropdown's scrollbar draws no text, so a bare `font` is not its business — an
+	 *  undeclared parameter would be a build error there. */
+	static function explicitlyPrefixed(settings:ResolvedSettings, prefixed:Null<Map<String, Dynamic>>, prefix:String,
+			multiForward:Array<String>):Null<Map<String, Dynamic>> {
+		if (prefixed == null)
+			return null;
+		for (key in multiForward)
+			if (prefixed.exists(key) && (settings == null || !settings.exists('$prefix.$key')))
+				prefixed.remove(key);
+		var any = false;
+		for (_ in prefixed) {
+			any = true;
+			break;
+		}
+		return any ? prefixed : null;
+	}
+
 	function addSlider(providedBuilder, settings:ResolvedSettings, initialValue:Float = 0) {
 		final sliderBuildName = getSettings(settings, "buildName", "slider");
 		final size = getIntSettings(settings, "size", 200);
-		final split = splitSettings(settings, ["buildName", "size"], ["min", "max", "step"], [], [], "slider");
+		final split = splitSettings(settings, ["buildName", "size"], ["min", "max", "step", "direction"], [], [], "slider");
 		final slider = UIStandardMultiAnimSlider.create(providedBuilder, sliderBuildName, size, initialValue, split.main);
 		if (hasSettings(settings, "min"))
 			slider.min = getFloatSettings(settings, "min", 0);
@@ -571,7 +593,30 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 			slider.max = getFloatSettings(settings, "max", 100);
 		if (hasSettings(settings, "step"))
 			slider.step = getFloatSettings(settings, "step", 0);
+		if (hasSettings(settings, "direction"))
+			slider.direction = switch getSettings(settings, "direction", "auto").toLowerCase() {
+				case "vertical": Vertical;
+				case "horizontal": Horizontal;
+				case "auto": Auto;
+				case other: throw 'slider direction => "$other": expected vertical, horizontal or auto';
+			};
 		return slider;
+	}
+
+	/** A scrollbar on its own (`UIMultiAnimScrollbar`): `buildName` (`scrollbar`), `direction`
+	 *  (`vertical`), `arrowStep`; anything else goes to the programmable. */
+	function addScrollbar(providedBuilder:MultiAnimBuilder, settings:ResolvedSettings, panelLength:Int, scrollableLength:Int, initialPosition:Int = 0) {
+		final buildName = getSettings(settings, "buildName", "scrollbar");
+		final direction:ScrollbarDirection = switch getSettings(settings, "direction", "vertical").toLowerCase() {
+			case "horizontal": Horizontal;
+			case "vertical": Vertical;
+			case other: throw 'scrollbar direction => "$other": expected vertical or horizontal';
+		};
+		final split = splitSettings(settings, ["buildName", "direction"], ["arrowStep"], [], [], "scrollbar");
+		final bar = UIMultiAnimScrollbar.create(providedBuilder, buildName, panelLength, scrollableLength, initialPosition, direction, split.main);
+		if (hasSettings(settings, "arrowStep"))
+			bar.arrowStep = getIntSettings(settings, "arrowStep", bar.arrowStep);
+		return bar;
 	}
 
 	function addProgressBar(providedBuilder, settings:ResolvedSettings, initialValue:Int = 0) {
@@ -889,7 +934,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		final itemPrefixed = split.prefixed.get("item");
 		if (itemPrefixed != null)
 			itemBuilder = itemBuilder.withExtraParams(itemPrefixed);
-		final scrollbarPrefixed = split.prefixed.get("scrollbar");
+		final scrollbarPrefixed = explicitlyPrefixed(settings, split.prefixed.get("scrollbar"), "scrollbar", ["font", "fontColor"]);
 		if (scrollbarPrefixed != null)
 			scrollbarBuilder = scrollbarBuilder.withExtraParams(scrollbarPrefixed);
 
@@ -944,7 +989,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		final itemPrefixed = split.prefixed.get("item");
 		if (itemPrefixed != null)
 			itemBuilder = itemBuilder.withExtraParams(itemPrefixed);
-		final scrollbarPrefixed = split.prefixed.get("scrollbar");
+		final scrollbarPrefixed = explicitlyPrefixed(settings, split.prefixed.get("scrollbar"), "scrollbar", ["font", "fontColor"]);
 		if (scrollbarPrefixed != null)
 			scrollbarBuilder = scrollbarBuilder.withExtraParams(scrollbarPrefixed);
 

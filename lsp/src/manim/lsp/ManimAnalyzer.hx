@@ -238,8 +238,8 @@ class ManimAnalyzer {
 			case BITMAP(_, _, _): "bitmap";
 			case TEXT(_): "text";
 			case RICHTEXT(_): "richText";
-			case NINEPATCH(_, _, _, _): "ninepatch";
-			case FLOW(_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _): "flow";
+			case NINEPATCH(_, _, _, _, _, _, _): "ninepatch";
+			case FLOW(_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _): "flow";
 			case LAYERS: "layers";
 			case MASK(_, _): "mask";
 			case TILEGROUP: "tilegroup";

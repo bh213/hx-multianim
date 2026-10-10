@@ -3369,18 +3369,23 @@ class ProgrammableCodeGen {
 				}
 				bodyExprs.push({expr: EBlock(stmts), pos: pos});
 
-			case NINEPATCH(sheet, tilename, width, height):
+			case NINEPATCH(sheet, tilename, width, height, mode, index, fps):
 				final stmts:Array<Expr> = [];
-				final sheetStr = sheet;
-				final tileStr = tilename;
+				final sheetExpr = rvToExpr(sheet, true);
+				final tileExpr = rvToExpr(tilename, true);
 				final wExpr = rvToExpr(width);
 				final hExpr = rvToExpr(height);
-				stmts.push(macro final _rt_sg = this._pb.load9Patch($v{sheetStr}, $v{tileStr}));
+				final indexExpr = index == null ? macro 0 : rvToExprInt(index);
+				final tiled = ninePatchTiled(child, mode, true);
+				if (fps != null) {
+					final fpsExpr = rvToExpr(fps);
+					stmts.push(macro final _rt_sg = this._pb.load9PatchAnimated(Std.string($sheetExpr), Std.string($tileExpr), $fpsExpr));
+					if (index != null) stmts.push(macro _rt_sg.seek($indexExpr));
+				} else
+					stmts.push(macro final _rt_sg = this._pb.load9Patch(Std.string($sheetExpr), Std.string($tileExpr), $indexExpr));
 				stmts.push(macro _rt_sg.width = $wExpr);
 				stmts.push(macro _rt_sg.height = $hExpr);
-				stmts.push(macro _rt_sg.tileCenter = true);
-				stmts.push(macro _rt_sg.tileBorders = true);
-				stmts.push(macro _rt_sg.ignoreScale = false);
+				stmts.push(macro bh.multianim.ProgrammableBuilder.setNinePatchMode(_rt_sg, $v{tiled}));
 				stmts.push(macro $containerRef.addChild(_rt_sg));
 				if (child.pos != null) {
 					switch (child.pos) {
@@ -3586,7 +3591,7 @@ class ProgrammableCodeGen {
 				generateRuntimeChildrenExprs(child.children, repeatType, macro _rt_layers, stmts, pos);
 				bodyExprs.push({expr: EBlock(stmts), pos: pos});
 
-			case FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, horizontalSpacing, verticalSpacing, debug, multiline, bgSheet, bgTile, overflow, fillWidth, fillHeight, reverse, hAlign, vAlign):
+			case FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, horizontalSpacing, verticalSpacing, debug, multiline, bgSheet, bgTile, overflow, fillWidth, fillHeight, reverse, hAlign, vAlign, bgMode):
 				final stmts:Array<Expr> = [];
 				stmts.push(macro final _rt_flow = new h2d.Flow());
 				stmts.push(macro $containerRef.addChild(_rt_flow));
@@ -3637,6 +3642,8 @@ class ProgrammableCodeGen {
 						_rt_flow.borderBottom = _rt_bg.borderBottom;
 						_rt_flow.backgroundTile = _rt_bg.tile;
 					});
+					if (ninePatchTiled(child, bgMode, false))
+						stmts.push(macro @:privateAccess bh.multianim.ProgrammableBuilder.setNinePatchMode(_rt_flow.background, true));
 				}
 				if (child.pos != null) {
 					switch (child.pos) {
@@ -4221,8 +4228,8 @@ class ProgrammableCodeGen {
 			case RICHTEXT(textDef):
 				generateTextCreate(node, fieldName, textDef, true, pos);
 
-			case NINEPATCH(sheet, tilename, width, height):
-				generateNinepatchCreate(node, fieldName, sheet, tilename, width, height, pos);
+			case NINEPATCH(sheet, tilename, width, height, mode, index, fps):
+				generateNinepatchCreate(node, fieldName, sheet, tilename, width, height, mode, index, fps, pos);
 
 			case MASK(w, h):
 				final wExpr = rvToExpr(w);
@@ -4252,8 +4259,8 @@ class ProgrammableCodeGen {
 					exprUpdates: updates,
 				};
 
-			case FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, horizontalSpacing, verticalSpacing, debug, multiline, bgSheet, bgTile, overflow, fillWidth, fillHeight, reverse, hAlign, vAlign):
-				generateFlowCreate(node, fieldName, maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, horizontalSpacing, verticalSpacing, debug, multiline, bgSheet, bgTile, overflow, fillWidth, fillHeight, reverse, hAlign, vAlign, pos);
+			case FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, horizontalSpacing, verticalSpacing, debug, multiline, bgSheet, bgTile, overflow, fillWidth, fillHeight, reverse, hAlign, vAlign, bgMode):
+				generateFlowCreate(node, fieldName, maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, horizontalSpacing, verticalSpacing, debug, multiline, bgSheet, bgTile, overflow, fillWidth, fillHeight, reverse, hAlign, vAlign, bgMode, pos);
 
 			case SPACER(width, height):
 				generateSpacerCreate(node, fieldName, width, height, pos);
@@ -7065,23 +7072,98 @@ class ProgrammableCodeGen {
 		};
 	}
 
-	static function generateNinepatchCreate(node:Node, fieldName:String, sheet:String, tilename:String, width:ReferenceableValue, height:ReferenceableValue, pos:Position):CreateResult {
+	/** Mirrors `MultiAnimBuilder.ninePatchTiled`: the element's own word, else the programmable's
+	 *  `settings { ninepatch => stretch | tile }` (the root of the node's parent chain), else the
+	 *  element's default (`ninepatch()` tiles, a flow's `background:` stretches). */
+	static function ninePatchTiled(node:Node, mode:Null<NinePatchMode>, elementDefaultTiled:Bool):Bool {
+		if (mode == null) {
+			var root = node;
+			while (root.parent != null)
+				root = root.parent;
+			final setting = root.settings == null ? null : root.settings.get("ninepatch");
+			if (setting != null) {
+				switch setting.value {
+					case RVString(w):
+						switch w.toLowerCase() {
+							case "stretch": mode = NPStretch;
+							case "tile": mode = NPTile;
+							default: Context.error('settings { ninepatch => $w }: expected stretch or tile', Context.currentPos());
+						}
+					default: Context.error('settings { ninepatch => … }: expected stretch or tile', Context.currentPos());
+				}
+			}
+		}
+		return switch mode {
+			case null: elementDefaultTiled;
+			case NPTile: true;
+			case NPStretch: false;
+		};
+	}
+
+	static function generateNinepatchCreate(node:Node, fieldName:String, sheet:ReferenceableValue, tilename:ReferenceableValue, width:ReferenceableValue, height:ReferenceableValue,
+			mode:Null<NinePatchMode>, index:Null<ReferenceableValue>, fps:Null<ReferenceableValue>, pos:Position):CreateResult {
 		final fieldRef = macro $p{["this", fieldName]};
+		final sheetExpr = rvToExpr(sheet, true);
+		final tileExpr = rvToExpr(tilename, true);
 		final wExpr = rvToExpr(width);
 		final hExpr = rvToExpr(height);
+		final indexExpr = index == null ? macro 0 : rvToExprInt(index);
+		final fpsExpr = fps == null ? macro 0.0 : rvToExpr(fps);
+		final tiled = ninePatchTiled(node, mode, true);
 		final exprUpdates:Array<{fieldName:String, updateExpr:Expr, paramRefs:Array<String>}> = [];
 
+		final loadExpr = fps != null
+			? macro this._pb.load9PatchAnimated(Std.string($sheetExpr), Std.string($tileExpr), $fpsExpr)
+			: macro this._pb.load9Patch(Std.string($sheetExpr), Std.string($tileExpr), $indexExpr);
+		final seekExpr = fps != null && index != null ? macro sg.seek($indexExpr) : macro {};
 		final createExprs:Array<Expr> = [
 			macro {
-				final sg = this._pb.load9Patch($v{sheet}, $v{tilename});
+				final sg = $loadExpr;
+				$seekExpr;
 				sg.width = $wExpr;
 				sg.height = $hExpr;
-				sg.tileCenter = true;
-				sg.tileBorders = true;
-				sg.ignoreScale = false;
+				bh.multianim.ProgrammableBuilder.setNinePatchMode(sg, $v{tiled});
 				$fieldRef = sg;
 			}
 		];
+
+		// The sheet, the cell and the frame: a change reloads the nine-patch and puts its tile and
+		// borders on the grid that is drawn (as the builder's incremental path does).
+		final srcRefs = collectParamRefs(sheet);
+		for (r in collectParamRefs(tilename)) if (!srcRefs.contains(r)) srcRefs.push(r);
+		if (index != null) for (r in collectParamRefs(index)) if (!srcRefs.contains(r)) srcRefs.push(r);
+		if (srcRefs.length > 0) {
+			final updateExpr = fps != null
+				? macro {
+					final fresh = this._pb.load9PatchAnimated(Std.string($sheetExpr), Std.string($tileExpr), $fpsExpr);
+					final anim:bh.base.AnimatedScaleGrid = cast $fieldRef;
+					anim.frames.resize(0);
+					for (t in fresh.frames) anim.frames.push(t);
+					anim.borderLeft = fresh.borderLeft;
+					anim.borderRight = fresh.borderRight;
+					anim.borderTop = fresh.borderTop;
+					anim.borderBottom = fresh.borderBottom;
+					anim.seek($indexExpr);
+				}
+				: macro {
+					final fresh = this._pb.load9Patch(Std.string($sheetExpr), Std.string($tileExpr), $indexExpr);
+					$fieldRef.borderLeft = fresh.borderLeft;
+					$fieldRef.borderRight = fresh.borderRight;
+					$fieldRef.borderTop = fresh.borderTop;
+					$fieldRef.borderBottom = fresh.borderBottom;
+					$fieldRef.tile = fresh.tile;
+				};
+			exprUpdates.push({fieldName: fieldName, updateExpr: updateExpr, paramRefs: srcRefs});
+		}
+		if (fps != null) {
+			final fpsRefs = collectParamRefs(fps);
+			if (fpsRefs.length > 0)
+				exprUpdates.push({
+					fieldName: fieldName,
+					updateExpr: macro cast($fieldRef, bh.base.AnimatedScaleGrid).fps = $fpsExpr,
+					paramRefs: fpsRefs,
+				});
+		}
 
 		final wRefs = collectParamRefs(width);
 		if (wRefs.length > 0) {
@@ -7133,7 +7215,7 @@ class ProgrammableCodeGen {
 		};
 	}
 
-	static function generateFlowCreate(node:Node, fieldName:String, maxWidth:Null<ReferenceableValue>, maxHeight:Null<ReferenceableValue>, minWidth:Null<ReferenceableValue>, minHeight:Null<ReferenceableValue>, lineHeight:Null<ReferenceableValue>, colWidth:Null<ReferenceableValue>, layout:Null<MacroFlowLayout>, paddingTop:Null<ReferenceableValue>, paddingBottom:Null<ReferenceableValue>, paddingLeft:Null<ReferenceableValue>, paddingRight:Null<ReferenceableValue>, horizontalSpacing:Null<ReferenceableValue>, verticalSpacing:Null<ReferenceableValue>, debug:Bool, multiline:Bool, bgSheet:Null<ReferenceableValue>, bgTile:Null<ReferenceableValue>, overflow:Null<MacroFlowOverflow>, fillWidth:Bool, fillHeight:Bool, reverse:Bool, hAlign:Null<MacroFlowAlign>, vAlign:Null<MacroFlowAlign>, pos:Position):CreateResult {
+	static function generateFlowCreate(node:Node, fieldName:String, maxWidth:Null<ReferenceableValue>, maxHeight:Null<ReferenceableValue>, minWidth:Null<ReferenceableValue>, minHeight:Null<ReferenceableValue>, lineHeight:Null<ReferenceableValue>, colWidth:Null<ReferenceableValue>, layout:Null<MacroFlowLayout>, paddingTop:Null<ReferenceableValue>, paddingBottom:Null<ReferenceableValue>, paddingLeft:Null<ReferenceableValue>, paddingRight:Null<ReferenceableValue>, horizontalSpacing:Null<ReferenceableValue>, verticalSpacing:Null<ReferenceableValue>, debug:Bool, multiline:Bool, bgSheet:Null<ReferenceableValue>, bgTile:Null<ReferenceableValue>, overflow:Null<MacroFlowOverflow>, fillWidth:Bool, fillHeight:Bool, reverse:Bool, hAlign:Null<MacroFlowAlign>, vAlign:Null<MacroFlowAlign>, bgMode:Null<NinePatchMode>, pos:Position):CreateResult {
 		final fieldRef = macro $p{["this", fieldName]};
 		final createExprs:Array<Expr> = [macro $fieldRef = new h2d.Flow()];
 		final exprUpdatesLocal:Array<{fieldName:String, updateExpr:Expr, paramRefs:Array<String>}> = [];
@@ -7203,6 +7285,8 @@ class ProgrammableCodeGen {
 				$fieldRef.borderBottom = _bg.borderBottom;
 				$fieldRef.backgroundTile = _bg.tile;
 			});
+			if (ninePatchTiled(node, bgMode, false))
+				createExprs.push(macro @:privateAccess bh.multianim.ProgrammableBuilder.setNinePatchMode($fieldRef.background, true));
 		}
 
 		return {
@@ -8995,9 +9079,13 @@ class ProgrammableCodeGen {
 					}
 				case BITMAP(tileSource, _, _):
 					addAll(collectTileSourceParamRefs(tileSource));
-				case NINEPATCH(_, _, w, h):
+				case NINEPATCH(sheet, tilename, w, h, _, index, fps):
+					collectParamRefsImpl(sheet, refs);
+					collectParamRefsImpl(tilename, refs);
 					collectParamRefsImpl(w, refs);
 					collectParamRefsImpl(h, refs);
+					if (index != null) collectParamRefsImpl(index, refs);
+					if (fps != null) collectParamRefsImpl(fps, refs);
 				case GRAPHICS(elements):
 					for (item in elements) {
 						collectCoordinateParamRefs(item.pos, refs);

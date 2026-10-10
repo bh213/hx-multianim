@@ -374,6 +374,9 @@ class ScreenManager {
 			throw 'failed to load multianim ${resource.name}';
 		// Auto-inject TweenManager for transition support in incremental builds
 		built.tweenManager = tweens;
+		// The file's `#name cursor { }` blocks: registered by name, so its interactives' `cursor =>`
+		// metadata and `CursorManager.getCursor(name)` find them (again on every reload).
+		built.registerCursors();
 		#if MULTIANIM_TRACE
 		trace('Built ${resource.entry.name} with reload $enableReload');
 		#end

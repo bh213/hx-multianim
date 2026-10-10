@@ -719,6 +719,24 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/156-staticRefIncremental/staticRefIncremental.manim", "sriExternal")
 	public var sriExternal;
 
+	@:manim("test/examples/157-ninePatchModes/ninePatchModes.manim", "ninePatchModes")
+	public var ninePatchModes;
+
+	@:manim("test/examples/157-ninePatchModes/ninePatchModes.manim", "npStyled")
+	public var npStyled;
+
+	@:manim("test/examples/157-ninePatchModes/ninePatchModes.manim", "npFrame")
+	public var npFrame;
+
+	@:manim("test/examples/157-ninePatchModes/ninePatchModes.manim", "npAnim")
+	public var npAnim;
+
+	@:manim("test/examples/157-ninePatchModes/ninePatchModes.manim", "npSettings")
+	public var npSettings;
+
+	@:manim("test/examples/157-ninePatchModes/ninePatchModes.manim", "npFlowBg")
+	public var npFlowBg;
+
 	@:manim("test/examples/156-staticRefIncremental/staticRefIncremental.manim", "sriKidsAt")
 	public var sriKidsAt;
 

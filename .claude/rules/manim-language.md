@@ -26,7 +26,8 @@
 | `bitmap(source, [center])` | Display image. Source can be wrapped: `center(source)` or `pivot(x, y, source)` |
 | `text(font, text, color, [align, maxWidth, options])` | Simple text element (plain `h2d.Text`). Options: `letterSpacing`, `lineSpacing`, `lineBreak`, `dropShadow*`, `autoFit` |
 | `richText(font, text, color, [align, maxWidth, options])` | Rich text with `[markup]`, `styles:`, `images:` (always `h2d.HtmlText`). Options: same as text + `styles:`, `images:`, `condenseWhite` |
-| `ninepatch(sheet, tile, w, h)` | 9-patch scalable |
+| `ninepatch(sheet, tile, w, h [, stretch\|tile] [, index: n] [, fps: n])` | 9-patch scalable: tiled by default, `stretch` for art drawn to stretch (`settings { ninepatch => stretch }` a programmable's default; a `flow(background:)` stretches unless told `tile`); sheet and tile are string expressions (`"button_" + $style`); `index:` a frame of an indexed name, `fps:` the frames in a loop |
+| `#name cursor {...}` | Bitmap cursors from tiles, registered by name when the file loads: `pointer: sheet("ui", "hand"), hot: 3, 1` — then `cursor => "pointer"` on an interactive finds it |
 | `placeholder(size, source)` | Dynamic placeholder |
 | `staticRef($ref)` | Static embed of another programmable |
 | `dynamicRef($ref, params)` | Dynamic embed with runtime `setParameter()` support. Unnamed sibling sites that refer to the same programmable collide on the map key; `BuilderResult.getDynamicRef("X")` throws on ambiguity. Prefix with `#name` / `#name[$i]` to disambiguate |

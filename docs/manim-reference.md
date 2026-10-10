@@ -33,7 +33,8 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `tilemap(name)` / `tilemap(external(file), name)` | Place a tile map (`#name tilemap`) |
 | `text(font, text, color, align, maxWidth, options)` | Simple text with font, color, and formatting options |
 | `richText(font, text, color, align, maxWidth, options)` | Rich text with `[markup]`, styles, images — always `h2d.HtmlText` |
-| `ninepatch(sheet, tile, w, h)` | 9-patch scalable image for resizable panels |
+| `ninepatch(sheet, tile, w, h [, stretch\|tile] [, index: n] [, fps: n])` | 9-patch scalable image for resizable panels: repeated by default, `stretch` for art drawn to stretch, `settings { ninepatch => stretch }` as a programmable's default; sheet and tile are string expressions (`"button_" + $style`); `index:` a frame of an indexed name, `fps:` the frames played in a loop (`AnimatedScaleGrid`) |
+| `#name cursor { name: tileSource, hot: x, y … }` | Bitmap cursors from atlas cells, registered by name when the file loads (root only) — see Cursors |
 | `pixels(...)` | Pixel-level drawing primitives |
 | `graphics(...)` | Vector graphics shapes |
 | `stateanim("file", state, selector)` | State machine animation from .anim file |
@@ -769,6 +770,19 @@ Access: `palette(name, index)` or `palette(name, x, y)` for 2D.
 
 ---
 
+## Cursors
+
+```manim
+#cursors cursor {
+  pointer: sheet("ui", "hand"), hot: 3, 1    // a name, a tile source, the pixel that clicks (0, 0 when left out)
+  sword:   file("sword.png")
+}
+```
+
+Root node, needs a `#name`; one entry a line or `;`-separated; a name twice is an error. `ScreenManager.buildFromResource` registers every entry with `CursorManager` (`builder.registerCursors()`), so `cursor => "sword"`, `cursor.hover`, `cursor.disabled` and `CursorManager.getCursor("sword")` find it; `builder.buildCursors(name)` gives a block's cursors without registering. From code: `CursorManager.registerTileCursor(name, tile, hotX, hotY)`, `getTileCursor(name)`, `getRegisteredCursorNames()`; DevBridge `list_cursors`.
+
+---
+
 ## Autotile
 
 `#name autotile { ... }` (root level). Build terrain with `builder.buildAutotile(name, grid, ?where, x0 = 0, y0 = 0)` (`grid[y][x]`, non-zero = terrain; `where` the positions drawn, in the format's own; `x0`, `y0` the cell `grid[0][0]` stands for, so a tile map draws one chunk of itself from grids over that chunk alone); single tiles with `builder.getAutotileTile(name, index, x, y)` or `generated(autotile(name, index))`; `builder.getAutotileRotation(name, index, x, y)` says the quarter turns (0–3) a turned mapping gives the tile a position draws, which `generated(autotile(name, index))` shows unturned.
@@ -1285,8 +1299,9 @@ These are pre-built UI components used through the builder/screen system.
 | **Slider** | Draggable value selector with custom range (int or float) |
 | **Radio buttons** | Mutually exclusive selection group |
 | **Dropdown** | Collapsible selection list with scrollable panel |
-| **Scrollable list** | Scrollable list of selectable items with scrollbar. `setItems(newItems, selectedIndex=0, preserveScroll=false)`, `scrollToIndex()`, `clickMode`, disabled state |
-| **Progress bar** | Display-only value indicator (0-100) |
+| **Scrollable list** | Scrollable list of selectable items with scrollbar. `setItems(newItems, selectedIndex=0, preserveScroll=false)`, `scrollToIndex()`, `clickMode`, disabled state; a scrollbar design with `status` and `#thumb` is dragged |
+| **Scrollbar** | Dragged scrollbar (`UIMultiAnimScrollbar`): `#thumb`, optional `#track`/`#up`/`#down`, `status`/`disabled`, vertical or horizontal, pages on the track, `arrowStep`; `addScrollbar(builder, settings, panelLength, scrollableLength, position)` |
+| **Progress bar** | Display-only value indicator (0-100); `value` changed in place on the built result, rebuilt whole only when the design cannot follow it |
 | **Interactive** | Hit-test region with ID and optional typed metadata |
 | **Draggable** | Drag-and-drop with drop zones, slot integration, swap mode |
 | **Grid** | 2D grid (rect or hex) with cell state, drag-drop zones, card targeting |
@@ -1360,6 +1375,9 @@ When `tabPanel.contentRoot` is set, tab content coordinates are relative to the 
 | `text` | Button text content |
 | `initialValue` | Starting value (checkbox, slider) |
 | `min`, `max`, `step` | Numeric range (slider) |
+| `direction` | `vertical`, `horizontal`, `auto` (slider: read from `#start`/`#end`); `vertical`, `horizontal` (scrollbar) |
+| `arrowStep` | Content pixels an arrow click or wheel notch scrolls (scrollbar) |
+| `ninepatch` | `stretch` or `tile`: how every nine-patch of the programmable fills unless it says itself |
 | `width`, `height` | Dimensions |
 | `font`, `fontColor` | Typography |
 | `panelMode` | `scrollable` or `scalable` (dropdown, scrollable list) |
@@ -1394,7 +1412,7 @@ The builder (incremental mode) and codegen paths both re-fire the listed propert
 |---------|----------------------------|-------------------------|
 | `text` / `richText` | `text`, `color`, richText styles (`color`/`font`) and image tiles | font name, align, maxWidth, options |
 | `bitmap` | `tileSource` (including `generated(color(w, h, color))`) | hAlign, vAlign |
-| `ninepatch` | `width`, `height` | sheet name, tile name |
+| `ninepatch` | `width`, `height`, sheet, tile, `index:` (the cell reloaded into the same grid), `fps:` | mode (`stretch`/`tile`) |
 | `graphics` | every element's color/size/radius/coords + element position | — |
 | `pixels` | every shape's color/size/coords | — |
 | `mask` | `width`, `height` | — |

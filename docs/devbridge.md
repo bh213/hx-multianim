@@ -335,6 +335,13 @@ No parameters.
 
 Returns: `atlases[]` — each with `name`, `tiles[]`.
 
+#### `list_cursors`
+Every cursor name an interactive's `cursor =>` metadata can use: the OS ones and the registered ones (`CursorManager.registerTileCursor`, a file's `#name cursor { }` block).
+
+No parameters.
+
+Returns: `cursors[]` — each with `name` and `kind` (`tile` for one made from a tile, with its `width`, `height`, `hotX`, `hotY`; else the OS cursor's name).
+
 ### Manipulation
 
 #### `set_parameter`

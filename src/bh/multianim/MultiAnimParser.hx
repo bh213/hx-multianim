@@ -729,6 +729,25 @@ enum PaletteType {
 	PaletteImageFile(filename:ReferenceableValue);
 }
 
+/** How a nine-patch fills its middle and edges: repeated (`tile`, the `ninepatch()` default)
+ *  or stretched (`stretch`, the `flow(background:)` default). `null` on a node means "not
+ *  said here", so the programmable's `settings { ninepatch => … }` or the element's default applies. */
+@:nullSafety
+enum NinePatchMode {
+	NPStretch;
+	NPTile;
+}
+
+/** One entry of a `#name cursor { … }` block: `name: tileSource, hot: x, y`. */
+@:nullSafety
+typedef CursorDef = {
+	var name:String;
+	var tile:TileSource;
+	var hotX:Int;
+	var hotY:Int;
+	var line:Int;
+}
+
 // Autotile formats for terrain generation (index math in bh.base.Autotile)
 @:nullSafety
 enum AutotileFormat {
@@ -1101,7 +1120,8 @@ enum NodeType {
 		horizontalSpacing:Null<ReferenceableValue>, verticalSpacing:Null<ReferenceableValue>, debug:Bool, multiline:Bool,
 		bgSheet:Null<ReferenceableValue>, bgTile:Null<ReferenceableValue>,
 		overflow:Null<MacroFlowOverflow>, fillWidth:Bool, fillHeight:Bool, reverse:Bool,
-		hAlign:Null<MacroFlowAlign>, vAlign:Null<MacroFlowAlign>
+		hAlign:Null<MacroFlowAlign>, vAlign:Null<MacroFlowAlign>,
+		bgMode:Null<NinePatchMode>
 		);
 	SPACER(width:Null<ReferenceableValue>, height:Null<ReferenceableValue>);
 	BITMAP(tileSource:TileSource, hAlign:HorizontalAlign, vAlign:VerticalAlign);
@@ -1125,10 +1145,17 @@ enum NodeType {
 	REPEAT2D(varNameX:String, varNameY:String, repeatTypeX:RepeatType, repeatTypeY:RepeatType);
 	STATIC_REF(externalReference:Null<String>, programmableReference:ReferenceableValue, parameters:Map<String, ReferenceableValue>);
 	PLACEHOLDER(type:PlaceholderTypes, replacementSource:PlaceholderReplacementSource);
-	NINEPATCH(sheet:String, tilename:String, width:ReferenceableValue, height:ReferenceableValue);
+	/** `ninepatch(sheet, tile, w, h [, stretch|tile] [, index: i] [, fps: f])`: sheet and tile are
+	 *  string expressions (`$style + "_hover"`), `mode` null when the element does not say,
+	 *  `index` the frame of an indexed atlas name (0), `fps` plays the name's frames in a loop. */
+	NINEPATCH(sheet:ReferenceableValue, tilename:ReferenceableValue, width:ReferenceableValue, height:ReferenceableValue,
+		mode:Null<NinePatchMode>, index:Null<ReferenceableValue>, fps:Null<ReferenceableValue>);
 	INTERACTIVE(width:ReferenceableValue, height:ReferenceableValue, id:ReferenceableValue, debug:Bool,
 		metadata:Null<Array<{key:ReferenceableValue, type:SettingValueType, value:ReferenceableValue}>>);
 	PALETTE(paletteType:PaletteType);
+	/** `#name cursor { pointer: sheet("ui", "hand"), hot: 3, 1 }`: bitmap cursors the screen
+	 *  manager registers with `CursorManager` when the file loads. Root node only. */
+	CURSORS(cursors:Array<CursorDef>);
 	GRAPHICS(elements:Array<PositionedGraphicsElement>);
 	AUTOTILE(autotileDef:AutotileDef);
 	TILESET(tilesetDef:TilesetDef);

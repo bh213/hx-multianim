@@ -170,6 +170,9 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.CodegenLayoutParamPointsTest());
 		testRunner.addCase(new bh.test.examples.CodegenForwardStringConcatTest());
 		testRunner.addCase(new bh.test.examples.AllocationSmokeTest());
+		testRunner.addCase(new bh.test.examples.NinePatchModesTest());
+		testRunner.addCase(new bh.test.examples.CursorTest());
+		testRunner.addCase(new bh.test.examples.UIScrollbarWidgetTest());
 		#if MULTIANIM_DEV
 		testRunner.addCase(new bh.test.examples.HotReloadTest());
 		testRunner.addCase(new bh.test.examples.DevBridgeTest());

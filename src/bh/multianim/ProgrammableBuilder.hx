@@ -134,13 +134,30 @@ class ProgrammableBuilder {
 		return t.sub(0, 0, t.width, t.height, t.dx, t.dy);
 	}
 
-	/** Load a 9-patch ScaleGrid from a sprite sheet */
-	public function load9Patch(sheet:String, name:String):ScaleGrid {
+	/** Load a 9-patch ScaleGrid from a sprite sheet: frame `index` (0) of an indexed name. */
+	public function load9Patch(sheet:String, name:String, index:Int = 0):ScaleGrid {
 		final atlas = getSheet(sheet);
-		final ninePatch = atlas.getNinePatch(name);
+		final ninePatch = atlas.getNinePatch(name, index);
 		if (ninePatch == null)
-			throw BuilderError.of('9-patch "$name" not found in sheet "$sheet"');
+			throw BuilderError.of(index == 0 ? '9-patch "$name" not found in sheet "$sheet"' : '9-patch "$name" in sheet "$sheet" has no frame $index');
 		return ninePatch;
+	}
+
+	/** Every frame of the 9-patch `name`, played in a loop at `fps` (`ninepatch(…, fps: 8)`). */
+	public function load9PatchAnimated(sheet:String, name:String, fps:Float):bh.base.AnimatedScaleGrid {
+		final atlas = getSheet(sheet);
+		try {
+			return bh.base.AnimatedScaleGrid.fromAtlas(atlas, sheet, name, fps);
+		} catch (e:String) {
+			throw BuilderError.of(e);
+		}
+	}
+
+	/** Sets how a 9-patch fills its middle and edges: repeated (`tile`) or stretched. */
+	public static inline function setNinePatchMode(sg:ScaleGrid, tiled:Bool):Void {
+		sg.tileCenter = tiled;
+		sg.tileBorders = tiled;
+		sg.ignoreScale = false;
 	}
 
 	/** Load a font by name */
