@@ -159,6 +159,13 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 	// Current color curve segment index (monotonic advance; avoids O(N) rescan per frame)
 	public var currentColorSegmentIndex : Int = 0;
 
+	// The particle's own colour, multiplied into the group's colour curve (or drawn as is
+	// when the group has no colorStops): the group's `tint` when it is born, a burst's own
+	// tint over that, and its parent's when a sub-emitter spawned it. 1, 1, 1 is no tint.
+	public var tintR : Float = 1;
+	public var tintG : Float = 1;
+	public var tintB : Float = 1;
+
 	public function new(group:ParticleGroup) {
 		super(null);
 		this.group = group;
@@ -287,10 +294,14 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 				else if (localT > 1) localT = 1;
 				var curveValue = segment.curve.getValue(localT);
 				var col = group.lerpColor(segment.startColor, segment.endColor, curveValue);
-				r = ((col >> 16) & 0xFF) / 255.0;
-				g = ((col >> 8) & 0xFF) / 255.0;
-				b = (col & 0xFF) / 255.0;
+				r = ((col >> 16) & 0xFF) / 255.0 * tintR;
+				g = ((col >> 8) & 0xFF) / 255.0 * tintG;
+				b = (col & 0xFF) / 255.0 * tintB;
 			}
+		} else {
+			r = tintR;
+			g = tintG;
+			b = tintB;
 		}
 
 		// Sprite animation
@@ -600,6 +611,15 @@ class ParticleGroup {
 
 	// ----- Color Interpolation -----
 	/**
+		A colour every particle born from now on is multiplied by (0xRRGGBB), over the group's
+		`colorStops` or, with none, as its colour: one `sparks` group drawn in every brick's
+		colour, an exhaust group in each ship's. Null is none. A burst's own tint
+		(`emitBurstAt(…, tint)`) wins over it for the burst's particles; the particles already
+		alive keep the tint they were born with.
+	**/
+	public var tint : Null<Int> = null;
+
+	/**
 		Enable color interpolation over particle lifetime.
 	**/
 	public var colorEnabled(default, null) : Bool = false;
@@ -841,9 +861,22 @@ class ParticleGroup {
 
 	/**
 		Emit a burst of particles at a specific position with optional inherited velocity.
-		Creates particles on-the-fly and adds them to the batch.
+		Creates particles on-the-fly and adds them to the batch. `tint` (0xRRGGBB) colours
+		the burst's particles: multiplied into the group's `colorStops`, or their colour when
+		the group has none; null leaves them the group's `tint`, if any.
 	**/
-	public function emitBurstAt(atX:Float, atY:Float, inheritVx:Float, inheritVy:Float, count:Int):Void {
+	public function emitBurstAt(atX:Float, atY:Float, inheritVx:Float, inheritVy:Float, count:Int, ?tint:Int):Void {
+		if (tint == null)
+			emitBurstTinted(atX, atY, inheritVx, inheritVy, count, -1, -1, -1);
+		else
+			emitBurstTinted(atX, atY, inheritVx, inheritVy, count, ((tint >> 16) & 0xFF) / 255.0, ((tint >> 8) & 0xFF) / 255.0, (tint & 0xFF) / 255.0);
+	}
+
+	/**
+		The burst with its tint as floats; a negative tint is none (the group's `tint`, or the
+		parent's for a sub-emitter, stands). Sub-emitters pass their parent's through here.
+	**/
+	function emitBurstTinted(atX:Float, atY:Float, inheritVx:Float, inheritVy:Float, count:Int, tintR:Float, tintG:Float, tintB:Float):Void {
 		if (!started) {
 			// Note: batch.visible must stay false — group batches are children of
 			// the Particles object but are drawn explicitly in Particles.draw();
@@ -872,6 +905,11 @@ class ParticleGroup {
 				p.y += atY;
 				p.vx += inheritVx;
 				p.vy += inheritVy;
+				if (tintR >= 0) {
+					p.tintR = tintR;
+					p.tintG = tintG;
+					p.tintB = tintB;
+				}
 				p.visible = true;
 				triggerSubEmitters(p, OnBirth);
 			}
@@ -890,8 +928,8 @@ class ParticleGroup {
 	/**
 		Emit a burst of particles at the emitter's current position.
 	**/
-	public function emitBurst(count:Int):Void {
-		emitBurstAt(0, 0, 0, 0, count);
+	public function emitBurst(count:Int, ?tint:Int):Void {
+		emitBurstAt(0, 0, 0, 0, count, tint);
 	}
 
 	/**
@@ -1060,6 +1098,18 @@ class ParticleGroup {
 			p.r = ((initColor >> 16) & 0xFF) / 255.0;
 			p.g = ((initColor >> 8) & 0xFF) / 255.0;
 			p.b = (initColor & 0xFF) / 255.0;
+		}
+
+		// The group's tint, or none: a recycled particle never keeps a burst's.
+		final groupTint = tint;
+		if (groupTint != null) {
+			p.tintR = ((groupTint >> 16) & 0xFF) / 255.0;
+			p.tintG = ((groupTint >> 8) & 0xFF) / 255.0;
+			p.tintB = (groupTint & 0xFF) / 255.0;
+		} else {
+			p.tintR = 1;
+			p.tintG = 1;
+			p.tintB = 1;
 		}
 
 		// Reset per-particle monotonic caches so recycled particles restart at the
@@ -1339,13 +1389,14 @@ class ParticleGroup {
 			var subGroup = parts.getGroup(se.groupId);
 			if (subGroup == null) continue;
 
-			// Spawn particles from sub-group at parent particle's location
-			subGroup.emitBurstAt(
+			// Spawn particles from sub-group at parent particle's location, in its colour
+			subGroup.emitBurstTinted(
 				p.x + se.offsetX,
 				p.y + se.offsetY,
 				p.vx * se.inheritVelocity,
 				p.vy * se.inheritVelocity,
-				se.burstCount
+				se.burstCount,
+				p.tintR, p.tintG, p.tintB
 			);
 		}
 	}
@@ -1398,12 +1449,13 @@ class ParticleGroup {
 						if (rand() <= se.probability) {
 							var subGroup = parts.getGroup(se.groupId);
 							if (subGroup != null) {
-								subGroup.emitBurstAt(
+								subGroup.emitBurstTinted(
 									p.x + se.offsetX,
 									p.y + se.offsetY,
 									p.vx * se.inheritVelocity,
 									p.vy * se.inheritVelocity,
-									se.burstCount
+									se.burstCount,
+									p.tintR, p.tintG, p.tintB
 								);
 							}
 						}

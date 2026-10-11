@@ -269,6 +269,96 @@ class ParticleRuntimeTest extends utest.Test {
 		Assert.floatEquals(200.0, e.y, 0.01);
 	}
 
+	// ==================== Tint: a burst's colour, a group's, a sub-emitter's parent's ====================
+
+	@Test
+	public function testBurstTintIsTheColourWithoutStops():Void {
+		var p = createParticles();
+		var g = createBurstGroup("main", p);
+		g.emitBurstAt(0, 0, 0, 0, 2, 0x80FF00);
+		g.emitBurstAt(0, 0, 0, 0, 1);
+		advanceGroup(g, 0.016);
+		var refs = collectParticleRefs(g);
+		Assert.equals(3, refs.length);
+		// the batch keeps the order of emission
+		var tinted = refs[0];
+		var plain = refs[2];
+		Assert.floatEquals(1.0, plain.r, 0.001, "no tint: white");
+		Assert.floatEquals(1.0, plain.g, 0.001);
+		Assert.floatEquals(1.0, plain.b, 0.001);
+		Assert.floatEquals(128 / 255, tinted.r, 0.001, "tinted: the burst's colour");
+		Assert.floatEquals(1.0, tinted.g, 0.001);
+		Assert.floatEquals(0.0, tinted.b, 0.001);
+		Assert.floatEquals(plain.a, tinted.a, 0.001, "alpha untouched by the tint");
+	}
+
+	@Test
+	public function testBurstTintMultipliesTheColourStops():Void {
+		var p = createParticles();
+		var g = createBurstGroup("main", p);
+		// white to black over the life: the stops alone give r = 1 - t
+		g.addColorCurveSegment(0.0, createLinearCurve(), 0xFFFFFF, 0x000000);
+		g.emitBurstAt(0, 0, 0, 0, 1, 0xFF0000);
+		advanceGroup(g, 0.5);
+		var e:Dynamic = g.batch.first;
+		Assert.notNull(e);
+		Assert.floatEquals(0.5, e.r, 0.05, "the stops' grey, times the red tint");
+		Assert.floatEquals(0.0, e.g, 0.001, "green gone");
+		Assert.floatEquals(0.0, e.b, 0.001, "blue gone");
+	}
+
+	@Test
+	public function testGroupTintColoursWhatIsBornAndABurstWins():Void {
+		var p = createParticles();
+		var g = createBurstGroup("main", p);
+		g.tint = 0x0000FF;
+		g.emitBurstAt(0, 0, 0, 0, 1);
+		g.emitBurstAt(0, 0, 0, 0, 1, 0x00FF00);
+		advanceGroup(g, 0.016);
+		var refs = collectParticleRefs(g);
+		Assert.floatEquals(0.0, refs[0].r, 0.001, "the group's blue");
+		Assert.floatEquals(1.0, refs[0].b, 0.001);
+		Assert.floatEquals(1.0, refs[1].g, 0.001, "the burst's green over it");
+		Assert.floatEquals(0.0, refs[1].b, 0.001);
+		// a recycled particle is born in the group's tint, not the burst's it had
+		advanceGroup(g, 1.1);
+		Assert.equals(0, countParticles(g));
+		g.emitBurstAt(0, 0, 0, 0, 2);
+		advanceGroup(g, 0.016);
+		for (e in collectParticleRefs(g)) {
+			Assert.floatEquals(0.0, e.g, 0.001, "born again: the group's blue");
+			Assert.floatEquals(1.0, e.b, 0.001);
+		}
+	}
+
+	@Test
+	public function testSubEmitterInheritsTheParentsTint():Void {
+		var p = createParticles();
+		var mainGroup = createBurstGroup("main", p);
+		var subGroup = createBurstGroup("sparks", p);
+		var dm:Dynamic = mainGroup;
+		dm.subEmitters = ([
+			{
+				groupId: "sparks",
+				trigger: OnBirth,
+				probability: 1.0,
+				inheritVelocity: 0.0,
+				offsetX: 0.0,
+				offsetY: 0.0,
+				burstCount: 2
+			}
+		] : Array<SubEmitter>);
+		mainGroup.emitBurstAt(0, 0, 0, 0, 1, 0xFF00FF);
+		advanceGroup(subGroup, 0.016);
+		var refs = collectParticleRefs(subGroup);
+		Assert.equals(2, refs.length);
+		for (e in refs) {
+			Assert.floatEquals(1.0, e.r, 0.001, "the parent's magenta");
+			Assert.floatEquals(0.0, e.g, 0.001);
+			Assert.floatEquals(1.0, e.b, 0.001);
+		}
+	}
+
 	// ==================== Particle Pooling (free list) ====================
 
 	/** Collect Particle instance references from the batch as a typed Array. */
