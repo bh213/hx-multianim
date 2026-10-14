@@ -388,6 +388,10 @@ than inventing a new one.
     placeholders, updatables, slots, interactive IDs + metadata keys, settings keys).
   - Add `@implements(button)` on widget programmables, validated against the widget's required
     parameters at build time. **M**
+  - Progress 2026-10-14: the resource side of the contract (what the host must have on disk: sheets,
+    tiles, fonts, `.anim` files, imports, custom filters, sound files, sound and music names, the
+    `ui` bank keys) is `ManimNeedsTools.needsOf` (`MAN-5`). The code side (callbacks,
+    builderParameters, placeholders, updatables, slots, interactive ids, settings keys) is not listed yet.
 - [ ] `MAN-5` **One outline extractor, three front-ends.**
   - A noheaps-safe `ManimOutline` in the library produces, in **declaration order**:
     - kind;
@@ -399,8 +403,18 @@ than inventing a new one.
     - paths, curves, particles, animatedPaths, data blocks and `@final`s, with source lines.
   - **Two fixes it needs:**
     - `MultiAnimResult.nodes` is a `Map` and loses order (MultiAnimParser.hx:1042).
-    - `import` is dropped entirely when there is no loader (MacroManimParser.hx:5342), so no tool
-      can list imports today.
+    - ~~`import` is dropped entirely when there is no loader (MacroManimParser.hx:5342), so no tool
+      can list imports today.~~ Done 2026-10-14: `MultiAnimResult.importPaths` (alias to path) is
+      filled with or without a loader.
+  - **Done 2026-10-14, the needs part**: `ManimNeedsTools.needsOf(result)`
+    in `src/bh/multianim/ManimNeeds.hx`, noheaps-safe, lists every outside name a file reaches for
+    (sheets and cells, tiles, fonts, anims, imports, custom filters, cursors, sounds, music, sound
+    files, the `ui` bank keys its widgets play by default, `fromParameters`; a `$reference` by every
+    value its parameter, `@final` or `staticRef` gives it), and `animNeedsOf(loaded)` an
+    `.anim`'s sheet, frames and sounds. Not yet: the outline itself (kind, parameters, annotations,
+    the contract of `MAN-4`, ref targets, source lines), declaration order, and the three
+    front-ends — the LSP could show the needs as a hover on `#name` (small; the drift gate wants the
+    packaged server rebuilt with it).
   - **Front-ends:** `manim outline --json` (CLI), `describe_manim(file)` (MCP, no live instance
     needed), and LSP outline/hover. **M**
 - [ ] `MAN-6` **Real positions in the AST, always.**

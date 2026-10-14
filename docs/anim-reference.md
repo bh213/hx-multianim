@@ -412,8 +412,18 @@ scene.addChild(animSM);
 `LoadedAnimation` is the file as written, not as played: `sheet`, `states`, `allowedExtraPoints`,
 `center`, `metadata` (the API above) and `metadataEntries` (every entry by key, with its states),
 `animations` (each `AnimationState` as parsed, with its `annotations`), `defaults` (the file-level
-`fps`, `loop`, `flipX`, `flipY`), the file's `annotations`, and `spans`. The arrays and maps are
+`fps`, `loop`, `flipX`, `flipY`), the file's `annotations`, `sounds` (the `sounds { }` block, an
+event's name to the full name of the sound it plays), and `spans`. The arrays and maps are
 the parser's own: read them, never change them.
+
+**What the file needs** (`bh.multianim.ManimNeeds`): `ManimNeedsTools.animNeedsOf(parsed.loaded())`
+is an `AnimNeeds` — `sheets` (the file's `sheet:` with every frame name its playlists and layers
+write, `${state}` expanded over the file's `states:` values, so `"walk_${dir}"` over `dir(l, r)`
+is `walk_l`, `walk_r`; an indexed name once), `files` (the images its `file:` lines name) and
+`sounds` (the `bank.sound` names of its `sounds { }` block), each sorted and without repeats. From
+the parse alone: `AnimParser.parseString(text, name, null)` needs no loader, no app and no window,
+on HashLink and on JS alike. A `.manim` file's counterpart is `ManimNeedsTools.needsOf`
+(`docs/manim-reference.md`, "What a File Needs").
 
 `spans` are kept only when the parse asks for them, `AnimParser.parseString(text, name, loader, true)`
 (or `parseFile`'s same last argument): a game's parse has none, and a tool that changes a value in

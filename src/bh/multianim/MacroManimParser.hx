@@ -467,6 +467,7 @@ class MacroManimParser {
 	var sourceName:String;
 	var nodes:Map<String, Node>;
 	var imports:Map<String, Dynamic>;
+	var importPaths:Map<String, String>; // alias -> path of every `import`, with or without a loader
 	var resourceLoader:Dynamic;
 	var uniqueCounter:Int;
 	var currentName:Null<String>;
@@ -488,6 +489,7 @@ class MacroManimParser {
 		this.sourceName = sourceName;
 		this.nodes = new Map();
 		this.imports = new Map();
+		this.importPaths = new Map();
 		this.resourceLoader = resourceLoader;
 		this.uniqueCounter = 654321;
 		this.activeDefs = null;
@@ -5508,6 +5510,8 @@ class MacroManimParser {
 					expectKeyword("as");
 					final importName = expectIdentifierOrString();
 					eatSemicolon();
+					// kept with or without a loader, so a tool lists what the file imports from the parse alone
+					importPaths.set(importName, file);
 					if (resourceLoader != null) {
 						final loadedFile:Dynamic = resourceLoader.loadMultiAnim(file);
 						if (loadedFile == null) error('could not load multiAnim file $file');
@@ -5798,7 +5802,7 @@ class MacroManimParser {
 				error('unexpected content after main body: ${peek()}');
 		}
 
-		return {nodes: nodes, imports: imports, customFilterRefs: customFilterRefs};
+		return {nodes: nodes, imports: imports, customFilterRefs: customFilterRefs, importPaths: importPaths};
 	}
 
 	// ===================== Graphics =====================

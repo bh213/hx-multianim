@@ -1445,8 +1445,11 @@ typedef Node = {
 @:nullSafety
 typedef MultiAnimResult = {
 	var nodes: Map<String, Node>;
+	/** The parse of each imported file by its alias: filled by the loader; empty in a parse with none. */
 	var imports:Map<String, Dynamic>;
 	var customFilterRefs:Array<CustomFilterRef>;
+	/** Alias to path of every `import "file" as "alias"`, with or without a loader (`ManimNeedsTools.needsOf`). */
+	var importPaths:Map<String, String>;
 }
 
 #if (!macro && !noheaps)

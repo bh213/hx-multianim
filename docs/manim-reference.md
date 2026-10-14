@@ -9,7 +9,7 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | Construct | Description |
 |-----------|-------------|
 | `version: 1.0` | Required file header declaring format version |
-| `import "file" as "name"` | Import external .manim file for cross-file references |
+| `import "file" as "name"` | Import external .manim file for cross-file references (a parse with no loader keeps the names in `MultiAnimResult.importPaths`) |
 | `#name programmable(params) { ... }` | Define a parameterized component (the main building block) |
 | `#name data { ... }` | Define static typed data block with records and fields |
 | `#name curves { ... }` | Define named interpolation curves |
@@ -1690,6 +1690,39 @@ public function onEvent(wrapper:UIElementEventWrapper):Void {
 | `@:build(ProgrammableCodeGen.buildAll())` | Trigger code generation on class |
 
 Generated factories provide type-safe `create()`, `createFrom()`, parameter setters, and element accessors.
+
+---
+
+## What a File Needs (`ManimNeedsTools.needsOf`)
+
+Every outside name a `.manim` file reaches for, from the parse alone, so a tool can copy exactly what a file uses (an art library's take). Nothing is loaded: no app, no window, no resource loader, on HashLink and on JS alike.
+
+A name written through a `$reference` is listed by every value it can have: each value of an enum, bool or range parameter (`"btn_" + $style` over `style:[a, b]` is `btn_a`, `btn_b`; `'lvl_${$lvl + 1}'` over `lvl:1..3` is `lvl_2` to `lvl_4`; a bool is `0`/`1`, as the builder writes it), a `@final`'s value, both arms of a `?(…) a : b`, and for a parameter that can be given any value (a string, a number) its default and what this file's `staticRef`s and `dynamicRef`s pass it, with `fromParameters` set. At most 64 values a name; past that it is not known.
+
+```haxe
+import bh.multianim.MacroManimParser;
+import bh.multianim.ManimNeeds;
+
+final result = MacroManimParser.parseFile(text, "file.manim", null);   // no loader: imports are kept as names
+final needs:ManimNeeds = ManimNeedsTools.needsOf(result);
+```
+
+| Field | What it lists |
+|-------|---------------|
+| `sheets:Map<String, Null<Array<String>>>` | An atlas by name with the cells named in it: `sheet("ui", "button")`, a nine-patch, a text image, a cursor, a stateanim construct, a tileset's atlas with its terrain, side and layer cells. `null` cells is the whole sheet: a cell that is an expression over a parameter that can be given any value or over a loop variable, a `tiles($b, $t, "sheet")` iterator, an autotile `sheet:` + `prefix:`, an inline atlas cut out of a sheet. A sheet the file defines itself (`#name atlas2`) is not a need |
+| `tiles:Array<String>` | Image files: `file("x.png")`, an autotile's or an inline atlas's `file:`, a palette image |
+| `fonts:Array<String>` | `text()`/`richText()` fonts, their styles and `autoFit` fonts, a generated tile's font, `$ctx.font("name")` wherever a value is written, a `font` setting a widget is given (`settings { font => "m6x11" }`, `item.font => "…"`) |
+| `anims:Array<String>` | `.anim` files: `stateanim("file.anim", …)`, a particle group's `animFile`, a `stateanim($b, "file.anim", …)` iterator, `extraPoint("file.anim", …)` |
+| `imports:Map<String, String>` | Alias to path of every `import "file" as "alias"` (`MultiAnimResult.importPaths`, kept with or without a loader; `imports` holds the loaded files when there is one) |
+| `filters:Array<String>` | Custom filters by name (lower case, as parsed), registered in code with `FilterManager` |
+| `cursors:Array<String>` | Cursors an interactive names (`cursor => "sword"`, `cursor.hover`, `cursor.disabled`) that are neither `CursorManager`'s own (`pointer`, `move`, `text`, …: `ManimNeedsTools.BUILT_IN_CURSORS`) nor in the file's `#name cursor { }` blocks; lower case, as `CursorManager` keeps them |
+| `fromParameters:Bool` | A name could not be listed whole: an expression over a parameter that can be given values other than those listed (a string or number parameter), over a loop variable, or worked out in a way the parse does not follow. A cell so is its sheet whole (`null` cells); a sheet whose own name cannot be known is not listed |
+| `sounds:Array<String>` | Full names `bank.sound` the file plays: a widget's `settings { sound.<key> => "…" }`, an interactive's `sound.<key> => "…"` metadata (`none` names nothing) |
+| `music:Array<String>` | Full names `bank.track` a screen's programmable names with `settings { music => "…" }` |
+| `soundFiles:Array<String>` | The files the file's own `#name sounds { }` (`file:`, `files:`, a layer's) and `#name music { }` (a track's `file:`) blocks name. A `#name mix { }` block is the game's, not a need |
+| `uiSounds:Array<String>` | The keys of the `#ui` sounds bank the file's widgets and interactives play by default, having no `sound.<key>` of their own. The parse does not know which widget the host makes of a programmable, so it goes by the parameters each widget passes: an `interactive()` plays `click` (not with `events:` that leave clicks out); a programmable with `status` and `buttonText` (a button) `hover` and `click`; with `status` and `checked` (a checkbox, or a tab or radio button, whose tabs and radio group send a change) `toggle` and `change`; with `status` and `panel` (a dropdown) `open`, `close` and `change`; with `status`, `value` and `size` (a slider), with `scrollPosition`, `scrollableHeight` and `panelHeight` (a scrollbar), or with `status`, `title` and `selected` (a list's item) `change`; any other (a text input, a card, a grid cell) none. The runtime plays what the widget sends (`UIScreenBase.playWidgetSound`), so this is at most what a widget of it could play |
+
+Arrays are sorted and without repeats. A `.anim` file's counterpart is `ManimNeedsTools.animNeedsOf(parsed.loaded())` (`AnimNeeds`: its `sheet:` with every frame name its playlists and layers write, `${state}` expanded over the file's states; its `file:` images; the `bank.sound` names of its `sounds { }` block); see `docs/anim-reference.md`. Nothing here is validated against what exists: that is the builder's, with a loader.
 
 ---
 

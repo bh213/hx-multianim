@@ -18,6 +18,7 @@
 | `src/bh/multianim/MultiAnimParser.hx` | Shared parser AST types + thin `parseFile` facade that delegates to `MacroManimParser`. Despite the name this is ~1200 lines of enum/typedef declarations (`NodeType`, `ReferenceableValue`, `TileSource`, `DefinitionType`, …), not parsing logic. Candidate for rename to `MultiAnimTypes.hx` / split. |
 | `src/bh/multianim/MultiAnimBuilder.hx` | Builder for resolving parsed structures |
 | `src/bh/multianim/MacroManimParser.hx` | Main parser for `.manim` files (used at both compile-time and runtime) |
+| `src/bh/multianim/ManimNeeds.hx` | What a file needs of its host, from the parse alone: `ManimNeedsTools.needsOf(result)` (sheets and cells, tiles, fonts, anims, imports, custom filters, cursors, sounds, music, sound files, `ui` bank keys; a `$reference` by every value it can have; `fromParameters`) and `animNeedsOf(loaded)` for `.anim`. No Heaps, no loader: for a CLI, the studio, the LSP |
 | `src/bh/multianim/ProgrammableCodeGen.hx` | Macro code generation for `@:manim`/`@:data` |
 | `src/bh/multianim/ProgrammableBuilder.hx` | Base class for macro-generated factories |
 | `src/bh/multianim/LayoutAlignRoot.hx` | Base class for codegen instances with aligned layouts |

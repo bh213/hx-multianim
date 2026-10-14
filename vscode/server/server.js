@@ -2155,6 +2155,7 @@ var bh_multianim_MacroManimParser = function(tokens,sourceName,resourceLoader) {
 	this.sourceName = sourceName;
 	this.nodes = new haxe_ds_StringMap();
 	this.imports = new haxe_ds_StringMap();
+	this.importPaths = new haxe_ds_StringMap();
 	this.resourceLoader = resourceLoader;
 	this.uniqueCounter = 654321;
 	this.activeDefs = null;
@@ -9335,6 +9336,7 @@ bh_multianim_MacroManimParser.prototype = {
 															this.expectKeyword("as");
 															var importName = this.expectIdentifierOrString();
 															this.eatSemicolon();
+															this.importPaths.h[importName] = file;
 															if(this.resourceLoader != null) {
 																var loadedFile = this.resourceLoader.loadMultiAnim(file);
 																if(loadedFile == null) {
@@ -9781,7 +9783,7 @@ bh_multianim_MacroManimParser.prototype = {
 		if(this.tokens[this.tpos].type._hx_index != 0) {
 			this.error("unexpected content after main body: " + Std.string(this.tokens[this.tpos].type));
 		}
-		return { nodes : this.nodes, imports : this.imports, customFilterRefs : this.customFilterRefs};
+		return { nodes : this.nodes, imports : this.imports, customFilterRefs : this.customFilterRefs, importPaths : this.importPaths};
 	}
 	,parseGraphicsElements: function() {
 		var elements = [];

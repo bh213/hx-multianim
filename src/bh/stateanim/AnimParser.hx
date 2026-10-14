@@ -544,6 +544,8 @@ typedef LoadedAnimation = {
 	/** The annotations at the top level of the file. An animation's are on the animation. **/
 	var annotations:Array<AnimAnnotation>;
 	var spans:Array<AnimSpan>;
+	/** The `sounds { }` block: an event's name to the full name of the sound it plays; empty when none. **/
+	var sounds:Map<String, String>;
 }
 
 /**
@@ -1286,6 +1288,7 @@ class AnimParser implements AnimParserResult {
 			defaults: {fps: defaultFps, loop: defaultLoop, flipX: defaultFlipX, flipY: defaultFlipY},
 			annotations: annotations,
 			spans: spans,
+			sounds: sounds,
 		};
 	}
 
