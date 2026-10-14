@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-10-11 18:42:06</div>
+    <div class="timestamp">Generated: 2026-10-14 14:18:28</div>
     <div class="summary">
         <strong>Summary:</strong> 105 tests,         <span style="color: #4CAF50;">105 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1s, visual 25.4s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.1s, visual 25.5s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>10644 assertions:</strong>             <span style="color: #4CAF50;">10644 passed</span>
+            <strong>11047 assertions:</strong>             <span style="color: #4CAF50;">11047 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -708,6 +708,77 @@
                 <div class="unit-method pass">testApply_UnconditionalParamUpdate_Builder: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testApply_UnconditionalParamUpdate_Codegen: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testRootLevelExtendedProps_RefireOnSetParameter_Builder: OK <span class="dots">....</span></div>
+            </div>
+            <div class="unit-class">
+                <div class="unit-class-name">AudioCodegenTest</div>
+                <div class="unit-method pass">testAudioNamesAreTheFilesNamesTyped: OK <span class="dots">..............</span></div>
+                <div class="unit-method pass">testCodegenBuildsAProgrammableBesideTheAudioBlocks: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testTheBuilderSeesTheFilesBlocks: OK <span class="dots">......</span></div>
+            </div>
+            <div class="unit-class">
+                <div class="unit-class-name">AudioHooksTest</div>
+                <div class="unit-method pass">testAButtonSaysWhenThePointerComesAndGoes: OK <span class="dots">.....</span></div>
+                <div class="unit-method pass">testADropdownSaysWhenItOpensAndCloses: OK <span class="dots">......</span></div>
+                <div class="unit-method pass">testASliderSaysAChangeOnlyWhenItsValueChanges: OK <span class="dots">........</span></div>
+                <div class="unit-method pass">testASoundIsReadThroughTheResourceLoaderAndKept: OK <span class="dots">.....</span></div>
+                <div class="unit-method pass">testASoundNobodyCanLoadSaysItsName: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testTheClockTellsItsListenersOfAChange: OK <span class="dots">........</span></div>
+                <div class="unit-method pass">testTwoListenersHearOneTriggerBesideTheHandler: OK <span class="dots">....</span></div>
+            </div>
+            <div class="unit-class">
+                <div class="unit-class-name">AudioMixTest</div>
+                <div class="unit-method pass">testAMixSetsEveryBusOnce: OK <span class="dots">............</span></div>
+                <div class="unit-method pass">testAPausedBusHoldsItsPlaysWhereTheyAre: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testAScreenManagersClockReachesItsAudio: OK <span class="dots">......</span></div>
+                <div class="unit-method pass">testASnapshotFadesInAndOut: OK <span class="dots">........</span></div>
+                <div class="unit-method pass">testAVcaMultipliesIntoEveryBusItNames: OK <span class="dots">........</span></div>
+                <div class="unit-method pass">testAnUnknownSnapshotIsAnError: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testBuildMixGivesTheBlockAsWritten: OK <span class="dots">..................</span></div>
+                <div class="unit-method pass">testParsesAMixBlock: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testPitchClockFollowsTheClocksScale: OK <span class="dots">.......</span></div>
+                <div class="unit-method pass">testSnapshotsOnAreSummed: OK <span class="dots">.........</span></div>
+                <div class="unit-method pass">testTheClockPausesEvenWithNoMix: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testTheClockPutsThePausedSnapshotOnAndOff: OK <span class="dots">........</span></div>
+                <div class="unit-method pass">testTheSameMixTakenAgainKeepsItsLevelsAndSnapshots: OK <span class="dots">........</span></div>
+                <div class="unit-method pass">testWhatAMixBlockRefuses: OK <span class="dots">.............................</span></div>
+                <div class="unit-method pass">testWithoutAPausedSnapshotTheClockPausesEveryBus: OK <span class="dots">....</span></div>
+            </div>
+            <div class="unit-class">
+                <div class="unit-class-name">AudioScreenTest</div>
+                <div class="unit-method pass">testAButtonsHoverAndClickPlayTheUiBankWithNoCode: OK <span class="dots">.......</span></div>
+                <div class="unit-method pass">testADialogDucksTheMusicAndKeepsItsCallers: OK <span class="dots">......</span></div>
+                <div class="unit-method pass">testAScreenReadsItsMusicFromItsSettings: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testAScreenWithNoManagerIsSilent: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testAStateMachinePlaysItsEventsSounds: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testAWidgetsOwnSettingSaysItsSoundOrNone: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testAnInteractivesMetadataSaysItsSound: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testAnUnknownTrackIsAnError: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testMusicFollowsTheScreensAndCrossfades: OK <span class="dots">..............</span></div>
+                <div class="unit-method pass">testStopAllWritesAHistoryLine: OK <span class="dots">.......</span></div>
+                <div class="unit-method pass">testTheAnimFilesSoundsBlockIsParsed: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testTheHistoryKeepsWhatHappened: OK <span class="dots">........</span></div>
+            </div>
+            <div class="unit-class">
+                <div class="unit-class-name">AudioTest</div>
+                <div class="unit-method pass">testABankLoadedAgainReplacesTheOld: OK <span class="dots">.....</span></div>
+                <div class="unit-method pass">testABankPreparesEveryFileAndNamesItsSounds: OK <span class="dots">........</span></div>
+                <div class="unit-method pass">testAChanceOfSeventyPercentIsMissedByARollAbove: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testAScreenManagerTakesAFilesBanksAsItLoads: OK <span class="dots">.......</span></div>
+                <div class="unit-method pass">testASoundPlaysOnItsBusAtItsVolume: OK <span class="dots">........</span></div>
+                <div class="unit-method pass">testAVariantIsChosenByTheParameter: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testAnUnknownSoundIsAnError: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testBuildSoundsGivesTheBlockAsWritten: OK <span class="dots">........................................</span></div>
+                <div class="unit-method pass">testLayersStartTogetherAfterTheirDelaysByTheirOdds: OK <span class="dots">.............</span></div>
+                <div class="unit-method pass">testParsesASoundsBlock: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testShufflePlaysEveryFileBeforeAnyAgain: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testStealOldestStopsTheOldestWithItsFade: OK <span class="dots">.........</span></div>
+                <div class="unit-method pass">testStealQuietestStopsTheQuietest: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testStopFadesEveryPlayOfASoundOut: OK <span class="dots">........</span></div>
+                <div class="unit-method pass">testTheDefaultVariantPlaysWhenNoneMatches: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testThirtyHitsInAFrameAreThreeSounds: OK <span class="dots">.....</span></div>
+                <div class="unit-method pass">testTurnPlaysTheFilesInOrder: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testVolumeAndPitchAreRolledBetweenTheirEnds: OK <span class="dots">.....</span></div>
+                <div class="unit-method pass">testWhatASoundsBlockRefuses: OK <span class="dots">............................</span></div>
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">AutotileTest</div>
