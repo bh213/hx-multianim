@@ -38,6 +38,7 @@ class DevBridge implements IDevBridgeHost {
 		"inspect_programmable", "list_fonts", "list_atlases", "list_cursors", "coordinate_transform", "wait_for_idle",
 		"check_overlaps", "click_interactive", "click_button", "list_active_programmables", "list_game_ops",
 		"game_op", "get_game_events", "data_list", "data_get", "data_pick", "map_list", "map_get",
+		"audio_state", "audio_log", "audio_set",
 	];
 
 	final screenManager:ScreenManager;
@@ -450,9 +451,12 @@ class DevBridge implements IDevBridgeHost {
 		screenManager.addScreenChangeListener(screenChangeListener);
 		reloadListener = onReloadEvent;
 		screenManager.addReloadListener(reloadListener);
+		screenManager.audio.onHistory = onAudioHistory;
 	}
 
 	function unregisterListeners():Void {
+		if (Reflect.compareMethods(screenManager.audio.onHistory, onAudioHistory))
+			screenManager.audio.onHistory = null;
 		if (screenChangeListener != null) {
 			screenManager.removeScreenChangeListener(screenChangeListener);
 			screenChangeListener = null;
@@ -621,6 +625,10 @@ class DevBridge implements IDevBridgeHost {
 			case "list_fonts": handleListFonts(params);
 			case "list_atlases": handleListAtlases(params);
 			case "list_cursors": handleListCursors(params);
+			// the game's sound
+			case "audio_state": handleAudioState(params);
+			case "audio_log": handleAudioLog(params);
+			case "audio_set": handleAudioSet(params);
 			case "coordinate_transform": handleCoordinateTransform(params);
 			case "wait_for_idle": handleWaitForIdle(params);
 			// v4: layout validation
@@ -1146,6 +1154,7 @@ class DevBridge implements IDevBridgeHost {
 				app.engine.render(app);
 			};
 			paused = true;
+			screenManager.clock.paused = true;
 			trace("[DevBridge] Game paused");
 		} else if (!shouldPause && paused) {
 			if (savedLoopFunc != null) {
@@ -1153,6 +1162,7 @@ class DevBridge implements IDevBridgeHost {
 				savedLoopFunc = null;
 			}
 			paused = false;
+			screenManager.clock.paused = false;
 			trace("[DevBridge] Game resumed");
 		}
 	}
@@ -1696,6 +1706,92 @@ class DevBridge implements IDevBridgeHost {
 
 	function handleListFonts(params:Dynamic):Dynamic {
 		return {fonts: bh.base.FontManager.getRegisteredFontNames()};
+	}
+
+	// ---- The game's sound ----
+
+	/** The banks, the sounds, the mix as it stands (every bus's state, the VCAs, the snapshots on),
+	 *  the parameters, the music and the plays alive. */
+	function handleAudioState(params:Dynamic):Dynamic {
+		final audio = screenManager.audio;
+		final buses:Array<Dynamic> = [];
+		for (name in audio.busNames()) {
+			final s = audio.busState(name);
+			buses.push({name: name, volume: s.volume, paused: s.paused, lowpass: s.lowpass, pitch: s.pitch, voices: s.voices});
+		}
+		final vcas:Dynamic = {};
+		for (name in audio.vcaNames())
+			Reflect.setField(vcas, name, audio.getVca(name));
+		final parameters:Dynamic = {};
+		for (name => value in audio.parameters())
+			Reflect.setField(parameters, name, value);
+		return {
+			banks: audio.bankNames(),
+			sounds: audio.soundNames(),
+			mix: audio.hasMix() ? {buses: buses, vcas: vcas, snapshots: audio.snapshotNames(), snapshotsOn: audio.snapshotsOnNow()} : null,
+			parameters: parameters,
+			tracks: audio.trackNames(),
+			music: audio.musicPlaying,
+			instances: [for (i in audio.instances) {name: i.name, startedAt: i.startedAt, voices: i.voices.length, pending: i.pending}],
+			time: audio.time,
+			backend: Type.getClassName(Type.getClass(audio.backend)),
+		};
+	}
+
+	/** What the audio did, the last lines of its history, after `since` (an entry id) when given. */
+	function handleAudioLog(params:Dynamic):Dynamic {
+		final audio = screenManager.audio;
+		final since:Int = params != null && params.since != null ? Std.int(params.since) : 0;
+		return {entries: audio.historySince(since), time: audio.time};
+	}
+
+	/** Changes the sound from outside: `{vca, value}`, `{snapshot, on}`, `{param, value}`, `{play}`
+	 *  (a sound's name), `{stop}` (a sound's name, or "*" for all), `{music}` (a track's name, or
+	 *  "none"); several at once. */
+	function handleAudioSet(params:Dynamic):Dynamic {
+		final audio = screenManager.audio;
+		final done:Array<String> = [];
+		if (params == null)
+			throw DevBridgeError.invalidParams("audio_set: vca+value, snapshot+on, param+value, play, stop or music");
+		if (params.vca != null) {
+			if (params.value == null)
+				throw DevBridgeError.invalidParams("audio_set: a vca takes a value, 0 to 1");
+			audio.setVca(params.vca, params.value);
+			done.push('vca ${params.vca} = ${audio.getVca(params.vca)}');
+		}
+		if (params.snapshot != null) {
+			final on:Bool = params.on != null ? params.on : true;
+			audio.snapshot(params.snapshot, on);
+			done.push('snapshot ${params.snapshot} ${on ? "on" : "off"}');
+		}
+		if (params.param != null) {
+			if (params.value == null)
+				throw DevBridgeError.invalidParams("audio_set: a param takes a value, one of its labels");
+			audio.set(params.param, Std.string(params.value));
+			done.push('param ${params.param} = ${params.value}');
+		}
+		if (params.play != null) {
+			final played = audio.play(params.play);
+			done.push(played != null ? 'played ${params.play}' : 'dropped ${params.play}');
+		}
+		if (params.stop != null) {
+			final n = params.stop == "*" ? audio.stopAll() : audio.stop(params.stop);
+			done.push('stopped $n');
+		}
+		if (params.music != null) {
+			if (params.music == "none")
+				audio.stopMusic();
+			else
+				audio.playMusic(params.music);
+			done.push('music ${params.music}');
+		}
+		if (done.length == 0)
+			throw DevBridgeError.invalidParams("audio_set: nothing to do (vca+value, snapshot+on, param+value, play, stop, music)");
+		return {done: done};
+	}
+
+	function onAudioHistory(entry:bh.audio.Audio.AudioHistoryEntry):Void {
+		pushEvent("audio", {id: entry.id, time: entry.time, kind: entry.kind, name: entry.name, detail: entry.detail, timestamp: haxe.Timer.stamp()});
 	}
 
 	/** Every cursor name an interactive's `cursor =>` can use: the OS ones and the registered ones;

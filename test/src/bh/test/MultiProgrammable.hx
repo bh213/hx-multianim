@@ -5,6 +5,9 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/35-tintDemo/tintDemo.manim", "tintDemo")
 	public var tint;
 
+	@:manim("test/examples/158-audioBlocks/audioBlocks.manim", "audioBlocks")
+	public var audioBlocks;
+
 	@:manim("test/examples/36-codegenButton/codegenButton.manim", "codegenButton")
 	public var button;
 

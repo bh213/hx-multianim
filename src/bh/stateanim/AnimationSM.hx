@@ -617,18 +617,18 @@ class AnimationSM extends h2d.Object {
 				case Event(event):
 					switch event {
 						case Trigger(name):
-							onAnimationEvent(Trigger(name));
+							fireAnimationEvent(Trigger(name));
 						case TriggerData(name, meta): // (#9)
-							onAnimationEvent(TriggerData(name, meta));
+							fireAnimationEvent(TriggerData(name, meta));
 						case PointEvent(name, point):
-							onAnimationEvent(PointEvent(name, point));
+							fireAnimationEvent(PointEvent(name, point));
 						case RandomPointEvent(name, point, randomRadius):
 							final randomAngle = randomFunc() * 2 * Math.PI;
 							final r = randomFunc() * randomRadius;
 							var randomPoint = point.clone();
 							randomPoint.x += Std.int(r * Math.cos(randomAngle));
 							randomPoint.y += Std.int(r * Math.sin(randomAngle));
-							onAnimationEvent(PointEvent(name, randomPoint));
+							fireAnimationEvent(PointEvent(name, randomPoint));
 					}
 					if (playCount != playback)
 						return;
@@ -675,9 +675,54 @@ class AnimationSM extends h2d.Object {
 	public dynamic function onFinished():Void {}
 
 	/**
-		Called when an animation event is triggered.
+		Called when an animation event is triggered: the game's own handler. Others that must hear
+		the same events (a sound layer, a tool) use `addEventListener`, so no one replaces anyone.
 	**/
 	public dynamic function onAnimationEvent(event:AnimationEvent):Void {}
+
+	var eventListeners:Null<Array<AnimationEvent->Void>> = null;
+
+	/** The file's `sounds { }` block: an event's name to the sound it plays, through `audio`. */
+	public var sounds:Null<Map<String, String>> = null;
+	/** Where the sounds play: the loader's (the screen manager's) audio, set as the machine is made. */
+	public var audio:Null<bh.audio.Audio> = null;
+
+	/** Hears every event `onAnimationEvent` hears, after it. Added twice, called twice. */
+	public function addEventListener(listener:AnimationEvent->Void):Void {
+		if (eventListeners == null)
+			eventListeners = [];
+		eventListeners.push(listener);
+	}
+
+	/** Returns whether the listener was there (a method is matched by `Reflect.compareMethods`, so
+	 *  `sm.removeEventListener(this.onEvent)` works). */
+	public function removeEventListener(listener:AnimationEvent->Void):Bool {
+		if (eventListeners == null)
+			return false;
+		for (i in 0...eventListeners.length)
+			if (Reflect.compareMethods(eventListeners[i], listener)) {
+				eventListeners.splice(i, 1);
+				return true;
+			}
+		return false;
+	}
+
+	function fireAnimationEvent(event:AnimationEvent):Void {
+		onAnimationEvent(event);
+		if (eventListeners != null)
+			for (listener in eventListeners)
+				listener(event);
+		if (sounds != null && audio != null) {
+			final name:Null<String> = switch event {
+				case Trigger(name): Std.string(name);
+				case TriggerData(name, _): name;
+				case PointEvent(name, _): name;
+			};
+			final sound = name != null ? sounds.get(name) : null;
+			if (sound != null)
+				audio.play(sound);
+		}
+	}
 }
 
 /**

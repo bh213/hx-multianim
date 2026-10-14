@@ -748,6 +748,159 @@ typedef CursorDef = {
 	var line:Int;
 }
 
+/** How one of a layer's files is picked for a play. */
+@:nullSafety
+enum SoundPick {
+	/** Any, each time. */
+	PickRandom;
+	/** Every file once before any again, in a random order. */
+	PickShuffle;
+	/** In the order written, round and round. */
+	PickTurn;
+}
+
+/** What gives way when a sound is at its `voices` limit. */
+@:nullSafety
+enum SoundSteal {
+	StealOldest;
+	StealQuietest;
+	/** The new play is dropped. */
+	StealNone;
+}
+
+/** The files of a sound, or of one of its layers: picked, rolled for volume and pitch, held back
+ *  by a delay, played by chance. A sound written with its own `file:`/`files:` is one layer named "". */
+@:nullSafety
+typedef SoundLayerDef = {
+	var name:String;
+	var files:Array<String>;
+	var pick:SoundPick;
+	/** dB, rolled between the two (both 0 when not given). */
+	var volumeMinDb:Float;
+	var volumeMaxDb:Float;
+	/** A rate, 1 unchanged, rolled between the two. */
+	var pitchMin:Float;
+	var pitchMax:Float;
+	/** Seconds before the layer starts, rolled between the two. */
+	var delayMin:Float;
+	var delayMax:Float;
+	/** 0..1, the odds the layer plays at all. */
+	var chance:Float;
+	var line:Int;
+}
+
+/** One sound of a `#name sounds { }` block: `name @(cond) { … }`. Several with the same name and a
+ *  `@(…)` each are its variants, chosen by the block's parameters; one without is the default. */
+@:nullSafety
+typedef SoundDef = {
+	var name:String;
+	/** The bus it plays on; null for the block's. */
+	var bus:Null<String>;
+	var layers:Array<SoundLayerDef>;
+	/** How many plays of this sound at once; 0 is no limit. */
+	var voices:Int;
+	var steal:SoundSteal;
+	/** Seconds that must pass between two plays; 0 is none. */
+	var cooldown:Float;
+	/** 0 low, 1 normal, 2 high: which go virtual first when the engine runs out of sources. */
+	var priority:Float;
+	/** Seconds. */
+	var fadeIn:Float;
+	var fadeOut:Float;
+	var conditional:NodeConditionalValues;
+	var line:Int;
+}
+
+/** `param surface: [stone, grass]`: a labelled parameter a sound's variant is chosen by. */
+@:nullSafety
+typedef SoundParamDef = {
+	var name:String;
+	var values:Array<String>;
+	var line:Int;
+}
+
+/** What a snapshot does to one bus while it is on. */
+@:nullSafety
+enum MixChange {
+	/** The bus's plays freeze and resume. */
+	ChangePause;
+	/** So many dB on the bus, summed over the snapshots on. */
+	ChangeVolume(db:Float);
+	/** A low-pass filter keeping this share (0..1) of the highs; the lowest of the snapshots on wins. */
+	ChangeLowPass(gainHF:Float);
+	/** The bus pitched by the clock's scale. */
+	ChangePitchClock;
+}
+
+/** `bus sfx { voices: 24 }`: a bus every sound routes through; `voices` is how many of its plays
+ *  are heard at once (0 for no limit, the rest virtual). */
+@:nullSafety
+typedef MixBusDef = {
+	var name:String;
+	var voices:Int;
+	var line:Int;
+}
+
+/** `vca Effects: sfx, ui`: one volume over several buses, what a settings slider moves. */
+@:nullSafety
+typedef MixVcaDef = {
+	var name:String;
+	var buses:Array<String>;
+	var line:Int;
+}
+
+@:nullSafety
+typedef MixSnapshotBusDef = {
+	var bus:String;
+	var changes:Array<MixChange>;
+}
+
+/** `snapshot paused { sfx: pause, music: -6db lowpass 0.3, fade: 200ms }`: a named state of the
+ *  mix, blended in and out over `fade` seconds. `paused` and `dialog` are put on by the engine. */
+@:nullSafety
+typedef MixSnapshotDef = {
+	var name:String;
+	var buses:Array<MixSnapshotBusDef>;
+	var fade:Float;
+	var line:Int;
+}
+
+/** A `#name mix { }` block: the buses, VCAs and snapshots of the game's sound. One per game. */
+@:nullSafety
+typedef MixDef = {
+	var buses:Array<MixBusDef>;
+	var vcas:Array<MixVcaDef>;
+	var snapshots:Array<MixSnapshotDef>;
+}
+
+/** `track title { file: "music/title.mp3", loop: yes }`: a piece of music, one playing at a time. */
+@:nullSafety
+typedef MusicTrackDef = {
+	var name:String;
+	var file:String;
+	var loop:Bool;
+	var line:Int;
+}
+
+/** A `#name music { }` block: tracks, each `block.track` by name, on one bus. */
+@:nullSafety
+typedef MusicDef = {
+	/** The bus the tracks play on; null for `music`. */
+	var bus:Null<String>;
+	var tracks:Array<MusicTrackDef>;
+}
+
+/** A `#name sounds { }` block: a bank of sounds, each `block.sound` by name. */
+@:nullSafety
+typedef SoundsDef = {
+	/** The bus every sound of the block plays on unless it names its own; null for the default. */
+	var bus:Null<String>;
+	var params:Array<SoundParamDef>;
+	/** The params as definitions, for the conditionals. */
+	var defs:ParametersDefinitions;
+	var sounds:Array<SoundDef>;
+}
+
 // Autotile formats for terrain generation (index math in bh.base.Autotile)
 @:nullSafety
 enum AutotileFormat {
@@ -1156,6 +1309,12 @@ enum NodeType {
 	/** `#name cursor { pointer: sheet("ui", "hand"), hot: 3, 1 }`: bitmap cursors the screen
 	 *  manager registers with `CursorManager` when the file loads. Root node only. */
 	CURSORS(cursors:Array<CursorDef>);
+	/** `#name sounds { … }`: a bank of sounds the screen manager's `audio` plays by name. */
+	SOUNDS(def:SoundsDef);
+	/** `#name mix { … }`: the buses, VCAs and snapshots of the game's sound. */
+	MIX(def:MixDef);
+	/** `#name music { … }`: tracks of music, played one at a time, by screen or from code. */
+	MUSIC(def:MusicDef);
 	GRAPHICS(elements:Array<PositionedGraphicsElement>);
 	AUTOTILE(autotileDef:AutotileDef);
 	TILESET(tilesetDef:TilesetDef);

@@ -105,6 +105,13 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	var tabAutoWired:Bool = false;
 	/** When set, ScreenManager creates a darkening overlay behind this dialog. */
 	public var modalOverlayConfig:Null<ModalOverlayConfig> = null;
+
+	/** The music this screen plays, a track's full name (`music.title`), or "none" to stop what
+	 *  plays; null says nothing, and what plays plays on. Read from the first builder result added
+	 *  to the screen whose root settings have `music =>`, or set from code before the screen shows.
+	 *  The screen manager crossfades to it as the screen comes up (a dialog that says nothing keeps
+	 *  its caller's). */
+	public var music:Null<String> = null;
 	private var _autoSyncInitialState:Bool = false;
 	var autoSyncInitialState(never, set):Bool;
 	var initialSyncDone:Bool = false;
@@ -235,6 +242,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 
 	/** Dispatch event with auto-wiring handled before onScreenEvent. Called by controllers. */
 	public function dispatchScreenEvent(event:UIScreenEvent, source:Null<UIElement>):Void {
+		playWidgetSound(event, source);
 		if (autoStatusHelper != null)
 			autoStatusHelper.handleEvent(event);
 		for (helper in panelHelpers)
@@ -247,6 +255,44 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 			}
 		if (!consumed)
 			onScreenEvent(event, source);
+	}
+
+	/** The widgets' sounds, with no code: a button's hover and click, a checkbox's toggle, a slider's,
+	 *  dropdown's, list's or tabs' change, a dropdown's open and close play `ui.<key>` when a
+	 *  `sounds` block named `ui` has it, unless the widget's own `settings { sound.<key> => … }` names
+	 *  another sound or `none`. An interactive's metadata says the same for it. */
+	function playWidgetSound(event:UIScreenEvent, source:Null<UIElement>):Void {
+		if (screenManager == null)
+			return;
+		var settings:Null<BuilderResolvedSettings> = null;
+		var inner = event;
+		switch event {
+			case UIInteractiveEvent(e, _, metadata):
+				inner = e;
+				settings = metadata;
+			default:
+				if (source != null && Std.isOfType(source, UIElementRootSettings))
+					settings = cast(source, UIElementRootSettings).getRootSettings();
+		}
+		final key = widgetSoundKey(inner);
+		if (key == null)
+			return;
+		final own = settings != null && settings.has('sound.$key') ? settings.getStringOrDefault('sound.$key', "none") : null;
+		screenManager.audio.playUi(key, own);
+	}
+
+	/** The `ui.<key>` a widget event plays, or null for an event that makes no sound. */
+	public static function widgetSoundKey(event:UIScreenEvent):Null<String> {
+		return switch event {
+			case UIHover(true): "hover";
+			case UIClick: "click";
+			case UIToggle(_): "toggle";
+			// a slider sends its float beside its int: one sound
+			case UIChangeValue(_) | UIChangeItem(_, _): "change";
+			case UIOpen: "open";
+			case UIClose: "close";
+			default: null;
+		}
 	}
 
 	/** Dispatch mouse move to higher-order components and screen override. Called by controllers.
@@ -1061,7 +1107,17 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 
 	public function addBuilderResult(r:BuilderResult, ?layer:LayersEnum):BuilderResult {
 		addObjectToLayer(r.object, layer);
+		readMusicSetting(r);
 		return r;
+	}
+
+	/** `settings { music => "music.title" }` on the first result added that has it is the screen's music. */
+	function readMusicSetting(r:BuilderResult):Void {
+		if (music == null && r.rootSettings != null && r.rootSettings.has("music")) {
+			final said = r.rootSettings.getStringOrDefault("music", "");
+			if (said != "")
+				music = said;
+		}
 	}
 
 	public function addBuilderResultWithPos(r:BuilderResult, pos:FPoint, ?layer:LayersEnum):BuilderResult {

@@ -166,6 +166,7 @@ Real-time Server-Sent Events stream for game lifecycle events. Connect with any 
 | `custom` | `name`, `data`, `timestamp` | Custom game event via `broadcastCustomEvent()` |
 | `debugger` | `id`, `data`, `paused`, `file`, `line`, `method`, `timestamp` | `debugger()` breakpoint hit (see `get_debugger_hits`) |
 | `game_event` | `id`, `name`, `data`, `timestamp` | Game event emitted via `emitEvent()` (see `get_game_events`) |
+| `audio` | `id`, `time`, `kind`, `name`, `detail`, `timestamp` | A line of the audio's history as it is written: a play or a drop, a stop, a snapshot, a VCA, a parameter, music (see `audio_log`) |
 
 **MCP logging levels:** `trace`→info, `error`→error, `screen_change`→info, `reload`→info/error/warning, `parameter_change`→debug, `custom`→info.
 
@@ -317,7 +318,7 @@ Returns: `overlaps[]` (each with `type`, `severity`, `elementA`, `elementB`, `ov
 ### Resources
 
 #### `list_resources`
-All loaded resources: sprite sheets, fonts, `.manim` files, `.anim` files.
+All loaded resources: sprite sheets, fonts, `.manim` files, `.anim` files, sounds (`sounds`, the paths given to `loader.loadSound`).
 
 No parameters.
 
@@ -341,6 +342,38 @@ Every cursor name an interactive's `cursor =>` metadata can use: the OS ones and
 No parameters.
 
 Returns: `cursors[]` — each with `name` and `kind` (`tile` for one made from a tile, with its `width`, `height`, `hotX`, `hotY`; else the OS cursor's name).
+
+### Audio
+
+The game's sound (`ScreenManager.audio`, `docs/manim.md` "Sounds"): what it has, what it did, and a hand on it.
+
+#### `audio_state`
+No parameters.
+
+Returns: `banks[]` and `sounds[]` (the `sounds` blocks loaded and every sound's full name), `mix` (null without a `mix` block; else `buses[]` each with `name`, `volume`, `paused`, `lowpass`, `pitch`, `voices` as the mix makes it now, `vcas` by name, `snapshots[]`, `snapshotsOn[]`), `parameters` by name, `tracks[]`, `music` (the track playing, or null), `instances[]` (the plays alive: `name`, `startedAt`, `voices`, `pending`), `time`, `backend` (the class playing: `bh.audio.HeapsBackend`, or `bh.audio.LogBackend` where nothing is heard).
+
+#### `audio_log`
+What the audio did: the last 200 lines of its history (plays and drops with their reason, stops (`stopAll`, as `audio_set {stop: "*"}`, is one line named `*`), snapshots on and off, VCAs, parameters, music).
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `since` | int | 0 | Only the lines after this entry id |
+
+Returns: `entries[]` — each with `id`, `time`, `kind` (`play`, `drop`, `stop`, `snapshot`, `vca`, `param`, `music`), `name`, `detail`; and `time`.
+
+#### `audio_set`
+Changes the sound from outside; several at once.
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `vca`, `value` | string, float | A VCA to 0..1 |
+| `snapshot`, `on` | string, bool | A snapshot on (default) or off |
+| `param`, `value` | string, string | A `sounds` block's parameter to one of its labels |
+| `play` | string | A sound's full name to play |
+| `stop` | string | A sound's full name to stop, or `*` for all |
+| `music` | string | A track's full name to crossfade to, or `none` to stop the music |
+
+Returns: `done[]`, a line per change. Nothing to do, or a name nothing has, is an error.
 
 ### Manipulation
 
@@ -427,7 +460,7 @@ Returns: `success`, `id`, `screen`, optional `error`/`type`.
 ### Game Control
 
 #### `pause`
-Pause or resume the game loop. DevBridge stays responsive while paused.
+Pause or resume the game loop. DevBridge stays responsive while paused. Sets `ScreenManager.clock.paused` too, so whatever listens to the clock (a sound layer) pauses with the game.
 
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|

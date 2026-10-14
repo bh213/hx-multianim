@@ -183,6 +183,18 @@ A tool reads them from `parsed.loaded()` (see [the reference](anim-reference.md#
 which, parsed with spans (`AnimParser.parseString(text, name, loader, true)`), also says where every
 value is written, so the tool can change one in place.
 
+### sounds
+The sound each event plays, with no game code: the state machine plays it through the screen manager's audio as the event fires (after the game's `onAnimationEvent` and the listeners). A sound's full name, `block.sound`, from a `#block sounds { }` block of a `.manim` file the game has loaded, in quotes.
+
+```anim
+sounds {
+    fire: "fx.shot"
+    step: "fx.step"
+}
+```
+
+Before animations; an event twice is an error. See `docs/manim.md` "Sounds".
+
 ### metadata
 Key-value pairs for storing animation metadata such as sprite dimensions, speeds, colors, etc. Supports conditional values based on state.
 

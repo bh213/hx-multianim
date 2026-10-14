@@ -17,7 +17,11 @@ enum SliderDirection {
 }
 
 class UIStandardMultiAnimSlider implements UIElement implements UIElementDisablable implements StandardUIElementEvents implements UIElementNumberValue
-		implements UIElementFloatValue implements UIElementSyncRedraw implements UIElementCursor {
+		implements UIElementFloatValue implements UIElementSyncRedraw implements UIElementCursor implements UIElementRootSettings {
+	public function getRootSettings():Null<bh.multianim.MultiAnimBuilder.BuilderResolvedSettings> {
+		return currentResult != null ? currentResult.rootSettings : null;
+	}
+
 	var status(default, set):StandardUIElementStates = SUINormal;
 	var currentResult:Null<BuilderResult> = null;
 	var root:h2d.Object;
@@ -205,7 +209,14 @@ class UIStandardMultiAnimSlider implements UIElement implements UIElementDisabla
 		}
 	}
 
+	/** The value last said by a push or a drag; a move that leaves the value where it was says
+	 *  nothing, so a listener (a sound, a setting written on change) hears only real changes. */
+	var lastSentValue:Null<Float> = null;
+
 	function triggerOnChange(value:Float, wrapper:UIElementEventWrapper) {
+		if (lastSentValue != null && lastSentValue == value)
+			return;
+		lastSentValue = value;
 		onChange(Std.int(Math.round(value)), wrapper);
 		onFloatChange(value, wrapper);
 		wrapper.control.pushEvent(UIChangeValue(Std.int(Math.round(value))), this);
@@ -219,6 +230,8 @@ class UIStandardMultiAnimSlider implements UIElement implements UIElementDisabla
 	public function setFloatValue(v:Float) {
 		currentValue = hxd.Math.clamp(v, min, max);
 		if (step > 0) currentValue = snapToStep(currentValue);
+		// a value set from code is where the slider stands: the next push says a change from here
+		lastSentValue = currentValue;
 		this.requestRedraw = true;
 	}
 

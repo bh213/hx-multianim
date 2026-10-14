@@ -1542,6 +1542,56 @@ class HotReloadTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testAReloadedFilesSoundsAreTakenAsBanksAgain():Void {
+		final fileName = "hotreload-sounds-tmp.manim";
+		final before = 'version: 1.0\n#ui sounds { click { file: "sound/click.wav" } }\n#m mix { bus ui }\n#music music { track a { file: "music/a.mp3" } }\n';
+		final after = 'version: 1.0\n#ui sounds { click { file: "sound/click2.wav" }  hover { file: "sound/hover.wav" } }\n#m mix { bus ui  snapshot dialog { ui: -6db } }\n#music music { track a { file: "music/a.mp3" }  track b { file: "music/b.mp3" } }\n';
+		withTempManim(fileName, before, filePath -> {
+			final sm = new bh.ui.screens.ScreenManager(bh.test.VisualTestBase.appInstance);
+			final log = new bh.audio.LogBackend();
+			sm.audio.backend = log;
+			sm.buildFromResourceName(fileName, false);
+			Assert.same(["ui.click"], sm.audio.soundNames());
+			Assert.isFalse(sm.audio.hasSnapshot("dialog"));
+			sys.io.File.saveContent(filePath, after);
+			final report = sm.hotReload();
+			Assert.isTrue(report.success, 'the reload: ${report.errors}');
+			Assert.same(["ui.click", "ui.hover"], sm.audio.soundNames(), "the bank is taken again");
+			sm.audio.play("ui.click");
+			Assert.equals("sound/click2.wav", log.plays()[0].path, "with the new file");
+			Assert.isTrue(sm.audio.hasSnapshot("dialog"), "the mix too");
+			Assert.same(["music.a", "music.b"], sm.audio.trackNames(), "and the music");
+		});
+	}
+
+	@Test
+	public function testAReloadedMixKeepsTheLevelsAndPutsANewDialogSnapshotOnUnderADialog():Void {
+		final fileName = "hotreload-mix-tmp.manim";
+		final before = 'version: 1.0\n#m mix { bus music  bus ui  vca Music: music  snapshot quiet { ui: -6db } }\n';
+		final after = 'version: 1.0\n#m mix { bus music  bus ui  vca Music: music  snapshot quiet { ui: -6db }  snapshot dialog { music: -6db } }\n';
+		withTempManim(fileName, before, filePath -> {
+			final sm = new bh.ui.screens.ScreenManager(bh.test.VisualTestBase.appInstance);
+			sm.audio.backend = new bh.audio.LogBackend();
+			sm.buildFromResourceName(fileName, false);
+			final menu = new SilentScreen(sm);
+			final dialog = new SilentScreen(sm);
+			sm.addScreen("menu", menu);
+			sm.addScreen("dialog", dialog);
+			sm.switchTo(menu);
+			sm.modalDialog(dialog, menu, "options");
+			sm.audio.setVca("Music", 0.3);
+			sm.audio.snapshot("quiet", true);
+			Assert.isFalse(sm.audio.hasSnapshot("dialog"));
+			sys.io.File.saveContent(filePath, after);
+			final report = sm.hotReload();
+			Assert.isTrue(report.success, 'the reload: ${report.errors}');
+			Assert.floatEquals(0.3, sm.audio.getVca("Music"), "the player's level stays");
+			Assert.isTrue(sm.audio.isSnapshotOn("quiet"), "a snapshot on stays on");
+			Assert.isTrue(sm.audio.isSnapshotOn("dialog"), "the dialog snapshot the reload added goes on under the open dialog");
+		});
+	}
+
+	@Test
 	public function testEvalManimLeavesNoRegisteredResult():Void {
 		final sm = new bh.ui.screens.ScreenManager(bh.test.VisualTestBase.appInstance);
 		final bridge = new bh.multianim.dev.DevBridge(sm, 0);
@@ -1568,6 +1618,17 @@ private class SharedFileScreen extends bh.ui.screens.UIScreen.UIScreenBase {
 		final builder = screenManager.buildFromResourceName(fileName, false);
 		addObjectToLayer(builder.buildWithParameters("item", new Map(), null, null, true).object);
 	}
+
+	public function onScreenEvent(event:bh.ui.UIElement.UIScreenEvent, source:Null<bh.ui.UIElement>):Void {}
+}
+
+/** A screen with nothing in it, for the screen manager's modes. */
+private class SilentScreen extends bh.ui.screens.UIScreen.UIScreenBase {
+	public function new(sm:bh.ui.screens.ScreenManager) {
+		super(sm);
+	}
+
+	public function load():Void {}
 
 	public function onScreenEvent(event:bh.ui.UIElement.UIScreenEvent, source:Null<bh.ui.UIElement>):Void {}
 }

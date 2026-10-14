@@ -3889,6 +3889,34 @@ class MacroManimParser {
 				final cursorNode = createNode(CURSORS(cursors), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 				return cursorNode;
 
+			case TIdentifier(s) if (isKeyword(s, "sounds")):
+				// #ui sounds { bus: ui  click { file: "sound/click.wav" }  … }: a bank of sounds
+				// the screen manager's `audio` plays by name (`ui.click`) once the file loads.
+				advance();
+				if (currentName == null) error("sounds requires a #name");
+				if (parent != null) error("sounds must be a root node");
+				expect(TCurlyOpen);
+				final soundsDef = parseSounds(currentName);
+				return createNode(SOUNDS(soundsDef), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
+
+			case TIdentifier(s) if (isKeyword(s, "mix")):
+				// #main mix { bus sfx { voices: 24 }  vca Effects: sfx, ui  snapshot paused { sfx: pause, fade: 200ms } }
+				advance();
+				if (currentName == null) error("mix requires a #name");
+				if (parent != null) error("mix must be a root node");
+				expect(TCurlyOpen);
+				final mixDef = parseMix(currentName);
+				return createNode(MIX(mixDef), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
+
+			case TIdentifier(s) if (isKeyword(s, "music")):
+				// #music music { bus: music  track title { file: "music/title.mp3", loop: yes } }
+				advance();
+				if (currentName == null) error("music requires a #name");
+				if (parent != null) error("music must be a root node");
+				expect(TCurlyOpen);
+				final musicDef = parseMusic(currentName);
+				return createNode(MUSIC(musicDef), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
+
 			case TIdentifier(s) if (isKeyword(s, "palette")):
 				advance();
 				if (currentName == null) error("palette requires a #name");
@@ -6909,6 +6937,432 @@ class MacroManimParser {
 					return bh.base.Autotile.transform(flipX, flipY, turns < 0 ? 0 : turns);
 			}
 		}
+	}
+
+	// ===================== Sounds =====================
+
+	/** A number with an optional unit written against it: `-3db`, `30ms`, `0.5s`, `70%`, `5`.
+	 *  The unit is "" when none, "%" for a percent sign. */
+	function parseUnitNumber():{value:Float, unit:String} {
+		final value = parseFloat_();
+		var unit = "";
+		switch (peek()) {
+			case TPercent:
+				advance();
+				unit = "%";
+			case TIdentifier(u) if (u.toLowerCase() == "db" || u.toLowerCase() == "ms" || u.toLowerCase() == "s"):
+				advance();
+				unit = u.toLowerCase();
+			default:
+		}
+		return {value: value, unit: unit};
+	}
+
+	/** `a..b` or `a`, each with a unit or not; a unit on one side holds for both. Units allowed are
+	 *  `allowed`; a bare number takes `bare`. The values come back in `unit`. */
+	function parseUnitRange(what:String, allowed:Array<String>, bare:String):{min:Float, max:Float, unit:String} {
+		final a = parseUnitNumber();
+		var b = a;
+		if (match(TDoubleDot))
+			b = parseUnitNumber();
+		var unit = a.unit != "" ? a.unit : b.unit;
+		if (unit == "")
+			unit = bare;
+		if (!allowed.contains(unit))
+			error('$what: expected a number in ${allowed.join(" or ")}, got "$unit"');
+		if (a.unit != "" && b.unit != "" && a.unit != b.unit)
+			error('$what: both ends of a range take the same unit, got ${a.unit} and ${b.unit}');
+		final min = a.value, max = b.value;
+		if (max < min)
+			error('$what: a range runs low to high, got $min..$max');
+		return {min: min, max: max, unit: unit};
+	}
+
+	/** Seconds from a time written as `30ms`, `0.3s` or a bare number of milliseconds. */
+	function parseSecondsRange(what:String):{min:Float, max:Float} {
+		final r = parseUnitRange(what, ["ms", "s"], "ms");
+		if (r.min < 0)
+			error('$what: a time is not negative');
+		final k = r.unit == "s" ? 1.0 : 0.001;
+		return {min: r.min * k, max: r.max * k};
+	}
+
+	/** `#name sounds { bus: ui  param surface: [stone, grass]  name @(cond) { file: "…", … } }` */
+	function parseSounds(blockName:String):SoundsDef {
+		final def:SoundsDef = {bus: null, params: [], defs: new Map(), sounds: []};
+
+		// `file:`, `files:`, `pick:`, `volume:`, `pitch:`, `delay:`, `chance:` of a layer, or of a
+		// sound written with its own files. Returns whether the key was one of these.
+		function parseLayerKey(key:String, layer:SoundLayerDef, where:String, inLayer:Bool):Bool {
+			switch (key.toLowerCase()) {
+				case "file":
+					expect(TColon);
+					if (layer.files.length > 0) error('$where: files given twice');
+					layer.files = [expectIdentifierOrString()];
+				case "files":
+					expect(TColon);
+					if (layer.files.length > 0) error('$where: files given twice');
+					layer.files = parseStringArray();
+					if (layer.files.length == 0) error('$where: files: [] is empty');
+				case "pick":
+					expect(TColon);
+					final how = expectIdentifierOrString().toLowerCase();
+					layer.pick = switch how {
+						case "random": PickRandom;
+						case "shuffle": PickShuffle;
+						case "turn": PickTurn;
+						default: error('$where: pick: random, shuffle or turn, got "$how"');
+					};
+				case "volume":
+					expect(TColon);
+					final r = parseUnitRange('$where: volume', ["db"], "db");
+					layer.volumeMinDb = r.min;
+					layer.volumeMaxDb = r.max;
+				case "pitch":
+					expect(TColon);
+					// `-5%..5%` a shift, `1.2` a rate, `0.9..1.1` a range of rates
+					final r = parseUnitRange('$where: pitch', ["%", ""], "");
+					if (r.unit == "%") {
+						layer.pitchMin = 1 + r.min / 100;
+						layer.pitchMax = 1 + r.max / 100;
+					} else {
+						layer.pitchMin = r.min;
+						layer.pitchMax = r.max;
+					}
+					if (layer.pitchMin <= 0) error('$where: a pitch stays above zero');
+				case "delay":
+					if (!inLayer) error('$where: delay: is a layer\'s (put the files in a layer)');
+					expect(TColon);
+					final r = parseSecondsRange('$where: delay');
+					layer.delayMin = r.min;
+					layer.delayMax = r.max;
+				case "chance":
+					if (!inLayer) error('$where: chance: is a layer\'s (put the files in a layer)');
+					expect(TColon);
+					final r = parseUnitRange('$where: chance', ["%", ""], "");
+					if (r.min != r.max) error('$where: chance is one number');
+					layer.chance = r.unit == "%" ? r.min / 100 : r.min;
+					if (layer.chance < 0 || layer.chance > 1) error('$where: chance is 0% to 100%');
+				default:
+					return false;
+			}
+			match(TComma);
+			return true;
+		}
+
+		function newLayer(name:String, line:Int):SoundLayerDef {
+			return {
+				name: name, files: [], pick: PickRandom, volumeMinDb: 0, volumeMaxDb: 0, pitchMin: 1, pitchMax: 1,
+				delayMin: 0, delayMax: 0, chance: 1, line: line
+			};
+		}
+
+		function parseSound(name:String, conditional:NodeConditionalValues, line:Int):SoundDef {
+			final where = '$blockName.$name';
+			final own = newLayer("", line);
+			final sound:SoundDef = {
+				name: name, bus: null, layers: [], voices: 0, steal: StealOldest, cooldown: 0, priority: 1,
+				fadeIn: 0, fadeOut: 0, conditional: conditional, line: line
+			};
+			var ownKeys = false;
+			while (!match(TCurlyClosed)) {
+				final keyLine = peekToken().line;
+				final key = expectIdentifierOrString();
+				switch (key.toLowerCase()) {
+					case "layer":
+						final layerName = expectIdentifierOrString();
+						for (l in sound.layers)
+							if (l.name == layerName) error('$where: layer $layerName is given twice');
+						expect(TCurlyOpen);
+						final layer = newLayer(layerName, keyLine);
+						while (!match(TCurlyClosed)) {
+							final k = expectIdentifierOrString();
+							if (!parseLayerKey(k, layer, '$where layer $layerName', true))
+								error('$where layer $layerName: unknown key "$k" (file, files, pick, volume, pitch, delay, chance)');
+						}
+						if (layer.files.length == 0) error('$where layer $layerName: no file');
+						sound.layers.push(layer);
+					case "bus":
+						expect(TColon);
+						sound.bus = expectIdentifierOrString();
+						match(TComma);
+					case "voices":
+						expect(TColon);
+						sound.voices = parseInteger();
+						if (sound.voices < 0) error('$where: voices is 0 (no limit) or more');
+						match(TComma);
+					case "steal":
+						expect(TColon);
+						final how = expectIdentifierOrString().toLowerCase();
+						sound.steal = switch how {
+							case "oldest": StealOldest;
+							case "quietest": StealQuietest;
+							case "none": StealNone;
+							default: error('$where: steal: oldest, quietest or none, got "$how"');
+						};
+						match(TComma);
+					case "cooldown":
+						expect(TColon);
+						final r = parseSecondsRange('$where: cooldown');
+						if (r.min != r.max) error('$where: cooldown is one time');
+						sound.cooldown = r.min;
+						match(TComma);
+					case "priority":
+						expect(TColon);
+						final p = expectIdentifierOrString().toLowerCase();
+						sound.priority = switch p {
+							case "low": 0;
+							case "normal": 1;
+							case "high": 2;
+							default: error('$where: priority: low, normal or high, got "$p"');
+						};
+						match(TComma);
+					case "fade":
+						expect(TColon);
+						var any = false;
+						while (true) {
+							switch (peek()) {
+								case TIdentifier(d) if (isKeyword(d, "in") || isKeyword(d, "out")):
+									advance();
+									final r = parseSecondsRange('$where: fade $d');
+									if (r.min != r.max) error('$where: fade $d is one time');
+									if (isKeyword(d, "in")) sound.fadeIn = r.min else sound.fadeOut = r.min;
+									any = true;
+								default:
+									break;
+							}
+						}
+						if (!any) error('$where: fade: in <time> and/or out <time>');
+						match(TComma);
+					default:
+						if (!parseLayerKey(key, own, where, false))
+							error('$where: unknown key "$key" (file, files, pick, volume, pitch, bus, voices, steal, cooldown, priority, fade, layer)');
+						ownKeys = true;
+				}
+			}
+			if (own.files.length > 0) {
+				if (sound.layers.length > 0) error('$where: a sound has its own files or layers, not both');
+				sound.layers.push(own);
+			} else if (ownKeys && sound.layers.length > 0) {
+				error('$where: volume, pitch and pick go on the layers when a sound has layers');
+			}
+			if (sound.layers.length == 0) error('$where: no file (file: "…", files: […] or a layer { })');
+			return sound;
+		}
+
+		while (!match(TCurlyClosed)) {
+			final line = peekToken().line;
+			switch (peek()) {
+				case TSemiColon:
+					advance();
+				case TIdentifier(s) if (isKeyword(s, "bus") && isPropertyColon()):
+					advance();
+					expect(TColon);
+					if (def.bus != null) error('$blockName: bus given twice');
+					def.bus = expectIdentifierOrString();
+					match(TComma);
+				case TIdentifier(s) if (isKeyword(s, "param")):
+					advance();
+					final paramName = expectIdentifierOrString();
+					expect(TColon);
+					final values = parseStringArray();
+					if (values.length == 0) error('$blockName: param $paramName: [] names no values');
+					if (def.defs.exists(paramName)) error('$blockName: param $paramName is given twice');
+					def.params.push({name: paramName, values: values, line: line});
+					def.defs.set(paramName, {name: paramName, type: PPTEnum(values), defaultValue: Index(0, values[0])});
+					match(TComma);
+				default:
+					final soundName = expectIdentifierOrString();
+					var conditional:NodeConditionalValues = NoConditional;
+					if (match(TAt)) {
+						expect(TOpen);
+						final conditions = parseConditionalParameters(def.defs);
+						for (paramName => cv in conditions) {
+							if (!def.defs.exists(paramName))
+								error('$blockName.$soundName: @($paramName => …) names no param of the block (param $paramName: [a, b] above it)');
+							switch cv {
+								case CoEnums(_) | CoIndex(_, _) | CoStringValue(_) | CoAny | CoNot(_) | CoAnyOf(_):
+								default:
+									error('$blockName.$soundName: a variant is chosen by a param\'s label, @($paramName => stone) or [stone, dirt]');
+							}
+						}
+						conditional = Conditional(conditions, false);
+					}
+					for (other in def.sounds)
+						if (other.name == soundName && other.conditional.match(NoConditional) && conditional.match(NoConditional))
+							error('$blockName.$soundName is given twice (variants take a @(param => label) each)');
+					expect(TCurlyOpen);
+					def.sounds.push(parseSound(soundName, conditional, line));
+			}
+		}
+		if (def.sounds.length == 0) error('$blockName: sounds block has no sounds (name { file: "…" })');
+		return def;
+	}
+
+	/** `#main mix { bus music  bus sfx { voices: 24 }  vca Music: music  snapshot paused { sfx: pause, music: -6db lowpass 0.3, fade: 200ms } }` */
+	function parseMix(blockName:String):MixDef {
+		final def:MixDef = {buses: [], vcas: [], snapshots: []};
+		function hasBus(name:String):Bool {
+			for (b in def.buses)
+				if (b.name == name)
+					return true;
+			return false;
+		}
+		while (!match(TCurlyClosed)) {
+			final line = peekToken().line;
+			switch (peek()) {
+				case TSemiColon:
+					advance();
+				case TIdentifier(s) if (isKeyword(s, "bus")):
+					advance();
+					final busName = expectIdentifierOrString();
+					if (hasBus(busName)) error('$blockName: bus $busName is given twice');
+					var voices = 0;
+					if (match(TCurlyOpen)) {
+						while (!match(TCurlyClosed)) {
+							final key = expectIdentifierOrString();
+							switch (key.toLowerCase()) {
+								case "voices":
+									expect(TColon);
+									voices = parseInteger();
+									if (voices < 0) error('$blockName: bus $busName: voices is 0 (no limit) or more');
+								default:
+									error('$blockName: bus $busName: unknown key "$key" (voices)');
+							}
+							match(TComma);
+						}
+					}
+					def.buses.push({name: busName, voices: voices, line: line});
+					match(TComma);
+				case TIdentifier(s) if (isKeyword(s, "vca")):
+					advance();
+					final vcaName = expectIdentifierOrString();
+					for (v in def.vcas)
+						if (v.name == vcaName) error('$blockName: vca $vcaName is given twice');
+					expect(TColon);
+					final buses:Array<String> = [];
+					while (true) {
+						final busName = expectIdentifierOrString();
+						if (!hasBus(busName)) error('$blockName: vca $vcaName: no bus $busName (bus $busName above it)');
+						if (buses.contains(busName)) error('$blockName: vca $vcaName: bus $busName twice');
+						buses.push(busName);
+						if (!match(TComma)) break;
+						switch (peek()) {
+							case TIdentifier(n) if (!isKeyword(n, "bus") && !isKeyword(n, "vca") && !isKeyword(n, "snapshot")):
+							case TQuotedString(_):
+							default: break;
+						}
+					}
+					def.vcas.push({name: vcaName, buses: buses, line: line});
+				case TIdentifier(s) if (isKeyword(s, "snapshot")):
+					advance();
+					final snapName = expectIdentifierOrString();
+					for (sn in def.snapshots)
+						if (sn.name == snapName) error('$blockName: snapshot $snapName is given twice');
+					expect(TCurlyOpen);
+					final snap:MixSnapshotDef = {name: snapName, buses: [], fade: 0, line: line};
+					final where = '$blockName: snapshot $snapName';
+					while (!match(TCurlyClosed)) {
+						final key = expectIdentifierOrString();
+						expect(TColon);
+						if (isKeyword(key, "fade")) {
+							final r = parseSecondsRange('$where: fade');
+							if (r.min != r.max) error('$where: fade is one time');
+							snap.fade = r.min;
+							match(TComma);
+							continue;
+						}
+						if (!hasBus(key)) error('$where: no bus $key (bus $key above it)');
+						for (b in snap.buses)
+							if (b.bus == key) error('$where: bus $key twice');
+						final changes:Array<MixChange> = [];
+						// pause | <n>db | lowpass <0..1> | pitch clock, until a comma, the next key or the end
+						while (true) {
+							switch (peek()) {
+								case TMinus | TInteger(_) | TFloat(_):
+									final n = parseUnitNumber();
+									if (n.unit != "db" && n.unit != "") error('$where: $key: a level is in db, got "${n.unit}"');
+									changes.push(ChangeVolume(n.value));
+								case TIdentifier(w) if (isKeyword(w, "pause")):
+									advance();
+									changes.push(ChangePause);
+								case TIdentifier(w) if (isKeyword(w, "lowpass")):
+									advance();
+									final g = parseFloat_();
+									if (g < 0 || g > 1) error('$where: $key: lowpass keeps a share of the highs, 0 to 1');
+									changes.push(ChangeLowPass(g));
+								case TIdentifier(w) if (isKeyword(w, "pitch")):
+									advance();
+									expectKeyword("clock");
+									changes.push(ChangePitchClock);
+								case TComma:
+									advance();
+									break;
+								case TCurlyClosed:
+									break;
+								case TIdentifier(_) | TQuotedString(_) if (isPropertyColon()):
+									break;
+								default:
+									error('$where: $key: expected pause, a level in db, lowpass <share> or pitch clock, got ${peek()}');
+							}
+						}
+						if (changes.length == 0) error('$where: $key: says nothing (pause, -6db, lowpass 0.3, pitch clock)');
+						snap.buses.push({bus: key, changes: changes});
+					}
+					if (snap.buses.length == 0) error('$where: changes no bus');
+					def.snapshots.push(snap);
+				default:
+					error('$blockName: expected bus, vca or snapshot, got ${peek()}');
+			}
+		}
+		if (def.buses.length == 0) error('$blockName: mix block has no buses (bus sfx)');
+		return def;
+	}
+
+	/** `#music music { bus: music  track title { file: "music/title.mp3", loop: yes } }` */
+	function parseMusic(blockName:String):MusicDef {
+		final def:MusicDef = {bus: null, tracks: []};
+		while (!match(TCurlyClosed)) {
+			final line = peekToken().line;
+			switch (peek()) {
+				case TSemiColon:
+					advance();
+				case TIdentifier(s) if (isKeyword(s, "bus") && isPropertyColon()):
+					advance();
+					expect(TColon);
+					if (def.bus != null) error('$blockName: bus given twice');
+					def.bus = expectIdentifierOrString();
+					match(TComma);
+				case TIdentifier(s) if (isKeyword(s, "track")):
+					advance();
+					final trackName = expectIdentifierOrString();
+					for (t in def.tracks)
+						if (t.name == trackName) error('$blockName.$trackName is given twice');
+					expect(TCurlyOpen);
+					var file:Null<String> = null;
+					var loop = true;
+					while (!match(TCurlyClosed)) {
+						final key = expectIdentifierOrString();
+						expect(TColon);
+						switch (key.toLowerCase()) {
+							case "file":
+								if (file != null) error('$blockName.$trackName: file given twice');
+								file = expectIdentifierOrString();
+							case "loop":
+								loop = parseBool();
+							default:
+								error('$blockName.$trackName: unknown key "$key" (file, loop)');
+						}
+						match(TComma);
+					}
+					final trackFile:String = file != null ? file : error('$blockName.$trackName: no file');
+					def.tracks.push({name: trackName, file: trackFile, loop: loop, line: line});
+				default:
+					error('$blockName: expected bus: or track name { }, got ${peek()}');
+			}
+		}
+		if (def.tracks.length == 0) error('$blockName: music block has no tracks (track title { file: "…" })');
+		return def;
 	}
 
 	// ---- Tilesets and tile maps ----

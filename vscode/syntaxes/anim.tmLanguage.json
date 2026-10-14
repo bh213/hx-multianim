@@ -118,7 +118,7 @@
 			"patterns": [
 				{
 					"name": "entity.name.class.anim",
-					"match": "\\b(animation|metadata)\\b"
+					"match": "\\b(animation|metadata|sounds)\\b"
 				},
 				{
 					"name": "keyword.control.anim",

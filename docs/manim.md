@@ -1496,6 +1496,147 @@ says which tile a name came from, `getRegisteredCursorNames()` lists every name;
 
 ---
 
+## Sounds
+
+A bank of sounds, played by name from code, never by file:
+
+```
+#fx sounds {
+  bus: sfx
+  param surface: [stone, grass]
+
+  coin { file: "sound/coin.wav", bus: ui }
+  hit  { files: ["sound/hit_1.wav", "sound/hit_2.wav", "sound/hit_3.wav"], pick: shuffle,
+         volume: -5db..-1db, pitch: -5%..5%, voices: 4, steal: oldest, cooldown: 30ms }
+  step @(surface => stone) { files: ["sound/step_stone_1.wav", "sound/step_stone_2.wav"], pick: turn }
+  step @(surface => grass) { file: "sound/step_grass.wav" }
+  step { file: "sound/step_any.wav" }
+  explosion {
+    voices: 2, steal: oldest, fade: out 300ms
+    layer boom   { files: ["sound/boom_1.wav", "sound/boom_2.wav"] }
+    layer debris { file: "sound/debris.wav", delay: 40..120ms, chance: 70% }
+  }
+}
+```
+
+A root node with a `#name`; its sounds are `name.sound` (`fx.coin`). The block's `bus:` is what
+every sound plays on unless it names its own; `param name: [labels]` declares a labelled parameter
+its variants are chosen by. A sound is `name { … }`, or `name @(param => label) { … }` for a variant
+(`[a, b]` and `!label` as any `@()` does); several variants of one name are tried in file order and
+the first whose `@()` matches plays, else the one without a `@()`, else nothing. A name written
+twice without a `@()` is an error.
+
+A sound's keys: `file: "…"` or `files: [...]` with `pick: random` (the default), `shuffle` (every
+file once before any again) or `turn` (in order); `volume: -3db` or a range `-5db..-1db` rolled
+per play (0 dB is the file as it is); `pitch: -5%..5%` (a shift) or `1.2` (a rate), rolled;
+`bus: name`; `voices: n`, how many plays of it at once (none by default), with `steal: oldest`
+(the default), `quietest` or `none` (the new play is dropped) for what gives way; `cooldown: 30ms`,
+the least time between two plays, a play inside it dropped; `priority: low | normal | high`, which
+plays go silent first when the engine runs out of sources (16); `fade: in 20ms out 300ms`, either
+or both. Instead of its own files a sound may have `layer name { … }` blocks, each with files,
+`pick`, `volume` and `pitch` of its own, played together, and `delay: 40..120ms` before it starts
+and `chance: 70%` that it plays at all. Times are `ms` or `s` (a bare number is ms); a range is
+`low..high`.
+
+`ScreenManager.buildFromResource` takes every `sounds` block of a file as a bank of
+`screenManager.audio` (`audio.addBanks(builder)`, again on each reload, a bank of the same name
+replaced), and every file is loaded then. From code: `audio.play("fx.hit")` (null when the
+cooldown or `steal: none` dropped it, or no variant matched), `audio.stop("fx.swell")` (over its
+`fade: out`), `audio.stopAll()`, `audio.set("surface", "grass")`, `audio.soundNames()`. A name no
+bank has is an error. `builder.buildSounds("fx")` is the block as parsed, `soundBlockNames()` the
+blocks of a file.
+
+The service plays through a backend: `HeapsBackend` (the default, `hxd.snd`; a bus is a channel
+group) or `LogBackend` (`audio.backend = new LogBackend()`: nothing is heard and every play and
+stop is a line of `entries`, with its time, sound, layer, file, bus, volume and pitch), which is
+what a test or a headless run reads. `audio.randomFunc` is every roll, for a test that wants the
+same picks every time. See `TECHNICAL-DOCS.md` "Audio".
+
+**Typed names.** `@:build(bh.audio.AudioNames.build("res/audio.manim")) class Sfx {}` reads the
+file at compile time and gives a constant per name, so a sound misspelt in code does not compile:
+`Sfx.FX_HIT` is `"fx.hit"`, `Sfx.MUSIC_TITLE` a track's full name, `Sfx.BUS_SFX`, `Sfx.VCA_MUSIC`,
+`Sfx.SNAPSHOT_DIALOG` and `Sfx.PARAM_SURFACE` the bare names (upper case, anything not a letter or
+a digit an underscore). A `@:manim` programmable in a file with these blocks builds as it would
+without them. Hot reload takes a file's blocks again as it reloads (a bank of the same name
+replaced; one the file dropped stays until the game restarts). The mix keeps what the game set: the
+levels of the VCAs it still has and the snapshots on that it still has, and the screens' audio is
+applied again, so a `dialog` snapshot the reload adds goes on under an open dialog.
+
+### The mix
+
+Buses, VCAs and snapshots, one block per game:
+
+```
+#main mix {
+  bus music
+  bus sfx { voices: 24 }
+  bus ui
+  vca Music:   music
+  vca Effects: sfx, ui
+  snapshot paused { sfx: pause, ui: pause, music: -6db lowpass 0.3, fade: 200ms }
+  snapshot dialog { music: -6db, fade: 100ms }
+  snapshot slow   { sfx: pitch clock }
+}
+```
+
+A root node with a `#name`. `bus name`, with `{ voices: n }` for how many of its plays are heard at
+once (the rest silent until one ends; none by default), is what a sound's `bus:` names; a sound that
+names none plays on a bus of its own. `vca Name: bus, bus` is one volume over several buses, what a
+settings slider moves: `audio.setVca("Music", 0.6)` (0 to 1), `getVca`. `snapshot name { … }` is a
+state of the mix, `audio.snapshot("dialog", true)` on and `false` off: for each bus it names,
+`pause` (its plays freeze, and resume), a level in dB (`-6db`), `lowpass 0.3` (a low-pass filter
+keeping that share of the highs, 0 to 1), `pitch clock` (pitched by the clock's scale), any of them
+together; `fade:` is how long its levels take, on and off. The snapshots on are summed: dB added,
+the lowest low-pass, paused if any says so. The engine puts `paused` on when the clock pauses
+(`screenManager.clock.paused`, which the DevBridge's pause sets) and off when it resumes; a mix
+without a `paused` snapshot pauses every bus then. The clock's `scale` pitches the `pitch clock`
+buses as it changes (never below `Audio.MIN_PITCH`). `audio.busState("sfx")` is a bus as all of it
+makes it now. The same block taken again (a hot reload) keeps the VCAs' levels and the snapshots on
+that it still has; another block replaces the mix whole.
+
+### Music
+
+```
+#music music {
+  bus: music
+  track title { file: "music/title.mp3", loop: yes }
+  track play  { file: "music/play.mp3" }
+}
+```
+
+A root node with a `#name`; its tracks are `name.track`. `bus:` is the bus they play on (`music`
+unless given); a track is `file:` and `loop:` (`yes` unless given). One track plays at a time:
+`audio.playMusic("music.title")` fades the one playing out and the new one in over
+`Audio.MUSIC_CROSSFADE` (half a second; `playMusic(name, 1.5)` for another), the track already
+playing plays on; `audio.stopMusic(?fade)`; `audio.musicPlaying`, `trackNames()`. A track over five
+seconds is streamed by Heaps.
+
+### Widgets, sprites and screens: sound with no code
+
+- **A widget's events** play the `ui` bank: `ui.hover` as the pointer comes over a button,
+  `ui.click` on a button's click, `ui.toggle` on a checkbox, `ui.change` on a slider's, dropdown's,
+  list's, radio's or tabs' change (a scrollbar's too), `ui.open` and `ui.close` as a dropdown's panel
+  opens and closes. A `#ui sounds { }` block that defines them is all it takes; one it leaves out is
+  silent. A widget says otherwise in its own `settings { sound.click => "ui.confirm" }` or
+  `sound.hover => none`; an interactive in its metadata, `interactive(40, 20, "buy", sound.click =>
+  "ui.change")`. (`UIScreenBase.playWidgetSound`, called for every event a screen dispatches;
+  `audio.playUi(key, ?own)` from code.)
+- **An interactive's click** plays `ui.click` too, with no word of its own: every `interactive()`
+  the screen registered with `addInteractives` (a screen's own, a panel's, a card hand's cards).
+  Its hover is silent (an interactive sends `UIEntering`, not `UIHover`). One that should make no
+  sound says `sound.click => none` in its metadata.
+- **A sprite's events** play what its `.anim` file's `sounds { fire: "fx.shot" }` block maps them to,
+  as the state machine fires them, through the loader's audio (`docs/anim.md` "sounds").
+- **A screen's music** is `settings { music => "music.title" }` on the first programmable added to it
+  that says it (or `screen.music = "music.title"` from code before it shows; `"none"` stops the
+  music, no word keeps what plays). The screen manager crossfades to it as the screen comes up: a
+  dialog that says nothing keeps its caller's, a master-and-single plays the single's, else the
+  master's. Under a dialog the `dialog` snapshot is on, when the mix has one.
+- **The DevBridge** sees and sets it: `audio_state`, `audio_log`, `audio_set`, and an `audio` event
+  for every line of `audio.history` (`docs/devbridge.md`).
+
+---
+
 ## Autotile
 
 Root-level element for procedural terrain. An autotile names a tileset and an index scheme; `builder.buildAutotile(name, grid)` then picks the right tile for every cell (or grid corner) from its neighbours and returns an `h2d.TileGroup`.
@@ -2979,7 +3120,7 @@ Components are typically created either:
 | `text` | control | string | method param | Button text override |
 | *any other* | pass-through | — | — | Forwarded to `#button` programmable (e.g. `width`, `height`, `font`, `fontColor`) |
 
-**Events:** `UIClick`
+**Events:** `UIClick`; `UIHover(over:Bool)` as the pointer comes over the button and as it leaves (a disabled button says nothing), so a sound or a tooltip needs no code of its own.
 
 ```haxe
 // Direct
@@ -3070,6 +3211,11 @@ value growing from `#start` to `#end` whichever way they lie.
 **Events:**
 - `UIChangeValue(value:Int)` — integer value (rounded)
 - `UIChangeFloatValue(value:Float)` — precise float value
+
+Both are sent only when the value changes: a push where the slider already stands, or a drag that
+moves the pointer without moving the value (along the track by less than a step, or across it), says
+nothing. A value set from code (`setFloatValue`, `setIntValue`) is where the slider stands from then on.
+The `onChange` and `onFloatChange` callbacks follow the same rule.
 
 **Custom range:** The slider maps any external `min`..`max` float range to the internal 0-100 `.manim` grid. For example, setting `min=0, max=1, step=0.1` gives a 0.0–1.0 slider with 0.1 increments, while the `.manim` grid still uses 0-100.
 
@@ -3418,7 +3564,7 @@ Combines a closed/open button with a `UIMultiAnimScrollableList` panel. Supports
 | `scrollbar.*` | prefixed pass-through | — | — | Forwarded to scrollbar sub-builder |
 | *any other* | pass-through | — | — | Forwarded to panel (main) programmable |
 
-**Events:** `UIChangeItem(index, items)`
+**Events:** `UIChangeItem(index, items)`; `UIOpen` as the panel starts to open (a click, or the pointer coming with `autoOpen`) and `UIClose` as it starts to close (a click, a choice, the pointer leaving with `autoCloseOnLeave`, a click outside).
 
 ```haxe
 // Direct with separate builders

@@ -204,7 +204,13 @@ hotReload(?resource) called
   │
   ├─ 6. REPLACE CACHED BUILDER
   │   ├─ builders.set(resource, newBuilder)
-  │   └─ loader.replaceMultiAnim(path, newBuilder)
+  │   ├─ loader.replaceMultiAnim(path, newBuilder)
+  │   ├─ newBuilder.registerCursors()            (the file's cursor blocks, again)
+  │   ├─ audio.addBanks(newBuilder)             (its sounds, mix and music blocks, again; a bank
+  │   │                                           of the same name replaced, one dropped stays; the
+  │   │                                           mix keeps its VCA levels and snapshots on)
+  │   └─ applyScreenAudio(mode)                 (when the file had any: the dialog snapshot and
+  │                                               the screens' music, as a mode change applies them)
   │
   ├─ 7. UPDATE CONTENT HASH
   │

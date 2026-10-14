@@ -173,6 +173,11 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.NinePatchModesTest());
 		testRunner.addCase(new bh.test.examples.CursorTest());
 		testRunner.addCase(new bh.test.examples.UIScrollbarWidgetTest());
+		testRunner.addCase(new bh.test.examples.AudioHooksTest());
+		testRunner.addCase(new bh.test.examples.AudioTest());
+		testRunner.addCase(new bh.test.examples.AudioMixTest());
+		testRunner.addCase(new bh.test.examples.AudioScreenTest());
+		testRunner.addCase(new bh.test.examples.AudioCodegenTest());
 		#if MULTIANIM_DEV
 		testRunner.addCase(new bh.test.examples.HotReloadTest());
 		testRunner.addCase(new bh.test.examples.DevBridgeTest());

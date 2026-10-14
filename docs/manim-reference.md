@@ -783,6 +783,80 @@ Root node, needs a `#name`; one entry a line or `;`-separated; a name twice is a
 
 ---
 
+## Sounds
+
+```manim
+#fx sounds {
+  bus: sfx                               // what every sound of the block plays on unless it names its own
+  param surface: [stone, grass]          // a labelled parameter variants are chosen by
+  coin { file: "sound/coin.wav", bus: ui }
+  hit  { files: ["sound/hit_1.wav", "sound/hit_2.wav"], pick: shuffle, volume: -5db..-1db, pitch: -5%..5%,
+         voices: 4, steal: oldest, cooldown: 30ms, priority: high, fade: in 0ms out 100ms }
+  step @(surface => stone) { file: "sound/step_stone.wav" }   // a variant; the one without @() is the default
+  step { file: "sound/step.wav" }
+  explosion {
+    voices: 2
+    layer boom   { files: ["sound/boom_1.wav", "sound/boom_2.wav"] }
+    layer debris { file: "sound/debris.wav", delay: 40..120ms, chance: 70% }
+  }
+}
+```
+
+Root node, needs a `#name`; its sounds are `name.sound`. `ScreenManager.buildFromResource` takes every block as a bank of `screenManager.audio` (`audio.addBanks(builder)`; `buildSounds(name)`, `soundBlockNames()`). From code: `audio.play("fx.hit")` (null when dropped: cooldown, `steal: none`, no variant), `audio.stop(name, ?fade)`, `audio.stopAll()`, `audio.set("surface", "grass")`, `audio.soundNames()`; `audio.backend = new LogBackend()` for a log instead of sound.
+
+| Key | On | Description |
+|-----|----|-------------|
+| `bus:` | block, sound | The bus it plays on |
+| `param name: [a, b]` | block | A labelled parameter; a sound's `@(name => a)` picks a variant by it |
+| `file:` / `files: [...]` | sound, layer | Its files; `pick: random` (default), `shuffle` (each once before any again), `turn` (in order) |
+| `volume:` | sound, layer | `-3db`, or `-5db..-1db` rolled per play |
+| `pitch:` | sound, layer | `-5%..5%` a shift, `1.2` a rate, either as a range |
+| `voices:` | sound | Plays of it at once; `steal: oldest` (default), `quietest`, `none` (the new one dropped) |
+| `cooldown:` | sound | Least time between plays, `30ms` / `0.5s` (bare is ms) |
+| `priority:` | sound | `low`, `normal`, `high`: which go silent first past 16 sources |
+| `fade:` | sound | `in <time>` and/or `out <time>` |
+| `layer name { }` | sound | Files played together, in place of the sound's own; `delay: 40..120ms`, `chance: 70%` |
+
+### Mix
+
+```manim
+#main mix {
+  bus music
+  bus sfx { voices: 24 }                 // how many of its plays are heard at once (none: no limit)
+  vca Effects: sfx, ui                   // one volume over several buses: audio.setVca("Effects", 0.6)
+  snapshot paused { sfx: pause, music: -6db lowpass 0.3, fade: 200ms }   // audio.snapshot("paused", true)
+  snapshot slow   { sfx: pitch clock }
+}
+```
+
+Root node, needs a `#name`, one per game. A snapshot's bus takes `pause`, a level in dB, `lowpass <0..1>` (the share of highs kept) and `pitch clock`, together; `fade:` how long its levels take. The snapshots on are summed (dB added, the lowest low-pass, paused if any). `paused` goes on with `screenManager.clock.paused` (without it every bus pauses); the clock's `scale` pitches `pitch clock` buses. From code: `setVca`, `getVca`, `snapshot(name, on)`, `isSnapshotOn`, `busState(bus)`; `builder.buildMix(name)`, `mixBlockNames()`.
+
+### Music
+
+```manim
+#music music {
+  bus: music                                              // the bus the tracks play on (music unless given)
+  track title { file: "music/title.mp3", loop: yes }     // name.track; loop: yes unless given
+  track play  { file: "music/play.mp3" }
+}
+```
+
+Root node, needs a `#name`. One track at a time: `audio.playMusic("music.title", ?crossfade)` (half a second unless given; the same track plays on), `stopMusic(?fade)`, `musicPlaying`, `trackNames()`; `builder.buildMusic(name)`, `musicBlockNames()`.
+
+### Sound with no code
+
+| Where | Key | Description |
+|-------|-----|-------------|
+| a widget's `settings { }` or an interactive's metadata | `sound.<key> => "block.sound"` or `none` | What the event plays instead of `ui.<key>`; keys `hover`, `click`, `toggle`, `change`, `open`, `close` |
+| a screen's programmable `settings { }` | `music => "block.track"` or `none` | The screen's music, crossfaded to as it comes up (the first programmable added to the screen that says it) |
+| an `.anim` file | `sounds { event: "block.sound" }` | The sound each event plays, by the state machine |
+
+Without a `#ui sounds { }` block the widgets are silent; one that defines `hover`, `click`, `toggle`, `change`, `open`, `close` plays them for every widget, and `click` for every click of an `interactive()` the screen registered (`addInteractives`: a screen's own, a panel's, a card hand's cards; their hover is silent) unless its metadata says `sound.click => none`. DevBridge: `audio_state`, `audio_log`, `audio_set`, the `audio` event.
+
+**Typed names:** `@:build(bh.audio.AudioNames.build("res/audio.manim")) class Sfx {}` gives `Sfx.FX_HIT` (`"fx.hit"`), `Sfx.MUSIC_TITLE`, `Sfx.BUS_SFX`, `Sfx.VCA_MUSIC`, `Sfx.SNAPSHOT_DIALOG`, `Sfx.PARAM_SURFACE` from the file at compile time. Hot reload takes a file's blocks again as it reloads; the mix keeps its VCA levels and the snapshots on that it still has, and the screens' audio is applied again (a `dialog` snapshot the reload adds goes on under an open dialog).
+
+---
+
 ## Autotile
 
 `#name autotile { ... }` (root level). Build terrain with `builder.buildAutotile(name, grid, ?where, x0 = 0, y0 = 0)` (`grid[y][x]`, non-zero = terrain; `where` the positions drawn, in the format's own; `x0`, `y0` the cell `grid[0][0]` stands for, so a tile map draws one chunk of itself from grids over that chunk alone); single tiles with `builder.getAutotileTile(name, index, x, y)` or `generated(autotile(name, index))`; `builder.getAutotileRotation(name, index, x, y)` says the quarter turns (0–3) a turned mapping gives the tile a position draws, which `generated(autotile(name, index))` shows unturned.

@@ -98,6 +98,12 @@ class ScreenManager {
 	final failedScreens:Map<String, String> = [];
 	var builders:Map<hxd.res.Resource, MultiAnimBuilder> = [];
 	public var tweens(default, null):TweenManager = new TweenManager();
+	/** Paused or not, and how fast the game runs: the DevBridge's pause sets it, a game's own pause
+	 *  and slow motion set it, and services (sound) listen. A signal only; nothing here stops for it. */
+	public var clock(default, null):bh.base.Clock = new bh.base.Clock();
+	/** The game's sounds, played by name (`audio.play("ui.click")`) from the `sounds` blocks of the
+	 *  files loaded here, through Heaps unless `audio.backend` is swapped (a `LogBackend` for tests). */
+	public var audio(default, null):bh.audio.Audio;
 	var screenChangeListeners:Array<ScreenChangeListener> = [];
 	public var isTransitioning(default, null):Bool = false;
 	var transitionCleanup:Null<Void -> Void> = null;
@@ -125,6 +131,10 @@ class ScreenManager {
 	public function new(app:hxd.App, ?loader, ?sceneLayerConfig:SceneLayerConfig) {
 		this.app = app;
 		this.loader = loader ?? createLoader();
+		this.audio = new bh.audio.Audio(new bh.audio.HeapsBackend(this.loader));
+		this.audio.clock = clock;
+		// an .anim's sounds { } play through it, as the loader makes the state machines
+		this.loader.audio = this.audio;
 		this.window = hxd.Window.getInstance();
 		final sl = sceneLayerConfig;
 		final content = sl?.content ?? 2;
@@ -181,8 +191,36 @@ class ScreenManager {
 		screenChangeListeners.remove(listener);
 	}
 
+	/** The music of a mode: a dialog's own, else its caller's; a master-and-single's single's, else
+	 *  the master's. Null when no screen says. */
+	function musicFor(screenMode:ScreenManagerMode):Null<String> {
+		inline function of(screen:UIScreen):Null<String>
+			return Std.isOfType(screen, UIScreenBase) ? cast(screen, UIScreenBase).music : null;
+		return switch screenMode {
+			case None: null;
+			case Single(single): of(single);
+			case MasterAndSingle(master, single): of(single) ?? of(master);
+			case Dialog(dialog, _, previousMode, _): of(dialog) ?? musicFor(previousMode);
+		};
+	}
+
+	/** As the mode changes: the `dialog` snapshot on under a dialog and off after it, and the
+	 *  music the screens say crossfaded to ("none" stops it; no word keeps what plays). */
+	function applyScreenAudio(newMode:ScreenManagerMode):Void {
+		if (audio.hasSnapshot(bh.audio.Audio.DIALOG_SNAPSHOT))
+			audio.snapshot(bh.audio.Audio.DIALOG_SNAPSHOT, newMode.match(Dialog(_, _, _, _)));
+		final music = musicFor(newMode);
+		if (music == null)
+			return;
+		if (music == "none")
+			audio.stopMusic();
+		else
+			audio.playMusic(music);
+	}
+
 	function notifyScreenChange(previousMode:ScreenManagerMode, newMode:ScreenManagerMode,
 			entering:Null<Array<UIScreen>>, leaving:Null<Array<UIScreen>>):Void {
+		applyScreenAudio(newMode);
 		if (screenChangeListeners.length == 0) return;
 		var action = switch newMode {
 			case Dialog(_, _, _, _): "dialog_open";
@@ -305,6 +343,7 @@ class ScreenManager {
 	public function update(dt:Float):Void {
 		fitModalOverlayToScene();
 		tweens.update(dt);
+		audio.update(dt);
 		#if MULTIANIM_DEV
 		if (devBridge != null) devBridge.tick();
 		#end
@@ -377,6 +416,9 @@ class ScreenManager {
 		// The file's `#name cursor { }` blocks: registered by name, so its interactives' `cursor =>`
 		// metadata and `CursorManager.getCursor(name)` find them (again on every reload).
 		built.registerCursors();
+		// The file's `#name sounds { }` blocks: banks of `audio`, its sounds `name.sound` from here on
+		// (a block of the same name loaded again, as on a reload, replaces the bank).
+		audio.addBanks(built);
 		#if MULTIANIM_TRACE
 		trace('Built ${resource.entry.name} with reload $enableReload');
 		#end
@@ -1609,9 +1651,15 @@ class ScreenManager {
 			return report;
 		}
 
-		// 6. Replace cached builder
+		// 6. Replace cached builder; the file's cursors are registered again and its sounds, mix and
+		// music blocks taken again (a bank of the same name replaced; one the file dropped stays; the
+		// mix keeps its VCA levels and snapshots on). The screens' audio is applied again, as a mode
+		// change would: a `dialog` snapshot the reload added goes on under an open dialog.
 		builders.set(fileEntry.resource, newBuilder);
 		loader.replaceMultiAnim(path, newBuilder);
+		newBuilder.registerCursors();
+		if (audio.addBanks(newBuilder) > 0)
+			applyScreenAudio(mode);
 
 		// 7. Update content hash
 		fileChangeDetector.updateHash(path, content);

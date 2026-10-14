@@ -9,8 +9,12 @@ import h2d.Object;
 import h2d.col.Point;
 
 class UIStandardMultiAnimButton implements UIElement implements UIElementDisablable implements StandardUIElementEvents implements UIElementCursor
-		implements UIElementText {
+		implements UIElementText implements UIElementRootSettings {
 	final result:BuilderResult;
+
+	public function getRootSettings():Null<bh.multianim.MultiAnimBuilder.BuilderResolvedSettings> {
+		return result.rootSettings;
+	}
 	var buttonText:String;
 
 	public var disabled(default, set):Bool = false;
@@ -101,8 +105,10 @@ class UIStandardMultiAnimButton implements UIElement implements UIElementDisabla
 			case OnPushOutside(_):
 			case OnEnter:
 				result.setParameter("status", "hover");
+				wrapper.control.pushEvent(UIHover(true), this);
 			case OnLeave:
 				result.setParameter("status", "normal");
+				wrapper.control.pushEvent(UIHover(false), this);
 			case OnKey(up, key):
 			case OnWheel(dir):
 			case OnMouseMove:

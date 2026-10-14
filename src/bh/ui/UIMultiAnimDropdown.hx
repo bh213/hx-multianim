@@ -25,7 +25,11 @@ private enum AnimState {
 @:nullSafety
 class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisablable implements UIElementUpdatable implements StandardUIElementEvents
 		implements UIElementListValue implements UIElementSubElements implements UIElementCustomAddToLayer
-		implements UIElementCursor implements UIElementPriority {
+		implements UIElementCursor implements UIElementPriority implements UIElementRootSettings {
+	public function getRootSettings():Null<bh.multianim.MultiAnimBuilder.BuilderResolvedSettings> {
+		return result.rootSettings;
+	}
+
 	final result:BuilderResult;
 	var status(default, set):StandardUIElementStates = SUINormal;
 	var root:h2d.Object;
@@ -161,7 +165,7 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 
 			triggerItemChanged(newIndex, wrapper.control);
 			if (isOpen())
-				startClose();
+				startClose(wrapper.control);
 		}
 	}
 
@@ -187,26 +191,26 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 			case OnRelease(button):
 				this.status = SUINormal;
 				if (!isOpen())
-					startOpen()
+					startOpen(wrapper.control)
 				else
-					startClose();
+					startClose(wrapper.control);
 
 			case OnReleaseOutside(_) | OnPushOutside(_):
 				this.status = SUINormal;
 				if (closeOnOutsideClick && isOpen()) {
-					startClose();
+					startClose(wrapper.control);
 				}
 
 			case OnEnter:
 				if (autoOpen && !isOpen()) {
-					startOpen();
+					startOpen(wrapper.control);
 					if (closeOnOutsideClick)
 						wrapper.control.trackOutsideClick(true);
 				}
 				this.status = SUIHover;
 			case OnLeave:
 				if (autoCloseOnLeave && isOpen()) {
-					startClose();
+					startClose(wrapper.control);
 				}
 				this.status = SUINormal;
 			case OnKey(up, key):
@@ -226,9 +230,12 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 		return value;
 	}
 
-	function startOpen() {
+	/** Opens the panel and says `UIOpen` to `control` (the screen hears it; a sound layer may). */
+	function startOpen(?control:Controllable) {
 		if (this.panelObject == null)
 			return;
+		if (control != null)
+			control.pushEvent(UIOpen, this);
 		// If the dropdown was reparented into a host programmable after
 		// initial layer assignment, lift the panel above that host's layer
 		// so it doesn't render behind the host's later siblings.
@@ -247,9 +254,12 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 		result.setParameter("panel", "open");
 	}
 
-	function startClose() {
+	/** Closes the panel and says `UIClose` to `control`. */
+	function startClose(?control:Controllable) {
 		if (this.panelObject == null)
 			return;
+		if (control != null)
+			control.pushEvent(UIClose, this);
 		final effectiveTimer = transitionTimerOverride ?? transitionTimerBase;
 		this.panelObject.alpha = 1.0;
 		this.panelStatus = Closing;

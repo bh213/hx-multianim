@@ -6062,6 +6062,9 @@ class MultiAnimBuilder {
 				Particles(createParticleImpl(particlesDef, node.uniqueNodeName));
 			case PALETTE(_): throw builderErrorAt(node, 'palette not allowed as non-root node');
 			case CURSORS(_): throw builderErrorAt(node, 'cursor not allowed as non-root node');
+			case SOUNDS(_): throw builderErrorAt(node, 'sounds not allowed as non-root node');
+			case MIX(_): throw builderErrorAt(node, 'mix not allowed as non-root node');
+			case MUSIC(_): throw builderErrorAt(node, 'music not allowed as non-root node');
 			case AUTOTILE(_): throw builderErrorAt(node, 'autotile not allowed as non-root node');
 			case TILESET(_): throw builderErrorAt(node, 'tileset not allowed as non-root node');
 			case TILEMAP(_): throw builderErrorAt(node, 'a tilemap { } definition is placed with tilemap(name)');
@@ -9600,6 +9603,69 @@ class MultiAnimBuilder {
 				out;
 			default: throw builderErrorAt(node, '$name has to be a cursor block');
 		}
+	}
+
+	// ---- Sounds ----
+
+	/** The `#name sounds { … }` block as parsed: what `ScreenManager.audio` takes as a bank
+	 *  (`audio.addBank(name, builder.buildSounds(name))`, done for every block of a file as it loads). */
+	public function buildSounds(name:String):SoundsDef {
+		final node = multiParserResult.nodes.get(name);
+		if (node == null)
+			throw builderError('could not get sounds node #${name}');
+		return switch node.type {
+			case SOUNDS(def): def;
+			default: throw builderErrorAt(node, '$name has to be a sounds block');
+		}
+	}
+
+	/** The `#name mix { … }` block as parsed: what `ScreenManager.audio` takes as its mix. */
+	public function buildMix(name:String):MixDef {
+		final node = multiParserResult.nodes.get(name);
+		if (node == null)
+			throw builderError('could not get mix node #${name}');
+		return switch node.type {
+			case MIX(def): def;
+			default: throw builderErrorAt(node, '$name has to be a mix block');
+		}
+	}
+
+	/** The `#name music { … }` block as parsed: what `ScreenManager.audio` takes as tracks `name.track`. */
+	public function buildMusic(name:String):MusicDef {
+		final node = multiParserResult.nodes.get(name);
+		if (node == null)
+			throw builderError('could not get music node #${name}');
+		return switch node.type {
+			case MUSIC(def): def;
+			default: throw builderErrorAt(node, '$name has to be a music block');
+		}
+	}
+
+	/** The names of every `music { }` block in the file. */
+	public function musicBlockNames():Array<String> {
+		final names:Array<String> = [];
+		for (name => node in multiParserResult.nodes)
+			if (node.type.match(MUSIC(_)))
+				names.push(name);
+		return names;
+	}
+
+	/** The names of every `mix { }` block in the file. */
+	public function mixBlockNames():Array<String> {
+		final names:Array<String> = [];
+		for (name => node in multiParserResult.nodes)
+			if (node.type.match(MIX(_)))
+				names.push(name);
+		return names;
+	}
+
+	/** The names of every `sounds { }` block in the file. */
+	public function soundBlockNames():Array<String> {
+		final names:Array<String> = [];
+		for (name => node in multiParserResult.nodes)
+			if (node.type.match(SOUNDS(_)))
+				names.push(name);
+		return names;
 	}
 
 	/** The names of every `cursor { }` block in the file. */

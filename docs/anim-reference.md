@@ -22,6 +22,7 @@ Free-form layout — newlines are whitespace. Comments: `//` line, `/* */` block
 | `@final` | `@final NAME = expr` | Immutable named constant. Before animations |
 | annotation | `@name` or `@name(value, key: value)` | Kept for tools, never acted on. Before an animation it is the animation's; anywhere else at the top level, the file's |
 | `metadata` | `metadata { ... }` | Key-value metadata block. Before animations |
+| `sounds` | `sounds { fire: "fx.shot" }` | The sound each event plays (its full name, `block.sound`, in quotes), through the loader's audio, by the state machine itself. An event twice is an error. Before animations |
 | `animation` | `animation name { ... }` | Full animation block |
 | `anim` | `anim name(modifiers): "sheet"` | Compact single-sheet shorthand |
 
@@ -79,6 +80,22 @@ in the file what it needs to know about it (where the frames were cut from, who 
 are errors.
 
 ---
+
+## Sounds Block
+
+```anim
+sounds {
+    fire: "fx.shot"      // the event `fire` plays the sound fx.shot of a #fx sounds { } block
+    step: "fx.step"
+}
+```
+
+An event's name to the full name of the sound it plays. When the state machine fires a `Trigger`,
+`TriggerData` or point event of that name (after `onAnimationEvent` and the listeners), it plays the
+sound through `animSM.audio`, the loader's (`ResourceLoader.getAudio()`, the screen manager's),
+set as the machine is made by `createAnimSM`; with no audio nothing plays. `parser.sounds` is the
+map; `animSM.sounds` and `animSM.audio` may be set from code. A sound no bank has is an error when
+the event fires.
 
 ## Metadata Block
 
@@ -441,6 +458,8 @@ is `animations.<i>` with `.name`, its modifiers, and `.playlist#0.0.sheet`.
 | `playWhenHidden` | `Bool` | Continue animating when not visible |
 | `onFinished` | `() -> Void` | Callback when animation finishes (fires once per completed playback) |
 | `onAnimationEvent` | `(AnimationEvent) -> Void` | Callback for playlist events. A handler may call `play()`; the new animation then starts at its own first frame |
+| `addEventListener(listener)` | `Void` | Hears every event `onAnimationEvent` hears, after it, in the order added: for a second party (a sound layer, a tool) that must not replace the game's handler |
+| `removeEventListener(listener)` | `Bool` | Whether it was there; a method is matched by `Reflect.compareMethods` |
 | `setState(name, value)` | `Void` | Changes one state while playing. The animations are reloaded for the new states; if the one playing has as many frames and events as before it goes on from the same frame and time, otherwise it starts again. A load that fails (frames the sheet has not for the new states) throws and leaves the machine as it was, playing what it played. Needs a machine made by `createAnimSM` |
 | `setStates(map)` | `Void` | Several states at once |
 | `seek(stateIndex)` | `Void` | Shows the playing animation at a state and stays there, paused (scrubbing): the frame at or before it on every layer, the per-frame filters up to it, no event |

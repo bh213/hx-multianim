@@ -29,7 +29,7 @@ class ManimKeywordInfo {
 		"DATA" => "data", "AUTOTILE" => "autotile", "ATLAS2" => "atlas2",
 		"TILESET" => "tileset", "TILEMAP" => "tilemap", "TILEMAP_REF" => "tilemap",
 		"PALETTE" => "palette", "FINAL_VAR" => "@final", "NINEPATCH" => "ninepatch",
-		"SWITCH" => "@switch", "CURSORS" => "cursor",
+		"SWITCH" => "@switch", "CURSORS" => "cursor", "SOUNDS" => "sounds", "MIX" => "mix", "MUSIC" => "music",
 	];
 
 	static final elementDescriptions:Map<String, String> = [
@@ -72,6 +72,9 @@ class ManimKeywordInfo {
 		"NINEPATCH" => "9-patch scalable image: ninepatch(sheet, tile, w, h [, stretch|tile] [, index: n] [, fps: n]) — sheet and tile may be $params",
 		"SWITCH" => "Parameter switch with O(1) enum dispatch",
 		"CURSORS" => "Bitmap cursors from atlas cells: #name cursor { pointer: sheet(\"ui\", \"hand\"), hot: 3, 1 }",
+		"SOUNDS" => "A bank of sounds played by name (block.sound): #ui sounds { bus: ui  click { file: \"sound/click.wav\", volume: -3db, voices: 4 } }",
+		"MIX" => "The game's buses, VCAs and snapshots: #main mix { bus sfx { voices: 24 }  vca Effects: sfx, ui  snapshot paused { sfx: pause, music: -6db lowpass 0.3, fade: 200ms } }",
+		"MUSIC" => "Tracks of music played one at a time, by a screen's music => or from code: #music music { track title { file: \"music/title.mp3\", loop: yes } }",
 	];
 
 	static final elementSnippets:Map<String, String> = [
@@ -91,6 +94,9 @@ class ManimKeywordInfo {
 		"TILEMAP_REF" => "tilemap(${1:name}): ${2:0}, ${3:0}",
 		"PALETTE" => "#${1:name} palette {\n\t$0\n}",
 		"CURSORS" => "#${1:cursors} cursor {\n\t${2:pointer}: sheet(\"${3:ui}\", \"${4:hand}\"), hot: ${5:0}, ${6:0}\n\t$0\n}",
+		"SOUNDS" => "#${1:ui} sounds {\n\t${2:click} { file: \"${3:sound/click.wav}\" }\n\t$0\n}",
+		"MIX" => "#${1:main} mix {\n\tbus ${2:music}\n\tbus ${3:sfx}\n\tsnapshot paused { ${3:sfx}: pause, ${2:music}: -6db, fade: 200ms }\n\t$0\n}",
+		"MUSIC" => "#${1:music} music {\n\ttrack ${2:title} { file: \"${3:music/title.mp3}\", loop: yes }\n\t$0\n}",
 		"FINAL_VAR" => "@final ${1:NAME} = $0",
 		"REPEAT" => "repeatable(\\$$1, ${2:iterator}) {\n\t$0\n}",
 		"REPEAT2D" => "repeatable2d(\\$$1, \\$$2, ${3:iterX}, ${4:iterY}) {\n\t$0\n}",
@@ -98,7 +104,7 @@ class ManimKeywordInfo {
 
 	static final topLevelElements:Array<String> = [
 		"PROGRAMMABLE", "DATA", "CURVES", "PATHS", "ANIMATED_PATH",
-		"ATLAS2", "PALETTE", "FINAL_VAR", "RELATIVE_LAYOUTS", "TILESET", "TILEMAP", "CURSORS",
+		"ATLAS2", "PALETTE", "FINAL_VAR", "RELATIVE_LAYOUTS", "TILESET", "TILEMAP", "CURSORS", "SOUNDS", "MIX", "MUSIC",
 	];
 
 	static final childElements:Array<String> = [
@@ -136,7 +142,7 @@ class ManimKeywordInfo {
 		"PATHS", "ANIMATED_PATH", "CURVES", "PARTICLES", "APPLY", "LAYERS", "MASK",
 		"REPEAT", "REPEAT2D", "STATIC_REF", "PLACEHOLDER", "DYNAMIC_REF",
 		"SLOT", "SLOT_CONTENT", "INTERACTIVE", "GRAPHICS", "DATA", "AUTOTILE",
-		"ATLAS2", "PALETTE", "FINAL_VAR", "NINEPATCH", "SWITCH", "TILESET", "TILEMAP", "TILEMAP_REF", "CURSORS",
+		"ATLAS2", "PALETTE", "FINAL_VAR", "NINEPATCH", "SWITCH", "TILESET", "TILEMAP", "TILEMAP_REF", "CURSORS", "SOUNDS", "MIX", "MUSIC",
 	];
 
 	// ---- Parameter types (from DefinitionType — exhaustive switch) ----

@@ -91,6 +91,7 @@ enum APKeywords {
 	APRandom;
 	APFrames;
 	APMetadata;
+	APSounds;
 	APAnim; // (#5) compact shorthand
 	APFinal; // (#7) @final constants
 	APElse; // (#1) @else
@@ -153,6 +154,8 @@ class AnimKeywordInfo {
 		new AnimKeywordInfo("layers", AKTopLevel, "The file's layers, drawn bottom first: `layers: shadow, body, hat`. Before animations", "layers: "),
 		new AnimKeywordInfo("metadata", AKTopLevel, "Typed key-value pairs (int, float, string, color, [list of words]). Supports state conditionals",
 			"metadata {\n\t$0\n}", true),
+		new AnimKeywordInfo("sounds", AKTopLevel, "The sound each event plays, by the screen manager's audio: `sounds { fire: \"fx.shot\" }`. Before animations",
+			"sounds {\n\t${1:event}: \"${2:block.sound}\"\n\t$0\n}", true),
 		// Animation body
 		new AnimKeywordInfo("fps", AKAnimationBody, "Frames per second", "fps: "),
 		new AnimKeywordInfo("loop", AKAnimationBody, "Loop count (yes = forever)", "loop: "),
@@ -251,7 +254,7 @@ private class AnimLexerHC {
 		"playlist" => APPlaylist, "center" => APCenter, "loop" => APLoop,
 		"animation" => APAnimation, "name" => APName, "fps" => APFps,
 		"event" => APEvent, "duration" => APDuration, "random" => APRandom,
-		"frames" => APFrames, "metadata" => APMetadata,
+		"frames" => APFrames, "metadata" => APMetadata, "sounds" => APSounds,
 		"anim" => APAnim, "final" => APFinal,
 		"else" => APElse, "default" => APDefault, "filters" => APFilters,
 		"filter" => APFilter, "none" => APNone,
@@ -878,6 +881,8 @@ typedef AnimationStateSelector = Map<String, String>;
 interface AnimParserResult {
 	var definedStates(default, never):Map<String, Array<String>>;
 	var metadata(default, never):Null<AnimMetadata>;
+	/** The file's `sounds { }` block: an event's name to the full name of the sound it plays; empty when none. */
+	var sounds(default, never):Map<String, String>;
 
 	function createAnimSM(stateSelector:AnimationStateSelector):AnimationSM;
 
@@ -904,6 +909,9 @@ class AnimParser implements AnimParserResult {
 	var center:Null<Point> = null;
 	var metadataMap:Map<String, Array<MetadataEntry>> = [];
 	public var metadata(default, null):Null<AnimMetadata> = null;
+	/** The file's `sounds { }` block: an event's name to the full name of the sound it plays. */
+	public var sounds(default, null):Map<String, String> = [];
+	var soundsDefined:Bool = false;
 	var constants:Map<String, Float> = []; // (#7) @final named constants
 	var defaultFps:Null<Int> = null; // (#3) file-level fps default
 	var defaultLoop:Null<Int> = null; // (#3) file-level loop default
@@ -1072,6 +1080,16 @@ class AnimParser implements AnimParserResult {
 					if (metadataMap.count() > 0) syntaxError("metadata already defined");
 					parseMetadata();
 					markSpan("metadata", blockToken);
+				case APIdentifier(_, APSounds, AITString):
+					// sounds { fire: "fx.shot" }: the sound each event plays, through the loader's audio
+					final blockToken = tpos;
+					advance();
+					expect(APCurlyOpen);
+					if (animationParsingStarted) syntaxError("sounds must be defined before animations");
+					if (soundsDefined) syntaxError("sounds already defined");
+					soundsDefined = true;
+					parseSounds();
+					markSpan("sounds", blockToken);
 				case APIdentifier(_, APFps, AITString): // (#3) file-level fps default
 					advance();
 					expect(APColon);
@@ -1659,6 +1677,24 @@ class AnimParser implements AnimParserResult {
 			if (match(APComma)) continue;
 			expect(APBracketClosed);
 			return list;
+		}
+	}
+
+	/** `sounds { fire: "fx.shot"  step: "fx.step" }`: an event's name to the full name of the sound it plays. */
+	function parseSounds():Void {
+		while (true) {
+			if (match(APCurlyClosed)) break;
+			final key = expectIdentifier();
+			expect(APColon);
+			final value = switch (peek()) {
+				case APIdentifier(s, _, AITQuotedString) | APIdentifier(s, _, AITString):
+					advance();
+					s;
+				default:
+					syntaxError('sounds: $key: expected the sound\'s name in quotes ("block.sound")');
+			};
+			if (sounds.exists(key)) syntaxError('sounds: $key is given twice');
+			sounds.set(key, value);
 		}
 	}
 
@@ -2875,6 +2911,12 @@ class AnimParser implements AnimParserResult {
 	public function createAnimSM(stateSelector:AnimationStateSelector):AnimationSM {
 		var animSM = new AnimationSM(stateSelector);
 		animSM.source = this;
+		// The file's sounds play through the loader's audio (the screen manager's), with no game code.
+		if (soundsDefined) {
+			animSM.sounds = sounds;
+			if (resourceLoader != null)
+				animSM.audio = resourceLoader.getAudio();
+		}
 		if (layerNames.length > 0)
 			animSM.setupLayers(layerNames);
 		load(stateSelector, animSM);
@@ -2987,6 +3029,10 @@ class AnimParserLsp {
 							advance();
 							hasMetadata = true;
 							if (!match(APCurlyOpen)) throw new InvalidSyntax("expected '{' after metadata", currentPos());
+							skipBlock();
+						case APSounds:
+							advance();
+							if (!match(APCurlyOpen)) throw new InvalidSyntax("expected '{' after sounds", currentPos());
 							skipBlock();
 						case APStates:
 							advance();
