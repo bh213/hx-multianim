@@ -1,0 +1,11 @@
+version: 1.0
+
+// $ctx.width in a programmable body: the builder resolves it from
+// BuilderParameters.scene and throws a structured BuilderError when no scene is
+// provided. Codegen emits this.getScene().width, which is null while the generated
+// constructor runs (the instance is not attached to a scene yet), so create()
+// crashes with a null access instead of failing structurally or using an
+// injectable scene.
+#ctxSize programmable() {
+  bitmap(generated(color(4, 4, #FF00FF))): ($ctx.width - 10), 0
+}

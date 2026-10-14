@@ -4,6 +4,10 @@
 
 - Code generation: programmable elements should always work via `builder.buildWithParameters` or via macro system (`@:manim(...)`)
 
+## UI art requests
+
+- A window dialog with a title bar and a close button: `OkCancelDialog` filling a `close` placeholder as Cancel, a `title` on `#dialogTitle(updatable)`, both optional; `std.manim`'s `#okCancelDialog` text colour `#ffffff00` is transparent. The rest of the UI-art batch (nine-patch modes, params and frames, cursor blocks, the dragged scrollbar, the vertical slider, the progress bar's contract) landed 2026-10-10.
+
 ## Known Issues
 
 - More hot reload integration tests — see [docs/hot-reload.md "Missing Tests"](../docs/hot-reload.md#missing-tests-needed)

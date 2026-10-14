@@ -1,0 +1,11 @@
+version: 1.0
+
+// $ctx.random args are lowered with rvToExpr (Float) instead of rvToExprInt:
+// a float-typed arg produces Std.random(Float) -> type error in the generated
+// class (the builder truncates each arg per node).
+// This file is intentionally NOT registered in MultiProgrammable — it is
+// compiled by the isolated compile-error check until the fix lands.
+
+#rnd programmable(f:float=5.5) {
+  bitmap(generated(color(8, 8, #FF0000))): 0 + $ctx.random(0, $f), 0
+}

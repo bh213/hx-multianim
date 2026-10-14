@@ -1,0 +1,10 @@
+version: 1.0
+
+// Batch update parity between codegen instances and BuilderResult. Two params each drive a
+// visibility conditional. A multi-param state change inside beginUpdate()/endUpdate() must
+// coalesce into ONE rebuild + ONE rebuild-listener fire (matching BuilderResult), instead of
+// one per typed setter. Both bitmaps start hidden (status=normal, disabled=false).
+#batchTwoParams programmable(status:[normal,hover,pressed]=normal, disabled:bool=false) {
+  @(status=>hover) bitmap(generated(color(6, 6, #ff0000))): 0, 0
+  @(disabled=>true) bitmap(generated(color(6, 6, #0000ff))): 0, 10
+}

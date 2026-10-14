@@ -38,12 +38,25 @@ class ProgrammableBuilder {
 	var _builder:Null<Dynamic> = null;
 	public var tweenManager:Null<bh.base.TweenManager> = null;
 
+	/** Scene used to resolve $ctx.width / $ctx.height in generated constructors,
+	 *  where the instance is not yet attached (getScene() is null). Injectable like
+	 *  tweenManager; the runtime builder gets the same via BuilderParameters.scene. */
+	public var scene:Null<h2d.Scene> = null;
+
 	public function new(resourceLoader:ResourceLoader) {
 		this.resourceLoader = resourceLoader;
 	}
 
 	private inline function getBuilder():MultiAnimBuilder {
 		return cast _builder;
+	}
+
+	/** Load the builder for `manimPath` unless create()/createFrom() already did. Generated
+	 *  factory methods that fall back to the builder (getPath, getPath_<name>,
+	 *  createAnimatedPath_<name>) call this first, so they work before the first create(). */
+	private function ensureBuilder(manimPath:String):Void {
+		if (_builder == null)
+			_builder = resourceLoader.loadMultiAnim(manimPath);
 	}
 
 	/** Walk an h2d.Object tree and collect all MAObject children. Used by codegen-generated
@@ -57,6 +70,26 @@ class ProgrammableBuilder {
 		final out:Array<bh.base.MAObject> = [];
 		collectInteractivesInto(obj, out);
 		return out;
+	}
+
+	/** Resolve $ctx.width for a codegen instance: prefer the live scene when the
+	 *  instance is attached, else the scene injected on the factory, else fail
+	 *  structurally like the builder does when BuilderParameters.scene is missing. */
+	public static function ctxSceneWidth(obj:h2d.Object, pb:ProgrammableBuilder):Float {
+		final live = obj.getScene();
+		if (live != null) return live.width;
+		final injected = pb.scene;
+		if (injected != null) return injected.width;
+		throw BuilderError.of("$ctx.width requires a scene: attach the instance first or set scene on the ProgrammableBuilder factory");
+	}
+
+	/** Resolve $ctx.height for a codegen instance. Same contract as ctxSceneWidth. */
+	public static function ctxSceneHeight(obj:h2d.Object, pb:ProgrammableBuilder):Float {
+		final live = obj.getScene();
+		if (live != null) return live.height;
+		final injected = pb.scene;
+		if (injected != null) return injected.height;
+		throw BuilderError.of("$ctx.height requires a scene: attach the instance first or set scene on the ProgrammableBuilder factory");
 	}
 
 	static function collectInteractivesInto(obj:h2d.Object, out:Array<bh.base.MAObject>):Void {
@@ -101,13 +134,30 @@ class ProgrammableBuilder {
 		return t.sub(0, 0, t.width, t.height, t.dx, t.dy);
 	}
 
-	/** Load a 9-patch ScaleGrid from a sprite sheet */
-	public function load9Patch(sheet:String, name:String):ScaleGrid {
+	/** Load a 9-patch ScaleGrid from a sprite sheet: frame `index` (0) of an indexed name. */
+	public function load9Patch(sheet:String, name:String, index:Int = 0):ScaleGrid {
 		final atlas = getSheet(sheet);
-		final ninePatch = atlas.getNinePatch(name);
+		final ninePatch = atlas.getNinePatch(name, index);
 		if (ninePatch == null)
-			throw BuilderError.of('9-patch "$name" not found in sheet "$sheet"');
+			throw BuilderError.of(index == 0 ? '9-patch "$name" not found in sheet "$sheet"' : '9-patch "$name" in sheet "$sheet" has no frame $index');
 		return ninePatch;
+	}
+
+	/** Every frame of the 9-patch `name`, played in a loop at `fps` (`ninepatch(…, fps: 8)`). */
+	public function load9PatchAnimated(sheet:String, name:String, fps:Float):bh.base.AnimatedScaleGrid {
+		final atlas = getSheet(sheet);
+		try {
+			return bh.base.AnimatedScaleGrid.fromAtlas(atlas, sheet, name, fps);
+		} catch (e:String) {
+			throw BuilderError.of(e);
+		}
+	}
+
+	/** Sets how a 9-patch fills its middle and edges: repeated (`tile`) or stretched. */
+	public static inline function setNinePatchMode(sg:ScaleGrid, tiled:Bool):Void {
+		sg.tileCenter = tiled;
+		sg.tileBorders = tiled;
+		sg.ignoreScale = false;
 	}
 
 	/** Load a font by name */
@@ -138,13 +188,7 @@ class ProgrammableBuilder {
 	}
 
 	function resolvePaletteBuilder(externalRef:Null<String>):MultiAnimBuilder {
-		final base = getBuilder();
-		if (externalRef == null)
-			return base;
-		final ext = base.multiParserResult?.imports?.get(externalRef);
-		if (ext == null)
-			throw BuilderError.of('could not find builder for external palette reference "$externalRef"');
-		return ext;
+		return getBuilder().importedBuilder(externalRef);
 	}
 
 	/** Build a palette replace filter via the builder (for FilterPaletteReplace) */
@@ -155,24 +199,12 @@ class ProgrammableBuilder {
 
 	/** Build a sub-programmable via the builder (for STATIC_REF nodes) */
 	public function buildStaticRef(name:String, parameters:Map<String, Dynamic>, ?externalRef:String):BuilderResult {
-		var builder:MultiAnimBuilder = getBuilder();
-		if (externalRef != null) {
-			var extBuilder = builder.multiParserResult?.imports?.get(externalRef);
-			if (extBuilder == null) throw BuilderError.of('buildStaticRef: external reference "$externalRef" not found');
-			builder = extBuilder;
-		}
-		return builder.buildWithParameters(name, parameters);
+		return getBuilder().importedBuilder(externalRef).buildWithParameters(name, parameters);
 	}
 
 	/** Build a dynamic ref via the builder (for DYNAMIC_REF nodes, always incremental) */
 	public function buildDynamicRef(name:String, parameters:Map<String, Dynamic>, ?externalRef:String):BuilderResult {
-		var builder:MultiAnimBuilder = getBuilder();
-		if (externalRef != null) {
-			var extBuilder = builder.multiParserResult?.imports?.get(externalRef);
-			if (extBuilder == null) throw BuilderError.of('buildDynamicRef: external reference "$externalRef" not found');
-			builder = extBuilder;
-		}
-		return builder.buildWithParameters(name, parameters, null, null, true);
+		return getBuilder().importedBuilder(externalRef).buildWithParameters(name, parameters, null, null, true);
 	}
 
 	/** Build a parameterized slot's children via the builder (for SLOT nodes with parameters in codegen).
@@ -184,7 +216,7 @@ class ProgrammableBuilder {
 
 	/** Build a particle system via the builder (for PARTICLES nodes).
 	 *  Searches the named programmable's children for a PARTICLES node. */
-	public function buildParticles(programmableName:String, index:Int = 0):bh.base.Particles {
+	public function buildParticles(programmableName:String, index:Int = 0, ?params:Map<String, Dynamic>):bh.base.Particles {
 		final builder = getBuilder();
 		final progNode = builder.multiParserResult.nodes.get(programmableName);
 		if (progNode == null)
@@ -198,7 +230,9 @@ class ProgrammableBuilder {
 		final particlesNode = allParticles[index];
 		return switch particlesNode.type {
 			case PARTICLES(particlesDef):
-				builder.createParticleFromDef(particlesDef, particlesNode.uniqueNodeName);
+				// Resolve with the instance's parameters in scope so `$param` refs inside
+				// the particles block use the instance values, not an empty/default scope.
+				builder.buildParticleWithParams(particlesDef, particlesNode.uniqueNodeName, programmableName, params);
 			default:
 				throw new BuilderError('unexpected node type in $programmableName', particlesNode);
 		};
@@ -211,6 +245,13 @@ class ProgrammableBuilder {
 				default: findAllParticlesChildren(child, result);
 			}
 		}
+	}
+
+
+	/** Build a tile map (`#name tilemap { … }`) of this file, or of an imported one.
+	 *  Used by generated code for `tilemap(name)` elements. */
+	public function buildTilemap(name:String, ?externalRef:String):bh.base.TileMap {
+		return getBuilder().importedBuilder(externalRef).buildTilemap(name);
 	}
 
 	/** Build a state animation from a .anim file.
@@ -247,13 +288,15 @@ class ProgrammableBuilder {
 	/** Build a TileGroup by finding the Nth one in the programmable's node tree.
 	 *  Used by generated code for TILEGROUP nodes.
 	 *  Delegates to the builder which handles TileGroup's special child-add mechanism. */
-	public function buildTileGroupFromProgrammable(programmableName:String, index:Int = 0):h2d.Object {
+	public function buildTileGroupFromProgrammable(programmableName:String, index:Int = 0, ?params:Map<String, Dynamic>):h2d.Object {
 		final builder = getBuilder();
 		final progNode = builder.multiParserResult.nodes.get(programmableName);
 		if (progNode == null)
 			throw BuilderError.of('could not find programmable node: $programmableName');
-		// Build the tilegroup via the builder — it handles TileGroupMode for children
-		final result = builder.buildWithParameters(programmableName, new Map());
+		// Build the tilegroup via the builder — it handles TileGroupMode for children.
+		// Pass the instance's parameters so `$param` refs in the baked content resolve
+		// against the instance values, not the parameter defaults.
+		final result = builder.buildWithParameters(programmableName, params != null ? params : new Map());
 		// Find all TileGroups in the result's object tree
 		final tileGroups:Array<h2d.Object> = [];
 		findAllTileGroupsInTree(result.object, tileGroups);
@@ -271,6 +314,19 @@ class ProgrammableBuilder {
 		while (it.hasNext()) {
 			findAllTileGroupsInTree(it.next(), result);
 		}
+	}
+
+	/** Build the TileGroup identified by its parse node's uniqueNodeName.
+	 *  Used by generated code: the positional variant indexed document order over
+	 *  ALL tilegroup nodes while collecting from the conditional-filtered built
+	 *  tree — conditional siblings shifted the spaces apart (wrong content or
+	 *  out-of-range). Building the identified subtree directly also avoids the
+	 *  full-programmable build per tilegroup field. */
+	public function buildTileGroupByNode(programmableName:String, uniqueNodeName:String, ?params:Map<String, Dynamic>):h2d.Object {
+		final obj = buildNodeByUniqueNameWithParams(programmableName, uniqueNodeName, params != null ? params : new Map());
+		if (obj == null)
+			throw BuilderError.of('could not build tileGroup node "$uniqueNodeName" in programmable: $programmableName');
+		return obj;
 	}
 
 	/** Get all tiles from a sheet, optionally filtered by tile name prefix.
@@ -398,7 +454,10 @@ class ProgrammableBuilder {
 	}
 
 	/** Resolve a callback by name, returning an integer result.
-	 *  Used by generated code for RVCallbacks in numeric expressions. */
+	 *  Used by generated code for RVCallbacks in integer expressions.
+	 *  Mirrors MultiAnimBuilder.resolveAsInteger's handleCallback: wrong-typed
+	 *  results (CBRFloat/CBRString/CBRObject) throw instead of being silently
+	 *  replaced by the default. */
 	public function resolveCallbackInt(name:String, defaultValue:Int):Int {
 		final builder = getBuilder();
 		final callback = builder.builderParams.callback;
@@ -408,12 +467,13 @@ class ProgrammableBuilder {
 			case CBRInteger(val): val;
 			case CBRNoResult: defaultValue;
 			case null: defaultValue;
-			default: defaultValue;
+			default: throw new BuilderError('callback should return int but was $result for $name');
 		};
 	}
 
 	/** Resolve a callback by name and index, returning an integer result.
-	 *  Used by generated code for RVCallbacksWithIndex in numeric expressions. */
+	 *  Used by generated code for RVCallbacksWithIndex in integer expressions.
+	 *  Wrong-typed results throw (builder parity), see resolveCallbackInt. */
 	public function resolveCallbackWithIndexInt(name:String, index:Int, defaultValue:Int):Int {
 		final builder = getBuilder();
 		final callback = builder.builderParams.callback;
@@ -423,7 +483,41 @@ class ProgrammableBuilder {
 			case CBRInteger(val): val;
 			case CBRNoResult: defaultValue;
 			case null: defaultValue;
-			default: defaultValue;
+			default: throw new BuilderError('callback should return int but was $result for $name($index)');
+		};
+	}
+
+	/** Resolve a callback by name, returning a float result.
+	 *  Used by generated code for RVCallbacks in float expressions (positions,
+	 *  alpha, scale, ...). Mirrors MultiAnimBuilder.resolveAsNumber: CBRFloat
+	 *  and CBRInteger are used, CBRString/CBRObject throw. */
+	public function resolveCallbackFloat(name:String, defaultValue:Float):Float {
+		final builder = getBuilder();
+		final callback = builder.builderParams.callback;
+		if (callback == null) return defaultValue;
+		final result = callback(Name(name));
+		return switch result {
+			case CBRInteger(val): val;
+			case CBRFloat(val): val;
+			case CBRNoResult: defaultValue;
+			case null: defaultValue;
+			default: throw new BuilderError('callback should return number but was $result for $name', null, "not_a_number");
+		};
+	}
+
+	/** Resolve a callback by name and index, returning a float result.
+	 *  See resolveCallbackFloat. */
+	public function resolveCallbackWithIndexFloat(name:String, index:Int, defaultValue:Float):Float {
+		final builder = getBuilder();
+		final callback = builder.builderParams.callback;
+		if (callback == null) return defaultValue;
+		final result = callback(NameWithIndex(name, index));
+		return switch result {
+			case CBRInteger(val): val;
+			case CBRFloat(val): val;
+			case CBRNoResult: defaultValue;
+			case null: defaultValue;
+			default: throw new BuilderError('callback should return number but was $result for $name($index)', null, "not_a_number");
 		};
 	}
 
@@ -446,15 +540,10 @@ class ProgrammableBuilder {
 		return builder.generatePlaceholderBitmap(resolved);
 	}
 
-	/** Generate an autotile tile by name and index.
-	 *  Looks up the autotile definition and resolves the tile from the appropriate source. */
+	/** Resolved autotile tile by name and index (same tile the builder uses; cached per builder).
+	 *  Used by generated code for generated(autotile(name, index)). */
 	public function getAutotileTileByIndex(autotileName:String, tileIndex:Int):Tile {
-		final builder = getBuilder();
-		final resolved = builder.resolveAutotileRef(
-			MultiAnimParser.ReferenceableValue.RVString(autotileName),
-			MultiAnimParser.AutotileTileSelector.ByIndex(MultiAnimParser.ReferenceableValue.RVInteger(tileIndex))
-		);
-		return builder.generatePlaceholderBitmap(resolved);
+		return getBuilder().getAutotileTile(autotileName, tileIndex);
 	}
 
 	/** Build a named path via the builder.
@@ -501,14 +590,22 @@ class ProgrammableBuilder {
 	 *  `$param` and loop-var refs inside the subtree resolve correctly. Used by the codegen
 	 *  runtime-rebuild fallback for param-dependent repeatable bodies. */
 	public function buildNodeByUniqueNameWithParams(programmableName:String, uniqueNodeName:String,
-			parentParams:Map<String, Dynamic>):Null<h2d.Object> {
+			parentParams:Map<String, Dynamic>, ?sink:bh.multianim.MultiAnimBuilder.SwitchArmResults):Null<h2d.Object> {
 		final builder = getBuilder();
 		if (builder == null) return null;
 		final progNode = builder.multiParserResult.nodes.get(programmableName);
 		if (progNode == null) return null;
 		final targetNode = findNodeByUniqueName(progNode, uniqueNodeName);
 		if (targetNode == null) return null;
-		return builder.buildSingleNodeWithParams(targetNode, progNode, parentParams);
+		return builder.buildSingleNodeWithParams(targetNode, progNode, parentParams, sink);
+	}
+
+	/** Reset a param-dependent repeat body's sink before the body is rebuilt at a new count.
+	 *  Called by codegen's _rebuildRepeat_X. No-op when the builder is unavailable. */
+	public function resetRepeatSink(sink:bh.multianim.MultiAnimBuilder.SwitchArmResults, container:h2d.Object):Void {
+		final builder = getBuilder();
+		if (builder == null) return;
+		builder.resetRepeatSink(sink, container);
 	}
 
 	public static function findNodeByUniqueName(node:MultiAnimParser.Node, name:String):Null<MultiAnimParser.Node> {

@@ -1,0 +1,33 @@
+version: 1.0
+
+// A file's sounds and mix, taken by ScreenManager.audio when the file loads (AudioTest, AudioMixTest).
+#main mix {
+	bus music
+	bus sfx { voices: 24 }
+	bus ui
+	vca Music: music
+	vca Effects: sfx, ui
+	snapshot paused { sfx: pause, ui: pause, music: -6db lowpass 0.3, fade: 200ms }
+	snapshot dialog { music: -6db, fade: 100ms }
+	snapshot slow { sfx: pitch clock }
+}
+
+#ui sounds {
+	bus: ui
+	click { file: "sound/click.wav" }
+	hover { file: "sound/hover.wav", volume: -6db }
+	change { file: "sound/tick.wav" }
+}
+
+#music music {
+	track title { file: "music/title.mp3", loop: yes }
+	track play { file: "music/play.mp3" }
+}
+
+#fx sounds {
+	explosion {
+		voices: 2, steal: oldest
+		layer boom { files: ["sound/boom_1.wav", "sound/boom_2.wav"], pick: shuffle }
+		layer debris { file: "sound/debris.wav", delay: 50ms, chance: 100% }
+	}
+}

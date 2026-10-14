@@ -141,6 +141,30 @@ private class ThrowingGetElementsIntegration implements UIControllerScreenIntegr
 }
 
 /**
+ * Mock integration that records every callback handed to forEachElement, so tests
+ * can assert UIDefaultController reuses a single cached callback instance across
+ * input events instead of allocating a fresh closure per call.
+ */
+private class CallbackTrackingIntegration implements UIControllerScreenIntegration {
+	public var elements:Array<UIElement> = [];
+	public var receiveEventsCallbacks:Array<UIElement->Void> = [];
+
+	public function new() {}
+
+	public function dispatchScreenEvent(event:UIScreenEvent, source:Null<UIElement>):Void {}
+
+	public function forEachElement(type:SubElementsType, fn:UIElement->Void):Void {
+		if (type == SETReceiveEvents) receiveEventsCallbacks.push(fn);
+		for (e in elements) fn(e);
+	}
+
+	public function onKey(keyCode:Int, release:Bool):Bool return true;
+	public function dispatchMouseMove(pos:Point):Bool return true;
+	public function onMouseWheel(pos:Point, delta:Float):Bool return true;
+	public function dispatchMouseClick(pos:Point, button:Int, release:Bool):Bool return true;
+}
+
+/**
  * Unit tests for event priority ordering and consumed bubbling in UIDefaultController.
  */
 class EventPriorityTest extends utest.Test {
@@ -513,6 +537,43 @@ class EventPriorityTest extends utest.Test {
 	}
 	#end
 
+	// getEventElements is called from handleMove / handleClick / handleMouseWheel /
+	// handleKey. It used to inline an anonymous `function(element) { ... }` literal
+	// that captured the per-call `pos` local, forcing a fresh closure allocation on
+	// every input event. The fix mirrors the _updateCallback pattern: thread `pos`
+	// through an instance field and hoist the callback to a final field assigned
+	// once in the constructor. This pins the contract — the SAME callback instance
+	// must reach forEachElement across every input event.
+	@Test
+	public function testGetEventElementsReusesCachedCallbackInstanceAcrossInputEvents():Void {
+		var tracking = new CallbackTrackingIntegration();
+		tracking.elements = [new MockInteractive("a", 0, 0, 100, 100, 0)];
+		var ctrl = new UIDefaultController(tracking);
+
+		ctrl.handleMove(new Point(50, 50), eventWrapper());
+		ctrl.handleMove(new Point(60, 50), eventWrapper());
+		ctrl.handleClick(new Point(70, 50), 0, false, eventWrapper());
+		ctrl.handleClick(new Point(80, 50), 0, true, eventWrapper());
+		ctrl.handleMouseWheel(new Point(90, 50), 1.0, eventWrapper());
+		ctrl.handleKey(32, false, new Point(50, 50), eventWrapper());
+
+		Assert.isTrue(tracking.receiveEventsCallbacks.length >= 6,
+			"Expected at least 6 SETReceiveEvents callback captures across the input "
+			+ "hot path; got " + tracking.receiveEventsCallbacks.length + ". If this fires, "
+			+ "the input handlers stopped routing through getEventElements / forEachElement.");
+
+		final first = tracking.receiveEventsCallbacks[0];
+		for (i in 1...tracking.receiveEventsCallbacks.length) {
+			final same = Reflect.compareMethods(first, tracking.receiveEventsCallbacks[i]);
+			Assert.isTrue(same,
+				"getEventElements must pass the SAME cached callback instance to "
+				+ "forEachElement across every input event. A fresh closure surfaced at "
+				+ "call " + i + " — fix by hoisting the callback to a final field assigned "
+				+ "in the constructor and threading pos through an instance field "
+				+ "(mirror the _updateCallback / _updateDt pattern at lines 110-134).");
+		}
+	}
+
 	// UIDefaultController's full input hot path — handleMove, handleClick (push +
 	// release), handleMouseWheel, handleKey — must drive element discovery through
 	// the streaming forEachElement API only. Reaching for the allocating
@@ -535,4 +596,58 @@ class EventPriorityTest extends utest.Test {
 			+ "handler — production code path must stream via forEachElement to avoid "
 			+ "per-event Array allocation. Got " + integ.getElementsCallCount + " calls.");
 	}
+
+	// ==================== Cursor ====================
+
+	@Test
+	public function testAHoveredElementsCursorFollowsItsState():Void {
+		// An element's cursor may change while the mouse stays on it (disabled by a click, a state
+		// set from code): the cursor follows on the next move, or the next frame without one.
+		var element = new MockCursorInteractive(hxd.Cursor.Button);
+		integration.elements = [element];
+		final applied:Array<hxd.Cursor> = [];
+		final was = hxd.System.setCursor;
+		hxd.System.setCursor = c -> applied.push(c);
+		inline function last():String
+			return applied.length == 0 ? "none" : Std.string(applied[applied.length - 1]);
+		try {
+			controller.handleMove(new Point(50, 50), eventWrapper());
+			Assert.equals("Button", last(), "the element's cursor as the mouse enters it");
+			element.cursor = hxd.Cursor.Default;
+			controller.handleMove(new Point(51, 50), eventWrapper());
+			Assert.equals("Default", last(), "its new cursor on the next move, still over it");
+			element.cursor = hxd.Cursor.Move;
+			controller.update(0.016);
+			Assert.equals("Move", last(), "or on the next frame, the mouse still");
+			final count = applied.length;
+			controller.handleMove(new Point(52, 50), eventWrapper());
+			controller.update(0.016);
+			Assert.equals(count, applied.length, "an unchanged cursor is not set again");
+		} catch (e:Dynamic) {
+			hxd.System.setCursor = was;
+			throw e;
+		}
+		hxd.System.setCursor = was;
+	}
+}
+
+/** An element over (0, 0) to (100, 100) with the cursor it is given. **/
+private class MockCursorInteractive implements UIElement implements StandardUIElementEvents implements UIElementCursor {
+	public var cursor:hxd.Cursor;
+
+	public function new(cursor:hxd.Cursor) {
+		this.cursor = cursor;
+	}
+
+	public function getObject():h2d.Object return new h2d.Object();
+
+	public function containsPoint(pos:Point):Bool {
+		return pos.x >= 0 && pos.x <= 100 && pos.y >= 0 && pos.y <= 100;
+	}
+
+	public function clear():Void {}
+
+	public function onEvent(wrapper:UIElementEventWrapper):Void {}
+
+	public function getCursor():hxd.Cursor return cursor;
 }

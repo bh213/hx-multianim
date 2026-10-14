@@ -20,6 +20,32 @@ enum MacroBlendMode {
 	MBMin;
 }
 
+/**
+ * The blend modes by name, for every file that names one: `.manim`'s `blendMode:` and `.anim`'s
+ * `blend:`. Names are matched without regard to case; NAMES is how they are written in errors and docs.
+ */
+class MacroBlendModes {
+	public static final NAMES:Array<String> = ["none", "alpha", "add", "alphaAdd", "softAdd", "multiply", "alphaMultiply", "erase", "screen", "sub", "max", "min"];
+
+	public static function fromName(name:String):Null<MacroBlendMode> {
+		return switch (name.toLowerCase()) {
+			case "none": MBNone;
+			case "alpha": MBAlpha;
+			case "add": MBAdd;
+			case "alphaadd": MBAlphaAdd;
+			case "softadd": MBSoftAdd;
+			case "multiply": MBMultiply;
+			case "alphamultiply": MBAlphaMultiply;
+			case "erase": MBErase;
+			case "screen": MBScreen;
+			case "sub": MBSub;
+			case "max": MBMax;
+			case "min": MBMin;
+			default: null;
+		};
+	}
+}
+
 enum MacroFlowLayout {
 	MFLHorizontal;
 	MFLVertical;

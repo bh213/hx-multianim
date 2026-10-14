@@ -119,10 +119,11 @@ class FloatingTextHelper {
 			inst.object.scaleY = state.scale;
 			inst.object.rotation = state.rotation;
 
-			// Apply color if a colorCurve is active (non-default white)
-			if (state.color != 0xFFFFFF) {
+			// Apply color when a colorCurve drives it (whatever the color — white included).
+			// textColor takes the RGB; the object's alpha comes from the alpha curve above.
+			if (inst.animPath.hasColorCurve()) {
 				if (Std.isOfType(inst.object, h2d.Text)) {
-					(cast inst.object : h2d.Text).textColor = state.color;
+					(cast inst.object : h2d.Text).textColor = state.color & 0xFFFFFF;
 				}
 			}
 

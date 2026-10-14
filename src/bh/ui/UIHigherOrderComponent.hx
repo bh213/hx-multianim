@@ -22,8 +22,9 @@ interface UIHigherOrderComponent {
 	/** Route mouse click. Returns true if consumed. */
 	function onMouseClick(sceneX:Float, sceneY:Float, button:Int):Bool;
 
-	/** Route mouse release. Returns true if consumed. */
-	function onMouseRelease(sceneX:Float, sceneY:Float):Bool;
+	/** Route mouse release. Returns true if consumed. `button` is the released mouse button
+	 *  (null when the caller doesn't know it — treat as the left button). */
+	function onMouseRelease(sceneX:Float, sceneY:Float, ?button:Int):Bool;
 
 	/** Route screen events (UIInteractiveEvent, etc). Returns true if consumed. */
 	function handleScreenEvent(event:UIScreenEvent):Bool;

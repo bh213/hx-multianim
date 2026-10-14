@@ -175,6 +175,39 @@ class CardHandIntegrationTest extends BuilderTestBase {
 		Assert.floatEquals(500.0, h.helper.anchorY);
 	}
 
+	// ==================== Default Interactive Prefix Uniqueness ====================
+
+	@Test
+	public function testTwoDefaultHelpersOnSameScreenProduceDistinctInteractiveIds():Void {
+		// Two card hands on the same screen must not collide in screen.interactiveMap.
+		// With a fixed default prefix and a per-helper sequence counter starting at 0,
+		// both helpers produce "card_0.card" for their first card, and the screen's
+		// interactiveMap.set() silently overwrites — routing events and autoStatus to
+		// only the second helper.
+		var builder1 = BuilderTestBase.builderFromSource(CARD_MANIM);
+		var builder2 = BuilderTestBase.builderFromSource(CARD_MANIM);
+		var screen = new UITestScreen();
+		var helper1 = new UICardHandHelper(screen, builder1);
+		var helper2 = new UICardHandHelper(screen, builder2);
+
+		helper1.setHand([desc("a")]);
+		helper2.setHand([desc("a")]);
+
+		final id1 = helper1.cards[0].interactiveId;
+		final id2 = helper2.cards[0].interactiveId;
+		Assert.notEquals(id1, id2,
+			'two helpers with default config must produce distinct card interactive prefixes '
+			+ '(got "$id1" and "$id2" — collision would silently overwrite in screen.interactiveMap)');
+
+		final wrapper1 = screen.getInteractive('$id1.card');
+		final wrapper2 = screen.getInteractive('$id2.card');
+		Assert.notNull(wrapper1, 'helper1\'s card wrapper "$id1.card" should be registered on the screen');
+		Assert.notNull(wrapper2, 'helper2\'s card wrapper "$id2.card" should be registered on the screen');
+		Assert.notEquals(wrapper1, wrapper2,
+			"both helpers' wrappers must be distinct registrations — same wrapper means one helper "
+			+ "overwrote the other in screen.interactiveMap");
+	}
+
 	// ==================== Multiple Draw/Discard Operations ====================
 
 	@Test
@@ -1347,6 +1380,149 @@ class CardHandIntegrationTest extends BuilderTestBase {
 			"containsPoint must miss a global point whose preimage is outside the rect");
 	}
 
+	// ==================== Hover / drag lifecycle ====================
+
+	static function countEvents(events:Array<CardHandEvent>, predicate:(CardHandEvent) -> Bool):Int {
+		var n = 0;
+		for (e in events)
+			if (predicate(e))
+				n++;
+		return n;
+	}
+
+	static function pushOn(h:{helper:UICardHandHelper, screen:UITestScreen}, entry:Dynamic):Bool {
+		return h.helper.handleScreenEvent(UIInteractiveEvent(UIPush, entry.interactiveId, new BuilderResolvedSettings(null)));
+	}
+
+	@Test
+	public function testDisablingHoveredCardEndsHoverAndRestoresZOrder():Void {
+		var h = createHelper();
+		var events:Array<CardHandEvent> = [];
+		h.helper.onCardEvent = (event) -> events.push(event);
+		h.helper.setHand([desc("a"), desc("b"), desc("c")]);
+		final entryA = h.helper.cards[0];
+		h.helper.setHoveredEntry(entryA);
+		Assert.equals(1, countEvents(events, e -> e.match(CardHoverStart("a"))), "precondition: a is hovered");
+
+		h.helper.setCardEnabled("a", false);
+		h.helper.setHoveredEntry(null); // the cursor leaves the hand
+
+		Assert.equals(1, countEvents(events, e -> e.match(CardHoverEnd("a"))), "the hover that started on a ends (once)");
+		Assert.equals(0, h.helper.handContainer.getChildLayer(entryA.container),
+			"a goes back to its own layer instead of staying on top of the hand");
+	}
+
+	@Test
+	public function testStartingDragEndsHover():Void {
+		var h = createHelper();
+		var events:Array<CardHandEvent> = [];
+		h.helper.onCardEvent = (event) -> events.push(event);
+		h.helper.setHand([desc("a"), desc("b")]);
+		final entryA = h.helper.cards[0];
+		h.helper.setHoveredEntry(entryA);
+		events.resize(0);
+
+		pushOn(h, entryA);
+		Assert.isTrue(h.helper.isDragging, "precondition: the push starts a drag");
+
+		var hoverEnd = -1;
+		var dragStart = -1;
+		for (i in 0...events.length) {
+			if (events[i].match(CardHoverEnd("a"))) hoverEnd = i;
+			if (events[i].match(CardDragStart("a"))) dragStart = i;
+		}
+		Assert.isTrue(hoverEnd >= 0, "the hover on a ends when its drag starts");
+		Assert.isTrue(hoverEnd < dragStart, "CardHoverEnd comes before CardDragStart");
+	}
+
+	@Test
+	public function testDiscardFromCardPlayedHandlerEndsDragOnce():Void {
+		var h = createHelper();
+		var events:Array<CardHandEvent> = [];
+		h.helper.onCardEvent = (event) -> {
+			events.push(event);
+			switch event {
+				case CardPlayed(id, _): h.helper.discardCard(id);
+				default:
+			}
+		};
+		h.helper.setHand([desc("a"), desc("b")]);
+		pushOn(h, h.helper.cards[0]);
+		h.helper.onMouseMove(400, 100); // up into the play zone (above anchorY - targetingThresholdY)
+		h.helper.onMouseRelease(400, 100);
+
+		Assert.equals(1, countEvents(events, e -> e.match(CardPlayed("a", _))), "precondition: a is played");
+		Assert.equals(1, countEvents(events, e -> e.match(CardDragEnd("a"))), "the drag of a ends once");
+		Assert.equals(1, h.helper.getCardCount(), "a left the hand");
+		Assert.isFalse(h.helper.isDragging);
+	}
+
+	@Test
+	public function testRightButtonPushDoesNotStartDrag():Void {
+		var h = createHelper();
+		h.helper.setHand([desc("a")]);
+		final entryA = h.helper.cards[0];
+
+		// Components get the raw push (with its button) before the interactive's UIPush
+		h.helper.onMouseClick(400, 680, 1);
+		Assert.isFalse(pushOn(h, entryA), "a right-button push is not taken as a drag");
+		Assert.isFalse(h.helper.isDragging, "a right-button push must not start a drag");
+
+		h.helper.onMouseClick(400, 680, 0);
+		Assert.isTrue(pushOn(h, entryA), "a left-button push still drags");
+		Assert.isTrue(h.helper.isDragging);
+	}
+
+	@Test
+	public function testRightButtonReleaseClearsTheLatchedButtonSoALaterBareUIPushDrags():Void {
+		// A UIPush that arrives without a raw push in front of it (a screen wired by hand that
+		// forwards only the release, or a DevBridge send_event) is a left-button push by default.
+		// A right press latches its button; releasing that button must clear the latch again,
+		// otherwise every later bare UIPush is refused and the hand can no longer be dragged.
+		var h = createHelper();
+		h.helper.setHand([desc("a")]);
+		final entryA = h.helper.cards[0];
+
+		h.helper.onMouseClick(400, 680, 1);
+		Assert.isFalse(pushOn(h, entryA), "precondition: a right-button push is not taken as a drag");
+		h.helper.onMouseRelease(400, 680, 1);
+
+		Assert.isTrue(pushOn(h, entryA), "once the right button is released, a bare UIPush starts a drag again");
+		Assert.isTrue(h.helper.isDragging, "the hand is dragging after the bare UIPush");
+	}
+
+	@Test
+	public function testOtherButtonReleaseDoesNotEndLeftDrag():Void {
+		// Screen-routed, as a real controller delivers it: the release carries its button.
+		var h = createHelper();
+		@:privateAccess h.screen.registerComponent(h.helper);
+		h.helper.setHand([desc("a")]);
+		h.screen.dispatchMouseClick(new h2d.col.Point(400, 680), 0, false);
+		pushOn(h, h.helper.cards[0]);
+		Assert.isTrue(h.helper.isDragging, "precondition: a left push drags");
+
+		h.screen.dispatchMouseClick(new h2d.col.Point(400, 100), 1, true);
+		Assert.isTrue(h.helper.isDragging, "a right-button release does not end a left-button drag");
+
+		h.screen.dispatchMouseClick(new h2d.col.Point(400, 100), 0, true);
+		Assert.isFalse(h.helper.isDragging, "the left-button release ends it");
+	}
+
+	@Test
+	public function testDrawCardAtIndexRendersBetweenItsNeighbours():Void {
+		var h = createHelper();
+		h.helper.setHand([desc("a"), desc("b"), desc("c")]);
+		h.helper.drawCard(desc("x"), 1);
+		Assert.equals("a,x,b,c", h.helper.getCardIds().join(","));
+
+		var prev = -1;
+		for (entry in h.helper.cards) {
+			final idx = h.helper.handContainer.getChildIndex(entry.container);
+			Assert.isTrue(idx > prev, 'card ${entry.descriptor.id} must render above the cards before it in the hand');
+			prev = idx;
+		}
+	}
+
 	// Allocation watchdog counters (FPoint.creationCount,
 	// UICardHandLayout.scratchArrayAllocationCount, CardLayoutPosition.creationCount)
 	// must be gated behind MULTIANIM_ALLOC_TRACK so they vanish from production builds.
@@ -1364,4 +1540,256 @@ class CardHandIntegrationTest extends BuilderTestBase {
 			+ "Add `-D MULTIANIM_ALLOC_TRACK` to test-common.hxml.");
 		#end
 	}
+
+	// ==================== bind => "status" visuals ====================
+	// The card's interactive is registered under '<interactiveId>.<identifier>'; the
+	// hand's hover / enable / discard calls must reach that binding.
+
+	static final STATUS_CARD_MANIM = "
+		#card programmable(status:[normal,hover,pressed,disabled]=normal) {
+			@(status=>normal) bitmap(generated(color(80, 110, #444444))): 0, 0
+			@(status=>hover) bitmap(generated(color(81, 110, #888888))): 0, 0
+			@(status=>pressed) bitmap(generated(color(82, 110, #AAAAAA))): 0, 0
+			@(status=>disabled) bitmap(generated(color(83, 110, #222222))): 0, 0
+			interactive(80, 110, \"card\", bind => \"status\"): 0, 0
+		}
+	";
+
+	static function createStatusHelper():{helper:UICardHandHelper, screen:UITestScreen} {
+		var builder = BuilderTestBase.builderFromSource(STATUS_CARD_MANIM);
+		var screen = new UITestScreen();
+		var helper = new UICardHandHelper(screen, builder);
+		return {helper: helper, screen: screen};
+	}
+
+	/** Width of the one visible status bitmap: 80 normal, 81 hover, 82 pressed, 83 disabled. */
+	static function statusWidth(result:bh.multianim.MultiAnimBuilder.BuilderResult):Int {
+		final bitmaps = BuilderTestBase.findVisibleBitmapDescendants(result.object);
+		return bitmaps.length == 1 ? Std.int(bitmaps[0].tile.width) : -bitmaps.length;
+	}
+
+	@Test
+	public function testHoveredCardShowsHoverStatus():Void {
+		var h = createStatusHelper();
+		h.helper.setHand([desc("a")]);
+		final entry = h.helper.cards[0];
+		Assert.equals(80, statusWidth(entry.result), "precondition: the card starts with status normal");
+
+		h.helper.setHoveredEntry(entry);
+		Assert.equals(81, statusWidth(entry.result), "hovering a card must set its bound status to hover");
+
+		h.helper.setHoveredEntry(null);
+		Assert.equals(80, statusWidth(entry.result), "un-hovering a card must set its bound status back to normal");
+	}
+
+	@Test
+	public function testDisabledCardShowsDisabledStatusAndDisablesInteractive():Void {
+		var h = createStatusHelper();
+		h.helper.setHand([desc("a")]);
+		final entry = h.helper.cards[0];
+		final wrapper = h.screen.getInteractive(entry.interactiveId + ".card");
+		Assert.notNull(wrapper, "precondition: the card's interactive is registered on the screen");
+
+		h.helper.setCardEnabled("a", false);
+		Assert.equals(83, statusWidth(entry.result), "a disabled card must set its bound status to disabled");
+		if (wrapper != null)
+			Assert.isTrue(wrapper.disabled, "a disabled card's interactive must be disabled so its clicks stop");
+
+		h.helper.setCardEnabled("a", true);
+		Assert.equals(80, statusWidth(entry.result), "a re-enabled card must set its bound status back to normal");
+		if (wrapper != null)
+			Assert.isFalse(wrapper.disabled, "a re-enabled card's interactive must be enabled again");
+	}
+
+	@Test
+	public function testCardDrawnDisabledShowsDisabledStatus():Void {
+		var h = createStatusHelper();
+		h.helper.setHand([{id: "a", buildName: "card", enabled: false}]);
+		Assert.equals(83, statusWidth(h.helper.cards[0].result), "a card built disabled must show status disabled");
+	}
+
+	// A card drawn with `enabled: false` must stay disabled through its draw animation:
+	// drawCard used to overwrite the Disabled state buildCardEntry set with Animating, and the
+	// animation end promoted Animating to InHand — a playable card that still looked disabled.
+
+	@Test
+	public function testCardDrawnWithEnabledFalseStaysDisabledAfterInstantDraw():Void {
+		var h = createHelper(); // no drawPathName: the draw completes synchronously
+		h.helper.drawCard({id: "a", buildName: "card", enabled: false});
+		Assert.isTrue(h.helper.cards[0].state == Disabled,
+			'a card drawn with enabled: false must stay Disabled once the draw ends, got ${h.helper.cards[0].state}');
+		Assert.isFalse(h.helper.isCardInHand("a"), "a card drawn disabled must not count as playable");
+	}
+
+	@Test
+	public function testCardDrawnWithEnabledFalseStaysDisabledAfterDrawAnimation():Void {
+		var h = createHelperWithPaths();
+		h.helper.drawCard({id: "a", buildName: "card", enabled: false});
+		for (_ in 0...30)
+			h.helper.update(0.1);
+		Assert.equals(0, h.helper.activeAnimations.length, "precondition: the draw animation has finished");
+		Assert.isTrue(h.helper.cards[0].state == Disabled,
+			'a card drawn with enabled: false must stay Disabled after its draw animation, got ${h.helper.cards[0].state}');
+		Assert.isFalse(h.helper.isCardInHand("a"), "a card drawn disabled must not count as playable");
+	}
+
+	@Test
+	public function testCardDrawnDisabledKeepsItsDrawAnimationWhenAnotherCardIsDrawn():Void {
+		var h = createHelperWithPaths();
+		var events:Array<CardHandEvent> = [];
+		h.helper.onCardEvent = (event) -> events.push(event);
+		h.helper.drawCard({id: "a", buildName: "card", enabled: false});
+		h.helper.drawCard(desc("b")); // rearranges the cards already in hand
+		Assert.isFalse(findEvent(events, e -> switch (e) { case DrawAnimComplete("a"): true; default: false; }),
+			"drawing another card must not cut short the draw animation of a card drawn disabled");
+	}
+
+	@Test
+	public function testCardDrawnDisabledAndEnabledMidDrawLandsInHand():Void {
+		var h = createHelperWithPaths();
+		h.helper.drawCard({id: "a", buildName: "card", enabled: false});
+		h.helper.setCardEnabled("a", true);
+		for (_ in 0...30)
+			h.helper.update(0.1);
+		Assert.isTrue(h.helper.cards[0].state == InHand,
+			'a card drawn disabled and enabled during its draw must land InHand, got ${h.helper.cards[0].state}');
+	}
+
+	@Test
+	public function testDiscardedCardReleasesItsBinding():Void {
+		var h = createStatusHelper();
+		h.helper.setHand([desc("a")]);
+		final boundId = h.helper.cards[0].interactiveId + ".card";
+		Assert.isTrue(h.helper.interactiveHelper.hasBinding(boundId), "precondition: the card's interactive is bound");
+
+		h.helper.discardCard("a");
+		Assert.isFalse(h.helper.interactiveHelper.hasBinding(boundId), "a discarded card must not leave its binding behind");
+	}
+
+	// A status change rebuilds the card from inside the hand's loop over the card's bindings; when
+	// the rebuild drops one of them, the loop must still reach the others. Each card has two bound
+	// interactives, `p` and `q`, and one of them exists only while status is normal. The two
+	// programmables swap which one vanishes, so whichever order the binding map iterates in, one
+	// of the two cards visits the vanishing binding first.
+	static final SHRINKING_BIND_MANIM = "
+		#qVanishes programmable(status:[normal,hover,pressed,disabled]=normal) {
+			interactive(80, 110, \"p\", bind => \"status\"): 0, 0
+			@switch(status) {
+				normal: interactive(10, 10, \"q\", bind => \"status\"): 0, 0;
+				default: bitmap(generated(color(1, 1, #000000))): 0, 0;
+			}
+		}
+		#pVanishes programmable(status:[normal,hover,pressed,disabled]=normal) {
+			@switch(status) {
+				normal: interactive(10, 10, \"p\", bind => \"status\"): 0, 0;
+				default: bitmap(generated(color(1, 1, #000000))): 0, 0;
+			}
+			interactive(80, 110, \"q\", bind => \"status\"): 0, 0
+		}
+	";
+
+	@Test
+	public function testDisablingCardWhoseRebuildDropsABindingDisablesTheRest():Void {
+		final builder = BuilderTestBase.builderFromSource(SHRINKING_BIND_MANIM);
+		for (card in [{buildName: "qVanishes", remaining: "p"}, {buildName: "pVanishes", remaining: "q"}]) {
+			final screen = new UITestScreen();
+			final helper = new UICardHandHelper(screen, builder, {interactivePrefix: "h"});
+			helper.setHand([{id: "a", buildName: card.buildName}]);
+			final entry = helper.cards[0];
+			final remainingId = entry.interactiveId + "." + card.remaining;
+			Assert.isTrue(helper.interactiveHelper.hasBinding(remainingId), '${card.buildName}: precondition: $remainingId is bound');
+
+			helper.setCardEnabled("a", false);
+			final wrapper = screen.getInteractive(remainingId);
+			Assert.notNull(wrapper, '${card.buildName}: $remainingId survives the rebuild');
+			if (wrapper != null)
+				Assert.isTrue(wrapper.disabled, '${card.buildName}: disabling the card must disable $remainingId too');
+		}
+	}
+
+	// ==================== A new hand during a drag ====================
+
+	@Test
+	public function testSetHandDuringACardToCardDragLeavesNoOldCardOnScreen():Void {
+		var h = createHelper({allowCardToCard: true});
+		h.helper.setHand([desc("a"), desc("b"), desc("c")]);
+		final target = h.helper.cards[2];
+		Assert.isTrue(h.helper.startDragFromInteractive(h.helper.cards[0]));
+		final at = h.helper.handContainer.localToGlobal(new h2d.col.Point(target.layoutPos.x, target.layoutPos.y));
+		h.helper.onMouseMove(at.x, at.y);
+		Assert.isTrue(h.helper.cardToCardTarget == target, "precondition: card a is dragged over card c");
+
+		h.helper.setHand([desc("x"), desc("y")]);
+		Assert.isNull(h.helper.cardToCardTarget, "the new hand has no drag over a card");
+		Assert.isNull(h.helper.currentTargetId);
+		h.helper.drawCard(desc("z"), 0); // re-layers the hand from the insert point
+		Assert.isNull(target.container.parent, "card c went with the old hand and is not put back on screen");
+		final shown = [for (e in h.helper.cards) e.container];
+		var strangers = 0;
+		for (i in 0...h.helper.handContainer.numChildren)
+			if (shown.indexOf(h.helper.handContainer.getChildAt(i)) < 0)
+				strangers++;
+		Assert.equals(0, strangers, "the hand shows its own cards only");
+	}
+
+	// ==================== The cursor while targeting ====================
+
+	@Test
+	public function testTheCursorStaysHiddenWhileTargetingOverAnElement():Void {
+		// The hand hides the cursor while its arrow targets. Moving onto an element with a cursor of
+		// its own (a target) must not bring the cursor back; once targeting ends, it is the
+		// element's again without leaving the element first.
+		var h = createHelper();
+		h.helper.hideCursorWhileTargeting = true;
+		h.helper.setHand([desc("a")]);
+		h.screen.testAddElement(new CursorElement(hxd.Cursor.Button));
+		final controller = new bh.ui.controllers.UIDefaultController(h.screen);
+		final applied:Array<hxd.Cursor> = [];
+		final was = hxd.System.setCursor;
+		hxd.System.setCursor = c -> applied.push(c);
+		inline function last():String
+			return applied.length == 0 ? "none" : Std.string(applied[applied.length - 1]);
+		inline function move(x:Float):Void
+			controller.handleMove(new h2d.col.Point(x, 50), {sourceEvent: new hxd.Event(EMove), mousePoint: new h2d.col.Point(x, 50), scene: null});
+		try {
+			final entry = h.helper.cards[0];
+			h.helper.startDragFromInteractive(entry);
+			h.helper.enterTargetingMode(entry);
+			move(50);
+			controller.update(0.016);
+			Assert.equals("Hide", last(), "over an element while targeting, the cursor stays hidden");
+			h.helper.exitTargetingMode(entry);
+			move(51);
+			controller.update(0.016);
+			Assert.equals("Button", last(), "targeting over, the element's cursor again");
+		} catch (e:Dynamic) {
+			hxd.System.setCursor = was;
+			throw e;
+		}
+		hxd.System.setCursor = was;
+	}
+}
+
+/** An element over (0, 0) to (100, 100) with the cursor it is given. **/
+private class CursorElement implements bh.ui.UIElement implements bh.ui.UIElement.StandardUIElementEvents implements bh.ui.UIElement.UIElementCursor {
+	public var cursor:hxd.Cursor;
+
+	final object = new h2d.Object();
+
+	public function new(cursor:hxd.Cursor) {
+		this.cursor = cursor;
+	}
+
+	public function getObject():h2d.Object
+		return object;
+
+	public function containsPoint(pos:h2d.col.Point):Bool
+		return pos.x >= 0 && pos.x <= 100 && pos.y >= 0 && pos.y <= 100;
+
+	public function clear():Void {}
+
+	public function onEvent(wrapper:bh.ui.UIElement.UIElementEventWrapper):Void {}
+
+	public function getCursor():hxd.Cursor
+		return cursor;
 }

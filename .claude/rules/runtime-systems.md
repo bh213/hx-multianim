@@ -21,28 +21,57 @@
 **Game provides a `.manim` file with:**
 ```manim
 paths {
-    #cardArc lineTo(0, -30), bezier(100, 0, 50, -60)
-    #handShape bezier(0, 0, 400, -80, 800, 0)
+    #cardArc path {
+        lineTo(0, -30)
+        bezier(100, 0, 50, -60)
+    }
+    #handShape path {
+        bezier(800, 0, 400, -80)
+    }
 }
-#drawPath animatedPath { path: cardArc, type: time, duration: 0.3, easing: easeOutBack }
-#discardPath animatedPath { path: cardArc, type: time, duration: 0.25, easing: easeInQuad }
-#returnPath animatedPath { path: cardArc, type: time, duration: 0.2, easing: easeOutCubic }
-#rearrangePath animatedPath { path: cardArc, type: time, duration: 0.15, easing: easeInOutCubic }
+#drawPath animatedPath {
+    path: cardArc
+    type: time
+    duration: 0.3
+    easing: easeOutBack
+}
+#discardPath animatedPath {
+    path: cardArc
+    type: time
+    duration: 0.25
+    easing: easeInQuad
+}
+#returnPath animatedPath {
+    path: cardArc
+    type: time
+    duration: 0.2
+    easing: easeOutCubic
+}
+#rearrangePath animatedPath {
+    path: cardArc
+    type: time
+    duration: 0.15
+    easing: easeInOutCubic
+}
 
 #arrowSegment programmable(valid:bool=false) {
-    graphics(?(valid) #44FF44 : #FF4444, 2.0) { line(0, 0, 12, 0) }
+    @(valid=>true) graphics(line(#44FF44, 2.0, 0, 0, 12, 0)): 0, 0
+    @else graphics(line(#FF4444, 2.0, 0, 0, 12, 0)): 0, 0
 }
 #arrowHead programmable(valid:bool=false) {
-    graphics(?(valid) #44FF44 : #FF4444, 2.0) { line(0, -4, 8, 0), line(0, 4, 8, 0) }
+    @(valid=>true) graphics(line(#44FF44, 2.0, 0, -4, 8, 0); line(#44FF44, 2.0, 0, 4, 8, 0)): 0, 0
+    @else graphics(line(#FF4444, 2.0, 0, -4, 8, 0); line(#FF4444, 2.0, 0, 4, 8, 0)): 0, 0
 }
 
 #card programmable(status:[normal,hover,pressed,disabled]=normal, name:string="") {
-    interactive(80, 110, "card", bind => "status", events: [hover, click, push])
-    @(status=>hover) filter: glow(#FFFF00, 0.6, 10)
-    @(status=>disabled) filter: group(brightness(0.5), grayscale(0.8))
+    interactive(80, 110, "card", bind => "status", events: [hover, click, push]): 0, 0
+    @(status=>hover) apply { filter: glow(#FFFF00, 0.6, 10) }
+    @(status=>disabled) apply { filter: group(brightness(0.5), grayscale(0.8)) }
     ninepatch(cards, cardBg, 80, 110): 0, 0
 }
 ```
+
+`animatedPath {}` takes one property per line (commas are rejected); path commands in `path {}` are one per line or `;`-separated. `ParserErrorTest.testCardHandSetupSnippetParses` holds a copy of this block — keep the two in step.
 
 **Constructor:** `new UICardHandHelper(host:UIComponentHost, builder, ?config)` — takes `UIComponentHost` interface (not `UIScreenBase` directly). `UIScreenBase` implements `UIComponentHost`. Use `addCardHand(builder, config)` on screen for auto-wiring.
 
@@ -52,7 +81,7 @@ paths {
 
 **Events:** `CardHandEvent` enum — `CardPlayed(id, TargetZone(targetId)|NoTarget)`, `CardCombined(source, target)`, `CardHoverStart/End`, `CardDragStart/End`, `DrawAnimComplete`, `DiscardAnimComplete`.
 
-**API:** `setHand(descriptors)`, `drawCard(descriptor)`, `discardCard(id)`, `updateCardParams(id, params)`, `setCardEnabled(id, bool)`, `getCardResult(id)`, `registerTargetInteractive(wrapper)`, `registerTargetInteractives(wrappers)`, `unregisterTargetInteractive(id)`, `setTargetHighlightCallback(cb)`, `setTargetAcceptsFilter(cb)`, `addTargetingZone(zone)`, `removeTargetingZone(id)`, `clearTargetingZones()`, `setArrowVisible(bool)`, `setArrowSnap(bool)`, `setArrowSnapPointProvider(cb)`, `getTargeting()`, `getTargetingObject()`, `invalidateLayoutCache()`, `handleScreenEvent(event)`, `onMouseMove(x,y)`, `onMouseRelease(x,y)`, `update(dt)`, `dispose()`.
+**API:** `setHand(descriptors)`, `drawCard(descriptor, ?insertIndex=-1)`, `discardCard(id)`, `updateCardParams(id, params)`, `setCardEnabled(id, bool)`, `getCardResult(id)`, `registerTargetInteractive(wrapper)`, `registerTargetInteractives(wrappers)`, `unregisterTargetInteractive(id)`, `setTargetHighlightCallback(cb)`, `setTargetAcceptsFilter(cb)`, `addTargetingZone(zone)`, `removeTargetingZone(id)`, `clearTargetingZones()`, `setArrowVisible(bool)`, `setArrowSnap(bool)`, `setArrowSnapPointProvider(cb)`, `getTargeting()`, `getTargetingObject()`, `invalidateLayoutCache()`, `handleScreenEvent(event)`, `onMouseMove(x,y)`, `onMouseRelease(x,y,?button)`, `update(dt)`, `dispose()`.
 
 **Construction validation:** Non-null `drawPathName`, `discardPathName`, `returnPathName`, `rearrangePathName` are validated against `builder.hasNode()` at construction time. Invalid names throw immediately instead of at first animation.
 
@@ -71,9 +100,11 @@ paths {
 **Tracking draw animation:** `drawCard()` uses a tracking animation that dynamically re-stretches the draw path toward the card's current `layoutPos` each frame. The `AnimatedPath` is created with no normalization (raw path coordinates); the stretch transform (`from` → `layoutPos`) is recomputed per frame in `update(dt)`. This means concurrent draws naturally handle shifting hand positions — no stale endpoints. Rotation also tracks `layoutPos.rotation`. Scale/alpha curves from the `.manim` `animatedPath` are applied normally.
 
 **Drag state machine:**
-1. `interactive()` emits `UIPush` → helper starts drag, reparents card to `dragContainer`
+1. `interactive()` emits `UIPush` → helper starts drag (left button only — it notes the button of the raw `onMouseClick` push the screen dispatches first, and forgets it on release, so a `UIPush` with no raw push in front of it counts as left), reparents card to `dragContainer`
 2. Mouse move: card-to-card check first → targeting zone check (bounds + target fallback) → normal drag
-3. Release: card-to-card hover → `CardCombined`; targeting mode + target → `CardPlayed(TargetZone)`; in zone no target → `CardPlayed(NoTarget)`; outside zones → return animation
+3. Release: card-to-card hover → `CardCombined`; targeting mode + target → `CardPlayed(TargetZone)`; in zone no target → `CardPlayed(NoTarget)`; outside zones → return animation. Left-button release only; the drag state is cleared before `CardPlayed`/`CardCombined` fire, so a handler may `discardCard()`/`setHand()`. `setHand()` mid-drag clears the drag's targets too (the card-to-card target, the target id, the forced arrow validity), so no card of the old hand comes back on screen
+
+**Cursor while targeting:** `hideCursorWhileTargeting = true` hides the cursor through `CursorManager.setOverrideCursor(Hide)` while the arrow targets, so hovering a target (an element with a cursor of its own) keeps it hidden; it is cleared, and the hovered element's cursor set again, when targeting ends.
 
 **Hover detection:** Position-based via `getCardAtBasePosition()` in `onMouseMove` — uses base layout (no hover pop) with nearest-center selection among overlapping OBBs. Does NOT rely on Interactive UIEntering/UILeaving events (which would be blocked by z-order changes). Hovered card is brought to top render layer; z-order restored on un-hover. Card-to-card targets also z-reordered during highlight.
 
@@ -184,6 +215,10 @@ mgr.hasTweens(obj);
 - Sequence overflow: when a tween finishes mid-step, leftover dt passes to the next tween
 - `finish()` jumps to final state immediately
 - Cancelled tweens do not fire `onComplete`
+- `Tween` instances are pooled: a finished or cancelled tween is reused by the next `tween()`. Code that keeps a `Tween` past its end records `tween.generation` when it starts and cancels through `Tween.cancelIfCurrent(tween, generation)` — a plain `cancel()` on a stale reference cancels whatever animation now reuses the instance. A finished `TweenSequence`/`TweenGroup` no longer reaches its tweens
+- `clear()` is safe from an `onComplete` callback: `update()` stops after that callback, and tweens started after the clear run from the next `update()`
+- Tweens run in the order they were started, every frame: of two tweens driving one property the later one wins, and keeps winning when another tween ends (finished ones leave the list in order, not by swapping in the last). A callback that throws leaves the list whole
+- `Tween.completed` — reached its end (a step or `finish()`). A zero-duration tween is snapped to its end by its first step, inside a `group()` too (its `removeTargetOnComplete` honoured)
 
 **`.manim` transition integration:**
 - `transition {}` block in programmable body declares animated transitions for parameter changes
@@ -232,10 +267,24 @@ screenManager.finalizeTransition(); // jump to end immediately
 - `isTransitioning` flag true while animating
 - All transition tweens use `skipFirstDt = true` to prevent stutter
 - If a new transition starts while one is in progress, the current one finalizes immediately
+- `finalizeTransition()` jumps the running transition's tweens (entering and leaving roots) to their end, then runs its cleanup; the `onComplete` of a finalized transition never fires later (it used to run the *next* transition's cleanup). Built-in transitions only: a `Custom` transition's own tweens keep running, though its `onComplete` is ignored once finalized
+- Closing a dialog — controller exit (`setExitCode`), `closeDialogWithTransition` instant or animated — finalizes a running transition first, so a dialog closed during its own open transition is not left part-faded and `isTransitioning` clears
+- A switch that changes a screen's role (`Single(A)` → `MasterAndSingle(A, B)`, `MasterAndSingle(A, B)` → `Single(A)` or → `MasterAndSingle(B, A)`) throws on the animated path as on the instant path
+
+**What is showing** — `ScreenManagerMode` is private; read the mode through these instead:
+```haxe
+final s = screenManager.showing();  // ScreensShowing {base, master, dialog, dialogName}, null where absent
+screenManager.isShowing(screen);    // true for the base, the master or the open dialog
+screenManager.reenter(screen, data); // UILeaving then UIEntering(data) to a showing screen, in place
+```
+- `base` is the `Single` screen or the single of `MasterAndSingle`, found under any open dialogs; `master` likewise. `dialog`/`dialogName` are the top dialog. A dialog covered by another dialog is not showing (it is out of the scene).
+- During an animated switch, `showing()` already reports the mode being switched to.
+- `reenter(screen, ?data)` restarts a screen that stays up (a screen resets itself on `UIEntering`, which `updateScreenMode` does not send to a screen already present). Order: controller `LifecycleControllerFinished`, `UILeaving`, `UIOnControllerEvent(Leaving)`, the screen's tweens cancelled, `UIEntering(data)`, `UIOnControllerEvent(Entering)`, `LifecycleControllerStarted`. The root stays in the scene; mode, input routing and a dialog open over the screen are untouched. Finishes a running transition first; throws if the screen is not showing.
+- DevBridge `get_screen_state` returns the same view by screen name (`base`, `master`, `dialog`, `dialogName`) beside `mode`.
 
 ## Modal Dialog Overlay
 
-Configurable darkening/blur background behind modal dialogs. Overlay is an `h2d.Bitmap` at layer 5 (between master and dialog), animated via TweenManager.
+Configurable darkening/blur background behind modal dialogs. Overlay is an `h2d.Bitmap` at layer 5 (between master and dialog), sized to the scene (`sceneWidth` × `sceneHeight`) and animated via TweenManager. `ScreenManager.update()` refits it whenever the scene size changes (window resize, `scaleMode` change) — polled there rather than from a `hxd.Window` resize listener because that listener list is prepended to, so a late listener would read the scene size before the engine's own `s2d.checkResize()` ran.
 
 **Config typedef** (`UIScreen.hx`):
 ```haxe
@@ -282,9 +331,13 @@ if (overlayFromManim != null)
 
 **Priority:** `.manim` settings override code-set config (set `modalOverlayConfig` before `load()`, then `.manim` settings overwrite in `load()`).
 
-**Overlay lifecycle:** ScreenManager reads `modalOverlayConfig` after `dialog.load()` → creates overlay bitmap → tweens alpha in sync with transition → tweens alpha out on close → removes overlay in cleanup.
+**Overlay lifecycle:** ScreenManager reads `modalOverlayConfig` after `dialog.load()` → creates overlay bitmap at the current scene size → tweens alpha in sync with transition → refits to the scene size on every `update()` → tweens alpha out on close → removes overlay in cleanup.
 
 **Event routing while dialog is open** (known asymmetry): when a dialog opens over `MasterAndSingle`, `overrideActiveScreenControllers = [dialog, oldMaster]` — the dialog is first in the controller list but the underlying master still receives controller events. Opening a dialog over `Single` mode blocks instead (`overrideActiveScreenControllers = [dialog]`). There is no per-dialog `blockUnderlying:Bool` flag yet. If you need a fully input-blocking modal over a master/single layout, switch to `Single` before opening the dialog, or have the master screen gate its own input handlers. See the two `case Dialog(...)` branches under `Single(...)` vs `MasterAndSingle(...)` in `ScreenManager.updateScreenMode` for the asymmetry.
+
+**Dialog result delivery:** `OnDialogResult(dialogName, result)` reaches the caller after the dialog has closed — `mode` is back to the dialog's previous mode — on every close path: controller exit (`setExitCode`, delivered on the next `update()`), instant `closeDialogWithTransition()`, and at the end of an animated close. So the handler may open the next dialog with `modalDialog`: it opens over the screen below, and closing it returns there. The exit response is consumed when delivered and cleared when a dialog is opened, so a reused dialog instance never starts with its previous result. A screen switch that closes a dialog: with a transition it closes it through `closeDialogWithTransition(None)` (result delivered); without one it delivers nothing.
+
+**Dialog over dialog (close behavior):** opening a dialog over another dialog (`modalDialog` / `modalDialogWithTransition`) removes the underlying dialog from the scene but captures it as the new dialog's `previousMode`. Closing the top dialog re-attaches and re-activates that underlying dialog — both for instant close (via `updateScreenMode`'s `Dialog -> Dialog` branch) and animated close (`closeDialogWithTransition` with a transition, via the `case Dialog(...)` arm in its controller-restore switch). Note this *revives* a dialog whose `OnDialogResult` already fired when the top dialog opened, re-running its `UIEntering`/`Entering` lifecycle. The app-side close-first convention (close the underlying dialog before opening the next) avoids relying on this revival entirely — opening the next dialog from the `OnDialogResult` handler follows it. The covered dialog's result is consumed when it is delivered at open time, so the revived dialog does not deliver it again.
 
 ## Tooltip/Panel Fade Transitions
 
@@ -377,14 +430,18 @@ helper.count;
 - `absolutePosition = false` (default): path position is offset from spawn (x, y). Use with `Anchor` normalization.
 - `absolutePosition = true`: path position IS world coordinates. Use with `Stretch(startPoint, endPoint)` normalization.
 
-**AnimatedPath state applied:** position, alpha, scale, rotation. Color applied to `h2d.Text` only when colorCurve is active.
+**AnimatedPath state applied:** position, alpha, scale, rotation. Color (RGB of the `0xAARRGGBB` state color) applied to `h2d.Text.textColor` whenever the path has a color curve (`hasColorCurve()`), white included; the object's alpha comes from the alpha curve.
 
 **Usage pattern:**
 ```haxe
 // In .manim:
 paths { #dmgPath path { bezier(60, -25, 30, -50) } }
 curves { #dmgAlpha curve { points: [(0, 1.0), (0.6, 0.8), (1.0, 0.0)] } }
-#dmgAnim animatedPath { path: dmgPath, duration: 1.0, 0.0: alphaCurve: dmgAlpha }
+#dmgAnim animatedPath {
+    path: dmgPath
+    duration: 1.0
+    0.0: alphaCurve: dmgAlpha
+}
 
 // In game code:
 var floatingText = new FloatingTextHelper(overlayRoot);

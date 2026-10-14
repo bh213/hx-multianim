@@ -590,6 +590,52 @@ class CardHandOrchestratorTest extends BuilderTestBase {
 		Assert.notNull(h.helper);
 	}
 
+	// ==================== canPlayCard targeting result reuse ====================
+
+	// While dragging a card over the same target, updateDrag fires every frame and
+	// hands a TargetingResult to canPlayCard. TargetZone carries a String arg, so a
+	// fresh enum is allocated per frame unless the result is cached. When the target
+	// id does not change frame-to-frame, the same TargetZone instance must be reused.
+	@Test
+	public function testDragReusesTargetingResultAcrossFramesForSameTarget():Void {
+		var h = createHelper();
+		h.helper.setHand([desc("a")]);
+
+		var captured:Array<TargetingResult> = [];
+		h.helper.canPlayCard = function(cardId, target) {
+			captured.push(target);
+			return true;
+		};
+
+		@:privateAccess {
+			var entry = h.helper.cards[0];
+			h.helper.draggedEntry = entry;
+			h.helper.isTargeting = false;
+			h.helper.currentTargetId = "zoneA";
+			// Cursor well below the targeting threshold (anchorY 680 - threshold 100 = 580)
+			// so updateDrag stays in the normal-drag branch and preserves currentTargetId
+			// instead of re-running highlight detection.
+			h.helper.cursorY = 100000;
+			h.helper.sceneCursorY = 100000;
+
+			h.helper.updateDrag();
+			h.helper.updateDrag();
+			h.helper.updateDrag();
+		}
+
+		Assert.equals(3, captured.length);
+		// HL == on a parameterized enum is reference identity. Same target id every
+		// frame must yield the same cached instance, not three fresh allocations.
+		Assert.isTrue(captured[0] == captured[1],
+			"TargetZone result must be cached and reused across frames with an unchanged target id (got a fresh allocation)");
+		Assert.isTrue(captured[1] == captured[2],
+			"TargetZone result must be cached and reused across frames with an unchanged target id (got a fresh allocation)");
+		switch captured[0] {
+			case TargetZone(id): Assert.equals("zoneA", id);
+			default: Assert.fail("Expected TargetZone");
+		}
+	}
+
 	// ==================== Bug: discardCard missing CardHoverEnd ====================
 
 	@Test

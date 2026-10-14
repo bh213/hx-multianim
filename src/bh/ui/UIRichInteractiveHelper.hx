@@ -140,6 +140,15 @@ class UIRichInteractiveHelper {
 		return bindings.exists(interactiveId);
 	}
 
+	/** Fill `out` with the ids of the bindings registered under `prefix` (by `register(source, prefix)`
+	 *  or `resync`). These are the full `'<prefix>.<identifier>'` ids the state methods take. */
+	public function getBindingIds(prefix:String, out:Array<String>):Void {
+		out.resize(0);
+		for (id => binding in bindings)
+			if (binding.prefix == prefix)
+				out.push(id);
+	}
+
 	/** Manually bind an interactive to a source's parameter. `prefix` records the scope used when
 	 *  the binding was created (from `register`/`registerAutoStatus`); it is consulted by `resync`
 	 *  to avoid wiping bindings on the same source that were registered under a different prefix. */

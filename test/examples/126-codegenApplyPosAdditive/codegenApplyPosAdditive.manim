@@ -1,0 +1,9 @@
+version: 1.0
+
+#codegenApplyPosAdditive programmable(hover:bool=false) {
+  #box point {
+    pos: 100, 50
+    bitmap(generated(color(40, 40, #4488ff)));
+    @(hover=>true) apply { pos: 5, 5 }
+  }
+}

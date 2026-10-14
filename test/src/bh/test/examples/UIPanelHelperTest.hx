@@ -759,6 +759,41 @@ class UIPanelHelperTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testCloseAfterFadeInWasCancelledElsewhereLeavesOtherTweensAlone():Void {
+		// The fade-in is cancelled from outside (e.g. a screen teardown cancelling every tween),
+		// so its Tween goes back to the pool and is reused. Closing the panel later must not
+		// cancel whatever tween reuses it.
+		var ctx = createHelperWithTweens(0.5, 0.0);
+		ctx.helper.open("btn1", "panel");
+		ctx.tweens.clear();
+
+		var others = [for (_ in 0...3) new h2d.Object()];
+		for (o in others)
+			ctx.tweens.tween(o, 0.2, [X(50.0)]);
+
+		ctx.helper.close();
+		ctx.tweens.update(0.3);
+		for (o in others)
+			Assert.floatEquals(50.0, o.x, "an unrelated tween must not be cancelled by the panel's stale fade-in");
+	}
+
+	@Test
+	public function testCloseNamedAfterFadeInWasCancelledElsewhereLeavesOtherTweensAlone():Void {
+		var ctx = createHelperWithTweens(0.5, 0.0);
+		ctx.helper.openNamed("slotA", "btn1", "panel");
+		ctx.tweens.clear();
+
+		var others = [for (_ in 0...3) new h2d.Object()];
+		for (o in others)
+			ctx.tweens.tween(o, 0.2, [X(50.0)]);
+
+		ctx.helper.closeNamed("slotA");
+		ctx.tweens.update(0.3);
+		for (o in others)
+			Assert.floatEquals(50.0, o.x, "an unrelated tween must not be cancelled by the named panel's stale fade-in");
+	}
+
+	@Test
 	public function testNamedPanelFadeOut():Void {
 		var ctx = createHelperWithTweens(0.0, 0.2);
 		ctx.helper.openNamed("slot1", "btn1", "panel");
@@ -1280,6 +1315,30 @@ class UIPanelHelperTest extends BuilderTestBase {
 		// Advance further — cancelled tween must not resurrect the panel.
 		ctx.tweens.update(2.0);
 		Assert.isNull(fadingOutObj.parent, "panel must stay detached after dispose");
+	}
+
+	@Test
+	public function testDisposeDetachesSecondFadeOutWhenSlotIsClosedReopenedAndClosedWithinOneFade():Void {
+		// closeNamed() finishes the previous fade-out of the slot, but finish() only snaps the
+		// tween to its end: its onComplete still runs on the next update(). That callback must
+		// not drop the tracking of a newer fade-out started in the same slot in the meantime,
+		// otherwise dispose() can neither detach that panel nor cancel its tween.
+		var ctx = createHelperWithTweens(0.0, 0.5);
+		ctx.helper.openNamed("slot1", "btn1", "panel");
+		ctx.helper.closeNamed("slot1"); // fade-out A
+		ctx.helper.openNamed("slot1", "btn2", "panel"); // finishes A; A's callback is still armed
+		var objB = ctx.helper.getNamedPanelResult("slot1").object;
+		ctx.helper.closeNamed("slot1"); // fade-out B, same frame
+		Assert.notNull(objB.parent, "precondition: B is fading out, still attached");
+
+		ctx.tweens.update(0.01); // A completes here and runs its callback
+		Assert.notNull(objB.parent, "precondition: B is still mid-fade");
+		Assert.isTrue(ctx.tweens.hasTweens(objB), "precondition: B's fade-out is still live");
+
+		ctx.helper.dispose();
+		Assert.isNull(objB.parent,
+			"dispose() must detach the fading-out panel of a slot that was closed, reopened and closed again within one fade");
+		Assert.isFalse(ctx.tweens.hasTweens(objB), "dispose() must cancel that fade-out");
 	}
 
 	@Test
