@@ -164,12 +164,12 @@ class AudioScreenTest extends utest.Test {
 	public function testMusicFollowsTheScreensAndCrossfades():Void {
 		final m = manager();
 		final menu = new SoundTestScreen(m.sm);
-		menu.music = "music.title";
+		menu.screenMusic = "music.title";
 		final play = new SoundTestScreen(m.sm);
-		play.music = "music.play";
+		play.screenMusic = "music.play";
 		final silent = new SoundTestScreen(m.sm);
 		final quiet = new SoundTestScreen(m.sm);
-		quiet.music = "none";
+		quiet.screenMusic = "none";
 		m.sm.addScreen("menu", menu);
 		m.sm.addScreen("play", play);
 		m.sm.addScreen("silent", silent);
@@ -205,7 +205,7 @@ class AudioScreenTest extends utest.Test {
 	public function testADialogDucksTheMusicAndKeepsItsCallers():Void {
 		final m = manager();
 		final menu = new SoundTestScreen(m.sm);
-		menu.music = "music.title";
+		menu.screenMusic = "music.title";
 		final dialog = new SoundTestScreen(m.sm);
 		m.sm.addScreen("menu", menu);
 		m.sm.addScreen("dialog", dialog);
@@ -224,11 +224,24 @@ class AudioScreenTest extends utest.Test {
 	public function testAScreenReadsItsMusicFromItsSettings():Void {
 		final m = manager();
 		final screen = new SoundTestScreen(m.sm);
-		Assert.isNull(screen.music);
+		Assert.isNull(screen.screenMusic);
 		screen.addBuilderResult(BuilderTestBase.builderFromSource(WIDGETS).buildWithParameters("menu", []));
-		Assert.equals("music.play", screen.music, "settings { music => \"music.play\" }");
+		Assert.equals("music.play", screen.screenMusic, "settings { music => \"music.play\" }");
 		screen.addBuilderResult(BuilderTestBase.builderFromSource(WIDGETS).buildWithParameters("button", ["buttonText" => "x"]));
-		Assert.equals("music.play", screen.music, "the first that says it");
+		Assert.equals("music.play", screen.screenMusic, "the first that says it");
+	}
+
+	@Test
+	public function testAScreenMayNameItsOwnControlsMusicSoundAndVolume():Void {
+		final m = manager();
+		final builder = BuilderTestBase.builderFromSource(WIDGETS);
+		final screen = new SoundControlsScreen(m.sm);
+		screen.music = UIStandardMultiAnimButton.create(builder, "button", "Music");
+		screen.addBuilderResult(builder.buildWithParameters("menu", []));
+		m.sm.addScreen("options", screen);
+		m.sm.switchTo(screen);
+		Assert.notNull(screen.music, "the screen's own field holds its control");
+		Assert.equals("music.play", m.sm.audio.musicPlaying, "settings { music => } still gives the screen its music");
 	}
 
 	@Test
@@ -340,4 +353,19 @@ private class SoundTestScreen extends UIScreenBase {
 	public function onScreenEvent(event:UIScreenEvent, source:Null<UIElement>):Void {
 		recordedEvents.push(event);
 	}
+}
+
+/** A screen whose controls are named after what they do, as `macroBuildWithParameters` keys them. */
+private class SoundControlsScreen extends UIScreenBase {
+	public var music:Null<UIStandardMultiAnimButton> = null;
+	public var sound:Null<UIStandardMultiAnimButton> = null;
+	public var volume:Null<UIStandardMultiAnimButton> = null;
+
+	public function new(sm:ScreenManager) {
+		super(sm);
+	}
+
+	public function load():Void {}
+
+	public function onScreenEvent(event:UIScreenEvent, source:Null<UIElement>):Void {}
 }

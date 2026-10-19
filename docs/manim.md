@@ -1628,7 +1628,7 @@ seconds is streamed by Heaps.
 - **A sprite's events** play what its `.anim` file's `sounds { fire: "fx.shot" }` block maps them to,
   as the state machine fires them, through the loader's audio (`docs/anim.md` "sounds").
 - **A screen's music** is `settings { music => "music.title" }` on the first programmable added to it
-  that says it (or `screen.music = "music.title"` from code before it shows; `"none"` stops the
+  that says it (or `screen.screenMusic = "music.title"` from code before it shows; `"none"` stops the
   music, no word keeps what plays). The screen manager crossfades to it as the screen comes up: a
   dialog that says nothing keeps its caller's, a master-and-single plays the single's, else the
   master's. Under a dialog the `dialog` snapshot is on, when the mix has one.

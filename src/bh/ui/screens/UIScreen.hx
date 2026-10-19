@@ -110,8 +110,9 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	 *  plays; null says nothing, and what plays plays on. Read from the first builder result added
 	 *  to the screen whose root settings have `music =>`, or set from code before the screen shows.
 	 *  The screen manager crossfades to it as the screen comes up (a dialog that says nothing keeps
-	 *  its caller's). */
-	public var music:Null<String> = null;
+	 *  its caller's). Not `music`: a subclass may not declare a field of the same name, and screens
+	 *  name their controls after what they do (a `music` checkbox). */
+	public var screenMusic:Null<String> = null;
 	private var _autoSyncInitialState:Bool = false;
 	var autoSyncInitialState(never, set):Bool;
 	var initialSyncDone:Bool = false;
@@ -1113,10 +1114,10 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 
 	/** `settings { music => "music.title" }` on the first result added that has it is the screen's music. */
 	function readMusicSetting(r:BuilderResult):Void {
-		if (music == null && r.rootSettings != null && r.rootSettings.has("music")) {
+		if (screenMusic == null && r.rootSettings != null && r.rootSettings.has("music")) {
 			final said = r.rootSettings.getStringOrDefault("music", "");
 			if (said != "")
-				music = said;
+				screenMusic = said;
 		}
 	}
 

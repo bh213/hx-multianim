@@ -195,7 +195,7 @@ class ScreenManager {
 	 *  the master's. Null when no screen says. */
 	function musicFor(screenMode:ScreenManagerMode):Null<String> {
 		inline function of(screen:UIScreen):Null<String>
-			return Std.isOfType(screen, UIScreenBase) ? cast(screen, UIScreenBase).music : null;
+			return Std.isOfType(screen, UIScreenBase) ? cast(screen, UIScreenBase).screenMusic : null;
 		return switch screenMode {
 			case None: null;
 			case Single(single): of(single);
