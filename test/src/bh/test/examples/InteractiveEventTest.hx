@@ -495,4 +495,27 @@ class InteractiveEventTest extends BuilderTestBase {
 		Assert.floatEquals(77.0, pos.y, 0.001,
 			"containsPoint must not mutate caller's pos.y");
 	}
+
+	// ==================== Keys placed by staticRef / dynamicRef register on the screen ====================
+	// The screen registers whatever result.getInteractives() lists. A key declared inside a
+	// programmable that the screen's programmable places by staticRef or dynamicRef must end up
+	// registered (clickable, with its cursor) like a key declared inline.
+
+	@Test
+	public function testScreenRegistersInteractivesPlacedByRef():Void {
+		var screen = new bh.test.UITestHarness.UITestScreen();
+		var result = BuilderTestBase.buildFromSource('
+			#key programmable(id:string="k") {
+				interactive(20, 20, $$id, sound.click => "ui.click"): 0, 0
+			}
+			#board programmable() {
+				staticRef($$key, id=>"a"): 0, 0
+				dynamicRef($$key, id=>"b"): 20, 0
+			}
+		', "board", null, Incremental);
+		screen.addInteractives(result);
+		Assert.notNull(screen.getInteractive("a"), "the key placed by staticRef is registered on the screen");
+		Assert.notNull(screen.getInteractive("b"), "the key placed by dynamicRef is registered on the screen");
+	}
+
 }

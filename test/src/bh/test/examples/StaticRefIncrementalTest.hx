@@ -353,4 +353,42 @@ class StaticRefIncrementalTest extends BuilderTestBase {
 		inst.setParameter("c", 9);
 		Assert.equals("9x3", sizes(inst), "codegen: the external staticRef is built again");
 	}
+
+	// ==================== The target's interactives reach the enclosing result ====================
+	// A staticRef builds its target in a nested build. The interactives declared there must be
+	// listed by the enclosing result's getInteractives(), as a codegen instance lists them from
+	// its scene graph — otherwise addInteractives(result) never registers a key placed by staticRef.
+
+	static inline var KEYS_MANIM = "
+		#key programmable(id:string=\"k\") {
+			interactive(20, 20, $id, sound.click => \"ui.click\"): 0, 0
+		}
+		#board programmable(second:string=\"b\") {
+			staticRef($key, id=>\"a\"): 0, 0
+			staticRef($key, id=>$second): 20, 0
+		}
+	";
+
+	/** The ids of the interactives the result lists, sorted. */
+	static function ids(result:bh.multianim.MultiAnimBuilder.BuilderResult):Array<String> {
+		final out = [for (o in result.getInteractives()) switch o.multiAnimType { case MAInteractive(_, _, id, _): id; default: null; }];
+		out.sort(Reflect.compare);
+		return out;
+	}
+
+	@Test
+	public function testBuilder_StaticRefInteractivesReachTheParent():Void {
+		final result = BuilderTestBase.buildFromSource(KEYS_MANIM, "board");
+		Assert.equals("a,b", ids(result).join(","), "a plain build lists the keys placed by staticRef");
+		final inc = BuilderTestBase.buildFromSource(KEYS_MANIM, "board", null, Incremental);
+		Assert.equals("a,b", ids(inc).join(","), "an incremental build lists them too");
+	}
+
+	@Test
+	public function testBuilder_RebuiltStaticRefInteractivesReachTheParent():Void {
+		final result = BuilderTestBase.buildFromSource(KEYS_MANIM, "board", null, Incremental);
+		result.setParameter("second", "c");
+		Assert.equals("a,c", ids(result).join(","), "once the staticRef is built again, its new key is listed and the old one is gone");
+	}
+
 }

@@ -2308,9 +2308,21 @@ class BuilderResult implements bh.ui.UIInteractiveSource {
 	 *  disappear here. The reachability walk (not just `o.parent != null`) also catches interactives
 	 *  nested below the detached arm root, e.g. `@(open=>true) { layers() { interactive } }`, whose
 	 *  immediate parent stays non-null. Matches codegen, whose `getInteractives()` walks the live
-	 *  scene graph. The fresh array also protects callers from mutations during structural rebuilds. */
+	 *  scene graph. The fresh array also protects callers from mutations during structural rebuilds.
+	 *
+	 *  A programmable placed by `dynamicRef` keeps its own result (in `dynamicRefs`), where its
+	 *  interactives are registered and where an inner rebuild updates them; they are listed here
+	 *  through that result, so the screen registers a key placed by dynamicRef like one declared
+	 *  inline. A template swap replaces the entry, and an entry whose root is detached (its arm
+	 *  hidden) is skipped like a detached interactive. */
 	public function getInteractives():Array<bh.base.MAObject> {
-		return [for (o in interactives) if (isAttachedToRoot(o)) o];
+		final out = [for (o in interactives) if (isAttachedToRoot(o)) o];
+		for (arr in dynamicRefs)
+			for (r in arr)
+				if (r.object != null && isAttachedToRoot(r.object))
+					for (o in r.getInteractives())
+						out.push(o);
+		return out;
 	}
 
 	/** True when walking `o`'s parent chain reaches this result's root `object` — i.e. the interactive
@@ -4876,13 +4888,16 @@ class MultiAnimBuilder {
 			indexedParams = live;
 			try {
 				final reference = resolveRefName(progRefRV);
-				final fresh = importedBuilder(externalReference, node).buildWithParameters(reference, parameters, capturedBP, live)?.object;
+				final freshResult = importedBuilder(externalReference, node).buildWithParameters(reference, parameters, capturedBP, live);
+				final fresh = freshResult?.object;
 				if (fresh == null)
 					throw builderErrorAt(node, 'could not build staticRef ${reference}');
 				ctx.cleanupDestroyedSubtree(ir, current);
 				current.remove();
 				container.addChild(fresh);
 				current = fresh;
+				for (o in freshResult.interactives)
+					ir.interactives.push(o);
 			} catch (e:Dynamic) {
 				indexedParams = saved;
 				throw e;
@@ -6142,6 +6157,10 @@ class MultiAnimBuilder {
 				var object = result?.object;
 				if (object == null)
 					throw builderErrorAt(node, 'could not build staticRef ${reference}');
+				// The target's interactives belong to the enclosing result: the nested build is a
+				// snapshot, so its list is final. A codegen instance lists them from its scene graph.
+				for (o in result.interactives)
+					internalResults.interactives.push(o);
 
 				// When the referenced programmable has a non-zero pos, buildWithParameters wraps it:
 				// holder(0,0) → retRoot(posX,posY) → children

@@ -1283,4 +1283,67 @@ class DynamicRefTest extends BuilderTestBase {
 		Assert.equals(0, staleKeys,
 			'Parent IncrementalUpdateContext.changedParams must be empty after a mid-update throw; leaked keys = $staleKeys');
 	}
+
+	// ==================== The target's interactives reach the enclosing result ====================
+	// addInteractives(result) reads result.getInteractives(); a key declared in a programmable placed
+	// by dynamicRef must be listed there, as a codegen instance lists it from its scene graph.
+
+	static function interactiveIds(result:bh.multianim.MultiAnimBuilder.BuilderResult):Array<String> {
+		final out = [for (o in result.getInteractives()) switch o.multiAnimType { case MAInteractive(_, _, id, _): id; default: null; }];
+		out.sort(Reflect.compare);
+		return out;
+	}
+
+	@Test
+	public function testDynamicRefInteractivesReachTheParent():Void {
+		final result = buildFromSource("
+			#key programmable(id:string=\"k\") {
+				interactive(20, 20, $id): 0, 0
+			}
+			#board programmable() {
+				dynamicRef($key, id=>\"a\"): 0, 0
+				#second dynamicRef($key, id=>\"b\"): 20, 0
+			}
+		", "board", null, Incremental);
+		Assert.equals("a,b", interactiveIds(result).join(","), "the keys placed by dynamicRef are listed by the enclosing result");
+	}
+
+	@Test
+	public function testDynamicNameSwapUpdatesParentInteractives():Void {
+		final result = buildFromSource("
+			#widgetA programmable() {
+				interactive(50, 50, \"btnA\"): 0, 0
+			}
+			#widgetB programmable() {
+				interactive(50, 50, \"btnB\"): 0, 0
+			}
+			#test programmable(template:string=\"widgetA\") {
+				dynamicRef($template): 0, 0
+			}
+		", "test", null, Incremental);
+		Assert.equals("btnA", interactiveIds(result).join(","), "the enclosing result lists the first template's key");
+		result.setParameter("template", "widgetB");
+		Assert.equals("btnB", interactiveIds(result).join(","), "after the template swap it lists the new template's key only");
+	}
+
+
+	@Test
+	public function testDynamicRefInHiddenArmIsNotExposed():Void {
+		// The placed programmable's own result still lists its key, but the enclosing result must
+		// not while the arm that holds the dynamicRef is detached: no ghost click target.
+		final result = buildFromSource("
+			#key programmable(id:string=\"k\") {
+				interactive(20, 20, $id): 0, 0
+			}
+			#board programmable(open:bool=true) {
+				@(open=>true) dynamicRef($key, id=>\"a\"): 0, 0
+			}
+		", "board", null, Incremental);
+		Assert.equals("a", interactiveIds(result).join(","), "listed while the arm is shown");
+		result.setParameter("open", false);
+		Assert.equals("", interactiveIds(result).join(","), "not listed while the arm is hidden");
+		result.setParameter("open", true);
+		Assert.equals("a", interactiveIds(result).join(","), "listed again once the arm is shown");
+	}
+
 }
