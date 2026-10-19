@@ -548,7 +548,8 @@ class IncrementalUpdateContext {
 		this.transitionsDef = rootNode.transitions;
 	}
 
-	#if MULTIANIM_DEV
+	/** A copy of the parameters as resolved now (the `@final` aliases among them). What
+	 *  `BuilderResult.getParameterValues` and hot reload's state snapshot read. */
 	public function snapshotParams():Map<String, ResolvedIndexParameters> {
 		final copy:Map<String, ResolvedIndexParameters> = new Map();
 		for (k => v in indexedParams)
@@ -556,6 +557,7 @@ class IncrementalUpdateContext {
 		return copy;
 	}
 
+	#if MULTIANIM_DEV
 	public function getBuilderParams():BuilderParameters {
 		return builderParams;
 	}
@@ -2223,7 +2225,7 @@ class SlotHandle {
 
 @:nullSafety
 @:structInit
-class BuilderResult implements bh.ui.UIInteractiveSource {
+class BuilderResult implements bh.multianim.LiveProgrammable {
 	public var object:Object;
 	public var name:String;
 	public var names:Map<String, Array<NamedBuildResult>>;
@@ -2430,28 +2432,51 @@ class BuilderResult implements bh.ui.UIInteractiveSource {
 	 *  scene graph (not hidden), so its object still answers `getBounds()` in its own space. A
 	 *  widget that hit-tests a named element (a slider's `#start`, a scrollbar's `#thumb`) asks
 	 *  for the drawn one. Null when the name is unknown or no arm of it is drawn. */
-	public function getNamedDrawn(name:String):Null<h2d.Object> {
-		final items = names.get(name);
+	public function getNamedDrawn(name:String, ?index:Null<Int>, ?indexY:Null<Int>):Null<h2d.Object> {
+		final items = names.get(bh.multianim.LiveProgrammable.LiveProgrammableTools.namedKey(name, index, indexY));
 		if (items == null)
 			return null;
 		for (item in items) {
 			final obj = item.getBuiltHeapsObject().toh2dObject();
-			if (obj != null && isDrawnUnder(obj, object))
+			if (obj != null && bh.multianim.LiveProgrammable.LiveProgrammableTools.isDrawnUnder(obj, object))
 				return obj;
 		}
 		return null;
 	}
 
-	static function isDrawnUnder(obj:h2d.Object, root:h2d.Object):Bool {
-		var cur = obj;
-		while (cur != null) {
-			if (!cur.visible)
-				return false;
-			if (cur == root)
-				return true;
-			cur = cur.parent;
+	// ---- LiveProgrammable: what a tool sees of this result, the same as of a codegen instance ----
+
+	public function getRoot():h2d.Object
+		return object;
+
+	public function getProgrammableName():String
+		return name;
+
+	public function getNamedKeys():Array<String> {
+		return [for (key in names.keys()) key];
+	}
+
+	public function getSlotEntries():Array<{key:SlotKey, handle:SlotHandle}> {
+		return slots == null ? [] : slots.copy();
+	}
+
+	public function getDynamicRefKeys():Array<String> {
+		if (dynamicRefs == null)
+			return [];
+		return [for (key => arr in dynamicRefs) if (arr.length > 0) key];
+	}
+
+	public function getParameterValues():Map<String, Dynamic> {
+		final out = new Map<String, Dynamic>();
+		final ctx = incrementalContext;
+		if (ctx == null)
+			return out;
+		for (paramName => resolved in ctx.snapshotParams()) {
+			final val = bh.multianim.LiveProgrammable.LiveProgrammableTools.resolvedToDynamic(resolved);
+			if (val != null)
+				out.set(paramName, val);
 		}
-		return false;
+		return out;
 	}
 
 	public function hasName(name:String):Bool {
@@ -2665,6 +2690,15 @@ class SwitchArmResults {
 		return getUpdatable('${name} ${x} ${y}');
 	}
 
+	/** Every object built under a names-map key (one per `@()` arm that declares the name), for
+	 *  `LiveProgrammable.getNamedDrawn` to pick the drawn one from. Empty when the key is unknown. */
+	public function namedObjects(key:String):Array<h2d.Object> {
+		final arr = ir.names.get(key);
+		if (arr == null)
+			return [];
+		return [for (n in arr) { final o = MultiAnimParser.toh2dObject(n.object); if (o != null) o; }];
+	}
+
 	public function getSlot(name:String, ?index:Null<Int>, ?indexY:Null<Int>):Null<SlotHandle> {
 		for (entry in ir.slots) {
 			final match = switch entry.key {
@@ -2709,6 +2743,22 @@ class SwitchArmResults {
 	public function hasDynamicRef(name:String):Bool {
 		final arr = ir.dynamicRefs.get(name);
 		return arr != null && arr.length > 0;
+	}
+
+	/** Every named-element key this sink holds now (`"name"`, `"name idx"`, `"name ix iy"`). For
+	 *  a codegen instance's `LiveProgrammable.getNamedKeys`, which lists what its arms built. */
+	public function namedKeys():Array<String> {
+		return [for (key in ir.names.keys()) key];
+	}
+
+	/** Every slot this sink holds now, for `LiveProgrammable.getSlotEntries`. */
+	public function slotEntries():Array<{key:SlotKey, handle:SlotHandle}> {
+		return ir.slots.copy();
+	}
+
+	/** Every dynamicRef key this sink holds now, for `LiveProgrammable.getDynamicRefKeys`. */
+	public function dynamicRefKeys():Array<String> {
+		return [for (key => arr in ir.dynamicRefs) if (arr.length > 0) key];
 	}
 }
 

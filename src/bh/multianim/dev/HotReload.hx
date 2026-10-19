@@ -154,12 +154,82 @@ class ReloadSentinel extends h2d.Object {
 	}
 }
 
+/** A codegen instance (`@:manim`) on the registry's list of what is alive. It cannot be reloaded —
+ *  its tree is compiled in — so hot reload never sees it; the DevBridge lists it beside the
+ *  `BuilderResult` handles through `getAllLive`. The generated instance registers itself from its
+ *  constructor and, like a `ReloadSentinel`, goes off the list while its root is out of the scene. */
+typedef LiveInstanceHandle = {
+	sourcePath:String,
+	programmableName:String,
+	live:bh.multianim.LiveProgrammable,
+	registry:ReloadableRegistry,
+}
+
+/** One live programmable as the DevBridge sees it: a `BuilderResult` (then `result` is set) or a
+ *  codegen instance (`result` null). `live` is the common view of either. */
+typedef LiveEntry = {
+	sourcePath:String,
+	programmableName:String,
+	live:bh.multianim.LiveProgrammable,
+	result:Null<BuilderResult>,
+}
+
 // ---- ReloadableRegistry ----
 
 class ReloadableRegistry {
 	var liveObjects:Map<String, Array<ReloadableHandle>> = new Map();
+	var liveInstances:Map<String, Array<LiveInstanceHandle>> = new Map();
 
 	public function new() {}
+
+	/** Put a codegen instance on the list. Called by the generated constructor through
+	 *  `registerLiveFrom`; `attachLive`/`detachLive` follow its root in and out of the scene. */
+	public function registerLive(sourcePath:String, programmableName:String, live:bh.multianim.LiveProgrammable):LiveInstanceHandle {
+		final handle:LiveInstanceHandle = {sourcePath: sourcePath, programmableName: programmableName, live: live, registry: this};
+		attachLive(handle);
+		return handle;
+	}
+
+	/** `registerLive` on the loader's registry, when the loader has one (a `CachingResourceLoader`
+	 *  wired by `ScreenManager`); null otherwise. What the generated instance constructor calls. */
+	public static function registerLiveFrom(loader:bh.base.ResourceLoader, sourcePath:String, programmableName:String,
+			live:bh.multianim.LiveProgrammable):Null<LiveInstanceHandle> {
+		if (!Std.isOfType(loader, bh.base.ResourceLoader.CachingResourceLoader))
+			return null;
+		final registry = cast(loader, bh.base.ResourceLoader.CachingResourceLoader).hotReloadRegistry;
+		if (registry == null)
+			return null;
+		return registry.registerLive(sourcePath, programmableName, live);
+	}
+
+	public function attachLive(handle:LiveInstanceHandle):Void {
+		var list = liveInstances.get(handle.sourcePath);
+		if (list == null) {
+			list = [];
+			liveInstances.set(handle.sourcePath, list);
+		}
+		if (!list.contains(handle))
+			list.push(handle);
+	}
+
+	public function detachLive(handle:LiveInstanceHandle):Void {
+		final list = liveInstances.get(handle.sourcePath);
+		if (list != null)
+			list.remove(handle);
+	}
+
+	/** Every live programmable, the `BuilderResult` handles first and then the codegen instances,
+	 *  each as a `LiveEntry`. What the DevBridge walks. */
+	public function getAllLive():Array<LiveEntry> {
+		final all:Array<LiveEntry> = [];
+		for (_ => handles in liveObjects)
+			for (h in handles)
+				all.push({sourcePath: h.sourcePath, programmableName: h.programmableName, live: h.result, result: h.result});
+		for (_ => handles in liveInstances)
+			for (h in handles)
+				all.push({sourcePath: h.sourcePath, programmableName: h.programmableName, live: h.live, result: null});
+		return all;
+	}
 
 	public function register(sourcePath:String, result:BuilderResult, programmableName:String):ReloadableHandle {
 		final handle:ReloadableHandle = {
@@ -377,17 +447,8 @@ class StateRestorer {
 		if (opened) result.endUpdate();
 	}
 
-	public static function resolvedToDynamic(p:ResolvedIndexParameters):Null<Dynamic> {
-		return switch p {
-			case Value(val): val;
-			case ValueF(val): val;
-			case StringValue(s): s;
-			case Flag(f): f;
-			case Index(_, name): name;
-			case ArrayString(arr): arr;
-			case ExpressionAlias(_): null;
-			case TileSourceValue(_): null;
-		};
+	public static inline function resolvedToDynamic(p:ResolvedIndexParameters):Null<Dynamic> {
+		return bh.multianim.LiveProgrammable.LiveProgrammableTools.resolvedToDynamic(p);
 	}
 
 	static function restoreSlots(newResult:BuilderResult, slots:SlotSnapshot):Void {

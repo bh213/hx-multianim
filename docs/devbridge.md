@@ -246,13 +246,13 @@ Detailed info about a named element (position, size, visibility, text).
 Returns: `name`, `type`, `x`, `y`, `visible`, `alpha`, `scaleX`, `scaleY`, optional `text`/`textColor`.
 
 #### `inspect_programmable`
-Deep inspection of a live programmable: parameters, slots, dynamic refs, named elements, interactives, settings.
+Deep inspection of a live programmable — a `BuilderResult` or a codegen `@:manim` instance: parameters, slots, dynamic refs, named elements, interactives, settings (a `BuilderResult`'s; an instance keeps none).
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
 | `programmable` | string | yes | Programmable name |
 
-Returns: `name`, `objectType`, `x`, `y`, `visible`, `currentParameters`, `slots[]`, `dynamicRefs[]`, `namedElements[]`, `interactiveCount`, `settings`.
+Returns: `name`, `kind` (`builder` | `codegen`), `source`, `objectType`, `x`, `y`, `visible`, `currentParameters`, `slots[]`, `dynamicRefs[]`, `namedElements[]` (`"name"`, `"name idx"`, `"name ix iy"`), `interactiveCount`, `settings`.
 
 #### `get_parameters`
 Current parameter values and definitions for a live programmable.
@@ -261,7 +261,7 @@ Current parameter values and definitions for a live programmable.
 |-------|------|----------|-------------|
 | `programmable` | string | yes | Programmable name |
 
-Returns: `programmable`, `parameters[]` — each with `name`, `type`, optional `currentValue`.
+Returns: `programmable`, `kind`, `parameters[]` — each with `name`, `type`, optional `currentValue`. The types come from the builder of the programmable's file on the `ScreenManager`; without one, the current values alone.
 
 #### `list_interactives`
 All registered interactive hit-test regions with IDs, positions, and metadata.
@@ -279,10 +279,10 @@ All slots on a programmable with occupied/empty status.
 |-------|------|----------|-------------|
 | `programmable` | string | yes | Programmable name |
 
-Returns: `slots[]` — each with `name`, optional `index`/`indexX`/`indexY`, `occupied`, optional `hasParameters`.
+Returns: `kind`, `slots[]` — each with `name`, optional `index`/`indexX`/`indexY`, `occupied`, optional `hasParameters`.
 
 #### `list_active_programmables`
-All live incremental-mode programmables with current values, definitions, named elements, slots, interactive count. A programmable whose root is out of the scene (its screen switched away) is not listed until the root is back; `eval_manim` builds are never listed.
+Every live programmable the registry knows — every `BuilderResult` built with hot reload on (`reloadable`, the default; incremental or not) and every codegen `@:manim` instance, which registers from its constructor — with current values, definitions, named elements, slots, dynamic refs, interactive count. A programmable whose root is out of the scene (its screen switched away) is not listed until the root is back; `eval_manim` builds are never listed. A non-incremental `BuilderResult` is listed but reports no `currentParameters` and rejects `set_parameter`.
 
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -290,7 +290,7 @@ All live incremental-mode programmables with current values, definitions, named 
 | `sceneGraph` | bool | false | Include scene graph subtree |
 | `depth` | int | 6 | Scene graph depth (when `sceneGraph` is true) |
 
-Returns: `count`, `programmables[]` — each with `name`, `source`, `x`, `y`, `visible`, `currentParameters`, `parameterDefinitions[]`, `namedElements[]`, `slots[]`, `interactiveCount`, optional `sceneGraph`.
+Returns: `count`, `programmables[]` — each with `name`, `kind` (`builder` | `codegen`), `source`, `x`, `y`, `visible`, `currentParameters`, `parameterDefinitions[]`, `namedElements[]`, `slots[]`, `dynamicRefs[]`, `interactiveCount`, optional `sceneGraph`.
 
 #### `find_element_at`
 Hit-test a position to find all scene objects at those coordinates (front-to-back).
@@ -378,7 +378,7 @@ Returns: `done[]`, a line per change. Nothing to do, or a name nothing has, is a
 ### Manipulation
 
 #### `set_parameter`
-Set a parameter on a live programmable (incremental mode).
+Set a parameter on a live programmable: an incremental-mode `BuilderResult` or a codegen `@:manim` instance (its typed setter is called).
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -710,7 +710,7 @@ Type fields in tool responses use these formats:
 
 - **Trace capture:** Ring buffer (200 lines) auto-installed on `start()`
 - **Error capture:** `reportError(message, ?stack)` public method for external error injection
-- **Hot-reload registry:** Only `incremental:true` programmables are tracked and appear in `list_active_programmables`
+- **Hot-reload registry:** every reloadable `BuilderResult` (incremental or not) and every codegen `@:manim` instance is tracked and appears in `list_active_programmables`; `eval_manim` builds are not. Both are read through `bh.multianim.LiveProgrammable` (`ReloadableRegistry.getAllLive()` → `LiveEntry`); hot reload itself only ever sees the `BuilderResult` handles
 - **CORS:** `*` without a token; the configured origin, or none, with one (see [Token and origin](#token-and-origin))
 - **Listens on:** `0.0.0.0:port` (all interfaces) unless `HX_DEV_BIND` says otherwise
 - **HTTP server:** `HttpServerTransport`, on Heaps' `hxd.net.Socket` (libuv async); HashLink (and hxnodejs) only

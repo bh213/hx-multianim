@@ -310,8 +310,10 @@ class ProgrammableCodeGen {
 					final result = generateFields(node);
 
 					// Define the instance type (extends h2d.Object — IS the root).
-					// Implements UIInteractiveSource so that screen.addInteractives(instance) works,
-					// symmetric with the runtime BuilderResult path.
+					// Implements LiveProgrammable (which extends UIInteractiveSource) so that
+					// screen.addInteractives(instance) works and a tool — the DevBridge, a studio —
+					// sees the instance's names, slots, refs and parameter values the way it sees
+					// a BuilderResult's, symmetric with the runtime builder path.
 					final instTd:TypeDefinition = {
 						pack: parentPack,
 						name: instName,
@@ -320,7 +322,7 @@ class ProgrammableCodeGen {
 							needsLayoutAlign
 								? {pack: ["bh", "multianim"], name: "LayoutAlignRoot"}
 								: {pack: ["h2d"], name: "Object"},
-							[{pack: ["bh", "ui"], name: "UIInteractiveSource"}], false, false, false
+							[{pack: ["bh", "multianim"], name: "LiveProgrammable"}], false, false, false
 						),
 						fields: result.instanceFields,
 						meta: [{name: ":allow", params: [macro bh.multianim.ProgrammableCodeGen], pos: pos}, {name: ":keep", params: null, pos: pos}],
@@ -1659,6 +1661,189 @@ class ProgrammableCodeGen {
 			hasDynRefExprs.push(macro return false);
 			instanceFields.push(makeMethod("hasDynamicRef", hasDynRefExprs, [{name: "name", type: macro :String}],
 				macro :Bool, [APublic], pos));
+		}
+
+		// ==================== LiveProgrammable implementation ====================
+		// What a tool sees of a built programmable, the same for this instance as for a
+		// BuilderResult (bh.multianim.LiveProgrammable): its named elements and where each is
+		// drawn, its slots, its dynamicRefs, its parameter values. Static declarations are known
+		// here; what @switch arms and param-dependent repeats build at runtime is read from the
+		// sinks. Keys take the builder's names-map form ("name", "name idx", "name ix iy").
+		instanceFields.push(makeMethod("getRoot", [macro return this], [], macro :h2d.Object, [APublic], pos));
+		instanceFields.push(makeMethod("getProgrammableName", [macro return $v{currentProgrammableName}], [],
+			macro :String, [APublic], pos));
+
+		// getNamedKeys(): a plain name always (an unmatched @() arm's object is out of the scene
+		// graph but still a key of the builder's names map); an indexed entry only while attached,
+		// like get_name(index) and the builder, which registers names for materialized entries only.
+		// An indexed name's base key ("pip" beside "pip 0", "pip 1") is present while any entry is,
+		// as the builder keeps every entry under the base key too.
+		{
+			final body:Array<Expr> = [macro final _keys:Array<String> = []];
+			for (nm => fieldsList in namedElements) {
+				if (indexedNamedElements.exists(nm) || indexed2DNamedElements.exists(nm)) {
+					var anyAttached:Expr = macro false;
+					for (f in fieldsList) {
+						final fieldRef = macro $p{["this", f]};
+						anyAttached = macro $anyAttached || ($fieldRef != null && $fieldRef.parent != null);
+					}
+					body.push(macro if ($anyAttached) _keys.push($v{nm}));
+					continue;
+				}
+				body.push(macro _keys.push($v{nm}));
+			}
+			for (nm => indexedList in indexedNamedElements) {
+				for (entry in indexedList) {
+					final fieldRef = macro $p{["this", entry.fieldName]};
+					final key = nm + " " + entry.index;
+					body.push(macro if ($fieldRef != null && $fieldRef.parent != null) _keys.push($v{key}));
+				}
+			}
+			for (nm => indexedList in indexed2DNamedElements) {
+				for (entry in indexedList) {
+					final fieldRef = macro $p{["this", entry.fieldName]};
+					final key = nm + " " + entry.indexX + " " + entry.indexY;
+					body.push(macro if ($fieldRef != null && $fieldRef.parent != null) _keys.push($v{key}));
+				}
+			}
+			for (sf in sinkFields)
+				body.push(macro for (_k in $p{["this", sf]}.namedKeys()) if (_keys.indexOf(_k) < 0) _keys.push(_k));
+			body.push(macro return _keys);
+			instanceFields.push(makeMethod("getNamedKeys", body, [], macro :Array<String>, [APublic], pos));
+		}
+
+		// getNamedDrawn(name, ?index, ?indexY): the object of the name that is visible under this
+		// root — of several @() arms, the matching one. Static fields first, then the sinks. Asked
+		// by base name alone, an indexed name answers its first drawn entry (namedElements holds
+		// every entry under the base name, as the builder's names map does).
+		{
+			final body:Array<Expr> = [];
+			for (nm => fieldsList in namedElements) {
+				final checks:Array<Expr> = [];
+				for (f in fieldsList) {
+					final fieldRef = macro $p{["this", f]};
+					checks.push(macro if ($fieldRef != null
+						&& bh.multianim.LiveProgrammable.LiveProgrammableTools.isDrawnUnder($fieldRef, this)) return $fieldRef);
+				}
+				body.push(macro if (name == $v{nm} && index == null && indexY == null) $b{checks});
+			}
+			for (nm => indexedList in indexedNamedElements) {
+				final checks:Array<Expr> = [];
+				for (entry in indexedList) {
+					final fieldRef = macro $p{["this", entry.fieldName]};
+					checks.push(macro if (index == $v{entry.index} && $fieldRef != null
+						&& bh.multianim.LiveProgrammable.LiveProgrammableTools.isDrawnUnder($fieldRef, this)) return $fieldRef);
+				}
+				body.push(macro if (name == $v{nm} && index != null && indexY == null) $b{checks});
+			}
+			for (nm => indexedList in indexed2DNamedElements) {
+				final checks:Array<Expr> = [];
+				for (entry in indexedList) {
+					final fieldRef = macro $p{["this", entry.fieldName]};
+					checks.push(macro if (index == $v{entry.indexX} && indexY == $v{entry.indexY} && $fieldRef != null
+						&& bh.multianim.LiveProgrammable.LiveProgrammableTools.isDrawnUnder($fieldRef, this)) return $fieldRef);
+				}
+				body.push(macro if (name == $v{nm} && index != null && indexY != null) $b{checks});
+			}
+			if (sinkFields.length > 0) {
+				body.push(macro final _key = bh.multianim.LiveProgrammable.LiveProgrammableTools.namedKey(name, index, indexY));
+				for (sf in sinkFields) {
+					body.push(macro for (_o in $p{["this", sf]}.namedObjects(_key))
+						if (bh.multianim.LiveProgrammable.LiveProgrammableTools.isDrawnUnder(_o, this)) return _o);
+				}
+			}
+			body.push(macro return null);
+			instanceFields.push(makeMethod("getNamedDrawn", body, [
+				{name: "name", type: macro :String},
+				{name: "index", opt: true, type: macro :Null<Int>},
+				{name: "indexY", opt: true, type: macro :Null<Int>},
+			], macro :Null<h2d.Object>, [APublic], pos));
+		}
+
+		// getSlotEntries(): every static slot whose handle was built, then what the sinks hold.
+		{
+			final body:Array<Expr> = [
+				macro final _out:Array<{key:bh.multianim.MultiAnimBuilder.SlotKey, handle:bh.multianim.MultiAnimBuilder.SlotHandle}> = []
+			];
+			for (entry in slotEntries) {
+				final handleRef = macro $p{["this", slotHandleFieldName(entry.key)]};
+				final keyExpr:Expr = switch entry.key {
+					case Named(n): macro bh.multianim.MultiAnimBuilder.SlotKey.Named($v{n});
+					case Indexed(n, i): macro bh.multianim.MultiAnimBuilder.SlotKey.Indexed($v{n}, $v{i});
+					case Indexed2D(n, ix, iy): macro bh.multianim.MultiAnimBuilder.SlotKey.Indexed2D($v{n}, $v{ix}, $v{iy});
+				};
+				body.push(macro if ($handleRef != null) _out.push({key: $keyExpr, handle: $handleRef}));
+			}
+			for (sf in sinkFields)
+				body.push(macro for (_e in $p{["this", sf]}.slotEntries()) _out.push(_e));
+			body.push(macro return _out);
+			instanceFields.push(makeMethod("getSlotEntries", body, [],
+				macro :Array<{key:bh.multianim.MultiAnimBuilder.SlotKey, handle:bh.multianim.MultiAnimBuilder.SlotHandle}>, [APublic], pos));
+		}
+
+		// getDynamicRefKeys(): every key getDynamicRef answers to, as far as a result was built.
+		{
+			final body:Array<Expr> = [macro final _out:Array<String> = []];
+			for (refName => refEntry in dynamicRefFields)
+				body.push(macro if ($p{["this", refEntry.resultField]} != null && _out.indexOf($v{refName}) < 0) _out.push($v{refName}));
+			for (refKey => resultField in indexedDynamicRefFields)
+				body.push(macro if ($p{["this", resultField]} != null && _out.indexOf($v{refKey}) < 0) _out.push($v{refKey}));
+			for (nameRefEntry in dynamicNameRefFields) {
+				final fn = nameRefEntry.fieldName;
+				if (nameRefEntry.explicitName != null) {
+					final keyLit = nameRefEntry.explicitName;
+					body.push(macro if ($p{["this", "_dynref_" + fn]} != null && _out.indexOf($v{keyLit}) < 0) _out.push($v{keyLit}));
+				} else {
+					final liveName = macro $p{["this", "_dynref_name_" + fn]};
+					body.push(macro if ($liveName != null && _out.indexOf($liveName) < 0) _out.push($liveName));
+				}
+			}
+			for (sf in sinkFields)
+				body.push(macro for (_k in $p{["this", sf]}.dynamicRefKeys()) if (_out.indexOf(_k) < 0) _out.push(_k));
+			body.push(macro return _out);
+			instanceFields.push(makeMethod("getDynamicRefKeys", body, [], macro :Array<String>, [APublic], pos));
+		}
+
+		// getParameterValues(): the backing fields in the builder's plain form — an enum as its
+		// value's name, a bool as 1/0 (the builder resolves `bool` to Value(1)/Value(0)), a tile
+		// left out (no plain form).
+		{
+			final body:Array<Expr> = [macro final _out = new Map<String, Dynamic>()];
+			for (pName in paramNames) {
+				final def = paramDefs.get(pName);
+				final fieldRef = macro $p{["this", "_" + pName]};
+				final valueExpr:Null<Expr> = switch def.type {
+					case PPTEnum(values):
+						final namesArray:Expr = {expr: EArrayDecl(values.map(v -> macro $v{v})), pos: pos};
+						macro ($fieldRef >= 0 && $fieldRef < $v{values.length} ? ($namesArray[$fieldRef] : Dynamic) : null);
+					case PPTTile: null;
+					default: macro ($fieldRef : Dynamic);
+				};
+				if (valueExpr != null)
+					body.push(macro {
+						final _v:Dynamic = $valueExpr;
+						if (_v != null)
+							_out.set($v{pName}, _v);
+					});
+			}
+			body.push(macro return _out);
+			instanceFields.push(makeMethod("getParameterValues", body, [], macro :Map<String, Dynamic>, [APublic], pos));
+		}
+
+		// Dev builds: the instance is on the loader's ReloadableRegistry while its root is in the
+		// scene (and from construction until first removed), so the DevBridge lists it beside the
+		// BuilderResults. Hot reload never touches it — a compiled tree cannot reload.
+		if (Context.defined("MULTIANIM_DEV")) {
+			instanceFields.push(makeField("_liveHandle",
+				FVar(macro :Null<bh.multianim.dev.HotReload.LiveInstanceHandle>, macro null), [APrivate], pos));
+			instanceFields.push(makeMethod("onAdd", [
+				macro super.onAdd(),
+				macro if (this._liveHandle != null) this._liveHandle.registry.attachLive(this._liveHandle),
+			], [], macro :Void, [AOverride], pos));
+			instanceFields.push(makeMethod("onRemove", [
+				macro super.onRemove(),
+				macro if (this._liveHandle != null) this._liveHandle.registry.detachLive(this._liveHandle),
+			], [], macro :Void, [AOverride], pos));
 		}
 
 		// ============ Factory class fields (extends ProgrammableBuilder) ============
@@ -9340,6 +9525,10 @@ class ProgrammableCodeGen {
 
 		ctorBody.push(macro this._applyVisibility());
 		ctorBody.push(macro this._updateExpressions());
+		if (Context.defined("MULTIANIM_DEV")) {
+			ctorBody.push(macro this._liveHandle = bh.multianim.dev.HotReload.ReloadableRegistry.registerLiveFrom(
+				_pb.resourceLoader, $v{currentManimPath}, $v{currentProgrammableName}, this));
+		}
 
 		return {
 			name: "new",

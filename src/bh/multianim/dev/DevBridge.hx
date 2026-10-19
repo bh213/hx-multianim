@@ -835,12 +835,12 @@ class DevBridge implements IDevBridgeHost {
 		if (programmable == null || paramName == null)
 			throw DevBridgeError.invalidParams("Required params: programmable, param, value");
 
-		// Search all live builder results via hot-reload registry
-		var found = findBuilderResult(programmable);
+		// A live BuilderResult or codegen instance, through the registry
+		var found = findLive(programmable);
 		if (found == null)
-			throw DevBridgeError.notFound('No live BuilderResult found for programmable: $programmable');
+			throw DevBridgeError.notFound('No live programmable found: $programmable');
 
-		found.setParameter(paramName, paramValue);
+		found.live.setParameter(paramName, paramValue);
 		pushEvent("parameter_change", {
 			programmable: programmable,
 			param: paramName,
@@ -1373,41 +1373,34 @@ class DevBridge implements IDevBridgeHost {
 		if (programmable == null)
 			throw DevBridgeError.invalidParams("Required param: programmable");
 
-		var found = findBuilderResult(programmable);
+		var found = findLive(programmable);
 		if (found == null)
-			throw DevBridgeError.notFound('No live BuilderResult found for programmable: $programmable');
+			throw DevBridgeError.notFound('No live programmable found: $programmable');
 
 		var parameters:Array<Dynamic> = [];
+		var currentParams = found.live.getParameterValues();
 
-		// Get definitions from the builder
-		var handle = findHandle(programmable);
-		if (handle != null) {
-			var builder = findBuilderForHandle(handle);
-			if (builder != null) {
-				var defs = builder.getParameterDefinitions(programmable);
-				var currentParams:Null<Map<String, ResolvedIndexParameters>> = null;
-				if (found.incrementalContext != null)
-					currentParams = found.incrementalContext.snapshotParams();
-
-				for (paramName => def in defs) {
-					if (def == null) continue;
-					var entry:Dynamic = {
-						name: paramName,
-						type: defTypeToString(def.type),
-					};
-					// Add current value if available
-					if (currentParams != null) {
-						var resolved = currentParams.get(paramName);
-						if (resolved != null) {
-							entry.currentValue = StateRestorer.resolvedToDynamic(resolved);
-						}
-					}
-					parameters.push(entry);
-				}
+		// Definitions from the builder of the programmable's file; without one (a test registering
+		// under a made-up source), the current values alone.
+		var builder = findBuilderForSource(found.sourcePath);
+		if (builder != null) {
+			var defs = builder.getParameterDefinitions(programmable);
+			for (paramName => def in defs) {
+				if (def == null) continue;
+				var entry:Dynamic = {
+					name: paramName,
+					type: defTypeToString(def.type),
+				};
+				if (currentParams.exists(paramName))
+					entry.currentValue = currentParams.get(paramName);
+				parameters.push(entry);
 			}
+		} else {
+			for (paramName => value in currentParams)
+				parameters.push({name: paramName, currentValue: value});
 		}
 
-		return {programmable: programmable, parameters: parameters};
+		return {programmable: programmable, kind: liveKind(found), parameters: parameters};
 	}
 
 	function handleListInteractives(params:Dynamic):Dynamic {
@@ -1490,34 +1483,19 @@ class DevBridge implements IDevBridgeHost {
 		if (programmable == null)
 			throw DevBridgeError.invalidParams("Required param: programmable");
 
-		var found = findBuilderResult(programmable);
+		var found = findLive(programmable);
 		if (found == null)
-			throw DevBridgeError.notFound('No live BuilderResult found for programmable: $programmable');
+			throw DevBridgeError.notFound('No live programmable found: $programmable');
 
 		var slots:Array<Dynamic> = [];
-		if (found.slots != null) {
-			for (entry in found.slots) {
-				var slotInfo:Dynamic = {
-					occupied: entry.handle.isOccupied(),
-				};
-				switch entry.key {
-					case Named(name):
-						slotInfo.name = name;
-					case Indexed(name, index):
-						slotInfo.name = name;
-						slotInfo.index = index;
-					case Indexed2D(name, indexX, indexY):
-						slotInfo.name = name;
-						slotInfo.indexX = indexX;
-						slotInfo.indexY = indexY;
-				}
-				if (entry.handle.incrementalContext != null)
-					slotInfo.hasParameters = true;
-				slots.push(slotInfo);
-			}
+		for (entry in found.live.getSlotEntries()) {
+			var slotInfo = slotInfoOf(entry);
+			if (entry.handle.incrementalContext != null)
+				slotInfo.hasParameters = true;
+			slots.push(slotInfo);
 		}
 
-		return {programmable: programmable, slots: slots};
+		return {programmable: programmable, kind: liveKind(found), slots: slots};
 	}
 
 	function handleGetTweenState(params:Dynamic):Dynamic {
@@ -1614,78 +1592,28 @@ class DevBridge implements IDevBridgeHost {
 		if (programmable == null)
 			throw DevBridgeError.invalidParams("Required param: programmable");
 
-		var found = findBuilderResult(programmable);
+		var found = findLive(programmable);
 		if (found == null)
-			throw DevBridgeError.notFound('No live BuilderResult found for programmable: $programmable');
+			throw DevBridgeError.notFound('No live programmable found: $programmable');
 
+		var root = found.live.getRoot();
 		var result:Dynamic = {
-			name: found.name,
-			objectType: Type.getClassName(Type.getClass(found.object)),
-			x: found.object.x,
-			y: found.object.y,
-			visible: found.object.visible,
+			name: found.live.getProgrammableName(),
+			kind: liveKind(found),
+			source: found.sourcePath,
+			objectType: Type.getClassName(Type.getClass(root)),
+			x: root.x,
+			y: root.y,
+			visible: root.visible,
 		};
+		describeLive(found.live, result, true);
 
-		// Parameters (current values)
-		if (found.incrementalContext != null) {
-			var snapshot = found.incrementalContext.snapshotParams();
-			var paramValues:Dynamic = {};
-			for (paramName => resolved in snapshot) {
-				var val = StateRestorer.resolvedToDynamic(resolved);
-				if (val != null)
-					Reflect.setField(paramValues, paramName, val);
-			}
-			result.currentParameters = paramValues;
-		}
-
-		// Slots
-		if (found.slots != null && found.slots.length > 0) {
-			var slotList:Array<Dynamic> = [];
-			for (entry in found.slots) {
-				var slotInfo:Dynamic = {occupied: entry.handle.isOccupied()};
-				switch entry.key {
-					case Named(name): slotInfo.name = name;
-					case Indexed(name, index):
-						slotInfo.name = name;
-						slotInfo.index = index;
-					case Indexed2D(name, ix, iy):
-						slotInfo.name = name;
-						slotInfo.indexX = ix;
-						slotInfo.indexY = iy;
-				}
-				slotList.push(slotInfo);
-			}
-			result.slots = slotList;
-		}
-
-		// Dynamic refs
-		if (found.dynamicRefs != null) {
-			var refs:Array<String> = [];
-			for (name => _ in found.dynamicRefs)
-				refs.push(name);
-			if (refs.length > 0)
-				result.dynamicRefs = refs;
-		}
-
-		// Named elements
-		if (found.names != null) {
-			var names:Array<String> = [];
-			for (name => _ in found.names)
-				names.push(name);
-			if (names.length > 0)
-				result.namedElements = names;
-		}
-
-		// Interactives
-		if (found.interactives != null && found.interactives.length > 0)
-			result.interactiveCount = found.interactives.length;
-
-		// Settings
-		if (found.rootSettings != null) {
+		// Settings — a BuilderResult keeps its root settings; a codegen instance has none to show
+		if (found.result != null && found.result.rootSettings != null) {
 			var settings:Dynamic = {};
 			var hasSettings = false;
-			for (key in found.rootSettings.keys()) {
-				Reflect.setField(settings, key, found.rootSettings.getStringOrDefault(key, ""));
+			for (key in found.result.rootSettings.keys()) {
+				Reflect.setField(settings, key, found.result.rootSettings.getStringOrDefault(key, ""));
 				hasSettings = true;
 			}
 			if (hasSettings) result.settings = settings;
@@ -2182,99 +2110,53 @@ class DevBridge implements IDevBridgeHost {
 	// ---- v7: active programmables listing ----
 
 	function handleListActiveProgrammables(params:Dynamic):Dynamic {
-		// Only programmables built with incremental:true are tracked in the registry
-		// (via ReloadSentinel auto-registration). Non-incremental builds will not appear.
-		var handles = screenManager.hotReloadRegistry.getAllHandles();
+		// Everything on the registry: every BuilderResult built with hot reload on (`reloadable`, the
+		// default, incremental or not — registered by the builder through a ReloadSentinel) and every
+		// codegen (@:manim) instance (registered by its constructor). An eval_manim build is not.
+		var entries:Array<Dynamic> = [];
 
 		var programmableName:Null<String> = params.programmable;
 		var includeSceneGraph:Bool = params.sceneGraph == true;
 		var sceneGraphDepth:Int = params.depth != null ? Std.int(params.depth) : 6;
 
-		var entries:Array<Dynamic> = [];
-		for (handle in handles) {
-			if (programmableName != null && handle.programmableName != programmableName)
+		for (entry in screenManager.hotReloadRegistry.getAllLive()) {
+			if (programmableName != null && entry.programmableName != programmableName)
 				continue;
 
-			var entry:Dynamic = {
-				name: handle.programmableName,
-				source: handle.sourcePath,
-				x: handle.result.object.x,
-				y: handle.result.object.y,
-				visible: handle.result.object.visible,
+			var root = entry.live.getRoot();
+			var info:Dynamic = {
+				name: entry.programmableName,
+				kind: liveKind(entry),
+				source: entry.sourcePath,
+				x: root.x,
+				y: root.y,
+				visible: root.visible,
 			};
-
-			// Current parameter values (from incremental context)
-			if (handle.result.incrementalContext != null) {
-				var snapshot = handle.result.incrementalContext.snapshotParams();
-				var paramValues:Dynamic = {};
-				var hasParams = false;
-				for (paramName => resolved in snapshot) {
-					var val = StateRestorer.resolvedToDynamic(resolved);
-					if (val != null) {
-						Reflect.setField(paramValues, paramName, val);
-						hasParams = true;
-					}
-				}
-				if (hasParams)
-					entry.currentParameters = paramValues;
-			}
+			describeLive(entry.live, info, false);
 
 			// Parameter definitions (types and defaults) from the builder
-			var builder = findBuilderForHandle(handle);
+			var builder = findBuilderForSource(entry.sourcePath);
 			if (builder != null) {
-				var defs = builder.getParameterDefinitions(handle.programmableName);
+				var defs = builder.getParameterDefinitions(entry.programmableName);
 				var defList:Array<Dynamic> = [];
 				for (pName => def in defs) {
 					if (def == null) continue;
 					defList.push({name: pName, type: defTypeToString(def.type)});
 				}
 				if (defList.length > 0)
-					entry.parameterDefinitions = defList;
+					info.parameterDefinitions = defList;
 			}
-
-			// Named elements summary
-			if (handle.result.names != null) {
-				var names:Array<String> = [];
-				for (name => _ in handle.result.names)
-					names.push(name);
-				if (names.length > 0)
-					entry.namedElements = names;
-			}
-
-			// Slot summary
-			if (handle.result.slots != null && handle.result.slots.length > 0) {
-				var slotList:Array<Dynamic> = [];
-				for (s in handle.result.slots) {
-					var slotInfo:Dynamic = {occupied: s.handle.isOccupied()};
-					switch s.key {
-						case Named(name): slotInfo.name = name;
-						case Indexed(name, index):
-							slotInfo.name = name;
-							slotInfo.index = index;
-						case Indexed2D(name, ix, iy):
-							slotInfo.name = name;
-							slotInfo.indexX = ix;
-							slotInfo.indexY = iy;
-					}
-					slotList.push(slotInfo);
-				}
-				entry.slots = slotList;
-			}
-
-			// Interactive count
-			if (handle.result.interactives != null && handle.result.interactives.length > 0)
-				entry.interactiveCount = handle.result.interactives.length;
 
 			// Optional: scene graph for this programmable's object tree
 			if (includeSceneGraph)
-				entry.sceneGraph = walkSceneGraph(handle.result.object, 0, sceneGraphDepth);
+				info.sceneGraph = walkSceneGraph(root, 0, sceneGraphDepth);
 
-			entries.push(entry);
+			entries.push(info);
 		}
 
 		return {
 			count: entries.length,
-			note: "Only incremental-mode programmables are tracked (built with incremental:true via screen helpers or ReloadableRegistry)",
+			note: "Every BuilderResult built with hot reload on (reloadable, the default) and every codegen @:manim instance is tracked, while its root is in the scene; eval_manim builds are not",
 			programmables: entries,
 		};
 	}
@@ -2326,26 +2208,67 @@ class DevBridge implements IDevBridgeHost {
 		return count;
 	}
 
-	function findBuilderResult(programmableName:String):Null<BuilderResult> {
-		// Search all live builder results via hot-reload registry
-		for (handle in screenManager.hotReloadRegistry.getAllHandles()) {
-			if (handle.programmableName == programmableName)
-				return handle.result;
+	/** The live programmable of that name — a BuilderResult or a codegen instance — or null. */
+	function findLive(programmableName:String):Null<HotReload.LiveEntry> {
+		for (entry in screenManager.hotReloadRegistry.getAllLive()) {
+			if (entry.programmableName == programmableName)
+				return entry;
 		}
 		return null;
 	}
 
-	function findHandle(programmableName:String):Null<HotReload.ReloadableHandle> {
-		for (handle in screenManager.hotReloadRegistry.getAllHandles()) {
-			if (handle.programmableName == programmableName)
-				return handle;
-		}
-		return null;
+	static inline function liveKind(entry:HotReload.LiveEntry):String {
+		return entry.result != null ? "builder" : "codegen";
 	}
 
-	function findBuilderForHandle(handle:HotReload.ReloadableHandle):Null<MultiAnimBuilder> {
+	/** What a live programmable is made of, onto `into`: current parameter values, named element
+	 *  keys, slots, dynamicRef keys, interactive count. With `withEmpty`, empty collections are
+	 *  reported as empty rather than left out (inspect_programmable shows them; the listing omits). */
+	function describeLive(live:bh.multianim.LiveProgrammable, into:Dynamic, withEmpty:Bool):Void {
+		var paramValues:Dynamic = {};
+		var hasParams = false;
+		for (paramName => value in live.getParameterValues()) {
+			Reflect.setField(paramValues, paramName, value);
+			hasParams = true;
+		}
+		if (hasParams || withEmpty)
+			into.currentParameters = paramValues;
+
+		var names = live.getNamedKeys();
+		if (names.length > 0 || withEmpty)
+			into.namedElements = names;
+
+		var slotList:Array<Dynamic> = [for (entry in live.getSlotEntries()) slotInfoOf(entry)];
+		if (slotList.length > 0 || withEmpty)
+			into.slots = slotList;
+
+		var refs = live.getDynamicRefKeys();
+		if (refs.length > 0 || withEmpty)
+			into.dynamicRefs = refs;
+
+		var interactiveCount = live.getInteractives().length;
+		if (interactiveCount > 0 || withEmpty)
+			into.interactiveCount = interactiveCount;
+	}
+
+	static function slotInfoOf(entry:{key:MultiAnimBuilder.SlotKey, handle:MultiAnimBuilder.SlotHandle}):Dynamic {
+		var slotInfo:Dynamic = {occupied: entry.handle.isOccupied()};
+		switch entry.key {
+			case Named(name): slotInfo.name = name;
+			case Indexed(name, index):
+				slotInfo.name = name;
+				slotInfo.index = index;
+			case Indexed2D(name, ix, iy):
+				slotInfo.name = name;
+				slotInfo.indexX = ix;
+				slotInfo.indexY = iy;
+		}
+		return slotInfo;
+	}
+
+	function findBuilderForSource(sourcePath:String):Null<MultiAnimBuilder> {
 		for (resource => builder in screenManager.builders) {
-			if (resource.name == handle.sourcePath)
+			if (resource.name == sourcePath)
 				return builder;
 		}
 		return null;

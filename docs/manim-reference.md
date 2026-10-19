@@ -627,6 +627,7 @@ Slots with parameters support visual states via conditionals. `slotContent` mark
 - `slot.getInteractives()` — interactives declared inside the slot decoration body (returns a fresh copy each call). Empty for slots built via the runtime `BuilderResult` path
 - `slot.getUpdatable(name, ?index, ?indexY)` — named element declared inside the slot decoration body. Returns null when the name is absent or the slot has no per-slot IR
 - Codegen: `instance.getSlot_name().setParameter("status", "warning")`
+- Either path, through `bh.multianim.LiveProgrammable` (implemented by `BuilderResult` and every `@:manim` instance): `getSlotEntries()` lists every slot present with its `SlotKey` and handle; `getNamedKeys()` / `getNamedDrawn(name, ?index, ?indexY)` the named elements and the one drawn; `getDynamicRefKeys()`, `getParameterValues()`, `getRoot()`, `getProgrammableName()`. What a tool (the DevBridge, a studio) reads without knowing which path built the programmable
 
 **Indexed:** `#name[$i] slot(params)` inside repeatable — combines indexed access with parameters.
 

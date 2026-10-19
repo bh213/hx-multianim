@@ -5872,4 +5872,115 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		obj.setPosition(x, y);
 		parent.addChild(obj);
 	}
+
+	// ==================== LiveProgrammable: a codegen instance beside its BuilderResult ====================
+	// bh.multianim.LiveProgrammable is what a tool (the DevBridge, a studio measuring a screen) sees
+	// of a built programmable. Both paths implement it; these tests hold them to the same answers.
+
+	/** `name` of `path` built by the runtime builder, incrementally, with default parameters. */
+	function liveBuilderResult(path:String, name:String):bh.multianim.MultiAnimBuilder.BuilderResult {
+		final builder = TestResourceLoader.createLoader(false).loadMultiAnim(path);
+		return builder.buildWithParameters(name, new Map(), null, null, true);
+	}
+
+	static function sortedCopy(a:Array<String>):Array<String> {
+		final c = a.copy();
+		c.sort(Reflect.compare);
+		return c;
+	}
+
+	static function liveSlotKeys(live:bh.multianim.LiveProgrammable):Array<String> {
+		return sortedCopy([for (e in live.getSlotEntries()) Std.string(e.key)]);
+	}
+
+	/** Splits a names-map key ("name", "name idx", "name ix iy") and asks for the drawn object. */
+	static function drawnByKey(live:bh.multianim.LiveProgrammable, key:String):Null<h2d.Object> {
+		final parts = key.split(" ");
+		final index = parts.length > 1 ? Std.parseInt(parts[1]) : null;
+		final indexY = parts.length > 2 ? Std.parseInt(parts[2]) : null;
+		return live.getNamedDrawn(parts[0], index, indexY);
+	}
+
+	/** The two views agree: name, named keys, slot keys, dynamicRef keys, parameter values, and
+	 *  which named keys are drawn. */
+	function assertLiveParity(label:String, inst:bh.multianim.LiveProgrammable, res:bh.multianim.LiveProgrammable):Void {
+		Assert.equals(res.getProgrammableName(), inst.getProgrammableName(), '$label: programmable name');
+		Assert.same(sortedCopy(res.getNamedKeys()), sortedCopy(inst.getNamedKeys()), '$label: named keys');
+		Assert.same(liveSlotKeys(res), liveSlotKeys(inst), '$label: slot keys');
+		Assert.same(sortedCopy(res.getDynamicRefKeys()), sortedCopy(inst.getDynamicRefKeys()), '$label: dynamicRef keys');
+		final rp = res.getParameterValues();
+		final ip = inst.getParameterValues();
+		Assert.same(sortedCopy([for (k in rp.keys()) k]), sortedCopy([for (k in ip.keys()) k]), '$label: parameter names');
+		for (k => v in rp)
+			Assert.same(v, ip.get(k), '$label: value of "$k"');
+		for (key in res.getNamedKeys())
+			Assert.equals(drawnByKey(res, key) != null, drawnByKey(inst, key) != null, '$label: "$key" drawn on both sides or on neither');
+	}
+
+	@Test
+	public function testLiveProgrammableParity():Void {
+		final mp = createMp();
+		final cases:Array<{label:String, path:String, name:String, inst:bh.multianim.LiveProgrammable}> = [
+			{label: "liveProgrammable", path: "test/examples/159-liveProgrammable/liveProgrammable.manim", name: "liveProgrammable", inst: mp.liveProgrammable.create()},
+			{label: "codegenButton", path: "test/examples/36-codegenButton/codegenButton.manim", name: "codegenButton", inst: mp.button.create()},
+			{label: "codegenDialog", path: "test/examples/38-codegenDialog/codegenDialog.manim", name: "codegenDialog", inst: mp.dialog.create()},
+			{label: "codegenRepeat", path: "test/examples/39-codegenRepeat/codegenRepeat.manim", name: "codegenRepeat", inst: mp.repeat.create()},
+			{label: "codegenRepeat2d", path: "test/examples/40-codegenRepeat2d/codegenRepeat2d.manim", name: "codegenRepeat2d", inst: mp.repeat2d.create()},
+			{label: "dynamicRefs", path: "test/examples/73-dynamicRefs/dynamicRefs.manim", name: "dynamicRefs", inst: mp.dynamicRefs.create()},
+			{label: "slotContentDemo", path: "test/examples/84-slotContent/slotContent.manim", name: "slotContentDemo", inst: mp.slotContentDemo.create()},
+			{label: "switchArmNames", path: "test/examples/106-switchArmNames/switchArmNames.manim", name: "switchArmNames", inst: mp.switchArmNames.create()},
+			{label: "switchArmSlot", path: "test/examples/106-switchArmNames/switchArmNames.manim", name: "switchArmSlot", inst: mp.switchArmSlot.create()},
+			{label: "switchArmDynamicRef", path: "test/examples/106-switchArmNames/switchArmNames.manim", name: "switchArmDynamicRef", inst: mp.switchArmDynamicRef.create()},
+			{label: "switchUnrelatedParam", path: "test/examples/106-switchArmNames/switchArmNames.manim", name: "switchUnrelatedParam", inst: mp.switchUnrelatedParam.create()},
+			{label: "switchRepeat", path: "test/examples/102-switchRepeat/switchRepeat.manim", name: "switchRepeat", inst: mp.switchRepeat.create()},
+		];
+		for (c in cases)
+			assertLiveParity(c.label, c.inst, liveBuilderResult(c.path, c.name));
+	}
+
+	@Test
+	public function testLiveProgrammableParityAfterChanges():Void {
+		final path = "test/examples/159-liveProgrammable/liveProgrammable.manim";
+		final inst = createMp().liveProgrammable.create();
+		final res = liveBuilderResult(path, "liveProgrammable");
+		final live:Array<bh.multianim.LiveProgrammable> = [inst, res];
+
+		// The drawn #frame changes with status: another object, still exactly one drawn
+		final before = inst.getNamedDrawn("frame");
+		Assert.notNull(before, "frame drawn in the normal arm");
+		for (l in live) l.setParameter("status", "hover");
+		final after = inst.getNamedDrawn("frame");
+		Assert.notNull(after, "frame drawn in the hover arm");
+		Assert.isFalse(before == after, "the hover arm's frame is another object");
+		Assert.isFalse(bh.multianim.LiveProgrammable.LiveProgrammableTools.isDrawnUnder(before, inst), "the normal arm's frame is no longer drawn");
+		assertLiveParity("hover", inst, res);
+
+		// Fewer pips: the indexed keys shrink on both sides
+		for (l in live) l.setParameter("count", 1);
+		Assert.isTrue(inst.getNamedKeys().indexOf("pip 0") >= 0, "pip 0 stays");
+		Assert.isTrue(inst.getNamedKeys().indexOf("pip 2") < 0, "pip 2 is gone");
+		Assert.isNull(inst.getNamedDrawn("pip", 2), "pip 2 not drawn");
+		assertLiveParity("count 1", inst, res);
+
+		// The other switch arm: armSlot is gone, armMark is the other arm's object
+		for (l in live) l.setParameter("mode", "b");
+		Assert.isTrue(liveSlotKeys(inst).indexOf("Named(armSlot)") < 0, "armSlot left with arm a");
+		Assert.notNull(inst.getNamedDrawn("armMark"), "arm b's armMark drawn");
+		Assert.equals("b", inst.getParameterValues().get("mode"));
+		assertLiveParity("mode b", inst, res);
+	}
+
+	@Test
+	public function testLiveProgrammableParameterValues():Void {
+		final inst = createMp().liveProgrammable.create();
+		final values = inst.getParameterValues();
+		Assert.equals("normal", values.get("status"), "enum as its value's name");
+		Assert.equals(1, values.get("on"), "bool as 1/0, the builder's resolved form");
+		Assert.equals(3, values.get("count"));
+		Assert.equals(0.5, values.get("ratio"));
+		Assert.equals("hi", values.get("label"));
+		Assert.equals(0xFFFF0000, values.get("tint"), "color as 0xAARRGGBB");
+		Assert.isTrue((inst : h2d.Object) == inst.getRoot(), "the instance is its own root");
+		Assert.equals("liveProgrammable", inst.getProgrammableName());
+	}
 }

@@ -246,8 +246,8 @@ before assigning a new ID.
 
 ### docs/devbridge.md + docs/hot-reload.md + docs/vscode-extension.md
 - [ ] `DOC-21` devbridge.md: screenshot `width`/`height` params are ignored by the handler; the
-  "only incremental:true tracked" note is stale **including the runtime `note` string returned by
-  `list_active_programmables`** (DevBridge.hx:1998) — fix the in-code string too; `x`/`y` not
+  "only incremental:true tracked" note (docs and the runtime `note` string of
+  `list_active_programmables`) — **done 2026-10-19**, with the `LiveProgrammable` change; `x`/`y` not
   actually required on find_element_at/coordinate_transform; `wait_for_idle` also requires !paused;
   `list_interactives` button-by-text entries undocumented; `click_interactive` alias undocumented.
 - [ ] `DOC-22` hot-reload.md: ~~`reloadable=false` claim~~ (resolved with `HR-1` 2026-07-15 — behavior

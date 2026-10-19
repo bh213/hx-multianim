@@ -745,4 +745,7 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/156-staticRefIncremental/staticRefIncremental.manim", "sriFixedOnly")
 	public var sriFixedOnly;
+
+	@:manim("test/examples/159-liveProgrammable/liveProgrammable.manim", "liveProgrammable")
+	public var liveProgrammable;
 }

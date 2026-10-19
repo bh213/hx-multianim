@@ -374,7 +374,7 @@ var res = MacroUtils.macroBuildWithParameters(componentsBuilder, "ui", [], [
 
 **`@:manim("path", "name")`** generates:
 - **Factory class** (e.g., `MyUI_Button`) — Stateless, holds resource loader and cached builder. Has `create(params...)` and `createFrom({...})` methods, plus static enum constants.
-- **Instance class** (e.g., `MyUI_ButtonInstance`) — Extends `h2d.Object`. Has `setXxx()` setters, `get_xxx()` named element accessors, `getSlot_xxx()` slot accessors, and visibility/expression update logic.
+- **Instance class** (e.g., `MyUI_ButtonInstance`) — Extends `h2d.Object`. Has `setXxx()` setters, `get_xxx()` named element accessors, `getSlot_xxx()` slot accessors, and visibility/expression update logic. Implements `bh.multianim.LiveProgrammable` (as `BuilderResult` does): `getNamedKeys()`, `getNamedDrawn(name, ?index, ?indexY)`, `getSlotEntries()`, `getDynamicRefKeys()`, `getParameterValues()`, `getRoot()`, `getProgrammableName()` — the same view of a built programmable from either path, so a tool needs no knowledge of the generated class. Under `-D MULTIANIM_DEV` the constructor registers the instance on the loader's `ReloadableRegistry` (`registerLive`), and `onAdd`/`onRemove` keep it listed only while its root is in the scene; the DevBridge lists it beside the `BuilderResult`s. Hot reload never touches it.
 
 **`@:data("path", "name" [, "pkg" [, mergeTypes]])`** generates:
 - **Data class** with `public final` fields matching the data block

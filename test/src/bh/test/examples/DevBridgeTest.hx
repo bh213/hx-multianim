@@ -620,7 +620,7 @@ class DevBridgeTest extends BuilderTestBase {
 			bridge.dispatch("set_parameter", {programmable: "nonexistent", param: "x", value: 1});
 		} catch (e:haxe.Exception) {
 			threw = true;
-			Assert.isTrue(e.message.indexOf("No live BuilderResult") >= 0);
+			Assert.isTrue(e.message.indexOf("No live programmable") >= 0);
 		}
 		Assert.isTrue(threw);
 	}
@@ -727,7 +727,7 @@ class DevBridgeTest extends BuilderTestBase {
 			bridge.dispatch("inspect_programmable", {programmable: "nonexistent"});
 		} catch (e:haxe.Exception) {
 			threw = true;
-			Assert.isTrue(e.message.indexOf("No live BuilderResult") >= 0);
+			Assert.isTrue(e.message.indexOf("No live programmable") >= 0);
 		}
 		Assert.isTrue(threw);
 	}
@@ -1782,6 +1782,116 @@ class DevBridgeTest extends BuilderTestBase {
 		Assert.equals("parse", errors[0].errorType, 'got ${haxe.Json.stringify(errors[0])}');
 		Assert.equals(3, errors[0].line);
 		Assert.equals("devtest/reload-broken.manim", errors[0].file);
+	}
+
+	// ==================== codegen instances on the bridge ====================
+	// A @:manim instance registers itself on the loader's registry (dev builds), so the bridge
+	// lists and drives it beside the BuilderResults, through bh.multianim.LiveProgrammable.
+
+	static final LIVE_SOURCE = "test/examples/159-liveProgrammable/liveProgrammable.manim";
+
+	/** A bridge whose ScreenManager registry is the one a fresh MultiProgrammable's loader uses. */
+	static function createBridgeWithCodegen():{bridge:DevBridge, mp:bh.test.MultiProgrammable} {
+		var bridge = createTestBridge();
+		var loader = bh.test.TestResourceLoader.createLoader(false);
+		loader.hotReloadRegistry = bridge.screenManager.hotReloadRegistry;
+		return {bridge: bridge, mp: new bh.test.MultiProgrammable(loader)};
+	}
+
+	@Test
+	public function testListActiveProgrammables_codegenInstance():Void {
+		var setup = createBridgeWithCodegen();
+		var inst = setup.mp.liveProgrammable.create();
+
+		var result:Dynamic = setup.bridge.dispatch("list_active_programmables", {programmable: "liveProgrammable"});
+		Assert.equals(1, result.count);
+		var entry:Dynamic = result.programmables[0];
+		Assert.equals("codegen", entry.kind);
+		Assert.equals(LIVE_SOURCE, entry.source);
+		Assert.isTrue(entry.visible);
+		var names:Array<String> = entry.namedElements;
+		for (expected in ["frame", "title", "pip 0", "pip 2", "armMark"])
+			Assert.isTrue(names.indexOf(expected) >= 0, 'named element "$expected" listed; got ' + names);
+		Assert.isTrue(names.indexOf("pip 3") < 0, "pip 3 is gated off by count=3");
+		Assert.equals("normal", Reflect.field(entry.currentParameters, "status"));
+		Assert.equals(3, Reflect.field(entry.currentParameters, "count"));
+		Assert.equals("hi", Reflect.field(entry.currentParameters, "label"));
+		var slots:Array<Dynamic> = entry.slots;
+		Assert.isTrue(Lambda.exists(slots, s -> s.name == "tray"), "tray slot listed");
+		Assert.isTrue(Lambda.exists(slots, s -> s.name == "armSlot"), "the switch arm's slot listed");
+		var refs:Array<String> = entry.dynamicRefs;
+		Assert.same(["embed"], refs);
+
+		// Off the list while the root is out of the scene, back on when it returns. Heaps fires
+		// onAdd/onRemove only under an allocated scene, and the test app's s2d is allocated only
+		// after its first render — later than the unit tests run — so the stage is marked allocated.
+		var s2d = new h2d.Object();
+		@:privateAccess s2d.onAdd();
+		s2d.addChild(inst);
+		Assert.equals(1, (setup.bridge.dispatch("list_active_programmables", {programmable: "liveProgrammable"}) : Dynamic).count, "in the scene: listed");
+		inst.remove();
+		Assert.equals(0, (setup.bridge.dispatch("list_active_programmables", {programmable: "liveProgrammable"}) : Dynamic).count, "out of the scene: not listed");
+		s2d.addChild(inst);
+		Assert.equals(1, (setup.bridge.dispatch("list_active_programmables", {programmable: "liveProgrammable"}) : Dynamic).count, "back in the scene: listed again");
+		inst.remove();
+	}
+
+	@Test
+	public function testCodegenInstance_setParameterInspectAndSlots():Void {
+		var setup = createBridgeWithCodegen();
+		var inst = setup.mp.liveProgrammable.create();
+
+		var inspect:Dynamic = setup.bridge.dispatch("inspect_programmable", {programmable: "liveProgrammable"});
+		Assert.equals("liveProgrammable", inspect.name);
+		Assert.equals("codegen", inspect.kind);
+		Assert.equals(LIVE_SOURCE, inspect.source);
+		Assert.equals("normal", Reflect.field(inspect.currentParameters, "status"));
+		Assert.isNull(inspect.settings, "a codegen instance keeps no root settings");
+
+		var frameBefore = inst.getNamedDrawn("frame");
+		setup.bridge.dispatch("set_parameter", {programmable: "liveProgrammable", param: "status", value: "hover"});
+		inspect = setup.bridge.dispatch("inspect_programmable", {programmable: "liveProgrammable"});
+		Assert.equals("hover", Reflect.field(inspect.currentParameters, "status"));
+		Assert.isFalse(frameBefore == inst.getNamedDrawn("frame"), "set_parameter switched the drawn frame arm");
+
+		var slots:Dynamic = setup.bridge.dispatch("list_slots", {programmable: "liveProgrammable"});
+		Assert.equals("codegen", slots.kind);
+		var slotList:Array<Dynamic> = slots.slots;
+		Assert.equals(2, slotList.length);
+
+		setup.bridge.dispatch("set_parameter", {programmable: "liveProgrammable", param: "mode", value: "b"});
+		slots = setup.bridge.dispatch("list_slots", {programmable: "liveProgrammable"});
+		Assert.equals(1, (slots.slots : Array<Dynamic>).length, "the switch arm's slot left with its arm");
+
+		// get_parameters without a builder on the ScreenManager: current values alone
+		var params:Dynamic = setup.bridge.dispatch("get_parameters", {programmable: "liveProgrammable"});
+		Assert.equals("codegen", params.kind);
+		var list:Array<Dynamic> = params.parameters;
+		Assert.isTrue(Lambda.exists(list, p -> p.name == "mode" && p.currentValue == "b"), "mode is b now");
+	}
+
+	@Test
+	public function testListActiveProgrammables_builderAndCodegenSideBySide():Void {
+		var setup = createBridgeWithCodegen();
+		var builder = builderFromSource("#fromBuilder programmable(x:int=5) {\n  #mark bitmap(generated(color(10, 10, #FF0000))): 0,0\n}");
+		var result = builder.buildWithParameters("fromBuilder", new Map(), null, null, true);
+		setup.bridge.screenManager.hotReloadRegistry.register("test-source", result, "fromBuilder");
+		setup.mp.liveProgrammable.create();
+
+		var listed:Dynamic = setup.bridge.dispatch("list_active_programmables", {});
+		var entries:Array<Dynamic> = listed.programmables;
+		var fromBuilder:Dynamic = Lambda.find(entries, (e:Dynamic) -> e.name == "fromBuilder");
+		var fromCodegen:Dynamic = Lambda.find(entries, (e:Dynamic) -> e.name == "liveProgrammable");
+		Assert.equals("builder", fromBuilder.kind);
+		Assert.equals("codegen", fromCodegen.kind);
+		Assert.same(["mark"], (fromBuilder.namedElements : Array<String>));
+		// The instance's `#embed dynamicRef($liveChild)` is a BuilderResult the loader built
+		// incrementally, so it is listed in its own right, as a builder entry — the same as a
+		// dynamicRef under a BuilderResult host.
+		var child:Dynamic = Lambda.find(entries, (e:Dynamic) -> e.name == "liveChild");
+		Assert.notNull(child, "the dynamicRef child is listed too");
+		Assert.equals("builder", child.kind);
+		Assert.equals(3, listed.count);
 	}
 }
 
