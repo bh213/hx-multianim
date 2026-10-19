@@ -375,6 +375,13 @@ values. An entry fully shadowed by a more specific sibling (e.g. an
 unconditional `playlist { }` after a `playlist @(direction=>[l, r])` that wins
 for every state) is rejected with a `... not reachable` error.
 
+An animation need not exist for every combination of states. `animation run
+@(character != snake) { ... }` with no snake arm is fine: the snake's machine
+simply has no `run` (`animationStates.exists("run")` is false, `play("run")`
+throws `unknown animation`, as for any name the file never defines), so an enemy
+on the heroes' sheet declares only the animations it has. A playlist, on the
+other hand, must cover every state the animation exists for.
+
 ---
 
 ## Haxe API

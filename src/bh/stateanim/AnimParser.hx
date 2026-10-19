@@ -1209,8 +1209,11 @@ class AnimParser implements AnimParserResult {
 				// convert it into a positioned InvalidSyntax so strict mode, hot
 				// reload, and DevBridge catch sites get a structured diagnostic.
 				var anim = try findAnimationInternal(name, state, animations) catch (e:String) syntaxError(e);
-				if (anim == null) syntaxError('no animation ${name} defined for states ${state}');
-				else anim.visited = true;
+				// An animation with no arm for these states is left out of their machine
+				// (an enemy on the heroes' sheet has fewer animations); the reachability
+				// pass below still rejects one that matches no states at all.
+				if (anim == null) continue;
+				anim.visited = true;
 
 				for (ePoint in allowedExtraPoints) {
 					var p = try findExtraPoint(ePoint, state, anim, definedStates) catch (e:String) syntaxError(e);
@@ -2798,7 +2801,7 @@ class AnimParser implements AnimParserResult {
 			var cacheArray = [];
 			for (name in animationNames) {
 				final anim = findAnimation(name, stateSelector, definedStates, animations);
-				if (anim == null) throw 'null anim ${name}';
+				if (anim == null) continue; // defined for other states only: not in this machine
 				final playlist = findPlaylist(stateSelector, anim, definedStates);
 				if (playlist == null) throw 'null playlist for anim ${name}';
 				var states = createStates(playlist.anims, anim, stateSelector);

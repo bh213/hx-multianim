@@ -2776,6 +2776,48 @@ animation idle {
 		Assert.stringContains("not reachable", error);
 	}
 
+	// ===== An animation defined for only some values of a state =====
+	// Packs put enemies on the heroes' sheet with fewer animations. An animation
+	// with no arm for a state value is simply absent from that state's machine.
+
+	static final ANIM_MISSING_FOR_ONE_STATE = '
+sheet: crew2
+states: direction(l, r)
+fps: 4
+animation idle {
+    loop: yes
+    playlist @(direction => l) { sheet: "marine_l_idle" }
+    playlist @else { sheet: "marine_r_idle" }
+}
+animation shooting @(direction != r) {
+    loop: yes
+    playlist { sheet: "marine_l_shooting" }
+}
+';
+
+	@Test
+	public function testAnimationMayBeLeftOutForSomeStates() {
+		var error = parseAnimExpectingError(ANIM_MISSING_FOR_ONE_STATE);
+		Assert.isNull(error, 'an animation with no arm for a state value must parse, got: $error');
+	}
+
+	@Test
+	public function testStateWithoutTheAnimationLacksItInItsMachine() {
+		var loader:bh.base.ResourceLoader = bh.test.TestResourceLoader.createLoader(false);
+		var parsed = AnimParser.parseFile(byte.ByteData.ofString(ANIM_MISSING_FOR_ONE_STATE), "test-input", loader);
+
+		var left = parsed.createAnimSM(["direction" => "l"]);
+		Assert.isTrue(left.animationStates.exists("idle"));
+		Assert.isTrue(left.animationStates.exists("shooting"), "the covered state has the animation");
+
+		var right = parsed.createAnimSM(["direction" => "r"]);
+		Assert.isTrue(right.animationStates.exists("idle"), "the other animations are still there");
+		Assert.isFalse(right.animationStates.exists("shooting"), "the uncovered state has no such animation");
+		Assert.raises(() -> right.play("shooting"), String);
+		right.play("idle");
+		Assert.notNull(@:privateAccess right.current);
+	}
+
 	// ===== Lexer: unterminated strings must error at the opening quote =====
 	// The quoted-string loop falls out at EOF without an error, swallowing the rest
 	// of the file into one token; the parser then fails far away (or not at all).
