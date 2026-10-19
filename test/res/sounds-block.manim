@@ -24,6 +24,12 @@ version: 1.0
 	track play { file: "music/play.mp3" }
 }
 
+#amb sounds {
+	bus: sfx
+	hum { file: "sound/hum.wav", loop: yes }
+	wind { file: "sound/wind.wav", loop: yes }
+}
+
 #fx sounds {
 	explosion {
 		voices: 2, steal: oldest

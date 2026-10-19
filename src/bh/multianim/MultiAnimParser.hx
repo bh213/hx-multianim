@@ -786,6 +786,10 @@ typedef SoundLayerDef = {
 	var delayMax:Float;
 	/** 0..1, the odds the layer plays at all. */
 	var chance:Float;
+	/** Plays round and round until the sound is stopped: a hum, an engine. */
+	var loop:Bool;
+	/** Played as the sound is stopped (an engine's cut-off), not as it starts; never loops. */
+	var onStop:Bool;
 	var line:Int;
 }
 

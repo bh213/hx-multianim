@@ -35,6 +35,10 @@ class AudioScreenTest extends utest.Test {
 			bitmap(generated(color(10, 10, #222222))): 0, 0
 			settings { music => "music.play" }
 		}
+		#hangar programmable() {
+			bitmap(generated(color(10, 10, #222222))): 0, 0
+			settings { ambience => "amb.hum" }
+		}
 	';
 
 	/** A screen manager playing into a log, with the test file's banks, mix and music. */
@@ -156,6 +160,138 @@ class AudioScreenTest extends utest.Test {
 			said = Std.string(e);
 		}
 		Assert.isTrue(said.indexOf("twice") >= 0, 'an event twice: $said');
+	}
+
+	// ==================== A sound held by a sprite ====================
+
+	@Test
+	public function testAStateMachineHoldsASoundWhileItsAnimationPlays():Void {
+		final log = new LogBackend();
+		final audio = new Audio(log);
+		audio.randomFunc = () -> 0.0;
+		audio.addBank("eng", BuilderTestBase.builderFromSource('#eng sounds { hum { file: "sound/hum.wav", loop: yes } }').buildSounds("eng"));
+		final sm = new AnimationSM(new Map(), true);
+		sm.holds = ["thrust" => "eng.hum"];
+		sm.audio = audio;
+		sm.addAnimationState("thrust", [Frame(createFrame(0.1))], 0, new Map());
+		sm.addAnimationState("idle", [Frame(createFrame(0.1))], 0, new Map());
+		final stage = bh.test.VisualTestBase.appInstance.s2d;
+		stage.addChild(sm);
+
+		sm.play("thrust");
+		Assert.equals(1, log.plays("eng.hum").length, "held as the animation starts");
+		Assert.isTrue(log.plays("eng.hum")[0].loop);
+		Assert.notNull(sm.heldSound);
+		Assert.equals("eng.hum", sm.heldSound.name);
+		sm.play("thrust");
+		Assert.equals(1, log.plays("eng.hum").length, "the same animation again keeps the hold");
+		Assert.equals(0, log.stops().length);
+		sm.play("idle");
+		Assert.equals(1, log.stops("eng.hum").length, "let go as another animation starts");
+		Assert.isNull(sm.heldSound);
+		sm.play("thrust");
+		Assert.equals(2, log.plays("eng.hum").length);
+		sm.remove();
+		Assert.equals(2, log.stops("eng.hum").length, "let go as the sprite leaves the scene");
+		stage.addChild(sm);
+		Assert.equals(3, log.plays("eng.hum").length, "held again as it comes back, still on the animation");
+		sm.remove();
+		Assert.equals(3, log.stops("eng.hum").length);
+	}
+
+	@Test
+	public function testTheAnimFilesHoldIsParsed():Void {
+		final src = 'sheet: "crew2"\nfps: 10\nsounds {\n\tfire: "fx.shot"\n\thold idle: "eng.hum"\n}\nanimation idle { playlist { sheet: "idle" frames: 0..1 } }\n';
+		final parsed = bh.stateanim.AnimParser.parseString(src, "hold-test.anim", null);
+		Assert.equals("fx.shot", parsed.sounds.get("fire"));
+		Assert.equals("eng.hum", parsed.holds.get("idle"));
+		Assert.equals("eng.hum", parsed.loaded().holds.get("idle"));
+
+		function refused(src:String, why:String, says:String):Void {
+			var said = "";
+			try {
+				bh.stateanim.AnimParser.parseString(src, "hold-refused.anim", null);
+			} catch (e:Dynamic) {
+				said = Std.string(e);
+			}
+			Assert.isTrue(said.indexOf(says) >= 0, '$why: the error says "$says": $said');
+		}
+		refused('sheet: "crew2"\nfps: 10\nsounds { hold walk: "eng.hum" }\nanimation idle { playlist { sheet: "idle" frames: 0..1 } }\n',
+			"a hold on an animation the file has not", "walk");
+		refused('sheet: "crew2"\nfps: 10\nsounds { hold idle: "a"  hold idle: "b" }\nanimation idle { playlist { sheet: "idle" frames: 0..1 } }\n',
+			"an animation held twice", "twice");
+		refused('sheet: "crew2"\nfps: 10\nsounds { hold idle: 42 }\nanimation idle { playlist { sheet: "idle" frames: 0..1 } }\n',
+			"a sound's name not in quotes", "quotes");
+	}
+
+	// ==================== Ambience by screen ====================
+
+	@Test
+	public function testAmbienceFollowsTheScreens():Void {
+		final m = manager();
+		final hangar = new SoundTestScreen(m.sm);
+		hangar.screenAmbience = "amb.hum";
+		final bay = new SoundTestScreen(m.sm);
+		bay.screenAmbience = "amb.hum";
+		final bridge = new SoundTestScreen(m.sm);
+		bridge.screenAmbience = "amb.wind";
+		final silent = new SoundTestScreen(m.sm);
+		final quiet = new SoundTestScreen(m.sm);
+		quiet.screenAmbience = "none";
+		m.sm.addScreen("hangar", hangar);
+		m.sm.addScreen("bay", bay);
+		m.sm.addScreen("bridge", bridge);
+		m.sm.addScreen("silent", silent);
+		m.sm.addScreen("quiet", quiet);
+
+		m.sm.switchTo(hangar);
+		Assert.equals("amb.hum", m.sm.audio.ambiencePlaying);
+		Assert.equals(1, m.log.plays("amb.hum").length);
+		Assert.isTrue(m.log.plays("amb.hum")[0].loop);
+		Assert.equals("sfx", m.log.plays("amb.hum")[0].bus, "a sound's bus, not the music's");
+
+		m.sm.switchTo(bay);
+		Assert.equals(1, m.log.plays("amb.hum").length, "the same ambience plays on");
+		Assert.equals(0, m.log.stops().length);
+
+		m.sm.switchTo(bridge);
+		Assert.equals(1, m.log.stops("amb.hum").length, "another: the hum stops");
+		Assert.equals(1, m.log.plays("amb.wind").length);
+
+		m.sm.switchTo(silent);
+		Assert.equals("amb.wind", m.sm.audio.ambiencePlaying, "a screen that says nothing keeps what plays");
+
+		m.sm.switchTo(quiet);
+		Assert.isNull(m.sm.audio.ambiencePlaying, "none stops it");
+		Assert.equals(1, m.log.stops("amb.wind").length);
+	}
+
+	@Test
+	public function testADialogKeepsItsCallersAmbience():Void {
+		final m = manager();
+		final hangar = new SoundTestScreen(m.sm);
+		hangar.screenAmbience = "amb.hum";
+		final dialog = new SoundTestScreen(m.sm);
+		m.sm.addScreen("hangar", hangar);
+		m.sm.addScreen("dialog", dialog);
+		m.sm.switchTo(hangar);
+		m.sm.modalDialog(dialog, hangar, "options");
+		Assert.equals("amb.hum", m.sm.audio.ambiencePlaying, "the caller's ambience plays on");
+		Assert.equals(1, m.log.plays("amb.hum").length);
+		Assert.equals(0, m.log.stops().length);
+		m.sm.closeDialogWithTransition();
+		Assert.equals("amb.hum", m.sm.audio.ambiencePlaying);
+		Assert.equals(1, m.log.plays("amb.hum").length);
+	}
+
+	@Test
+	public function testAScreenReadsItsAmbienceFromItsSettings():Void {
+		final m = manager();
+		final screen = new SoundTestScreen(m.sm);
+		Assert.isNull(screen.screenAmbience);
+		screen.addBuilderResult(BuilderTestBase.builderFromSource(WIDGETS).buildWithParameters("hangar", []));
+		Assert.equals("amb.hum", screen.screenAmbience, "settings { ambience => \"amb.hum\" }");
+		Assert.isNull(screen.screenMusic, "says nothing of music");
 	}
 
 	// ==================== Music by screen ====================
@@ -304,7 +440,7 @@ class AudioScreenTest extends utest.Test {
 			final state:Dynamic = bridge.dispatch("audio_state", {});
 			final banks:Array<String> = state.banks;
 			banks.sort(Reflect.compare);
-			Assert.same(["fx", "ui"], banks);
+			Assert.same(["amb", "fx", "ui"], banks);
 			Assert.isTrue((state.sounds : Array<String>).contains("ui.click"));
 			Assert.equals(3, (state.mix.buses : Array<Dynamic>).length);
 			Assert.same(["music.play", "music.title"], state.tracks);
@@ -314,13 +450,16 @@ class AudioScreenTest extends utest.Test {
 			final heard:Array<Dynamic> = [];
 			bridge.registerListeners();
 			m.sm.audio.onHistory = e -> heard.push(e);
-			final done:Dynamic = bridge.dispatch("audio_set", {play: "ui.click", vca: "Music", value: 0.25, snapshot: "dialog", on: true, music: "music.title"});
-			Assert.equals(4, (done.done : Array<String>).length);
+			final done:Dynamic = bridge.dispatch("audio_set", {play: "ui.click", vca: "Music", value: 0.25, snapshot: "dialog", on: true, music: "music.title", ambience: "amb.hum"});
+			Assert.equals(5, (done.done : Array<String>).length);
 			Assert.equals(1, m.log.plays("ui.click").length);
 			Assert.floatEquals(0.25, m.sm.audio.getVca("Music"));
 			Assert.isTrue(m.sm.audio.isSnapshotOn("dialog"));
 			Assert.equals("music.title", m.sm.audio.musicPlaying);
-			Assert.equals(4, heard.length, "every line of the history is told");
+			Assert.equals("amb.hum", m.sm.audio.ambiencePlaying);
+			Assert.equals(6, heard.length, "every line of the history is told (the ambience's play and its own line)");
+			final after:Dynamic = bridge.dispatch("audio_state", {});
+			Assert.equals("amb.hum", after.ambience);
 
 			final log:Dynamic = bridge.dispatch("audio_log", {since: 0});
 			final entries:Array<Dynamic> = log.entries;

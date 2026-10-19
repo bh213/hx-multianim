@@ -23,25 +23,44 @@ private class SoundEntry {
 	}
 }
 
-/** One play of a sound: its voices, started or still to start after a layer's delay. */
+/** One play of a sound: its voices, started or still to start after a layer's delay, and after
+ *  `stop()` its `on: stop` layers' voices (`release`) until they end. A looping sound plays until
+ *  stopped; `setPitch` and `setVolume` drive it meanwhile (an engine by its revs and throttle). */
 class SoundInstance {
 	public final name:String;
+	/** The bank it is of: the part of `name` before the dot. */
+	public final bank:String;
 	public final startedAt:Float;
-	/** The loudest layer's volume, linear, for `steal: quietest`. */
-	public final volume:Float;
+	/** The loudest layer's volume, linear, times the `gain` set: what `steal: quietest` compares. */
+	public var volume(default, null):Float;
 	public final fadeOut:Float;
 	public var voices(default, null):Array<AudioVoice> = [];
 	/** Layers waiting for their delay. */
 	public var pending(default, null):Int = 0;
 	public var stopped(default, null):Bool = false;
+	/** The `on: stop` layers' voices, playing after `stop()`. */
+	public var release(default, null):Array<AudioVoice> = [];
+	/** Stop layers waiting for their delay. */
+	public var releasePending(default, null):Int = 0;
+	/** The gain set with `setVolume`, over the rolled volumes; 1 as played. */
+	public var gain(default, null):Float = 1;
+	/** The rate set with `setPitch`, over the rolled pitches; 1 as played. */
+	public var rate(default, null):Float = 1;
+	final loudest:Float;
+	/** Starts the stop layers; the service sets it when the sound has any. */
+	@:allow(bh.audio.Audio) var onStop:Null<SoundInstance->Void> = null;
 
 	public function new(name:String, startedAt:Float, volume:Float, fadeOut:Float) {
 		this.name = name;
+		final dot = name.indexOf(".");
+		this.bank = dot < 0 ? name : name.substr(0, dot);
 		this.startedAt = startedAt;
+		this.loudest = volume;
 		this.volume = volume;
 		this.fadeOut = fadeOut;
 	}
 
+	/** Playing, or about to: not stopped, with a voice playing or a layer still to start. */
 	public function isAlive():Bool {
 		if (stopped)
 			return false;
@@ -53,7 +72,25 @@ class SoundInstance {
 		return false;
 	}
 
-	/** Stops every voice, over the sound's `fade: out` unless `fadeOut` says otherwise. */
+	/** Stopped, with a stop layer still playing or to start. Not alive: its voice is free. */
+	public function isReleasing():Bool {
+		if (!stopped)
+			return false;
+		if (releasePending > 0)
+			return true;
+		for (v in release)
+			if (v.isPlaying())
+				return true;
+		return false;
+	}
+
+	/** Neither alive nor releasing: the service forgets it. */
+	public function isDone():Bool {
+		return !isAlive() && !isReleasing();
+	}
+
+	/** Stops every voice, over the sound's `fade: out` unless `fadeOut` says otherwise, and starts
+	 *  the `on: stop` layers. Stopped again, it does nothing. */
 	public function stop(?fadeOut:Float):Void {
 		if (stopped)
 			return;
@@ -61,21 +98,71 @@ class SoundInstance {
 		pending = 0;
 		for (v in voices)
 			v.stop(fadeOut ?? this.fadeOut);
+		if (onStop != null)
+			onStop(this);
+	}
+
+	/** Stops everything, the stop layers too, and starts none: what a bank taken again does to its plays. */
+	public function cut(?fadeOut:Float):Void {
+		final fade = fadeOut ?? this.fadeOut;
+		if (!stopped) {
+			stopped = true;
+			pending = 0;
+			for (v in voices)
+				v.stop(fade);
+		}
+		releasePending = 0;
+		for (v in release)
+			v.stop(fade);
+	}
+
+	/** Pitches every voice, those still to start too, by `rate` over its rolled pitch (1 as played). */
+	public function setPitch(rate:Float):Void {
+		this.rate = rate;
+		for (v in voices)
+			v.setPitch(rate);
+		for (v in release)
+			v.setPitch(rate);
+	}
+
+	/** Sets every voice, those still to start too, to `gain` times its rolled volume (1 as played),
+	 *  over `fade` seconds when more than 0. */
+	public function setVolume(gain:Float, fade:Float = 0):Void {
+		this.gain = gain;
+		volume = loudest * gain;
+		for (v in voices)
+			v.setGain(gain, fade);
+		for (v in release)
+			v.setGain(gain, fade);
+	}
+
+	/** A voice the service started, given the rate and gain set so far. */
+	@:allow(bh.audio.Audio) function addVoice(voice:AudioVoice, isRelease:Bool):Void {
+		if (rate != 1)
+			voice.setPitch(rate);
+		if (gain != 1)
+			voice.setGain(gain, 0);
+		(isRelease ? release : voices).push(voice);
 	}
 }
 
-private typedef Pending = {instance:SoundInstance, at:Float, start:VoiceStart};
+/** A layer's voice waiting for its delay; a `release` one is an `on: stop` layer's, started after the sound stopped. */
+private typedef Pending = {instance:SoundInstance, at:Float, start:VoiceStart, release:Bool};
+
+/** A layer rolled for one start, and the delay before it. */
+private typedef RolledStart = {start:VoiceStart, delay:Float};
 
 /** One line of `Audio.history`. */
 typedef AudioHistoryEntry = {
 	var id:Int;
 	/** The service's time. */
 	var time:Float;
-	/** "play", "drop" (a play that did not happen), "stop", "snapshot", "vca", "param", "music". */
+	/** "play", "drop" (a play that did not happen), "stop", "snapshot", "vca", "param", "music", "ambience". */
 	var kind:String;
 	/** The sound, snapshot, VCA, parameter or track. */
 	var name:String;
-	/** What of it: a drop's reason, a snapshot's on/off, a VCA's or parameter's value, a track's crossfade. */
+	/** What of it: a drop's reason, a snapshot's on/off, a VCA's or parameter's value, a track's crossfade,
+	 *  a play's file or layers (`on stop` for the stop layers as a sound stops). */
 	var detail:String;
 }
 
@@ -197,9 +284,20 @@ class Audio {
 		return n;
 	}
 
+	/** Drops a bank and cuts its plays, the stop layers too (a bank taken again is a reload: what
+	 *  plays is not what the block says now, and a looping sound would play on for good); returns
+	 *  whether the bank was here. */
 	public function removeBank(name:String):Bool {
 		if (!banks.remove(name))
 			return false;
+		var cut = 0;
+		for (i in instances)
+			if (i.bank == name && !i.isDone()) {
+				i.cut();
+				cut++;
+			}
+		if (cut > 0)
+			note("stop", '${name}.*', '$cut');
 		for (full in [for (k in entries.keys()) k]) {
 			final kept = entries.get(full).filter(e -> e.block != name);
 			if (kept.length == 0)
@@ -477,6 +575,40 @@ class Audio {
 		musicPlaying = null;
 	}
 
+	// ---- Ambience ----
+
+	/** The ambience, a sound's full name, or null: one held sound at a time beside the music, what a
+	 *  screen's `settings { ambience => "amb.hum" }` names (a looping sound of a `sounds` block). */
+	public var ambiencePlaying(default, null):Null<String> = null;
+	var ambienceVoice:Null<SoundInstance> = null;
+
+	/** Plays a sound as the ambience: the one playing stops (over its `fade: out`, or `fade`, its stop
+	 *  layers playing) and this one starts, as `play` starts it; the same one plays on. A name no bank
+	 *  has is an error. */
+	public function playAmbience(name:String, ?fade:Float):Void {
+		if (ambiencePlaying == name && ambienceVoice != null && ambienceVoice.isAlive())
+			return;
+		if (!has(name))
+			throw 'audio: no sound "$name" (the sounds are: ${soundNames().join(", ")})';
+		if (ambienceVoice != null)
+			ambienceVoice.stop(fade);
+		ambiencePlaying = name;
+		ambienceVoice = play(name);
+		note("ambience", name, ambienceVoice != null ? "" : "dropped");
+	}
+
+	/** Stops the ambience (over its `fade: out`, or `fade`, its stop layers playing); nothing when none. */
+	public function stopAmbience(?fade:Float):Void {
+		final name = ambiencePlaying;
+		if (name == null)
+			return;
+		if (ambienceVoice != null)
+			ambienceVoice.stop(fade);
+		note("ambience", name, "stopped");
+		ambienceVoice = null;
+		ambiencePlaying = null;
+	}
+
 	// ---- The widgets' sounds ----
 
 	/** A widget's event by its key (`hover`, `click`, `toggle`, `change`, `open`, `close`): plays what
@@ -577,35 +709,78 @@ class Audio {
 		final bank = banks.get(entry.block);
 		final bus = def.bus ?? (bank != null ? bank.bus : null);
 		var loudest = 0.0;
-		final starts:Array<{start:VoiceStart, delay:Float}> = [];
+		final starts:Array<RolledStart> = [];
+		var stopLayers = false;
 		for (li in 0...def.layers.length) {
-			final layer = def.layers[li];
-			if (layer.chance < 1 && randomFunc() >= layer.chance)
+			if (def.layers[li].onStop) {
+				stopLayers = true;
 				continue;
-			final path = pickFile(entry, li);
-			final volume = Math.pow(10, roll(layer.volumeMinDb, layer.volumeMaxDb) / 20);
-			if (volume > loudest)
-				loudest = volume;
-			starts.push({
-				start: {
-					sound: name, layer: layer.name, path: path, volume: volume, pitch: roll(layer.pitchMin, layer.pitchMax),
-					bus: bus, priority: def.priority, fadeIn: def.fadeIn, loop: false
-				},
-				delay: roll(layer.delayMin, layer.delayMax)
-			});
+			}
+			final s = rollLayer(name, entry, li, bus);
+			if (s == null)
+				continue;
+			if (s.start.volume > loudest)
+				loudest = s.start.volume;
+			starts.push(s);
 		}
 		final instance = new SoundInstance(name, time, loudest, def.fadeOut);
+		if (stopLayers)
+			instance.onStop = i -> startStopLayers(i, entry, bus);
 		instances.push(instance);
 		note("play", name, starts.length == 1 ? starts[0].start.path : '${starts.length} layers');
-		for (s in starts) {
-			if (s.delay <= 0) {
-				instance.voices.push(backend.play(s.start));
-			} else {
-				@:privateAccess instance.pending++;
-				pending.push({instance: instance, at: time + s.delay, start: s.start});
-			}
-		}
+		for (s in starts)
+			startVoice(instance, s, false);
 		return instance;
+	}
+
+	/** A layer rolled for one start: its file picked, its volume, pitch and delay rolled, in that
+	 *  order; null when its chance misses. */
+	function rollLayer(name:String, entry:SoundEntry, li:Int, bus:Null<String>):Null<RolledStart> {
+		final def = entry.def;
+		final layer = def.layers[li];
+		if (layer.chance < 1 && randomFunc() >= layer.chance)
+			return null;
+		final path = pickFile(entry, li);
+		final volume = Math.pow(10, roll(layer.volumeMinDb, layer.volumeMaxDb) / 20);
+		final pitch = roll(layer.pitchMin, layer.pitchMax);
+		final delay = roll(layer.delayMin, layer.delayMax);
+		return {
+			start: {
+				sound: name, layer: layer.name, path: path, volume: volume, pitch: pitch, bus: bus, priority: def.priority,
+				fadeIn: layer.onStop ? 0 : def.fadeIn, loop: layer.loop
+			},
+			delay: delay
+		};
+	}
+
+	/** Starts a rolled layer now, or keeps it in `pending` for its delay. */
+	function startVoice(instance:SoundInstance, s:RolledStart, isRelease:Bool):Void {
+		if (s.delay <= 0) {
+			instance.addVoice(backend.play(s.start), isRelease);
+			return;
+		}
+		@:privateAccess if (isRelease)
+			instance.releasePending++;
+		else
+			instance.pending++;
+		pending.push({instance: instance, at: time + s.delay, start: s.start, release: isRelease});
+	}
+
+	/** As a sound with `on: stop` layers is stopped: they start, rolled as the others were. */
+	function startStopLayers(instance:SoundInstance, entry:SoundEntry, bus:Null<String>):Void {
+		final def = entry.def;
+		var n = 0;
+		for (li in 0...def.layers.length) {
+			if (!def.layers[li].onStop)
+				continue;
+			final s = rollLayer(instance.name, entry, li, bus);
+			if (s == null)
+				continue;
+			startVoice(instance, s, true);
+			n++;
+		}
+		if (n > 0)
+			note("play", instance.name, n == 1 ? "on stop" : '$n layers on stop');
 	}
 
 	/** Stops every play of a sound, over its `fade: out` unless `fadeOut` is given; returns how many. */
@@ -634,7 +809,8 @@ class Audio {
 		return n;
 	}
 
-	/** Once a frame: starts the layers whose delay has passed, forgets the plays that ended. */
+	/** Once a frame: starts the layers whose delay has passed, forgets the plays that ended (their
+	 *  stop layers too). */
 	public function update(dt:Float):Void {
 		time += dt;
 		backend.update(dt);
@@ -643,9 +819,15 @@ class Audio {
 			final p = pending[i];
 			if (p.at <= time) {
 				pending.splice(i, 1);
-				if (!p.instance.stopped) {
+				if (p.release) {
+					// a cut sound (its bank taken again) has forgotten its stop layers
+					if (p.instance.releasePending > 0) {
+						@:privateAccess p.instance.releasePending--;
+						p.instance.addVoice(backend.play(p.start), true);
+					}
+				} else if (!p.instance.stopped) {
 					@:privateAccess p.instance.pending--;
-					p.instance.voices.push(backend.play(p.start));
+					p.instance.addVoice(backend.play(p.start), false);
 				}
 			} else {
 				i++;
@@ -653,10 +835,10 @@ class Audio {
 		}
 		var j = 0;
 		while (j < instances.length) {
-			if (instances[j].isAlive())
-				j++;
-			else
+			if (instances[j].isDone())
 				instances.splice(j, 1);
+			else
+				j++;
 		}
 	}
 

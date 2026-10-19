@@ -37,7 +37,7 @@ import bh.stateanim.AnimParser;
 	  can be given values other than those listed, over a loop variable, or worked out in a way the
 	  parse does not follow. A sheet whose own name cannot be known is not listed.
 	- `sounds`: full names `bank.sound` the file plays: a widget's `settings { sound.<key> => "…" }`,
-	  an interactive's `sound.<key> => "…"` metadata (not `none`).
+	  an interactive's `sound.<key> => "…"` metadata, a screen's `settings { ambience => "…" }` (not `none`).
 	- `music`: full names `bank.track` a screen's programmable names with `settings { music => "…" }`.
 	- `soundFiles`: the files the file's own `#name sounds { }` and `#name music { }` blocks name
 	  (`file:`, `files:`, a layer's files, a track's file). A `#name mix { }` block names nothing.
@@ -196,6 +196,9 @@ class ManimNeedsTools {
 		if (loaded.sheet != null && (cells.length > 0 || loaded.animations.length == 0))
 			sheets.set(loaded.sheet, cells);
 		for (_ => full in loaded.sounds)
+			if (sounds.indexOf(full) < 0)
+				sounds.push(full);
+		for (_ => full in loaded.holds)
 			if (sounds.indexOf(full) < 0)
 				sounds.push(full);
 		sounds.sort(Reflect.compare);
@@ -645,6 +648,13 @@ class ManimNeedsTools {
 					for (t in tracks)
 						if (t != "none" && t != "")
 							add(music, t);
+			} else if (key == "ambience") {
+				// a screen's held sound, a sound of a bank like any other
+				final held = names(sv.value);
+				if (held != null)
+					for (s in held)
+						if (s != "none" && s != "")
+							add(sounds, s);
 			} else if (key == "font" || StringTools.endsWith(key, ".font"))
 				// what a widget is given (`font`, `item.font`), passed to its programmable's `text()`
 				fontRV(sv.value);

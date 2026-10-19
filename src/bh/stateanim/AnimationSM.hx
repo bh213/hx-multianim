@@ -219,6 +219,7 @@ class AnimationSM extends h2d.Object {
 		clearDisplay();
 		// (#12) Apply animation-level filters
 		applyAnimationLook(state);
+		updateHold();
 		handleCurrent(hxd.Math.EPSILON);
 	}
 
@@ -272,12 +273,14 @@ class AnimationSM extends h2d.Object {
 		}
 		if (playing == null) {
 			current = null;
+			releaseHold();
 			clearDisplay();
 			return;
 		}
 		final desc = animationStates.get(playing.name);
 		if (desc == null) {
 			current = null;
+			releaseHold();
 			clearDisplay();
 			return;
 		}
@@ -468,11 +471,15 @@ class AnimationSM extends h2d.Object {
 			if (parent != null && layerClips[i].parent != parent)
 				parent.addChild(layerClips[i]);
 		}
+		// back in the scene on an animation with a hold: held again
+		updateHold();
 	}
 
 	override function onRemove() {
 		for (i in 0...detachedTo.length)
 			if (detachedTo[i] != null) layerClips[i].remove();
+		// out of the scene: a held sound would play on with no sprite to stop it
+		releaseHold();
 		super.onRemove();
 	}
 
@@ -686,6 +693,38 @@ class AnimationSM extends h2d.Object {
 	public var sounds:Null<Map<String, String>> = null;
 	/** Where the sounds play: the loader's (the screen manager's) audio, set as the machine is made. */
 	public var audio:Null<bh.audio.Audio> = null;
+	/** The file's `sounds { hold thrust: "fx.engine" }` lines: an animation's name to the sound held
+	 *  while it plays, started by `play` as the animation starts and stopped (its stop layers playing)
+	 *  as another animation starts or the machine leaves the scene; the same animation again keeps it. */
+	public var holds:Null<Map<String, String>> = null;
+	/** The sound held for the animation playing, to drive (`setPitch`, `setVolume`); null when none. */
+	public var heldSound(default, null):Null<bh.audio.Audio.SoundInstance> = null;
+	var heldFor:Null<String> = null;
+
+	/** The hold the animation playing asks for: the same one is kept, any other let go and this one taken. */
+	function updateHold():Void {
+		final playing = current;
+		final map = holds;
+		final name:Null<String> = playing != null && map != null ? map.get(playing.name) : null;
+		final held = heldSound;
+		if (name != null && name == heldFor && held != null && held.isAlive())
+			return;
+		releaseHold();
+		final a = audio;
+		if (name != null && a != null) {
+			heldSound = a.play(name);
+			heldFor = name;
+		}
+	}
+
+	/** Lets the held sound go, over its fade out, its stop layers playing. */
+	function releaseHold():Void {
+		final held = heldSound;
+		if (held != null)
+			held.stop();
+		heldSound = null;
+		heldFor = null;
+	}
 
 	/** Hears every event `onAnimationEvent` hears, after it. Added twice, called twice. */
 	public function addEventListener(listener:AnimationEvent->Void):Void {

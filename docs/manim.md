@@ -1538,6 +1538,34 @@ or both. Instead of its own files a sound may have `layer name { … }` blocks, 
 and `chance: 70%` that it plays at all. Times are `ms` or `s` (a bare number is ms); a range is
 `low..high`.
 
+**A held sound** plays while something lasts: an engine, a thruster, a force field, a hum. It is
+written as its three parts, each a layer:
+
+```
+  engine {
+    voices: 4, fade: out 200ms
+    layer start { file: "sound/engine_start.wav" }                        // the attack, once
+    layer hum   { file: "sound/engine_hum.wav", loop: yes, delay: 300ms } // the sustain, until stopped
+    layer stop  { file: "sound/engine_off.wav", on: stop }                // the release, as it is stopped
+  }
+  hum { file: "sound/hum.wav", loop: yes }                                // the simplest: one looping file
+```
+
+`loop: yes` on a layer, or on a sound's own files, plays it round and round until the sound is
+stopped (a take made to loop; of several `files:` one is picked and looped). `on: stop` on a layer
+plays it as the sound is stopped instead of as it starts, over the others' fade out; it never loops,
+and a sound needs at least one layer that starts. `voices:` is then how many sources hum at once
+(three ships, three engines), `steal: oldest` the one that gives way, with its stop layer. The game
+keeps the `SoundInstance` that `play` returns and calls `stop(?fade)` on it (or `audio.stop(name)`
+for every play of the name): the voice is free at once, the stop layers play on
+(`isReleasing()`); `stopAll` leaves them to end, being the sound's ending. Meanwhile
+`setPitch(rate)` and `setVolume(gain, ?fade)` drive every voice, those still to start too, as a
+factor over the rolled values: an engine by its revs, a thruster by its throttle. A bank taken
+again (a hot reload) cuts its plays, stop layers and all, so a hum never outlives the block that
+made it. Without code: an `.anim`'s `sounds { hold thrust: "fx.engine" }` holds a sound while an
+animation plays, and a screen's `settings { ambience => "amb.hum" }` holds one while the screen is
+up (below).
+
 `ScreenManager.buildFromResource` takes every `sounds` block of a file as a bank of
 `screenManager.audio` (`audio.addBanks(builder)`, again on each reload, a bank of the same name
 replaced), and every file is loaded then. From code: `audio.play("fx.hit")` (null when the
@@ -1627,11 +1655,22 @@ seconds is streamed by Heaps.
   sound says `sound.click => none` in its metadata.
 - **A sprite's events** play what its `.anim` file's `sounds { fire: "fx.shot" }` block maps them to,
   as the state machine fires them, through the loader's audio (`docs/anim.md` "sounds").
+- **A sprite's animation holds a sound**: `sounds { hold thrust: "fx.engine" }` in the `.anim` file
+  starts the sound as the `thrust` animation starts and stops it (its stop layers playing) as
+  another animation starts or the sprite leaves the scene; the same animation again keeps it, and
+  a sprite put back in the scene on that animation holds it again. `animSM.heldSound` is the play,
+  to drive its pitch and volume; the animation named must be one of the file's.
 - **A screen's music** is `settings { music => "music.title" }` on the first programmable added to it
   that says it (or `screen.screenMusic = "music.title"` from code before it shows; `"none"` stops the
   music, no word keeps what plays). The screen manager crossfades to it as the screen comes up: a
   dialog that says nothing keeps its caller's, a master-and-single plays the single's, else the
   master's. Under a dialog the `dialog` snapshot is on, when the mix has one.
+- **A screen's ambience** is `settings { ambience => "amb.hum" }` likewise (`screen.screenAmbience`):
+  a looping sound of a bank, held beside the music while the screen is up. The screen manager starts
+  it as the screen comes up and stops it as a screen naming another or `"none"` comes up; a screen
+  naming the same one keeps it, one that says nothing keeps what plays, a dialog keeps its caller's.
+  One ambience at a time (`audio.playAmbience`, `stopAmbience`, `ambiencePlaying`); a scene with
+  several hums at once holds them from its sprites or its own code.
 - **The DevBridge** sees and sets it: `audio_state`, `audio_log`, `audio_set`, and an `audio` event
   for every line of `audio.history` (`docs/devbridge.md`).
 

@@ -7047,6 +7047,20 @@ class MacroManimParser {
 					if (r.min != r.max) error('$where: chance is one number');
 					layer.chance = r.unit == "%" ? r.min / 100 : r.min;
 					if (layer.chance < 0 || layer.chance > 1) error('$where: chance is 0% to 100%');
+				case "loop":
+					// `loop: yes`: round and round until the sound is stopped (a hum, an engine)
+					expect(TColon);
+					layer.loop = parseBool();
+				case "on":
+					// `on: stop`: played as the sound stops, in place of starting with it (an engine's cut-off)
+					if (!inLayer) error('$where: on: is a layer\'s (put the files in a layer)');
+					expect(TColon);
+					final when = expectIdentifierOrString().toLowerCase();
+					layer.onStop = switch when {
+						case "start": false;
+						case "stop": true;
+						default: error('$where: on: start or stop, got "$when"');
+					};
 				default:
 					return false;
 			}
@@ -7057,7 +7071,7 @@ class MacroManimParser {
 		function newLayer(name:String, line:Int):SoundLayerDef {
 			return {
 				name: name, files: [], pick: PickRandom, volumeMinDb: 0, volumeMaxDb: 0, pitchMin: 1, pitchMax: 1,
-				delayMin: 0, delayMax: 0, chance: 1, line: line
+				delayMin: 0, delayMax: 0, chance: 1, loop: false, onStop: false, line: line
 			};
 		}
 
@@ -7082,9 +7096,10 @@ class MacroManimParser {
 						while (!match(TCurlyClosed)) {
 							final k = expectIdentifierOrString();
 							if (!parseLayerKey(k, layer, '$where layer $layerName', true))
-								error('$where layer $layerName: unknown key "$k" (file, files, pick, volume, pitch, delay, chance)');
+								error('$where layer $layerName: unknown key "$k" (file, files, pick, volume, pitch, delay, chance, loop, on)');
 						}
 						if (layer.files.length == 0) error('$where layer $layerName: no file');
+						if (layer.loop && layer.onStop) error('$where layer $layerName: a layer on: stop plays once, it cannot loop');
 						sound.layers.push(layer);
 					case "bus":
 						expect(TColon);
@@ -7140,7 +7155,7 @@ class MacroManimParser {
 						match(TComma);
 					default:
 						if (!parseLayerKey(key, own, where, false))
-							error('$where: unknown key "$key" (file, files, pick, volume, pitch, bus, voices, steal, cooldown, priority, fade, layer)');
+							error('$where: unknown key "$key" (file, files, pick, volume, pitch, loop, bus, voices, steal, cooldown, priority, fade, layer)');
 						ownKeys = true;
 				}
 			}
@@ -7151,6 +7166,10 @@ class MacroManimParser {
 				error('$where: volume, pitch and pick go on the layers when a sound has layers');
 			}
 			if (sound.layers.length == 0) error('$where: no file (file: "…", files: […] or a layer { })');
+			var startsWith = 0;
+			for (l in sound.layers)
+				if (!l.onStop) startsWith++;
+			if (startsWith == 0) error('$where: every layer is on: stop, nothing plays at the start');
 			return sound;
 		}
 

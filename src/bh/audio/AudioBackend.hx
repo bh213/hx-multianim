@@ -42,6 +42,10 @@ interface AudioVoice {
 	function getVolume():Float;
 	/** Stops it, over `fadeOut` seconds when more than 0. */
 	function stop(fadeOut:Float):Void;
+	/** Pitches it by `rate` over the rate it was started at (1 as started; the bus's pitch multiplies in too). */
+	function setPitch(rate:Float):Void;
+	/** Sets its volume to `gain` times the volume it was started at (1 as started), over `fade` seconds when more than 0. */
+	function setGain(gain:Float, fade:Float):Void;
 }
 
 /**

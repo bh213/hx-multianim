@@ -22,7 +22,7 @@ Free-form layout — newlines are whitespace. Comments: `//` line, `/* */` block
 | `@final` | `@final NAME = expr` | Immutable named constant. Before animations |
 | annotation | `@name` or `@name(value, key: value)` | Kept for tools, never acted on. Before an animation it is the animation's; anywhere else at the top level, the file's |
 | `metadata` | `metadata { ... }` | Key-value metadata block. Before animations |
-| `sounds` | `sounds { fire: "fx.shot" }` | The sound each event plays (its full name, `block.sound`, in quotes), through the loader's audio, by the state machine itself. An event twice is an error. Before animations |
+| `sounds` | `sounds { fire: "fx.shot"  hold thrust: "fx.engine" }` | The sound each event plays (its full name, `block.sound`, in quotes), through the loader's audio, by the state machine itself; `hold <animation>:` a sound held while that animation plays. An event or a hold twice, a hold on an animation the file has not, are errors. Before animations |
 | `animation` | `animation name { ... }` | Full animation block |
 | `anim` | `anim name(modifiers): "sheet"` | Compact single-sheet shorthand |
 
@@ -85,8 +85,9 @@ are errors.
 
 ```anim
 sounds {
-    fire: "fx.shot"      // the event `fire` plays the sound fx.shot of a #fx sounds { } block
+    fire: "fx.shot"            // the event `fire` plays the sound fx.shot of a #fx sounds { } block
     step: "fx.step"
+    hold thrust: "fx.engine"   // fx.engine is held while the animation `thrust` plays
 }
 ```
 
@@ -96,6 +97,14 @@ sound through `animSM.audio`, the loader's (`ResourceLoader.getAudio()`, the scr
 set as the machine is made by `createAnimSM`; with no audio nothing plays. `parser.sounds` is the
 map; `animSM.sounds` and `animSM.audio` may be set from code. A sound no bank has is an error when
 the event fires.
+
+`hold <animation>: "block.sound"` holds a sound while that animation plays: `play(name)` starts it
+as the animation starts and stops it (over its fade out, its `on: stop` layers playing) as another
+animation starts; the same animation played again keeps it. The machine leaving the scene
+(`remove()`) stops it, and put back in the scene on that animation it holds it again, so a held hum
+never outlives its sprite. `animSM.heldSound` is the play, a `SoundInstance`, to drive
+(`setPitch(rate)`, `setVolume(gain, ?fade)`); `parser.holds` / `animSM.holds` the map. The
+animation named must be one of the file's, and an animation is held once (parse errors).
 
 ## Metadata Block
 
@@ -420,14 +429,15 @@ scene.addChild(animSM);
 `center`, `metadata` (the API above) and `metadataEntries` (every entry by key, with its states),
 `animations` (each `AnimationState` as parsed, with its `annotations`), `defaults` (the file-level
 `fps`, `loop`, `flipX`, `flipY`), the file's `annotations`, `sounds` (the `sounds { }` block, an
-event's name to the full name of the sound it plays), and `spans`. The arrays and maps are
-the parser's own: read them, never change them.
+event's name to the full name of the sound it plays), `holds` (its `hold` lines, an animation's name
+to the sound held while it plays), and `spans`. The arrays and maps are the parser's own: read them,
+never change them.
 
 **What the file needs** (`bh.multianim.ManimNeeds`): `ManimNeedsTools.animNeedsOf(parsed.loaded())`
 is an `AnimNeeds` — `sheets` (the file's `sheet:` with every frame name its playlists and layers
 write, `${state}` expanded over the file's `states:` values, so `"walk_${dir}"` over `dir(l, r)`
 is `walk_l`, `walk_r`; an indexed name once), `files` (the images its `file:` lines name) and
-`sounds` (the `bank.sound` names of its `sounds { }` block), each sorted and without repeats. From
+`sounds` (the `bank.sound` names of its `sounds { }` block, the held ones too), each sorted and without repeats. From
 the parse alone: `AnimParser.parseString(text, name, null)` needs no loader, no app and no window,
 on HashLink and on JS alike. A `.manim` file's counterpart is `ManimNeedsTools.needsOf`
 (`docs/manim-reference.md`, "What a File Needs").

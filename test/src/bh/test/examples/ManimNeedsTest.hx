@@ -320,8 +320,15 @@ class ManimNeedsTest extends utest.Test {
 			#silent programmable() {
 				settings { music => none }
 			}
+			#hangar programmable() {
+				settings { ambience => "amb.hum" }
+			}
+			#still programmable() {
+				settings { ambience => none }
+			}
 		');
 		Assert.same(["music.play"], n.music);
+		Assert.same(["amb.hum"], n.sounds, "an ambience is a sound a screen holds");
 	}
 
 	@Test
@@ -542,6 +549,7 @@ sounds {
 	fire: "fx.shot"
 	step: "fx.step"
 	land: "fx.step"
+	hold idle: "amb.hum"
 }
 animation idle { playlist { sheet: "idle_$${dir}" frames: 0..1 } }
 animation jump {
@@ -555,7 +563,7 @@ animation jump {
 		Assert.same(["crew"], keys(n.sheets));
 		Assert.same(["idle_l", "idle_r", "jump"], n.sheets.get("crew"));
 		Assert.same(["extra/pose.png"], n.files);
-		Assert.same(["fx.shot", "fx.step"], n.sounds);
+		Assert.same(["amb.hum", "fx.shot", "fx.step"], n.sounds, "the events' sounds and the held one");
 	}
 
 	@Test

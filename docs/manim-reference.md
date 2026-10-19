@@ -803,10 +803,17 @@ Root node, needs a `#name`; one entry a line or `;`-separated; a name twice is a
     layer boom   { files: ["sound/boom_1.wav", "sound/boom_2.wav"] }
     layer debris { file: "sound/debris.wav", delay: 40..120ms, chance: 70% }
   }
+  hum { file: "sound/hum.wav", loop: yes }                     // round and round until stopped
+  engine {                                                      // a held sound: start, sustain, release
+    voices: 4, fade: out 200ms
+    layer start { file: "sound/engine_start.wav" }
+    layer hum   { file: "sound/engine_hum.wav", loop: yes, delay: 300ms }
+    layer stop  { file: "sound/engine_off.wav", on: stop }     // played as the sound is stopped
+  }
 }
 ```
 
-Root node, needs a `#name`; its sounds are `name.sound`. `ScreenManager.buildFromResource` takes every block as a bank of `screenManager.audio` (`audio.addBanks(builder)`; `buildSounds(name)`, `soundBlockNames()`). From code: `audio.play("fx.hit")` (null when dropped: cooldown, `steal: none`, no variant), `audio.stop(name, ?fade)`, `audio.stopAll()`, `audio.set("surface", "grass")`, `audio.soundNames()`; `audio.backend = new LogBackend()` for a log instead of sound.
+Root node, needs a `#name`; its sounds are `name.sound`. `ScreenManager.buildFromResource` takes every block as a bank of `screenManager.audio` (`audio.addBanks(builder)`; `buildSounds(name)`, `soundBlockNames()`). From code: `audio.play("fx.hit")` (null when dropped: cooldown, `steal: none`, no variant), `audio.stop(name, ?fade)`, `audio.stopAll()`, `audio.set("surface", "grass")`, `audio.soundNames()`; `audio.backend = new LogBackend()` for a log instead of sound. A play is a `SoundInstance`: `stop(?fade)` (its `on: stop` layers start, `isReleasing()` while they play; its voice is free from then), `setPitch(rate)` and `setVolume(gain, ?fade)` over the rolled values while it plays (an engine by its revs and throttle), `isAlive()`. A bank taken again (a reload) cuts its plays, stop layers and all. `audio.playAmbience("amb.hum", ?fade)` holds one sound beside the music (the one playing stops, the same one plays on), `stopAmbience(?fade)`, `ambiencePlaying`.
 
 | Key | On | Description |
 |-----|----|-------------|
@@ -820,6 +827,8 @@ Root node, needs a `#name`; its sounds are `name.sound`. `ScreenManager.buildFro
 | `priority:` | sound | `low`, `normal`, `high`: which go silent first past 16 sources |
 | `fade:` | sound | `in <time>` and/or `out <time>` |
 | `layer name { }` | sound | Files played together, in place of the sound's own; `delay: 40..120ms`, `chance: 70%` |
+| `loop:` | sound, layer | `yes`: plays round and round until the sound is stopped (a file made to loop; one file of `files:` is picked and looped). `voices:` is then how many sources hum at once |
+| `on:` | layer | `stop`: played as the sound is stopped (a cut-off, a spin-down), not as it starts; `start` is the default. Never loops; a sound needs at least one layer that starts |
 
 ### Mix
 
@@ -853,7 +862,9 @@ Root node, needs a `#name`. One track at a time: `audio.playMusic("music.title",
 |-------|-----|-------------|
 | a widget's `settings { }` or an interactive's metadata | `sound.<key> => "block.sound"` or `none` | What the event plays instead of `ui.<key>`; keys `hover`, `click`, `toggle`, `change`, `open`, `close` |
 | a screen's programmable `settings { }` | `music => "block.track"` or `none` | The screen's music, crossfaded to as it comes up (the first programmable added to the screen that says it) |
+| a screen's programmable `settings { }` | `ambience => "block.sound"` or `none` | The screen's ambience, a looping sound held beside the music: started as the screen comes up, stopped as a screen naming another or `none` comes up; a screen naming the same one keeps it, one that says nothing keeps what plays (`screen.screenAmbience`) |
 | an `.anim` file | `sounds { event: "block.sound" }` | The sound each event plays, by the state machine |
+| an `.anim` file | `sounds { hold animation: "block.sound" }` | A sound held while that animation plays: started as it starts, stopped as another starts or the sprite leaves the scene (`animSM.heldSound` to drive it) |
 
 Without a `#ui sounds { }` block the widgets are silent; one that defines `hover`, `click`, `toggle`, `change`, `open`, `close` plays them for every widget, and `click` for every click of an `interactive()` the screen registered (`addInteractives`: a screen's own, a panel's, a card hand's cards; their hover is silent) unless its metadata says `sound.click => none`. DevBridge: `audio_state`, `audio_log`, `audio_set`, the `audio` event.
 
@@ -1721,12 +1732,12 @@ final needs:ManimNeeds = ManimNeedsTools.needsOf(result);
 | `filters:Array<String>` | Custom filters by name (lower case, as parsed), registered in code with `FilterManager` |
 | `cursors:Array<String>` | Cursors an interactive names (`cursor => "sword"`, `cursor.hover`, `cursor.disabled`) that are neither `CursorManager`'s own (`pointer`, `move`, `text`, …: `ManimNeedsTools.BUILT_IN_CURSORS`) nor in the file's `#name cursor { }` blocks; lower case, as `CursorManager` keeps them |
 | `fromParameters:Bool` | A name could not be listed whole: an expression over a parameter that can be given values other than those listed (a string or number parameter), over a loop variable, or worked out in a way the parse does not follow. A cell so is its sheet whole (`null` cells); a sheet whose own name cannot be known is not listed |
-| `sounds:Array<String>` | Full names `bank.sound` the file plays: a widget's `settings { sound.<key> => "…" }`, an interactive's `sound.<key> => "…"` metadata (`none` names nothing) |
+| `sounds:Array<String>` | Full names `bank.sound` the file plays: a widget's `settings { sound.<key> => "…" }`, an interactive's `sound.<key> => "…"` metadata, a screen's `settings { ambience => "…" }` (`none` names nothing) |
 | `music:Array<String>` | Full names `bank.track` a screen's programmable names with `settings { music => "…" }` |
 | `soundFiles:Array<String>` | The files the file's own `#name sounds { }` (`file:`, `files:`, a layer's) and `#name music { }` (a track's `file:`) blocks name. A `#name mix { }` block is the game's, not a need |
 | `uiSounds:Array<String>` | The keys of the `#ui` sounds bank the file's widgets and interactives play by default, having no `sound.<key>` of their own. The parse does not know which widget the host makes of a programmable, so it goes by the parameters each widget passes: an `interactive()` plays `click` (not with `events:` that leave clicks out); a programmable with `status` and `buttonText` (a button) `hover` and `click`; with `status` and `checked` (a checkbox, or a tab or radio button, whose tabs and radio group send a change) `toggle` and `change`; with `status` and `panel` (a dropdown) `open`, `close` and `change`; with `status`, `value` and `size` (a slider), with `scrollPosition`, `scrollableHeight` and `panelHeight` (a scrollbar), or with `status`, `title` and `selected` (a list's item) `change`; any other (a text input, a card, a grid cell) none. The runtime plays what the widget sends (`UIScreenBase.playWidgetSound`), so this is at most what a widget of it could play |
 
-Arrays are sorted and without repeats. A `.anim` file's counterpart is `ManimNeedsTools.animNeedsOf(parsed.loaded())` (`AnimNeeds`: its `sheet:` with every frame name its playlists and layers write, `${state}` expanded over the file's states; its `file:` images; the `bank.sound` names of its `sounds { }` block); see `docs/anim-reference.md`. Nothing here is validated against what exists: that is the builder's, with a loader.
+Arrays are sorted and without repeats. A `.anim` file's counterpart is `ManimNeedsTools.animNeedsOf(parsed.loaded())` (`AnimNeeds`: its `sheet:` with every frame name its playlists and layers write, `${state}` expanded over the file's states; its `file:` images; the `bank.sound` names of its `sounds { }` block, the held ones too); see `docs/anim-reference.md`. Nothing here is validated against what exists: that is the builder's, with a loader.
 
 ---
 

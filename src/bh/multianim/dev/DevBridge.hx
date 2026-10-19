@@ -1660,7 +1660,11 @@ class DevBridge implements IDevBridgeHost {
 			parameters: parameters,
 			tracks: audio.trackNames(),
 			music: audio.musicPlaying,
-			instances: [for (i in audio.instances) {name: i.name, startedAt: i.startedAt, voices: i.voices.length, pending: i.pending}],
+			ambience: audio.ambiencePlaying,
+			instances: [
+				for (i in audio.instances)
+					{name: i.name, startedAt: i.startedAt, voices: i.voices.length, pending: i.pending, releasing: i.isReleasing(), gain: i.gain, rate: i.rate}
+			],
 			time: audio.time,
 			backend: Type.getClassName(Type.getClass(audio.backend)),
 		};
@@ -1675,12 +1679,12 @@ class DevBridge implements IDevBridgeHost {
 
 	/** Changes the sound from outside: `{vca, value}`, `{snapshot, on}`, `{param, value}`, `{play}`
 	 *  (a sound's name), `{stop}` (a sound's name, or "*" for all), `{music}` (a track's name, or
-	 *  "none"); several at once. */
+	 *  "none"), `{ambience}` (a sound's name, or "none"); several at once. */
 	function handleAudioSet(params:Dynamic):Dynamic {
 		final audio = screenManager.audio;
 		final done:Array<String> = [];
 		if (params == null)
-			throw DevBridgeError.invalidParams("audio_set: vca+value, snapshot+on, param+value, play, stop or music");
+			throw DevBridgeError.invalidParams("audio_set: vca+value, snapshot+on, param+value, play, stop, music or ambience");
 		if (params.vca != null) {
 			if (params.value == null)
 				throw DevBridgeError.invalidParams("audio_set: a vca takes a value, 0 to 1");
@@ -1713,8 +1717,15 @@ class DevBridge implements IDevBridgeHost {
 				audio.playMusic(params.music);
 			done.push('music ${params.music}');
 		}
+		if (params.ambience != null) {
+			if (params.ambience == "none")
+				audio.stopAmbience();
+			else
+				audio.playAmbience(params.ambience);
+			done.push('ambience ${params.ambience}');
+		}
 		if (done.length == 0)
-			throw DevBridgeError.invalidParams("audio_set: nothing to do (vca+value, snapshot+on, param+value, play, stop, music)");
+			throw DevBridgeError.invalidParams("audio_set: nothing to do (vca+value, snapshot+on, param+value, play, stop, music, ambience)");
 		return {done: done};
 	}
 

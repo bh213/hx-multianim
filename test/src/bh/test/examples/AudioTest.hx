@@ -379,6 +379,201 @@ class AudioTest extends utest.Test {
 		Assert.equals(1, a.log.plays("fx.explosion").length, "the debris rolled 0.8 against 70%");
 	}
 
+	// ==================== A held sound ====================
+
+	static final HELD = '
+		#eng sounds {
+			bus: sfx
+			hum { file: "sound/hum.wav", loop: yes, voices: 1, steal: none }
+			engine {
+				voices: 2, fade: out 200ms
+				layer start { file: "sound/engine_start.wav" }
+				layer hum   { file: "sound/engine_hum.wav", loop: yes, delay: 300ms }
+				layer stop  { file: "sound/engine_off.wav", on: stop }
+			}
+		}
+	';
+
+	function held():{audio:Audio, log:LogBackend} {
+		final l = new LogBackend();
+		final a = new Audio(l);
+		a.randomFunc = () -> 0.0;
+		a.addBank("eng", BuilderTestBase.builderFromSource(HELD).buildSounds("eng"));
+		return {audio: a, log: l};
+	}
+
+	static function stopLayerPlays(log:LogBackend):Array<bh.audio.LogBackend.AudioLogEntry> {
+		return log.plays("eng.engine").filter(p -> p.layer == "stop");
+	}
+
+	@Test
+	public function testParsesAHeldSound():Void {
+		Assert.isTrue(BuilderTestBase.parseExpectingSuccess(HELD));
+		final def = BuilderTestBase.builderFromSource(HELD).buildSounds("eng");
+		Assert.isTrue(def.sounds[0].layers[0].loop, "loop: yes on a sound's own files");
+		Assert.isFalse(def.sounds[0].layers[0].onStop);
+		final engine = def.sounds[1];
+		Assert.isFalse(engine.layers[0].loop);
+		Assert.isTrue(engine.layers[1].loop, "the hum loops");
+		Assert.isFalse(engine.layers[1].onStop);
+		Assert.isTrue(engine.layers[2].onStop, "the stop layer plays as the sound stops");
+		Assert.isFalse(engine.layers[2].loop);
+
+		function refused(src:String, why:String, ?says:String):Void {
+			final error = BuilderTestBase.parseExpectingError(src);
+			Assert.notNull(error, why);
+			if (error != null && says != null)
+				Assert.isTrue(error.indexOf(says) >= 0, '$why: the error says "$says": $error');
+		}
+		refused('#s sounds { a { file: "a.wav", on: stop } }', "on: stop on a sound's own files", "layer");
+		refused('#s sounds { a { layer b { file: "b.wav", loop: yes, on: stop } } }', "a stop layer that loops", "loop");
+		refused('#s sounds { a { layer b { file: "b.wav", on: stop } } }', "nothing but stop layers", "start");
+		refused('#s sounds { a { layer b { file: "b.wav", on: later } } }', "an unknown on:", "stop");
+		refused('#s sounds { a { file: "a.wav", loop: maybe } }', "a loop that is neither yes nor no");
+	}
+
+	@Test
+	public function testALoopingSoundPlaysUntilStopped():Void {
+		final a = held();
+		final hum = a.audio.play("eng.hum");
+		Assert.notNull(hum);
+		Assert.isTrue(a.log.plays("eng.hum")[0].loop, "the backend is told to loop");
+		for (_ in 0...50)
+			a.audio.update(0.1);
+		Assert.isTrue(hum.isAlive(), "five seconds on, well past the file's second");
+		Assert.equals(1, a.audio.instances.length);
+		Assert.equals(0, a.log.stops().length);
+		Assert.isNull(a.audio.play("eng.hum"), "at its one voice");
+
+		Assert.equals(1, a.audio.stop("eng.hum", 0.5));
+		Assert.floatEquals(0.5, a.log.stops("eng.hum")[0].fade);
+		Assert.isFalse(hum.isAlive());
+		Assert.isFalse(hum.isReleasing(), "no stop layer");
+		a.audio.update(0.01);
+		Assert.equals(0, a.audio.instances.length, "done at once");
+		Assert.notNull(a.audio.play("eng.hum"), "and its voice is free");
+	}
+
+	@Test
+	public function testAStoppedSoundPlaysItsStopLayer():Void {
+		final a = held();
+		final engine = a.audio.play("eng.engine");
+		Assert.equals(1, a.log.plays("eng.engine").length, "the start layer; the hum waits for its delay");
+		a.audio.update(0.4);
+		final plays = a.log.plays("eng.engine");
+		Assert.equals(2, plays.length);
+		Assert.equals("hum", plays[1].layer);
+		Assert.isTrue(plays[1].loop);
+		Assert.isFalse(plays[0].loop);
+		Assert.equals(0, stopLayerPlays(a.log).length, "the stop layer is not played at the start");
+
+		engine.stop();
+		Assert.equals(2, a.log.stops("eng.engine").length, "the start and the hum, over the sound's fade out");
+		Assert.floatEquals(0.2, a.log.stops("eng.engine")[1].fade);
+		final off = stopLayerPlays(a.log);
+		Assert.equals(1, off.length, "the stop layer plays as the sound stops");
+		Assert.equals("sound/engine_off.wav", off[0].path);
+		Assert.isFalse(off[0].loop);
+		Assert.isFalse(engine.isAlive());
+		Assert.isTrue(engine.isReleasing());
+		Assert.equals(1, a.audio.instances.length, "listed while its stop layer plays");
+		a.audio.update(0.5);
+		Assert.isTrue(engine.isReleasing());
+		a.audio.update(0.6);
+		Assert.isFalse(engine.isReleasing(), "the stop layer's second is over");
+		Assert.equals(0, a.audio.instances.length);
+		engine.stop();
+		Assert.equals(1, stopLayerPlays(a.log).length, "stopped twice plays the stop layer once");
+	}
+
+	@Test
+	public function testAStoppingSoundFreesItsVoice():Void {
+		final a = held();
+		final first = a.audio.play("eng.engine");
+		a.audio.update(0.01);
+		final second = a.audio.play("eng.engine");
+		a.audio.update(0.01);
+		first.stop();
+		final third = a.audio.play("eng.engine");
+		Assert.notNull(third, "two voices: one stopping, one playing, room for one more");
+		Assert.isFalse(second.stopped, "nothing stolen");
+		Assert.equals(2, a.audio.stop("eng.engine"), "the two alive; the one stopping is not stopped again");
+		Assert.equals(0, a.audio.stopAll(), "a stop layer plays on through stopAll: it is the sound's ending");
+		Assert.equals(3, stopLayerPlays(a.log).length);
+	}
+
+	@Test
+	public function testAStolenSoundEndsWithItsStopLayer():Void {
+		final a = held();
+		a.audio.play("eng.engine");
+		a.audio.update(0.01);
+		a.audio.play("eng.engine");
+		a.audio.update(0.01);
+		a.audio.play("eng.engine");
+		Assert.equals(1, stopLayerPlays(a.log).length, "the oldest, stolen, ends as a stopped one does");
+	}
+
+	@Test
+	public function testTheSustainIsDrivenWhileItPlays():Void {
+		final a = held();
+		final hum = a.audio.play("eng.hum");
+		hum.setPitch(1.5);
+		hum.setVolume(0.5, 0.1);
+		final pitched = a.log.entries.filter(e -> e.kind == "pitch");
+		Assert.equals(1, pitched.length);
+		Assert.floatEquals(1.5, pitched[0].pitch, "the rolled rate (1) times the one set");
+		final volumes = a.log.entries.filter(e -> e.kind == "volume");
+		Assert.equals(1, volumes.length);
+		Assert.floatEquals(0.5, volumes[0].volume, "the rolled volume (0 dB) times the gain");
+		Assert.floatEquals(0.1, volumes[0].fade);
+		Assert.floatEquals(0.5, hum.volume, "what steal: quietest compares");
+		Assert.floatEquals(1.5, hum.rate);
+		Assert.floatEquals(0.5, hum.gain);
+
+		final engine = a.audio.play("eng.engine");
+		engine.setPitch(2.0);
+		a.audio.update(0.4);
+		final late = a.log.entries.filter(e -> e.kind == "pitch" && e.layer == "hum");
+		Assert.equals(1, late.length, "the hum, started after its delay, is pitched as it starts");
+		Assert.floatEquals(2.0, late[0].pitch);
+	}
+
+	@Test
+	public function testABankLoadedAgainStopsItsHeldSounds():Void {
+		final a = held();
+		a.audio.play("eng.hum");
+		final engine = a.audio.play("eng.engine");
+		a.audio.update(0.4);
+		a.audio.addBank("eng", BuilderTestBase.builderFromSource(HELD).buildSounds("eng"));
+		Assert.equals(1, a.log.stops("eng.hum").length, "the bank's plays stop as it is taken again");
+		Assert.equals(2, a.log.stops("eng.engine").length);
+		Assert.equals(0, stopLayerPlays(a.log).length, "cut, not stopped: no stop layer");
+		Assert.isFalse(engine.isReleasing());
+		a.audio.update(0.01);
+		Assert.equals(0, a.audio.instances.length);
+		Assert.notNull(a.audio.play("eng.hum"), "the new bank plays");
+	}
+
+	@Test
+	public function testAnAmbienceIsOneHeldSoundAtATime():Void {
+		final a = held();
+		Assert.isNull(a.audio.ambiencePlaying);
+		a.audio.playAmbience("eng.hum");
+		Assert.equals("eng.hum", a.audio.ambiencePlaying);
+		Assert.equals(1, a.log.plays("eng.hum").length);
+		a.audio.playAmbience("eng.hum");
+		Assert.equals(1, a.log.plays("eng.hum").length, "the same one plays on");
+		a.audio.playAmbience("eng.engine");
+		Assert.equals(1, a.log.stops("eng.hum").length, "another: the hum stops");
+		Assert.equals("eng.engine", a.audio.ambiencePlaying);
+		a.audio.update(0.4);
+		a.audio.stopAmbience();
+		Assert.isNull(a.audio.ambiencePlaying);
+		Assert.equals(1, stopLayerPlays(a.log).length, "stopped as a sound is, with its stop layer");
+		a.audio.stopAmbience();
+		Assert.equals(2, a.log.stops("eng.engine").length, "nothing more to stop");
+	}
+
 	@Test
 	public function testStopFadesEveryPlayOfASoundOut():Void {
 		final a = audio();
@@ -418,7 +613,7 @@ class AudioTest extends utest.Test {
 		sm.buildFromResourceName("sounds-block.manim", false);
 		final banks = sm.audio.bankNames();
 		banks.sort(Reflect.compare);
-		Assert.same(["fx", "ui"], banks);
+		Assert.same(["amb", "fx", "ui"], banks);
 		Assert.isTrue(log.prepared.contains("sound/hover.wav"), "the files were prepared as the file loaded");
 		sm.audio.play("ui.hover");
 		Assert.floatEquals(Math.pow(10, -6 / 20), log.plays()[0].volume, 0.0001);

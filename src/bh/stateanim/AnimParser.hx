@@ -154,7 +154,7 @@ class AnimKeywordInfo {
 		new AnimKeywordInfo("layers", AKTopLevel, "The file's layers, drawn bottom first: `layers: shadow, body, hat`. Before animations", "layers: "),
 		new AnimKeywordInfo("metadata", AKTopLevel, "Typed key-value pairs (int, float, string, color, [list of words]). Supports state conditionals",
 			"metadata {\n\t$0\n}", true),
-		new AnimKeywordInfo("sounds", AKTopLevel, "The sound each event plays, by the screen manager's audio: `sounds { fire: \"fx.shot\" }`. Before animations",
+		new AnimKeywordInfo("sounds", AKTopLevel, "The sound each event plays, by the screen manager's audio: `sounds { fire: \"fx.shot\" }`; `hold thrust: \"fx.engine\"` a sound held while that animation plays. Before animations",
 			"sounds {\n\t${1:event}: \"${2:block.sound}\"\n\t$0\n}", true),
 		// Animation body
 		new AnimKeywordInfo("fps", AKAnimationBody, "Frames per second", "fps: "),
@@ -546,6 +546,8 @@ typedef LoadedAnimation = {
 	var spans:Array<AnimSpan>;
 	/** The `sounds { }` block: an event's name to the full name of the sound it plays; empty when none. **/
 	var sounds:Map<String, String>;
+	/** The `sounds { }` block's `hold` lines: an animation's name to the sound held while it plays; empty when none. **/
+	var holds:Map<String, String>;
 }
 
 /**
@@ -885,6 +887,8 @@ interface AnimParserResult {
 	var metadata(default, never):Null<AnimMetadata>;
 	/** The file's `sounds { }` block: an event's name to the full name of the sound it plays; empty when none. */
 	var sounds(default, never):Map<String, String>;
+	/** The block's `hold anim: "…"` lines: an animation's name to the sound held while it plays; empty when none. */
+	var holds(default, never):Map<String, String>;
 
 	function createAnimSM(stateSelector:AnimationStateSelector):AnimationSM;
 
@@ -913,6 +917,8 @@ class AnimParser implements AnimParserResult {
 	public var metadata(default, null):Null<AnimMetadata> = null;
 	/** The file's `sounds { }` block: an event's name to the full name of the sound it plays. */
 	public var sounds(default, null):Map<String, String> = [];
+	/** The block's `hold anim: "…"` lines: an animation's name to the sound held while it plays. */
+	public var holds(default, null):Map<String, String> = [];
 	var soundsDefined:Bool = false;
 	var constants:Map<String, Float> = []; // (#7) @final named constants
 	var defaultFps:Null<Int> = null; // (#3) file-level fps default
@@ -1193,6 +1199,9 @@ class AnimParser implements AnimParserResult {
 		}
 
 		// Post-parse validation
+		for (anim => _ in holds)
+			if (!animationNames.contains(anim))
+				syntaxError('sounds: hold $anim: no animation $anim (${animationNames.join(", ")})');
 		for (key => value in definedStates) {
 			definedStatesIndexes.push(key);
 		}
@@ -1292,6 +1301,7 @@ class AnimParser implements AnimParserResult {
 			annotations: annotations,
 			spans: spans,
 			sounds: sounds,
+			holds: holds,
 		};
 	}
 
@@ -1686,19 +1696,32 @@ class AnimParser implements AnimParserResult {
 		}
 	}
 
-	/** `sounds { fire: "fx.shot"  step: "fx.step" }`: an event's name to the full name of the sound it plays. */
+	/** `sounds { fire: "fx.shot"  hold thrust: "fx.engine" }`: an event's name to the full name of the
+	 *  sound it plays, and `hold <animation>:` the sound held while that animation plays (started as it
+	 *  starts, stopped as another starts or the sprite leaves the scene). */
 	function parseSounds():Void {
-		while (true) {
-			if (match(APCurlyClosed)) break;
-			final key = expectIdentifier();
-			expect(APColon);
-			final value = switch (peek()) {
+		function soundName(what:String):String {
+			return switch (peek()) {
 				case APIdentifier(s, _, AITQuotedString) | APIdentifier(s, _, AITString):
 					advance();
 					s;
 				default:
-					syntaxError('sounds: $key: expected the sound\'s name in quotes ("block.sound")');
+					syntaxError('sounds: $what: expected the sound\'s name in quotes ("block.sound")');
 			};
+		}
+		while (true) {
+			if (match(APCurlyClosed)) break;
+			final key = expectIdentifier();
+			if (key == "hold" && !peek().match(APColon)) {
+				final anim = expectIdentifier();
+				expect(APColon);
+				final value = soundName('hold $anim');
+				if (holds.exists(anim)) syntaxError('sounds: hold $anim is given twice');
+				holds.set(anim, value);
+				continue;
+			}
+			expect(APColon);
+			final value = soundName(key);
 			if (sounds.exists(key)) syntaxError('sounds: $key is given twice');
 			sounds.set(key, value);
 		}
@@ -2920,6 +2943,7 @@ class AnimParser implements AnimParserResult {
 		// The file's sounds play through the loader's audio (the screen manager's), with no game code.
 		if (soundsDefined) {
 			animSM.sounds = sounds;
+			animSM.holds = holds;
 			if (resourceLoader != null)
 				animSM.audio = resourceLoader.getAudio();
 		}

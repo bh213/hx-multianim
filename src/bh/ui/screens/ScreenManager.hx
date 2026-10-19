@@ -193,29 +193,43 @@ class ScreenManager {
 
 	/** The music of a mode: a dialog's own, else its caller's; a master-and-single's single's, else
 	 *  the master's. Null when no screen says. */
-	function musicFor(screenMode:ScreenManagerMode):Null<String> {
-		inline function of(screen:UIScreen):Null<String>
-			return Std.isOfType(screen, UIScreenBase) ? cast(screen, UIScreenBase).screenMusic : null;
+	/** What the screens of a mode say (`of` a screen's `screenMusic` or `screenAmbience`): a dialog's
+	 *  own, else its caller's; a single's, else the master's; null when none says anything. */
+	function screenAudioFor(screenMode:ScreenManagerMode, of:UIScreenBase->Null<String>):Null<String> {
+		function say(screen:UIScreen):Null<String>
+			return Std.isOfType(screen, UIScreenBase) ? of(cast(screen, UIScreenBase)) : null;
 		return switch screenMode {
 			case None: null;
-			case Single(single): of(single);
-			case MasterAndSingle(master, single): of(single) ?? of(master);
-			case Dialog(dialog, _, previousMode, _): of(dialog) ?? musicFor(previousMode);
+			case Single(single): say(single);
+			case MasterAndSingle(master, single): say(single) ?? say(master);
+			case Dialog(dialog, _, previousMode, _): say(dialog) ?? screenAudioFor(previousMode, of);
 		};
 	}
 
-	/** As the mode changes: the `dialog` snapshot on under a dialog and off after it, and the
-	 *  music the screens say crossfaded to ("none" stops it; no word keeps what plays). */
+	function musicFor(screenMode:ScreenManagerMode):Null<String> {
+		return screenAudioFor(screenMode, s -> s.screenMusic);
+	}
+
+	function ambienceFor(screenMode:ScreenManagerMode):Null<String> {
+		return screenAudioFor(screenMode, s -> s.screenAmbience);
+	}
+
+	/** As the mode changes: the `dialog` snapshot on under a dialog and off after it, the music the
+	 *  screens say crossfaded to, and the ambience they say held ("none" stops either; no word keeps
+	 *  what plays). */
 	function applyScreenAudio(newMode:ScreenManagerMode):Void {
 		if (audio.hasSnapshot(bh.audio.Audio.DIALOG_SNAPSHOT))
 			audio.snapshot(bh.audio.Audio.DIALOG_SNAPSHOT, newMode.match(Dialog(_, _, _, _)));
 		final music = musicFor(newMode);
-		if (music == null)
-			return;
 		if (music == "none")
 			audio.stopMusic();
-		else
+		else if (music != null)
 			audio.playMusic(music);
+		final ambience = ambienceFor(newMode);
+		if (ambience == "none")
+			audio.stopAmbience();
+		else if (ambience != null)
+			audio.playAmbience(ambience);
 	}
 
 	function notifyScreenChange(previousMode:ScreenManagerMode, newMode:ScreenManagerMode,

@@ -6,18 +6,32 @@ import bh.base.ResourceLoader;
 private class HeapsVoice implements AudioVoice {
 	public final channel:hxd.snd.Channel;
 	public final bus:String;
-	/** The rate the play was rolled to; the bus's pitch multiplies it. */
+	/** The rate and volume the play was rolled to; the bus's pitch and what the service sets multiply them. */
 	final basePitch:Float;
+	final baseVolume:Float;
+	var busPitch:Float = 1;
+	var ownPitch:Float = 1;
 	var pitchEffect:Null<hxd.snd.effect.Pitch> = null;
 
-	public function new(channel:hxd.snd.Channel, bus:String, basePitch:Float) {
+	public function new(channel:hxd.snd.Channel, bus:String, basePitch:Float, baseVolume:Float) {
 		this.channel = channel;
 		this.bus = bus;
 		this.basePitch = basePitch;
+		this.baseVolume = baseVolume;
 	}
 
 	public function setBusPitch(rate:Float):Void {
-		final value = basePitch * rate;
+		busPitch = rate;
+		applyPitch();
+	}
+
+	public function setPitch(rate:Float):Void {
+		ownPitch = rate;
+		applyPitch();
+	}
+
+	function applyPitch():Void {
+		final value = basePitch * busPitch * ownPitch;
 		if (pitchEffect == null) {
 			if (value == 1)
 				return;
@@ -25,6 +39,16 @@ private class HeapsVoice implements AudioVoice {
 		} else {
 			pitchEffect.value = value;
 		}
+	}
+
+	public function setGain(gain:Float, fade:Float):Void {
+		if (channel.isReleased())
+			return;
+		final value = baseVolume * gain;
+		if (fade > 0)
+			channel.fadeTo(value, fade);
+		else
+			channel.volume = value;
 	}
 
 	public function isPlaying():Bool {
@@ -110,7 +134,7 @@ class HeapsBackend implements AudioBackend {
 		channel.priority = start.priority;
 		if (start.fadeIn > 0)
 			channel.fadeTo(start.volume, start.fadeIn);
-		final voice = new HeapsVoice(channel, name, start.pitch);
+		final voice = new HeapsVoice(channel, name, start.pitch, start.volume);
 		final state = states.get(name);
 		voice.setBusPitch(state != null ? state.pitch : 1);
 		if (state != null && state.paused)

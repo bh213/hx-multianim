@@ -25,9 +25,15 @@ a `@:manim` programmable beside the blocks (fixture 158, `AudioCodegenTest`), th
 on a hot reload (`HotReloadTest`), the grammars. Every stage's tests pass on the standard and the
 DEV build (105 visual, the unit suites).
 
+Of stage C the held sound is built (2026-10-19, asked for by a game's engines): `loop: yes` on a
+layer or a sound's own files, `on: stop` for the layer played as the sound stops (in place of the
+planned `start:` `loop:` `end:` keys, since the three parts are layers already: picked, rolled,
+delayed, by chance), `SoundInstance.setPitch`/`setVolume` to drive it, a bank taken again cutting
+its plays; the `.anim` `hold anim: "…"` line (the planned `hold`), and of stage D a screen's
+`ambience =>` with `playAmbience`/`stopAmbience` beside the music (`AudioTest`, `AudioScreenTest`).
 What is left, by what each waits on: C (music switches on the beat, intros, stems, markers,
-ducking, held sounds, global parameters with a seek rate) for a game with music made for it; D
-(ambience, placing by x, voice) for a game that asks; a playground demo (its file loader reads
+ducking, global parameters with a seek rate) for a game with music made for it; D
+(placing by x, voice) for a game that asks; a playground demo (its file loader reads
 bytes now, done 2026-10-14, as were the MCP server's `audio_state`, `audio_log` and `audio_set`
 tools in `hx-multianim-mcp` 1.20.0); hover sounds from widgets other than the button; `voices` on a bus counted by the service rather than
 left to Heaps' `maxAudible` (which silences by priority, time running). The rest is below as planned.
@@ -116,8 +122,9 @@ Inside `sounds`: `bus:` (the block's default), a sound `name { }` with `file:` o
 `pick: random | shuffle | turn`, `volume: -3db ±2db`, `pitch: ±5%`, `voices: 4`, `steal: oldest |
 quietest | none` (`furthest` with placing, D), `cooldown: 30ms`, `priority: low | normal | high`,
 `fade: in 20ms out 300ms`, `layer name { files delay: 40..120ms chance: 70% }`, `@(…)` arms for a
-sound's variant by a parameter (`param surface: [stone, grass]`); C: `global danger: 0..1 seek
-0.5/s`, and `start:` `loop:` `end:` for a held sound.
+sound's variant by a parameter (`param surface: [stone, grass]`); a held sound as layers, built:
+`loop: yes` on a layer or the sound's own files, `layer x { on: stop }`; C: `global danger: 0..1
+seek 0.5/s`.
 
 Inside `mix`: `bus name { voices: 24 }`, `vca Name: bus, bus`, `snapshot name { bus: -6db | pause |
 lowpass 0.2 | pitch clock, fade: 200ms }`; C: `duck: music -8db 150ms` on a bus. The snapshots
@@ -128,10 +135,11 @@ Inside `music`: `track name { file: "…", loop: yes }`; C: `intro:`, `bpm:`, `m
 { on: bar, fade: 1 beat, stinger: "…" }`, `stem name { file volume: param 0..0.5 => -inf..0db }`,
 `marker a.name: bar 17`.
 
-In `.anim`: a top-level `sounds { event: block.sound }` played by the state machine; C: `hold`.
+In `.anim`: a top-level `sounds { event: block.sound }` played by the state machine, and
+`hold animation: "block.sound"` held while the animation plays (built).
 
 Settings: `sound.<event> => "block.sound" | none` on an element (`hover`, `click`, `toggle`,
-`change`, `open`, `close`), `music => "block.track"` on a screen.
+`change`, `open`, `close`), `music => "block.track"` and `ambience => "block.sound"` on a screen.
 
 Units: `db`, `±`, `%`, `ms`, `s`, `a..b`, `beat`, `bar`.
 
@@ -150,7 +158,8 @@ Units: `db`, `±`, `%`, `ms`, `s`, `a..b`, `beat`, `bar`.
   snapshot; DevBridge `audio_state`, `audio_log`, `audio_set` and an `audio` event.
 - **B4, parity and reload.** Codegen at parity, typed names, hot reload of the three blocks, the
   grammar.
-- **C, music** and **D, ambience, placing, voice**: when a game asks.
+- **C, music** and **D, placing, voice**: when a game asks. Of these the held sound (C) and a
+  screen's ambience (D) are built, 2026-10-19.
 
 ## Open
 

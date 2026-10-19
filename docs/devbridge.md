@@ -350,16 +350,16 @@ The game's sound (`ScreenManager.audio`, `docs/manim.md` "Sounds"): what it has,
 #### `audio_state`
 No parameters.
 
-Returns: `banks[]` and `sounds[]` (the `sounds` blocks loaded and every sound's full name), `mix` (null without a `mix` block; else `buses[]` each with `name`, `volume`, `paused`, `lowpass`, `pitch`, `voices` as the mix makes it now, `vcas` by name, `snapshots[]`, `snapshotsOn[]`), `parameters` by name, `tracks[]`, `music` (the track playing, or null), `instances[]` (the plays alive: `name`, `startedAt`, `voices`, `pending`), `time`, `backend` (the class playing: `bh.audio.HeapsBackend`, or `bh.audio.LogBackend` where nothing is heard).
+Returns: `banks[]` and `sounds[]` (the `sounds` blocks loaded and every sound's full name), `mix` (null without a `mix` block; else `buses[]` each with `name`, `volume`, `paused`, `lowpass`, `pitch`, `voices` as the mix makes it now, `vcas` by name, `snapshots[]`, `snapshotsOn[]`), `parameters` by name, `tracks[]`, `music` (the track playing, or null), `ambience` (the sound held as the ambience, or null), `instances[]` (the plays alive or releasing: `name`, `startedAt`, `voices`, `pending`, `releasing` (stopped, its `on: stop` layers still playing), `gain`, `rate`), `time`, `backend` (the class playing: `bh.audio.HeapsBackend`, or `bh.audio.LogBackend` where nothing is heard).
 
 #### `audio_log`
-What the audio did: the last 200 lines of its history (plays and drops with their reason, stops (`stopAll`, as `audio_set {stop: "*"}`, is one line named `*`), snapshots on and off, VCAs, parameters, music).
+What the audio did: the last 200 lines of its history (plays and drops with their reason (a stop layer's play says `on stop`), stops (`stopAll`, as `audio_set {stop: "*"}`, is one line named `*`; a bank taken again cutting its plays one named `bank.*`), snapshots on and off, VCAs, parameters, music, ambience).
 
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `since` | int | 0 | Only the lines after this entry id |
 
-Returns: `entries[]` — each with `id`, `time`, `kind` (`play`, `drop`, `stop`, `snapshot`, `vca`, `param`, `music`), `name`, `detail`; and `time`.
+Returns: `entries[]` — each with `id`, `time`, `kind` (`play`, `drop`, `stop`, `snapshot`, `vca`, `param`, `music`, `ambience`), `name`, `detail`; and `time`.
 
 #### `audio_set`
 Changes the sound from outside; several at once.
@@ -372,6 +372,7 @@ Changes the sound from outside; several at once.
 | `play` | string | A sound's full name to play |
 | `stop` | string | A sound's full name to stop, or `*` for all |
 | `music` | string | A track's full name to crossfade to, or `none` to stop the music |
+| `ambience` | string | A sound's full name to hold as the ambience (the one held stops), or `none` to stop it |
 
 Returns: `done[]`, a line per change. Nothing to do, or a name nothing has, is an error.
 

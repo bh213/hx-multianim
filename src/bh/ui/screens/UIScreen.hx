@@ -113,6 +113,13 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	 *  its caller's). Not `music`: a subclass may not declare a field of the same name, and screens
 	 *  name their controls after what they do (a `music` checkbox). */
 	public var screenMusic:Null<String> = null;
+	/** The ambience this screen holds, a sound's full name (`amb.hum`: a looping sound of a `sounds`
+	 *  block), or "none" to stop what plays; null says nothing, and what plays plays on. Read from the
+	 *  first builder result added whose root settings have `ambience =>`, or set from code before the
+	 *  screen shows. The screen manager starts it as the screen comes up and stops it (its stop layers
+	 *  playing) as a screen naming another or "none" comes up; a screen naming the same one keeps it,
+	 *  a dialog that says nothing keeps its caller's. Beside the music, not instead of it. */
+	public var screenAmbience:Null<String> = null;
 	private var _autoSyncInitialState:Bool = false;
 	var autoSyncInitialState(never, set):Bool;
 	var initialSyncDone:Bool = false;
@@ -1112,12 +1119,21 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		return r;
 	}
 
-	/** `settings { music => "music.title" }` on the first result added that has it is the screen's music. */
+	/** `settings { music => "music.title" }` and `settings { ambience => "amb.hum" }` on the first
+	 *  result added that has each are the screen's music and ambience. */
 	function readMusicSetting(r:BuilderResult):Void {
-		if (screenMusic == null && r.rootSettings != null && r.rootSettings.has("music")) {
-			final said = r.rootSettings.getStringOrDefault("music", "");
+		final settings = r.rootSettings;
+		if (settings == null)
+			return;
+		if (screenMusic == null && settings.has("music")) {
+			final said = settings.getStringOrDefault("music", "");
 			if (said != "")
 				screenMusic = said;
+		}
+		if (screenAmbience == null && settings.has("ambience")) {
+			final said = settings.getStringOrDefault("ambience", "");
+			if (said != "")
+				screenAmbience = said;
 		}
 	}
 
