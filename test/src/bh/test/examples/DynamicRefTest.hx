@@ -1346,4 +1346,73 @@ class DynamicRefTest extends BuilderTestBase {
 		Assert.equals("a", interactiveIds(result).join(","), "listed again once the arm is shown");
 	}
 
+
+	// ==================== A dynamicRef under a conditional keeps its state across hide and show ====================
+
+	@Test
+	public function testDynamicRefUnderConditionalKeepsItsParametersAcrossHideAndShow():Void {
+		// A screen sets a panel's values through getDynamicRef(...).setParameter and sends only
+		// what changed. When the parent's state hides the panel and shows it again, the panel
+		// must come back as it was: the same BuilderResult, with the values it was given, not a
+		// fresh build with the site's defaults.
+		final result = buildFromSource("
+			#panel programmable(s:[none,live]=none) {
+				@(s=>live) bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+			#host programmable(state:[playing,scores]=playing) {
+				@(state=>scores) #scores dynamicRef($panel): 0, 0
+			}
+		", "host", null, Incremental);
+
+		result.setParameter("state", "scores");
+		final scores = result.getDynamicRef("scores");
+		scores.setParameter("s", "live");
+		Assert.equals(1, findVisibleBitmapDescendants(result.object).length, "the live line shows on the first show");
+
+		result.setParameter("state", "playing");
+		Assert.equals(0, findVisibleBitmapDescendants(result.object).length, "nothing of the panel while hidden");
+
+		result.setParameter("state", "scores");
+		final shownAgain = result.getDynamicRef("scores");
+		Assert.isTrue(scores == shownAgain, "the panel shown again is the result the screen set values on");
+		Assert.equals("live", Std.string(shownAgain.getParameterValues().get("s")),
+			"the value given through setParameter survives the hide and show");
+		Assert.equals(1, findVisibleBitmapDescendants(result.object).length,
+			"the live line shows again without the screen sending its value a second time");
+	}
+
+	// ==================== A dynamicRef inside a constant repeatable tracks its conditionals ====================
+
+	@Test
+	public function testDynamicRefInConstantRepeatableRedrawsOnSetParameter():Void {
+		// A panel of rows: a programmable that places a row programmable per iteration of a
+		// constant-count repeatable, itself placed by dynamicRef. setParameter on a row must show
+		// and hide the row's conditionals as it does for a dynamicRef outside a repeatable.
+		final result = buildFromSource("
+			#line programmable(status:[none,live]=none) {
+				bitmap(generated(color(4, 4, #000000))): 0, 0
+				@(status=>live) bitmap(generated(color(10, 10, #00ff00))): 0, 0
+			}
+			#panel programmable() {
+				repeatable($i, step(3, dy: 10)) {
+					#line[$i] dynamicRef($line): 0, 0
+				}
+			}
+			#host programmable() {
+				#panel dynamicRef($panel): 0, 0
+			}
+		", "host", null, Incremental);
+
+		Assert.equals(3, findVisibleBitmapDescendants(result.object).length, "three rows, all at their default status");
+
+		final row = result.getDynamicRef("panel").getDynamicRefByIndex("line", 1);
+		row.setParameter("status", "live");
+		Assert.equals("live", Std.string(row.getParameterValues().get("status")));
+		Assert.equals(4, findVisibleBitmapDescendants(result.object).length, "the live row draws its conditional");
+		Assert.equals(1, [for (b in findVisibleBitmapDescendants(row.object)) if (Std.int(b.tile.height) == 10) b].length,
+			"the conditional drawn is the row's own");
+
+		row.setParameter("status", "none");
+		Assert.equals(3, findVisibleBitmapDescendants(result.object).length, "the row hides its conditional again");
+	}
 }

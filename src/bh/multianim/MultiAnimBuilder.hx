@@ -1654,10 +1654,12 @@ class IncrementalUpdateContext {
 				paramRefs,
 				entry.wrapper
 			);
-			// Remove from deferred list — tracked expression handles future rebuilds
-			deferredEntries.remove(entry);
 		}
-		// If no tracked expression, keep in deferredEntries so future show cycles re-materialize
+		// Materialized once. From here the entry is an ordinary conditional: a hide detaches the
+		// wrapper and a show reattaches it, so a dynamicRef inside keeps the BuilderResult the
+		// caller set values on. Re-materializing on every show rebuilt it with the site's defaults.
+		// With param refs the tracked expression above rebuilds the content when they change.
+		deferredEntries.remove(entry);
 	}
 
 	function rebuildDeferredContent(entry:{
@@ -9042,6 +9044,12 @@ class MultiAnimBuilder {
 			this.incrementalContext = null;
 			this.deferredForwardingCtx = null;
 		}
+		// A constant-count repeatable suppresses conditional tracking for its body (its loop-var
+		// conditionals are static). That is the body's business, not the programmable a dynamicRef
+		// in the body places: built with the flag on, its hidden conditionals were dropped instead
+		// of tracked, and setParameter on the row never drew them.
+		final savedSuppressConditionalTracking = suppressConditionalTracking;
+		suppressConditionalTracking = false;
 		try {
 			if (builderParams == null)
 				builderParams = {callback: defaultCallback};
@@ -9102,6 +9110,7 @@ class MultiAnimBuilder {
 
 			popBuilderState();
 			deferredForwardingCtx = savedForwardingCtx;
+			suppressConditionalTracking = savedSuppressConditionalTracking;
 			buildingRefs.pop();
 			return retVal;
 		} catch (e:Dynamic) {
@@ -9112,6 +9121,7 @@ class MultiAnimBuilder {
 			// would stay pinned to the failed call's transient state and corrupt every later build.
 			popBuilderState();
 			deferredForwardingCtx = savedForwardingCtx;
+			suppressConditionalTracking = savedSuppressConditionalTracking;
 			buildingRefs.pop();
 			throw e;
 		}
