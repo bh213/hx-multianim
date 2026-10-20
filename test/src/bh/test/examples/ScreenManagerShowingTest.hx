@@ -220,6 +220,42 @@ class ScreenManagerShowingTest extends utest.Test {
 
 		removeRoots([a, b]);
 	}
+
+	// ==================== loader ====================
+
+	// A game's code plays a character's `.anim` through the screen manager's loader, the
+	// one the manager builds every `.manim` with — no `@:privateAccess`. The probe is a
+	// plain class outside the test class's `@:access`, like an actor a game's screen makes
+	// (a screen itself is let in by `@:allow(bh.ui.screens.UIScreen)`, a subclass too).
+	@Test
+	public function testAGamesCodeMakesAnAnimsStateMachineThroughTheManagersLoader():Void {
+		final loader = bh.test.TestResourceLoader.createLoader(false);
+		var sm = new ScreenManager(bh.test.VisualTestBase.appInstance, loader);
+		var a = new LoaderProbe(sm);
+
+		Assert.equals(loader, a.managersLoader(), "the loader the manager was given");
+		final animSM = a.makeAnimSM("marine.anim", "l");
+		animSM.play("idle");
+		Assert.equals("idle", animSM.current.name);
+		animSM.remove();
+	}
+}
+
+/** Not a screen: an actor factory a game hands its screen manager, reaching the loader. */
+private class LoaderProbe {
+	final screenManager:ScreenManager;
+
+	public function new(sm:ScreenManager) {
+		screenManager = sm;
+	}
+
+	public function managersLoader():bh.base.ResourceLoader.CachingResourceLoader {
+		return screenManager.loader;
+	}
+
+	public function makeAnimSM(file:String, facing:String):bh.stateanim.AnimationSM {
+		return screenManager.loader.createAnimSM(file, ["direction" => facing]);
+	}
 }
 
 /** Records the lifecycle events it receives and whether its root was attached at each. */

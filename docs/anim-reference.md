@@ -397,6 +397,9 @@ other hand, must cover every state the animation exists for.
 
 ### Loading and Creating AnimationSM
 
+`resourceLoader` is the game's loader: `screenManager.loader` in a screen or an actor it
+makes, `builder.resourceLoader` from a `MultiAnimBuilder` (both public).
+
 ```haxe
 // Via ResourceLoader (recommended — caches result)
 var parsed:AnimParserResult = resourceLoader.loadAnimParser("marine.anim");

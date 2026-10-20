@@ -657,6 +657,10 @@ anim stand(fps: 1, loop: yes): "marine_l_standing"
 
 ### Loading and Creating AnimationSM
 
+The `resourceLoader` below is the game's `ResourceLoader`: a screen or an actor it makes
+gets it as `screenManager.loader`, code given only a `MultiAnimBuilder` as
+`builder.resourceLoader`. Both are public, no `@:privateAccess` needed.
+
 ```haxe
 import bh.stateanim.AnimParser;
 import bh.stateanim.AnimParser.AnimationStateSelector;

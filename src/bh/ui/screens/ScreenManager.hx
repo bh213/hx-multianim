@@ -87,7 +87,8 @@ typedef ScreensShowing = {
 @:allow(bh.ui.ControllerEventHandler)
 @:allow(bh.multianim.dev.DevBridge)
 class ScreenManager {
-	final loader:CachingResourceLoader;
+	/** The loader every `.manim` and `.anim` is loaded through: a game makes an `.anim`'s state machine with `loader.createAnimSM(file, selector)`. */
+	public final loader:CachingResourceLoader;
 	final handler:ControllerEventHandler;
 	var mode:ScreenManagerMode = None;
 	var activeScreens(default, null):Array<UIScreen> = [];

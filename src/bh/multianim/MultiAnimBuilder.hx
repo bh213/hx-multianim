@@ -2783,7 +2783,8 @@ private typedef StoredBuilderState = {
 @:allow(bh.multianim.ProgrammableBuilder)
 @:allow(bh.multianim.IncrementalUpdateContext)
 class MultiAnimBuilder {
-	final resourceLoader:bh.base.ResourceLoader;
+	/** The loader this builder loads with; code holding only a builder reaches `.anim` files through it (`createAnimSM`). */
+	public final resourceLoader:bh.base.ResourceLoader;
 	public final sourceName:String;
 	var multiParserResult:MultiAnimResult;
 

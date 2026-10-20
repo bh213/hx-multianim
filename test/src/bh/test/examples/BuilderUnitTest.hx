@@ -10064,6 +10064,21 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.notNull(c.parent, "After setObject, the new object must be parented");
 	}
 
+	// ==================== The builder's loader ====================
+
+	// Code given only a builder (a helper, a pack's screen) makes an `.anim`'s state
+	// machine through the loader the builder loads with, without `@:privateAccess`.
+	@Test
+	public function testCodeHoldingOnlyABuilderReachesItsLoader():Void {
+		final builder = builderFromSource("#p programmable() { bitmap(generated(color(4, 4, #FF0000))): 0, 0 }");
+		final loader = builder.resourceLoader;
+		Assert.notNull(loader);
+		final animSM = loader.createAnimSM("marine.anim", ["direction" => "r"]);
+		animSM.play("idle");
+		Assert.equals("idle", animSM.current.name);
+		animSM.remove();
+	}
+
 	// ==================== applyConditionalChains map caching ====================
 
 	// Steady-state setParameter (no structural change) must not rebuild the entry/apply
