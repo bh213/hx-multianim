@@ -748,4 +748,7 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/159-liveProgrammable/liveProgrammable.manim", "liveProgrammable")
 	public var liveProgrammable;
+
+	@:manim("test/examples/160-hexOffsetParity/hexOffsetParity.manim", "hexOffsetParity")
+	public var hexOffsetParity;
 }

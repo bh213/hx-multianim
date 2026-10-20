@@ -1449,8 +1449,16 @@ class MacroManimParser {
 				final factor = if (match(TComma)) parseFloatOrReference() else RVFloat(1.0);
 				expect(TClosed);
 				return SELECTED_HEX_CELL_EDGE(cell, dir, factor);
+			case "offset":
+				// The pixel-offset suffix every coordinate takes; the hex cell
+				// chain consumed the dot before parseCoordinates' own check saw it
+				final ox = parseFloatOrReference();
+				expect(TComma);
+				final oy = parseFloatOrReference();
+				expect(TClosed);
+				return WITH_OFFSET(cell, ox, oy);
 			default:
-				return error('Unknown hex chain method: $chainMethod. Expected hexCorner or hexEdge');
+				return error('Unknown hex chain method: $chainMethod. Expected hexCorner, hexEdge or offset');
 		}
 	}
 

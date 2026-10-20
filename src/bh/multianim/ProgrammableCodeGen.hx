@@ -3073,8 +3073,8 @@ class ProgrammableCodeGen {
 							case ODD: bh.base.Hex.OffsetCoord.ODD;
 						};
 						final hex = switch (layout.hex.hexLayout.orientation) {
-							case POINTY: bh.base.Hex.OffsetCoord.qoffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
-							case FLAT: bh.base.Hex.OffsetCoord.roffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
+							case POINTY: bh.base.Hex.OffsetCoord.roffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
+							case FLAT: bh.base.Hex.OffsetCoord.qoffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
 						};
 						final pt = layout.hex.hexLayout.hexToPixel(hex);
 						{x: pt.x, y: pt.y};
@@ -3086,8 +3086,8 @@ class ProgrammableCodeGen {
 					final r2 = resolveRVStatic(row2);
 					if (c != null && r2 != null) {
 						final hex = switch (layout.hex.hexLayout.orientation) {
-							case POINTY: bh.base.Hex.DoubledCoord.qdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
-							case FLAT: bh.base.Hex.DoubledCoord.rdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
+							case POINTY: bh.base.Hex.DoubledCoord.rdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
+							case FLAT: bh.base.Hex.DoubledCoord.qdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
 						};
 						final pt = layout.hex.hexLayout.hexToPixel(hex);
 						{x: pt.x, y: pt.y};
@@ -5375,8 +5375,8 @@ class ProgrammableCodeGen {
 					if (c != null && r2 != null) {
 						final parityVal = switch (parity) { case EVEN: bh.base.Hex.OffsetCoord.EVEN; case ODD: bh.base.Hex.OffsetCoord.ODD; };
 						final hex = switch (hexLayout.orientation) {
-							case POINTY: bh.base.Hex.OffsetCoord.qoffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
-							case FLAT: bh.base.Hex.OffsetCoord.roffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
+							case POINTY: bh.base.Hex.OffsetCoord.roffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
+							case FLAT: bh.base.Hex.OffsetCoord.qoffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
 						};
 						final pt = hexLayout.hexToPixel(hex);
 						{x: pt.x, y: pt.y};
@@ -5389,8 +5389,8 @@ class ProgrammableCodeGen {
 					final r2 = resolveRVStatic(row2);
 					if (c != null && r2 != null) {
 						final hex = switch (hexLayout.orientation) {
-							case POINTY: bh.base.Hex.DoubledCoord.qdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
-							case FLAT: bh.base.Hex.DoubledCoord.rdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
+							case POINTY: bh.base.Hex.DoubledCoord.rdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
+							case FLAT: bh.base.Hex.DoubledCoord.qdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
 						};
 						final pt = hexLayout.hexToPixel(hex);
 						{x: pt.x, y: pt.y};
@@ -5517,8 +5517,8 @@ class ProgrammableCodeGen {
 				if (c != null && r2 != null) {
 					final parityVal = switch (parity) { case EVEN: bh.base.Hex.OffsetCoord.EVEN; case ODD: bh.base.Hex.OffsetCoord.ODD; };
 					switch (hexLayout.orientation) {
-						case POINTY: bh.base.Hex.OffsetCoord.qoffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
-						case FLAT: bh.base.Hex.OffsetCoord.roffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
+						case POINTY: bh.base.Hex.OffsetCoord.roffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
+						case FLAT: bh.base.Hex.OffsetCoord.qoffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
 					};
 				} else null;
 			case SELECTED_HEX_DOUBLED(col2, row2):
@@ -5526,8 +5526,8 @@ class ProgrammableCodeGen {
 				final r2 = resolveRVStatic(row2);
 				if (c != null && r2 != null) {
 					switch (hexLayout.orientation) {
-						case POINTY: bh.base.Hex.DoubledCoord.qdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
-						case FLAT: bh.base.Hex.DoubledCoord.rdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
+						case POINTY: bh.base.Hex.DoubledCoord.rdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
+						case FLAT: bh.base.Hex.DoubledCoord.qdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
 					};
 				} else null;
 			case SELECTED_HEX_PIXEL(_, _):
@@ -5555,15 +5555,15 @@ class ProgrammableCodeGen {
 					case ODD: macro bh.base.Hex.OffsetCoord.ODD;
 				};
 				switch (hexLayout.orientation) {
-					case POINTY: macro bh.base.Hex.OffsetCoord.qoffsetToCube($parityExpr, new bh.base.Hex.OffsetCoord($colExpr, $rowExpr));
-					case FLAT: macro bh.base.Hex.OffsetCoord.roffsetToCube($parityExpr, new bh.base.Hex.OffsetCoord($colExpr, $rowExpr));
+					case POINTY: macro bh.base.Hex.OffsetCoord.roffsetToCube($parityExpr, new bh.base.Hex.OffsetCoord($colExpr, $rowExpr));
+					case FLAT: macro bh.base.Hex.OffsetCoord.qoffsetToCube($parityExpr, new bh.base.Hex.OffsetCoord($colExpr, $rowExpr));
 				};
 			case SELECTED_HEX_DOUBLED(col2, row2):
 				final colExpr = rvToExprInt(col2);
 				final rowExpr = rvToExprInt(row2);
 				switch (hexLayout.orientation) {
-					case POINTY: macro bh.base.Hex.DoubledCoord.qdoubledToCube(new bh.base.Hex.DoubledCoord($colExpr, $rowExpr));
-					case FLAT: macro bh.base.Hex.DoubledCoord.rdoubledToCube(new bh.base.Hex.DoubledCoord($colExpr, $rowExpr));
+					case POINTY: macro bh.base.Hex.DoubledCoord.rdoubledToCube(new bh.base.Hex.DoubledCoord($colExpr, $rowExpr));
+					case FLAT: macro bh.base.Hex.DoubledCoord.qdoubledToCube(new bh.base.Hex.DoubledCoord($colExpr, $rowExpr));
 				};
 			case SELECTED_HEX_PIXEL(px, py):
 				final xExpr = rvToExpr(px);
@@ -5671,8 +5671,8 @@ class ProgrammableCodeGen {
 					};
 				} else bh.base.Hex.OffsetCoord.EVEN;
 				final hex = switch (hexLayout.orientation) {
-					case POINTY: bh.base.Hex.OffsetCoord.qoffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
-					case FLAT: bh.base.Hex.OffsetCoord.roffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
+					case POINTY: bh.base.Hex.OffsetCoord.roffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
+					case FLAT: bh.base.Hex.OffsetCoord.qoffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
 				};
 				final pt = hexLayout.hexToPixel(hex);
 				return {x: pt.x, y: pt.y};
@@ -5682,8 +5682,8 @@ class ProgrammableCodeGen {
 				final r2 = resolveRVStatic(args[1]);
 				if (c == null || r2 == null) return null;
 				final hex = switch (hexLayout.orientation) {
-					case POINTY: bh.base.Hex.DoubledCoord.qdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
-					case FLAT: bh.base.Hex.DoubledCoord.rdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
+					case POINTY: bh.base.Hex.DoubledCoord.rdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
+					case FLAT: bh.base.Hex.DoubledCoord.qdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
 				};
 				final pt = hexLayout.hexToPixel(hex);
 				return {x: pt.x, y: pt.y};
@@ -5799,8 +5799,8 @@ class ProgrammableCodeGen {
 				final hexLayout = getHexLayoutForNode(currentProcessingNode);
 				if (hexLayout != null) {
 					final hexExpr = switch (hexLayout.orientation) {
-						case POINTY: macro bh.base.Hex.OffsetCoord.qoffsetToCube($parityExpr, new bh.base.Hex.OffsetCoord($colExpr, $rowExpr));
-						case FLAT: macro bh.base.Hex.OffsetCoord.roffsetToCube($parityExpr, new bh.base.Hex.OffsetCoord($colExpr, $rowExpr));
+						case POINTY: macro bh.base.Hex.OffsetCoord.roffsetToCube($parityExpr, new bh.base.Hex.OffsetCoord($colExpr, $rowExpr));
+						case FLAT: macro bh.base.Hex.OffsetCoord.qoffsetToCube($parityExpr, new bh.base.Hex.OffsetCoord($colExpr, $rowExpr));
 					};
 					if (component == "x")
 						return macro $_hlRef.hexToPixel($hexExpr).x;
@@ -5814,8 +5814,8 @@ class ProgrammableCodeGen {
 				final hexLayout = getHexLayoutForNode(currentProcessingNode);
 				if (hexLayout != null) {
 					final hexExpr = switch (hexLayout.orientation) {
-						case POINTY: macro bh.base.Hex.DoubledCoord.qdoubledToCube(new bh.base.Hex.DoubledCoord($colExpr, $rowExpr));
-						case FLAT: macro bh.base.Hex.DoubledCoord.rdoubledToCube(new bh.base.Hex.DoubledCoord($colExpr, $rowExpr));
+						case POINTY: macro bh.base.Hex.DoubledCoord.rdoubledToCube(new bh.base.Hex.DoubledCoord($colExpr, $rowExpr));
+						case FLAT: macro bh.base.Hex.DoubledCoord.qdoubledToCube(new bh.base.Hex.DoubledCoord($colExpr, $rowExpr));
 					};
 					if (component == "x")
 						return macro $_hlRef.hexToPixel($hexExpr).x;
@@ -5887,8 +5887,8 @@ class ProgrammableCodeGen {
 				final hexLayout = if (node != null) getHexLayoutForNode(node) else null;
 				if (hexLayout != null) {
 					final hexExpr = switch (hexLayout.orientation) {
-						case POINTY: macro bh.base.Hex.OffsetCoord.qoffsetToCube($parityExpr, new bh.base.Hex.OffsetCoord($colExpr, $rowExpr));
-						case FLAT: macro bh.base.Hex.OffsetCoord.roffsetToCube($parityExpr, new bh.base.Hex.OffsetCoord($colExpr, $rowExpr));
+						case POINTY: macro bh.base.Hex.OffsetCoord.roffsetToCube($parityExpr, new bh.base.Hex.OffsetCoord($colExpr, $rowExpr));
+						case FLAT: macro bh.base.Hex.OffsetCoord.qoffsetToCube($parityExpr, new bh.base.Hex.OffsetCoord($colExpr, $rowExpr));
 					};
 					{ x: macro $_hlRef.hexToPixel($hexExpr).x, y: macro $_hlRef.hexToPixel($hexExpr).y };
 				} else {
@@ -5901,8 +5901,8 @@ class ProgrammableCodeGen {
 				final hexLayout = if (node != null) getHexLayoutForNode(node) else null;
 				if (hexLayout != null) {
 					final hexExpr = switch (hexLayout.orientation) {
-						case POINTY: macro bh.base.Hex.DoubledCoord.qdoubledToCube(new bh.base.Hex.DoubledCoord($colExpr, $rowExpr));
-						case FLAT: macro bh.base.Hex.DoubledCoord.rdoubledToCube(new bh.base.Hex.DoubledCoord($colExpr, $rowExpr));
+						case POINTY: macro bh.base.Hex.DoubledCoord.rdoubledToCube(new bh.base.Hex.DoubledCoord($colExpr, $rowExpr));
+						case FLAT: macro bh.base.Hex.DoubledCoord.qdoubledToCube(new bh.base.Hex.DoubledCoord($colExpr, $rowExpr));
 					};
 					{ x: macro $_hlRef.hexToPixel($hexExpr).x, y: macro $_hlRef.hexToPixel($hexExpr).y };
 				} else {
@@ -8506,8 +8506,8 @@ class ProgrammableCodeGen {
 					if (c != null && r2 != null) {
 						final parityVal = switch (parity) { case EVEN: bh.base.Hex.OffsetCoord.EVEN; case ODD: bh.base.Hex.OffsetCoord.ODD; };
 						final hex = switch (hexLayout.orientation) {
-							case POINTY: bh.base.Hex.OffsetCoord.qoffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
-							case FLAT: bh.base.Hex.OffsetCoord.roffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
+							case POINTY: bh.base.Hex.OffsetCoord.roffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
+							case FLAT: bh.base.Hex.OffsetCoord.qoffsetToCube(parityVal, new bh.base.Hex.OffsetCoord(Std.int(c), Std.int(r2)));
 						};
 						final pt = hexLayout.hexToPixel(hex);
 						macro $fieldRef.setPosition($v{pt.x}, $v{pt.y});
@@ -8521,12 +8521,12 @@ class ProgrammableCodeGen {
 						final _hlRef = hexFieldRef(node, pos);
 						switch (hexLayout.orientation) {
 							case POINTY: macro {
-								final _hex = bh.base.Hex.OffsetCoord.qoffsetToCube($parityExpr, new bh.base.Hex.OffsetCoord($colExpr, $rowExpr));
+								final _hex = bh.base.Hex.OffsetCoord.roffsetToCube($parityExpr, new bh.base.Hex.OffsetCoord($colExpr, $rowExpr));
 								final _p = $_hlRef.hexToPixel(_hex);
 								$fieldRef.setPosition(_p.x, _p.y);
 							};
 							case FLAT: macro {
-								final _hex = bh.base.Hex.OffsetCoord.roffsetToCube($parityExpr, new bh.base.Hex.OffsetCoord($colExpr, $rowExpr));
+								final _hex = bh.base.Hex.OffsetCoord.qoffsetToCube($parityExpr, new bh.base.Hex.OffsetCoord($colExpr, $rowExpr));
 								final _p = $_hlRef.hexToPixel(_hex);
 								$fieldRef.setPosition(_p.x, _p.y);
 							};
@@ -8540,8 +8540,8 @@ class ProgrammableCodeGen {
 					final r2 = resolveRVStatic(row2);
 					if (c != null && r2 != null) {
 						final hex = switch (hexLayout.orientation) {
-							case POINTY: bh.base.Hex.DoubledCoord.qdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
-							case FLAT: bh.base.Hex.DoubledCoord.rdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
+							case POINTY: bh.base.Hex.DoubledCoord.rdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
+							case FLAT: bh.base.Hex.DoubledCoord.qdoubledToCube(new bh.base.Hex.DoubledCoord(Std.int(c), Std.int(r2)));
 						};
 						final pt = hexLayout.hexToPixel(hex);
 						macro $fieldRef.setPosition($v{pt.x}, $v{pt.y});
@@ -8551,12 +8551,12 @@ class ProgrammableCodeGen {
 						final _hlRef = hexFieldRef(node, pos);
 						switch (hexLayout.orientation) {
 							case POINTY: macro {
-								final _hex = bh.base.Hex.DoubledCoord.qdoubledToCube(new bh.base.Hex.DoubledCoord($colExpr, $rowExpr));
+								final _hex = bh.base.Hex.DoubledCoord.rdoubledToCube(new bh.base.Hex.DoubledCoord($colExpr, $rowExpr));
 								final _p = $_hlRef.hexToPixel(_hex);
 								$fieldRef.setPosition(_p.x, _p.y);
 							};
 							case FLAT: macro {
-								final _hex = bh.base.Hex.DoubledCoord.rdoubledToCube(new bh.base.Hex.DoubledCoord($colExpr, $rowExpr));
+								final _hex = bh.base.Hex.DoubledCoord.qdoubledToCube(new bh.base.Hex.DoubledCoord($colExpr, $rowExpr));
 								final _p = $_hlRef.hexToPixel(_hex);
 								$fieldRef.setPosition(_p.x, _p.y);
 							};

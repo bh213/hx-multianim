@@ -2304,9 +2304,9 @@ class BuilderUnitTest extends BuilderTestBase {
 		", "test");
 		final bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(1, bitmaps.length);
-		// offset(1, 0, even) → cube(1, -1, 0) → x ≈ 13.856, y = -24.0
-		Assert.floatEquals(13.856, bitmaps[0].x, 0.01);
-		Assert.floatEquals(-24.0, bitmaps[0].y, 0.01);
+		// even-r on a pointy layout: row 0 is not shoved, offset(1, 0, even) → cube(1, 0, -1) → x = √3·16 ≈ 27.713, y = 0
+		Assert.floatEquals(27.713, bitmaps[0].x, 0.01);
+		Assert.floatEquals(0.0, bitmaps[0].y, 0.01);
 	}
 
 	@Test
@@ -2342,9 +2342,9 @@ class BuilderUnitTest extends BuilderTestBase {
 		", "test");
 		final bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(1, bitmaps.length);
-		// doubled(2, 0) → cube(2, -1, -1) → x = (3√3/2)*16 ≈ 41.569, y = -24.0
-		Assert.floatEquals(41.569, bitmaps[0].x, 0.01);
-		Assert.floatEquals(-24.0, bitmaps[0].y, 0.01);
+		// double-width on a pointy layout: doubled(2, 0) → cube(1, 0, -1) → x = √3·16 ≈ 27.713, y = 0
+		Assert.floatEquals(27.713, bitmaps[0].x, 0.01);
+		Assert.floatEquals(0.0, bitmaps[0].y, 0.01);
 	}
 
 	@Test
@@ -2589,6 +2589,130 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.equals(posY + 50, dimH);
 	}
 
+	// ==================== Hex offset/doubled orientation ====================
+	// Red Blob convention: a pointy layout shoves rows (odd-r / even-r), a flat
+	// layout shoves columns (odd-q / even-q). pointy(16, 16): column pitch
+	// sqrt(3)*16 = 27.713, row pitch 24. flat(16, 16): column pitch 24, row
+	// pitch 27.713. Half a pitch is 13.856.
+
+	function hexBitmapAt(source:String):h2d.Bitmap {
+		final result = buildFromSource(source, "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		return bitmaps[0];
+	}
+
+	function assertHexPos(source:String, x:Float, y:Float):Void {
+		final b = hexBitmapAt(source);
+		Assert.floatEquals(x, b.x, 0.01, 'x of $source');
+		Assert.floatEquals(y, b.y, 0.01, 'y of $source');
+	}
+
+	@Test
+	public function testHexOffsetPointyShovesRows():Void {
+		// odd-r: row 1 is shoved half a column right; even-r: shoved left
+		assertHexPos("
+			#test programmable() {
+				hex: pointy(16, 16)
+				bitmap(generated(color(5, 5, #f00))): $hex.offset(0, 1, odd)
+			}
+		", 13.856, 24.0);
+		assertHexPos("
+			#test programmable() {
+				hex: pointy(16, 16)
+				bitmap(generated(color(5, 5, #f00))): $hex.offset(0, 1, even)
+			}
+		", -13.856, 24.0);
+		// row 0 is never shoved: columns step a whole pitch along x
+		assertHexPos("
+			#test programmable() {
+				hex: pointy(16, 16)
+				bitmap(generated(color(5, 5, #f00))): $hex.offset(2, 0, odd)
+			}
+		", 55.426, 0.0);
+		assertHexPos("
+			#test programmable() {
+				hex: pointy(16, 16)
+				bitmap(generated(color(5, 5, #f00))): $hex.offset(1, 0, even)
+			}
+		", 27.713, 0.0);
+	}
+
+	@Test
+	public function testHexOffsetFlatShovesColumns():Void {
+		// odd-q: column 1 is shoved half a row down; even-q: shoved up
+		assertHexPos("
+			#test programmable() {
+				hex: flat(16, 16)
+				bitmap(generated(color(5, 5, #f00))): $hex.offset(1, 0, odd)
+			}
+		", 24.0, 13.856);
+		assertHexPos("
+			#test programmable() {
+				hex: flat(16, 16)
+				bitmap(generated(color(5, 5, #f00))): $hex.offset(1, 0, even)
+			}
+		", 24.0, -13.856);
+		// column 0 is never shoved: rows step a whole pitch along y
+		assertHexPos("
+			#test programmable() {
+				hex: flat(16, 16)
+				bitmap(generated(color(5, 5, #f00))): $hex.offset(0, 2, odd)
+			}
+		", 0.0, 55.426);
+	}
+
+	@Test
+	public function testHexDoubledPointyIsDoubleWidth():Void {
+		// pointy: col steps half a column pitch, row a whole row pitch
+		assertHexPos("
+			#test programmable() {
+				hex: pointy(16, 16)
+				bitmap(generated(color(5, 5, #f00))): $hex.doubled(2, 0)
+			}
+		", 27.713, 0.0);
+		assertHexPos("
+			#test programmable() {
+				hex: pointy(16, 16)
+				bitmap(generated(color(5, 5, #f00))): $hex.doubled(1, 1)
+			}
+		", 13.856, 24.0);
+	}
+
+	@Test
+	public function testHexDoubledFlatIsDoubleHeight():Void {
+		// flat: row steps half a row pitch, col a whole column pitch
+		assertHexPos("
+			#test programmable() {
+				hex: flat(16, 16)
+				bitmap(generated(color(5, 5, #f00))): $hex.doubled(0, 2)
+			}
+		", 0.0, 27.713);
+		assertHexPos("
+			#test programmable() {
+				hex: flat(16, 16)
+				bitmap(generated(color(5, 5, #f00))): $hex.doubled(1, 1)
+			}
+		", 24.0, 13.856);
+	}
+
+	@Test
+	public function testHexCellTakesOffsetSuffix():Void {
+		// .offset(x, y) adds pixels to a hex cell position, as on every other coordinate
+		assertHexPos("
+			#test programmable() {
+				hex: pointy(16, 16)
+				bitmap(generated(color(5, 5, #f00))): $hex.cube(1, 0, -1).offset(5, 10)
+			}
+		", 32.713, 10.0);
+		assertHexPos("
+			#test programmable() {
+				hex: pointy(16, 16)
+				bitmap(generated(color(5, 5, #f00))): $hex.offset(0, 1, odd).offset(-3, 0)
+			}
+		", 10.856, 24.0);
+	}
+
 	// ==================== Hex offset/doubled extended tests ====================
 
 	@Test
@@ -2660,9 +2784,9 @@ class BuilderUnitTest extends BuilderTestBase {
 		", "test");
 		final bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(1, bitmaps.length);
-		// Should match default hex offset(1, 0, even) position
-		Assert.floatEquals(13.856, bitmaps[0].x, 0.01);
-		Assert.floatEquals(-24.0, bitmaps[0].y, 0.01);
+		// Should match default hex offset(1, 0, even) position: even-r, row 0 not shoved
+		Assert.floatEquals(27.713, bitmaps[0].x, 0.01);
+		Assert.floatEquals(0.0, bitmaps[0].y, 0.01);
 	}
 
 	@Test
@@ -2676,8 +2800,9 @@ class BuilderUnitTest extends BuilderTestBase {
 		", "test");
 		final bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(1, bitmaps.length);
-		Assert.floatEquals(41.569, bitmaps[0].x, 0.01);
-		Assert.floatEquals(-24.0, bitmaps[0].y, 0.01);
+		// double-width on a pointy layout: doubled(2, 0) → cube(1, 0, -1)
+		Assert.floatEquals(27.713, bitmaps[0].x, 0.01);
+		Assert.floatEquals(0.0, bitmaps[0].y, 0.01);
 	}
 
 	// ==================== Coordinate system scoping / nesting ====================

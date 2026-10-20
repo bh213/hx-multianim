@@ -5878,6 +5878,45 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	// of a built programmable. Both paths implement it; these tests hold them to the same answers.
 
 	/** `name` of `path` built by the runtime builder, incrementally, with default parameters. */
+	@Test
+	public function testHexOffsetParityCodegenMatchesBuilder():Void {
+		// Red Blob convention, pinned in pixels (size 16: pitches 27.713 / 24,
+		// half pitch 13.856): pointy shoves rows (odd-r / even-r, double-width),
+		// flat shoves columns (odd-q / even-q, double-height). Codegen resolves
+		// the static coordinates at compile time and the $col/$row ones at
+		// runtime; both must match the builder.
+		final inst = createMp().hexOffsetParity.create();
+		final res = liveBuilderResult("test/examples/160-hexOffsetParity/hexOffsetParity.manim", "hexOffsetParity");
+		final live:Array<bh.multianim.LiveProgrammable> = [inst, res];
+		final labels = ["codegen", "builder"];
+
+		function check(name:String, x:Float, y:Float):Void {
+			for (i in 0...live.length) {
+				final obj = live[i].getNamedDrawn(name);
+				Assert.notNull(obj, '${labels[i]}: $name drawn');
+				if (obj == null) continue;
+				Assert.floatEquals(x, obj.x, 0.01, '${labels[i]}: x of $name');
+				Assert.floatEquals(y, obj.y, 0.01, '${labels[i]}: y of $name');
+			}
+		}
+
+		check("pOdd", 13.856, 24.0);      // pointy offset(0, 1, odd)
+		check("pEven", -13.856, 24.0);    // pointy offset(0, 1, even)
+		check("pParam", 13.856, 24.0);    // pointy offset($col=0, $row=1, odd)
+		check("pDoubled", 27.713, 0.0);   // pointy doubled(2, 0)
+		check("fOdd", 24.0, 13.856);      // flat offset(1, 0, odd)
+		check("fEven", 24.0, -13.856);    // flat offset(1, 0, even)
+		check("fParam", 0.0, 27.713);     // flat offset($col=0, $row=1, even)
+		check("fDoubled", 0.0, 27.713);   // flat doubled(0, 2)
+
+		for (l in live) {
+			l.setParameter("col", 2);
+			l.setParameter("row", 0);
+		}
+		check("pParam", 55.426, 0.0);     // pointy offset(2, 0, odd)
+		check("fParam", 48.0, 0.0);       // flat offset(2, 0, even): an even column is not shoved, level with (0, 0)
+	}
+
 	function liveBuilderResult(path:String, name:String):bh.multianim.MultiAnimBuilder.BuilderResult {
 		final builder = TestResourceLoader.createLoader(false).loadMultiAnim(path);
 		return builder.buildWithParameters(name, new Map(), null, null, true);

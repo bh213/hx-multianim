@@ -500,8 +500,8 @@ Define with `hex: flat(w, h)` or `hex: pointy(w, h)` (or named: `hex: #name ...`
 | Method | Description |
 |--------|-------------|
 | `$hex.cube(q, r, s)` | Cube coordinates (q+r+s=0) |
-| `$hex.offset(col, row, even/odd)` | Offset coordinates |
-| `$hex.doubled(col, row)` | Doubled coordinates |
+| `$hex.offset(col, row, even/odd)` | Offset coordinates. A pointy layout shoves rows (odd-r / even-r: the odd or even rows half a column right), a flat layout shoves columns (odd-q / even-q: the odd or even columns half a row down) |
+| `$hex.doubled(col, row)` | Doubled coordinates: double-width on a pointy layout (col steps half a column), double-height on a flat one (row steps half a row) |
 | `$hex.corner(index, scale)` | Hex polygon corner (0-5) |
 | `$hex.edge(direction, scale)` | Hex polygon edge midpoint |
 | `$hex.pixel(x, y)` | Snap pixel to nearest hex center |

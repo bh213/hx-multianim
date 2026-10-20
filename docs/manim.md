@@ -942,8 +942,8 @@ Requires a `hex:` declaration inside the element body:
 * `$hex.cube(q, r, s)` - hex cube coordinates
 * `$hex.corner(index, scale)` - position at hex polygon corner
 * `$hex.edge(direction, scale)` - position at hex polygon edge
-* `$hex.offset(col, row, even|odd)` - hex offset coordinates
-* `$hex.doubled(col, row)` - hex doubled coordinates
+* `$hex.offset(col, row, even|odd)` - hex offset coordinates (pointy: odd-r / even-r, rows shoved; flat: odd-q / even-q, columns shoved)
+* `$hex.doubled(col, row)` - hex doubled coordinates (pointy: double-width; flat: double-height)
 * `$hex.pixel(x, y)` - snap pixel position to nearest hex center
 * `$hex.width` - hex cell width
 * `$hex.height` - hex cell height

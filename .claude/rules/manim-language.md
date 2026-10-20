@@ -126,7 +126,7 @@ Works on discrete param types — `enum`, `int`, `uint`, `range`, `string` (quot
 - Grid: `$grid.pos(x, y)` (requires `grid: spacingX, spacingY` in body)
 - Grid properties: `$grid.width`, `$grid.height`
 - Hex: `$hex.cube(q, r, s)`, `$hex.corner(index, scale)`, `$hex.edge(direction, scale)` (requires `hex: flat(w, h)` or `hex: pointy(w, h)` in body)
-- Hex offset/doubled: `$hex.offset(col, row, even|odd)`, `$hex.doubled(col, row)`
+- Hex offset/doubled: `$hex.offset(col, row, even|odd)` (pointy shoves rows, odd-r / even-r; flat shoves columns, odd-q / even-q), `$hex.doubled(col, row)` (pointy double-width, flat double-height)
 - Hex properties: `$hex.width`, `$hex.height`
 - Named systems: `grid: #name spacingX, spacingY`, `hex: #name flat(w, h)` / `hex: #name pointy(w, h)`
 - Value extraction: `$grid.pos(x, y).x`, `$hex.corner(0, 1.0).y`

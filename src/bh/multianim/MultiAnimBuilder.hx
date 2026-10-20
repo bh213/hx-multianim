@@ -5215,13 +5215,13 @@ class MultiAnimBuilder {
 			case SELECTED_HEX_OFFSET(col, row, parity):
 				final parityVal = switch (parity) { case EVEN: OffsetCoord.EVEN; case ODD: OffsetCoord.ODD; };
 				switch (hexCoordinateSystem.hexLayout.orientation) {
-					case POINTY: OffsetCoord.qoffsetToCube(parityVal, new OffsetCoord(resolveAsInteger(col), resolveAsInteger(row)));
-					case FLAT: OffsetCoord.roffsetToCube(parityVal, new OffsetCoord(resolveAsInteger(col), resolveAsInteger(row)));
+					case POINTY: OffsetCoord.roffsetToCube(parityVal, new OffsetCoord(resolveAsInteger(col), resolveAsInteger(row)));
+					case FLAT: OffsetCoord.qoffsetToCube(parityVal, new OffsetCoord(resolveAsInteger(col), resolveAsInteger(row)));
 				};
 			case SELECTED_HEX_DOUBLED(col, row):
 				switch (hexCoordinateSystem.hexLayout.orientation) {
-					case POINTY: DoubledCoord.qdoubledToCube(new DoubledCoord(resolveAsInteger(col), resolveAsInteger(row)));
-					case FLAT: DoubledCoord.rdoubledToCube(new DoubledCoord(resolveAsInteger(col), resolveAsInteger(row)));
+					case POINTY: DoubledCoord.rdoubledToCube(new DoubledCoord(resolveAsInteger(col), resolveAsInteger(row)));
+					case FLAT: DoubledCoord.qdoubledToCube(new DoubledCoord(resolveAsInteger(col), resolveAsInteger(row)));
 				};
 			case SELECTED_HEX_PIXEL(x, y):
 				hexCoordinateSystem.hexLayout.pixelToHex(new bh.base.FPoint(resolveAsNumber(x), resolveAsNumber(y))).round();

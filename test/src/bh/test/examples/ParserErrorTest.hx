@@ -2363,6 +2363,19 @@ class ParserErrorTest extends utest.Test {
 	}
 
 	@Test
+	public function testOffsetOnHexCell() {
+		var success = parseExpectingSuccess("
+			#test programmable() {
+				hex: pointy(16, 16)
+				bitmap(generated(color(10, 10, #f00))): " + "$" + "hex.cube(0, 3, -3).offset(0, 0)
+				bitmap(generated(color(10, 10, #f00))): " + "$" + "hex.offset(1, 2, odd).offset(1, 1)
+			}
+		");
+		Assert.isTrue(success, "hex cell coordinates should take the .offset(x, y) suffix");
+	}
+
+
+	@Test
 	public function testOffsetInvalidSuffix() {
 		var error = parseExpectingError("
 			layouts {
