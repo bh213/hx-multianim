@@ -1519,10 +1519,10 @@ bh_multianim_HexCoordinateSystemHelper.resolveHexOffset = function(system,col,ro
 	var hex;
 	switch(system.hexLayout.orientation._hx_index) {
 	case 0:
-		hex = bh_base_OffsetCoord.qoffsetToCube(parityVal,new bh_base_OffsetCoord(col,row));
+		hex = bh_base_OffsetCoord.roffsetToCube(parityVal,new bh_base_OffsetCoord(col,row));
 		break;
 	case 1:
-		hex = bh_base_OffsetCoord.roffsetToCube(parityVal,new bh_base_OffsetCoord(col,row));
+		hex = bh_base_OffsetCoord.qoffsetToCube(parityVal,new bh_base_OffsetCoord(col,row));
 		break;
 	}
 	var pos = system.hexLayout.hexToPixel(hex);
@@ -1532,10 +1532,10 @@ bh_multianim_HexCoordinateSystemHelper.resolveHexDoubled = function(system,col,r
 	var hex;
 	switch(system.hexLayout.orientation._hx_index) {
 	case 0:
-		hex = bh_base_DoubledCoord.qdoubledToCube(new bh_base_DoubledCoord(col,row));
+		hex = bh_base_DoubledCoord.rdoubledToCube(new bh_base_DoubledCoord(col,row));
 		break;
 	case 1:
-		hex = bh_base_DoubledCoord.rdoubledToCube(new bh_base_DoubledCoord(col,row));
+		hex = bh_base_DoubledCoord.qdoubledToCube(new bh_base_DoubledCoord(col,row));
 		break;
 	}
 	var pos = system.hexLayout.hexToPixel(hex);
@@ -3601,8 +3601,14 @@ bh_multianim_MacroManimParser.prototype = {
 			var factor = this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma) ? this.parseFloatOrReference() : bh_multianim_ReferenceableValue.RVFloat(1.0);
 			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
 			return bh_multianim_Coordinates.SELECTED_HEX_CELL_EDGE(cell,dir,factor);
+		case "offset":
+			var ox = this.parseFloatOrReference();
+			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
+			var oy = this.parseFloatOrReference();
+			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
+			return bh_multianim_Coordinates.WITH_OFFSET(cell,ox,oy);
 		default:
-			return this.error("Unknown hex chain method: " + chainMethod + ". Expected hexCorner or hexEdge");
+			return this.error("Unknown hex chain method: " + chainMethod + ". Expected hexCorner, hexEdge or offset");
 		}
 	}
 	,parseExtraPointFromAnim: function() {
