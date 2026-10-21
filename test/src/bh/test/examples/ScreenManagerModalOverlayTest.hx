@@ -61,6 +61,7 @@ class ScreenManagerModalOverlayTest extends utest.Test {
 		// The scene is shared with the visual tests: put its size back and drop the overlay.
 		VisualTestBase.appInstance.s2d.scaleMode = savedScaleMode;
 		sm.removeModalOverlay();
+		sm.dispose();
 	}
 
 	/**

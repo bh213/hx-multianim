@@ -1070,11 +1070,12 @@ class UICardHandHelper implements UIHigherOrderComponent {
 			if (i == skipIndex || i >= positions.length)
 				continue;
 			var entry = cards[i];
+			var pos = positions[i];
+			// Every card learns its new slot, a card still flying too: a draw or a return tracks it
+			entry.layoutPos = pos;
 			if (entry.state == Dragging || entry.state == Targeting || entry.state == Animating)
 				continue;
 
-			var pos = positions[i];
-			entry.layoutPos = pos;
 			// Null onComplete to skip allocating a closure per card per rearrange. The
 			// closure used to set scale (redundant — pos.scale is always 1.0 here since
 			// callers pass computeLayout(-1), and state.scale settles to 1.0 from the
@@ -1422,15 +1423,27 @@ class UICardHandHelper implements UIHigherOrderComponent {
 			}
 			// If wasTargeting, card is already in handContainer from enterTargetingMode
 
-			var targetPos = entry.layoutPos;
-			animateCardTo(entry, entry.container.x, entry.container.y, targetPos.x, targetPos.y,
-				entry.container.rotation, targetPos.rotation, returnPathName, () -> {
-					resolveAnimationComplete(entry);
-					entry.container.scaleX = targetPos.scale;
-					entry.container.scaleY = targetPos.scale;
-					for (id in boundIdsOf(entry))
-						interactiveHelper.resetState(id);
-				});
+			final onReturned = () -> {
+				resolveAnimationComplete(entry);
+				entry.container.scaleX = entry.layoutPos.scale;
+				entry.container.scaleY = entry.layoutPos.scale;
+				for (id in boundIdsOf(entry))
+					interactiveHelper.resetState(id);
+			};
+			final fromX = entry.container.x;
+			final fromY = entry.container.y;
+			final dx = entry.layoutPos.x - fromX;
+			final dy = entry.layoutPos.y - fromY;
+			if (returnPathName != null && dx * dx + dy * dy >= 1.0) {
+				// Tracks the card's slot as it flies, like a draw: a card drawn or discarded
+				// meanwhile moves the slot, and the card lands in the new one
+				animateCardToTracking(entry, new FPoint(fromX, fromY), entry.container.rotation, entry.layoutPos.rotation, returnPathName,
+					onReturned);
+			} else {
+				// Already there, or no path: snaps
+				animateCardTo(entry, fromX, fromY, entry.layoutPos.x, entry.layoutPos.y, entry.container.rotation, entry.layoutPos.rotation,
+					returnPathName, onReturned);
+			}
 		}
 
 		return true;

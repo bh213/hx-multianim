@@ -20,9 +20,24 @@ import bh.ui.UIElement;
  */
 @:access(bh.ui.screens.ScreenManager)
 class ScreenManagerDialogTransitionTest extends utest.Test {
+	final managers:Array<ScreenManager> = [];
+
+	/** A screen manager disposed after the test, so it stops hearing the window's input. */
+	function newManager():ScreenManager {
+		final sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
+		managers.push(sm);
+		return sm;
+	}
+
+	function teardown():Void {
+		for (sm in managers)
+			sm.dispose();
+		managers.resize(0);
+	}
+
 	@Test
 	public function testDialogToDialog_UILeavingFiresWhileAttached():Void {
-		var sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
+		var sm = newManager();
 
 		var main = new ProbeScreen(sm);
 		var d1 = new ProbeScreen(sm);
@@ -50,7 +65,7 @@ class ScreenManagerDialogTransitionTest extends utest.Test {
 		// re-attach the inner dialog and restore its input — matching the
 		// instant (no-transition) close path, which routes through
 		// updateScreenMode's Dialog -> Dialog branch.
-		var sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
+		var sm = newManager();
 
 		var main = new ProbeScreen(sm);
 		var d1 = new ProbeScreen(sm);
@@ -81,7 +96,7 @@ class ScreenManagerDialogTransitionTest extends utest.Test {
 		// path fires it in closeDialogWithTransition, and updateScreenMode's
 		// Dialog -> Dialog branch must not fire it a second time when returning
 		// to the underlying dialog.
-		var sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
+		var sm = newManager();
 
 		var main = new ProbeScreen(sm);
 		var d1 = new ProbeScreen(sm);
@@ -112,7 +127,7 @@ class ScreenManagerDialogTransitionTest extends utest.Test {
 		// dialog lifecycle: the modal overlay must survive, the caller must not
 		// receive a phantom OnDialogResult, and the dialog must not observe a
 		// spurious UILeaving/UIEntering round trip.
-		var sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
+		var sm = newManager();
 
 		var main = new ProbeScreen(sm);
 		var d1 = new ProbeScreen(sm);
@@ -141,7 +156,7 @@ class ScreenManagerDialogTransitionTest extends utest.Test {
 	public function testSingleToSingle_UILeavingFiresWhileAttached():Void {
 		// Control case: Single -> Single transition fires UILeaving while attached.
 		// Dialog -> Dialog should match this ordering.
-		var sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
+		var sm = newManager();
 
 		var a = new ProbeScreen(sm);
 		var b = new ProbeScreen(sm);
@@ -160,7 +175,7 @@ class ScreenManagerDialogTransitionTest extends utest.Test {
 	@Test
 	public function testMasterAndSingleToSameSingle_RemovesOnlyMaster():Void {
 		// Dropping the master while the single screen stays: only the master leaves.
-		var sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
+		var sm = newManager();
 
 		var master = new ProbeScreen(sm);
 		var single = new ProbeScreen(sm);
@@ -190,7 +205,7 @@ class ScreenManagerDialogTransitionTest extends utest.Test {
 		// closeDialogWithTransition read exitResponse without clearing it, and the only reset is in
 		// the controller's update(), which a closed dialog no longer gets — so reopening the same
 		// dialog instance delivered the old result on the first update() and closed it again.
-		var sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
+		var sm = newManager();
 		var main = new ProbeScreen(sm);
 		var d = new ProbeScreen(sm);
 
@@ -214,7 +229,7 @@ class ScreenManagerDialogTransitionTest extends utest.Test {
 
 	@Test
 	public function testReopenedDialogAfterInstantCloseDoesNotReplayItsResult():Void {
-		var sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
+		var sm = newManager();
 		var main = new ProbeScreen(sm);
 		var d = new ProbeScreen(sm);
 
@@ -240,7 +255,7 @@ class ScreenManagerDialogTransitionTest extends utest.Test {
 		// A screen switch closes an open dialog — with a transition through closeDialogWithTransition(None),
 		// without one straight through updateScreenMode, which delivers nothing and left the value set.
 		// Either way the dialog's next opening must start without a result.
-		var sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
+		var sm = newManager();
 		var main = new ProbeScreen(sm);
 		var other = new ProbeScreen(sm);
 		var d = new ProbeScreen(sm);
@@ -274,7 +289,7 @@ class ScreenManagerDialogTransitionTest extends utest.Test {
 	public function testCoveredDialogRevivedAfterTopCloseDoesNotReplayItsResult():Void {
 		// Opening d2 over d1 delivers d1's result. Closing d2 brings d1 back; d1 must not then
 		// deliver the same result a second time and close itself.
-		var sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
+		var sm = newManager();
 		var main = new ProbeScreen(sm);
 		var d1 = new ProbeScreen(sm);
 		var d2 = new ProbeScreen(sm);
@@ -304,7 +319,7 @@ class ScreenManagerDialogTransitionTest extends utest.Test {
 		// The result was delivered while mode was still Dialog(A): modalDialog(B) in the handler took
 		// the dialog-over-dialog branch (delivering A's result again) and the pending close of A then
 		// removed B.
-		var sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
+		var sm = newManager();
 		var main = new ProbeScreen(sm);
 		var a = new ProbeScreen(sm);
 		var b = new ProbeScreen(sm);
@@ -340,7 +355,7 @@ class ScreenManagerDialogTransitionTest extends utest.Test {
 	@Test
 	public function testOpeningNextDialogFromResultOfInstantCloseShowsIt():Void {
 		// Same as above through closeDialogWithTransition() — what OkCancelDialog does with closeTransition = None.
-		var sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
+		var sm = newManager();
 		var main = new ProbeScreen(sm);
 		var a = new ProbeScreen(sm);
 		var b = new ProbeScreen(sm);
@@ -371,7 +386,7 @@ class ScreenManagerDialogTransitionTest extends utest.Test {
 	public function testDialogExitDuringOpenTransitionFinishesTheTransition():Void {
 		// The controller-exit close removed the dialog mid-fade: its enter tween was cancelled with the
 		// root half transparent, the transition's onComplete never ran, and isTransitioning stayed true.
-		var sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
+		var sm = newManager();
 		var main = new ProbeScreen(sm);
 		var d = new ProbeScreen(sm);
 
@@ -394,7 +409,7 @@ class ScreenManagerDialogTransitionTest extends utest.Test {
 
 	@Test
 	public function testInstantCloseDuringOpenTransitionFinishesTheTransition():Void {
-		var sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
+		var sm = newManager();
 		var main = new ProbeScreen(sm);
 		var d = new ProbeScreen(sm);
 
@@ -418,7 +433,7 @@ class ScreenManagerDialogTransitionTest extends utest.Test {
 		// A's fade-in carried the first transition's onComplete; switchTo(B) finalized the first
 		// transition but left that tween running, and when it ended it ran the SECOND transition's
 		// cleanup — A removed mid-slide and isTransitioning cleared while B still slid in.
-		var sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
+		var sm = newManager();
 		var a = new ProbeScreen(sm);
 		var b = new ProbeScreen(sm);
 
@@ -441,7 +456,7 @@ class ScreenManagerDialogTransitionTest extends utest.Test {
 
 	@Test
 	public function testClosingDialogDuringOpenFadeDeliversResultWhenCloseEnds():Void {
-		var sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
+		var sm = newManager();
 		var main = new ProbeScreen(sm);
 		var d = new ProbeScreen(sm);
 
@@ -467,7 +482,7 @@ class ScreenManagerDialogTransitionTest extends utest.Test {
 	public function testPromotingTheSingleToMasterWithTransitionIsRejectedLikeTheInstantSwitch():Void {
 		// Single(A) -> MasterAndSingle(A, B): the instant path throws; the animated path put A in both
 		// the add and the remove set and left it detached from the scene but still active.
-		var sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
+		var sm = newManager();
 		var a = new ProbeScreen(sm);
 		var b = new ProbeScreen(sm);
 

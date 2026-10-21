@@ -157,6 +157,19 @@ class ScreenManager {
 		#end
 	}
 
+	/** Done with this manager: it no longer hears the window's input and, in a dev build, its
+	 *  DevBridge stops. Screens, sound and tweens are left as they are. */
+	public function dispose():Void {
+		handler.dispose();
+		#if MULTIANIM_DEV
+		final bridge = devBridge;
+		if (bridge != null) {
+			bridge.stop();
+			devBridge = null;
+		}
+		#end
+	}
+
 	public var sceneWidth(get, never):Float;
 	public var sceneHeight(get, never):Float;
 

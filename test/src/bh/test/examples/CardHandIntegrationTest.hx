@@ -1508,6 +1508,99 @@ class CardHandIntegrationTest extends BuilderTestBase {
 		Assert.isFalse(h.helper.isDragging, "the left-button release ends it");
 	}
 
+	// ==================== A card returning to the hand follows it ====================
+
+	// The return outlasts the draw and the discard, so a card drawn or discarded meanwhile lands
+	// (and re-lays the hand) while the dropped card is still on its way back
+	static final CARD_WITH_RETURN_MANIM = "
+		paths {
+			#cardArc path { lineTo(0, -300) }
+		}
+		#drawPath animatedPath {
+			path: cardArc
+			type: time
+			duration: 0.5
+		}
+		#discardPath animatedPath {
+			path: cardArc
+			type: time
+			duration: 0.5
+		}
+		#returnPath animatedPath {
+			path: cardArc
+			type: time
+			duration: 1.0
+		}
+		#card programmable(status:[normal,hover,pressed,disabled]=normal) {
+			bitmap(generated(color(80, 110, #444444))): 0, 0
+			interactive(80, 110, \"card\", bind => \"status\"): 0, 0
+		}
+	";
+
+	static function createHelperWithReturn():{helper:UICardHandHelper, screen:UITestScreen} {
+		var builder = BuilderTestBase.builderFromSource(CARD_WITH_RETURN_MANIM);
+		var screen = new UITestScreen();
+		var helper = new UICardHandHelper(screen, builder, {
+			anchorX: 400, anchorY: 600,
+			drawPathName: "drawPath",
+			discardPathName: "discardPath",
+			returnPathName: "returnPath",
+			drawPilePosition: new FPoint(50, 600),
+			discardPilePosition: new FPoint(750, 600),
+		});
+		return {helper: helper, screen: screen};
+	}
+
+	/** Drags the card below the hand, out of every zone, and lets go: it flies back to the hand. */
+	static function dropBelowTheHand(h:{helper:UICardHandHelper, screen:UITestScreen}, entry:Dynamic):Void {
+		pushOn(h, entry);
+		h.helper.onMouseMove(100, 700);
+		h.helper.onMouseRelease(100, 700);
+	}
+
+	static function assertAtItsSlot(h:{helper:UICardHandHelper, screen:UITestScreen}, id:String, msg:String, ?pos:haxe.PosInfos):Void {
+		final cards = h.helper.cards;
+		var idx = -1;
+		for (i in 0...cards.length)
+			if (cards[i].descriptor.id == id)
+				idx = i;
+		final slot = h.helper.computeLayout(-1)[idx];
+		Assert.floatEquals(slot.x, cards[idx].container.x, msg + " (x)", pos);
+		Assert.floatEquals(slot.y, cards[idx].container.y, msg + " (y)", pos);
+	}
+
+	@Test
+	public function testACardReturningWhileAnotherIsDrawnLandsInItsNewSlot():Void {
+		var h = createHelperWithReturn();
+		h.helper.setHand([desc("a"), desc("b")]);
+		final entryA = h.helper.cards[0];
+		dropBelowTheHand(h, entryA);
+		Assert.equals(1, h.helper.activeAnimations.length, "precondition: a flies back to the hand");
+
+		h.helper.drawCard(desc("c"));
+		for (_ in 0...30)
+			h.helper.update(0.1);
+
+		Assert.equals(0, h.helper.activeAnimations.length, "precondition: every card has landed");
+		assertAtItsSlot(h, "a", "a lands where the hand of three puts it, not where the hand of two did");
+	}
+
+	@Test
+	public function testACardReturningWhileAnotherIsDiscardedLandsInItsNewSlot():Void {
+		var h = createHelperWithReturn();
+		h.helper.setHand([desc("a"), desc("b"), desc("c")]);
+		final entryA = h.helper.cards[0];
+		dropBelowTheHand(h, entryA);
+		Assert.equals(1, h.helper.activeAnimations.length, "precondition: a flies back to the hand");
+
+		h.helper.discardCard("c");
+		for (_ in 0...30)
+			h.helper.update(0.1);
+
+		Assert.equals(0, h.helper.activeAnimations.length, "precondition: every card has landed");
+		assertAtItsSlot(h, "a", "a lands where the hand of two puts it, not where the hand of three did");
+	}
+
 	@Test
 	public function testDrawCardAtIndexRendersBetweenItsNeighbours():Void {
 		var h = createHelper();

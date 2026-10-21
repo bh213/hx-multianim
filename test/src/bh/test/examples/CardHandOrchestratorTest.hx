@@ -102,6 +102,20 @@ class CardHandOrchestratorTest extends BuilderTestBase {
 		}
 	}
 
+	@Test
+	public function testFanLayoutHoverPopsAlongTheCardsUpAxis():Void {
+		// A card off the middle leans with the fan: it pops along its own up axis, out from the
+		// fan's centre, not across toward the middle of the hand
+		var base = UICardHandLayout.computeFanLayout(5, 400.0, 500.0, 300.0, 30.0, -1, 20.0, 1.0, 0.0);
+		var hovered = UICardHandLayout.computeFanLayout(5, 400.0, 500.0, 300.0, 30.0, 4, 20.0, 1.0, 0.0);
+		final r = hovered[4].rotation;
+		Assert.isTrue(r > 0.0, "precondition: the rightmost card leans right");
+		Assert.floatEquals(Math.sin(r) * 20.0, hovered[4].x - base[4].x, "pop along the card's up axis (x)");
+		Assert.floatEquals(-Math.cos(r) * 20.0, hovered[4].y - base[4].y, "pop along the card's up axis (y)");
+		Assert.floatEquals(Math.sin(r), hovered[4].normalX, "the normal is the card's up axis (x)");
+		Assert.floatEquals(-Math.cos(r), hovered[4].normalY, "the normal is the card's up axis (y)");
+	}
+
 	// ==================== Linear Layout ====================
 
 	@Test
@@ -232,6 +246,27 @@ class CardHandOrchestratorTest extends BuilderTestBase {
 		// Hovered card at index 1 should have scale 1.5
 		Assert.floatEquals(1.5, result[1].scale);
 		Assert.floatEquals(1.0, result[0].scale);
+	}
+
+	@Test
+	public function testPathLayoutHoverPopsUpOnALeftToRightPath():Void {
+		// A hand drawn left to right: the hovered card rises (y up is negative), as in the fan
+		// and linear layouts
+		var path = createHorizontalPath();
+		var result = UICardHandLayout.computePathLayout(3, path, EvenRate, Straight, 1, 30.0, 1.5, 0.05);
+		Assert.floatEquals(-30.0, result[1].y, "the hovered card pops up by hoverPopDistance");
+		Assert.isTrue(result[1].normalY < 0.0, "its normal points up");
+	}
+
+	@Test
+	public function testPathLayoutHoverPopsAlongTheCardsUpAxisOnASlope():Void {
+		// With Tangent orientation a card leans with the path: it pops along its own up axis
+		var path = new Path([new SinglePath(new FPoint(0, 0), new FPoint(400, -200), Line)]);
+		var base = UICardHandLayout.computePathLayout(3, path, EvenRate, Tangent, -1, 30.0, 1.0, 0.0);
+		var hovered = UICardHandLayout.computePathLayout(3, path, EvenRate, Tangent, 1, 30.0, 1.0, 0.0);
+		final r = hovered[1].rotation;
+		Assert.floatEquals(Math.sin(r) * 30.0, hovered[1].x - base[1].x, "pop along the card's up axis (x)");
+		Assert.floatEquals(-Math.cos(r) * 30.0, hovered[1].y - base[1].y, "pop along the card's up axis (y)");
 	}
 
 	@Test

@@ -41,9 +41,19 @@ class AudioScreenTest extends utest.Test {
 		}
 	';
 
-	/** A screen manager playing into a log, with the test file's banks, mix and music. */
+	final managers:Array<ScreenManager> = [];
+
+	function teardown():Void {
+		for (sm in managers)
+			sm.dispose();
+		managers.resize(0);
+	}
+
+	/** A screen manager playing into a log, with the test file's banks, mix and music; disposed
+	 *  after the test, so it stops hearing the window's input. */
 	function manager():{sm:ScreenManager, log:LogBackend} {
 		final sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
+		managers.push(sm);
 		final log = new LogBackend();
 		sm.audio.backend = log;
 		sm.audio.randomFunc = () -> 0.0;

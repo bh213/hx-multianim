@@ -674,17 +674,18 @@ class TweenManager {
 					// a pooled tween is one update() has finished with, its slot not yet closed up
 					if (tween.target == target && !tween.cancelled && !tween.pooled)
 						return true;
+				// a tween that finished inside a sequence or group still running animates nothing
 				case HSequence(seq):
 					if (!seq.cancelled) {
 						for (tween in seq.tweens) {
-							if (tween.target == target && !tween.cancelled)
+							if (tween.target == target && !tween.cancelled && !tween.completed)
 								return true;
 						}
 					}
 				case HGroup(group):
 					if (!group.cancelled) {
 						for (tween in group.tweens) {
-							if (tween.target == target && !tween.cancelled)
+							if (tween.target == target && !tween.cancelled && !tween.completed)
 								return true;
 						}
 					}

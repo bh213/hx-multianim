@@ -329,6 +329,7 @@ class AudioMixTest extends utest.Test {
 		Assert.isFalse(sm.audio.isSnapshotOn("paused"));
 		sm.audio.setVca("Music", 0.25);
 		Assert.floatEquals(0.25, last(log, "music").volume);
+		sm.dispose();
 	}
 
 	#if hldx

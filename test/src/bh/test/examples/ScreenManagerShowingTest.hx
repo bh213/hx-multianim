@@ -15,6 +15,21 @@ import bh.ui.UIElement;
  */
 @:access(bh.ui.screens.ScreenManager)
 class ScreenManagerShowingTest extends utest.Test {
+	final managers:Array<ScreenManager> = [];
+
+	/** A screen manager disposed after the test, so it stops hearing the window's input. */
+	function newManager(?loader:bh.base.ResourceLoader.CachingResourceLoader):ScreenManager {
+		final sm = new ScreenManager(bh.test.VisualTestBase.appInstance, loader);
+		managers.push(sm);
+		return sm;
+	}
+
+	function teardown():Void {
+		for (sm in managers)
+			sm.dispose();
+		managers.resize(0);
+	}
+
 	static function assertScreen(expected:UIScreen, actual:Null<UIScreen>, ?msg:String, ?pos:haxe.PosInfos):Void {
 		Assert.equals(expected, actual, msg, pos);
 	}
@@ -28,7 +43,7 @@ class ScreenManagerShowingTest extends utest.Test {
 
 	@Test
 	public function testShowingNothing():Void {
-		var sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
+		var sm = newManager();
 		var a = new ProbeScreen(sm);
 
 		final s = sm.showing();
@@ -41,7 +56,7 @@ class ScreenManagerShowingTest extends utest.Test {
 
 	@Test
 	public function testShowingSingle():Void {
-		var sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
+		var sm = newManager();
 		var a = new ProbeScreen(sm);
 		var b = new ProbeScreen(sm);
 
@@ -60,7 +75,7 @@ class ScreenManagerShowingTest extends utest.Test {
 
 	@Test
 	public function testShowingMasterAndSingleUnderDialog():Void {
-		var sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
+		var sm = newManager();
 		var master = new ProbeScreen(sm);
 		var base = new ProbeScreen(sm);
 		var dialog = new ProbeScreen(sm);
@@ -86,7 +101,7 @@ class ScreenManagerShowingTest extends utest.Test {
 
 	@Test
 	public function testShowingDialogOverDialog():Void {
-		var sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
+		var sm = newManager();
 		var main = new ProbeScreen(sm);
 		var d1 = new ProbeScreen(sm);
 		var d2 = new ProbeScreen(sm);
@@ -106,7 +121,7 @@ class ScreenManagerShowingTest extends utest.Test {
 
 	@Test
 	public function testShowingDuringTransitionIsTheNewMode():Void {
-		var sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
+		var sm = newManager();
 		var a = new ProbeScreen(sm);
 		var b = new ProbeScreen(sm);
 
@@ -126,7 +141,7 @@ class ScreenManagerShowingTest extends utest.Test {
 
 	@Test
 	public function testReenterSendsLeavingThenEnteringInPlace():Void {
-		var sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
+		var sm = newManager();
 		var a = new ProbeScreen(sm);
 
 		sm.switchTo(a, "first");
@@ -144,7 +159,7 @@ class ScreenManagerShowingTest extends utest.Test {
 
 	@Test
 	public function testReenterScreenUnderDialog():Void {
-		var sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
+		var sm = newManager();
 		var a = new ProbeScreen(sm);
 		var dialog = new ProbeScreen(sm);
 
@@ -165,7 +180,7 @@ class ScreenManagerShowingTest extends utest.Test {
 
 	@Test
 	public function testReenterScreenThatIsNotShowingThrows():Void {
-		var sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
+		var sm = newManager();
 		var a = new ProbeScreen(sm);
 		var b = new ProbeScreen(sm);
 
@@ -184,7 +199,7 @@ class ScreenManagerShowingTest extends utest.Test {
 
 	@Test
 	public function testReenterCancelsTheScreensTweensBeforeEntering():Void {
-		var sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
+		var sm = newManager();
 		var a = new ProbeScreen(sm);
 		final child = new h2d.Object(a.getSceneRoot());
 
@@ -207,7 +222,7 @@ class ScreenManagerShowingTest extends utest.Test {
 
 	@Test
 	public function testReenterFinishesARunningTransition():Void {
-		var sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
+		var sm = newManager();
 		var a = new ProbeScreen(sm);
 		var b = new ProbeScreen(sm);
 
@@ -230,7 +245,7 @@ class ScreenManagerShowingTest extends utest.Test {
 	@Test
 	public function testAGamesCodeMakesAnAnimsStateMachineThroughTheManagersLoader():Void {
 		final loader = bh.test.TestResourceLoader.createLoader(false);
-		var sm = new ScreenManager(bh.test.VisualTestBase.appInstance, loader);
+		var sm = newManager(loader);
 		var a = new LoaderProbe(sm);
 
 		Assert.equals(loader, a.managersLoader(), "the loader the manager was given");
@@ -238,6 +253,19 @@ class ScreenManagerShowingTest extends utest.Test {
 		animSM.play("idle");
 		Assert.equals("idle", animSM.current.name);
 		animSM.remove();
+	}
+
+	// ==================== dispose() ====================
+
+	@Test
+	public function testDisposeDetachesTheManagerFromTheWindowsEvents():Void {
+		final window = hxd.Window.getInstance();
+		final before = @:privateAccess window.eventTargets.length;
+		var sm = newManager();
+		Assert.equals(before + 1, @:privateAccess window.eventTargets.length, "precondition: a new manager listens to the window");
+
+		sm.dispose();
+		Assert.equals(before, @:privateAccess window.eventTargets.length, "a disposed manager no longer hears the window's input");
 	}
 }
 

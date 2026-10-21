@@ -622,6 +622,7 @@ class AudioTest extends utest.Test {
 		Assert.equals(1, log.plays("fx.explosion").length, "the debris waits 50 ms");
 		sm.update(0.06);
 		Assert.equals(2, log.plays("fx.explosion").length, "the screen manager's update steps the audio");
+		sm.dispose();
 	}
 
 	#if hldx

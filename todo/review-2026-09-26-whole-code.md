@@ -156,11 +156,14 @@ paths/curves/layouts), `PRS-13` (method calls in X), `DEC-9` (contradictory stri
   `UIScrollableScreen` lives under `scrollContent` (y = -scroll). Scroll 300px → tooltip appears 300px
   too high; same during a slide transition or shake. Sibling of UI-10. *Fix: `anchor.getBounds(target.parent)`
   after adding.*
-- [ ] `UI-33` **P2** **ScreenManager can never be torn down; old managers keep receiving input** —
+- [x] `UI-33` **P2** **ScreenManager can never be torn down; old managers keep receiving input** —
   `ControllerEventHandler` registers on the `hxd.Window` singleton (ControllerEventHandler.hx:12-17) and
   neither it nor `ScreenManager` has a `dispose()`/`removeEventTarget`. Every manager ever built keeps
   dispatching clicks and keys to its stale screens and pins their scene graphs and tweens; the test
   suite builds nine per process, so earlier tests' screens receive later tests' synthetic input.
+  **FIXED 2026-10-21**: `ScreenManager.dispose()` (`ControllerEventHandler.dispose()` removes the event
+  target; a dev build stops the DevBridge); the tests that make managers dispose them in `teardown`.
+  `ScreenManagerShowingTest.testDisposeDetachesTheManagerFromTheWindowsEvents`.
 - [x] `UI-60` **P1** **`MasterAndSingle(m, s) → Single(s)` crashes** — when the single screen stays and only
   the master goes, `removedScreens` is still null at `removedScreens.push(oldMaster)`
   (ScreenManager.hx:600-612; it is assigned only inside `if (oldSingle != single)`). Null safety does not

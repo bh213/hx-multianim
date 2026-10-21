@@ -282,8 +282,8 @@ var grid = new UIMultiAnimGrid(builder, {
 - `makeDraggableFromCell(col, row, ?visualOverride)` — create draggable from cell content. Sets `sourceGrid`, `sourceCellCoord`, and `payload` on the draggable
 
 **Card hand integration:**
-- `registerAsCardTarget(cardHand, ?accepts)` — register grid cells as card play targets. Creates synthetic `UIInteractiveWrapper` per cell for the card hand's targeting system. `accepts: (cell, cardId) -> Bool` filters valid targets
-- `unregisterAsCardTarget(cardHand)` — unregister
+- `registerAsCardTarget(cardHand, ?accepts)` — register grid cells as card play targets. Creates synthetic `UIInteractiveWrapper` per cell for the card hand's targeting system (a hex cell's is hit only inside its own hex, by `cellAtPointInto`: neighbouring hexes' rectangles overlap). `accepts: (cell, cardId) -> Bool` filters valid targets. Adds one `TargetHook` (`UICardHandTypes`: `owns`/`accepts`/`highlight`) to the hand's targeting, beside the game's own `acceptsFilter`/`onTargetHighlight` and never wrapped around them — a game may set its callbacks before or after
+- `unregisterAsCardTarget(cardHand)` — unregister (targets, event listener and hook; `dispose()` does the same for every hand)
 
 **Grid layers** — named per-cell overlays with z-ordering:
 - `addLayer(name, {buildName, zOrder})` — register a named layer (base cells at z-order 0)

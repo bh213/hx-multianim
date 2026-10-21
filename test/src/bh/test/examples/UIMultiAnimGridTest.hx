@@ -841,6 +841,130 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 		Assert.floatEquals(-30.0, obj00.y);
 	}
 
+	@Test
+	public function testHexCardTargetIsTheHexUnderTheCursor():Void {
+		// Neighbouring hexes' bounding rectangles overlap: near an edge the target must still be
+		// the hex the cursor is in, whatever order the targets were registered in
+		var screen = new UITestScreen();
+		var builder = BuilderTestBase.builderFromSource('$HEX_CELL_MANIM\n$CARD_MANIM');
+		var grid = new UIMultiAnimGrid(builder, {
+			gridType: Hex(POINTY, 30, 30),
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "hexCell"}),
+		});
+		grid.addHexRegion(0, 0, 1);
+		var cardHand = new UICardHandHelper(screen, builder);
+		grid.registerAsCardTarget(cardHand);
+		@:privateAccess var prefix = grid.registeredCardHands[0].targetPrefix;
+
+		final targeting = cardHand.getTargeting();
+		var checked = 0;
+		final wrong:Array<String> = [];
+		var y = -90.0;
+		while (y <= 90.0) {
+			var x = -90.0;
+			while (x <= 90.0) {
+				final cell = grid.cellAtPoint(x, y);
+				if (cell != null) {
+					checked++;
+					final expected = '${prefix}_${cell.col}_${cell.row}';
+					final actual = targeting.hitTestTargets(x, y, "card");
+					if (actual != expected)
+						wrong.push('($x, $y): $actual, not $expected');
+				}
+				x += 3.0;
+			}
+			y += 3.0;
+		}
+		Assert.isTrue(checked > 100, "precondition: the samples cross the cells");
+		Assert.equals(0, wrong.length, 'the target is the hex under the cursor: ${wrong.length} of $checked wrong, e.g. ${wrong.slice(0, 4).join("; ")}');
+	}
+
+	// ============== Card target callbacks on the card hand ==============
+
+	@Test
+	public function testCardTargetHighlightRunsOnceAfterTheCellsChange():Void {
+		// Every addCell / removeCell re-creates the card targets; the highlight must not be
+		// wrapped again each time
+		var screen = new UITestScreen();
+		var builder = BuilderTestBase.builderFromSource('$CELL_MANIM\n$CARD_MANIM');
+		var grid = new UIMultiAnimGrid(builder, {
+			gridType: Rect(50, 50),
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
+		});
+		grid.addRectRegion(2, 2);
+		var cardHand = new UICardHandHelper(screen, builder);
+		grid.registerAsCardTarget(cardHand, (_, _) -> true);
+		grid.addCell(2, 0);
+		grid.addCell(3, 0);
+		grid.removeCell(3, 0);
+
+		var enters = 0;
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellTargetEnter(_, _): enters++;
+				default:
+			}
+		};
+		// Over cell (1, 0): 50..100 x 0..50
+		Assert.notNull(cardHand.getTargeting().updateHighlight(75, 25, "card"), "precondition: the cursor is over a target");
+
+		Assert.equals(1, enters, "one highlight of a cell is one CellTargetEnter, however often the cells changed");
+	}
+
+	@Test
+	public function testCardHandGetsItsOwnTargetCallbacksBackWhenTheGridsLeave():Void {
+		var screen = new UITestScreen();
+		var builder = BuilderTestBase.builderFromSource('$CELL_MANIM\n$CARD_MANIM');
+		function makeGrid():UIMultiAnimGrid<Dynamic> {
+			var grid = new UIMultiAnimGrid(builder, {
+				gridType: Rect(50, 50),
+				cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
+			});
+			grid.addRectRegion(2, 2);
+			return grid;
+		}
+		var gridA = makeGrid();
+		var gridB = makeGrid();
+		var cardHand = new UICardHandHelper(screen, builder);
+		final ownAccepts:TargetAcceptsCallback = (_, _, _) -> true;
+		final ownHighlight:TargetHighlightCallback = (_, _, _) -> {};
+		cardHand.setTargetAcceptsFilter(ownAccepts);
+		cardHand.setTargetHighlightCallback(ownHighlight);
+
+		gridA.registerAsCardTarget(cardHand, (_, _) -> true);
+		gridB.registerAsCardTarget(cardHand, (_, _) -> true);
+		gridA.addCell(2, 0); // re-creates A's card targets
+
+		// A leaves first: B, registered after it, keeps working and A hears nothing more
+		gridA.unregisterAsCardTarget(cardHand);
+		var aEnters = 0;
+		var bEnters = 0;
+		gridA.onGridEvent = (event) -> {
+			switch event {
+				case CellTargetEnter(_, _): aEnters++;
+				default:
+			}
+		};
+		gridB.onGridEvent = (event) -> {
+			switch event {
+				case CellTargetEnter(_, _): bEnters++;
+				default:
+			}
+		};
+		// Both grids lie over the same place: over cell (0, 0)
+		Assert.notNull(cardHand.getTargeting().updateHighlight(25, 25, "card"), "precondition: the cursor is over a target");
+		Assert.equals(0, aEnters, "an unregistered grid takes no part in the card hand's highlight");
+		Assert.equals(1, bEnters, "the grid still registered keeps its highlight");
+
+		// B goes too (disposed): the card hand is left with its own callbacks, holding no grid
+		gridB.dispose();
+		Assert.isTrue(Reflect.compareMethods(ownAccepts, cardHand.getTargeting().acceptsFilter),
+			"the card hand's own accepts filter is back once no grid targets it");
+		Assert.isTrue(Reflect.compareMethods(ownHighlight, cardHand.getTargeting().onTargetHighlight),
+			"the card hand's own highlight callback is back once no grid targets it");
+		Assert.equals(0, @:privateAccess cardHand.getTargeting().hooks.length, "no grid's hook is left on the card hand");
+	}
+
 	// ============== acceptDrops duplicate registration (Bug 1.14) ==============
 
 	@Test

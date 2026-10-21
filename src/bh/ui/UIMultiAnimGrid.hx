@@ -120,6 +120,27 @@ private typedef CardHandBinding = {
 	var accepts:Null<GridCardAccepts>;
 	var targetPrefix:String;
 	var eventListener:Null<(event:UICardHandTypes.CardHandEvent) -> Void>;
+	/** On the card hand's targeting from registration to unregistration, once (not per cell change). */
+	var hook:Null<TargetHook>;
+}
+
+/** A hex cell's card target. Neighbouring hexes' bounding rectangles overlap, so a point is in it
+ *  only when it is also in its own hex, as the grid's hit test finds it. */
+private class HexCellTargetWrapper<T> extends UIInteractiveWrapper {
+	final grid:UIMultiAnimGrid<T>;
+	final col:Int;
+	final row:Int;
+
+	public function new(interactive:MAObject, grid:UIMultiAnimGrid<T>, col:Int, row:Int) {
+		super(interactive, null);
+		this.grid = grid;
+		this.col = col;
+		this.row = row;
+	}
+
+	override public function containsPoint(pos:Point):Bool {
+		return super.containsPoint(pos) && @:privateAccess grid.isCellAt(pos.x, pos.y, col, row);
+	}
 }
 
 /**
@@ -967,6 +988,11 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 		};
 	}
 
+	/** Whether the cell at scene (sceneX, sceneY) is (col, row). Allocation-free. */
+	function isCellAt(sceneX:Float, sceneY:Float, col:Int, row:Int):Bool {
+		return cellAtPointInto(sceneX, sceneY) && _hitTestCol == col && _hitTestRow == row;
+	}
+
 	/** Convert scene coordinates to hex grid coordinates (q, r).
 	 *  Works for hex grids only. Returns the nearest hex regardless of whether a cell exists. */
 	public function sceneToHex(sceneX:Float, sceneY:Float):Null<CellCoord> {
@@ -1042,8 +1068,12 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 		// Alloc-free hit test: compare against the current hover by col/row so a move that
 		// stays within the same cell (the common per-frame case) allocates no CellCoord.
 		final hasHit = cellAtPointInto(sceneX, sceneY);
+		// Read before any event: a handler that hit-tests this grid (cellAtPoint, a hex card
+		// target's containsPoint) overwrites _hitTestCol/_hitTestRow
+		final hitCol = _hitTestCol;
+		final hitRow = _hitTestRow;
 		final sameAsHovered = hasHit && hoveredCell != null
-			&& hoveredCell.col == _hitTestCol && hoveredCell.row == _hitTestRow;
+			&& hoveredCell.col == hitCol && hoveredCell.row == hitRow;
 		if (sameAsHovered || (!hasHit && hoveredCell == null))
 			return hoveredCell != null;
 
@@ -1054,7 +1084,7 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 				entry.visual.setStatus("normal");
 			emitEvent(CellTargetLeave(hoveredCell, Mouse));
 		}
-		hoveredCell = hasHit ? ({col: _hitTestCol, row: _hitTestRow} : CellCoord) : null;
+		hoveredCell = hasHit ? ({col: hitCol, row: hitRow} : CellCoord) : null;
 		if (hoveredCell != null) {
 			final entry = cells.get(cellKey(hoveredCell.col, hoveredCell.row));
 			if (entry != null)
@@ -1576,9 +1606,13 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 			accepts: accepts,
 			targetPrefix: 'grid${cardTargetId}ch${cardHandBindingCounter++}',
 			eventListener: null,
+			hook: null,
 		};
 		registeredCardHands.push(binding);
 		createCardTargetsForBinding(binding);
+		final hook = createCardTargetHook(binding);
+		binding.hook = hook;
+		binding.cardHand.getTargeting().addHook(hook);
 	}
 
 	/** Unregister from a card hand's targeting system. */
@@ -1586,7 +1620,7 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 		var i = registeredCardHands.length;
 		while (i-- > 0) {
 			if (registeredCardHands[i].cardHand == cardHand) {
-				clearCardTargetsForBinding(registeredCardHands[i]);
+				releaseCardHandBinding(registeredCardHands[i]);
 				registeredCardHands.splice(i, 1);
 			}
 		}
@@ -1702,7 +1736,7 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 
 		// Clear all card hand bindings
 		for (binding in registeredCardHands)
-			clearCardTargetsForBinding(binding);
+			releaseCardHandBinding(binding);
 		registeredCardHands.resize(0);
 
 		// Clear all layers
@@ -2121,34 +2155,15 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 			}
 			root.add(interactive, 1000);
 
-			final wrapper = new UIInteractiveWrapper(interactive, null);
+			final wrapper:UIInteractiveWrapper = switch gridType {
+				case Hex(_, _, _): new HexCellTargetWrapper(interactive, this, coord.col, coord.row);
+				case Rect(_, _, _): new UIInteractiveWrapper(interactive, null);
+			};
 			cardTargetInteractives.set(targetId, interactive);
 			cardTargetWrappers.set(targetId, wrapper);
 
 			binding.cardHand.registerTargetInteractive(wrapper);
 		}
-
-		// Wire accepts filter — chain with previous so multiple grids can coexist
-		if (binding.accepts != null) {
-			final accepts = binding.accepts;
-			final prevAccepts = binding.cardHand.getTargeting().acceptsFilter;
-			binding.cardHand.setTargetAcceptsFilter((cardId, targetId, meta) -> {
-				final coord = parseCardTargetId(targetId);
-				if (coord != null)
-					return accepts(coord, cardId);
-				return if (prevAccepts != null) prevAccepts(cardId, targetId, meta) else true;
-			});
-		}
-
-		// Wire highlight callback — chain with previous and use shared feedback helper
-		final prevHighlight = binding.cardHand.getTargeting().onTargetHighlight;
-		binding.cardHand.setTargetHighlightCallback((targetId, highlight, meta) -> {
-			if (prevHighlight != null)
-				prevHighlight(targetId, highlight, meta);
-			final coord = parseCardTargetId(targetId);
-			if (coord != null)
-				applyCellTargetFeedback(coord, highlight, Card(if (activeCardDragId != null) activeCardDragId else ""));
-		});
 
 		// Wire card drag events → highlight all valid targets on drag start
 		final listener = (event:UICardHandTypes.CardHandEvent) -> {
@@ -2194,6 +2209,38 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 		if (binding.eventListener != null) {
 			binding.cardHand.chainedListeners.remove(binding.eventListener);
 			binding.eventListener = null;
+		}
+	}
+
+	/** The binding's part in the card hand's targeting: it decides for its own targets (when
+	 *  registered with `accepts`) and gives its cells the highlight feedback. Installed once, beside
+	 *  the game's callbacks and other grids' hooks, not wrapped around them. */
+	function createCardTargetHook(binding:CardHandBinding):TargetHook {
+		final ownPrefix = binding.targetPrefix + "_";
+		final accepts = binding.accepts;
+		return {
+			owns: (targetId) -> StringTools.startsWith(targetId, ownPrefix),
+			accepts: accepts == null ? null : (cardId, targetId, _) -> {
+				final coord = parseCardTargetId(targetId);
+				return coord != null && accepts(coord, cardId);
+			},
+			highlight: (targetId, highlight, _) -> {
+				if (!StringTools.startsWith(targetId, ownPrefix))
+					return;
+				final coord = parseCardTargetId(targetId);
+				if (coord != null)
+					applyCellTargetFeedback(coord, highlight, Card(if (activeCardDragId != null) activeCardDragId else ""));
+			},
+		};
+	}
+
+	/** Takes the binding off its card hand for good: its targets, its event listener and its hook. */
+	function releaseCardHandBinding(binding:CardHandBinding):Void {
+		clearCardTargetsForBinding(binding);
+		final hook = binding.hook;
+		if (hook != null) {
+			binding.cardHand.getTargeting().removeHook(hook);
+			binding.hook = null;
 		}
 	}
 

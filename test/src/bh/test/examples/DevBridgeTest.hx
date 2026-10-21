@@ -32,10 +32,24 @@ import bh.ui.screens.UIScreen;
 class DevBridgeTest extends BuilderTestBase {
 	// ===== Helpers =====
 
+	static final managers:Array<ScreenManager> = [];
+
+	/** A screen manager disposed after the test, so it stops hearing the window's input. */
+	static function newManager():ScreenManager {
+		final sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
+		managers.push(sm);
+		return sm;
+	}
+
+	function teardown():Void {
+		for (sm in managers)
+			sm.dispose();
+		managers.resize(0);
+	}
+
 	/** Create a DevBridge with a fresh ScreenManager. Does not call start(). */
 	static function createTestBridge():DevBridge {
-		var sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
-		return new DevBridge(sm, 0);
+		return new DevBridge(newManager(), 0);
 	}
 
 	/** Create a bridge with a programmable registered in the hot-reload registry. */
@@ -1702,7 +1716,7 @@ class DevBridgeTest extends BuilderTestBase {
 	public function testFailedStartLeavesTraceAsItWas():Void {
 		final before = haxe.Log.trace;
 		// 203.0.113.1 (TEST-NET-3) is not an address of this machine, so every bind fails.
-		final bridge = new DevBridge(new ScreenManager(bh.test.VisualTestBase.appInstance), 19399, "203.0.113.1");
+		final bridge = new DevBridge(newManager(), 19399, "203.0.113.1");
 		try {
 			bridge.start();
 			bridge.start(); // and a second attempt

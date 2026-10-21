@@ -734,13 +734,18 @@ class AnimationSM extends h2d.Object {
 	}
 
 	/** Returns whether the listener was there (a method is matched by `Reflect.compareMethods`, so
-	 *  `sm.removeEventListener(this.onEvent)` works). */
+	 *  `sm.removeEventListener(this.onEvent)` works). Safe from inside a listener: the event being
+	 *  told still reaches every listener it started with. */
 	public function removeEventListener(listener:AnimationEvent->Void):Bool {
-		if (eventListeners == null)
+		final listeners = eventListeners;
+		if (listeners == null)
 			return false;
-		for (i in 0...eventListeners.length)
-			if (Reflect.compareMethods(eventListeners[i], listener)) {
-				eventListeners.splice(i, 1);
+		for (i in 0...listeners.length)
+			if (Reflect.compareMethods(listeners[i], listener)) {
+				// A new array, not a splice: an event being told walks the old one
+				final rest = listeners.copy();
+				rest.splice(i, 1);
+				eventListeners = rest;
 				return true;
 			}
 		return false;
@@ -748,9 +753,11 @@ class AnimationSM extends h2d.Object {
 
 	function fireAnimationEvent(event:AnimationEvent):Void {
 		onAnimationEvent(event);
-		if (eventListeners != null)
-			for (listener in eventListeners)
-				listener(event);
+		// The listeners as the event starts: one added meanwhile hears the next event
+		final listeners = eventListeners;
+		if (listeners != null)
+			for (i in 0...listeners.length)
+				listeners[i](event);
 		if (sounds != null && audio != null) {
 			final name:Null<String> = switch event {
 				case Trigger(name): Std.string(name);

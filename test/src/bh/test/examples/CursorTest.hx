@@ -215,9 +215,11 @@ class CursorTest extends BuilderTestBase {
 			Assert.equals(customOf(CursorManager.getCursor("resHand")), customOf(wrapper.getCursor()));
 		} catch (e:Dynamic) {
 			teardownCursors();
+			sm.dispose();
 			throw e;
 		}
 		teardownCursors();
+		sm.dispose();
 	}
 
 	@Test

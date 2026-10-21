@@ -94,6 +94,16 @@ typedef TargetHighlightCallback = (targetId:String, highlight:Bool, metadata:Bui
 /** Callback to filter which targets accept a card. Return true to accept. */
 typedef TargetAcceptsCallback = (cardId:CardId, targetId:String, metadata:BuilderResolvedSettings) -> Bool;
 
+/** A grid's part in a card hand's targeting (`UIMultiAnimGrid.registerAsCardTarget`), kept beside
+ *  the game's own `acceptsFilter` / `onTargetHighlight` rather than wrapped around them: `accepts`
+ *  decides for the targets `owns` claims (null leaves them to the game's filter), `highlight` hears
+ *  every highlight after the game's callback. */
+typedef TargetHook = {
+	var owns:(targetId:String) -> Bool;
+	var accepts:Null<TargetAcceptsCallback>;
+	var highlight:TargetHighlightCallback;
+}
+
 /** A rectangular zone that triggers targeting mode when the cursor enters it during drag.
  *  Multiple zones can be registered (e.g., one per panel that accepts cards).
  *  Coordinates are in handContainer's local space (same as anchor/layout positions). */

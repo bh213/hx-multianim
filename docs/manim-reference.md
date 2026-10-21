@@ -1781,7 +1781,7 @@ All fields are optional. Used with `UICardHandHelper` / `addCardHand()`.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `hoverPopDistance` | Float | Vertical pop distance on hover |
+| `hoverPopDistance` | Float | Pop distance on hover, along the card's normal: up in `Linear`; along the card's up axis in `Fan` (out from the fan's centre); left of the path's direction in `PathLayout` (up for a hand drawn left to right, the card's up axis with `Tangent`) |
 | `hoverScale` | Float | Scale multiplier on hover |
 | `hoverNeighborSpread` | Float | Extra spacing pushed to neighbor cards during hover |
 

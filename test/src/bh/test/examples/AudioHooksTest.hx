@@ -252,6 +252,28 @@ class AudioHooksTest extends utest.Test {
 		Assert.same(["handler:shot", "tool:shot"], heard);
 	}
 
+	@Test
+	public function testAListenerThatRemovesItselfDoesNotSkipTheNext():Void {
+		final sm = new AnimationSM(new Map(), true);
+		sm.addAnimationState("fire", [Frame(createFrame(0.001)), Event(Trigger("shot")), Frame(createFrame(0.1))], 0, new Map());
+
+		final heard:Array<String> = [];
+		var once:Null<bh.stateanim.AnimationSM.AnimationEvent->Void> = null;
+		once = e -> {
+			heard.push("once");
+			sm.removeEventListener(once);
+		};
+		final after = (e:bh.stateanim.AnimationSM.AnimationEvent) -> {
+			heard.push("after");
+		};
+		sm.addEventListener(once);
+		sm.addEventListener(after);
+
+		sm.play("fire");
+		sm.update(0.01);
+		Assert.same(["once", "after"], heard, "the listener after one that removed itself still hears the event");
+	}
+
 	// ==================== Pause told ====================
 
 	@Test
@@ -293,6 +315,7 @@ class AudioHooksTest extends utest.Test {
 		bridge.dispatch("pause", {paused: false});
 		Assert.isFalse(sm.clock.paused, "and the resume resumes it");
 		Assert.same([true, false], heard);
+		sm.dispose();
 	}
 	#end
 }

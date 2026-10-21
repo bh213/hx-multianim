@@ -121,11 +121,13 @@ class UICardHandLayout {
 				scale = hoverScale;
 			}
 
-			var normalAngle = angle;
-			x -= pop * Math.sin(normalAngle);
-			y -= pop * Math.cos(normalAngle);
+			// The card's up axis (rotated by `angle`), out from the fan's centre
+			final nrmX = Math.sin(angle);
+			final nrmY = -Math.cos(angle);
+			x += pop * nrmX;
+			y += pop * nrmY;
 
-			writePos(out[i], x, y, angle, scale, -Math.sin(angle), -Math.cos(angle));
+			writePos(out[i], x, y, angle, scale, nrmX, nrmY);
 		}
 	}
 
@@ -254,8 +256,10 @@ class UICardHandLayout {
 			path.getPointInto(rate, _scratch);
 			var tangent = path.getTangentAngle(rate);
 
-			var nrmX = -Math.sin(tangent);
-			var nrmY = Math.cos(tangent);
+			// Left of the path's direction (y down): up for a hand drawn left to right, and the
+			// up axis of a card that leans with the path (Tangent)
+			var nrmX = Math.sin(tangent);
+			var nrmY = -Math.cos(tangent);
 
 			var x = _scratch.x;
 			var y = _scratch.y;

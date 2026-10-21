@@ -489,7 +489,7 @@ is `animations.<i>` with `.name`, its modifiers, and `.playlist#0.0.sheet`.
 | `onFinished` | `() -> Void` | Callback when animation finishes (fires once per completed playback) |
 | `onAnimationEvent` | `(AnimationEvent) -> Void` | Callback for playlist events. A handler may call `play()`; the new animation then starts at its own first frame |
 | `addEventListener(listener)` | `Void` | Hears every event `onAnimationEvent` hears, after it, in the order added: for a second party (a sound layer, a tool) that must not replace the game's handler |
-| `removeEventListener(listener)` | `Bool` | Whether it was there; a method is matched by `Reflect.compareMethods` |
+| `removeEventListener(listener)` | `Bool` | Whether it was there; a method is matched by `Reflect.compareMethods`. Safe from inside a listener: the event being told still reaches every listener it started with (one added meanwhile hears the next event) |
 | `setState(name, value)` | `Void` | Changes one state while playing. The animations are reloaded for the new states; if the one playing has as many frames and events as before it goes on from the same frame and time, otherwise it starts again. A load that fails (frames the sheet has not for the new states) throws and leaves the machine as it was, playing what it played. Needs a machine made by `createAnimSM` |
 | `setStates(map)` | `Void` | Several states at once |
 | `seek(stateIndex)` | `Void` | Shows the playing animation at a state and stays there, paused (scrubbing): the frame at or before it on every layer, the per-frame filters up to it, no event |

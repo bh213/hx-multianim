@@ -196,6 +196,32 @@ class TweenManagerTest extends utest.Test {
 	}
 
 	@Test
+	public function testHasTweensIsFalseOnceATargetsTweenInARunningSequenceFinished():Void {
+		var mgr = new TweenManager();
+		var objA = createObject();
+		var objB = createObject();
+		mgr.sequence([mgr.createTween(objA, 0.1, [X(10.0)]), mgr.createTween(objB, 1.0, [X(10.0)])]);
+
+		mgr.update(0.2);
+		Assert.floatEquals(10.0, objA.x, "precondition: a's tween ran to its end");
+		Assert.isFalse(mgr.hasTweens(objA), "nothing animates a any more");
+		Assert.isTrue(mgr.hasTweens(objB), "b's tween runs on");
+	}
+
+	@Test
+	public function testHasTweensIsFalseOnceATargetsTweenInARunningGroupFinished():Void {
+		var mgr = new TweenManager();
+		var objA = createObject();
+		var objB = createObject();
+		mgr.group([mgr.createTween(objA, 0.1, [X(10.0)]), mgr.createTween(objB, 1.0, [X(10.0)])]);
+
+		mgr.update(0.2);
+		Assert.floatEquals(10.0, objA.x, "precondition: a's tween ran to its end");
+		Assert.isFalse(mgr.hasTweens(objA), "nothing animates a any more");
+		Assert.isTrue(mgr.hasTweens(objB), "b's tween runs on");
+	}
+
+	@Test
 	public function testCancelAllPropagatesToSequenceWhenAllTweensShareTarget():Void {
 		var mgr = new TweenManager();
 		var obj = createObject();
