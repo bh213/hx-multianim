@@ -499,6 +499,20 @@ as settings are, `resolveSettingValue`) so the map needs no builder of its own.
 Decor is built with `buildSingleNodeWithParams`. Codegen delegates `tilemap(name)` to
 `ProgrammableBuilder.buildTilemap`, as autotile tiles are.
 
+`tilemap(fill([external(imp),] tileset, terrain: t, cols: c, rows: r))` → `TILEMAP_FILL(extRef, tileset,
+terrain, cols, rows)`: no `#name tilemap`, the builder writes the rows itself (`tilemapFillDef`: a ring
+of `none` around `cols` by `rows` cells of the terrain, `fill: true` on the def) and builds them as a
+written map is (`buildTilemapFill` → `tilemapParts`, so the same checks and closures). In an
+incremental build `trackTilemapFill` tracks the programmable's params the three use (`@final`s
+expanded to theirs with `expandFinalAliases`, loop variables fixed, as `trackStaticRefRebuild` does)
+and `refillTilemap` reads the new rows into the same map (`setSource`), leaving it alone when terrain
+and size are unchanged; codegen emits `ProgrammableBuilder.buildTilemapFill` and an expression update
+calling `refillTilemap` (its `collectParamRefs` expands `@final`s too). The param-ref walkers for
+`@switch` arms, deferred conditionals and param-dependent repeat bodies list the three as they do a
+staticRef's target and arguments. `refreshTilemap` (hot reload) makes a map whose `sourceDef.fill` is
+true again from the new builder's tileset, of its terrain and size (`refreshTilemapFill`), unless it
+already has that tileset: a screen loaded again built it from the new builder.
+
 `TileMap` draws in chunks (`Chunk`: a rectangle of cells, its part of each of the map's passes, the
 objects of several cells it anchors, its frames of each animated terrain, `shown`, `dirty` for its
 tiles and `resolved` for its cells' sides and metadata). The passes are the map's draw order, one

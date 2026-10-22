@@ -27,7 +27,7 @@ class ManimKeywordInfo {
 		"DYNAMIC_REF" => "dynamicRef", "SLOT" => "slot", "SLOT_CONTENT" => "slotContent",
 		"INTERACTIVE" => "interactive", "GRAPHICS" => "graphics",
 		"DATA" => "data", "AUTOTILE" => "autotile", "ATLAS2" => "atlas2",
-		"TILESET" => "tileset", "TILEMAP" => "tilemap", "TILEMAP_REF" => "tilemap",
+		"TILESET" => "tileset", "TILEMAP" => "tilemap", "TILEMAP_REF" => "tilemap", "TILEMAP_FILL" => "tilemap",
 		"PALETTE" => "palette", "FINAL_VAR" => "@final", "NINEPATCH" => "ninepatch",
 		"SWITCH" => "@switch", "CURSORS" => "cursor", "SOUNDS" => "sounds", "MIX" => "mix", "MUSIC" => "music",
 	];
@@ -66,6 +66,7 @@ class ManimKeywordInfo {
 		"TILESET" => "What tile maps are drawn with: terrains, transitions where two meet, how each rise between levels is drawn, and what named cells are (where drawn, their metadata)",
 		"TILEMAP" => "A tile map: rows of characters for terrain, levels and layers of cells, decor and marks",
 		"TILEMAP_REF" => "Places a tile map: tilemap(name) or tilemap(external(file), name)",
+		"TILEMAP_FILL" => "Places a tile map of one terrain made here: tilemap(fill([external(file),] tileset, terrain: $t, cols: $c, rows: $r)), cols by rows cells in a ring of none (its edges drawn as a written map's); a change of terrain, cols or rows makes it again",
 		"ATLAS2" => "Inline sprite atlas definition",
 		"PALETTE" => "Color palette definition",
 		"FINAL_VAR" => "Immutable named constant",
@@ -92,6 +93,7 @@ class ManimKeywordInfo {
 		"TILESET" => "#${1:name} tileset {\n\ttileSize: ${2:8}\n\tatlas: \"$3\"\n\tterrain ${4:ground} { cells: \"$5\" }\n\t$0\n}",
 		"TILEMAP" => "#${1:name} tilemap {\n\ttileset: $2\n\tsize: ${3:16}, ${4:9}\n\tlegend { \".\": $5 }\n\tterrain: [\n\t\t$0\n\t]\n}",
 		"TILEMAP_REF" => "tilemap(${1:name}): ${2:0}, ${3:0}",
+		"TILEMAP_FILL" => "tilemap(fill(${1:tileset}, terrain: ${2:\\$terrain}, cols: ${3:\\$cols}, rows: ${4:\\$rows})): ${5:0}, ${6:0}",
 		"PALETTE" => "#${1:name} palette {\n\t$0\n}",
 		"CURSORS" => "#${1:cursors} cursor {\n\t${2:pointer}: sheet(\"${3:ui}\", \"${4:hand}\"), hot: ${5:0}, ${6:0}\n\t$0\n}",
 		"SOUNDS" => "#${1:ui} sounds {\n\t${2:click} { file: \"${3:sound/click.wav}\" }\n\t$0\n}",
@@ -112,7 +114,7 @@ class ManimKeywordInfo {
 		"LAYERS", "MASK", "TILEGROUP", "INTERACTIVE", "SLOT", "SLOT_CONTENT", "SPACER",
 		"POINT", "APPLY", "GRAPHICS", "PIXELS", "PARTICLES", "REPEAT", "REPEAT2D",
 		"STATIC_REF", "DYNAMIC_REF", "PLACEHOLDER", "STATEANIM", "STATEANIM_CONSTRUCT",
-		"AUTOTILE", "FINAL_VAR", "SWITCH", "TILEMAP_REF",
+		"AUTOTILE", "FINAL_VAR", "SWITCH", "TILEMAP_REF", "TILEMAP_FILL",
 	];
 
 	public static function elementName(ctor:String):Null<String> {
@@ -142,7 +144,7 @@ class ManimKeywordInfo {
 		"PATHS", "ANIMATED_PATH", "CURVES", "PARTICLES", "APPLY", "LAYERS", "MASK",
 		"REPEAT", "REPEAT2D", "STATIC_REF", "PLACEHOLDER", "DYNAMIC_REF",
 		"SLOT", "SLOT_CONTENT", "INTERACTIVE", "GRAPHICS", "DATA", "AUTOTILE",
-		"ATLAS2", "PALETTE", "FINAL_VAR", "NINEPATCH", "SWITCH", "TILESET", "TILEMAP", "TILEMAP_REF", "CURSORS", "SOUNDS", "MIX", "MUSIC",
+		"ATLAS2", "PALETTE", "FINAL_VAR", "NINEPATCH", "SWITCH", "TILESET", "TILEMAP", "TILEMAP_REF", "TILEMAP_FILL", "CURSORS", "SOUNDS", "MIX", "MUSIC",
 	];
 
 	// ---- Parameter types (from DefinitionType — exhaustive switch) ----

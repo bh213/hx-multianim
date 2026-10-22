@@ -5724,7 +5724,7 @@ bh_multianim_MacroManimParser.prototype = {
 			var _g = type.tilemapDef;
 			tmp = $hxEnums[type.__enum__].__constructs__[type._hx_index]._hx_name;
 			break;
-		case 41:
+		case 42:
 			var _g = type.paramName;
 			var _g = type.arms;
 			tmp = $hxEnums[type.__enum__].__constructs__[type._hx_index]._hx_name;
@@ -6651,7 +6651,7 @@ bh_multianim_MacroManimParser.prototype = {
 														var checkNode = parent;
 														while(checkNode != null) {
 															var _g = checkNode.type;
-															if(_g._hx_index == 37) {
+															if(_g._hx_index == 38) {
 																var _g2 = _g.parameters;
 																var _g3 = _g.paramOrder;
 																insideSlot = true;
@@ -7432,21 +7432,40 @@ bh_multianim_MacroManimParser.prototype = {
 																																							return n;
 																																						} else {
 																																							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
-																																							var extRef = null;
+																																							var isFill;
 																																							var _g = this.tokens[this.tpos].type;
 																																							if(_g._hx_index == 32) {
-																																								var s2 = _g.s;
-																																								if(bh_multianim_MacroManimParser.isKeyword(s2,"external")) {
-																																									this.advance();
-																																									this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
-																																									extRef = this.expectIdentifierOrString();
-																																									this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
-																																									this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
+																																								if((this.tpos + 1 < this.tokens.length ? this.tokens[this.tpos + 1].type : bh_multianim__$MacroManimParser_MacroTokenType.TEof)._hx_index == 1) {
+																																									var f = _g.s;
+																																									isFill = bh_multianim_MacroManimParser.isKeyword(f,"fill");
+																																								} else {
+																																									isFill = false;
 																																								}
+																																							} else {
+																																								isFill = false;
 																																							}
-																																							var mapName = this.expectIdentifierOrString();
-																																							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
-																																							node = this.createNode(bh_multianim_NodeType.TILEMAP_REF(extRef,mapName),parent,conditional,scale,rotation,alpha,tint,layerIndex,updatableName);
+																																							if(isFill) {
+																																								this.advance();
+																																								var fill = this.parseTilemapFill();
+																																								this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
+																																								node = this.createNode(bh_multianim_NodeType.TILEMAP_FILL(fill.extRef,fill.tileset,fill.terrain,fill.cols,fill.rows),parent,conditional,scale,rotation,alpha,tint,layerIndex,updatableName);
+																																							} else {
+																																								var extRef = null;
+																																								var _g = this.tokens[this.tpos].type;
+																																								if(_g._hx_index == 32) {
+																																									var s2 = _g.s;
+																																									if(bh_multianim_MacroManimParser.isKeyword(s2,"external")) {
+																																										this.advance();
+																																										this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
+																																										extRef = this.expectIdentifierOrString();
+																																										this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
+																																										this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
+																																									}
+																																								}
+																																								var mapName = this.expectIdentifierOrString();
+																																								this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
+																																								node = this.createNode(bh_multianim_NodeType.TILEMAP_REF(extRef,mapName),parent,conditional,scale,rotation,alpha,tint,layerIndex,updatableName);
+																																							}
 																																						}
 																																					} else {
 																																						var s = _g1;
@@ -12836,6 +12855,74 @@ bh_multianim_MacroManimParser.prototype = {
 		}
 		return metadata;
 	}
+	,parseTilemapFill: function() {
+		this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
+		var extRef = null;
+		var _g = this.tokens[this.tpos].type;
+		if(_g._hx_index == 32) {
+			var s = _g.s;
+			if(bh_multianim_MacroManimParser.isKeyword(s,"external")) {
+				this.advance();
+				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
+				extRef = this.expectIdentifierOrString();
+				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
+				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
+			}
+		}
+		var tileset = this.expectIdentifierOrString();
+		var terrain = null;
+		var cols = null;
+		var rows = null;
+		while(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
+			var _g = this.tokens[this.tpos].type;
+			if(_g._hx_index == 32) {
+				var _g1 = _g.s;
+				var w = _g1;
+				if(bh_multianim_MacroManimParser.isKeyword(w,"terrain")) {
+					if(terrain != null) {
+						this.error("tilemap(fill(" + tileset + ")): terrain: given twice");
+					}
+					this.advance();
+					this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+					terrain = this.parseStringOrReference();
+				} else {
+					var w1 = _g1;
+					if(bh_multianim_MacroManimParser.isKeyword(w1,"cols") || bh_multianim_MacroManimParser.isKeyword(w1,"rows")) {
+						var isCols = bh_multianim_MacroManimParser.isKeyword(w1,"cols");
+						if((isCols ? cols : rows) != null) {
+							this.error("tilemap(fill(" + tileset + ")): " + w1 + ": given twice");
+						}
+						this.advance();
+						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+						var value = this.parseIntegerOrReference();
+						if(value._hx_index == 2) {
+							var n = value.i;
+							if(n < 1) {
+								this.error("tilemap(fill(" + tileset + ")): " + w1 + ": is " + n + "; a fill is 1 cell or more a side");
+							}
+						}
+						if(isCols) {
+							cols = value;
+						} else {
+							rows = value;
+						}
+					} else {
+						this.error("tilemap(fill(" + tileset + ")): expected terrain:, cols: or rows:, got " + Std.string(this.tokens[this.tpos].type));
+					}
+				}
+			} else {
+				this.error("tilemap(fill(" + tileset + ")): expected terrain:, cols: or rows:, got " + Std.string(this.tokens[this.tpos].type));
+			}
+		}
+		this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
+		var t = terrain;
+		var c = cols;
+		var r = rows;
+		if(t == null || c == null || r == null) {
+			return this.error("tilemap(fill(" + tileset + ")) needs terrain:, cols: and rows:");
+		}
+		return { extRef : extRef, tileset : tileset, terrain : t, cols : c, rows : r};
+	}
 	,parseTilemap: function(def,node,defs) {
 		var sizeSet = false;
 		var terrainPos = [];
@@ -15404,15 +15491,16 @@ var bh_multianim_NodeType = $hxEnums["bh.multianim.NodeType"] = { __ename__:true
 	,TILESET: ($_=function(tilesetDef) { return {_hx_index:32,tilesetDef:tilesetDef,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="TILESET",$_.__params__ = ["tilesetDef"],$_)
 	,TILEMAP: ($_=function(tilemapDef) { return {_hx_index:33,tilemapDef:tilemapDef,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="TILEMAP",$_.__params__ = ["tilemapDef"],$_)
 	,TILEMAP_REF: ($_=function(externalReference,name) { return {_hx_index:34,externalReference:externalReference,name:name,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="TILEMAP_REF",$_.__params__ = ["externalReference","name"],$_)
-	,ATLAS2: ($_=function(atlas2Def) { return {_hx_index:35,atlas2Def:atlas2Def,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="ATLAS2",$_.__params__ = ["atlas2Def"],$_)
-	,DATA: ($_=function(dataDef) { return {_hx_index:36,dataDef:dataDef,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="DATA",$_.__params__ = ["dataDef"],$_)
-	,SLOT: ($_=function(parameters,paramOrder) { return {_hx_index:37,parameters:parameters,paramOrder:paramOrder,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="SLOT",$_.__params__ = ["parameters","paramOrder"],$_)
-	,SLOT_CONTENT: {_hx_name:"SLOT_CONTENT",_hx_index:38,__enum__:"bh.multianim.NodeType",toString:$estr}
-	,DYNAMIC_REF: ($_=function(externalReference,programmableReference,parameters) { return {_hx_index:39,externalReference:externalReference,programmableReference:programmableReference,parameters:parameters,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="DYNAMIC_REF",$_.__params__ = ["externalReference","programmableReference","parameters"],$_)
-	,FINAL_VAR: ($_=function(name,value) { return {_hx_index:40,name:name,value:value,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="FINAL_VAR",$_.__params__ = ["name","value"],$_)
-	,SWITCH: ($_=function(paramName,arms) { return {_hx_index:41,paramName:paramName,arms:arms,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="SWITCH",$_.__params__ = ["paramName","arms"],$_)
+	,TILEMAP_FILL: ($_=function(externalReference,tileset,terrain,cols,rows) { return {_hx_index:35,externalReference:externalReference,tileset:tileset,terrain:terrain,cols:cols,rows:rows,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="TILEMAP_FILL",$_.__params__ = ["externalReference","tileset","terrain","cols","rows"],$_)
+	,ATLAS2: ($_=function(atlas2Def) { return {_hx_index:36,atlas2Def:atlas2Def,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="ATLAS2",$_.__params__ = ["atlas2Def"],$_)
+	,DATA: ($_=function(dataDef) { return {_hx_index:37,dataDef:dataDef,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="DATA",$_.__params__ = ["dataDef"],$_)
+	,SLOT: ($_=function(parameters,paramOrder) { return {_hx_index:38,parameters:parameters,paramOrder:paramOrder,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="SLOT",$_.__params__ = ["parameters","paramOrder"],$_)
+	,SLOT_CONTENT: {_hx_name:"SLOT_CONTENT",_hx_index:39,__enum__:"bh.multianim.NodeType",toString:$estr}
+	,DYNAMIC_REF: ($_=function(externalReference,programmableReference,parameters) { return {_hx_index:40,externalReference:externalReference,programmableReference:programmableReference,parameters:parameters,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="DYNAMIC_REF",$_.__params__ = ["externalReference","programmableReference","parameters"],$_)
+	,FINAL_VAR: ($_=function(name,value) { return {_hx_index:41,name:name,value:value,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="FINAL_VAR",$_.__params__ = ["name","value"],$_)
+	,SWITCH: ($_=function(paramName,arms) { return {_hx_index:42,paramName:paramName,arms:arms,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="SWITCH",$_.__params__ = ["paramName","arms"],$_)
 };
-bh_multianim_NodeType.__constructs__ = [bh_multianim_NodeType.FLOW,bh_multianim_NodeType.SPACER,bh_multianim_NodeType.BITMAP,bh_multianim_NodeType.POINT,bh_multianim_NodeType.STATEANIM,bh_multianim_NodeType.STATEANIM_CONSTRUCT,bh_multianim_NodeType.PIXELS,bh_multianim_NodeType.TEXT,bh_multianim_NodeType.RICHTEXT,bh_multianim_NodeType.PROGRAMMABLE,bh_multianim_NodeType.TILEGROUP,bh_multianim_NodeType.RELATIVE_LAYOUTS,bh_multianim_NodeType.PATHS,bh_multianim_NodeType.ANIMATED_PATH,bh_multianim_NodeType.CURVES,bh_multianim_NodeType.PARTICLES,bh_multianim_NodeType.APPLY,bh_multianim_NodeType.LAYERS,bh_multianim_NodeType.MASK,bh_multianim_NodeType.REPEAT,bh_multianim_NodeType.REPEAT2D,bh_multianim_NodeType.STATIC_REF,bh_multianim_NodeType.PLACEHOLDER,bh_multianim_NodeType.NINEPATCH,bh_multianim_NodeType.INTERACTIVE,bh_multianim_NodeType.PALETTE,bh_multianim_NodeType.CURSORS,bh_multianim_NodeType.SOUNDS,bh_multianim_NodeType.MIX,bh_multianim_NodeType.MUSIC,bh_multianim_NodeType.GRAPHICS,bh_multianim_NodeType.AUTOTILE,bh_multianim_NodeType.TILESET,bh_multianim_NodeType.TILEMAP,bh_multianim_NodeType.TILEMAP_REF,bh_multianim_NodeType.ATLAS2,bh_multianim_NodeType.DATA,bh_multianim_NodeType.SLOT,bh_multianim_NodeType.SLOT_CONTENT,bh_multianim_NodeType.DYNAMIC_REF,bh_multianim_NodeType.FINAL_VAR,bh_multianim_NodeType.SWITCH];
+bh_multianim_NodeType.__constructs__ = [bh_multianim_NodeType.FLOW,bh_multianim_NodeType.SPACER,bh_multianim_NodeType.BITMAP,bh_multianim_NodeType.POINT,bh_multianim_NodeType.STATEANIM,bh_multianim_NodeType.STATEANIM_CONSTRUCT,bh_multianim_NodeType.PIXELS,bh_multianim_NodeType.TEXT,bh_multianim_NodeType.RICHTEXT,bh_multianim_NodeType.PROGRAMMABLE,bh_multianim_NodeType.TILEGROUP,bh_multianim_NodeType.RELATIVE_LAYOUTS,bh_multianim_NodeType.PATHS,bh_multianim_NodeType.ANIMATED_PATH,bh_multianim_NodeType.CURVES,bh_multianim_NodeType.PARTICLES,bh_multianim_NodeType.APPLY,bh_multianim_NodeType.LAYERS,bh_multianim_NodeType.MASK,bh_multianim_NodeType.REPEAT,bh_multianim_NodeType.REPEAT2D,bh_multianim_NodeType.STATIC_REF,bh_multianim_NodeType.PLACEHOLDER,bh_multianim_NodeType.NINEPATCH,bh_multianim_NodeType.INTERACTIVE,bh_multianim_NodeType.PALETTE,bh_multianim_NodeType.CURSORS,bh_multianim_NodeType.SOUNDS,bh_multianim_NodeType.MIX,bh_multianim_NodeType.MUSIC,bh_multianim_NodeType.GRAPHICS,bh_multianim_NodeType.AUTOTILE,bh_multianim_NodeType.TILESET,bh_multianim_NodeType.TILEMAP,bh_multianim_NodeType.TILEMAP_REF,bh_multianim_NodeType.TILEMAP_FILL,bh_multianim_NodeType.ATLAS2,bh_multianim_NodeType.DATA,bh_multianim_NodeType.SLOT,bh_multianim_NodeType.SLOT_CONTENT,bh_multianim_NodeType.DYNAMIC_REF,bh_multianim_NodeType.FINAL_VAR,bh_multianim_NodeType.SWITCH];
 var bh_multianim_NodeConditionalValues = $hxEnums["bh.multianim.NodeConditionalValues"] = { __ename__:true,__constructs__:null
 	,Conditional: ($_=function(values,anyMode) { return {_hx_index:0,values:values,anyMode:anyMode,__enum__:"bh.multianim.NodeConditionalValues",toString:$estr}; },$_._hx_name="Conditional",$_.__params__ = ["values","anyMode"],$_)
 	,ConditionalElse: ($_=function(values) { return {_hx_index:1,values:values,__enum__:"bh.multianim.NodeConditionalValues",toString:$estr}; },$_._hx_name="ConditionalElse",$_.__params__ = ["values"],$_)
@@ -18744,11 +18832,11 @@ manim_lsp_ManimAnalyzer.getSymbols = function(text,uri) {
 				var _g7 = _g.curves;
 				symbol = manim_lsp_ManimAnalyzer.makeSymbol(name,3,range,"curves");
 				break;
-			case 36:
+			case 37:
 				var dataDef = _g.dataDef;
 				symbol = manim_lsp_ManimAnalyzer.makeSymbol(name,23,range,null,manim_lsp_ManimAnalyzer.getDataChildren(dataDef,text));
 				break;
-			case 40:
+			case 41:
 				var _g8 = _g.value;
 				var n = _g.name;
 				symbol = manim_lsp_ManimAnalyzer.makeSymbol(n,14,range,"@final");
@@ -18820,7 +18908,7 @@ manim_lsp_ManimAnalyzer.getChildSymbols = function(node,text) {
 				var _g8 = _g3.metadata;
 				kind = 8;
 				break;
-			case 37:
+			case 38:
 				var _g9 = _g3.parameters;
 				var _g10 = _g3.paramOrder;
 				kind = 8;
@@ -18844,7 +18932,7 @@ manim_lsp_ManimAnalyzer.getChildSymbols = function(node,text) {
 				var _g16 = _g11.metadata;
 				kind1 = 8;
 				break;
-			case 37:
+			case 38:
 				var _g17 = _g11.parameters;
 				var _g18 = _g11.paramOrder;
 				kind1 = 8;
@@ -18869,7 +18957,7 @@ manim_lsp_ManimAnalyzer.getChildSymbols = function(node,text) {
 				var _g25 = _g20.metadata;
 				kind2 = 8;
 				break;
-			case 37:
+			case 38:
 				var _g26 = _g20.parameters;
 				var _g27 = _g20.paramOrder;
 				kind2 = 8;
@@ -18895,7 +18983,7 @@ manim_lsp_ManimAnalyzer.getChildSymbols = function(node,text) {
 				var _g35 = _g30.metadata;
 				kind3 = 8;
 				break;
-			case 37:
+			case 38:
 				var _g36 = _g30.parameters;
 				var _g37 = _g30.paramOrder;
 				kind3 = 8;
@@ -19125,19 +19213,19 @@ manim_lsp_ManimAnalyzer.nodeTypeName = function(type) {
 	case 30:
 		var _g = type.elements;
 		return "graphics";
-	case 36:
+	case 37:
 		var _g = type.dataDef;
 		return "data";
-	case 37:
+	case 38:
 		var _g = type.parameters;
 		var _g = type.paramOrder;
 		return "slot";
-	case 39:
+	case 40:
 		var _g = type.externalReference;
 		var _g = type.programmableReference;
 		var _g = type.parameters;
 		return "dynamicRef";
-	case 40:
+	case 41:
 		var _g = type.name;
 		var _g = type.value;
 		return "@final";
@@ -19533,6 +19621,7 @@ bh_multianim_ManimKeywordInfo.elementNames = (function($this) {
 	_g.h["TILESET"] = "tileset";
 	_g.h["TILEMAP"] = "tilemap";
 	_g.h["TILEMAP_REF"] = "tilemap";
+	_g.h["TILEMAP_FILL"] = "tilemap";
 	_g.h["PALETTE"] = "palette";
 	_g.h["FINAL_VAR"] = "@final";
 	_g.h["NINEPATCH"] = "ninepatch";
@@ -19580,6 +19669,7 @@ bh_multianim_ManimKeywordInfo.elementDescriptions = (function($this) {
 	_g.h["TILESET"] = "What tile maps are drawn with: terrains, transitions where two meet, how each rise between levels is drawn, and what named cells are (where drawn, their metadata)";
 	_g.h["TILEMAP"] = "A tile map: rows of characters for terrain, levels and layers of cells, decor and marks";
 	_g.h["TILEMAP_REF"] = "Places a tile map: tilemap(name) or tilemap(external(file), name)";
+	_g.h["TILEMAP_FILL"] = "Places a tile map of one terrain made here: tilemap(fill([external(file),] tileset, terrain: $t, cols: $c, rows: $r)), cols by rows cells in a ring of none (its edges drawn as a written map's); a change of terrain, cols or rows makes it again";
 	_g.h["ATLAS2"] = "Inline sprite atlas definition";
 	_g.h["PALETTE"] = "Color palette definition";
 	_g.h["FINAL_VAR"] = "Immutable named constant";
@@ -19609,6 +19699,7 @@ bh_multianim_ManimKeywordInfo.elementSnippets = (function($this) {
 	_g.h["TILESET"] = "#${1:name} tileset {\n\ttileSize: ${2:8}\n\tatlas: \"$3\"\n\tterrain ${4:ground} { cells: \"$5\" }\n\t$0\n}";
 	_g.h["TILEMAP"] = "#${1:name} tilemap {\n\ttileset: $2\n\tsize: ${3:16}, ${4:9}\n\tlegend { \".\": $5 }\n\tterrain: [\n\t\t$0\n\t]\n}";
 	_g.h["TILEMAP_REF"] = "tilemap(${1:name}): ${2:0}, ${3:0}";
+	_g.h["TILEMAP_FILL"] = "tilemap(fill(${1:tileset}, terrain: ${2:\\$terrain}, cols: ${3:\\$cols}, rows: ${4:\\$rows})): ${5:0}, ${6:0}";
 	_g.h["PALETTE"] = "#${1:name} palette {\n\t$0\n}";
 	_g.h["CURSORS"] = "#${1:cursors} cursor {\n\t${2:pointer}: sheet(\"${3:ui}\", \"${4:hand}\"), hot: ${5:0}, ${6:0}\n\t$0\n}";
 	_g.h["SOUNDS"] = "#${1:ui} sounds {\n\t${2:click} { file: \"${3:sound/click.wav}\" }\n\t$0\n}";
@@ -19621,8 +19712,8 @@ bh_multianim_ManimKeywordInfo.elementSnippets = (function($this) {
 	return $r;
 }(this));
 bh_multianim_ManimKeywordInfo.topLevelElements = ["PROGRAMMABLE","DATA","CURVES","PATHS","ANIMATED_PATH","ATLAS2","PALETTE","FINAL_VAR","RELATIVE_LAYOUTS","TILESET","TILEMAP","CURSORS","SOUNDS","MIX","MUSIC"];
-bh_multianim_ManimKeywordInfo.childElements = ["BITMAP","TEXT","RICHTEXT","NINEPATCH","FLOW","LAYERS","MASK","TILEGROUP","INTERACTIVE","SLOT","SLOT_CONTENT","SPACER","POINT","APPLY","GRAPHICS","PIXELS","PARTICLES","REPEAT","REPEAT2D","STATIC_REF","DYNAMIC_REF","PLACEHOLDER","STATEANIM","STATEANIM_CONSTRUCT","AUTOTILE","FINAL_VAR","SWITCH","TILEMAP_REF"];
-bh_multianim_ManimKeywordInfo.allElementCtors = ["FLOW","SPACER","BITMAP","POINT","STATEANIM","STATEANIM_CONSTRUCT","PIXELS","TEXT","RICHTEXT","PROGRAMMABLE","TILEGROUP","RELATIVE_LAYOUTS","PATHS","ANIMATED_PATH","CURVES","PARTICLES","APPLY","LAYERS","MASK","REPEAT","REPEAT2D","STATIC_REF","PLACEHOLDER","DYNAMIC_REF","SLOT","SLOT_CONTENT","INTERACTIVE","GRAPHICS","DATA","AUTOTILE","ATLAS2","PALETTE","FINAL_VAR","NINEPATCH","SWITCH","TILESET","TILEMAP","TILEMAP_REF","CURSORS","SOUNDS","MIX","MUSIC"];
+bh_multianim_ManimKeywordInfo.childElements = ["BITMAP","TEXT","RICHTEXT","NINEPATCH","FLOW","LAYERS","MASK","TILEGROUP","INTERACTIVE","SLOT","SLOT_CONTENT","SPACER","POINT","APPLY","GRAPHICS","PIXELS","PARTICLES","REPEAT","REPEAT2D","STATIC_REF","DYNAMIC_REF","PLACEHOLDER","STATEANIM","STATEANIM_CONSTRUCT","AUTOTILE","FINAL_VAR","SWITCH","TILEMAP_REF","TILEMAP_FILL"];
+bh_multianim_ManimKeywordInfo.allElementCtors = ["FLOW","SPACER","BITMAP","POINT","STATEANIM","STATEANIM_CONSTRUCT","PIXELS","TEXT","RICHTEXT","PROGRAMMABLE","TILEGROUP","RELATIVE_LAYOUTS","PATHS","ANIMATED_PATH","CURVES","PARTICLES","APPLY","LAYERS","MASK","REPEAT","REPEAT2D","STATIC_REF","PLACEHOLDER","DYNAMIC_REF","SLOT","SLOT_CONTENT","INTERACTIVE","GRAPHICS","DATA","AUTOTILE","ATLAS2","PALETTE","FINAL_VAR","NINEPATCH","SWITCH","TILESET","TILEMAP","TILEMAP_REF","TILEMAP_FILL","CURSORS","SOUNDS","MIX","MUSIC"];
 bh_multianim_ManimKeywordInfo.simpleParamTypes = [bh_multianim_DefinitionType.PPTInt,bh_multianim_DefinitionType.PPTUnsignedInt,bh_multianim_DefinitionType.PPTFloat,bh_multianim_DefinitionType.PPTBool,bh_multianim_DefinitionType.PPTString,bh_multianim_DefinitionType.PPTColor,bh_multianim_DefinitionType.PPTTile,bh_multianim_DefinitionType.PPTArray,bh_multianim_DefinitionType.PPTHexDirection,bh_multianim_DefinitionType.PPTGridDirection];
 bh_multianim_ManimKeywordInfo.completableFilters = [bh_multianim_FilterType.FilterOutline(null,null),bh_multianim_FilterType.FilterGlow(null,null,null,null,null,false,false),bh_multianim_FilterType.FilterBlur(null,null,null,null),bh_multianim_FilterType.FilterSaturate(null),bh_multianim_FilterType.FilterBrightness(null),bh_multianim_FilterType.FilterGrayscale(null),bh_multianim_FilterType.FilterHue(null),bh_multianim_FilterType.FilterDropShadow(null,null,null,null,null,null,null,false),bh_multianim_FilterType.FilterPixelOutline(null,false),bh_multianim_FilterType.FilterPaletteReplace("",null,null),bh_multianim_FilterType.FilterColorListReplace(null,null),bh_multianim_FilterType.FilterGroup(null),bh_multianim_FilterType.FilterNone];
 bh_multianim_ManimKeywordInfo.allTransitions = [bh_multianim_TransitionType.TransNone,bh_multianim_TransitionType.TransFade(0,null),bh_multianim_TransitionType.TransCrossfade(0,null),bh_multianim_TransitionType.TransFlipX(0,null),bh_multianim_TransitionType.TransFlipY(0,null),bh_multianim_TransitionType.TransSlide(bh_multianim_TransitionDirection.TDLeft,0,null,null)];

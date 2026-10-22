@@ -8,13 +8,18 @@ import bh.multianim.MultiAnimBuilder;
 import bh.test.BuilderTestBase;
 import bh.test.BuilderTestBase.builderFromSource;
 import bh.test.BuilderTestBase.parseExpectingError;
+import bh.test.BuilderTestBase.parseExpectingSuccess;
+import bh.test.BuilderTestBase.BuildMode;
+import bh.test.TestResourceLoader;
 
 /**
  * Tilesets and tile maps (`#name tileset { … }`, `#name tilemap { … }`, `tilemap(name)`): parse
  * errors, terrains drawn bottom first, levels with their rims, faces and joins, cell layers and
  * where they are drawn, the actors sorted by their feet, animated terrains, changes while running,
  * a reload that keeps the actors, and what the DevBridge is told. Cells from the public Forgotten
- * Plains tiles and demo autotiles; nothing here depends on how that sheet is laid out.
+ * Plains tiles and demo autotiles; nothing here depends on how that sheet is laid out. A fill,
+ * `tilemap(fill(tileset, terrain:, cols:, rows:))`, is compared with the written map it stands for, from
+ * the builder and from codegen (test/examples/165-tilemapFill).
  */
 class TilemapTest extends BuilderTestBase {
 	static inline var TILESET_PNG = "Tileset/Minifantasy_ForgottenPlainsTiles.png";
@@ -1465,5 +1470,281 @@ class TilemapTest extends BuilderTestBase {
 				Assert.isTrue(edgeAt >= 0 && sideAt >= 0, 'both drawn on the ground: edges at $edgeAt, sides at $sideAt');
 				Assert.isTrue(edgeAt < sideAt, 'chunk $edges\'s edges (at $edgeAt) under chunk $sides\'s sides (at $sideAt)');
 			}
+	}
+
+	// ===== Fills: tilemap(fill(…)) =====
+
+	static inline var FILL_FIXTURE = "test/examples/165-tilemapFill/tilemapFill.manim";
+
+	/** Terrains of the two autotile formats plains has not (its own: grass of cells, dirt and water corner, water animated). **/
+	static final FILL_AUTOTILES = '
+		#moss autotile { format: blob47 tileSize: 8 demo: #224422, #448844 }
+		#path autotile { format: cross tileSize: 8 demo: #AA8844, #CCAA66 }
+	';
+
+	static final FILL_TERRAINS = 'terrain moss { autotile: moss } terrain path { autotile: path }';
+
+	/** The written map a fill stands for: `cols` by `rows` cells of `terrain` in a ring of none. **/
+	static function ringMap(name:String, tileset:String, terrain:String, cols:Int, rows:Int):String {
+		final ring = '"' + StringTools.rpad("", " ", cols + 2) + '"';
+		final inside = '" ' + StringTools.rpad("", "x", cols) + ' "';
+		final rowsOf = [for (cy in 0...rows + 2) cy == 0 || cy == rows + 1 ? ring : inside].join(", ");
+		return '#$name tilemap { tileset: $tileset size: ${cols + 2}, ${rows + 2} legend { "x": $terrain, " ": none } terrain: [$rowsOf] }\n';
+	}
+
+	/** The first tile map in a built programmable. **/
+	static function tilemapIn(root:h2d.Object):Null<TileMap> {
+		for (child in root) {
+			if (Std.isOfType(child, TileMap))
+				return cast child;
+			final found = tilemapIn(child);
+			if (found != null)
+				return found;
+		}
+		return null;
+	}
+
+	/** `pixelsOf` a map where it is placed, at its own (0, 0), and put back: a fill follows its parameters while it is placed. **/
+	static function pixelsInPlace(map:TileMap):hxd.Pixels {
+		final parent = map.parent;
+		final index = parent != null ? parent.getChildIndex(map) : -1;
+		final x = map.x;
+		final y = map.y;
+		map.setPosition(0, 0);
+		final pixels = pixelsOf(map);
+		map.setPosition(x, y);
+		if (parent != null)
+			parent.addChildAt(map, index);
+		return pixels;
+	}
+
+	/** Where two maps differ: their size, a cell's terrain or their pixels; null when they are the same. **/
+	static function difference(a:Null<TileMap>, b:Null<TileMap>):Null<String> {
+		if (a == null || b == null)
+			return "no map";
+		if (a.width != b.width || a.height != b.height)
+			return '${a.width}x${a.height} and ${b.width}x${b.height}';
+		for (cy in 0...a.height)
+			for (cx in 0...a.width)
+				if (a.terrainAt(cx, cy) != b.terrainAt(cx, cy))
+					return 'column $cx, row $cy is ${a.terrainAt(cx, cy)} and ${b.terrainAt(cx, cy)}';
+		final pa = pixelsInPlace(a);
+		final pb = pixelsInPlace(b);
+		var differ = 0;
+		var first = "";
+		for (y in 0...pa.height)
+			for (x in 0...pa.width)
+				if (pa.getPixel(x, y) != pb.getPixel(x, y)) {
+					if (differ == 0)
+						first = 'pixel $x, $y';
+					differ++;
+				}
+		return differ == 0 ? null : '$differ pixels differ, the first at $first';
+	}
+
+	static function builderErrorOf(fn:() -> Void):Null<BuilderError> {
+		try {
+			fn();
+			return null;
+		} catch (e:BuilderError) {
+			return e;
+		}
+	}
+
+	@Test
+	public function testAFillIsTheWrittenMapItStandsFor() {
+		// a terrain of cells and one of each autotile format: its edges drawn as a written map's, in its ring of none
+		for (terrain in ["grass", "dirt", "water", "moss", "path"]) {
+			final builder = builderFromSource(source(FILL_AUTOTILES + ringMap("m", "plains", terrain, 3, 2)
+				+ "#p programmable() { tilemap(fill(plains, terrain: " + terrain + ", cols: 3, rows: 2)): 4, 6 }", FILL_TERRAINS));
+			final fill = tilemapIn(builder.buildWithParameters("p", new Map()).object);
+			Assert.notNull(fill, terrain);
+			if (fill == null)
+				continue;
+			Assert.equals(4.0, fill.x, "placed as tilemap(name) is: its cell (0, 0) at the element's position");
+			Assert.equals(6.0, fill.y);
+			Assert.equals("fill(plains)", fill.mapName);
+			Assert.isNull(fill.terrainAt(0, 0), "a ring of none");
+			Assert.equals(terrain, fill.terrainAt(1, 1), "the terrain a cell in");
+			Assert.isNull(difference(fill, builder.buildTilemap("m")), '$terrain: a fill draws as the written map');
+		}
+		// the comparison sees the pixels: the same cells of a terrain drawn with another autotile differ
+		final other = builderFromSource(source(FILL_AUTOTILES + "#other tileset { tileSize: 8 atlas: \"fp\" terrain dirt { autotile: moss } }\n"
+			+ ringMap("m", "other", "dirt", 3, 2) + "#p programmable() { tilemap(fill(plains, terrain: dirt, cols: 3, rows: 2)): 0, 0 }"));
+		final control = difference(tilemapIn(other.buildWithParameters("p", new Map()).object), other.buildTilemap("m"));
+		Assert.notNull(control);
+		Assert.stringContains("pixels differ", control ?? "");
+	}
+
+	@Test
+	public function testAFillFollowsItsParameters() {
+		final builder = builderFromSource(source(FILL_AUTOTILES + ringMap("big", "plains", "moss", 5, 1)
+			+ "#p programmable(terrain:string=dirt, cols:uint=3, rows:uint=2) {
+				tilemap(fill(plains, terrain: $terrain, cols: $cols, rows: $rows)): 0, 0
+			}", FILL_TERRAINS));
+		final r = builder.buildWithParameters("p", new Map(), null, null, true);
+		final map = tilemapIn(r.object);
+		Assert.notNull(map);
+		if (map == null)
+			return;
+		Assert.equals(5, map.width, "cols + 2");
+		Assert.equals(4, map.height, "rows + 2");
+		r.setParameter("cols", 6);
+		Assert.isTrue(map == tilemapIn(r.object), "made again in place: the same map");
+		Assert.equals(8, map.width);
+		Assert.equals("dirt", map.terrainAt(6, 2));
+		r.beginUpdate();
+		r.setParameter("terrain", "moss");
+		r.setParameter("cols", 5);
+		r.setParameter("rows", 1);
+		r.endUpdate();
+		Assert.equals("moss", map.terrainAt(1, 1));
+		Assert.isNull(difference(map, builder.buildTilemap("big")), "drawn as the written map of its new terrain and size");
+		// the same values leave it as it is, a cell the game changed with it
+		map.setTerrain(2, 1, " ");
+		builder.refillTilemap(map, "moss", 5, 1);
+		Assert.isNull(map.terrainAt(2, 1));
+		// a fill of literals only is not followed: nothing tracked
+		final fixed = builderFromSource(source("#q programmable(n:uint=1) { tilemap(fill(plains, terrain: dirt, cols: 2, rows: 2)): 0, 0 }"))
+			.buildWithParameters("q", new Map(), null, null, true);
+		final ctx = fixed.incrementalContext;
+		if (ctx != null)
+			Assert.isFalse(@:privateAccess ctx.trackedByParam.keys().hasNext(), "nothing to follow");
+	}
+
+	@Test
+	public function testAFillInARepeat() {
+		// a loop variable is fixed at build time: a repeat of fills gives each its size, and the
+		// programmable's own parameter is still followed
+		final r = builderFromSource(source("#p programmable(terrain:string=dirt) {
+				repeatable($i, step(2, dx: 40)) { tilemap(fill(plains, terrain: $terrain, cols: $i + 1, rows: 1)): 0, 0 }
+			}")).buildWithParameters("p", new Map(), null, null, true);
+		final maps:Array<TileMap> = [];
+		function walk(o:h2d.Object)
+			for (c in o)
+				if (Std.isOfType(c, TileMap)) maps.push(cast c) else walk(c);
+		walk(r.object);
+		Assert.same([3, 4], [for (m in maps) m.width]);
+		final ctx = r.incrementalContext;
+		if (ctx != null)
+			Assert.isFalse(@:privateAccess ctx.trackedByParam.exists("i"), "a loop variable never changes: nothing tracked for it");
+		r.setParameter("terrain", "water");
+		Assert.same(["water", "water"], [for (m in maps) m.terrainAt(1, 1)]);
+		Assert.same([3, 4], [for (m in maps) m.width]);
+		// in a repeat whose count is a parameter the body is built as a whole, so a change of what only
+		// the fill uses is refused, as for a staticRef there
+		final counted = builderFromSource(source("#p programmable(terrain:string=dirt, n:uint=2) {
+				repeatable($i, step($n, dx: 40)) { tilemap(fill(plains, terrain: $terrain, cols: 1, rows: 1)): 0, 0 }
+			}")).buildWithParameters("p", new Map(), null, null, true);
+		final refused = builderErrorOf(() -> counted.setParameter("terrain", "water"));
+		Assert.equals("untracked_param", refused?.code);
+		Assert.stringContains("tilemap fill terrain", refused?.message ?? "");
+	}
+
+	@Test
+	public function testFillErrors() {
+		final ts = '#t tileset { tileSize: 8 atlas: "fp" terrain g { cells: "grass" } }\n';
+		function parseError(fragment:String, element:String, ?pos:haxe.PosInfos) {
+			final error = parseExpectingError(ts + "#p programmable() { " + element + ": 0, 0 }");
+			Assert.notNull(error, 'expected an error with "$fragment"', pos);
+			if (error != null)
+				Assert.stringContains(fragment, error, pos);
+		}
+		parseError("cols: is 0; a fill is 1 cell or more a side", "tilemap(fill(t, terrain: g, cols: 0, rows: 2))");
+		parseError("needs terrain:, cols: and rows:", "tilemap(fill(t, terrain: g, cols: 2))");
+		parseError("terrain: given twice", "tilemap(fill(t, terrain: g, terrain: g, cols: 2, rows: 2))");
+		parseError("expected terrain:, cols: or rows:", "tilemap(fill(t, terrain: g, cols: 2, rows: 2, size: 3))");
+		Assert.isTrue(parseExpectingSuccess(ts + "#p programmable() { tilemap(fill): 0, 0 }"), "a map may still be named fill");
+
+		function buildError(programmable:String, ?params:Map<String, Dynamic>):Null<BuilderError> {
+			final builder = builderFromSource(source(programmable));
+			return builderErrorOf(() -> builder.buildWithParameters("p", params ?? new Map()));
+		}
+		final unknown = buildError("#p programmable() { tilemap(fill(plains, terrain: lava, cols: 2, rows: 2)): 0, 0 }");
+		Assert.equals("tilemap_terrain", unknown?.code);
+		Assert.stringContains("tilemap(fill(plains, terrain: lava, cols: 2, rows: 2)): tileset plains has no terrain lava (grass, dirt, water)", unknown?.message ?? "");
+		final small = buildError("#p programmable(cols:int=3) { tilemap(fill(plains, terrain: dirt, cols: $cols, rows: 2)): 0, 0 }", ["cols" => 0]);
+		Assert.equals("tilemap_size", small?.code);
+		Assert.stringContains("a fill is 1 cell or more a side", small?.message ?? "");
+		final missing = buildError("#p programmable() { tilemap(fill(nowhere, terrain: dirt, cols: 2, rows: 2)): 0, 0 }");
+		Assert.equals("missing_ref", missing?.code);
+		Assert.stringContains("tilemap(fill(nowhere", missing?.message ?? "");
+
+		// a parameter changed to a terrain the tileset has not is refused, and the map stays as it was
+		final r = builderFromSource(source("#p programmable(terrain:string=dirt) { tilemap(fill(plains, terrain: $terrain, cols: 2, rows: 2)): 0, 0 }"))
+			.buildWithParameters("p", new Map(), null, null, true);
+		final refused = builderErrorOf(() -> r.setParameter("terrain", "lava"));
+		Assert.equals("tilemap_terrain", refused?.code);
+		Assert.equals("dirt", tilemapIn(r.object)?.terrainAt(1, 1));
+	}
+
+	@Test
+	public function testAFillOfAnImportedTileset() {
+		final builder = builderFromSource('import "test/examples/155-tilemap/tilemap.manim" as "tiles"\n'
+			+ ringMap("m", "external(tiles), plains", "dirt", 3, 2)
+			+ "#p programmable() { tilemap(fill(external(\"tiles\"), plains, terrain: dirt, cols: 3, rows: 2)): 0, 0 }");
+		final map = tilemapIn(builder.buildWithParameters("p", new Map()).object);
+		Assert.equals("fill(external(tiles), plains)", map?.mapName);
+		Assert.isNull(difference(map, builder.buildTilemap("m")), "drawn as a written map of the imported tileset");
+	}
+
+	@Test
+	public function testAReloadMakesAFillAgainFromItsTileset() {
+		// no rows to read: a hot reload of its file makes a fill again, of its terrain and size, from the
+		// tileset as it is now (a codegen instance and game code keep their fills: nothing builds them again)
+		final fill = "#p programmable() { tilemap(fill(plains, terrain: dirt, cols: 3, rows: 2)): 0, 0 }";
+		final builder = builderFromSource(source(fill));
+		final map = tilemapIn(builder.buildWithParameters("p", new Map()).object);
+		Assert.notNull(map);
+		if (map == null)
+			return;
+		// made from this builder's tileset already (a screen loaded again): left as it is, a change with it
+		map.setTerrain(1, 1, " ");
+		builder.refreshTilemap(map);
+		Assert.isNull(map.terrainAt(1, 1), "made from this tileset: left as it is");
+		final reloaded = builderFromSource(source(FILL_AUTOTILES + ringMap("m", "plains", "dirt", 3, 2) + fill, FILL_TERRAINS));
+		TileMap.showing.push(map);
+		TileMap.builderReplaced(map.sourceName, reloaded.refreshTilemap);
+		TileMap.showing.remove(map);
+		Assert.isTrue(map.tileset == reloaded.getTilesetDef("plains").def, "made again from the reloaded tileset");
+		Assert.equals("dirt", map.terrainAt(1, 1), "of its terrain");
+		Assert.isNull(difference(map, reloaded.buildTilemap("m")), "drawn as the reloaded file's written map");
+	}
+
+	@Test
+	public function testAFillIsTheSameFromTheBuilderAndFromCodegen() {
+		final mp = new bh.test.MultiProgrammable(TestResourceLoader.createLoader(false));
+		// fillFinal: sized by @finals over the parameters, which follow them on both backends
+		for (name in ["fillHere", "fillImported", "fillFinal"]) {
+			final built = BuilderTestBase.buildFromFile(FILL_FIXTURE, name, null, Incremental);
+			final generated:Dynamic = switch name {
+				case "fillHere": mp.fillHere.create();
+				case "fillImported": mp.fillImported.create();
+				default: mp.fillFinal.create();
+			};
+			final a = tilemapIn(built.object);
+			final b = tilemapIn(generated);
+			Assert.notNull(b, '$name: codegen places a bh.base.TileMap');
+			Assert.isNull(difference(a, b), '$name: as built');
+			final changes:Array<{param:String, value:Dynamic}> = [
+				{param: "cols", value: 5},
+				{param: "terrain", value: "water"},
+				{param: "rows", value: 1},
+				{param: "terrain", value: "grass"},
+			];
+			for (change in changes) {
+				built.setParameter(change.param, change.value);
+				generated.setParameter(change.param, change.value);
+				Assert.isNull(difference(a, b), '$name: after ${change.param} => ${change.value}');
+			}
+			Assert.isTrue(b == tilemapIn(generated), '$name: codegen makes it again in place');
+			// cols 5 and rows 1 in a ring of none; fillFinal's (5 + 1) by (1 * 2)
+			final byFinals = name == "fillFinal";
+			for (map in [a, b]) {
+				Assert.equals(byFinals ? 8 : 7, map?.width, '$name: width');
+				Assert.equals(byFinals ? 4 : 3, map?.height, '$name: height');
+				Assert.equals("grass", map?.terrainAt(1, 1));
+			}
+		}
 	}
 }

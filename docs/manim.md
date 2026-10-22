@@ -1989,6 +1989,34 @@ a meaning: the game says what `wall`, `swim` or `cost` are for.
   one layer sorted by their feet every frame; `over`; `top`. The order holds across the map's
   chunks: a map drawn in chunks looks as it does drawn in one piece, at their borders too.
 
+### A fill: a map made where it is placed
+
+```manim
+#plains_patch programmable(terrain:[grass, dirt, water]=grass, cols:uint=6, rows:uint=4) {
+    tilemap(fill(plains, terrain: $terrain, cols: $cols, rows: $rows)): 0, 0
+    // or tilemap(fill(external(tiles), plains, terrain: $terrain, cols: $cols, rows: $rows))
+}
+```
+
+`tilemap(fill(…))` places a map of the tileset with no rows written: `cols` by `rows` cells of one
+terrain, in a ring of `none` one cell wide, so the terrain's edges are drawn as they are in a written
+map (every autotile format: corner, blob47, cross; a terrain of `cells` too). It is (cols + 2) by
+(rows + 2) cells, all level 0, with no layers, decor or marks, and is placed as `tilemap(name)` is: its
+cell (0, 0), the ring's corner, at the element's position, the terrain starting a cell in. `terrain` is
+a string and `cols` and `rows` integers, each a literal or an expression over the programmable's
+parameters and `@final`s, given once each in any order.
+
+When a parameter they use changes, through a `@final` too, the map is made again in place (the same
+`bh.base.TileMap`), in an incremental build and in a codegen instance alike, as a `staticRef` is built
+again: a loop variable is fixed when built, and in a `repeatable` whose count is a parameter such a
+change is refused (`untracked_param`), the body being built as a whole there. A literal `cols` or `rows` below 1
+and a missing or repeated argument are parse errors; a terrain the tileset has not (`tilemap_terrain`,
+naming its terrains), a size below 1 cell (`tilemap_size`) and a tileset that is not there
+(`missing_ref`) are `BuilderError`s that begin `tilemap(fill(…))`. From code:
+`builder.buildTilemapFill("plains", "dirt", 6, 4)` (an imported tileset's: `buildTilemapFill("plains",
+"dirt", 6, 4, "tiles")`) and `builder.refillTilemap(map, "water", 6, 4)`. A hot reload of its file
+makes a fill again, of its terrain and size, from the tileset as it is then.
+
 ### From code
 
 ```haxe

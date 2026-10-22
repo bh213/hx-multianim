@@ -5425,7 +5425,7 @@ class MultiAnimBuilder {
 
 	/** Collect param refs from node types whose ReferenceableValues live in the enum payload
 	 *  rather than in children (DYNAMIC_REF, STATIC_REF, INTERACTIVE, STATEANIM,
-	 *  STATEANIM_CONSTRUCT). Used only by the @switch arm to feed `switchParamRefs` so
+	 *  STATEANIM_CONSTRUCT, TILEMAP_FILL). Used only by the @switch arm to feed `switchParamRefs` so
 	 *  setParameter on a param flowing into one of those nodes triggers the arm rebuild
 	 *  (incrementalMode is forced false inside an arm, so trackDynamicRef / markParamUntracked
 	 *  do not fire there; without this pass, setParameter would silently no-op). */
@@ -5465,6 +5465,10 @@ class MultiAnimBuilder {
 						}
 					}
 				}
+			case TILEMAP_FILL(_, _, terrain, cols, rows):
+				gatherInto(terrain);
+				gatherInto(cols);
+				gatherInto(rows);
 			default:
 		}
 		if (node.children != null) {
@@ -5529,6 +5533,11 @@ class MultiAnimBuilder {
 				for (value in parameters)
 					collectParamRefs(value, staticRefs);
 				addRefs(staticRefs);
+			case TILEMAP_FILL(_, _, terrain, cols, rows):
+				// made again by the wrapper's rebuild, as a staticRef is
+				collectParamRefs(terrain, refs);
+				collectParamRefs(cols, refs);
+				collectParamRefs(rows, refs);
 			default:
 		}
 		// Position refs
@@ -6606,6 +6615,11 @@ class MultiAnimBuilder {
 			case TILEMAP_REF(extRef, mapName):
 				skipChildren = true;
 				HeapsObject(extRef == null ? buildTilemap(mapName) : importedBuilder(extRef, node).buildTilemap(mapName));
+			case TILEMAP_FILL(extRef, tileset, terrain, cols, rows):
+				skipChildren = true;
+				final map = buildTilemapFill(tileset, resolveAsString(terrain), resolveAsInteger(cols), resolveAsInteger(rows), extRef, node);
+				trackTilemapFill(node, map, terrain, cols, rows);
+				HeapsObject(map);
 			case ATLAS2(_): throw builderErrorAt(node, 'atlas2 is a definition node, not a renderable element');
 			case DATA(_): throw builderErrorAt(node, 'data is a definition node, not a renderable element');
 
@@ -9018,9 +9032,14 @@ class MultiAnimBuilder {
 	/**
 	 * Reads a map built from this file again (a hot reload): its rows, tileset and decor; the actors
 	 * stay. A map already read from this builder's parse (built by it, or refreshed already) is left
-	 * as it is, its changes with it: there is nothing new to read.
+	 * as it is, its changes with it: there is nothing new to read. A fill has no rows to read: it is
+	 * made again of its terrain and size from the tileset as it is now.
 	 */
 	public function refreshTilemap(map:bh.base.TileMap):Void {
+		if (map.sourceDef.fill == true) {
+			refreshTilemapFill(map);
+			return;
+		}
 		final tm = getTilemapDef(map.mapName);
 		if (map.sourceDef == tm.def)
 			return;
@@ -9028,6 +9047,122 @@ class MultiAnimBuilder {
 		try map.setSource(tm.def, parts.tileset, parts.tiles) catch (e:BuilderError)
 			throw builderErrorAt(tm.node, e.message, e.code);
 		map.setDecor(buildTilemapDecor(tm.node));
+	}
+
+	/**
+	 * A fill read again (a hot reload of its file): made again from the tileset as this builder has it,
+	 * of the terrain and size it has now. A fill already made from that tileset (built by this builder:
+	 * a screen loaded again) is left as it is, its changes with it.
+	 */
+	function refreshTilemapFill(map:bh.base.TileMap):Void {
+		final current = map.sourceDef;
+		if (importedBuilder(current.tilesetImport).getTilesetDef(current.tileset).def == map.tileset)
+			return;
+		final def = tilemapFillDef(current.tileset, current.tilesetImport, current.legend.get(FILL_CELL) ?? "", current.width - 2,
+			current.height - 2, null);
+		final parts = tilemapParts(map.mapName, null, def);
+		map.setSource(def, parts.tileset, parts.tiles);
+	}
+
+	/** The character a fill's terrain is written with in the rows it is made of (a space is its ring of none). */
+	static inline final FILL_CELL = "x";
+
+	/**
+	 * `tilemap(fill(tileset, terrain: t, cols: c, rows: r))`: a map of a tileset of this file, or of the
+	 * import `tilesetImport` names, made here: `cols` by `rows` cells of `terrain` in a ring of `none`,
+	 * (cols + 2) by (rows + 2) cells, so the terrain's edges are drawn as a written map's are. Its cell
+	 * (0, 0) is the ring's corner; the terrain starts a cell in. Checked as a written map is, said at
+	 * `node` when given: a terrain the tileset has not (`tilemap_terrain`), a side below one cell
+	 * (`tilemap_size`).
+	 */
+	public function buildTilemapFill(tileset:String, terrain:String, cols:Int, rows:Int, ?tilesetImport:String, ?node:Node):bh.base.TileMap {
+		final def = tilemapFillDef(tileset, tilesetImport, terrain, cols, rows, node);
+		final name = tilesetImport != null ? 'fill(external($tilesetImport), $tileset)' : 'fill($tileset)';
+		final parts = tilemapParts(name, node, def);
+		return new bh.base.TileMap(name, sourceName, def, parts.tileset, parts.tiles);
+	}
+
+	/**
+	 * A fill made again for new values of its terrain and size (a parameter of its programmable changed):
+	 * drawn again as its chunks are next in view. The same values leave it as it is, changes the game
+	 * made to its cells with it.
+	 */
+	public function refillTilemap(map:bh.base.TileMap, terrain:String, cols:Int, rows:Int, ?node:Node):Void {
+		final current = map.sourceDef;
+		if (current.fill != true)
+			throw builderErrorAt(node, 'tilemap ${map.mapName} is not a fill: tilemap(fill(…)) makes one', "tilemap_fill");
+		if (current.width == cols + 2 && current.height == rows + 2 && current.legend.get(FILL_CELL) == terrain)
+			return;
+		final def = tilemapFillDef(current.tileset, current.tilesetImport, terrain, cols, rows, node);
+		final parts = tilemapParts(map.mapName, node, def);
+		map.setSource(def, parts.tileset, parts.tiles);
+	}
+
+	/** The rows a fill is made of: a ring of none, the terrain inside it. */
+	function tilemapFillDef(tileset:String, tilesetImport:Null<String>, terrain:String, cols:Int, rows:Int, node:Null<Node>):TilemapDef {
+		final what = 'tilemap(fill(${tilesetImport != null ? 'external($tilesetImport), ' : ""}$tileset, terrain: $terrain, cols: $cols, rows: $rows))';
+		if (cols < 1 || rows < 1)
+			throw builderErrorAt(node, '$what: a fill is 1 cell or more a side', "tilemap_size");
+		final ts = try importedBuilder(tilesetImport, node).getTilesetDef(tileset).def catch (e:BuilderError)
+			throw builderErrorAt(node, '$what: ${e.message}', e.code);
+		final names = [for (t in ts.terrains) t.name];
+		if (!names.contains(terrain))
+			throw builderErrorAt(node, '$what: tileset $tileset has no terrain $terrain (${names.length > 0 ? names.join(", ") : "it has no terrain"})', "tilemap_terrain");
+		final ring = StringTools.rpad("", " ", cols + 2);
+		final inside = " " + StringTools.rpad("", FILL_CELL, cols) + " ";
+		return {
+			tileset: tileset,
+			tilesetImport: tilesetImport,
+			width: cols + 2,
+			height: rows + 2,
+			legend: [FILL_CELL => terrain, " " => "none"],
+			terrain: [for (cy in 0...rows + 2) cy == 0 || cy == rows + 1 ? ring : inside],
+			levels: [],
+			levelLegend: new Map(),
+			levelPlatforms: new Map(),
+			layers: [],
+			marks: [],
+			fill: true,
+		};
+	}
+
+	/**
+	 * A fill whose terrain or size uses the programmable's parameters, in an incremental build: made
+	 * again in place (`refillTilemap`) when one of them changes. A `@final` follows the parameters it
+	 * uses; loop variables are fixed at build time, so a fill using only those and literals is left as
+	 * built, as a staticRef is (`trackStaticRefRebuild`); codegen does the same.
+	 */
+	function trackTilemapFill(node:Node, map:bh.base.TileMap, terrain:ReferenceableValue, cols:ReferenceableValue, rows:ReferenceableValue):Void {
+		final ctx = incrementalContext;
+		if (!incrementalMode || ctx == null)
+			return;
+		final names:Array<String> = [];
+		collectParamRefs(terrain, names);
+		collectParamRefs(cols, names);
+		collectParamRefs(rows, names);
+		final refs:Array<String> = [];
+		for (n in expandFinalAliases(names))
+			if (ctx.hasParameter(n) && refs.indexOf(n) < 0)
+				refs.push(n);
+		if (refs.length == 0)
+			return;
+		// Loop variables and nested @finals are gone by the time a parameter changes: keep their
+		// values from now, under the context's live parameters.
+		final scope = indexedParams.copy();
+		ctx.trackExpression(() -> {
+			final live = scope.copy();
+			for (k => v in indexedParams)
+				live.set(k, v);
+			final saved = indexedParams;
+			indexedParams = live;
+			try {
+				refillTilemap(map, resolveAsString(terrain), resolveAsInteger(cols), resolveAsInteger(rows), node);
+			} catch (e:Dynamic) {
+				indexedParams = saved;
+				throw e;
+			}
+			indexedParams = saved;
+		}, refs, map);
 	}
 
 	/**
@@ -9069,7 +9204,7 @@ class MultiAnimBuilder {
 		return imported;
 	}
 
-	function tilemapParts(name:String, node:Node, def:TilemapDef):{tileset:TilesetDef, tiles:bh.base.TileMap.TileMapTiles} {
+	function tilemapParts(name:String, node:Null<Node>, def:TilemapDef):{tileset:TilesetDef, tiles:bh.base.TileMap.TileMapTiles} {
 		final tsBuilder = importedBuilder(def.tilesetImport, node);
 		final ts = tsBuilder.getTilesetDef(def.tileset).def;
 		final tiles:bh.base.TileMap.TileMapTiles = {
@@ -9083,7 +9218,7 @@ class MultiAnimBuilder {
 	}
 
 	/** What the parse cannot know, since the tileset may be in another file: every name the map uses is there, and every rise has its cliff. */
-	function checkTilemap(name:String, node:Node, def:TilemapDef, ts:TilesetDef, tiles:bh.base.TileMap.TileMapTiles):Void {
+	function checkTilemap(name:String, node:Null<Node>, def:TilemapDef, ts:TilesetDef, tiles:bh.base.TileMap.TileMapTiles):Void {
 		function has(sheet:String, cell:String):Bool {
 			final frames = try tiles.frames(sheet, cell) catch (e:Dynamic)
 				throw builderErrorAt(node, 'tilemap $name: sheet $sheet cannot be loaded: ${Std.string(e)}', "tilemap_sheet");
@@ -10103,7 +10238,7 @@ class MultiAnimBuilder {
 
 	/** Walk a subtree and mark `$param` refs inside slots that the fallback-build path leaves
 	 *  unwired (INTERACTIVE id/metadata, STATEANIM/STATEANIM_CONSTRUCT selectors + animName/fps,
-	 *  DYNAMIC_REF/STATIC_REF target + parameters, plus per-node pos / scale / rotation / alpha
+	 *  DYNAMIC_REF/STATIC_REF target + parameters, TILEMAP_FILL terrain and size, plus per-node pos / scale / rotation / alpha
 	 *  / tint / filter and the other body type-specific RVs) as untracked on `ctx`. Used when
 	 *  the main build walk runs with `incrementalMode=false` — e.g. children of a param-dependent
 	 *  repeat — so `trackIncrementalExpressions` (the normal caller of ctx.markParamUntracked)
@@ -10176,6 +10311,10 @@ class MultiAnimBuilder {
 				if (parameters != null)
 					for (_ => value in parameters)
 						markRefs(value, "param-dep repeat: staticRef parameter");
+			case TILEMAP_FILL(_, _, terrain, cols, rows):
+				markRefs(terrain, "param-dep repeat: tilemap fill terrain");
+				markRefs(cols, "param-dep repeat: tilemap fill cols");
+				markRefs(rows, "param-dep repeat: tilemap fill rows");
 			default:
 		}
 		// Position + extended-form refs on the node itself — body-only props have no rebuild

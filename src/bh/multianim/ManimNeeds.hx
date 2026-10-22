@@ -872,6 +872,10 @@ class ManimNeedsTools {
 					scopes.pop();
 				}
 			case POINT | PIXELS(_) | TILEGROUP | RELATIVE_LAYOUTS(_) | PATHS(_) | ANIMATED_PATH(_) | CURVES(_) | APPLY | LAYERS | GRAPHICS(_) | TILEMAP_REF(_, _) | DATA(_) | SLOT_CONTENT:
+			case TILEMAP_FILL(_, _, terrain, cols, rows):
+				// as tilemap(name): the tileset's sheets and autotiles are listed with the tileset (an
+				// import's in the import's own needs); a terrain is a name in it, not a sheet's
+				rv(terrain); rv(cols); rv(rows);
 			case SLOT(parameters, _): params(parameters);
 		}
 		for (c in node.children)

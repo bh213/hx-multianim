@@ -4103,7 +4103,7 @@ class ProgrammableCodeGen {
 
 	/** Walk a subtree and record `$param` refs inside slots that the param-dep-repeat fallback
 	 *  leaves unwired (INTERACTIVE id/metadata, STATEANIM/STATEANIM_CONSTRUCT selectors +
-	 *  animName/fps, DYNAMIC_REF/STATIC_REF target + parameters, per-node pos / scale / rotation
+	 *  animName/fps, DYNAMIC_REF/STATIC_REF target + parameters, TILEMAP_FILL terrain and size, per-node pos / scale / rotation
 	 *  / alpha / tint / filter, and child conditional refs — codegen's rebuildRepeatEntries
 	 *  only re-fires when the count itself changes). The normal processChildren walk calls
 	 *  recordUntrackedParams inline for each kind, but generateRuntimeChildExprs (the param-
@@ -4160,6 +4160,10 @@ class ProgrammableCodeGen {
 				if (parameters != null)
 					for (_ => value in parameters)
 						filterAndRecord(collectParamRefs(value), "param-dep repeat: staticRef parameter");
+			case TILEMAP_FILL(_, _, terrain, cols, rows):
+				filterAndRecord(collectParamRefs(terrain), "param-dep repeat: tilemap fill terrain");
+				filterAndRecord(collectParamRefs(cols), "param-dep repeat: tilemap fill cols");
+				filterAndRecord(collectParamRefs(rows), "param-dep repeat: tilemap fill rows");
 			default:
 		}
 		// Conditional refs: codegen rebuilds only on count change, so conditional gates inside
@@ -4817,6 +4821,9 @@ class ProgrammableCodeGen {
 
 			case TILEMAP_REF(extRef, mapName):
 				generateTilemapCreate(fieldName, extRef, mapName);
+
+			case TILEMAP_FILL(extRef, tileset, terrain, cols, rows):
+				generateTilemapFillCreate(fieldName, extRef, tileset, terrain, cols, rows);
 
 			default: null;
 		};
@@ -6766,6 +6773,33 @@ class ProgrammableCodeGen {
 			createExprs: [macro $fieldRef = this._pb.buildTilemap($v{mapName}, $v{extRef})],
 			isContainer: false,
 			exprUpdates: [],
+		};
+	}
+
+	/** `tilemap(fill(…))`: the builder makes the map at run time, and makes it again when a param its
+	 *  terrain or size uses changes (loop variables of an unrolled repeat are constants here).
+	 *  Builder parity: MultiAnimBuilder.trackTilemapFill. */
+	static function generateTilemapFillCreate(fieldName:String, extRef:Null<String>, tileset:String, terrain:ReferenceableValue,
+			cols:ReferenceableValue, rows:ReferenceableValue):CreateResult {
+		final fieldRef = macro $p{["this", fieldName]};
+		final terrainExpr = rvToExpr(terrain, true);
+		final colsExpr = rvToExprInt(cols);
+		final rowsExpr = rvToExprInt(rows);
+		final refs:Array<String> = [];
+		for (rv in [terrain, cols, rows])
+			for (r in collectParamRefs(rv))
+				if (refs.indexOf(r) < 0) refs.push(r);
+		return {
+			fieldType: macro :bh.base.TileMap,
+			createExprs: [macro $fieldRef = this._pb.buildTilemapFill($v{tileset}, $terrainExpr, $colsExpr, $rowsExpr, $v{extRef})],
+			isContainer: false,
+			exprUpdates: refs.length == 0 ? [] : [
+				{
+					fieldName: fieldName,
+					updateExpr: macro this._pb.refillTilemap($fieldRef, $terrainExpr, $colsExpr, $rowsExpr),
+					paramRefs: refs,
+				}
+			],
 		};
 	}
 
@@ -9506,7 +9540,7 @@ class ProgrammableCodeGen {
 	/** Recursively collect every param ref reachable from an arm subtree — used at codegen
 	 *  time to gate the per-switch rebuild block in _applyVisibility. Walks: conditional
 	 *  keys & values, RVs in node payloads (BITMAP/TEXT/NINEPATCH/GRAPHICS/PIXELS/REPEAT/
-	 *  INTERACTIVE/DYNAMIC_REF/STATIC_REF/STATEANIM[_CONSTRUCT]), pos/scale/rotation/alpha/
+	 *  INTERACTIVE/DYNAMIC_REF/STATIC_REF/STATEANIM[_CONSTRUCT]/TILEMAP_FILL), pos/scale/rotation/alpha/
 	 *  tint/filter, and recurses into node.children. Mirrors the runtime
 	 *  MultiAnimBuilder.collectChildConditionalParamRefs + collectNodeParamRefs +
 	 *  collectSwitchArmExtraParamRefs union. Over-collection is safe (just causes a few
@@ -9585,6 +9619,10 @@ class ProgrammableCodeGen {
 				case DYNAMIC_REF(_, programmableRef, parameters) | STATIC_REF(_, programmableRef, parameters):
 					collectParamRefsImpl(programmableRef, refs);
 					if (parameters != null) for (_ => v in parameters) collectParamRefsImpl(v, refs);
+				case TILEMAP_FILL(_, _, terrain, cols, rows):
+					collectParamRefsImpl(terrain, refs);
+					collectParamRefsImpl(cols, refs);
+					collectParamRefsImpl(rows, refs);
 				case STATEANIM(_, initialState, selector):
 					collectParamRefsImpl(initialState, refs);
 					if (selector != null) for (_ => v in selector) collectParamRefsImpl(v, refs);

@@ -4068,19 +4068,32 @@ class MacroManimParser {
 						return n;
 					default: // tilemap(name) or tilemap(external(file), name): places a map
 						expect(TOpen);
-						var extRef:Null<String> = null;
-						switch (peek()) {
-							case TIdentifier(s2) if (isKeyword(s2, "external")):
-								advance();
-								expect(TOpen);
-								extRef = expectIdentifierOrString();
-								expect(TClosed);
-								expect(TComma);
-							default:
+						// tilemap(fill(…)): a map of one terrain made here (a map may be named fill: then no "(" follows)
+						final isFill = switch [peek(), tpos + 1 < tokens.length ? tokens[tpos + 1].type : TEof] {
+							case [TIdentifier(f), TOpen] if (isKeyword(f, "fill")): true;
+							default: false;
+						};
+						if (isFill) {
+							advance();
+							final fill = parseTilemapFill();
+							expect(TClosed);
+							createNode(TILEMAP_FILL(fill.extRef, fill.tileset, fill.terrain, fill.cols, fill.rows), parent, conditional, scale, rotation, alpha, tint,
+								layerIndex, updatableName);
+						} else {
+							var extRef:Null<String> = null;
+							switch (peek()) {
+								case TIdentifier(s2) if (isKeyword(s2, "external")):
+									advance();
+									expect(TOpen);
+									extRef = expectIdentifierOrString();
+									expect(TClosed);
+									expect(TComma);
+								default:
+							}
+							final mapName = expectIdentifierOrString();
+							expect(TClosed);
+							createNode(TILEMAP_REF(extRef, mapName), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 						}
-						final mapName = expectIdentifierOrString();
-						expect(TClosed);
-						createNode(TILEMAP_REF(extRef, mapName), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 				}
 
 			case TIdentifier(s) if (isKeyword(s, "autotile")):
@@ -7770,6 +7783,58 @@ class MacroManimParser {
 			eatComma();
 		}
 		return metadata;
+	}
+
+	/**
+		`fill([external(imp),] tileset, terrain: t, cols: c, rows: r)` of `tilemap(…)`, after `fill`: the
+		three given once each, in any order. A literal size below one cell is known here; the terrain is
+		checked by the builder, since the tileset may be in another file.
+	**/
+	function parseTilemapFill():{extRef:Null<String>, tileset:String, terrain:ReferenceableValue, cols:ReferenceableValue, rows:ReferenceableValue} {
+		expect(TOpen);
+		var extRef:Null<String> = null;
+		switch (peek()) {
+			case TIdentifier(s) if (isKeyword(s, "external")):
+				advance();
+				expect(TOpen);
+				extRef = expectIdentifierOrString();
+				expect(TClosed);
+				expect(TComma);
+			default:
+		}
+		final tileset = expectIdentifierOrString();
+		var terrain:Null<ReferenceableValue> = null;
+		var cols:Null<ReferenceableValue> = null;
+		var rows:Null<ReferenceableValue> = null;
+		while (match(TComma)) {
+			switch (peek()) {
+				case TIdentifier(w) if (isKeyword(w, "terrain")):
+					if (terrain != null) error('tilemap(fill($tileset)): terrain: given twice');
+					advance();
+					expect(TColon);
+					terrain = parseStringOrReference();
+				case TIdentifier(w) if (isKeyword(w, "cols") || isKeyword(w, "rows")):
+					final isCols = isKeyword(w, "cols");
+					if ((isCols ? cols : rows) != null) error('tilemap(fill($tileset)): $w: given twice');
+					advance();
+					expect(TColon);
+					final value = parseIntegerOrReference();
+					switch (value) {
+						case RVInteger(n) if (n < 1): error('tilemap(fill($tileset)): $w: is $n; a fill is 1 cell or more a side');
+						default:
+					}
+					if (isCols) cols = value else rows = value;
+				default:
+					error('tilemap(fill($tileset)): expected terrain:, cols: or rows:, got ${peek()}');
+			}
+		}
+		expect(TClosed);
+		final t = terrain;
+		final c = cols;
+		final r = rows;
+		if (t == null || c == null || r == null)
+			return error('tilemap(fill($tileset)) needs terrain:, cols: and rows:');
+		return {extRef: extRef, tileset: tileset, terrain: t, cols: c, rows: r};
 	}
 
 	/** `#name tilemap { … }`, after its `{`; decor is parsed into the map's node as children. **/

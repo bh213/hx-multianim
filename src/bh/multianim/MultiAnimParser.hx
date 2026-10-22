@@ -1095,6 +1095,8 @@ typedef TilemapDef = {
 	var marks:Array<TilemapMarkDef>;
 	/** Where the map is defined in its file (the DevBridge's `map_list` says it). **/
 	var ?line:Int;
+	/** Made by `tilemap(fill(…))` where it is placed, not read from a `#name tilemap`: its parameters make it again, a reload never reads it. **/
+	var ?fill:Bool;
 }
 
 @:nullSafety
@@ -1325,6 +1327,10 @@ enum NodeType {
 	TILESET(tilesetDef:TilesetDef);
 	TILEMAP(tilemapDef:TilemapDef);
 	TILEMAP_REF(externalReference:Null<String>, name:String);
+	/** `tilemap(fill([external(imp),] tileset, terrain: t, cols: c, rows: r))`: a map of the tileset made
+	 *  where it is placed, `cols` by `rows` cells of one terrain in a ring of `none`, so its edges are
+	 *  drawn as a written map's are. `terrain` a string, `cols` and `rows` integers, any of them `$params`. */
+	TILEMAP_FILL(externalReference:Null<String>, tileset:String, terrain:ReferenceableValue, cols:ReferenceableValue, rows:ReferenceableValue);
 	ATLAS2(atlas2Def:Atlas2Def);
 	DATA(dataDef:DataDef);
 	SLOT(parameters:Null<ParametersDefinitions>, paramOrder:Null<Array<String>>);

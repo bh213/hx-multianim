@@ -540,6 +540,31 @@ class ManimNeedsTest extends utest.Test {
 	}
 
 	@Test
+	public function testAFillNeedsItsTilesetsSheetsAsAPlacedMapDoes() {
+		// tilemap(fill(…)) of a tileset of this file: the tileset's atlas with its cells and its
+		// autotiles' files, as for tilemap(name); of an imported tileset: the import, whose own
+		// needs list the rest. A terrain is a name in the tileset, not a sheet's: nothing more.
+		final n = needs('import "world.manim" as "world"
+			#dirt autotile { format: corner tileSize: 8 file: "dirt.png" }
+			#ts tileset {
+				tileSize: 8
+				atlas: "terrain"
+				terrain grass { cells: "grass" }
+				terrain dirt { autotile: dirt }
+			}
+			#patch programmable(terrain:[grass, dirt]=grass, cols:uint=6, rows:uint=4) {
+				tilemap(fill(ts, terrain: $$terrain, cols: $$cols, rows: $$rows)): 0, 0
+				tilemap(fill(external("world"), ts, terrain: stone, cols: 2, rows: 2)): 0, 60
+			}
+		');
+		Assert.same(["terrain"], keys(n.sheets));
+		Assert.same(["grass"], cells(n, "terrain"));
+		Assert.same(["dirt.png"], n.tiles);
+		Assert.equals("world.manim", n.imports.get("world"));
+		Assert.isFalse(n.fromParameters);
+	}
+
+	@Test
 	public function testAnAnimFilesSheetFramesAndSounds() {
 		final n = animNeeds('
 sheet: "crew"

@@ -282,6 +282,18 @@ class ProgrammableBuilder {
 		return getBuilder().importedBuilder(externalRef).buildTilemap(name);
 	}
 
+	/** Make a fill (`tilemap(fill(…))`): `cols` by `rows` cells of `terrain` of a tileset of this file,
+	 *  or of an imported one, in a ring of none. Used by generated code. */
+	public function buildTilemapFill(tileset:String, terrain:String, cols:Int, rows:Int, ?externalRef:String):bh.base.TileMap {
+		return getBuilder().buildTilemapFill(tileset, terrain, cols, rows, externalRef);
+	}
+
+	/** Make a fill again for new values of its terrain and size; the same values leave it alone.
+	 *  Used by generated code when a parameter they use changes. */
+	public function refillTilemap(map:bh.base.TileMap, terrain:String, cols:Int, rows:Int):Void {
+		getBuilder().refillTilemap(map, terrain, cols, rows);
+	}
+
 	/** Build a state animation from a .anim file.
 	 *  Used by generated code for STATEANIM nodes. */
 	public function buildStateAnim(filename:String, selectorMap:Map<String, String>, initialState:String):AnimationSM {

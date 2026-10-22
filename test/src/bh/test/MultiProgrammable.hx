@@ -868,4 +868,13 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/163-refsSlotsReview/refsSlotsReview.manim", "rsExclIndexedSlot")
 	public var rsExclIndexedSlot;
+
+	@:manim("test/examples/165-tilemapFill/tilemapFill.manim", "fillHere")
+	public var fillHere;
+
+	@:manim("test/examples/165-tilemapFill/tilemapFill.manim", "fillImported")
+	public var fillImported;
+
+	@:manim("test/examples/165-tilemapFill/tilemapFill.manim", "fillFinal")
+	public var fillFinal;
 }
