@@ -7546,7 +7546,8 @@ class MacroManimParser {
 		}
 		if (tileSize == null) error("tileset requires tileSize");
 		if (atlas == null) error("tileset requires atlas");
-		if (terrains.length == 0) error("tileset requires at least one terrain");
+		// A tileset of things to place only (trees, houses, furniture) has no terrain: its maps are
+		// all `none`, with its cells in layers, drawn over another tileset's ground.
 		if (Lambda.exists(rises, r -> r.platform == null) && edge == null && !edges.keys().hasNext())
 			error("a tileset with rises needs edge: the autotile that outlines a higher level");
 		for (edgeTerrain in edges.keys())

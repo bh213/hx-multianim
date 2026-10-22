@@ -12483,9 +12483,6 @@ bh_multianim_MacroManimParser.prototype = {
 		if(atlas == null) {
 			this.error("tileset requires atlas");
 		}
-		if(terrains.length == 0) {
-			this.error("tileset requires at least one terrain");
-		}
 		var tmp;
 		if(Lambda.exists(rises,function(r) {
 			return r.platform == null;

@@ -1890,7 +1890,7 @@ which way a level's side is drawn and what a cell means to the game are all writ
 | `atlas: "sheet"` | The sheet (an atlas2 file or inline block) its named cells come from |
 | `edge: autotile` | The outline of a higher level, drawn along the rim of every level above 0 (not its inside, so the terrains on it show); needed when there are rises |
 | `edge <terrain>: autotile` | The outline where that terrain is on top, in place of `edge`: for a tileset whose cliff rim is drawn with the ground it holds (a rim of stone round grass, another round dirt) |
-| `terrain name { … }` | A terrain, drawn in the order written, bottom first; each is drawn under every terrain after it (its autotile covers their cells too, so what is drawn over it has something under it) |
+| `terrain name { … }` | A terrain, drawn in the order written, bottom first; each is drawn under every terrain after it (its autotile covers their cells too, so what is drawn over it has something under it). A tileset of things to place only (trees, houses, furniture) has none: its maps are all `none` (`legend { " ": none }`), its cells in layers, laid over a map of another tileset's ground |
 | `transition a, b { autotile: … }` | Where terrain `b` meets terrain `a` (or `none`, the map's edge included) and nothing else, this autotile is drawn over `b`'s own there: for a tileset whose edge between those two is its own tile set (grass to water, not grass to anything). `a` is below `b`; one autotile a frame when `b` is animated |
 | `rise n { … }` | How a cell `n` levels above its neighbour is drawn (below) |
 | `rise any { … }` | The same for every number of levels that has no rise of its own: a fence behind a plateau is the same however high it is |

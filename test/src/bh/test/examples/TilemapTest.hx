@@ -154,6 +154,37 @@ class TilemapTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testATilesetOfThingsToPlaceHasNoTerrain() {
+		// A sheet of objects only (trees, houses, furniture), laid over another tileset's ground.
+		final map = builderFromSource('
+			#fp atlas2("$TILESET_PNG") {
+				flower: 16, 8, 8, 8
+				tree: 0, 0, 16, 16
+			}
+			#props tileset {
+				tileSize: 8
+				atlas: "fp"
+				cell flower { }
+				cell tree { size: 2, 2 metadata { wall:bool => true } }
+			}
+			#m tilemap {
+				tileset: props
+				size: 3, 2
+				legend { " ": none }
+				terrain: ["   ", "   "]
+				layer things { legend { "t": tree, "f": flower } rows: ["   ", "t f"] }
+			}
+		').buildTilemap("m");
+		map.redraw();
+		Assert.isNull(map.terrainAt(0, 1), "no ground of its own");
+		Assert.isFalse(map.metadataAt(2, 0).keys().hasNext(), "nothing where nothing is placed");
+		Assert.equals("tree", map.cellAt("things", 0, 1));
+		Assert.equals("flower", map.cellAt("things", 2, 1));
+		Assert.isTrue(map.metadataAt(1, 0).getBoolOrDefault("wall", false), "the tree covers (0, 0) to (1, 1)");
+		Assert.equals(1, (@:privateAccess map.chunks[0].objects : Array<h2d.Object>).length, "the tree among the actors");
+	}
+
+	@Test
 	public function testAnimatedTerrainSwapsItsFrames() {
 		final map = build('#m tilemap { tileset: plains size: 2, 2 legend { "~": water } terrain: ["~~", "~~"] }');
 		// water's two autotiles are its frames, whatever else is drawn under or over them
