@@ -1800,7 +1800,7 @@ class BuilderUnitTest extends BuilderTestBase {
 	}
 
 	@Test
-	public function testIncrementalFinal():Void {
+	public function testIncrementalFinalFollowsTheParamsItUses():Void {
 		final result = buildFromSource("
 			#test programmable(x:uint=5) {
 				@final a = $x * 2
@@ -1812,12 +1812,12 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.equals(20, Std.int(bitmaps[0].tile.width));
 		Assert.equals(10, Std.int(bitmaps[0].tile.height));
 
-		// @final constants are immutable — they are computed once at build time
-		// setParameter("x") should not change @final-derived values
+		// A @final is an alias of its expression: what uses it follows the params the expression
+		// uses, through a chain of finals too (as codegen does)
 		result.setParameter("x", 10);
 		bitmaps = findVisibleBitmapDescendants(result.object);
-		Assert.equals(20, Std.int(bitmaps[0].tile.width));
-		Assert.equals(10, Std.int(bitmaps[0].tile.height));
+		Assert.equals(30, Std.int(bitmaps[0].tile.width));
+		Assert.equals(20, Std.int(bitmaps[0].tile.height));
 	}
 
 	@Test
@@ -6448,6 +6448,42 @@ class BuilderUnitTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testFadeOutContinuesAcrossUnrelatedSetParameter():Void {
+		// The hide twin of the test above: during a fade-out the element is still in the scene,
+		// so presence and the requested visibility differ, and an unrelated setParameter must
+		// leave the fade running rather than remove the element at once.
+		final tm = new bh.base.TweenManager();
+		final builder = builderFromSource('
+			#test programmable(open:bool=true, hover:bool=false) {
+				transition {
+					open: fade(0.5)
+				}
+				@(open=>true) bitmap(generated(color(10, 10, #ff0000))): 0,0
+				@(hover=>true) bitmap(generated(color(4, 4, #0000ff))): 20,0
+			}
+		');
+		builder.tweenManager = tm;
+		final result = builder.buildWithParameters("test", ["open" => true, "hover" => false], null, null, true);
+		var bmp:h2d.Object = null;
+		for (b in findVisibleBitmapDescendants(result.object))
+			if (Std.int(b.tile.width) == 10) bmp = b;
+		Assert.notNull(bmp);
+
+		result.setParameter("open", false);
+		tm.update(0.0);
+		tm.update(0.1);
+		Assert.notNull(bmp.parent, "fading out: still drawn 0.1 s into a 0.5 s fade");
+
+		result.setParameter("hover", true);
+		Assert.notNull(bmp.parent, "an unrelated setParameter must not cut the fade-out short");
+		Assert.isTrue(tm.hasTweens(bmp), "the fade-out tween is still running");
+
+		tm.update(0.6);
+		Assert.isNull(bmp.parent, "the fade-out ends with the bitmap gone");
+		Assert.floatEquals(1.0, bmp.alpha, 0.001, "and its alpha restored for the next show");
+	}
+
+	@Test
 	public function testIncrementalTransitionFadeRecoversAlphaBaselineAfterMidFlightCancel():Void {
 		// Mirror of the codegen-side test below, but exercises IncrementalUpdateContext
 		// via the runtime builder path. Same baseline-poisoning bug pattern: hide tween
@@ -9640,56 +9676,50 @@ class BuilderUnitTest extends BuilderTestBase {
 	}
 
 	@Test
-	public function testSetParameterThrowInsideBatchDoesNotWedgeBatchMode():Void {
-		// A setParameter rejection (unknown_param, invalid_param_value, untracked_param,
-		// typeDesc fallback) inside a beginUpdate batch must unwind batchMode so the
-		// caller can catch the BuilderError and reuse the result. Pre-fix, batchMode
-		// stayed true on every throw path and the next beginUpdate() wedged with
-		// nested_begin_update — a user batch wrapped in their own try/catch couldn't
-		// recover without knowing to call cancelUpdate() explicitly.
+	public function testSetParameterThrowInsideBatchKeepsTheBatchOpen():Void {
+		// A setParameter rejection (unknown_param, invalid_param_value, untracked_param)
+		// inside a beginUpdate batch throws and leaves the batch open, as codegen does: the
+		// values set before and after it are applied by the caller's endUpdate. Closing the
+		// batch on the throw left those values stored but never drawn, and the caller's own
+		// endUpdate then threw unbalanced_end_update.
 		final result = buildFromSource("
-			#test programmable(x:uint=1) {
-				bitmap(generated(color($x * 10, 10, #f00))): 0, 0
+			#test programmable(x:uint=1, y:uint=1) {
+				bitmap(generated(color($x * 10, $y * 10, #f00))): 0, 0
 			}
 		", "test", null, Incremental);
 
 		// Case 1: unknown_param throw inside a batch
 		result.beginUpdate();
+		result.setParameter("x", 5);
 		var caught:Null<bh.multianim.BuilderError> = null;
 		try { result.setParameter("notDeclared", 5); }
 		catch (e:bh.multianim.BuilderError) { caught = e; }
 		Assert.notNull(caught, "Unknown param must still throw");
 		Assert.equals("unknown_param", caught.code);
+		Assert.isTrue(result.batchMode, "the batch stays open after the throw");
+		result.setParameter("y", 3);
 
-		// The wedge: next beginUpdate must succeed, not throw nested_begin_update.
-		var wedge:Null<bh.multianim.BuilderError> = null;
-		try { result.beginUpdate(); }
-		catch (e:bh.multianim.BuilderError) { wedge = e; }
-		Assert.isNull(wedge,
-			"beginUpdate after a caught setParameter throw must not wedge with nested_begin_update; "
-			+ "setParameter must unwind batchMode on its own error paths");
-
-		// The reopened batch should function normally and apply on endUpdate.
-		result.setParameter("x", 7);
-		result.endUpdate();
+		var endError:Null<Dynamic> = null;
+		try { result.endUpdate(); }
+		catch (e:Dynamic) { endError = e; }
+		Assert.isNull(endError, 'the caller\'s endUpdate closes the batch it opened; got $endError');
 		final bitmaps = findVisibleBitmapDescendants(result.object);
-		Assert.equals(70, Std.int(bitmaps[0].tile.width),
-			"Reopened batch after recovery must still apply parameter changes");
+		Assert.equals(50, Std.int(bitmaps[0].tile.width), "x set before the throw is applied by endUpdate");
+		Assert.equals(30, Std.int(bitmaps[0].tile.height), "y set after the throw is applied by endUpdate");
 
-		// Case 2: invalid_param_value throw inside a batch — symmetric recovery.
+		// Case 2: invalid_param_value throw inside a batch: the same contract.
 		result.beginUpdate();
 		var caught2:Null<bh.multianim.BuilderError> = null;
 		try { result.setParameter("x", [1, 2, 3]); }
 		catch (e:bh.multianim.BuilderError) { caught2 = e; }
 		Assert.notNull(caught2);
 		Assert.equals("invalid_param_value", caught2.code);
-
-		var wedge2:Null<bh.multianim.BuilderError> = null;
-		try { result.beginUpdate(); }
-		catch (e:bh.multianim.BuilderError) { wedge2 = e; }
-		Assert.isNull(wedge2,
-			"Same recovery contract applies to invalid_param_value throws");
+		Assert.isTrue(result.batchMode, "the batch stays open after an invalid value too");
+		result.setParameter("x", 7);
 		result.endUpdate();
+		Assert.equals(70, Std.int(findVisibleBitmapDescendants(result.object)[0].tile.width),
+			"the batch goes on and applies on endUpdate");
+		Assert.isFalse(result.batchMode, "endUpdate closed it");
 	}
 
 	// ==================== setParameter value-type validation ====================
@@ -10429,5 +10459,138 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.isNull(retryError, 'retry after a failed load must reach the loader, got: $retryError');
 		Assert.equals(2, attempts, "retry must call loadMultiAnimImpl again");
 		Assert.equals(fixed, retried, "retry must return the freshly loaded builder");
+	}
+
+	// ==================== Conditionals over repeatables, hide/show, and arms that start hidden ====================
+
+	@Test
+	public function testConditionalRepeatWithoutWrapperHidesWhenItsConditionFails():Void {
+		// A repeatable with no step offset and a constant count builds its iterations straight
+		// into the parent. Under a conditional it must still hide and show as one element.
+		final result = buildFromSource("
+			#p programmable(open:bool=true) {
+				@(open=>true) repeatable($i, range(0, 3)) {
+					bitmap(generated(color(4, 4, #f00))): $i * 6, 0
+				}
+				@else text(dd, \"none\", #fff): 0, 0
+			}
+		", "p", null, Incremental);
+		Assert.equals(3, findVisibleBitmapDescendants(result.object).length, "three iterations while open");
+		Assert.equals(0, findAllTextDescendants(result.object).length, "no @else while open");
+
+		result.setParameter("open", false);
+		Assert.equals(0, findVisibleBitmapDescendants(result.object).length, "the iterations hide with their condition");
+		Assert.equals(1, findAllTextDescendants(result.object).length, "the @else shows instead");
+
+		result.setParameter("open", true);
+		Assert.equals(3, findVisibleBitmapDescendants(result.object).length, "the iterations show again");
+		Assert.equals(0, findAllTextDescendants(result.object).length, "and the @else hides");
+	}
+
+	@Test
+	public function testSlotContentInParamRepeatSurvivesHideAndShowOfItsConditional():Void {
+		// Showing a conditional again re-draws what it holds; it must not rebuild a repeatable
+		// whose count did not change while it was hidden, which would throw away its slots.
+		final result = buildFromSource("
+			#p programmable(open:bool=true, n:uint=2) {
+				@(open=>true) layers() {
+					repeatable($i, step($n, dx: 40)) {
+						#cell[$i] slot: 0, 0
+					}
+				}
+			}
+		", "p", null, Incremental);
+		final icon = new h2d.Object();
+		result.getSlot("cell", 0).setContent(icon);
+
+		result.setParameter("open", false);
+		result.setParameter("open", true);
+		final slot = result.getSlot("cell", 0);
+		Assert.isFalse(slot.disposed, "the slot shown again is the slot the content went into");
+		Assert.isTrue(slot.getContent() == icon, "its content survives the hide and show");
+		Assert.notNull(icon.parent, "and is still in the scene");
+
+		result.setParameter("n", 3);
+		Assert.equals(3, [for (i in 0...3) if (result.hasSlot("cell", i)) i].length, "a changed count still rebuilds the repeatable");
+	}
+
+	@Test
+	public function testNestedConditionalInInitiallyHiddenArmUpdatesAfterShow():Void {
+		// An arm hidden at build time is built on its first show; from then on its own
+		// conditionals follow their params as those of an arm shown at build time do.
+		final result = buildFromSource("
+			#p programmable(open:bool=false, tab:[a,b]=a) {
+				@(open=>true) layers() {
+					@(tab=>a) text(dd, \"A\", #fff): 0, 0
+					@else text(dd, \"B\", #fff): 0, 0
+				}
+			}
+		", "p", null, Incremental);
+		Assert.equals(0, findAllTextDescendants(result.object).length, "nothing while closed");
+
+		result.setParameter("open", true);
+		Assert.equals("A", [for (t in findAllTextDescendants(result.object)) t.text].join(","), "tab a on the first show");
+
+		result.setParameter("tab", "b");
+		Assert.equals("B", [for (t in findAllTextDescendants(result.object)) t.text].join(","), "tab b once tab changes");
+
+		result.setParameter("tab", "a");
+		Assert.equals("A", [for (t in findAllTextDescendants(result.object)) t.text].join(","), "and back to tab a");
+	}
+
+	@Test
+	public function testSteppedRepeatPositionsSurviveHideShowAndParamChange():Void {
+		// Showing a conditional again replays the tracked positions under it, and a param change
+		// replays those that use it. Inside a constant-count repeatable they use the loop
+		// variable (gone once the loop ends) and sit at the iteration's step on top of their own
+		// position: both must hold on a replay.
+		final result = buildFromSource("
+			#p programmable(open:bool=true, ox:int=0) {
+				@(open=>true) layers() {
+					repeatable($i, step(3, dx: 20)) {
+						bitmap(generated(color(4, 4, #f00))): $i * 2, 0
+						bitmap(generated(color(6, 6, #0f0))): $ox, 0
+					}
+				}
+			}
+		", "p", null, Incremental);
+		final xs = (w:Int) -> [for (b in findVisibleBitmapDescendants(result.object)) if (Std.int(b.tile.width) == w)
+			Std.int(b.localToGlobal(new h2d.col.Point(0, 0)).x - result.object.localToGlobal(new h2d.col.Point(0, 0)).x)].join(",");
+		Assert.equals("0,22,44", xs(4), "built: step 20 plus $i * 2");
+		Assert.equals("0,20,40", xs(6), "built: step 20 plus $ox");
+
+		result.setParameter("open", false);
+		var err:Dynamic = null;
+		try result.setParameter("open", true) catch (e:Dynamic) err = e;
+		Assert.isNull(err, 'showing it again replays $$i as it was for each iteration; got $err');
+		Assert.equals("0,22,44", xs(4), "shown again: the same places");
+		Assert.equals("0,20,40", xs(6), "shown again: the same places");
+
+		result.setParameter("ox", 5);
+		Assert.equals("5,25,45", xs(6), "a param in the position keeps the step");
+		Assert.equals("0,22,44", xs(4), "and the others stay");
+	}
+
+	@Test
+	public function testParamChangeInShownDeferredArmKeepsItsSlotContent():Void {
+		// A text in an arm hidden at build time follows its param by itself once shown; the
+		// change must not rebuild the whole arm and throw away the content of a slot beside it.
+		final result = buildFromSource("
+			#p programmable(open:bool=false, title:string=\"t\") {
+				@(open=>true) layers() {
+					text(dd, $title, #fff): 0, 0
+					#s slot: 0, 20
+				}
+			}
+		", "p", null, Incremental);
+		result.setParameter("open", true);
+		final icon = new h2d.Object();
+		final slot = result.getSlot("s");
+		slot.setContent(icon);
+
+		result.setParameter("title", "u");
+		Assert.equals("u", [for (t in findAllTextDescendants(result.object)) t.text].join(","), "the text follows its param");
+		Assert.isFalse(slot.disposed, "the slot is the one the content went into");
+		Assert.isTrue(result.getSlot("s").getContent() == icon, "its content survives the param change");
 	}
 }

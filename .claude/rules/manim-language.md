@@ -34,7 +34,7 @@
 | `placeholder(size, source)` | Dynamic placeholder |
 | `staticRef($ref)` | Static embed of another programmable |
 | `dynamicRef($ref, params)` | Dynamic embed with runtime `setParameter()` support. Unnamed sibling sites that refer to the same programmable collide on the map key; `BuilderResult.getDynamicRef("X")` throws on ambiguity. Prefix with `#name` / `#name[$i]` to disambiguate |
-| `#name dynamicRef($ref, params)` / `#name[$i] dynamicRef($ref, params)` | Named dynamic embed — `getDynamicRef("name")` / map key `"name idx"` per iteration. Two explicit `#name` collisions throw at build time |
+| `#name dynamicRef($ref, params)` / `#name[$i] dynamicRef($ref, params)` | Named dynamic embed — `getDynamicRef("name")` / map key `"name idx"` per iteration. Two explicit `#name` collisions throw at build time, except in mutually exclusive arms of one `@()`/`@else`/`@default` chain (also for slots and indexed names; the shown arm's registration answers — `ConditionalArms.exclusive`) |
 | `dynamicRef($paramName, params)` | Dynamic embed where `$paramName` is a parameter naming the target programmable. Full rebuild on template change. `#foo dynamicRef($template)` stays keyed as `"foo"` across template swaps. Only a `string`/enum parameter names one: `dynamicRef($x)`/`staticRef($x)` with `x` of another type is a parse error (a programmable named like such a parameter is placed by its bare name, `dynamicRef(panel)`); a missing target is reported at the site (`missing_ref`) |
 | `#name slot` / `#name[$i] slot` | Swappable container (indexed variant for repeatables) |
 | `#name slot(param:type=default, ...)` | Parameterized slot with visual states |
@@ -51,7 +51,7 @@
 | `graphics(...)` | Vector graphics |
 | `pixels(...)` | Pixel primitives |
 | `particles {...}` | Particle effects |
-| `@final name = expr` | Immutable named constant |
+| `@final name = expr` | Immutable named constant; one that uses `$params` is live (re-evaluated on `setParameter`, both backends) |
 | `#name data {...}` | Static typed data block |
 | `#name atlas2("file") {...}` | Inline sprite atlas |
 | `#name autotile {...}` | Terrain tileset: `format: corner` (16, dual grid) / `blob47` / `cross`; source `file:`+`region:` / `sheet:`+`prefix:` / `sheet:`+`name:` (frames of one indexed name) / `tiles:` / `demo:`; `mapping:` autotile index -> source index, several per index with `\|` (drawn by position), each turned with `flipX`/`flipY`/`rot90`/`rot180`/`rot270`; `margin:`/`spacing:` for a `file:` source with gutters. Build with `builder.buildAutotile(name, grid, ?where, x0 = 0, y0 = 0)` (`x0`, `y0` the cell `grid[0][0]` stands for); single tile `generated(autotile(name, index))` |
@@ -75,7 +75,7 @@
 @(param > 30)             # Strictly greater than
 @(param < 30)             # Strictly less than
 @(param => 10..30)        # Range match (10 <= param <= 30)
-@(param => bit[N])        # Bit flag test (checks if bit N is set)
+@(param => bit[N])        # Bit flag test (checks if bit N is set): flags, int/uint params, loop vars
 @($loopVar => value)      # Match repeatable loop variable (inside repeatable body)
 @($loopVar >= N)          # Range/comparison on loop variable
 @($loopVar < $param)      # Comparison with $param reference (resolved at build time)

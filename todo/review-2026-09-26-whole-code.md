@@ -50,7 +50,7 @@ loop has defects that either lie (report success while nothing happened) or poin
 **The edit-fix-retry loop is misdirected**
 - `ERR-9`, `LSP-6` — errors are positioned at the next token, or at line 0.
 - `CG-33` — codegen type errors point at the library source, not the `.manim`.
-- `BLD-13`, `BLD-14`, `BLD-20`, `BLD-21`, `CG-26`, `PRS-24`, `VFX-27` — messages that name the wrong
+- `BLD-13`, `BLD-20`, `BLD-21`, `CG-26`, `PRS-24`, `VFX-27` — messages that name the wrong
   cause ("reference i does not exist" for a loop variable, "unknown animation 0", "Could not parse
   Press <A> to jump", "Null access").
 
@@ -463,10 +463,13 @@ Found 2026-09-28 while fixing the dialog items (`c388b14`):
   the stock std.manim hover sprites disappear until the pointer leaves and returns. Button returns to
   "hover", `UIRichInteractiveHelper` to hover-if-entered-via-hover. One shared transition function would
   remove six copies.
-- [ ] `UI-63` **P3** **The card hand's draw animation drops the path shape on a closed path** — the
+- [x] `UI-63` **P3** **The card hand's draw animation drops the path shape on a closed path** — the
   tracking draw lerps straight when the raw endpoint is at the origin (UICardHandHelper.hx:760-767),
   where `Path.applyStretch` (used by discard/return/rearrange) falls back to fit-centre
   (MultiAnimPaths.hx:503-533).
+  **FIXED 2026-10-22** on `bugfix/incremental-builder-codegen-parity`: the closed path's shape rides on
+  the straight flight to the slot, for draws and returns alike (both track).
+  `LifecycleReviewTest.testACardReturningOnAClosedPathFollowsItsShapeAndLandsInItsSlot`.
 - [ ] `UI-70` **P2** **A card disabled mid-animation is laid out like a resting card** —
   `setCardEnabled(id, false)` during a draw, discard or rearrange sets `Disabled`, which
   `rearrangeCards`/`applyLayout` do not skip (they skip `Animating`): another draw or discard cuts its
@@ -486,10 +489,13 @@ Found 2026-09-28 while fixing the dialog items (`c388b14`):
   post-build and every later conditional pass re-evaluate it with the loop variable unbound:
   `apply { alpha: 1 - $i * 0.3 }` throws `reference i does not exist` at build (the loop variable is
   reported as a missing parameter), and `@($i => 1) apply { scale: 2 }` is silently reverted.
-- [ ] `BLD-14` **P1** 🤖 **Re-showing a conditional that contains a constant-count `repeatable` throws** —
+- [x] `BLD-14` **P1** 🤖 **Re-showing a conditional that contains a constant-count `repeatable` throws** —
   `addToGraph` replays every tracked expression under the re-shown subtree (:972-996), including
   per-iteration position closures that reference `$i` (:4664-4688); `setParameter("show", true)`
   throws `missing_ref` and the element can never be shown again.
+  **FIXED 2026-10-22** on `bugfix/incremental-builder-codegen-parity`: a tracked expression that uses a
+  loop variable or a nested `@final` keeps its build scope, and the repeat hands its iteration offset to
+  the child's tracked position. `BuilderUnitTest.testSteppedRepeatPositionsSurviveHideShowAndParamChange`.
 - [ ] `BLD-15` **P1** **`center()`/`pivot()` and `align` are lost on `setParameter` and inside
   tilegroups** — the tracked BITMAP closure recomputes the offset from hAlign/vAlign only (:4477-4489),
   and its SolidColor fast path drops the align offset (:4468-4472); the tilegroup BITMAP case has the

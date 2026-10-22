@@ -73,7 +73,14 @@ typedef ReloadableHandle = {
 
 typedef ParamSnapshot = Map<String, ResolvedIndexParameters>;
 typedef SlotSnapshot = Array<{key:SlotKey, content:Null<h2d.Object>, data:Dynamic}>;
-typedef DynamicRefSnapshot = Map<String, ParamSnapshot>;
+/** A dynamicRef child's state under its key: the values set on it, its slots, and its own
+ *  dynamicRefs (captured at every depth). */
+typedef DynamicRefState = {
+	params:ParamSnapshot,
+	slots:SlotSnapshot,
+	dynamicRefs:DynamicRefSnapshot,
+}
+typedef DynamicRefSnapshot = Map<String, DynamicRefState>;
 
 typedef PlaceholderSnapshot = Array<{name:String, index:Null<Int>, object:h2d.Object}>;
 
@@ -350,10 +357,12 @@ class StateSnapshotter {
 		};
 	}
 
+	/** The values the caller gave at build or set through setParameter — not defaults, nor what an
+	 *  enclosing result forwards: an edited default or dynamicRef argument applies after a reload. */
 	public static function captureParams(result:BuilderResult):ParamSnapshot {
 		if (result.incrementalContext == null)
 			return new Map();
-		return result.incrementalContext.snapshotParams();
+		return result.incrementalContext.snapshotSetParams();
 	}
 
 	static function captureSlots(result:BuilderResult):SlotSnapshot {
@@ -381,7 +390,11 @@ class StateSnapshotter {
 		// same snapshot to every writer under the key on the way back.
 		for (name => arr in result.dynamicRefs) {
 			if (arr.length > 0)
-				snapshot.set(name, captureParams(arr[0]));
+				snapshot.set(name, {
+					params: captureParams(arr[0]),
+					slots: captureSlots(arr[0]),
+					dynamicRefs: captureDynamicRefs(arr[0]),
+				});
 		}
 		return snapshot;
 	}
@@ -410,6 +423,41 @@ class StateRestorer {
 	 *  out of the old result, so it runs last, once nothing else can fail. */
 	public static function moveSlotContents(newResult:BuilderResult, snapshot:BuilderResultSnapshot):Void {
 		restoreSlots(newResult, snapshot.slots);
+		restoreDynamicRefSlots(newResult, snapshot.dynamicRefs);
+	}
+
+	/** Lift every captured slot content (of the result and of its dynamicRef children, at every
+	 *  depth) out of the old tree without Heaps' onRemove teardown, before the old tree goes. */
+	public static function detachSlotContents(snapshot:BuilderResultSnapshot):Void {
+		detachSlotList(snapshot.slots);
+		detachDynamicRefSlots(snapshot.dynamicRefs);
+	}
+
+	static function detachSlotList(slots:SlotSnapshot):Void {
+		if (slots == null) return;
+		for (saved in slots)
+			if (saved.content != null)
+				bh.base.HeapsUtils.safeDetach(saved.content);
+	}
+
+	static function detachDynamicRefSlots(refs:DynamicRefSnapshot):Void {
+		if (refs == null) return;
+		for (_ => state in refs) {
+			detachSlotList(state.slots);
+			detachDynamicRefSlots(state.dynamicRefs);
+		}
+	}
+
+	static function restoreDynamicRefSlots(newResult:BuilderResult, refs:DynamicRefSnapshot):Void {
+		if (refs == null || newResult.dynamicRefs == null) return;
+		for (name => state in refs) {
+			final arr = newResult.dynamicRefs.get(name);
+			if (arr == null) continue;
+			for (child in arr) {
+				restoreSlots(child, state.slots);
+				restoreDynamicRefSlots(child, state.dynamicRefs);
+			}
+		}
 	}
 
 	// Clear slot contents from old result so h2d.Objects can be reparented.
@@ -476,10 +524,13 @@ class StateRestorer {
 	static function restoreDynamicRefs(newResult:BuilderResult, drSnapshot:DynamicRefSnapshot):Void {
 		if (drSnapshot == null || newResult.dynamicRefs == null)
 			return;
-		for (name => paramSnap in drSnapshot) {
+		for (name => state in drSnapshot) {
 			final arr = newResult.dynamicRefs.get(name);
 			if (arr != null) {
-				for (dynRef in arr) restoreParams(dynRef, paramSnap);
+				for (dynRef in arr) {
+					restoreParams(dynRef, state.params);
+					restoreDynamicRefs(dynRef, state.dynamicRefs);
+				}
 			}
 		}
 	}

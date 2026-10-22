@@ -98,6 +98,8 @@ class ScreenManager {
 	final configuredScreens:Map<String, UIScreen> = [];
 	final failedScreens:Map<String, String> = [];
 	var builders:Map<hxd.res.Resource, MultiAnimBuilder> = [];
+	// The files this manager watches for hot reload (dispose stops watching them)
+	final watchedResources:Array<hxd.res.Resource> = [];
 	public var tweens(default, null):TweenManager = new TweenManager();
 	/** Paused or not, and how fast the game runs: the DevBridge's pause sets it, a game's own pause
 	 *  and slow motion set it, and services (sound) listen. A signal only; nothing here stops for it. */
@@ -157,10 +159,14 @@ class ScreenManager {
 		#end
 	}
 
-	/** Done with this manager: it no longer hears the window's input and, in a dev build, its
-	 *  DevBridge stops. Screens, sound and tweens are left as they are. */
+	/** Done with this manager: it no longer hears the window's input nor watches its files for hot
+	 *  reload and, in a dev build, its DevBridge stops. Screens, sound and tweens are left as they are. */
 	public function dispose():Void {
 		handler.dispose();
+		// A disposed manager reloads nothing: the files it watched are watched no more
+		for (resource in watchedResources)
+			resource.watch(null);
+		watchedResources.resize(0);
 		#if MULTIANIM_DEV
 		final bridge = devBridge;
 		if (bridge != null) {
@@ -433,8 +439,10 @@ class ScreenManager {
 			if (cached != null)
 				return cached;
 		}
-		if (enableReload)
+		if (enableReload) {
 			resource.watch(() -> onReload(resource));
+			watchedResources.push(resource);
+		}
 
 		var built = loader.loadMultiAnim(resource.entry.path);
 		if (built == null)
@@ -1562,7 +1570,7 @@ class ScreenManager {
 			}
 			final report = hotReloadFile(fileEntry.resource, path, content, startTime);
 			if (report != null)
-				lastReport = report;
+				lastReport = lastReport == null ? report : mergeReloadReports(lastReport, report);
 			#end // hl
 		}
 
@@ -1589,6 +1597,23 @@ class ScreenManager {
 	/** The resource path of every loaded `.manim`, for an error that names what can be reloaded. */
 	public function loadedManimPaths():Array<String> {
 		return [for (resource => _ in builders) resource.entry.path];
+	}
+
+	/** One report for a reload of several files: it fails when any failed (with every file's errors),
+	 *  and lists what each rebuilt — a later file's success no longer hides an earlier failure. */
+	static function mergeReloadReports(a:bh.multianim.dev.HotReload.ReloadReport,
+			b:bh.multianim.dev.HotReload.ReloadReport):bh.multianim.dev.HotReload.ReloadReport {
+		return {
+			success: a.success && b.success,
+			file: a.file + ", " + b.file,
+			fileType: b.fileType,
+			programmablesRebuilt: a.programmablesRebuilt.concat(b.programmablesRebuilt),
+			paramsAdded: a.paramsAdded.concat(b.paramsAdded),
+			needsFullRestart: a.needsFullRestart != null ? a.needsFullRestart : b.needsFullRestart,
+			errors: a.errors.concat(b.errors),
+			rebuiltCount: a.rebuiltCount + b.rebuiltCount,
+			elapsedMs: Math.max(a.elapsedMs, b.elapsedMs),
+		};
 	}
 
 	function unchangedReloadReport(path:String):bh.multianim.dev.HotReload.ReloadReport {
@@ -1750,7 +1775,12 @@ class ScreenManager {
 					}
 				}
 			}
-			updateScreenMode(this.mode);
+			// A screen whose re-entry throws fails the report like one whose load threw
+			try {
+				updateScreenMode(this.mode);
+			} catch (e:Dynamic) {
+				screenErrors.push(makeHotReloadFailError(path, "screen mode", e));
+			}
 			refreshTilemaps();
 
 			// A screen that failed to reload retries on the next reload of the same text.
@@ -1806,7 +1836,29 @@ class ScreenManager {
 		var buildErrors:Array<bh.multianim.dev.HotReload.ReloadError> = replacedErrors.copy();
 		var pendingCallbacks:Array<bh.multianim.dev.HotReload.ReloadReport->Void> = [];
 
+		// A dynamicRef child of another result reloaded here is rebuilt with it (and the kept child
+		// adopts the rebuilt one): rebuilding it on its own first would be thrown away. Its handle is
+		// taken over by the rebuilt child's, or released below when its site is gone.
+		function isUnder(obj:h2d.Object, ancestor:h2d.Object):Bool {
+			var p = obj.parent;
+			while (p != null) {
+				if (p == ancestor) return true;
+				p = p.parent;
+			}
+			return false;
+		}
+		final nestedHandles:Array<bh.multianim.dev.HotReload.ReloadableHandle> = [];
+		for (handle in handles)
+			for (other in handles)
+				if (other != handle && isUnder(handle.result.object, other.result.object)) {
+					nestedHandles.push(handle);
+					break;
+				}
+		final hostResults:Array<BuilderResult> = [];
+
 		for (handle in handles) {
+			if (nestedHandles.contains(handle))
+				continue;
 			final oldResult = handle.result;
 
 			// result.reloadable = false is the documented opt-out
@@ -1861,12 +1913,10 @@ class ScreenManager {
 			bh.multianim.dev.HotReload.ReloadableRegistry.removeSentinel(oldResult.object);
 			hotReloadRegistry.unregister(handle);
 
-			// Lift slot contents out of the old tree without Heaps' onRemove teardown, show the
-			// rebuilt root inside the stable object the game holds, then put the contents into the
-			// new (now live) slots.
-			for (saved in snapshot.slots)
-				if (saved.content != null)
-					bh.base.HeapsUtils.safeDetach(saved.content);
+			// Lift slot contents (the result's and its dynamicRef children's) out of the old tree
+			// without Heaps' onRemove teardown, show the rebuilt root inside the stable object the
+			// game holds, then put the contents into the new (now live) slots.
+			bh.multianim.dev.HotReload.StateRestorer.detachSlotContents(snapshot);
 			final stableObject = oldResult.object;
 			bh.multianim.dev.HotReload.SceneSwapper.nest(stableObject, rebuilt.object, oldResult.devBuilderRootProps);
 			bh.multianim.dev.HotReload.StateRestorer.moveSlotContents(rebuilt, snapshot);
@@ -1880,9 +1930,16 @@ class ScreenManager {
 			// Re-register the stable result (plants sentinel on oldResult.object)
 			oldResult.reloadHandle = hotReloadRegistry.register(path, oldResult, handle.programmableName);
 
+			hostResults.push(oldResult);
+
 			// Listeners that track the result's interactives (screen sync, card-hand resync) see the
-			// rebuilt objects now.
-			oldResult.fireRebuildListeners();
+			// rebuilt objects now. One that throws fails the report (and the same text is tried again)
+			// but stops neither the other listeners' results nor the rest of the reload.
+			try {
+				oldResult.fireRebuildListeners();
+			} catch (e:Dynamic) {
+				buildErrors.push(makeHotReloadFailError(path, handle.programmableName + " rebuild listener", e));
+			}
 
 			// Fire onReload callback if set (for any extra game-side bookkeeping)
 			final reloadCb = oldResult.onReload;
@@ -1898,6 +1955,20 @@ class ScreenManager {
 			}
 
 			rebuiltNames.push(handle.programmableName);
+		}
+
+		// The handle of a nested child the rebuild discarded (its site gone, or its result not taken
+		// over by a kept one) is released: its old tree is out of every live result
+		for (nested in nestedHandles) {
+			if (nested.disposed) continue;
+			var live = false;
+			for (host in hostResults)
+				if (isUnder(nested.result.object, host.object)) {
+					live = true;
+					break;
+				}
+			if (!live && hostResults.length > 0)
+				hotReloadRegistry.unregister(nested);
 		}
 
 		final elapsed = (haxe.Timer.stamp() - startTime) * 1000;

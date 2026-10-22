@@ -69,7 +69,14 @@ class DevBridge implements IDevBridgeHost {
 	static final TRACE_BUFFER_SIZE = 200;
 	var traceBuffer:Array<String> = [];
 	var traceDropped:Int = 0;
-	var originalTrace:Dynamic = null;
+	// Typed (not Dynamic): put back as it was, the same function, not a wrapper of it
+	var originalTrace:Null<(v:Dynamic, ?infos:haxe.PosInfos) -> Void> = null;
+	// This bridge's hook while it is in the chain, and whether it captures (a stopped bridge with
+	// a later bridge's hook on top stays in the chain, passing traces on)
+	var traceHook:Null<(v:Dynamic, ?infos:haxe.PosInfos) -> Void> = null;
+	var traceCapturing:Bool = false;
+	// Bridges whose hooks are in haxe.Log.trace's chain, the latest last
+	static var traceHooks:Array<DevBridge> = [];
 
 	// ---- Error capture ----
 	var errorBuffer:Array<{message:String, stack:String, timestamp:Float}> = [];
@@ -338,16 +345,22 @@ class DevBridge implements IDevBridgeHost {
 	// ---- Trace capture ----
 
 	function installTraceCapture():Void {
+		if (traceCapturing)
+			return;
+		traceCapturing = true;
 		// Once only: a second install would record the hook itself as the "original", and the
-		// hook would call itself on every trace
+		// hook would call itself on every trace. A hook left in the chain (restored while another
+		// bridge's hook sat on top of it) captures again.
 		if (originalTrace != null)
 			return;
 		originalTrace = haxe.Log.trace;
 		var self = this;
-		haxe.Log.trace = (v:Dynamic, ?infos:haxe.PosInfos) -> {
+		final hook = (v:Dynamic, ?infos:haxe.PosInfos) -> {
 			// Call original trace
 			var orig = self.originalTrace;
 			if (orig != null) orig(v, infos);
+			// A bridge that stopped capturing passes traces on only
+			if (!self.traceCapturing) return;
 			// Buffer the message
 			var msg = if (infos != null)
 				'${infos.fileName}:${infos.lineNumber}: $v'
@@ -361,12 +374,27 @@ class DevBridge implements IDevBridgeHost {
 			// Push to connected clients
 			self.pushEvent("trace", {message: msg, timestamp: haxe.Timer.stamp()});
 		};
+		traceHook = hook;
+		traceHooks.push(this);
+		haxe.Log.trace = hook;
 	}
 
+	/** Stops capturing. Several bridges chain their hooks (each calls the trace it replaced): a
+	 *  bridge whose hook has another on top becomes a pass-through — taking it out would take the
+	 *  later ones out too — and the hooks at the top of the chain that no longer capture are taken
+	 *  off, so with every bridge stopped `haxe.Log.trace` is what it was before the first. */
 	function restoreTrace():Void {
-		if (originalTrace != null) {
-			Reflect.setField(haxe.Log, "trace", originalTrace);
-			originalTrace = null;
+		traceCapturing = false;
+		while (traceHooks.length > 0) {
+			final top = traceHooks[traceHooks.length - 1];
+			if (top.traceCapturing) break;
+			// Someone else hooked trace after it: leave the chain as it is
+			if (!Reflect.compareMethods(haxe.Log.trace, top.traceHook)) break;
+			final original = top.originalTrace;
+			if (original != null) haxe.Log.trace = original;
+			top.originalTrace = null;
+			top.traceHook = null;
+			traceHooks.pop();
 		}
 	}
 

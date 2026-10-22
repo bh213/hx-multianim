@@ -671,8 +671,10 @@ class TweenManager {
 		for (handle in handles) {
 			switch handle {
 				case HTween(tween):
-					// a pooled tween is one update() has finished with, its slot not yet closed up
-					if (tween.target == target && !tween.cancelled && !tween.pooled)
+					// a pooled tween is one update() has finished with, its slot not yet closed up;
+					// a completed one is in its own onComplete — it animates nothing either, as a
+					// sequence member that completed (below)
+					if (tween.target == target && !tween.cancelled && !tween.pooled && !tween.completed)
 						return true;
 				// a tween that finished inside a sequence or group still running animates nothing
 				case HSequence(seq):

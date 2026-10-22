@@ -96,9 +96,11 @@ hotReload("sidebar.manim")
   ├─ For each handle:
   │   │
   │   ├─ 1. SNAPSHOT current state
-  │   │   ├─ params: incrementalContext.snapshotParams()
+  │   │   ├─ params: incrementalContext.snapshotSetParams() — only the values given at
+  │   │   │       build or set through setParameter; defaults are left to the new file
   │   │   ├─ slots: each slot's content object + data
-  │   │   ├─ dynamicRefs: recursively capture sub-result params
+  │   │   ├─ dynamicRefs: recursively capture each child's set params, its slots and
+  │   │   │       its own dynamicRefs (not its site's arguments: the new file's apply)
   │   │   └─ placeholders: devCapturedPlaceholders (+ where each one sits now)
   │   │
   │   ├─ 2. BUILD + RESTORE (fallible; the live result is untouched)
@@ -122,9 +124,11 @@ hotReload("sidebar.manim")
   │   │   │     carries them now; game-set x, y, visible and other transforms stay
   │   │   ├─ StateRestorer.moveSlotContents(): contents into the new, now-live slots
   │   │   ├─ oldResult.adoptFrom(newResult) — internals, incrementalContext; the rebuild
-  │   │   │     listeners move to the adopted context; oldResult.object stays the stable node
+  │   │   │     listeners move to the adopted context; oldResult.object stays the stable node;
+  │   │   │     kept SlotHandles and dynamicRef results adopt their rebuilt counterparts
   │   │   ├─ re-register oldResult (new sentinel on oldResult.object)
-  │   │   └─ oldResult.fireRebuildListeners() — screen interactive sync, card-hand resync
+  │   │   └─ oldResult.fireRebuildListeners() — screen interactive sync, card-hand resync;
+  │   │         a listener that throws fails the report, the reload goes on
   │   │
   │   └─ 4. DEFER onReload callback
   │
@@ -137,14 +141,15 @@ hotReload("sidebar.manim")
 Nesting (instead of moving the rebuilt children into the old root) keeps the rebuilt tree whole: its incremental context, conditional parents, root-level `$param` tracking and `@layer` order all point at the rebuilt root, which is live. Hiding and re-showing an element, a root `alpha: $a`, and edits to the root's own `alpha:`/`scale:`/`filter:` therefore reach the screen after a reload. `result.object` is a plain container of the rebuilt root from the first reload on.
 
 **What is preserved:**
-- Parameter values (uint, int, float, bool, string, enum, flags)
-- Slot contents (h2d.Objects reparented to new slots)
+- Parameter values given at build or set through `setParameter` (uint, int, float, bool, string, enum, flags). A parameter left at its default takes the reloaded file's default, so an edited default shows
+- Slot contents (h2d.Objects reparented to new slots), inside `dynamicRef` children too
 - Slot data (arbitrary payload)
 - Placeholder objects (grids, card hands, etc. — reused via PlaceholderReuser)
-- Dynamic ref parameter values (recursively)
+- Values set on `dynamicRef` children through `setParameter`, at any depth. A child's other params take the reloaded file's site arguments, so an edited `dynamicRef` argument shows
 - Scene graph position (stable root stays in parent's child list)
 - Game-applied transforms (x, y, visible, and scale/alpha/rotation the `.manim` root does not declare)
 - Game-held `BuilderResult` reference (same object, updated internals)
+- Game-held `SlotHandle`s and `dynamicRef` results (the same objects, taking the rebuilt ones' internals, so `setContent`/`setParameter` on them reach the live tree)
 - Rebuild listeners registered on the result (fired once after the swap)
 
 **What is NOT preserved:**
@@ -344,10 +349,11 @@ Captures and restores `BuilderResult` state across rebuilds:
 
 | Captured | Restored Via | Notes |
 |----------|-------------|-------|
-| Parameter values | `beginUpdate()` + `setParameter()` + `endUpdate()` | Batch mode; only values that differ from the rebuild's (so `untracked_param` params are never set) |
+| Parameter values | `beginUpdate()` + `setParameter()` + `endUpdate()` | Only the values given at build or set through `setParameter` (`snapshotSetParams`, `-D MULTIANIM_DEV`); batch mode; only values that differ from the rebuild's (so `untracked_param` params are never set) |
 | Slot contents | `reparent to matching new slot` | Matched by `SlotKey`; moved last (`moveSlotContents`), after everything that can fail |
 | Slot data | `newHandle.data = saved.data` | Arbitrary payload |
-| DynamicRef params | Recursive `restoreParams()` | Matched by name |
+| DynamicRef state | Recursive restore of each child's set params, slots and own dynamicRefs | Matched by name; a child's site arguments are not captured, so the reloaded file's apply |
+| Kept handles | `SlotHandle.adoptFrom`, `BuilderResult.adoptFrom` | A handle or child result the game holds takes the rebuilt one's internals under the same key; the discarded child's reload handle is unregistered |
 | Placeholder objects | `PlaceholderReuser.wrapBuilderParams()` | Reused via wrapped BuilderParameters |
 
 **Unsnappable types** (return null, skipped during restore):
@@ -382,6 +388,7 @@ Transfers all internal state from one result to another:
 - `name`, `names`, `interactives`, `layouts`, `palettes`
 - `rootSettings`, `gridCoordinateSystem`, `hexCoordinateSystem`
 - `slots`, `dynamicRefs`, `incrementalContext` (rebuild listeners move to it; `fireRebuildListeners()` runs them)
+- the previous `SlotHandle`s and `dynamicRef` child results stay in the maps: each adopts its rebuilt counterpart under the same key (`SlotHandle.adoptFrom`, recursively `BuilderResult.adoptFrom`), so a handle the game kept is live after the reload
 
 The `object` field is deliberately overwritten back to the stable reference by the caller.
 

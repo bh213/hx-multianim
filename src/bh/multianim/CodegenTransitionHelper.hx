@@ -39,10 +39,7 @@ class CodegenTransitionHelper {
 		// whose target equals newVisible (it converges on its own — replacing it
 		// would jump alpha/scale to 0 and restart). Mirrors IncrementalUpdateContext.
 		dropCancelledTransitions(obj); // before reading visibility: their restore may change it
-		if (obj.visible == newVisible) {
-			final activeTarget = getActiveTransitionTarget(obj);
-			if (activeTarget == null || activeTarget == newVisible) return;
-		}
+		if (convergesAlready(obj, obj.visible, newVisible)) return;
 
 		final spec = transitionSpecs.get(changedParam);
 		if (spec == null || tweenManager == null || spec.match(TransNone)) {
@@ -62,10 +59,7 @@ class CodegenTransitionHelper {
 		dropCancelledTransitions(obj); // before reading presence: their restore may change it
 		final inGraph = obj.parent != null;
 		// See setVisibilityWithTransition above for the direction-aware skip rationale.
-		if (newVisible == inGraph) {
-			final activeTarget = getActiveTransitionTarget(obj);
-			if (activeTarget == null || activeTarget == newVisible) return;
-		}
+		if (convergesAlready(obj, inGraph, newVisible)) return;
 
 		final spec = transitionSpecs.get(changedParam);
 		if (spec == null || tweenManager == null || spec.match(TransNone)) {
@@ -79,6 +73,27 @@ class CodegenTransitionHelper {
 
 		cancelActiveTransition(obj);
 		executePresenceTransition(obj, newVisible, spec, parent, sentinel);
+	}
+
+	/** Before an instant visibility change from a param with no transition: true when a
+	 *  transition already heading to `newVisible` (a fade-out started by a transition param)
+	 *  is in flight, which the caller leaves to run on. Otherwise cancels one heading the
+	 *  other way, its properties restored, and returns false: the caller toggles at once. */
+	public function inFlightToward(obj:h2d.Object, newVisible:Bool):Bool {
+		dropCancelledTransitions(obj);
+		final activeTarget = getActiveTransitionTarget(obj);
+		if (activeTarget == null) return false;
+		if (activeTarget == newVisible) return true;
+		cancelActiveTransition(obj);
+		return false;
+	}
+
+	/** A transition in flight toward `newVisible` converges on its own, whether or not the
+	 *  current state already matches (a fade-out keeps the object shown until it ends); with
+	 *  none in flight, a matching state needs nothing. */
+	function convergesAlready(obj:h2d.Object, shown:Bool, newVisible:Bool):Bool {
+		final activeTarget = getActiveTransitionTarget(obj);
+		return if (activeTarget != null) activeTarget == newVisible else shown == newVisible;
 	}
 
 	public function cancelActiveTransition(obj:h2d.Object):Void {

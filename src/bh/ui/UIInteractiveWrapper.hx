@@ -66,18 +66,23 @@ class UIInteractiveWrapper implements UIElement implements StandardUIElementEven
 		final extracted = extractInteractiveData(obj, prefix);
 		if (extracted.id != id)
 			throw 'UIInteractiveWrapper.rebind: "${extracted.id}" is not "$id"';
+		// Everything that can refuse (an unknown cursor, a cursor key) is resolved before anything
+		// is changed: a refused rebind leaves the wrapper as it was
+		final newMetadata = extracted.metadata;
+		final baseCursor = resolveCursorName(newMetadata.getStringOrDefault("cursor", ""), CursorManager.getDefaultInteractiveCursor());
+		final hoverCursor = resolveCursorName(newMetadata.getStringOrDefault("cursor.hover", ""), baseCursor);
+		final disabledCursor = resolveCursorName(newMetadata.getStringOrDefault("cursor.disabled", ""), CursorManager.getDefaultCursor());
+		validateCursorKeys(newMetadata);
 		final oldMetadataPriority = metadata.getIntOrDefault("eventPriority", 0);
 		interactive = obj;
-		metadata = extracted.metadata;
+		metadata = newMetadata;
 		eventFlags = extracted.eventFlags;
 		final newMetadataPriority = metadata.getIntOrDefault("eventPriority", 0);
 		if (newMetadataPriority != oldMetadataPriority)
 			eventPriority = newMetadataPriority;
-		final baseCursor = resolveCursorName(metadata.getStringOrDefault("cursor", ""), CursorManager.getDefaultInteractiveCursor());
 		cursorDefault = baseCursor;
-		cursorHover = resolveCursorName(metadata.getStringOrDefault("cursor.hover", ""), baseCursor);
-		cursorDisabled = resolveCursorName(metadata.getStringOrDefault("cursor.disabled", ""), CursorManager.getDefaultCursor());
-		validateCursorKeys(metadata);
+		cursorHover = hoverCursor;
+		cursorDisabled = disabledCursor;
 	}
 
 	static function resolveCursorName(name:String, fallback:hxd.Cursor):hxd.Cursor {

@@ -606,6 +606,95 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testCellCardPlayedReachesEachGridOnceWhenAHandlerRemovesACell():Void {
+		// A game removes the cell a card was played on from its CellCardPlayed handler. The
+		// event must reach that grid once, and still reach a second grid on the same hand.
+		var screen = new UITestScreen();
+		var builder = BuilderTestBase.builderFromSource('$CELL_MANIM\n$CARD_MANIM');
+		final factory = new DefaultCellVisualFactory(builder, {cellBuildName: "cell"});
+		var gridA = new UIMultiAnimGrid(builder, {gridType: Rect(50, 50), cellVisualFactory: factory});
+		var gridB = new UIMultiAnimGrid(builder, {gridType: Rect(50, 50), cellVisualFactory: factory});
+		gridA.addRectRegion(2, 2);
+		gridB.addRectRegion(2, 2);
+
+		var cardHand = new UICardHandHelper(screen, builder);
+		gridA.registerAsCardTarget(cardHand);
+		gridB.registerAsCardTarget(cardHand);
+
+		var playedOnA = 0;
+		var cardPlayedSeenByB = 0;
+		gridA.onGridEvent = (event) -> {
+			switch event {
+				case CellCardPlayed(cell, _):
+					playedOnA++;
+					gridA.removeCell(cell.col, cell.row);
+				default:
+			}
+		};
+		gridB.onGridEvent = (event) -> {
+			switch event {
+				case CellCardPlayed(_, _): cardPlayedSeenByB++;
+				default:
+			}
+		};
+
+		@:privateAccess var prefixA = gridA.registeredCardHands[0].targetPrefix;
+		@:privateAccess cardHand.emitEvent(CardHandEvent.CardPlayed("testCard", TargetingResult.TargetZone('${prefixA}_1_0')));
+		Assert.equals(1, playedOnA, "the cell removed from the handler gets CellCardPlayed once");
+		Assert.isFalse(gridA.hasCell(1, 0), "and is gone");
+
+		@:privateAccess var prefixB = gridB.registeredCardHands[0].targetPrefix;
+		@:privateAccess cardHand.emitEvent(CardHandEvent.CardPlayed("testCard", TargetingResult.TargetZone('${prefixB}_0_0')));
+		Assert.equals(1, cardPlayedSeenByB, "the second grid still gets the cards played on it");
+		Assert.equals(1, playedOnA, "and the first grid does not get the second grid's card");
+	}
+
+	@Test
+	public function testCellCardPlayedReachesTheNextGridWhenAHandlerChangesTheFirst():Void {
+		// The hand tells every registered grid of each event. A handler on the first grid that
+		// adds or removes its cells must not make the hand skip the grid after it.
+		var screen = new UITestScreen();
+		var builder = BuilderTestBase.builderFromSource('$CELL_MANIM\n$CARD_MANIM');
+		final factory = new DefaultCellVisualFactory(builder, {cellBuildName: "cell"});
+		var gridA = new UIMultiAnimGrid(builder, {gridType: Rect(50, 50), cellVisualFactory: factory});
+		var gridB = new UIMultiAnimGrid(builder, {gridType: Rect(50, 50), cellVisualFactory: factory});
+		gridA.addRectRegion(2, 2);
+		gridB.addRectRegion(2, 2);
+
+		var cardHand = new UICardHandHelper(screen, builder);
+		gridA.registerAsCardTarget(cardHand);
+		gridB.registerAsCardTarget(cardHand);
+
+		var dragStartsSeenByB = 0;
+		gridA.onGridEvent = (event) -> {};
+		@:privateAccess {
+			// Count what reaches B's chained listener: wrap it in place, keeping its position.
+			final listeners = cardHand.chainedListeners;
+			final bListener = listeners[1];
+			listeners[1] = (e) -> {
+				switch e {
+					case CardDragStart(_): dragStartsSeenByB++;
+					default:
+				}
+				bListener(e);
+			};
+			gridB.registeredCardHands[0].eventListener = listeners[1];
+			// A's listener changes A's cells on a drag start, as a game's handler may.
+			final aListener = listeners[0];
+			listeners[0] = (e) -> {
+				aListener(e);
+				switch e {
+					case CardDragStart(_): gridA.removeCell(0, 0);
+					default:
+				}
+			};
+			gridA.registeredCardHands[0].eventListener = listeners[0];
+			cardHand.emitEvent(CardHandEvent.CardDragStart("testCard"));
+		}
+		Assert.equals(1, dragStartsSeenByB, "the grid after the one whose cells changed still gets the event");
+	}
+
+	@Test
 	public function testCellCardPlayedNotEmittedForForeignTarget():Void {
 		// Card played on a target that doesn't belong to this grid → no event
 		var screen = new UITestScreen();

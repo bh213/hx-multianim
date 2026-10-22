@@ -1,0 +1,428 @@
+package bh.test.examples;
+
+import utest.Assert;
+import bh.test.BuilderTestBase;
+import bh.multianim.BuilderError;
+import bh.multianim.MultiAnimBuilder.BuilderResult;
+
+/**
+ * The builder (incremental) against codegen (@:manim) on the same programmables:
+ * - a layout point picked by a param (`layout(name, $idx)`, with and without `.offset()`)
+ *   follows the param in codegen as in the builder;
+ * - a @final computed from a param follows the param in both backends: in a bitmap, in a
+ *   dynamicRef forward, and as an interactive id (whose param then cannot be set); a repeat
+ *   count from a constant @final keeps the body's own params tracked;
+ * - a @final, a @switch or an unconditional apply between conditionals starts a fresh chain
+ *   for a later @default, in codegen as in the builder;
+ * - `bit[N]` tests int params and loop variables, and comparisons test a flags param's value,
+ *   in the builder as in codegen;
+ * - a @switch arm whose pattern uses a param re-selects when that param changes;
+ * - a value whose apply threw is applied again when it is set again;
+ * - loop variables reach a tileGroup and particles inside a statically unrolled repeat;
+ * - a @final inside a param-dependent repeat body takes each iteration's loop variable.
+ *
+ * Companion fixture: test/examples/164-codegenParityReview/codegenParityReview.manim
+ */
+class CodegenParityReviewTest extends BuilderTestBase {
+	static inline var FIXTURE = "test/examples/164-codegenParityReview/codegenParityReview.manim";
+
+	function createMp():bh.test.MultiProgrammable {
+		return new bh.test.MultiProgrammable(TestResourceLoader.createLoader(false));
+	}
+
+	static function errorOf(fn:Void -> Void):Null<String> {
+		try {
+			fn();
+			return null;
+		} catch (e:Dynamic) {
+			return Std.string(e);
+		}
+	}
+
+	static function offsetToRoot(obj:h2d.Object, root:h2d.Object):{x:Float, y:Float} {
+		var x = 0.0;
+		var y = 0.0;
+		var o:Null<h2d.Object> = obj;
+		while (o != null && o != root) {
+			x += o.x;
+			y += o.y;
+			o = o.parent;
+		}
+		return {x: x, y: y};
+	}
+
+	/** "x,y" of each visible bitmap, relative to the root, in scene-graph order. */
+	static function bitmapPositions(root:h2d.Object):String {
+		return [
+			for (b in BuilderTestBase.findVisibleBitmapDescendants(root)) {
+				final p = offsetToRoot(b, root);
+				Std.int(p.x) + "," + Std.int(p.y);
+			}
+		].join(";");
+	}
+
+	/** x of each visible bitmap relative to the root, sorted. */
+	static function bitmapXs(root:h2d.Object):String {
+		final xs = [for (b in BuilderTestBase.findVisibleBitmapDescendants(root)) Std.int(offsetToRoot(b, root).x)];
+		xs.sort((a, b) -> a - b);
+		return xs.join(",");
+	}
+
+	static function widths(root:h2d.Object):String {
+		final ws = [for (b in BuilderTestBase.findVisibleBitmapDescendants(root)) Std.int(b.tile.width)];
+		ws.sort((a, b) -> a - b);
+		return ws.join(",");
+	}
+
+	static function sizes(root:h2d.Object):String {
+		return [for (b in BuilderTestBase.findVisibleBitmapDescendants(root)) Std.int(b.tile.width) + "x" + Std.int(b.tile.height)].join(";");
+	}
+
+	/** xMin of each tileGroup's baked content in its own space, sorted. */
+	static function tileGroupXMins(root:h2d.Object):String {
+		final out:Array<Int> = [];
+		collectTileGroupXMins(root, out);
+		out.sort((a, b) -> a - b);
+		return out.join(",");
+	}
+
+	static function collectTileGroupXMins(obj:h2d.Object, out:Array<Int>):Void {
+		if (Std.isOfType(obj, h2d.TileGroup)) {
+			final tg:h2d.TileGroup = cast obj;
+			out.push(Std.int(tg.getBounds(tg).xMin));
+		}
+		for (i in 0...obj.numChildren)
+			collectTileGroupXMins(obj.getChildAt(i), out);
+	}
+
+	/** Particle count of every group of every particle system, sorted. */
+	static function particleCounts(root:h2d.Object):String {
+		final out:Array<Int> = [];
+		collectParticleCounts(root, out);
+		out.sort((a, b) -> a - b);
+		return out.join(",");
+	}
+
+	static function collectParticleCounts(obj:h2d.Object, out:Array<Int>):Void {
+		if (Std.isOfType(obj, bh.base.Particles)) {
+			final particles:bh.base.Particles = cast obj;
+			for (group in particles.getGroups())
+				out.push(group.nparts);
+		}
+		for (i in 0...obj.numChildren)
+			collectParticleCounts(obj.getChildAt(i), out);
+	}
+
+	/** errorOf's text of an untracked_param rejection (BuilderError's message names the slots). */
+	static function isUntrackedParamError(err:Null<String>):Bool {
+		return err != null && err.indexOf("incremental-unsupported") >= 0;
+	}
+
+	// ==================== A layout point picked by a param ====================
+
+	@Test
+	public function testLayoutPointByParam_Builder_FollowsTheParam():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "cpLayoutIdx", null, Incremental);
+		Assert.equals("300,200", bitmapPositions(result.object), "builder: on point 1 of cpRow");
+		result.setParameter("idx", 2);
+		Assert.equals("500,200", bitmapPositions(result.object), "builder: on point 2 once idx is 2");
+	}
+
+	@Test
+	public function testLayoutPointByParam_Codegen_FollowsTheParam():Void {
+		final inst:Dynamic = createMp().cpLayoutIdx.create();
+		Assert.equals("300,200", bitmapPositions(cast inst), "codegen: on point 1 of cpRow, not left at 0,0");
+		inst.setParameter("idx", 2);
+		Assert.equals("500,200", bitmapPositions(cast inst), "codegen: on point 2 once idx is 2");
+	}
+
+	@Test
+	public function testLayoutPointByParamWithOffset_Builder_FollowsTheParam():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "cpLayoutIdxOffset", null, Incremental);
+		Assert.equals("305,200", bitmapPositions(result.object), "builder: point 1 of cpRow plus 5");
+		result.setParameter("idx", 2);
+		Assert.equals("505,200", bitmapPositions(result.object), "builder: point 2 plus 5 once idx is 2");
+	}
+
+	@Test
+	public function testLayoutPointByParamWithOffset_Codegen_FollowsTheParam():Void {
+		final inst:Dynamic = createMp().cpLayoutIdxOffset.create();
+		Assert.equals("305,200", bitmapPositions(cast inst), "codegen: point 1 of cpRow plus 5, not left at 0,0");
+		inst.setParameter("idx", 2);
+		Assert.equals("505,200", bitmapPositions(cast inst), "codegen: point 2 plus 5 once idx is 2");
+	}
+
+	// ==================== A @final computed from a param ====================
+
+	@Test
+	public function testParamDependentFinal_Builder_FollowsItsParam():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "cpFinalLive", null, Incremental);
+		Assert.equals("10x10", sizes(result.object), "builder: dbl = x * 2 = 10 wide, y = 10 high");
+		result.setParameter("x", 10);
+		Assert.equals("20x10", sizes(result.object), "builder: setting x makes the @final 20 at once, not on the next unrelated change");
+		result.setParameter("y", 12);
+		Assert.equals("20x12", sizes(result.object), "builder: an unrelated param leaves the @final as it is");
+	}
+
+	@Test
+	public function testParamDependentFinal_Codegen_FollowsItsParam():Void {
+		final inst:Dynamic = createMp().cpFinalLive.create();
+		Assert.equals("10x10", sizes(cast inst), "codegen: dbl = x * 2 = 10 wide, y = 10 high");
+		inst.setParameter("x", 10);
+		Assert.equals("20x10", sizes(cast inst), "codegen: setting x makes the @final 20 at once");
+		inst.setParameter("y", 12);
+		Assert.equals("20x12", sizes(cast inst), "codegen: an unrelated param leaves the @final as it is");
+	}
+
+	@Test
+	public function testDynamicRefForwardThroughFinal_Builder_UpdatesTheChild():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "cpFinalFwd", null, Incremental);
+		Assert.equals("10", widths(result.object), "builder: the child gets v = fw = 10");
+		result.setParameter("x", 10);
+		Assert.equals("20", widths(result.object), "builder: setting x forwards v = fw = 20 to the child");
+	}
+
+	@Test
+	public function testDynamicRefForwardThroughFinal_Codegen_UpdatesTheChild():Void {
+		final inst:Dynamic = createMp().cpFinalFwd.create();
+		Assert.equals("10", widths(cast inst), "codegen: the child gets v = fw = 10");
+		inst.setParameter("x", 10);
+		Assert.equals("20", widths(cast inst), "codegen: setting x forwards v = fw = 20 to the child");
+	}
+
+	@Test
+	public function testRepeatCountFromConstantFinal_Builder_KeepsBodyParamsTracked():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "cpFinalCount", null, Incremental);
+		Assert.equals("0,10,20", bitmapXs(result.object), "builder: N = 3 iterations, 10 apart");
+		final err = errorOf(() -> result.setParameter("ox", 5));
+		Assert.isNull(err, 'builder: a constant @final count is no param, so the body stays incremental and ox can be set; got $err');
+		Assert.equals("5,15,25", bitmapXs(result.object), "builder: every iteration moves by ox and keeps its step");
+	}
+
+	@Test
+	public function testRepeatCountFromConstantFinal_Codegen_KeepsBodyParamsTracked():Void {
+		final inst:Dynamic = createMp().cpFinalCount.create();
+		Assert.equals("0,10,20", bitmapXs(cast inst), "codegen: N = 3 iterations, 10 apart");
+		final err = errorOf(() -> inst.setParameter("ox", 5));
+		Assert.isNull(err, 'codegen: a constant @final count unrolls like a literal one, so ox can be set; got $err');
+		Assert.equals("5,15,25", bitmapXs(cast inst), "codegen: every iteration moves by ox and keeps its step");
+	}
+
+	@Test
+	public function testInteractiveIdFromParamFinal_Builder_RejectsSettingTheParam():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "cpFinalId", null, Incremental);
+		final err = errorOf(() -> result.setParameter("x", 6));
+		Assert.isTrue(isUntrackedParamError(err),
+			'builder: x reaches the frozen interactive id through a @final, so setting it throws untracked_param as it does for an id that names x; got $err');
+	}
+
+	@Test
+	public function testInteractiveIdFromParamFinal_Codegen_RejectsSettingTheParam():Void {
+		final inst:Dynamic = createMp().cpFinalId.create();
+		final err = errorOf(() -> inst.setParameter("x", 6));
+		Assert.notNull(err, "codegen: x reaches the frozen interactive id through a @final, so setting it throws");
+		Assert.stringContains("interactive id", Std.string(err), "codegen: the rejection names the interactive id");
+	}
+
+	// ==================== A chain broken by a @final, a @switch or an apply ====================
+
+	@Test
+	public function testDefaultAfterChainBrokenByFinal_Builder_StartsAFreshChain():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "cpChainFinal", null, Incremental);
+		Assert.equals("4,8", widths(result.object), "builder: a true, and the @default of the chain after the @final shows with b false");
+		result.setParameter("b", true);
+		Assert.equals("4,6", widths(result.object), "builder: b true hides the @default");
+		result.setParameter("b", false);
+		Assert.equals("4,8", widths(result.object), "builder: b false shows it again");
+	}
+
+	@Test
+	public function testDefaultAfterChainBrokenByFinal_Codegen_StartsAFreshChain():Void {
+		final inst:Dynamic = createMp().cpChainFinal.create();
+		Assert.equals("4,8", widths(cast inst), "codegen: the @final starts a fresh chain, so the @default shows with b false although a is true");
+		inst.setParameter("b", true);
+		Assert.equals("4,6", widths(cast inst), "codegen: b true hides the @default");
+		inst.setParameter("b", false);
+		Assert.equals("4,8", widths(cast inst), "codegen: b false shows it again");
+	}
+
+	@Test
+	public function testDefaultAfterChainBrokenBySwitch_Builder_StartsAFreshChain():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "cpChainSwitch", null, Incremental);
+		Assert.equals("4,8,10", widths(result.object), "builder: a true, arm p, and the @default of the chain after the @switch");
+		result.setParameter("m", "q");
+		Assert.equals("4,8,12", widths(result.object), "builder: arm q, the @default still shown");
+	}
+
+	@Test
+	public function testDefaultAfterChainBrokenBySwitch_Codegen_StartsAFreshChain():Void {
+		final inst:Dynamic = createMp().cpChainSwitch.create();
+		Assert.equals("4,8,10", widths(cast inst), "codegen: the @switch starts a fresh chain, so the @default shows with b false although a is true");
+		inst.setParameter("m", "q");
+		Assert.equals("4,8,12", widths(cast inst), "codegen: arm q, the @default still shown");
+	}
+
+	@Test
+	public function testDefaultAfterChainBrokenByApply_Builder_StartsAFreshChain():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "cpChainApply", null, Incremental);
+		Assert.equals("4,8", widths(result.object), "builder: a true, and the @default of the chain after the apply shows with b false");
+	}
+
+	@Test
+	public function testDefaultAfterChainBrokenByApply_Codegen_StartsAFreshChain():Void {
+		final inst:Dynamic = createMp().cpChainApply.create();
+		Assert.equals("4,8", widths(cast inst), "codegen: the unconditional apply starts a fresh chain, so the @default shows with b false although a is true");
+	}
+
+	// ==================== bit[N] and comparisons beyond their usual param types ====================
+
+	@Test
+	public function testBitTestOnIntParam_Builder_TestsTheBit():Void {
+		var result:Null<BuilderResult> = null;
+		final err = errorOf(() -> result = BuilderTestBase.buildFromFile(FIXTURE, "cpBitInt", null, Incremental));
+		Assert.isNull(err, 'builder: bit[N] on an int param tests that bit of its value, as codegen does; got $err');
+		if (result == null) return;
+		Assert.equals("6", widths(result.object), "builder: bits = 4 has bit 2, not bit 0");
+		result.setParameter("bits", 1);
+		Assert.equals("8", widths(result.object), "builder: bits = 1 has bit 0, not bit 2");
+	}
+
+	@Test
+	public function testBitTestOnIntParam_Codegen_TestsTheBit():Void {
+		final inst:Dynamic = createMp().cpBitInt.create();
+		Assert.equals("6", widths(cast inst), "codegen: bits = 4 has bit 2, not bit 0");
+		inst.setParameter("bits", 1);
+		Assert.equals("8", widths(cast inst), "codegen: bits = 1 has bit 0, not bit 2");
+	}
+
+	@Test
+	public function testBitTestOnLoopVariable_Builder_TestsTheBit():Void {
+		var result:Null<BuilderResult> = null;
+		final err = errorOf(() -> result = BuilderTestBase.buildFromFile(FIXTURE, "cpBitLoop", null, Incremental));
+		Assert.isNull(err, 'builder: bit[N] on a loop variable tests that bit of the iteration, as codegen does; got $err');
+		if (result == null) return;
+		Assert.equals("10,30", bitmapXs(result.object), "builder: only the odd iterations draw");
+	}
+
+	@Test
+	public function testBitTestOnLoopVariable_Codegen_TestsTheBit():Void {
+		final inst:Dynamic = createMp().cpBitLoop.create();
+		Assert.equals("10,30", bitmapXs(cast inst), "codegen: only the odd iterations draw");
+	}
+
+	@Test
+	public function testComparisonOnFlagsParam_Builder_ComparesItsValue():Void {
+		var result:Null<BuilderResult> = null;
+		final err = errorOf(() -> result = BuilderTestBase.buildFromFile(FIXTURE, "cpFlagsCmp", null, Incremental));
+		Assert.isNull(err, 'builder: a comparison on a flags param compares its value, as codegen does; got $err');
+		if (result == null) return;
+		Assert.equals("6", widths(result.object), "builder: f = 3 is >= 2");
+		result.setParameter("f", 1);
+		Assert.equals("8", widths(result.object), "builder: f = 1 is < 2");
+	}
+
+	@Test
+	public function testComparisonOnFlagsParam_Codegen_ComparesItsValue():Void {
+		final inst:Dynamic = createMp().cpFlagsCmp.create();
+		Assert.equals("6", widths(cast inst), "codegen: f = 3 is >= 2");
+		inst.setParameter("f", 1);
+		Assert.equals("8", widths(cast inst), "codegen: f = 1 is < 2");
+	}
+
+	// ==================== A @switch arm whose pattern uses a param ====================
+
+	@Test
+	public function testSwitchArmPatternParam_Builder_ReselectsWhenItChanges():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "cpSwitchRef", null, Incremental);
+		Assert.equals("8", widths(result.object), "builder: hp 5 <= max 10");
+		result.setParameter("max", 3);
+		Assert.equals("12", widths(result.object), "builder: hp 5 is no longer <= max 3, so the default arm shows");
+		result.setParameter("max", 10);
+		Assert.equals("8", widths(result.object), "builder: and back once max is 10 again");
+	}
+
+	@Test
+	public function testSwitchArmPatternParam_Codegen_ReselectsWhenItChanges():Void {
+		final inst:Dynamic = createMp().cpSwitchRef.create();
+		Assert.equals("8", widths(cast inst), "codegen: hp 5 <= max 10");
+		inst.setParameter("max", 3);
+		Assert.equals("12", widths(cast inst), "codegen: hp 5 is no longer <= max 3, so the default arm shows");
+		inst.setParameter("max", 10);
+		Assert.equals("8", widths(cast inst), "codegen: and back once max is 10 again");
+	}
+
+	// ==================== A value whose apply threw, set again ====================
+
+	@Test
+	public function testFailedTemplateSwapSetAgain_Builder_IsAppliedAgain():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "cpSwapRetry", null, Incremental);
+		Assert.equals("10", widths(result.object), "builder: cpSwapA is placed");
+		Assert.notNull(errorOf(() -> result.setParameter("tmpl", "cpSwapB")), "builder: cpSwapB has no `p`, so the swap throws");
+		Assert.notNull(errorOf(() -> result.setParameter("tmpl", "cpSwapB")),
+			"builder: the same value set again is applied again, and throws again while the cause stands");
+		Assert.equals("10", widths(result.object), "builder: cpSwapA stays in place");
+	}
+
+	@Test
+	public function testFailedTemplateSwapSetAgain_Codegen_IsAppliedAgain():Void {
+		final inst:Dynamic = createMp().cpSwapRetry.create();
+		Assert.equals("10", widths(cast inst), "codegen: cpSwapA is placed");
+		Assert.notNull(errorOf(() -> inst.setParameter("tmpl", "cpSwapB")), "codegen: cpSwapB has no `p`, so the swap throws");
+		Assert.notNull(errorOf(() -> inst.setParameter("tmpl", "cpSwapB")),
+			"codegen: the same value set again is applied again, and throws again while the cause stands, not skipped as unchanged");
+		Assert.equals("10", widths(cast inst), "codegen: cpSwapA stays in place");
+	}
+
+	// ==================== Loop variables in subtrees codegen hands to the builder ====================
+
+	@Test
+	public function testTileGroupInStaticRepeat_Builder_SeesTheLoopVariable():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "cpTgRepeat", null);
+		Assert.equals("0,3", tileGroupXMins(result.object), "builder: copy i bakes its bitmap at i * 3");
+	}
+
+	@Test
+	public function testTileGroupInStaticRepeat_Codegen_SeesTheLoopVariable():Void {
+		var inst:Dynamic = null;
+		final err = errorOf(() -> inst = createMp().cpTgRepeat.create());
+		Assert.isNull(err, 'codegen: a tileGroup in an unrolled repeat must see the loop variable; got $err');
+		if (inst == null) return;
+		Assert.equals("0,3", tileGroupXMins(cast inst), "codegen: copy i bakes its bitmap at i * 3");
+	}
+
+	@Test
+	public function testParticlesInStaticRepeat_Builder_SeeTheLoopVariable():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "cpParticlesRepeat", null);
+		Assert.equals("3,4", particleCounts(result.object), "builder: copy i has i + 3 particles");
+	}
+
+	@Test
+	public function testParticlesInStaticRepeat_Codegen_SeeTheLoopVariable():Void {
+		var inst:Dynamic = null;
+		final err = errorOf(() -> inst = createMp().cpParticlesRepeat.create());
+		Assert.isNull(err, 'codegen: particles in an unrolled repeat must see the loop variable; got $err');
+		if (inst == null) return;
+		Assert.equals("3,4", particleCounts(cast inst), "codegen: copy i has i + 3 particles");
+	}
+
+	// ==================== A @final inside a param-dependent repeat body ====================
+
+	@Test
+	public function testFinalInParamRepeatBody_Builder_TakesEachIterationsLoopVariable():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "cpFinalInParamRepeat", null, Incremental);
+		Assert.equals("4,5", widths(result.object), "builder: W = 4 + i for each of the n = 2 iterations");
+		result.setParameter("n", 3);
+		Assert.equals("4,5,6", widths(result.object), "builder: a third iteration with W = 6");
+	}
+
+	@Test
+	public function testFinalInParamRepeatBody_Codegen_TakesEachIterationsLoopVariable():Void {
+		var inst:Dynamic = null;
+		final err = errorOf(() -> inst = createMp().cpFinalInParamRepeat.create());
+		Assert.isNull(err, 'codegen: a @final in a param-dependent repeat body must build; got $err');
+		if (inst == null) return;
+		Assert.equals("4,5", widths(cast inst), "codegen: W = 4 + i for each of the n = 2 iterations");
+		inst.setParameter("n", 3);
+		Assert.equals("4,5,6", widths(cast inst), "codegen: a third iteration with W = 6");
+	}
+}

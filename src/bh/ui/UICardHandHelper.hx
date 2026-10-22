@@ -798,10 +798,11 @@ class UICardHandHelper implements UIHigherOrderComponent {
 				var rawEp = anim.rawEndpoint;
 				var rawDist = Math.sqrt(rawEp.x * rawEp.x + rawEp.y * rawEp.y);
 				if (rawDist < 1e-10) {
-					// Degenerate path — lerp directly
+					// A closed path (it ends where it starts): its shape, as drawn, rides on the
+					// straight flight to the slot — the card loops and still lands in the slot
 					anim.entry.container.setPosition(
-						from.x + (target.x - from.x) * rate,
-						from.y + (target.y - from.y) * rate
+						from.x + (target.x - from.x) * rate + state.position.x,
+						from.y + (target.y - from.y) * rate + state.position.y
 					);
 				} else {
 					var targetDist = Math.sqrt((target.x - from.x) * (target.x - from.x) + (target.y - from.y) * (target.y - from.y));
@@ -1073,7 +1074,14 @@ class UICardHandHelper implements UIHigherOrderComponent {
 			var pos = positions[i];
 			// Every card learns its new slot, a card still flying too: a draw or a return tracks it
 			entry.layoutPos = pos;
-			if (entry.state == Dragging || entry.state == Targeting || entry.state == Animating)
+			if (entry.state == Targeting) {
+				// The targeting card stands raised on its slot and the arrow starts there: it moves
+				// with the slot, so card and arrow stay together
+				entry.container.setPosition(pos.x + pos.normalX * hoverPopDistance, pos.y + pos.normalY * hoverPopDistance);
+				entry.container.rotation = pos.rotation;
+				continue;
+			}
+			if (entry.state == Dragging || entry.state == Animating)
 				continue;
 
 			// Null onComplete to skip allocating a closure per card per rearrange. The
@@ -1615,6 +1623,16 @@ class UICardHandHelper implements UIHigherOrderComponent {
 			if (durationOv > 0)
 				ap.durationOverride = durationOv;
 			var rawEndpoint = ap.path.getEndpoint();
+			// The raw path is drawn stretched to the flight (update below): a distance-mode path's
+			// speed is in screen units, so a longer flight takes longer
+			final rawLength = ap.path.totalLength;
+			if (rawLength > 0) {
+				final travel = Math.sqrt((entry.layoutPos.x - from.x) * (entry.layoutPos.x - from.x)
+					+ (entry.layoutPos.y - from.y) * (entry.layoutPos.y - from.y));
+				final rawDist = Math.sqrt(rawEndpoint.x * rawEndpoint.x + rawEndpoint.y * rawEndpoint.y);
+				final scale = rawDist < 1e-10 ? (rawLength + travel) / rawLength : travel / rawDist;
+				ap.distanceScale = Math.max(scale, 1e-6);
+			}
 			var anim = new ActiveAnimation(entry, ap, startRotation, endRotation, onComplete);
 			anim.trackingFrom = from;
 			anim.rawEndpoint = rawEndpoint;
@@ -1631,9 +1649,12 @@ class UICardHandHelper implements UIHigherOrderComponent {
 
 	/** Emit event to all listeners (including chained grid listeners). */
 	function emitEvent(event:CardHandEvent):Void {
-		// Notify chained listeners first (grids that convert CardPlayed → CellCardPlayed)
-		for (listener in chainedListeners)
-			listener(event);
+		// Notify chained listeners first (grids that convert CardPlayed → CellCardPlayed). Over a
+		// snapshot: a listener's handler may unregister or dispose a grid (taking its listener
+		// out), and the live array would then skip the listener after it.
+		if (chainedListeners.length > 0)
+			for (listener in chainedListeners.copy())
+				listener(event);
 		if (onCardEvent != null)
 			onCardEvent(event);
 	}

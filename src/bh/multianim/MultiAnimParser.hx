@@ -110,7 +110,8 @@ typedef NamedBuildResult = {
 	var settings:ResolvedSettings;
 	var gridCoordinateSystem:Null<GridCoordinateSystem>;
 	var hexCoordinateSystem:Null<HexCoordinateSystem>;
-
+	/** The node that registered it (an indexed name may recur in mutually exclusive arms). */
+	var ?siteNode:Node;
 }
 
 function getBuiltHeapsObject(NamedBuildResult:NamedBuildResult) {

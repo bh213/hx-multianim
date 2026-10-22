@@ -1472,4 +1472,130 @@ class DynamicRefTest extends BuilderTestBase {
 		", "host")) ?? "";
 		Assert.stringContains("staticRef($target): $target is \"nothing\", and there is no programmable \"nothing\"", staticByParameter);
 	}
+
+	// ==================== A dynamicRef in an arm that starts hidden ====================
+
+	@Test
+	public function testDynamicRefInInitiallyHiddenArmWithParamPositionKeepsItsParametersAcrossHideAndShow():Void {
+		// As testDynamicRefUnderConditionalKeepsItsParametersAcrossHideAndShow, with the site
+		// placed at $x: a param in the site itself must not make the show (or a change of $x)
+		// rebuild the panel with the site's defaults.
+		final result = buildFromSource("
+			#panel programmable(s:[none,live]=none) {
+				@(s=>live) bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+			#host programmable(state:[playing,scores]=playing, x:int=0) {
+				@(state=>scores) #scores dynamicRef($panel): $x, 0
+			}
+		", "host", null, Incremental);
+
+		result.setParameter("state", "scores");
+		final scores = result.getDynamicRef("scores");
+		scores.setParameter("s", "live");
+		Assert.equals(1, findVisibleBitmapDescendants(result.object).length, "the live line shows on the first show");
+
+		result.setParameter("state", "playing");
+		result.setParameter("state", "scores");
+		Assert.isTrue(scores == result.getDynamicRef("scores"), "the panel shown again is the result the screen set values on");
+		Assert.equals(1, findVisibleBitmapDescendants(result.object).length, "the live line shows again");
+
+		result.setParameter("x", 30);
+		Assert.isTrue(scores == result.getDynamicRef("scores"), "moving the site keeps the panel");
+		Assert.equals(30, Std.int(scores.object.localToGlobal(new h2d.col.Point(0, 0)).x - result.object.localToGlobal(new h2d.col.Point(0, 0)).x),
+			"the panel moves to the new $x");
+		Assert.equals(1, findVisibleBitmapDescendants(result.object).length, "with its live line");
+	}
+
+	@Test
+	public function testDynamicNameRefInInitiallyHiddenArmSwapsTemplateAfterShow():Void {
+		final result = buildFromSource("
+			#widgetA programmable() {
+				bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+			#widgetB programmable() {
+				bitmap(generated(color(20, 20, #00ff00))): 0, 0
+			}
+			#host programmable(open:bool=false, template:string=\"widgetA\") {
+				@(open=>true) #panel dynamicRef($template): 0, 0
+			}
+		", "host", null, Incremental);
+		result.setParameter("open", true);
+		Assert.equals("10", [for (b in findVisibleBitmapDescendants(result.object)) Std.int(b.tile.width)].join(","), "widgetA on the first show");
+
+		result.setParameter("template", "widgetB");
+		Assert.equals("20", [for (b in findVisibleBitmapDescendants(result.object)) Std.int(b.tile.width)].join(","),
+			"a template change after the show swaps to widgetB");
+	}
+
+	// ==================== Loop variables in a dynamicRef's arguments ====================
+
+	@Test
+	public function testDynamicRefForwardingInsideRepeatResolvesTheLoopVariable():Void {
+		final result = buildFromSource("
+			#row programmable(v:uint=1) {
+				bitmap(generated(color($v, 5, #00ff00))): 0, 0
+			}
+			#host programmable(base:uint=1) {
+				repeatable($i, step(3, dy: 20)) {
+					#r[$i] dynamicRef($row, v=>$base + $i): 0, 0
+				}
+			}
+		", "host", null, Incremental);
+		Assert.equals("1,2,3", [for (i in 0...3) Std.int(findVisibleBitmapDescendants(result.getDynamicRefByIndex("r", i).object)[0].tile.width)].join(","),
+			"built with v = base + i");
+
+		final err = errorOf(() -> result.setParameter("base", 5));
+		Assert.isNull(err, 'forwarding $$base + $$i resolves $$i as it was for each iteration; got $err');
+		Assert.equals("5,6,7", [for (i in 0...3) Std.int(findVisibleBitmapDescendants(result.getDynamicRefByIndex("r", i).object)[0].tile.width)].join(","),
+			"each row gets base + its own i");
+	}
+
+	@Test
+	public function testDynamicNameRefInsideRepeatKeepsTheLoopVariableOnTemplateSwap():Void {
+		final result = buildFromSource("
+			#a programmable(idx:uint=0) {
+				bitmap(generated(color(10 + $idx, 5, #ff0000))): 0, 0
+			}
+			#b programmable(idx:uint=0) {
+				bitmap(generated(color(20 + $idx, 5, #00ff00))): 0, 0
+			}
+			#host programmable(tmpl:[a,b]=a) {
+				repeatable($i, step(2, dx: 40)) {
+					#r[$i] dynamicRef($tmpl, idx=>$i): 0, 0
+				}
+			}
+		", "host", null, Incremental);
+		Assert.equals("10,11", [for (b in findVisibleBitmapDescendants(result.object)) Std.int(b.tile.width)].join(","), "a with idx = i");
+
+		final err = errorOf(() -> result.setParameter("tmpl", "b"));
+		Assert.isNull(err, 'the swap passes idx = $$i as it was for each iteration; got $err');
+		Assert.equals("20,21", [for (b in findVisibleBitmapDescendants(result.object)) Std.int(b.tile.width)].join(","), "b with idx = i");
+	}
+
+	// ==================== A template swap that throws ====================
+
+	@Test
+	public function testFailedTemplateSwapKeepsTheOldContent():Void {
+		final result = buildFromSource("
+			#a programmable(p:uint=1) {
+				bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+			#b programmable() {
+				bitmap(generated(color(20, 20, #00ff00))): 0, 0
+			}
+			#test programmable(tmpl:[a,b]=a, n:uint=1) {
+				#w dynamicRef($tmpl, p=>$n): 0, 0
+			}
+		", "test", null, Incremental);
+		final widths = () -> [for (b in findVisibleBitmapDescendants(result.object)) Std.int(b.tile.width)].join(",");
+		Assert.equals("10", widths(), "a is placed");
+
+		Assert.notNull(errorOf(() -> result.setParameter("tmpl", "b")), "b has no `p`, so the swap throws");
+		Assert.equals("10", widths(), "the failed swap leaves a in place, not an empty site");
+		Assert.isTrue(result.hasDynamicRef("w"), "and the site is still there");
+
+		result.setParameter("tmpl", "a");
+		Assert.equals("10", widths(), "going back to a shows a");
+		Assert.isTrue(result.hasDynamicRef("w"), "with its site");
+	}
 }

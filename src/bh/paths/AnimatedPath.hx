@@ -116,6 +116,10 @@ class AnimatedPath {
 	public var pingPong:Bool = false;
 	/** Override the animatedPath's duration at runtime. Only applies to Time mode. */
 	public var durationOverride:Null<Float> = null;
+	/** Distance mode: screen distance per unit of path length, for a caller that draws the path
+	 *  scaled (the card hand stretches a raw path to where a card flies). The speed is then in
+	 *  screen units, so a longer flight takes longer. 1 = the path as it is. */
+	public var distanceScale:Float = 1.0;
 
 	var time:Float = 0.;
 	var distance:Float = 0.;
@@ -280,7 +284,7 @@ class AnimatedPath {
 				// other curve slot — mirror it during reversed (pingPong) cycles.
 				var speedMultiplier = evaluateCurveSlot(speedCurveSegments, if (reversed) 1.0 - currentRate else currentRate);
 				effectiveSpeed = baseSpeed * speedMultiplier;
-				distance += dt * effectiveSpeed;
+				distance += dt * effectiveSpeed / distanceScale;
 				rate = getDistanceRate();
 				modeComplete = rate >= 1.0;
 

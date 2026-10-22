@@ -74,9 +74,12 @@ class ProgrammableCodeGen {
 	static var expressionUpdates:Array<{fieldName:String, updateExpr:Expr, paramRefs:Array<String>}> = [];
 	static var visibilityEntries:Array<{fieldName:String, condition:Expr, paramRefs:Array<String>, sentinelField:String, parentField:String, layer:Int, restoreFlowPropsExpr:Null<Expr>}> = [];
 	static var namedElements:Map<String, Array<String>> = [];
-	static var indexedNamedElements:Map<String, Array<{index:Int, fieldName:String}>> = new Map();
-	static var indexed2DNamedElements:Map<String, Array<{indexX:Int, indexY:Int, fieldName:String}>> = new Map();
-	static var slotEntries:Array<{key:MacroSlotKey, fieldName:String, hasParams:Bool, loopVars:Map<String, Int>}> = [];
+	// node: the site — an index may recur in mutually exclusive arms (get_name answers with the shown one)
+	static var indexedNamedElements:Map<String, Array<{index:Int, fieldName:String, node:Node}>> = new Map();
+	static var indexed2DNamedElements:Map<String, Array<{indexX:Int, indexY:Int, fieldName:String, node:Node}>> = new Map();
+	// handleField: the SlotHandle field of this site — slotHandleFieldName(key), or with an `_alt<n>`
+	// suffix for a key that recurs in mutually exclusive arms (getSlot answers with the shown one)
+	static var slotEntries:Array<{key:MacroSlotKey, fieldName:String, hasParams:Bool, loopVars:Map<String, Int>, handleField:String, node:Node}> = [];
 	static var switchUpdateEntries:Array<{paramName:String, paramRefs:Array<String>, updateExpr:Expr}> = [];
 	// Sink fields allocated for each @switch, used for runtime lookup of names/slots declared inside arms
 	static var switchSinkFields:Array<String> = [];
@@ -90,7 +93,9 @@ class ProgrammableCodeGen {
 	// (a second explicit site on the same key is a compile error, mirroring the builder's
 	// build-time throw); `count` > 1 marks unnamed sites colliding on the key — the generated
 	// getDynamicRef throws at lookup, mirroring BuilderResult.getDynamicRef (MultiAnimBuilder.hx).
-	static var dynamicRefFields:Map<String, {resultField:String, explicit:Bool, count:Int}> = new Map();
+	// alternatives: the result fields of one explicit #name shared by sites in mutually exclusive
+	// arms (sites: their nodes) — getDynamicRef answers with the shown one
+	static var dynamicRefFields:Map<String, {resultField:String, explicit:Bool, count:Int, alternatives:Array<String>, sites:Array<Node>}> = new Map();
 	// Dynamic-name dynamicRef sites (template named by a $param). explicitName is the stable
 	// #name lookup key when present — matching the builder's resolveDynamicRefKey, where the
 	// explicit name wins over the live template name and survives template swaps.
@@ -138,7 +143,8 @@ class ProgrammableCodeGen {
 	static var repeatForceUsesChangedParam:Bool = false;
 
 	// Conditional APPLY entries: tracks condition + apply/revert expressions for _applyVisibility()
-	static var applyEntries:Array<{condition:Expr, applyExprs:Array<Expr>, revertExprs:Array<Expr>}> = [];
+	// valueRefs: params the apply's own values use (`apply { alpha: $a }`), which re-apply it
+	static var applyEntries:Array<{condition:Expr, applyExprs:Array<Expr>, revertExprs:Array<Expr>, valueRefs:Array<String>}> = [];
 
 	// All parsed nodes from the .manim file (for looking up layouts etc.)
 	static var allParsedNodes:Map<String, Node> = new Map();
@@ -557,7 +563,14 @@ class ProgrammableCodeGen {
 			});
 			ensureHexLayoutIfNeeded(rootNode.pos, rootNode, instanceFields, constructorExprs, pos);
 			final rootPosExpr = generatePositionExpr(rootNode.pos, "_root", pos, rootNode);
-			if (rootPosExpr != null) constructorExprs.push(rootPosExpr);
+			if (rootPosExpr != null) {
+				constructorExprs.push(rootPosExpr);
+				// A root `pos:` that uses a param follows it on setParameter (on the inner _root, so
+				// it keeps adding to the caller's setPosition) — builder parity
+				final rootPosRefs = collectPositionParamRefs(rootNode.pos);
+				if (rootPosRefs.length > 0)
+					expressionUpdates.push({fieldName: "_root", updateExpr: rootPosExpr, paramRefs: rootPosRefs});
+			}
 			"_root";
 		} else null;
 
@@ -684,30 +697,32 @@ class ProgrammableCodeGen {
 				transParamNames.set(pName, true);
 		}
 
-		// When transitions exist, build a compile-time test "is _changedParam a transition param?"
-		// This guards transition-helper calls so non-transition setters (now that switches make
-		// every setter pass _changedParam) cannot cancel in-flight transitions by accidentally
-		// invoking setPresenceWithTransition with a non-transition param name.
-		final isTransParamExpr:Expr = if (hasTransitions) {
-			var result:Expr = macro false;
-			for (tp in transParamNames.keys()) {
-				final tpLit = tp;
-				result = macro $result || _changedParam == $v{tpLit};
-			}
-			result;
-		} else macro false;
-
 		final visExprs:Array<Expr> = [];
 		for (entry in visibilityEntries) {
 			final fieldRef = macro $p{["this", entry.fieldName]};
 			final sentinelRef = entry.sentinelField != null ? macro $p{["this", entry.sentinelField]} : null;
 			final parentRef = entry.parentField != null ? macro $p{["this", entry.parentField]} : macro this;
-			// Check if this entry's paramRefs intersect with transition-declared params
-			var usesTransition = false;
+			// The entry's own transition params: the ones its paramRefs share with the transition{}
+			// block. A change of any other param toggles it at once (leaving a transition already
+			// heading the same way to run on).
+			final entryTransParams:Array<String> = [];
 			if (hasTransitions) {
-				for (ref in entry.paramRefs) {
-					if (transParamNames.exists(ref)) { usesTransition = true; break; }
-				}
+				for (ref in entry.paramRefs)
+					if (transParamNames.exists(ref) && entryTransParams.indexOf(ref) < 0) entryTransParams.push(ref);
+			}
+			final usesTransition = entryTransParams.length > 0;
+			// The transition this pass animates the entry with: of its own transition params, the
+			// alphabetically first that changed, this call or anywhere in the batch endUpdate is
+			// applying (_visBatch) — so the param a batch sets first, with no transition, cannot
+			// toggle the entry before the pass of its transition param. Builder parity:
+			// findTransitionSpec picks among the node's changed params, alphabetically first.
+			entryTransParams.sort((a, b) -> a < b ? -1 : a > b ? 1 : 0);
+			var transParamExpr:Expr = macro null;
+			var tpi = entryTransParams.length - 1;
+			while (tpi >= 0) {
+				final tpLit = entryTransParams[tpi];
+				transParamExpr = macro if (_changedParam == $v{tpLit} || (this._visBatch != null && this._visBatch.indexOf($v{tpLit}) >= 0)) $v{tpLit} else $transParamExpr;
+				tpi--;
 			}
 			if (sentinelRef != null) {
 				// Scene graph add/remove via sentinel
@@ -730,10 +745,11 @@ class ProgrammableCodeGen {
 					final transRestoreExpr = entry.restoreFlowPropsExpr;
 					visExprs.push(macro {
 						final _newVis = ${entry.condition};
-						if (this._transHelper != null && _changedParam != null && this._transHelper.tweenManager != null && ${isTransParamExpr}) {
-							this._transHelper.setPresenceWithTransition($fieldRef, _newVis, _changedParam, $parentRef, $sentinelRef);
+						final _tp:Null<String> = $transParamExpr;
+						if (this._transHelper != null && _tp != null && this._transHelper.tweenManager != null) {
+							this._transHelper.setPresenceWithTransition($fieldRef, _newVis, _tp, $parentRef, $sentinelRef);
 							${if (transRestoreExpr != null) macro { if ($fieldRef.parent != null) $transRestoreExpr; } else macro {}}
-						} else {
+						} else if (this._transHelper == null || !this._transHelper.inFlightToward($fieldRef, _newVis)) {
 							final _inGraph = $fieldRef.parent != null;
 							if (_newVis && !_inGraph)
 								$addExpr
@@ -756,9 +772,10 @@ class ProgrammableCodeGen {
 				if (usesTransition) {
 					visExprs.push(macro {
 						final _newVis = ${entry.condition};
-						if (this._transHelper != null && _changedParam != null && this._transHelper.tweenManager != null && ${isTransParamExpr})
-							this._transHelper.setVisibilityWithTransition($fieldRef, _newVis, _changedParam)
-						else
+						final _tp:Null<String> = $transParamExpr;
+						if (this._transHelper != null && _tp != null && this._transHelper.tweenManager != null)
+							this._transHelper.setVisibilityWithTransition($fieldRef, _newVis, _tp)
+						else if (this._transHelper == null || !this._transHelper.inFlightToward($fieldRef, _newVis))
 							$fieldRef.visible = _newVis;
 					});
 				} else {
@@ -777,13 +794,41 @@ class ProgrammableCodeGen {
 		// only the matched entries in declaration order. A per-entry `if (cond) apply else
 		// revert` cannot compose overlapping applies on the same parent — a non-matching later
 		// entry's else-revert clobbers an earlier matching entry's effect.
-		for (entry in applyEntries)
-			for (revertExpr in entry.revertExprs)
-				visExprs.push(revertExpr);
-		for (entry in applyEntries) {
-			final cond = entry.condition;
-			final applyBlock = macro $b{entry.applyExprs};
-			visExprs.push(macro if ($cond) $applyBlock);
+		//
+		// The pass runs only when it changes something: an entry's condition flipped (the matched
+		// set is kept in _applyM_i), the parent's own value changed (_applyDirty, set by its
+		// re-save update), or an entry's own values use params. An unrelated setter no longer
+		// resets the parents to their baselines, undoing what the game set on them meanwhile —
+		// builder parity (reconcile on a flip only).
+		if (applyEntries.length > 0) {
+			instanceFields.push(makeField("_applyDirty", FVar(macro :Bool, macro true), [APrivate], pos));
+			var valueDependent = false;
+			for (entry in applyEntries)
+				if (entry.valueRefs.length > 0) valueDependent = true;
+			final applyBody:Array<Expr> = [];
+			var changedExpr:Expr = macro this._applyDirty || $v{valueDependent};
+			for (i in 0...applyEntries.length) {
+				final matchedField = "_applyM_" + i;
+				final localName = "_ac" + i;
+				instanceFields.push(makeField(matchedField, FVar(macro :Bool, macro false), [APrivate], pos));
+				final cond = applyEntries[i].condition;
+				applyBody.push(macro var $localName:Bool = $cond);
+				changedExpr = macro $changedExpr || $i{localName} != $p{["this", matchedField]};
+			}
+			final reconcile:Array<Expr> = [];
+			for (entry in applyEntries)
+				for (revertExpr in entry.revertExprs)
+					reconcile.push(revertExpr);
+			for (i in 0...applyEntries.length) {
+				final localName = "_ac" + i;
+				final applyBlock = macro $b{applyEntries[i].applyExprs};
+				reconcile.push(macro if ($i{localName}) $applyBlock);
+				reconcile.push(macro $p{["this", "_applyM_" + i]} = $i{localName});
+			}
+			reconcile.push(macro this._applyDirty = false);
+			final reconcileBlock = macro $b{reconcile};
+			applyBody.push(macro if ($changedExpr) $reconcileBlock);
+			visExprs.push(macro $b{applyBody});
 		}
 		// Switch updates: gate arm rebuild on the changed param being in the arm's union of
 		// param refs. _changedParam == null is the constructor's initial-build path — rebuild
@@ -838,7 +883,7 @@ class ProgrammableCodeGen {
 		// 6. Pre-constructor: push slot/dynamicRef init expressions to constructorExprs
 		// (slotEntries and dynamicRefFields are already populated from processChildren)
 		for (entry in slotEntries) {
-			final handleField = slotHandleFieldName(entry.key);
+			final handleField = entry.handleField;
 			if (entry.hasParams) {
 				// Parameterized slot: delegate building to runtime builder via ProgrammableBuilder
 				final slotName:String = switch entry.key {
@@ -921,31 +966,29 @@ class ProgrammableCodeGen {
 			// _fireRebuildListeners and force UIScreen.addInteractives rescans on every card hover.
 			// For Array/Tile the comparison is reference-equality (acceptable — callers pass fresh
 			// instances only when they mean to rebuild).
+			// A value whose apply threw is let through the guard until it applies cleanly (builder
+			// parity: failedParams), so the same call again retries — and throws again while the
+			// cause stands — instead of returning as unchanged.
+			final nameLitForGuard = name;
+			final notFailed:Expr = macro (this._failedParams == null || this._failedParams.indexOf($v{nameLitForGuard}) < 0);
 			if (paramEnumTypes.exists(name) && paramEnumTypes.get(name).typePath == "Bool") {
 				// For bool params, convert Bool -> Int (true=1, false=0 matching parser convention)
 				setterExprs.push(macro {
 					final _iv = ($i{"v"} ? 1 : 0);
-					if ($p{["this", paramField]} == _iv) return;
+					if ($p{["this", paramField]} == _iv && $notFailed) return;
 					$p{["this", paramField]} = _iv;
 				});
 			} else {
 				setterExprs.push(macro {
-					if ($p{["this", paramField]} == $i{"v"}) return;
+					if ($p{["this", paramField]} == $i{"v"} && $notFailed) return;
 					$p{["this", paramField]} = $i{"v"};
 				});
 			}
 			// Build the per-setter rebuild pass. Pass the param name to _applyVisibility when
 			// transitions, switches, or forced repeat rebuilds exist — their gates use it to
-			// skip work that doesn't reference this param.
+			// skip work that doesn't reference this param. Expressions update first: a show
+			// transition starts from (and restores) the element's current position/alpha/scale.
 			final applyExprs:Array<Expr> = [];
-			final hasSwitchEntries = switchUpdateEntries.length > 0;
-			if ((hasTransitions && transParamNames.exists(name)) || hasSwitchEntries || repeatForceUsesChangedParam) {
-				final nameStr = name;
-				applyExprs.push(macro this._applyVisibility($v{nameStr}));
-			} else {
-				applyExprs.push(macro this._applyVisibility());
-			}
-
 			var refsParam = false;
 			for (update in expressionUpdates) {
 				if (update.paramRefs.contains(name)) {
@@ -955,6 +998,14 @@ class ProgrammableCodeGen {
 			}
 			if (refsParam)
 				applyExprs.push(macro this._updateExpressions($v{name}));
+
+			final hasSwitchEntries = switchUpdateEntries.length > 0;
+			if ((hasTransitions && transParamNames.exists(name)) || hasSwitchEntries || repeatForceUsesChangedParam) {
+				final nameStr = name;
+				applyExprs.push(macro this._applyVisibility($v{nameStr}));
+			} else {
+				applyExprs.push(macro this._applyVisibility());
+			}
 
 			// Fire rebuild listeners after visibility + expression updates complete. Symmetric with
 			// the runtime path where `IncrementalUpdateContext.applyUpdates()` fires listeners at
@@ -972,7 +1023,14 @@ class ProgrammableCodeGen {
 				if (this._batchMode) {
 					if (this._batchChanged.indexOf($v{name}) < 0)
 						this._batchChanged.push($v{name});
-				} else $applyBlock;
+				} else {
+					try $applyBlock catch (e:Dynamic) {
+						if (this._failedParams == null) this._failedParams = [];
+						if (this._failedParams.indexOf($v{name}) < 0) this._failedParams.push($v{name});
+						throw e;
+					}
+					if (this._failedParams != null) this._failedParams.remove($v{name});
+				}
 			});
 
 			final setterParamType = publicParamType(name, def.type);
@@ -987,6 +1045,8 @@ class ProgrammableCodeGen {
 		// rebuild only when their params changed, and forced repeat rebuilds stay gated —
 		// then fires the rebuild listeners ONCE (matching the builder's changedParams set).
 		instanceFields.push(makeField("_batchMode", FVar(macro :Bool, macro false), [APrivate], pos));
+		// Params whose last apply threw (the setters' same-value guard lets them through)
+		instanceFields.push(makeField("_failedParams", FVar(macro :Null<Array<String>>, macro null), [APrivate], pos));
 		instanceFields.push(makeField("_batchChanged", FVar(macro :Array<String>, macro []), [APrivate], pos));
 
 		instanceFields.push(makeMethod("beginUpdate", [
@@ -996,16 +1056,32 @@ class ProgrammableCodeGen {
 		], [], macro :Void, [APublic], pos));
 
 		final visTakesParam = hasTransitions || hasSwitches || repeatForceUsesChangedParam;
-		final batchVisPass:Expr = visTakesParam
-			? macro for (_bp in this._batchChanged) this._applyVisibility(_bp)
-			: macro this._applyVisibility();
+		// With transitions, every pass sees the whole batch (_visBatch): an entry animates with
+		// its own transition param that changed anywhere in the batch, whichever pass runs first.
+		if (hasTransitions)
+			instanceFields.push(makeField("_visBatch", FVar(macro :Null<Array<String>>, macro null), [APrivate], pos));
+		final batchVisPass:Expr = if (hasTransitions)
+			macro {
+				this._visBatch = this._batchChanged;
+				try {
+					for (_bp in this._batchChanged) this._applyVisibility(_bp);
+				} catch (e:Dynamic) {
+					this._visBatch = null;
+					throw e;
+				}
+				this._visBatch = null;
+			}
+		else if (visTakesParam)
+			macro for (_bp in this._batchChanged) this._applyVisibility(_bp)
+		else
+			macro this._applyVisibility();
 		instanceFields.push(makeMethod("endUpdate", [
 			macro if (!this._batchMode) throw "endUpdate: no matching beginUpdate",
 			macro this._batchMode = false,
 			macro if (this._batchChanged.length > 0) {
-				$batchVisPass;
 				for (_bp in this._batchChanged)
 					this._updateExpressions(_bp);
+				$batchVisPass;
 				this._fireRebuildListeners();
 			},
 			macro this._batchChanged.resize(0),
@@ -1240,19 +1316,41 @@ class ProgrammableCodeGen {
 		// path, which only registers names for materialized entries.
 		for (name => indexedList in indexedNamedElements) {
 			final switchCases:Array<Case> = [];
-			final seenIndices = new Map<Int, Bool>();
+			// Sites per index, in order. A 1-D indexed name must resolve to a unique index: a
+			// recurring index (nested loops, or a duplicate-value iterator) is rejected loudly —
+			// symmetric with the runtime builder's "indexed_name_collision" — unless the sites are
+			// in mutually exclusive arms (one shown at a time: the shown one answers).
+			final byIndex = new Map<Int, Array<{index:Int, fieldName:String, node:Node}>>();
+			final order:Array<Int> = [];
 			for (entry in indexedList) {
-				// A 1-D indexed name must resolve to a unique index. A recurring index
-				// (nested loops, or a duplicate-value iterator) would emit duplicate
-				// switch cases here; reject loudly instead — symmetric with the runtime
-				// builder which throws an "indexed_name_collision" BuilderError.
-				if (seenIndices.exists(entry.index))
-					haxe.macro.Context.error('indexed name "${name}[${entry.index}]" is generated more than once with the same index — a 1-D indexed name whose index recurs (nested loops, or a duplicate-value iterator) collides. Give the inner loop a unique index or use a 2-D indexed name (#name[indexX, indexY]).', pos);
-				seenIndices.set(entry.index, true);
-				final fieldRef = macro $p{["this", entry.fieldName]};
+				var group = byIndex.get(entry.index);
+				if (group == null) {
+					group = [];
+					byIndex.set(entry.index, group);
+					order.push(entry.index);
+				} else
+					for (other in group)
+						if (!bh.multianim.ConditionalArms.exclusive(other.node, entry.node))
+							haxe.macro.Context.error('indexed name "${name}[${entry.index}]" is generated more than once with the same index — a 1-D indexed name whose index recurs (nested loops, or a duplicate-value iterator) collides. Give the inner loop a unique index or use a 2-D indexed name (#name[indexX, indexY]).', pos);
+				group.push(entry);
+			}
+			for (index in order) {
+				final group = byIndex.get(index);
+				final caseExpr:Expr = if (group.length == 1) {
+					final fieldRef = macro $p{["this", group[0].fieldName]};
+					macro return $fieldRef.parent != null ? $fieldRef : null;
+				} else {
+					final checks:Array<Expr> = [];
+					for (entry in group) {
+						final fieldRef = macro $p{["this", entry.fieldName]};
+						checks.push(macro if (bh.multianim.LiveProgrammable.LiveProgrammableTools.isDrawnUnder($fieldRef, this)) return $fieldRef);
+					}
+					checks.push(macro return null);
+					macro $b{checks};
+				};
 				switchCases.push({
-					values: [macro $v{entry.index}],
-					expr: macro return $fieldRef.parent != null ? $fieldRef : null,
+					values: [macro $v{index}],
+					expr: caseExpr,
 				});
 			}
 			final switchExpr:Expr = {
@@ -1286,7 +1384,14 @@ class ProgrammableCodeGen {
 		final indexedSlotGroups:Map<String, Array<{index:Int, fieldName:String}>> = new Map();
 		final indexed2DSlotGroups:Map<String, Array<{indexX:Int, indexY:Int, fieldName:String}>> = new Map();
 		final namedSlots:Array<{name:String, fieldName:String}> = [];
+		// One group entry per key: a key in mutually exclusive arms has several sites (handle
+		// fields), and its accessors answer with the shown one (slotFieldsByKey)
+		final slotFieldsByKey = slotHandleFieldsByKey();
+		final seenSlotKeys = new Map<String, Bool>();
 		for (entry in slotEntries) {
+			final baseField = slotHandleFieldName(entry.key);
+			if (seenSlotKeys.exists(baseField)) continue;
+			seenSlotKeys.set(baseField, true);
 			switch entry.key {
 				case Indexed(baseName, index):
 					var list = indexedSlotGroups.get(baseName);
@@ -1310,28 +1415,29 @@ class ProgrammableCodeGen {
 		// (e.g. #name[$j] inside nested loops) would declare the same field twice
 		// ("Duplicate class field declaration"); reject loudly with a clear message
 		// instead — symmetric with the runtime builder's "indexed_slot_collision".
+		// (A key recurring in mutually exclusive arms has a field per site: siteSlotHandleField.)
 		final seenSlotFields = new Map<String, Bool>();
 		for (entry in slotEntries) {
-			final handleField = slotHandleFieldName(entry.key);
+			final handleField = entry.handleField;
 			if (seenSlotFields.exists(handleField))
-				haxe.macro.Context.error('slot field "${handleField}" is generated more than once — an indexed slot whose index recurs (nested loops, or a duplicate-value iterator) collides. Give the inner loop a unique index or use a 2-D indexed slot (#name[indexX, indexY]).', pos);
+				haxe.macro.Context.error('slot field "${handleField}" is generated more than once — a slot name that recurs (nested loops, a duplicate-value iterator, or two sites shown together) collides. Give the inner loop a unique index, use a 2-D indexed slot (#name[indexX, indexY]), or put the sites in mutually exclusive @()/@else arms.', pos);
 			seenSlotFields.set(handleField, true);
 			instanceFields.push(makeField(handleField, FVar(macro :bh.multianim.MultiAnimBuilder.SlotHandle, null), [APrivate], pos));
 		}
 		// Non-indexed: typed getSlot_name() accessor
 		for (ns in namedSlots) {
-			final handleField = "_slotHandle_" + ns.name;
-			instanceFields.push(makeMethod("getSlot_" + ns.name, [macro return $p{["this", handleField]}], [],
+			final returnExpr = shownSlotReturn(slotFieldsByKey.get("_slotHandle_" + ns.name));
+			instanceFields.push(makeMethod("getSlot_" + ns.name, [returnExpr], [],
 				macro :bh.multianim.MultiAnimBuilder.SlotHandle, [APublic], pos));
 		}
 		// 1D Indexed: typed getSlot_name(index:Int) accessor with switch
 		for (baseName => indexedList in indexedSlotGroups) {
 			final switchCases:Array<Case> = [];
 			for (entry in indexedList) {
-				final handleField = "_slotHandle_" + baseName + "_" + entry.index;
+				final returnExpr = shownSlotReturn(slotFieldsByKey.get("_slotHandle_" + baseName + "_" + entry.index));
 				switchCases.push({
 					values: [macro $v{entry.index}],
-					expr: macro return $p{["this", handleField]},
+					expr: returnExpr,
 				});
 			}
 			final switchExpr:Expr = {
@@ -1345,8 +1451,8 @@ class ProgrammableCodeGen {
 		for (baseName => indexedList in indexed2DSlotGroups) {
 			final ifExprs:Array<Expr> = [];
 			for (entry in indexedList) {
-				final handleField = slotHandleFieldName(Indexed2D(baseName, entry.indexX, entry.indexY));
-				ifExprs.push(macro if (x == $v{entry.indexX} && y == $v{entry.indexY}) return $p{["this", handleField]});
+				final returnExpr = shownSlotReturn(slotFieldsByKey.get(slotHandleFieldName(Indexed2D(baseName, entry.indexX, entry.indexY))));
+				ifExprs.push(macro if (x == $v{entry.indexX} && y == $v{entry.indexY}) $returnExpr);
 			}
 			ifExprs.push(macro return null);
 			instanceFields.push(makeMethod("getSlot_" + baseName, ifExprs, [
@@ -1366,8 +1472,8 @@ class ProgrammableCodeGen {
 			for (baseName => indexedList in indexed2DSlotGroups) {
 				final ifCases:Array<Expr> = [];
 				for (entry in indexedList) {
-					final handleField = slotHandleFieldName(Indexed2D(baseName, entry.indexX, entry.indexY));
-					ifCases.push(macro if (index == $v{entry.indexX} && indexY == $v{entry.indexY}) return $p{["this", handleField]});
+					final returnExpr = shownSlotReturn(slotFieldsByKey.get(slotHandleFieldName(Indexed2D(baseName, entry.indexX, entry.indexY))));
+					ifCases.push(macro if (index == $v{entry.indexX} && indexY == $v{entry.indexY}) $returnExpr);
 				}
 				final notFoundMsg = 'Slot "' + baseName + '" index (';
 				ifCases.push(macro throw $v{notFoundMsg} + index + ', ' + indexY + ') not found');
@@ -1382,10 +1488,9 @@ class ProgrammableCodeGen {
 			for (baseName => indexedList in indexedSlotGroups) {
 				final indexCases:Array<Case> = [];
 				for (entry in indexedList) {
-					final handleField = "_slotHandle_" + baseName + "_" + entry.index;
 					indexCases.push({
 						values: [macro $v{entry.index}],
-						expr: macro return $p{["this", handleField]},
+						expr: shownSlotReturn(slotFieldsByKey.get("_slotHandle_" + baseName + "_" + entry.index)),
 					});
 				}
 				final notFoundMsg = 'Slot "$baseName" index ';
@@ -1402,11 +1507,11 @@ class ProgrammableCodeGen {
 
 			// Handle non-indexed slots: reject index parameter
 			for (ns in namedSlots) {
-				final handleField = "_slotHandle_" + ns.name;
+				final returnExpr = shownSlotReturn(slotFieldsByKey.get("_slotHandle_" + ns.name));
 				bodyExprs.push(macro if (name == $v{ns.name}) {
 					if (index != null)
 						throw 'Slot "' + $v{ns.name} + '" is not indexed — use getSlot("' + $v{ns.name} + '") without index';
-					return $p{["this", handleField]};
+					$returnExpr;
 				});
 			}
 
@@ -1530,6 +1635,8 @@ class ProgrammableCodeGen {
 		final declaredCompFields = new Map<String, Bool>();
 		for (refName => refEntry in dynamicRefFields) {
 			if (declaredCompFields.exists(refEntry.resultField)) continue;
+			// A named site's per-site field is declared with the literal site fields below
+			if (StringTools.startsWith(refEntry.resultField, "_dynref_lit_")) continue;
 			declaredCompFields.set(refEntry.resultField, true);
 			instanceFields.push(makeField(refEntry.resultField, FVar(macro :bh.multianim.MultiAnimBuilder.BuilderResult, null), [APrivate], pos));
 		}
@@ -1572,6 +1679,20 @@ class ProgrammableCodeGen {
 						refCases.push({
 							values: [macro $v{refName}],
 							expr: macro throw new bh.multianim.BuilderError($v{collisionMsg}),
+						});
+					} else if (refEntry.alternatives.length > 1) {
+						// One #name in mutually exclusive arms: the shown site's result
+						final checks:Array<Expr> = [];
+						for (alt in refEntry.alternatives)
+							checks.push(macro {
+								final _r = $p{["this", alt]};
+								if (_r != null && _r.object != null && bh.multianim.LiveProgrammable.LiveProgrammableTools.isDrawnUnder(_r.object, this))
+									return _r;
+							});
+						checks.push(macro return $p{["this", refEntry.alternatives[0]]});
+						refCases.push({
+							values: [macro $v{refName}],
+							expr: macro $b{checks},
 						});
 					} else {
 						refCases.push({
@@ -1696,7 +1817,8 @@ class ProgrammableCodeGen {
 				for (entry in indexedList) {
 					final fieldRef = macro $p{["this", entry.fieldName]};
 					final key = nm + " " + entry.index;
-					body.push(macro if ($fieldRef != null && $fieldRef.parent != null) _keys.push($v{key}));
+					// (an index in mutually exclusive arms has a site an arm: one key)
+					body.push(macro if ($fieldRef != null && $fieldRef.parent != null && _keys.indexOf($v{key}) < 0) _keys.push($v{key}));
 				}
 			}
 			for (nm => indexedList in indexed2DNamedElements) {
@@ -1766,7 +1888,7 @@ class ProgrammableCodeGen {
 				macro final _out:Array<{key:bh.multianim.MultiAnimBuilder.SlotKey, handle:bh.multianim.MultiAnimBuilder.SlotHandle}> = []
 			];
 			for (entry in slotEntries) {
-				final handleRef = macro $p{["this", slotHandleFieldName(entry.key)]};
+				final handleRef = macro $p{["this", entry.handleField]};
 				final keyExpr:Expr = switch entry.key {
 					case Named(n): macro bh.multianim.MultiAnimBuilder.SlotKey.Named($v{n});
 					case Indexed(n, i): macro bh.multianim.MultiAnimBuilder.SlotKey.Indexed($v{n}, $v{i});
@@ -1898,13 +2020,18 @@ class ProgrammableCodeGen {
 			case REPEAT2D(varNameX, varNameY, repeatTypeX, repeatTypeY):
 				processRepeat2D(node, varNameX, varNameY, repeatTypeX, repeatTypeY, parentField, fields, ctorExprs, siblings, pos);
 				return;
+			// A @switch, an unconditional apply and a @final are unconditional siblings: like any
+			// other they end an @()/@else chain, so a @default after them starts a fresh one
+			// (builder parity: every NoConditional sibling resets the chain)
 			case SWITCH(paramName, arms):
 				processSwitch(node, paramName, arms, parentField, fields, ctorExprs, siblings, pos);
+				siblings.push({node: node, fieldName: null});
 				return;
 			case APPLY:
 				switch (node.conditionals) {
 					case NoConditional:
 						processApply(node, parentField, fields, ctorExprs, pos);
+						siblings.push({node: node, fieldName: null});
 						return;
 					default:
 						processConditionalApply(node, parentField, fields, ctorExprs, siblings, pos);
@@ -1912,6 +2039,7 @@ class ProgrammableCodeGen {
 				}
 			case FINAL_VAR(name, expr):
 				finalVarExprs.set(name, expr);
+				siblings.push({node: node, fieldName: null});
 				return;
 			default:
 		}
@@ -2155,7 +2283,7 @@ class ProgrammableCodeGen {
 						indexedList = [];
 						indexedNamedElements.set(name, indexedList);
 					}
-					indexedList.push({index: currentIndex, fieldName: fieldName});
+					indexedList.push({index: currentIndex, fieldName: fieldName, node: node});
 				}
 			case UNTIndexed2D(name, indexVarX, indexVarY):
 				if (name != null && name != "") {
@@ -2172,7 +2300,7 @@ class ProgrammableCodeGen {
 						indexedList = [];
 						indexed2DNamedElements.set(name, indexedList);
 					}
-					indexedList.push({indexX: currentX, indexY: currentY, fieldName: fieldName});
+					indexedList.push({indexX: currentX, indexY: currentY, fieldName: fieldName, node: node});
 				}
 		}
 
@@ -2185,13 +2313,19 @@ class ProgrammableCodeGen {
 				switch (node.updatableName) {
 					case UNTIndexed(baseName, ref) if (loopVarSubstitutions.exists(ref)):
 						final currentIndex = loopVarSubstitutions.get(ref);
-						slotEntries.push({key: Indexed(baseName, currentIndex), fieldName: fieldName, hasParams: hp, loopVars: capturedLoopVars});
+						final key:MacroSlotKey = Indexed(baseName, currentIndex);
+						slotEntries.push({key: key, fieldName: fieldName, hasParams: hp, loopVars: capturedLoopVars,
+							handleField: siteSlotHandleField(key, node), node: node});
 					case UNTIndexed2D(baseName, refX, refY) if (loopVarSubstitutions.exists(refX) && loopVarSubstitutions.exists(refY)):
 						final currentX = loopVarSubstitutions.get(refX);
 						final currentY = loopVarSubstitutions.get(refY);
-						slotEntries.push({key: Indexed2D(baseName, currentX, currentY), fieldName: fieldName, hasParams: hp, loopVars: capturedLoopVars});
+						final key:MacroSlotKey = Indexed2D(baseName, currentX, currentY);
+						slotEntries.push({key: key, fieldName: fieldName, hasParams: hp, loopVars: capturedLoopVars,
+							handleField: siteSlotHandleField(key, node), node: node});
 					case UNTObject(name) | UNTUpdatable(name):
-						slotEntries.push({key: Named(name), fieldName: fieldName, hasParams: hp, loopVars: capturedLoopVars});
+						final key:MacroSlotKey = Named(name);
+						slotEntries.push({key: key, fieldName: fieldName, hasParams: hp, loopVars: capturedLoopVars,
+							handleField: siteSlotHandleField(key, node), node: node});
 					default:
 						Context.warning("Slot requires a #name prefix for codegen", pos);
 				}
@@ -2228,16 +2362,17 @@ class ProgrammableCodeGen {
 				}
 				switch programmableRef {
 					case RVString(compName):
-						final resultField = "_comp_" + compName;
+						// An explicit #name site is looked up by its own per-site field (see generateDynamicRefCreate)
+						final resultField = explicitName != null ? "_dynref_lit_" + fieldName : "_comp_" + compName;
 						if (indexedKey == null)
-							registerDynamicRefKey(explicitName != null ? explicitName : compName, resultField, explicitName != null, pos);
+							registerDynamicRefKey(explicitName != null ? explicitName : compName, resultField, explicitName != null, pos, node);
 					case RVReference(name) if (loopVarSubstitutions.exists(name)):
 						// Loop variable in a static unroll: the resolved per-iteration value
 						// is the target programmable name (mirrors STATIC_REF).
 						final resolved = Std.string(loopVarSubstitutions.get(name));
-						final resultField = "_comp_" + resolved;
+						final resultField = explicitName != null ? "_dynref_lit_" + fieldName : "_comp_" + resolved;
 						if (indexedKey == null)
-							registerDynamicRefKey(explicitName != null ? explicitName : resolved, resultField, explicitName != null, pos);
+							registerDynamicRefKey(explicitName != null ? explicitName : resolved, resultField, explicitName != null, pos, node);
 					case RVReference(name):
 						if (paramNames.contains(name)) {
 							// Dynamic-name site: the explicit #name (when present) is the stable
@@ -2249,9 +2384,9 @@ class ProgrammableCodeGen {
 							dynamicNameRefFields.push({fieldName: fieldName, explicitName: explicitName});
 						} else {
 							// $progName backward compat — treat as literal
-							final resultField = "_comp_" + name;
+							final resultField = explicitName != null ? "_dynref_lit_" + fieldName : "_comp_" + name;
 							if (indexedKey == null)
-								registerDynamicRefKey(explicitName != null ? explicitName : name, resultField, explicitName != null, pos);
+								registerDynamicRefKey(explicitName != null ? explicitName : name, resultField, explicitName != null, pos, node);
 						}
 					default:
 				}
@@ -2283,12 +2418,28 @@ class ProgrammableCodeGen {
 	 *  occupied key is a hard build error; unnamed sites may share a key, but the generated
 	 *  getDynamicRef then throws at lookup (count > 1) instead of silently returning the
 	 *  last-built site. */
-	static function registerDynamicRefKey(key:String, resultField:String, isExplicit:Bool, pos:Position):Void {
+	static function registerDynamicRefKey(key:String, resultField:String, isExplicit:Bool, pos:Position, ?node:Node):Void {
 		final existing = dynamicRefFields.get(key);
+		// One explicit #name in mutually exclusive arms (builder parity): each site keeps its own
+		// result field, and getDynamicRef answers with the shown one
+		if (isExplicit && existing != null && existing.explicit && node != null && existing.sites.length == existing.alternatives.length) {
+			var allExclusive = true;
+			for (site in existing.sites)
+				if (!bh.multianim.ConditionalArms.exclusive(site, node)) {
+					allExclusive = false;
+					break;
+				}
+			if (allExclusive) {
+				existing.alternatives.push(resultField);
+				existing.sites.push(node);
+				return;
+			}
+		}
 		if (isExplicit && (existing != null || dynamicNameExplicitKeyExists(key)))
 			duplicateDynRefNameError(key, pos);
 		if (existing == null) {
-			dynamicRefFields.set(key, {resultField: resultField, explicit: isExplicit, count: 1});
+			dynamicRefFields.set(key, {resultField: resultField, explicit: isExplicit, count: 1,
+				alternatives: [resultField], sites: node != null ? [node] : []});
 		} else {
 			existing.count++;
 			existing.resultField = resultField;
@@ -2303,7 +2454,7 @@ class ProgrammableCodeGen {
 
 	static function duplicateDynRefNameError(key:String, pos:Position):Void {
 		Context.error('ProgrammableCodeGen: duplicate dynamicRef name "' + key
-			+ '" — two #name dynamicRef sites share the same name. Names must be unique within a programmable.', pos);
+			+ '" — two #name dynamicRef sites share the same name. Names must be unique within a programmable, except in mutually exclusive @()/@else/@default arms.', pos);
 	}
 
 	// ==================== Switch Processing ====================
@@ -2338,11 +2489,15 @@ class ProgrammableCodeGen {
 		// Generate arm index computation expression: maps param value to arm index (0..N-1), -1 for no match
 		final paramRef = paramFieldExpr(paramName);
 		final progName = currentProgrammableName;
-		final switchOrdinal = switchCounter++;  // stable DFS ordinal, matches runtime tree walk
+		// The parse node's DFS ordinal, the runtime findNthSwitchNode's walk: every copy of a
+		// statically unrolled repeat body is the same switch node, and a switch codegen never
+		// emits (inside a parameterized slot or a runtime repeat body) still counts.
+		final switchOrdinal = switchNodeOrdinal(node);
 
 		// Sink field — persistent SwitchArmResults holding indexed names/slots declared inside arms.
 		// Allocated once in the ctor, passed to every rebuildSwitchArm call so lookups survive arm swaps.
-		final sinkField = "_swSink" + switchOrdinal;
+		// One per emitted switch (the ordinal repeats across unrolled copies).
+		final sinkField = "_swSink" + (switchCounter++);
 		fields.push(makeField(sinkField, FVar(macro :bh.multianim.MultiAnimBuilder.SwitchArmResults, null), [APrivate], pos));
 		ctorExprs.push(macro $p{["this", sinkField]} = new bh.multianim.MultiAnimBuilder.SwitchArmResults());
 		switchSinkFields.push(sinkField);
@@ -2416,6 +2571,9 @@ class ProgrammableCodeGen {
 			final paramField = "_" + pName;
 			paramsMapExprs.push(macro _swp.set($v{pName}, $p{["this", paramField]}));
 		}
+		// The loop variables of the statically unrolled repeats this copy sits in
+		for (loopVar => loopValue in loopVarSubstitutions)
+			paramsMapExprs.push(macro _swp.set($v{loopVar}, $v{loopValue}));
 		paramsMapExprs.push(macro _swp);
 		final paramsMapExpr:Expr = {expr: EBlock(paramsMapExprs), pos: pos};
 
@@ -2443,6 +2601,11 @@ class ProgrammableCodeGen {
 		for (r in armRefsList)
 			for (x in r)
 				if (armParamRefs.indexOf(x) < 0) armParamRefs.push(x);
+		// A pattern's own params (`<= $max:`) pick the arm too: their change re-selects (the inner
+		// gate rebuilds when the matched arm flips) — builder parity
+		for (arm in arms)
+			if (arm.pattern != null)
+				collectConditionValueRefs(arm.pattern, armParamRefs);
 		// Per-arm relevance: switch on the (new) active arm index, set _relevant if the changed
 		// param is in that arm's own refs.
 		final relevanceCases:Array<haxe.macro.Expr.Case> = [];
@@ -2471,6 +2634,35 @@ class ProgrammableCodeGen {
 			paramRefs: armParamRefs,
 			updateExpr: updateBlock,
 		});
+	}
+
+	/** Ordinal of a SWITCH parse node within the current programmable — mirrors
+	 *  MultiAnimBuilder.findNthSwitchNode's DFS (count a SWITCH, then walk its children) so
+	 *  the macro-baked ordinal and the runtime lookup agree. */
+	static function switchNodeOrdinal(target:Node):Int {
+		final progNode = allParsedNodes != null ? allParsedNodes.get(currentProgrammableName) : null;
+		if (progNode == null)
+			Context.fatalError('ProgrammableCodeGen: programmable "' + currentProgrammableName + '" not found for its @switch', Context.currentPos());
+		final count = [0];
+		final found = switchNodeOrdinalImpl(progNode, target, count);
+		if (found < 0)
+			Context.fatalError('ProgrammableCodeGen: @switch node not found in "' + currentProgrammableName + '"', Context.currentPos());
+		return found;
+	}
+
+	static function switchNodeOrdinalImpl(node:Node, target:Node, count:Array<Int>):Int {
+		switch node.type {
+			case SWITCH(_, _):
+				if (node == target) return count[0];
+				count[0]++;
+			default:
+		}
+		if (node.children != null)
+			for (child in node.children) {
+				final found = switchNodeOrdinalImpl(child, target, count);
+				if (found >= 0) return found;
+			}
+		return -1;
 	}
 
 	static function findEnumIndex(paramDef:Definition, value:String):Null<Int> {
@@ -2512,6 +2704,12 @@ class ProgrammableCodeGen {
 			case EUnaryOp(_, e):
 				final inner = tryResolveStaticInt(e);
 				if (inner != null) -inner else null;
+			// A @final with a constant value is a constant (a param-dependent one stays runtime)
+			case RVReference(ref) if (finalVarExprs.exists(ref) && !paramDefs.exists(ref)):
+				tryResolveStaticInt(finalVarExprs.get(ref));
+			// A loop variable of an enclosing unrolled repeat is a constant in this copy
+			case RVReference(ref) if (loopVarSubstitutions.exists(ref)):
+				loopVarSubstitutions.get(ref);
 			default: null;
 		};
 	}
@@ -3328,7 +3526,19 @@ class ProgrammableCodeGen {
 	static function generateRuntimeChildrenExprs(children:Array<Node>, repeatType:RepeatType, containerRef:Expr, bodyExprs:Array<Expr>, pos:Position):Void {
 		if (children == null) return;
 		final chainSiblings:Array<{node:Node, fieldName:String}> = [];
+		// A @final in the body is an alias its later siblings expand inline (with the runtime loop
+		// variable): forwarding it to the builder built nothing and left `$W` lowering to a field
+		// that does not exist. In scope for the rest of the body only.
+		final bodyFinals:Array<String> = [];
 		for (child in children) {
+			switch (child.type) {
+				case FINAL_VAR(finalName, finalExpr):
+					if (!finalVarExprs.exists(finalName)) bodyFinals.push(finalName);
+					finalVarExprs.set(finalName, finalExpr);
+					chainSiblings.push({node: child, fieldName: ""});
+					continue;
+				default:
+			}
 			final visCond = generateVisibilityCondition(child, chainSiblings, "", pos);
 			if (visCond != null) {
 				final gated:Array<Expr> = [];
@@ -3340,6 +3550,8 @@ class ProgrammableCodeGen {
 			}
 			chainSiblings.push({node: child, fieldName: ""});
 		}
+		for (finalName in bodyFinals)
+			finalVarExprs.remove(finalName);
 	}
 
 	/** Generate runtime loop body expressions for a single child node of a runtime iterator.
@@ -4651,7 +4863,7 @@ class ProgrammableCodeGen {
 
 		if (refs.length == 0) {
 			mapBuildExprs.push(macro {
-				final _result = this._pb.buildStaticRef($refNameExpr, _refParams, $extRefExpr);
+				final _result = this._pb.buildStaticRef($refNameExpr, _refParams, $extRefExpr, $v{currentProgrammableName});
 				$fieldRef = _result != null ? _result.object : new h2d.Object();
 			});
 			// Its own children go inside it. Builder parity (MultiAnimBuilder STATIC_REF): a target
@@ -4684,7 +4896,7 @@ class ProgrammableCodeGen {
 		createExprs.push(macro $b{mapBuildExprs.concat([
 			macro {
 				final _name:String = $refNameExpr;
-				final _result = this._pb.buildStaticRef(_name, _refParams, $extRefExpr);
+				final _result = this._pb.buildStaticRef(_name, _refParams, $extRefExpr, $v{currentProgrammableName});
 				final _container = new h2d.Object();
 				_container.addChild(_result != null ? _result.object : new h2d.Object());
 				$fieldRef = _container;
@@ -4706,7 +4918,7 @@ class ProgrammableCodeGen {
 								break;
 							}
 					if (!_same) {
-						final _result = this._pb.buildStaticRef(_name, _refParams, $extRefExpr);
+						final _result = this._pb.buildStaticRef(_name, _refParams, $extRefExpr, $v{currentProgrammableName});
 						$fieldRef.removeChildren();
 						$fieldRef.addChild(_result != null ? _result.object : new h2d.Object());
 						$p{["this", valsField]} = _vals;
@@ -4734,10 +4946,11 @@ class ProgrammableCodeGen {
 		final resultField = "_comp_" + programmableRef;
 
 		// Collect forwarded param refs first so we know whether to allocate a per-site result field.
+		// A forwarded @final follows the params it uses (collectParamRefsImpl expands it).
 		final forwardedParamRefs:Array<String> = [];
 		if (parameters != null) {
 			for (_ => val in parameters) {
-				collectRVParamRefs(val, forwardedParamRefs);
+				collectParamRefsImpl(val, forwardedParamRefs);
 			}
 		}
 		final hasForwardedRefs = forwardedParamRefs.length > 0;
@@ -4746,12 +4959,15 @@ class ProgrammableCodeGen {
 		// the shared _comp_<programmableRef> field is last-writer-wins, so getDynamicRef("base idx")
 		// must resolve to this iteration's result. The tracking pass keyed "base idx" -> this field.
 		final isIndexedSite = node.updatableName.match(UNTIndexed(_, _));
+		// An explicit #name site is looked up by its own field too: one name may be shared by sites
+		// in mutually exclusive arms, each keeping its own result (registerDynamicRefKey)
+		final hasExplicitName = !isIndexedSite && !node.updatableName.match(UNTObject(null));
 
 		// Per-site result field. `_comp_<programmableRef>` is shared by all sibling sites that
 		// reference the same programmable (last-writer-wins for getDynamicRef lookup), so the
 		// forwarded-param updater needs its own per-site slot to know which child to update.
-		final siteResultField = (hasForwardedRefs || isIndexedSite) ? "_dynref_lit_" + fieldName : null;
-		if (hasForwardedRefs || isIndexedSite) literalDynamicRefSiteFields.push(fieldName);
+		final siteResultField = (hasForwardedRefs || isIndexedSite || hasExplicitName) ? "_dynref_lit_" + fieldName : null;
+		if (hasForwardedRefs || isIndexedSite || hasExplicitName) literalDynamicRefSiteFields.push(fieldName);
 
 		// Build parameter map at runtime
 		final mapBuildExprs:Array<Expr> = [macro final _refParams = new Map<String, Dynamic>()];
@@ -4764,25 +4980,25 @@ class ProgrammableCodeGen {
 		}
 		// Build with incremental: true
 		final dynExtRefExpr:Expr = externalReference != null ? macro $v{externalReference} : macro null;
-		if (isIndexedSite) {
-			// Indexed sites key only their per-site field; the shared _comp_<prog> field may not even
-			// be declared when every site referencing the programmable is indexed (no plain/named site
-			// registers it). Writing only siteResultField keeps each iteration distinct and addressable.
+		if (isIndexedSite || hasExplicitName) {
+			// Indexed and explicitly named sites key only their per-site field; the shared
+			// _comp_<prog> field may not even be declared when no unnamed site registers it.
+			// Writing only siteResultField keeps each site distinct and addressable.
 			mapBuildExprs.push(macro {
-				final _result = this._pb.buildDynamicRef($refNameExpr, _refParams, $dynExtRefExpr);
+				final _result = this._pb.buildDynamicRef($refNameExpr, _refParams, $dynExtRefExpr, this._fireRebuildListeners, $v{currentProgrammableName});
 				$fieldRef = _result != null ? _result.object : new h2d.Object();
 				$p{["this", siteResultField]} = _result;
 			});
 		} else if (siteResultField != null) {
 			mapBuildExprs.push(macro {
-				final _result = this._pb.buildDynamicRef($refNameExpr, _refParams, $dynExtRefExpr);
+				final _result = this._pb.buildDynamicRef($refNameExpr, _refParams, $dynExtRefExpr, this._fireRebuildListeners, $v{currentProgrammableName});
 				$fieldRef = _result != null ? _result.object : new h2d.Object();
 				$p{["this", resultField]} = _result;
 				$p{["this", siteResultField]} = _result;
 			});
 		} else {
 			mapBuildExprs.push(macro {
-				final _result = this._pb.buildDynamicRef($refNameExpr, _refParams, $dynExtRefExpr);
+				final _result = this._pb.buildDynamicRef($refNameExpr, _refParams, $dynExtRefExpr, this._fireRebuildListeners, $v{currentProgrammableName});
 				$fieldRef = _result != null ? _result.object : new h2d.Object();
 				$p{["this", resultField]} = _result;
 			});
@@ -4884,7 +5100,7 @@ class ProgrammableCodeGen {
 		mapBuildExprs.push(macro {
 			final _templateName:String = $resolveNameExpr;
 			$p{["this", nameField]} = _templateName;
-			final _result = this._pb.buildDynamicRef(_templateName, _refParams, $extRefExpr);
+			final _result = this._pb.buildDynamicRef(_templateName, _refParams, $extRefExpr, this._fireRebuildListeners, $v{currentProgrammableName});
 			final _container = new h2d.Object();
 			if (_result != null && _result.object != null) _container.addChild(_result.object);
 			$fieldRef = _container;
@@ -4905,8 +5121,10 @@ class ProgrammableCodeGen {
 		rebuildMapExprs.push(macro {
 			final _newName:String = $resolveNameExpr;
 			if (_newName != $p{["this", nameField]}) {
+				// Build first: a template that throws (a forwarded param it does not declare)
+				// leaves the old one in place, and the name field on it, so going back is a no-op.
+				final _result = this._pb.buildDynamicRef(_newName, _refParams, $extRefExpr, this._fireRebuildListeners, $v{currentProgrammableName});
 				$p{["this", containerField]}.removeChildren();
-				final _result = this._pb.buildDynamicRef(_newName, _refParams, $extRefExpr);
 				if (_result != null && _result.object != null) $p{["this", containerField]}.addChild(_result.object);
 				$p{["this", resultField]} = _result;
 				$p{["this", nameField]} = _newName;
@@ -4924,7 +5142,7 @@ class ProgrammableCodeGen {
 		if (parameters != null) {
 			final forwardedParamRefs:Array<String> = [];
 			for (_ => val in parameters) {
-				collectRVParamRefs(val, forwardedParamRefs);
+				collectParamRefsImpl(val, forwardedParamRefs);
 			}
 			if (forwardedParamRefs.length > 0) {
 				// When forwarded params change, update the child's parameters via its incremental context
@@ -4965,28 +5183,6 @@ class ProgrammableCodeGen {
 			isContainer: false,
 			exprUpdates: [],
 		};
-	}
-
-	static function collectRVParamRefs(rv:ReferenceableValue, result:Array<String>):Void {
-		if (rv == null) return;
-		switch rv {
-			case RVReference(ref):
-				if (!result.contains(ref)) result.push(ref);
-			case EBinop(_, e1, e2):
-				collectRVParamRefs(e1, result);
-				collectRVParamRefs(e2, result);
-			case RVParenthesis(e):
-				collectRVParamRefs(e, result);
-			case RVTernary(cond, t, f):
-				collectRVParamRefs(cond, result);
-				collectRVParamRefs(t, result);
-				collectRVParamRefs(f, result);
-			case EUnaryOp(_, e):
-				collectRVParamRefs(e, result);
-			case RVElementOfArray(_, idx):
-				collectRVParamRefs(idx, result);
-			default:
-		}
 	}
 
 	// ==================== Placeholder ====================
@@ -5941,8 +6137,9 @@ class ProgrammableCodeGen {
 						{x: macro 0.0, y: macro 0.0};
 					}
 				} else {
-					Context.error('ProgrammableCodeGen: param-dependent layout index not supported in pixels', pos);
-					{x: macro 0.0, y: macro 0.0};
+					// An index from a param: the point at runtime, as the builder resolves it
+					final idxExpr = rvToExprInt(index);
+					{x: macro this._pb.getLayoutPoint($v{layoutName}, $idxExpr).x, y: macro this._pb.getLayoutPoint($v{layoutName}, $idxExpr).y};
 				}
 			case NAMED_COORD(name, coord):
 				final namedCS = if (node != null) getNamedCoordSystem(name, node) else null;
@@ -6394,6 +6591,9 @@ class ProgrammableCodeGen {
 		final mapExprs:Array<Expr> = [macro final _pt_pp = new Map<String, Dynamic>()];
 		for (pn in paramNames)
 			mapExprs.push(macro _pt_pp.set($v{pn}, $p{["this", "_" + pn]}));
+		// The loop variables of the statically unrolled repeats this copy sits in
+		for (loopVar => loopValue in loopVarSubstitutions)
+			mapExprs.push(macro _pt_pp.set($v{loopVar}, $v{loopValue}));
 		mapExprs.push(macro $fieldRef = this._pb.buildParticles($nameExpr, $indexExpr, _pt_pp));
 		final createExprs:Array<Expr> = [{expr: EBlock(mapExprs), pos: pos}];
 
@@ -6584,6 +6784,9 @@ class ProgrammableCodeGen {
 		final mapExprs:Array<Expr> = [macro final _tg_pp = new Map<String, Dynamic>()];
 		for (pn in paramNames)
 			mapExprs.push(macro _tg_pp.set($v{pn}, $p{["this", "_" + pn]}));
+		// The loop variables of the statically unrolled repeats this copy sits in
+		for (loopVar => loopValue in loopVarSubstitutions)
+			mapExprs.push(macro _tg_pp.set($v{loopVar}, $v{loopValue}));
 		mapExprs.push(macro $fieldRef = this._pb.buildTileGroupByNode($nameExpr, $keyExpr, _tg_pp));
 		final createExprs:Array<Expr> = [{expr: EBlock(mapExprs), pos: pos}];
 
@@ -6856,10 +7059,56 @@ class ProgrammableCodeGen {
 			}
 		}
 
+		// The parent's own `$param` values for what this apply touches are its own from each update
+		// on: re-save them as the baseline the revert restores, and have _applyVisibility reconcile
+		// (put the matched applies back on top). Without it an apply turned off restored the
+		// constructor's value over a param-driven one (builder parity: ownPropsWritten).
+		final parentNode = node.parent;
+		if (parentNode != null) {
+			inline function resaveOn(parentValue:Null<ReferenceableValue>, saveExpr:Expr):Void {
+				if (parentValue == null) return;
+				final refs:Array<String> = [];
+				collectParamRefsImpl(parentValue, refs);
+				if (refs.length > 0)
+					expressionUpdates.push({fieldName: parentField, updateExpr: macro { $saveExpr; this._applyDirty = true; }, paramRefs: refs});
+			}
+			if (node.alpha != null) resaveOn(parentNode.alpha, macro $p{["this", "_applyOrigAlpha_" + applyIdx]} = $parentRef.alpha);
+			if (node.scale != null) resaveOn(parentNode.scale, macro $p{["this", "_applyOrigScale_" + applyIdx]} = $parentRef.scaleX);
+			if (node.rotation != null) resaveOn(parentNode.rotation, macro $p{["this", "_applyOrigRotation_" + applyIdx]} = $parentRef.rotation);
+			if (node.filter != null) {
+				final filterRefs:Array<String> = [];
+				if (parentNode.filter != null) collectFilterParamRefsImpl(parentNode.filter, filterRefs);
+				if (filterRefs.length > 0)
+					expressionUpdates.push({fieldName: parentField,
+						updateExpr: macro { $p{["this", "_applyOrigFilter_" + applyIdx]} = $parentRef.filter; this._applyDirty = true; }, paramRefs: filterRefs});
+			}
+			switch (node.pos) {
+				case null | ZERO:
+				default:
+					final posRefs = parentNode.pos != null ? collectPositionParamRefs(parentNode.pos) : [];
+					if (posRefs.length > 0)
+						expressionUpdates.push({fieldName: parentField, updateExpr: macro {
+							$p{["this", "_applyOrigX_" + applyIdx]} = $parentRef.x;
+							$p{["this", "_applyOrigY_" + applyIdx]} = $parentRef.y;
+							this._applyDirty = true;
+						}, paramRefs: posRefs});
+			}
+		}
+
+		// Params the apply's own values use: a change re-applies it (the others reconcile only
+		// when an apply's condition flips or the parent's own value changed)
+		final valueRefs:Array<String> = [];
+		if (node.alpha != null) collectParamRefsImpl(node.alpha, valueRefs);
+		if (node.scale != null) collectParamRefsImpl(node.scale, valueRefs);
+		if (node.rotation != null) collectParamRefsImpl(node.rotation, valueRefs);
+		if (node.tint != null) collectParamRefsImpl(node.tint, valueRefs);
+		if (node.filter != null) collectFilterParamRefsImpl(node.filter, valueRefs);
+		if (node.pos != null) for (r in collectPositionParamRefs(node.pos)) if (!valueRefs.contains(r)) valueRefs.push(r);
+
 		// Generate visibility condition
 		final visCond = generateVisibilityCondition(node, siblings, null, pos);
 		if (visCond != null) {
-			applyEntries.push({condition: visCond, applyExprs: applyExprs, revertExprs: revertExprs});
+			applyEntries.push({condition: visCond, applyExprs: applyExprs, revertExprs: revertExprs, valueRefs: valueRefs});
 		}
 
 		if (siblings != null)
@@ -7551,40 +7800,56 @@ class ProgrammableCodeGen {
 		switch (node.conditionals) {
 			case NoConditional:
 			case Conditional(values, _):
-				for (key in values.keys())
-					if (!refs.contains(key)) refs.push(key);
+				addConditionRefs(values, refs);
 			case ConditionalElse(values):
 				// Collects from prior siblings too (since @else depends on them)
 				for (sib in siblings) {
 					switch (sib.node.conditionals) {
 						case Conditional(sValues, _):
-							for (key in sValues.keys())
-								if (!refs.contains(key)) refs.push(key);
+							addConditionRefs(sValues, refs);
 						case ConditionalElse(sValues):
 							if (sValues != null)
-								for (key in sValues.keys())
-									if (!refs.contains(key)) refs.push(key);
+								addConditionRefs(sValues, refs);
 						default:
 					}
 				}
 				if (values != null)
-					for (key in values.keys())
-						if (!refs.contains(key)) refs.push(key);
+					addConditionRefs(values, refs);
 			case ConditionalDefault:
 				for (sib in siblings) {
 					switch (sib.node.conditionals) {
 						case Conditional(sValues, _):
-							for (key in sValues.keys())
-								if (!refs.contains(key)) refs.push(key);
+							addConditionRefs(sValues, refs);
 						case ConditionalElse(sValues):
 							if (sValues != null)
-								for (key in sValues.keys())
-									if (!refs.contains(key)) refs.push(key);
+								addConditionRefs(sValues, refs);
 						default:
 					}
 				}
 		}
 		return refs;
+	}
+
+	/** A condition's params: its keys and the params its values use (`@(hp >= $max)` is about `max`
+	 *  too, so a transition declared on `max` animates the flip it causes — builder parity). */
+	static function addConditionRefs(values:Map<String, ConditionalValues>, refs:Array<String>):Void {
+		for (key => cv in values) {
+			if (!refs.contains(key)) refs.push(key);
+			collectConditionValueRefs(cv, refs);
+		}
+	}
+
+	static function collectConditionValueRefs(cv:ConditionalValues, refs:Array<String>):Void {
+		switch (cv) {
+			case CoRange(from, to, _, _):
+				if (from != null) collectParamRefsImpl(from, refs);
+				if (to != null) collectParamRefsImpl(to, refs);
+			case CoNot(inner):
+				collectConditionValueRefs(inner, refs);
+			case CoAnyOf(inner):
+				for (v in inner) collectConditionValueRefs(v, refs);
+			default:
+		}
 	}
 
 	/** Symbolically replay the builder's chain state machine across prior siblings,
@@ -8687,7 +8952,15 @@ class ProgrammableCodeGen {
 							macro $fieldRef.setPosition($v{pt.x}, $v{pt.y});
 						}
 					} else null;
-				} else null;
+				} else {
+					// An index from a param: the point at runtime, as the builder resolves it (the
+					// position tracking re-runs this on setParameter)
+					final idxExpr = rvToExprInt(index);
+					macro {
+						final _lp = this._pb.getLayoutPoint($v{layoutName}, $idxExpr);
+						$fieldRef.setPosition(_lp.x, _lp.y);
+					};
+				}
 			case NAMED_COORD(name, coord):
 				final namedCS = if (node != null) getNamedCoordSystem(name, node) else null;
 				if (namedCS != null) {
@@ -8722,7 +8995,16 @@ class ProgrammableCodeGen {
 								} else if (pt != null) {
 									macro $fieldRef.setPosition($v{pt.x + ox}, $v{pt.y + oy});
 								} else null;
-							} else null;
+							} else {
+								// An index from a param: the point at runtime, plus the static offset
+								final idxExpr = rvToExprInt(index);
+								final oxV = ox;
+								final oyV = oy;
+								macro {
+									final _lp = this._pb.getLayoutPoint($v{layoutName}, $idxExpr);
+									$fieldRef.setPosition(_lp.x + $v{oxV}, _lp.y + $v{oyV});
+								};
+							}
 						default:
 							final basePt = coordsToStaticXY(base, pos, node);
 							if (basePt != null)
@@ -10248,6 +10530,51 @@ class ProgrammableCodeGen {
 			case Indexed(name, index): "_slotHandle_" + name + "_" + index;
 			case Indexed2D(name, indexX, indexY): "_slotHandle_" + name + "_" + indexX + "_" + indexY;
 		};
+	}
+
+	/** A slot site's handle field: the key's own, or — when the key is taken by sites that are all
+	 *  in mutually exclusive arms with this one — the same with an `_alt<n>` suffix (builder parity:
+	 *  one slot name per arm, the shown one answers). A key that recurs otherwise keeps the plain
+	 *  name, and the finalize pass rejects the duplicate field. */
+	static function siteSlotHandleField(key:MacroSlotKey, node:Node):String {
+		final base = slotHandleFieldName(key);
+		var taken = 0;
+		for (e in slotEntries)
+			if (slotHandleFieldName(e.key) == base) {
+				if (!bh.multianim.ConditionalArms.exclusive(e.node, node)) return base;
+				taken++;
+			}
+		return taken == 0 ? base : base + "_alt" + taken;
+	}
+
+	/** `return` of a slot key's handle: with alternatives in exclusive arms, the one drawn under
+	 *  this instance (else the first). */
+	static function shownSlotReturn(fields:Array<String>):Expr {
+		if (fields.length == 1) return macro return $p{["this", fields[0]]};
+		final checks:Array<Expr> = [];
+		for (f in fields)
+			checks.push(macro {
+				final _h = $p{["this", f]};
+				if (_h != null && bh.multianim.LiveProgrammable.LiveProgrammableTools.isDrawnUnder(_h.container, this))
+					return _h;
+			});
+		checks.push(macro return $p{["this", fields[0]]});
+		return macro $b{checks};
+	}
+
+	/** The handle fields of every site of each slot key (by its plain field name). */
+	static function slotHandleFieldsByKey():Map<String, Array<String>> {
+		final byKey = new Map<String, Array<String>>();
+		for (e in slotEntries) {
+			final base = slotHandleFieldName(e.key);
+			var list = byKey.get(base);
+			if (list == null) {
+				list = [];
+				byKey.set(base, list);
+			}
+			if (!list.contains(e.handleField)) list.push(e.handleField);
+		}
+		return byKey;
 	}
 
 	static function toPascalCase(s:String):String {

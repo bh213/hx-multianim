@@ -1610,6 +1610,7 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 		};
 		registeredCardHands.push(binding);
 		createCardTargetsForBinding(binding);
+		addCardEventListener(binding);
 		final hook = createCardTargetHook(binding);
 		binding.hook = hook;
 		binding.cardHand.getTargeting().addHook(hook);
@@ -2164,7 +2165,12 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 
 			binding.cardHand.registerTargetInteractive(wrapper);
 		}
+	}
 
+	/** The binding's listener on the hand's events, added once when the grid registers and taken
+	 *  off when it unregisters or is disposed: not on every cell change, which moved it behind the
+	 *  next grid's mid-dispatch, so it heard an event twice and the next grid not at all. */
+	function addCardEventListener(binding:CardHandBinding):Void {
 		// Wire card drag events → highlight all valid targets on drag start
 		final listener = (event:UICardHandTypes.CardHandEvent) -> {
 			switch event {
@@ -2204,12 +2210,6 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 			cardTargetInteractives.remove(targetId);
 			cardTargetWrappers.remove(targetId);
 		}
-
-		// Remove chained event listener
-		if (binding.eventListener != null) {
-			binding.cardHand.chainedListeners.remove(binding.eventListener);
-			binding.eventListener = null;
-		}
 	}
 
 	/** The binding's part in the card hand's targeting: it decides for its own targets (when
@@ -2237,6 +2237,10 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 	/** Takes the binding off its card hand for good: its targets, its event listener and its hook. */
 	function releaseCardHandBinding(binding:CardHandBinding):Void {
 		clearCardTargetsForBinding(binding);
+		if (binding.eventListener != null) {
+			binding.cardHand.chainedListeners.remove(binding.eventListener);
+			binding.eventListener = null;
+		}
 		final hook = binding.hook;
 		if (hook != null) {
 			binding.cardHand.getTargeting().removeHook(hook);

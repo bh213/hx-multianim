@@ -197,14 +197,42 @@ class ProgrammableBuilder {
 		return bh.base.filters.ReplacePaletteShader.createAsPaletteFilter(palette, sourceRow, replacementRow);
 	}
 
-	/** Build a sub-programmable via the builder (for STATIC_REF nodes) */
-	public function buildStaticRef(name:String, parameters:Map<String, Dynamic>, ?externalRef:String):BuilderResult {
-		return getBuilder().importedBuilder(externalRef).buildWithParameters(name, parameters);
+	/** A layout's point by an index known only at runtime (`layout(name, $idx)`), resolved as the
+	 *  builder resolves it. */
+	public function getLayoutPoint(layoutName:String, index:Int):bh.base.FPoint {
+		return getBuilder().getLayouts().getPoint(layoutName, index);
 	}
 
-	/** Build a dynamic ref via the builder (for DYNAMIC_REF nodes, always incremental) */
-	public function buildDynamicRef(name:String, parameters:Map<String, Dynamic>, ?externalRef:String):BuilderResult {
-		return getBuilder().importedBuilder(externalRef).buildWithParameters(name, parameters, null, null, true);
+	/** Build a sub-programmable via the builder (for STATIC_REF nodes). `fromProgrammable` is the
+	 *  programmable the instance builds: a ref back to it is circular, as in the builder. */
+	public function buildStaticRef(name:String, parameters:Map<String, Dynamic>, ?externalRef:String, ?fromProgrammable:String):BuilderResult {
+		final target = getBuilder().importedBuilder(externalRef);
+		return target.buildingFrom(fromProgrammable, () -> target.buildWithParameters(name, parameters, refBuilderParams()));
+	}
+
+	/** Build a dynamic ref via the builder (for DYNAMIC_REF nodes, always incremental).
+	 *  `onChildRebuilt` runs when the child rebuilds on its own (its setParameter): the instance's
+	 *  rebuild listeners, so a screen resyncs the interactives the child shows or hides. */
+	public function buildDynamicRef(name:String, parameters:Map<String, Dynamic>, ?externalRef:String, ?onChildRebuilt:Void -> Void,
+			?fromProgrammable:String):BuilderResult {
+		final target = getBuilder().importedBuilder(externalRef);
+		final result = target.buildingFrom(fromProgrammable, () -> target.buildWithParameters(name, parameters, refBuilderParams(), null, true));
+		if (onChildRebuilt != null && result != null && result.isIncremental)
+			result.addRebuildListener(onChildRebuilt);
+		#if MULTIANIM_DEV
+		// The child's inputs are the site's arguments: a hot reload applies the file's
+		if (result != null && result.incrementalContext != null)
+			result.incrementalContext.clearSetByCaller();
+		#end
+		return result;
+	}
+
+	/** The instance's builder params for a ref's nested build: its placeholder objects (set by
+	 *  setPlaceholderObjects) reach `builderParameter(...)` in the target, as in the builder. */
+	function refBuilderParams():Null<MultiAnimBuilder.BuilderParameters> {
+		final own = getBuilder().builderParams;
+		if (own == null) return null;
+		return {callback: own.callback, placeholderObjects: own.placeholderObjects, scene: own.scene};
 	}
 
 	/** Build a parameterized slot's children via the builder (for SLOT nodes with parameters in codegen).
@@ -232,7 +260,7 @@ class ProgrammableBuilder {
 			case PARTICLES(particlesDef):
 				// Resolve with the instance's parameters in scope so `$param` refs inside
 				// the particles block use the instance values, not an empty/default scope.
-				builder.buildParticleWithParams(particlesDef, particlesNode.uniqueNodeName, programmableName, params);
+				builder.buildParticleWithParams(particlesDef, particlesNode.uniqueNodeName, programmableName, params, particlesNode);
 			default:
 				throw new BuilderError('unexpected node type in $programmableName', particlesNode);
 		};

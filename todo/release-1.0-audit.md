@@ -62,6 +62,9 @@ before assigning a new ID.
   *(2026-07-13 verify: all three confirmed on HEAD + a fourth: bool-from-Int (codegen `!=0` accepts,
   builder throws). Also same family: codegen full-build handoffs (buildTileGroupByNode/buildParticles)
   forward enum params as raw Int index → builder `enum "x" does not contain value "0"` throw.)*
+  *(2026-10-22 build review, two more: a float param given `"1.5"` works in the builder and throws in
+  codegen (DevBridge `set_parameter` forwards raw JSON to both); an unknown enum string is reported back
+  by the builder's `getParameterValues`, while codegen stores its Int sentinel and leaves the key out.)*
 - [ ] `CG-23` Misc: ~~maxWidth-with-param-scale bake~~, ~~`TAWGrid` skipped~~, ~~`$ctx.random` no truncation~~,
   hyperlink exception propagation asymmetry, SWITCH-node tint/filter/blendMode never applied,
   ~~LayoutIterator `$param` points → 0,0~~, ~~generated tile w/h single-truncation~~, ~~dynamicRef forwarded

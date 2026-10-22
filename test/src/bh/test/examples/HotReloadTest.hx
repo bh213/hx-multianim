@@ -1084,9 +1084,9 @@ class HotReloadTest extends BuilderTestBase {
 		Assert.isTrue(snapshot.dynamicRefs.exists("bar"), "Snapshot should include dynamicRef 'bar'");
 
 		// Verify the snapshot captured the updated value
-		final drParams = snapshot.dynamicRefs.get("bar");
-		Assert.notNull(drParams);
-		Assert.isTrue(drParams.exists("value"), "DynamicRef snapshot should have 'value' param");
+		final drState = snapshot.dynamicRefs.get("bar");
+		Assert.notNull(drState);
+		Assert.isTrue(drState.params.exists("value"), "DynamicRef snapshot should have 'value' param");
 	}
 
 	// ==================== DynamicRef template swap: dev-resource lifetime ====================

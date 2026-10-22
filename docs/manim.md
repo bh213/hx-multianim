@@ -1375,6 +1375,8 @@ Constants can reference other constants:
 @final offsetX = $baseX + 100
 ```
 
+A constant that uses parameters is live: in an incrementally built programmable or a codegen instance, `setParameter("x", 10)` updates everything that uses `$cx` above, as if `$x + $w / 2` were written there. It forwards through `dynamicRef` arguments like the parameters it uses, and an interactive id built from it is refused on `setParameter` (`untracked_param`), as one built from `$x` is.
+
 **Scoping:** Every `{ }` block creates a scope. Constants declared inside are cleaned up when leaving:
 ```
 #test programmable(x:uint=5) {

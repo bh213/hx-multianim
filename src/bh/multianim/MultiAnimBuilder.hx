@@ -329,6 +329,9 @@ private typedef DynamicNameBinding = {
 	parameters:Map<String, ReferenceableValue>,
 	externalReference:Null<String>,
 	internalResults:InternalBuilderResults,
+	// Build-time params when the arguments use a loop variable or nested @final (see
+	// MultiAnimBuilder.inScope); null when they use only the context's own params.
+	scope:Null<Map<String, ResolvedIndexParameters>>,
 };
 
 // Promoted from an anonymous struct so applyUpdates can mark entries by generation
@@ -347,6 +350,12 @@ private class TrackedExpression {
 	// object) instead of the reverse index's grouped-by-param order. Survives
 	// cleanupDestroyedSubtree splices — relative order of survivors is preserved.
 	public var declOrder:Int = 0;
+	// A structural rebuild (repeat, @switch arm, staticRef) or a restart (a stateanim's play): it
+	// throws away what it holds or where it is, so showing a hidden ancestor again replays it only
+	// when it is `stale` — skipped by applyUpdates while its object was detached — not to re-draw
+	// like other expressions.
+	public var replayOnlyWhenStale:Bool = false;
+	public var stale:Bool = false;
 	public inline function new(updateFn:Void->Void, paramRefs:Array<String>, object:Null<h2d.Object>) {
 		this.updateFn = updateFn;
 		this.paramRefs = paramRefs;
@@ -452,6 +461,19 @@ class IncrementalUpdateContext {
 	// would skip a retry with the same value and leave its content unbuilt without a word; it lets
 	// these through until they apply cleanly. Null while none failed, the usual case.
 	var failedParams:Null<Map<String, Bool>> = null;
+	// True while refreshTrackedExpressionsFor replays a stale structural rebuild: the params it
+	// missed changed in an earlier cycle, so isParamDirty answers true for its gate.
+	var replayingStale:Bool = false;
+	// refreshTrackedExpressionsFor's collected entries (a stack: a replay may refresh again)
+	var refreshScratch:Array<TrackedExpression> = [];
+	/** The object this context's elements are built under (the programmable's root, a slot's
+	 *  container). A tracked expression whose object does not reach it — under a hidden
+	 *  conditional — is skipped and replayed when that conditional is shown. Null: only an
+	 *  object detached itself counts as hidden. */
+	public var rootObject:Null<h2d.Object> = null;
+	/** The context of the result this one's is part of (a dynamicRef child's or a parameterized
+	 *  slot's enclosing context): told when this one rebuilds on its own. */
+	public var parentContext:Null<IncrementalUpdateContext> = null;
 	var transitionsDef:Null<Map<String, TransitionType>>;
 	public var tweenManager:Null<TweenManager> = null;
 	// `restore` snaps the properties this transition was animating back to their captured
@@ -562,6 +584,35 @@ class IncrementalUpdateContext {
 	}
 
 	#if MULTIANIM_DEV
+	// The params the caller gave at build or set through setParameter — not those forwarded by an
+	// enclosing result (a dynamicRef's arguments) nor left at their defaults. What an in-place hot
+	// reload keeps; the others take the reloaded file's defaults and arguments.
+	var setByCaller:Null<Map<String, Bool>> = null;
+	// True while an enclosing context forwards its arguments into this one
+	var forwarding:Bool = false;
+
+	public function markSetByCaller(name:String):Void {
+		if (setByCaller == null) setByCaller = new Map();
+		setByCaller.set(name, true);
+	}
+
+	/** A dynamicRef child's build inputs are its site's arguments, not the caller's values. */
+	public function clearSetByCaller():Void {
+		setByCaller = null;
+	}
+
+	/** The current values of the params the caller gave or set (see setByCaller). */
+	public function snapshotSetParams():Map<String, ResolvedIndexParameters> {
+		final copy:Map<String, ResolvedIndexParameters> = new Map();
+		final names = setByCaller;
+		if (names != null)
+			for (k in names.keys()) {
+				final v = indexedParams.get(k);
+				if (v != null) copy.set(k, v);
+			}
+		return copy;
+	}
+
 	public function getBuilderParams():BuilderParameters {
 		return builderParams;
 	}
@@ -642,11 +693,39 @@ class IncrementalUpdateContext {
 	 *  of applyUpdates). Used by the SWITCH rebuild gate to skip tearing down the active arm when
 	 *  the changed param is referenced only in an inactive sibling arm. */
 	public inline function isParamDirty(name:String):Bool {
-		return changedParams.exists(name);
+		return replayingStale || changedParams.exists(name);
 	}
 
-	public function trackExpression(updateFn:Void->Void, paramRefs:Array<String>, ?object:h2d.Object):Void {
-		final tracked = new TrackedExpression(updateFn, paramRefs, object);
+	/** `replayOnlyWhenStale`: a structural rebuild or restart (see TrackedExpression).
+	 *  A ref this context does not own but the build has bound now (the loop variable of an
+	 *  enclosing constant-count repeatable, a nested @final) is gone by the time the expression
+	 *  runs again — on a param it also uses, or the replay when a hidden ancestor is shown. The
+	 *  build-time params are kept as its scope then, the live params laid over them when it runs. */
+	public function trackExpression(updateFn:Void->Void, paramRefs:Array<String>, ?object:h2d.Object, replayOnlyWhenStale:Bool = false):Void {
+		// A @final fires on the params it uses
+		paramRefs = builder.expandFinalAliases(paramRefs);
+		var fn = updateFn;
+		final building = builder.indexedParams;
+		var needsScope = false;
+		for (ref in paramRefs)
+			if (!hasParameter(ref) && building.exists(ref)) {
+				needsScope = true;
+				break;
+			}
+		// A rebuild builds a whole body, which may use the enclosing repeat's loop variable
+		// without naming it in its own refs
+		if (!needsScope && replayOnlyWhenStale)
+			for (name in building.keys())
+				if (!hasParameter(name)) {
+					needsScope = true;
+					break;
+				}
+		if (needsScope) {
+			final scope = building.copy();
+			fn = () -> builder.runInScope(scope, updateFn);
+		}
+		final tracked = new TrackedExpression(fn, paramRefs, object);
+		tracked.replayOnlyWhenStale = replayOnlyWhenStale;
 		tracked.declOrder = trackedSeq++;
 		trackedExpressions.push(tracked);
 		for (ref in paramRefs) {
@@ -660,6 +739,8 @@ class IncrementalUpdateContext {
 	}
 
 	public function trackDynamicRef(childContext:IncrementalUpdateContext, childParam:String, resolveFn:Void->Dynamic, referencedParams:Array<String>, ?object:h2d.Object):Void {
+		// A forwarded @final follows the params it uses
+		referencedParams = builder.expandFinalAliases(referencedParams);
 		final binding = new DynamicRefBinding(childContext, childParam, resolveFn, referencedParams, object);
 		dynamicRefBindings.push(binding);
 		for (ref in referencedParams) {
@@ -916,6 +997,33 @@ class IncrementalUpdateContext {
 		});
 	}
 
+	/** The parent's own tracked expression just wrote `node`'s properties (its position when
+	 *  `position`, else its scale/rotation/alpha/tint/filter). Those values are the parent's own
+	 *  from now on: they replace the baseline its applies reset to, and the matched applies go back
+	 *  on top. Without it an apply turned off restored the build-time value over a `$param` one,
+	 *  and the expression wrote over an apply that is on. No-op for a parent with no apply. */
+	public function ownPropsWritten(parent:h2d.Object, node:Node, position:Bool):Void {
+		final baseline = conditionalApplyBaselines.get(parent);
+		if (baseline == null) return;
+		if (position) {
+			baseline.x = parent.x;
+			baseline.y = parent.y;
+		} else {
+			if (node.alpha != null) baseline.alpha = parent.alpha;
+			if (node.scale != null) {
+				baseline.scaleX = parent.scaleX;
+				baseline.scaleY = parent.scaleY;
+			}
+			if (node.rotation != null) baseline.rotation = parent.rotation;
+			if (node.filter != null) baseline.filter = parent.filter;
+			if (node.tint != null && Std.isOfType(parent, h2d.Drawable)) {
+				final d:h2d.Drawable = cast parent;
+				baseline.color = d.color.toColor();
+			}
+		}
+		reconcileApplyParent(parent);
+	}
+
 	/** Reset a parent to its captured baseline and replay every currently-matched
 	 *  apply entry for that parent in declaration (push) order. Safe to call
 	 *  whenever an entry's match state flips; composes overlapping applies correctly.
@@ -1016,15 +1124,72 @@ class IncrementalUpdateContext {
 		return obj.parent != null;
 	}
 
+	/** True when `obj` is out of this context's tree: detached itself, or under a detached
+	 *  conditional (its parent chain ends before reaching rootObject), or fading out (it or an
+	 *  ancestor in a hide transition: still drawn, but its expressions were built for the values
+	 *  that showed it — `100 / $max` with max now 0). Skipped ones are replayed on the next show. */
+	function isDetached(obj:h2d.Object):Bool {
+		final root = rootObject;
+		final checkHiding = activeTransitionTweens.length > 0;
+		if (root == null || obj == root)
+			return (obj.parent == null && obj != root) || (checkHiding && isHiding(obj));
+		var p = obj;
+		while (p != root) {
+			final parent = p.parent;
+			if (parent == null) return true;
+			if (checkHiding && isHiding(p)) return true;
+			p = parent;
+		}
+		return false;
+	}
+
+	/** True when `obj` has a hide transition in flight. */
+	function isHiding(obj:h2d.Object):Bool {
+		for (entry in activeTransitionTweens)
+			if (entry.obj == obj && !entry.target) return true;
+		return false;
+	}
+
 	/** Re-fire tracked expressions for elements within a subtree that was just re-added.
-	    h2d.Graphics clears draw commands in onRemove(), so content must be re-drawn on re-add. */
+	    h2d.Graphics clears draw commands in onRemove(), so content must be re-drawn on re-add.
+	    A structural rebuild runs only when it went stale while detached: run again for nothing it
+	    would throw away what it holds (slot content, the values set on its dynamicRefs). Its own
+	    dirty-param gate (a @switch arm's) lets the stale replay through (replayingStale). */
 	function refreshTrackedExpressionsFor(target:h2d.Object):Void {
+		// Inside applyUpdates the sweep after applyConditionalChains uses generation applyGen + 1:
+		// an expression replayed here already ran with this cycle's values, so the sweep skips it.
+		final sweepGen = applyGen + 1;
+		final replayed = refreshScratch.length;
 		for (tracked in trackedExpressions) {
 			final obj = tracked.object;
 			if (obj == null) continue;
-			if (obj == target || isDescendantOf(obj, target))
-				tracked.updateFn();
+			if (obj != target && !isDescendantOf(obj, target)) continue;
+			if (tracked.replayOnlyWhenStale && !tracked.stale) continue;
+			refreshScratch.push(tracked);
 		}
+		// Collected first, run after: a rebuild replayed below changes trackedExpressions. The
+		// scratch is used as a stack (a replay may show another conditional and refresh it).
+		final end = refreshScratch.length;
+		try {
+			for (i in replayed...end) {
+				final tracked = refreshScratch[i];
+				if (applyingUpdates) tracked.gen = sweepGen;
+				if (tracked.replayOnlyWhenStale) {
+					tracked.stale = false;
+					replayingStale = true;
+					try tracked.updateFn() catch (e:Dynamic) {
+						replayingStale = false;
+						throw e;
+					}
+					replayingStale = false;
+				} else
+					tracked.updateFn();
+			}
+		} catch (e:Dynamic) {
+			refreshScratch.resize(replayed);
+			throw e;
+		}
+		refreshScratch.resize(replayed);
 	}
 
 	static function isDescendantOf(obj:h2d.Object, ancestor:h2d.Object):Bool {
@@ -1049,31 +1214,22 @@ class IncrementalUpdateContext {
 	}
 
 	public function markParamUntracked(paramName:String, reason:String):Void {
-		var existing = untrackedParams.get(paramName);
-		if (existing == null) {
-			existing = [];
-			untrackedParams.set(paramName, existing);
+		// A @final in an untracked slot freezes the params it uses
+		for (name in builder.expandFinalAliases([paramName])) {
+			var existing = untrackedParams.get(name);
+			if (existing == null) {
+				existing = [];
+				untrackedParams.set(name, existing);
+			}
+			if (existing.indexOf(reason) < 0) existing.push(reason);
 		}
-		if (existing.indexOf(reason) < 0) existing.push(reason);
 	}
 
+	/** A rejected value (untracked_param, unknown_param, invalid_param_value) throws before
+	 *  anything is stored. Inside a batch the batch stays open, as in codegen: the values set
+	 *  before and after the throw are applied by the caller's endUpdate. */
 	@:nullSafety(Off)
 	public function setParameter(name:String, value:Dynamic):Void {
-		try {
-			setParameterImpl(name, value);
-		} catch (e:Dynamic) {
-			// Any throw inside a batch (untracked_param, unknown_param, invalid_param_value,
-			// or the typeDesc fallback) must unwind batchMode so the caller can catch the
-			// BuilderError and reuse this context. Without this, batchMode=true leaks and the
-			// next beginUpdate() wedges with nested_begin_update — symmetric with the
-			// forwarding loop in applyUpdates() that calls cancelUpdate() on child contexts.
-			if (batchMode) cancelUpdate();
-			throw e;
-		}
-	}
-
-	@:nullSafety(Off)
-	function setParameterImpl(name:String, value:Dynamic):Void {
 		final untrackedReasons = untrackedParams.get(name);
 		if (untrackedReasons != null) {
 			throw BuilderError.of('setParameter("$name", ...) rejected: this param is referenced in incremental-unsupported slot(s) [${untrackedReasons.join(", ")}]. Changing it would leave the rendered state inconsistent. Either rebuild the programmable or avoid runtime mutation of this param.',
@@ -1169,6 +1325,9 @@ class IncrementalUpdateContext {
 		// state machines that don't track their own state) thrash applyConditionalChains,
 		// trackedExpressions, dynamicRef forwarding, and rebuild listeners. Type.enumEq is
 		// cheap (no allocation) and works across all ResolvedIndexParameters variants.
+		#if MULTIANIM_DEV
+		if (!forwarding) markSetByCaller(name);
+		#end
 		final existing = indexedParams.get(name);
 		if (existing != null && Type.enumEq(existing, converted) && (failedParams == null || !failedParams.exists(name))) {
 			// In batch mode, we still skip — endUpdate guards on hasChanges, so a no-op
@@ -1212,9 +1371,8 @@ class IncrementalUpdateContext {
 	 *  batchMode=true would wedge the next beginUpdate() with nested_begin_update. The
 	 *  committed indexedParams entries from the failed batch stay put; those an applyUpdates
 	 *  threw on are in failedParams, so setting them again, to the same value too, applies
-	 *  them again. Also invoked automatically by setParameter's catch
-	 *  wrapper on any rejection path (untracked/unknown/invalid param), so user batches
-	 *  wrapped in try/catch recover without needing to call cancelUpdate explicitly. */
+	 *  them again. A rejected setParameter inside a batch does not call it: the batch stays
+	 *  open for the caller's endUpdate. */
 	public function cancelUpdate():Void {
 		if (!batchMode) return;
 		batchMode = false;
@@ -1308,13 +1466,24 @@ class IncrementalUpdateContext {
 		return computed;
 	}
 
+	/** A condition's params: its keys and the params its values use (`@(hp >= $max)` is about `max`
+	 *  too, so a transition declared on `max` animates the flip it causes). */
+	static function addConditionRefs(values:Map<String, ConditionalValues>, refs:haxe.ds.StringMap<Bool>):Void {
+		for (k => v in values) {
+			refs.set(k, true);
+			final valueRefs:Array<String> = [];
+			MultiAnimBuilder.collectConditionalValueParamRefs(v, valueRefs);
+			for (r in valueRefs) refs.set(r, true);
+		}
+	}
+
 	function collectParamRefsFromNode(node:Node, refs:haxe.ds.StringMap<Bool>):Void {
 		switch node.conditionals {
 			case Conditional(values, _):
-				for (k in values.keys()) refs.set(k, true);
+				addConditionRefs(values, refs);
 			case ConditionalElse(extraConditions):
 				if (extraConditions != null)
-					for (k in extraConditions.keys()) refs.set(k, true);
+					addConditionRefs(extraConditions, refs);
 				collectChainParamRefs(node, refs);
 			case ConditionalDefault:
 				collectChainParamRefs(node, refs);
@@ -1338,10 +1507,10 @@ class IncrementalUpdateContext {
 			final sib = siblings[i];
 			switch sib.conditionals {
 				case Conditional(values, _):
-					for (k in values.keys()) refs.set(k, true);
+					addConditionRefs(values, refs);
 				case ConditionalElse(extraConditions):
 					if (extraConditions != null)
-						for (k in extraConditions.keys()) refs.set(k, true);
+						addConditionRefs(extraConditions, refs);
 				case ConditionalDefault:
 					return;
 				case NoConditional:
@@ -1451,15 +1620,17 @@ class IncrementalUpdateContext {
 		final obj = entry.object;
 		dropCancelledTransitions(obj); // before reading presence: their restore may change it
 		final inGraph = isInGraph(obj);
-		// Skip when the requested state matches what's already in flight: either no
-		// transition active and presence already matches, or a transition active whose
-		// target equals newVisible (it will converge on its own — replacing it would
-		// either cancel the live tween for nothing, or jump alpha/scale to 0 and start
-		// a fresh fade from zero, both of which are user-visible glitches).
-		if (inGraph == newVisible) {
-			final activeTarget = getActiveTransitionTarget(obj);
-			if (activeTarget == null || activeTarget == newVisible) return;
-		}
+		// Skip when the requested state matches what's already in flight: either a transition
+		// active whose target equals newVisible (it will converge on its own — replacing it would
+		// either cancel the live tween for nothing, or jump alpha/scale to 0 and start a fresh
+		// fade from zero, both of which are user-visible glitches), or none active and presence
+		// already matches. A fade-out keeps the element in the graph until it ends, so the
+		// in-flight check must not depend on presence.
+		final activeTarget = getActiveTransitionTarget(obj);
+		if (activeTarget != null) {
+			if (activeTarget == newVisible) return;
+		} else if (inGraph == newVisible)
+			return;
 
 		final transSpec = findTransitionSpec(node);
 		if (transSpec == null || tweenManager == null || transSpec.match(TransNone)) {
@@ -1483,6 +1654,11 @@ class IncrementalUpdateContext {
 			if (show) addToGraph(entry); else removeFromGraph(entry);
 			return;
 		}
+
+		// A show attaches first: addToGraph replays the expressions skipped while hidden (a $param
+		// position, alpha or scale set meanwhile), so the values captured below — what the show
+		// animates to and restores — are the current ones, not those from before the hide.
+		if (show) addToGraph(entry);
 
 		// Capture pre-transition state for all properties (used by cancelActiveTransition to restore)
 		final preAlpha = obj.alpha;
@@ -1629,42 +1805,50 @@ class IncrementalUpdateContext {
 		gridCS:GridCoordinateSystem, hexCS:HexCoordinateSystem,
 		internalResults:InternalBuilderResults, builderParams:BuilderParameters,
 	}):Void {
-		// Build the deferred node's content into the wrapper (non-incremental, like repeatable rebuild).
-		// Register a tracked expression to rebuild when referenced params change.
-		// Reap IR registrations under the wrapper before tearing down children — otherwise each
-		// hide→show cycle leaks the previous materialization's interactives/slots/dynamicRefs/
-		// names/htmlTextsWithLinks into the parent BuilderResult. Prune the previous cycle's
-		// dynamicRef forwarding bindings first (they'd otherwise accumulate and forward into
-		// dead child contexts).
-		pruneDiscardedDynamicRefChildren(entry.internalResults, entry.wrapper);
-		MultiAnimBuilder.removeRegistrationsUnder(entry.internalResults, entry.wrapper);
-		entry.wrapper.removeChildren(); // Clear stale children from previous materialization
-		rebuildDeferredContent(entry);
-		// Collect param refs from node expressions for future rebuild tracking
-		final paramRefs = MultiAnimBuilder.collectNodeParamRefs(entry.node);
-		if (paramRefs.length > 0) {
-			final capturedEntry = entry;
-			// Route via trackExpression() so the reverse-index trackedByParam is populated too;
-			// a direct push to trackedExpressions would leave the new entry invisible to the
-			// reverse-index walk in applyUpdates and the rebuild would not fire on setParameter.
-			trackExpression(
-				() -> {
-					// Same cleanup as above — each tracked-expression rebuild must reap the previous
-					// build's IR registrations and forwarding bindings.
-					pruneDiscardedDynamicRefChildren(capturedEntry.internalResults, capturedEntry.wrapper);
-					MultiAnimBuilder.removeRegistrationsUnder(capturedEntry.internalResults, capturedEntry.wrapper);
-					capturedEntry.wrapper.removeChildren();
-					rebuildDeferredContent(capturedEntry);
-				},
-				paramRefs,
-				entry.wrapper
-			);
+		// Build the deferred node's content into the wrapper incrementally, against this context,
+		// as if it had been shown at build time: its own conditionals, expressions, dynamicRef
+		// forwarding and template names, repeat and switch rebuilds are tracked one by one, so a
+		// later param change updates what uses it instead of rebuilding the whole arm (which threw
+		// away slot content and the values set on its dynamicRefs). The wrapper stays the entry's
+		// object; the node itself is not tracked a second time (materializingNode).
+		//
+		// A build that threw before left part of its registrations behind: reap them first, and
+		// reap this build's own if it throws, so the next show builds from nothing again.
+		reapMaterialized(entry);
+		try {
+			rebuildDeferredContent(entry);
+		} catch (e:Dynamic) {
+			reapMaterialized(entry);
+			throw e;
 		}
 		// Materialized once. From here the entry is an ordinary conditional: a hide detaches the
 		// wrapper and a show reattaches it, so a dynamicRef inside keeps the BuilderResult the
 		// caller set values on. Re-materializing on every show rebuilt it with the site's defaults.
-		// With param refs the tracked expression above rebuilds the content when they change.
 		deferredEntries.remove(entry);
+	}
+
+	/** Drop everything a (partial) materialization registered under the deferred wrapper and its
+	 *  children, keeping the wrapper's own conditional entry. */
+	function reapMaterialized(entry:{wrapper:h2d.Object, internalResults:InternalBuilderResults}):Void {
+		final wrapper = entry.wrapper;
+		while (wrapper.numChildren > 0) {
+			final child = wrapper.getChildAt(0);
+			cleanupDestroyedSubtree(entry.internalResults, child);
+			// cleanupDestroyedSubtree keeps a tracked expression on the container itself (a rebuild
+			// closure's own entry); the child goes, so its own expressions go too
+			var ti = 0;
+			while (ti < trackedExpressions.length) {
+				final tracked = trackedExpressions[ti];
+				if (tracked.object == child) {
+					trackedExpressions.splice(ti, 1);
+					for (ref in tracked.paramRefs) {
+						final arr = trackedByParam.get(ref);
+						if (arr != null) arr.remove(tracked);
+					}
+				} else ti++;
+			}
+			wrapper.removeChild(child);
+		}
 	}
 
 	function rebuildDeferredContent(entry:{
@@ -1672,22 +1856,26 @@ class IncrementalUpdateContext {
 		gridCS:GridCoordinateSystem, hexCS:HexCoordinateSystem,
 		internalResults:InternalBuilderResults, builderParams:BuilderParameters,
 	}):Void {
-		builder.incrementalMode = false;
-		builder.incrementalContext = null;
+		final savedSuppress = builder.suppressConditionalTracking;
+		builder.incrementalMode = true;
+		builder.incrementalContext = this;
+		builder.suppressConditionalTracking = false;
+		builder.pendingChainArmLosing = false;
 		builder.builderParams = entry.builderParams;
-		// Expose the owning context so DYNAMIC_REF children register param forwarding against
-		// it — the non-incremental build would otherwise skip registration entirely and the
-		// materialized ref would never receive later setParameter values
-		builder.deferredForwardingCtx = this;
+		builder.materializingNode = entry.node;
 		try {
 			builder.build(entry.node, ObjectMode(entry.wrapper), entry.gridCS, entry.hexCS, entry.internalResults, entry.builderParams);
 		} catch (e:Dynamic) {
-			builder.deferredForwardingCtx = null;
+			builder.materializingNode = null;
+			builder.incrementalMode = false;
+			builder.incrementalContext = null;
+			builder.suppressConditionalTracking = savedSuppress;
 			throw e;
 		}
-		builder.deferredForwardingCtx = null;
+		builder.materializingNode = null;
 		builder.incrementalMode = false;
 		builder.incrementalContext = null;
+		builder.suppressConditionalTracking = savedSuppress;
 	}
 
 	@:nullSafety(Off)
@@ -1700,15 +1888,9 @@ class IncrementalUpdateContext {
 		// this writer out of dynamicRefs[oldKey] so the per-key array stays in sync with the
 		// live scene graph — no separate collision counter to maintain.
 		//
-		// Target the OLD result.object (the only child of binding.container), NOT the container
-		// itself: passing the container would also reap THIS dynamicNameBinding (its own
-		// container == the cleanup target — see step 4 in cleanupDestroyedSubtree), wiping the
-		// rebuild we're about to do.
-		if (binding.container.numChildren > 0)
-			cleanupDestroyedSubtree(binding.internalResults, binding.container.getChildAt(0));
-
-		// Clear the container
-		binding.container.removeChildren();
+		// The new template is built first: one that throws (missing, or without a forwarded
+		// param) leaves the old one in place with binding.currentName on it, so setting the old
+		// name again is a no-op rather than a permanent hole.
 
 		// Resolve the builder (external or local)
 		var targetBuilder = builder.importedBuilder(binding.externalReference);
@@ -1720,10 +1902,27 @@ class IncrementalUpdateContext {
 			paramMap.set(key, cast value);
 		}
 
-		var result = targetBuilder.buildWithParameters(newName, paramMap, builderParams, indexedParams, true);
+		var result = builder.inScope(binding.scope, () -> targetBuilder.buildWithParameters(newName, paramMap, builderParams, builder.indexedParams, true));
 		if (result?.object == null)
 			throw BuilderError.of('could not build dynamicRef "$newName"');
+		// The new template animates with this context's manager, set maybe after the build
+		final swapTweens = tweenManager;
+		if (swapTweens != null && result.incrementalContext != null)
+			result.setTweenManager(swapTweens);
+		if (result.incrementalContext != null) {
+			result.incrementalContext.parentContext = this;
+			#if MULTIANIM_DEV
+			result.incrementalContext.clearSetByCaller(); // its inputs are the site's arguments
+			#end
+		}
 
+		// Target the OLD result.object (the only child of binding.container), NOT the container
+		// itself: passing the container would also reap THIS dynamicNameBinding (its own
+		// container == the cleanup target — see step 4 in cleanupDestroyedSubtree), wiping the
+		// rebuild we're doing.
+		if (binding.container.numChildren > 0)
+			cleanupDestroyedSubtree(binding.internalResults, binding.container.getChildAt(0));
+		binding.container.removeChildren();
 		binding.container.addChild(result.object);
 		binding.currentName = newName;
 		// For unnamed sites, stableKey tracks currentName so the next rebuild removes the right
@@ -1760,7 +1959,9 @@ class IncrementalUpdateContext {
 						case PPTEnum(_): () -> builder.resolveAsString(capturedValue);
 						default: () -> builder.resolveAsInteger(capturedValue);
 					};
-					trackDynamicRef(result.incrementalContext, childParam, resolveFn, refs, result.object);
+					final scope = binding.scope;
+					final scopedFn:Void->Dynamic = scope == null ? resolveFn : () -> builder.inScope(scope, resolveFn);
+					trackDynamicRef(result.incrementalContext, childParam, scopedFn, refs, result.object);
 				}
 			}
 		}
@@ -1815,6 +2016,9 @@ class IncrementalUpdateContext {
 		builder.pushBuilderStateNoReset();
 		var firedRebuild = false;
 		var caught:Null<Dynamic> = null;
+		// Tracked expressions registered from here on (a hidden arm this cycle shows, built with the
+		// current values) are not fired again by this cycle's sweep
+		final seqAtStart = trackedSeq;
 		try {
 			builder.indexedParams = indexedParams;
 			builder.builderParams = builderParams;
@@ -1863,6 +2067,7 @@ class IncrementalUpdateContext {
 					for (tracked in arr) {
 						if (tracked.gen == gen) continue;
 						tracked.gen = gen;
+						if (tracked.declOrder >= seqAtStart) continue;
 						trackedFireScratch.push(tracked);
 					}
 				}
@@ -1870,20 +2075,30 @@ class IncrementalUpdateContext {
 					trackedFireScratch.sort((a, b) -> a.declOrder - b.declOrder);
 				for (tracked in trackedFireScratch) {
 					final obj = tracked.object;
-					// Skip only DETACHED tracked roots — addToGraph replays them via
-					// refreshTrackedExpressionsFor on re-attach. Flag-hidden (visible=false)
+					// Skip only DETACHED tracked objects, or ones under a detached conditional
+					// — addToGraph replays them via refreshTrackedExpressionsFor on re-attach (a
+					// structural rebuild only when marked stale here). Flag-hidden (visible=false)
 					// objects must keep firing: setVisibility(true) is a raw field write
 					// with no replay path, so skipping here would leave them stale forever.
-					if (obj != null && obj.parent == null) continue;
+					if (obj != null && isDetached(obj)) {
+						tracked.stale = true;
+						continue;
+					}
 					trackedRelevantScanCount++;
+					tracked.stale = false;
 					tracked.updateFn();
 				}
 			} else {
 				for (tracked in trackedExpressions) {
 					final obj = tracked.object;
-					// Detached-root skip only — see the fast-path loop above
-					if (obj != null && obj.parent == null) continue;
+					if (tracked.declOrder >= seqAtStart) continue;
+					// Detached skip only — see the fast-path loop above
+					if (obj != null && isDetached(obj)) {
+						tracked.stale = true;
+						continue;
+					}
 					trackedRelevantScanCount++;
+					tracked.stale = false;
 					tracked.updateFn();
 				}
 			}
@@ -1933,12 +2148,15 @@ class IncrementalUpdateContext {
 			for (ctx in fwdCtxScratch) {
 				ctx.beginUpdate();
 				try {
+					#if MULTIANIM_DEV ctx.forwarding = true; #end
 					for (binding in fwdBindingScratch) {
 						if (binding.childContext != ctx) continue;
 						ctx.setParameter(binding.childParam, binding.resolveFn());
 					}
+					#if MULTIANIM_DEV ctx.forwarding = false; #end
 					ctx.endUpdate();
 				} catch (e:Dynamic) {
+					#if MULTIANIM_DEV ctx.forwarding = false; #end
 					// A mid-batch throw (unknown_param / invalid_param_value, e.g. a child
 					// param vocabulary that diverged from this resolveFn after hot reload)
 					// must not leak batchMode=true into the child — the next caller of
@@ -2007,7 +2225,25 @@ class IncrementalUpdateContext {
 				final snapshot = rebuildListeners.copy();
 				for (fn in snapshot) fn();
 			}
+			// What this context rebuilt is part of the enclosing result too (its getInteractives
+			// lists a dynamicRef child's and a slot's): a screen syncing on that result hears it
+			final parent = parentContext;
+			if (parent != null)
+				parent.childRebuilt();
 		}
+	}
+
+	/** A dynamicRef child or parameterized slot of this context rebuilt on its own (its own
+	 *  setParameter): this context's rebuild listeners run, then the enclosing context's. Not while
+	 *  this context applies its own update (forwarding into the child): its listeners run at the
+	 *  end of that cycle anyway. */
+	function childRebuilt():Void {
+		if (applyingUpdates) return;
+		for (fn in rebuildListeners.copy())
+			fn();
+		final parent = parentContext;
+		if (parent != null)
+			parent.childRebuilt();
 	}
 
 	public function applyConditionalChains():Void {
@@ -2117,6 +2353,8 @@ class SlotHandle {
 	public var container:h2d.Object;
 	public var data:Dynamic = null;
 	public var incrementalContext:Null<IncrementalUpdateContext> = null;
+	/** The slot's node (the builder's; null for one codegen builds). */
+	public var siteNode:Null<Node> = null;
 	// Flipped to true by removeRegistrationsUnder when the slot's enclosing subtree
 	// is torn down (SWITCH arm swap, repeatable shrinkage, ...). The IR entry is
 	// evicted from ir.slots at the same site, but callers may still hold the
@@ -2157,6 +2395,24 @@ class SlotHandle {
 			}
 		}
 	}
+
+	#if MULTIANIM_DEV
+	/** Hot reload: this handle takes the rebuilt slot's internals, so a handle the game kept from
+	 *  before an in-place reload is the live slot (as the result itself stays the live result). */
+	public function adoptFrom(other:SlotHandle):Void {
+		container = other.container;
+		data = other.data;
+		incrementalContext = other.incrementalContext;
+		siteNode = other.siteNode;
+		disposed = other.disposed;
+		defaultChildren = other.defaultChildren;
+		currentContent = other.currentContent;
+		contentRoot = other.contentRoot;
+		contentTarget = other.contentTarget;
+		hasParameters = other.hasParameters;
+		ir = other.ir;
+	}
+	#end
 
 	public function setContent(obj:h2d.Object):Void {
 		if (disposed)
@@ -2271,6 +2527,10 @@ class BuilderResult implements bh.multianim.LiveProgrammable {
 	public var dynamicRefs:Map<String, Array<BuilderResult>>;
 	public var incrementalContext:Null<IncrementalUpdateContext>;
 	public var htmlTextsWithLinks:Null<Array<h2d.HtmlText>>;
+	/** A dynamicRef child: the site node that placed it, and whether its explicit #name is shared
+	 *  with sites in mutually exclusive arms (getDynamicRef then answers with the shown one). */
+	public var siteNode:Null<Node> = null;
+	public var exclusiveSite:Bool = false;
 	#if MULTIANIM_DEV
 	public var reloadable:Bool = true;
 	public var reloadHandle:Null<bh.multianim.dev.HotReload.ReloadableHandle> = null;
@@ -2292,6 +2552,8 @@ class BuilderResult implements bh.multianim.LiveProgrammable {
 		// Preserve TweenManager reference across hot reload
 		final prevTweenManager = if (this.incrementalContext != null) this.incrementalContext.tweenManager else null;
 		final prevContext = this.incrementalContext;
+		final prevSlots = this.slots;
+		final prevDynamicRefs = this.dynamicRefs;
 		this.object = other.object;
 		this.name = other.name;
 		this.names = other.names;
@@ -2303,6 +2565,39 @@ class BuilderResult implements bh.multianim.LiveProgrammable {
 		this.hexCoordinateSystem = other.hexCoordinateSystem;
 		this.slots = other.slots;
 		this.dynamicRefs = other.dynamicRefs;
+		this.siteNode = other.siteNode;
+		this.exclusiveSite = other.exclusiveSite;
+		// The slot handles and dynamicRef children the game kept from before stay the live ones:
+		// each takes the rebuilt one's internals under the same key and stands in its place
+		if (prevSlots != null && this.slots != null)
+			for (i in 0...this.slots.length) {
+				final entry = this.slots[i];
+				for (prev in prevSlots)
+					if (prev.handle != entry.handle && Type.enumEq(prev.key, entry.key)) {
+						prev.handle.adoptFrom(entry.handle);
+						this.slots[i] = {key: entry.key, handle: prev.handle};
+						break;
+					}
+			}
+		if (prevDynamicRefs != null && this.dynamicRefs != null)
+			for (key => arr in this.dynamicRefs) {
+				final prevArr = prevDynamicRefs.get(key);
+				if (prevArr == null) continue;
+				for (i in 0...arr.length) {
+					if (i >= prevArr.length || prevArr[i] == arr[i]) continue;
+					final kept = prevArr[i];
+					final fresh = arr[i];
+					// The rebuilt child's reload handle goes to the kept one; the kept one's own is
+					// dropped (its old tree is gone)
+					final keptHandle = kept.reloadHandle;
+					final freshHandle = fresh.reloadHandle;
+					kept.adoptFrom(fresh);
+					if (freshHandle != null) freshHandle.result = kept;
+					if (keptHandle != null && keptHandle != freshHandle) keptHandle.registry.unregister(keptHandle);
+					kept.reloadHandle = freshHandle;
+					arr[i] = kept;
+				}
+			}
 		this.incrementalContext = other.incrementalContext;
 		this.htmlTextsWithLinks = other.htmlTextsWithLinks;
 		this.devBuilderParams = other.devBuilderParams;
@@ -2327,6 +2622,18 @@ class BuilderResult implements bh.multianim.LiveProgrammable {
 		if (incrementalContext == null)
 			throw BuilderError.of('setTweenManager requires incremental mode');
 		incrementalContext.setTweenManager(tm);
+		// Transitions inside dynamicRef children and parameterized slots run on their own
+		// contexts: they animate with the same manager (a child from an imported file's builder,
+		// or one built before this call, never got one).
+		for (arr in dynamicRefs)
+			for (r in arr)
+				if (r.incrementalContext != null)
+					r.setTweenManager(tm);
+		for (s in slots) {
+			final slotCtx = s.handle.incrementalContext;
+			if (slotCtx != null)
+				slotCtx.setTweenManager(tm);
+		}
 	}
 
 	/** `UIInteractiveSource` implementation — returns the tracked interactives that are currently
@@ -2552,8 +2859,21 @@ class BuilderResult implements bh.multianim.LiveProgrammable {
 		final arr = dynamicRefs.get(name);
 		if (arr == null || arr.length == 0)
 			throw BuilderError.of('DynamicRef "$name" not found in BuilderResult');
-		if (arr.length > 1)
+		if (arr.length > 1) {
+			// One explicit #name in mutually exclusive arms: the shown arm's ref answers
+			var allExclusive = true;
+			for (r in arr)
+				if (!r.exclusiveSite) {
+					allExclusive = false;
+					break;
+				}
+			if (allExclusive) {
+				for (r in arr)
+					if (isAttachedToRoot(r.object)) return r;
+				return arr[0];
+			}
 			throw BuilderError.of("getDynamicRef(\"" + name + "\"): " + arr.length + " unnamed dynamicRef sites collide on this key — use #name dynamicRef(...) or #name[$i] dynamicRef(...) to disambiguate, then fetch each by its explicit name.");
+		}
 		return arr[0];
 	}
 
@@ -2583,37 +2903,39 @@ class BuilderResult implements bh.multianim.LiveProgrammable {
 		if (is2DIndexed) {
 			if (index == null || indexY == null)
 				throw BuilderError.of('Slot "$name" is 2D-indexed — use getSlot("$name", x, y)');
-			for (entry in slots) {
-				switch entry.key {
-					case Indexed2D(n, ix, iy) if (n == name && ix == index && iy == indexY):
-						return entry.handle;
-					default:
-				}
-			}
+			final found = shownSlot(name, index, indexY);
+			if (found != null) return found;
 			throw BuilderError.of('Slot "$name" index ($index, $indexY) not found');
 		} else if (is1DIndexed) {
 			if (index == null)
 				throw BuilderError.of('Slot "$name" is indexed — use getSlot("$name", index)');
-			for (entry in slots) {
-				switch entry.key {
-					case Indexed(n, i) if (n == name && i == index):
-						return entry.handle;
-					default:
-				}
-			}
+			final found = shownSlot(name, index, null);
+			if (found != null) return found;
 			throw BuilderError.of('Slot "$name" index $index not found');
 		} else {
 			if (index != null)
 				throw BuilderError.of('Slot "$name" is not indexed — use getSlot("$name") without index');
-			for (entry in slots) {
-				switch entry.key {
-					case Named(n) if (n == name):
-						return entry.handle;
-					default:
-				}
-			}
+			final found = shownSlot(name, null, null);
+			if (found != null) return found;
 			throw BuilderError.of('Slot "$name" not found in BuilderResult');
 		}
+	}
+
+	/** The slot under that key: of several (one name in mutually exclusive arms), the one drawn
+	 *  under this result's root, else the first. Null when none. */
+	function shownSlot(name:String, index:Null<Int>, indexY:Null<Int>):Null<SlotHandle> {
+		var first:Null<SlotHandle> = null;
+		for (entry in slots) {
+			final match = switch entry.key {
+				case Named(n): index == null && indexY == null && n == name;
+				case Indexed(n, i): index != null && indexY == null && n == name && i == index;
+				case Indexed2D(n, ix, iy): index != null && indexY != null && n == name && ix == index && iy == indexY;
+			};
+			if (!match) continue;
+			if (isAttachedToRoot(entry.handle.container)) return entry.handle;
+			if (first == null) first = entry.handle;
+		}
+		return first;
 	}
 }
 
@@ -2849,12 +3171,19 @@ class MultiAnimBuilder {
 	 *  and not registered as incremental entries; expression tracking stays active. */
 	var suppressConditionalTracking:Bool = false;
 	var incrementalContext:Null<IncrementalUpdateContext> = null;
-	/** Set (only) while rebuildDeferredContent materializes an initially-hidden conditional
-	 *  arm. That build runs with incrementalMode=false, which would skip the DYNAMIC_REF
-	 *  param-forwarding registration entirely — leaving the materialized ref permanently
-	 *  stale on later setParameter calls. The DYNAMIC_REF case registers its forwarding
-	 *  bindings against this context instead when set. */
-	var deferredForwardingCtx:Null<IncrementalUpdateContext> = null;
+	/** Set by rebuildDeferredContent immediately before build() on the conditional node of an
+	 *  arm that was hidden at build time and is shown now. Its conditional entry (the deferred
+	 *  wrapper) is already tracked, so that one build must neither defer it again nor give it a
+	 *  second sentinel and entry; its content is built incrementally like an arm shown at build
+	 *  time. build() consumes and resets it on entry. */
+	var materializingNode:Null<Node> = null;
+	/** Set by a repeatable immediately before build() on a body child: the offset the repeat adds
+	 *  to that child once it is built (the iteration's step or layout point, or the repeat's own
+	 *  position when it has no wrapper). build() consumes it so the child's tracked position adds
+	 *  it too: a replay (a param it uses, the show of a hidden ancestor) set the position without
+	 *  it, collapsing the iterations onto each other. */
+	var pendingIterationOffsetX:Float = 0;
+	var pendingIterationOffsetY:Float = 0;
 	/** Set by the incremental sibling loops immediately before build() on an @else/@default
 	 *  arm whose chain position currently LOSES. shouldBuildInFullMode has no single-node
 	 *  answer for chain arms (returns true), so without this flag a losing chain arm is
@@ -3602,6 +3931,77 @@ class MultiAnimBuilder {
 		}
 	}
 
+	/** Runs `fn` with `scope` as indexedParams, the current indexedParams laid over it first (in
+	 *  place: no map is made per call). A dynamicRef site whose arguments use a loop variable or
+	 *  a nested @final keeps a copy of the build-time params as its scope, since those names are
+	 *  gone from the owning context by the time a parameter changes; the context's live params
+	 *  win over the build-time values. A null scope runs `fn` as is. */
+	function inScope<T>(scope:Null<Map<String, ResolvedIndexParameters>>, fn:Void -> T):T {
+		if (scope == null) return fn();
+		for (k => v in indexedParams)
+			scope.set(k, v);
+		final saved = indexedParams;
+		indexedParams = scope;
+		final result = try fn() catch (e:Dynamic) {
+			indexedParams = saved;
+			throw e;
+		}
+		indexedParams = saved;
+		return result;
+	}
+
+	/** The names `refs` reach: each @final among them (an ExpressionAlias in indexedParams) is
+	 *  followed to the params its expression uses, through a chain of finals. A @final is an alias
+	 *  of its expression, so what uses it follows those params, as in codegen. The alias names stay
+	 *  in the list. Returns `refs` itself when it names no @final (the usual case). */
+	function expandFinalAliases(refs:Array<String>):Array<String> {
+		var hasAlias = false;
+		for (r in refs)
+			if (indexedParams.get(r)?.match(ExpressionAlias(_)) == true) {
+				hasAlias = true;
+				break;
+			}
+		if (!hasAlias) return refs;
+		final out = refs.copy();
+		var i = 0;
+		while (i < out.length) {
+			switch indexedParams.get(out[i++]) {
+				case ExpressionAlias(expr):
+					final inner:Array<String> = [];
+					collectParamRefs(expr, inner);
+					for (r in inner)
+						if (out.indexOf(r) < 0) out.push(r);
+				default:
+			}
+		}
+		return out;
+	}
+
+	/** inScope for a tracked expression's update (no result). */
+	function runInScope(scope:Map<String, ResolvedIndexParameters>, fn:Void -> Void):Void {
+		for (k => v in indexedParams)
+			scope.set(k, v);
+		final saved = indexedParams;
+		indexedParams = scope;
+		try fn() catch (e:Dynamic) {
+			indexedParams = saved;
+			throw e;
+		}
+		indexedParams = saved;
+	}
+
+	/** True when `a` and `b` sit in different arms of one @()/@else/@default chain: they may share
+	 *  an explicit `#name` (see ConditionalArms.exclusive). */
+	static inline function inExclusiveArms(a:Null<Node>, b:Null<Node>):Bool {
+		return ConditionalArms.exclusive(a, b);
+	}
+
+	static function allInExclusiveArms(existing:Array<NamedBuildResult>, node:Node):Bool {
+		for (e in existing)
+			if (!inExclusiveArms(e.siteNode, node)) return false;
+		return true;
+	}
+
 	/** A staticRef/dynamicRef site's target, checked before the nested build: a missing one is
 	 *  reported at the site, by its `$ref` and, where a parameter or loop variable names it, by its
 	 *  value, rather than by the nested build's "could not find element". */
@@ -4077,6 +4477,10 @@ class MultiAnimBuilder {
 						// codegen path which compares the underlying `_status` field.
 						if (fromF != null && (fromExclusive ? idx <= fromF : idx < fromF)) return false;
 						if (toF != null && (toExclusive ? idx >= toF : idx > toF)) return false;
+					case Flag(val):
+						// A flags param compares as the int of its bits, as in codegen
+						if (fromF != null && (fromExclusive ? val <= fromF : val < fromF)) return false;
+						if (toF != null && (toExclusive ? val >= toF : val > toF)) return false;
 					case StringValue(_):
 						// Unknown enum string set via `setParameter("status", "disabled")`
 						// on a template whose enum doesn't list "disabled". Numeric
@@ -4095,11 +4499,16 @@ class MultiAnimBuilder {
 			case CoValue(val):
 				switch currentValue {
 					case Value(iVal): if (val != iVal) return false;
+					case Flag(iVal): if (val != iVal) return false;
 					default: throw builderError('invalid param types ${currentValue}, ${condValue}');
 				}
 			case CoFlag(f):
+				// bit[N] tests a bit of a flags param, and of an int param or loop variable as well
+				// (codegen compiles it to an int test either way)
 				switch currentValue {
 					case Flag(i): if (f & i != f) return false;
+					case Value(i): if (f & i != f) return false;
+					case Index(i, _): if (f & i != f) return false;
 					default: throw builderError('invalid param types ${currentValue}, ${condValue}');
 				}
 			case CoAny:
@@ -4381,6 +4790,13 @@ class MultiAnimBuilder {
 						}
 				case ConditionalDefault | NoConditional:
 			}
+			// A parameterized slot's body is its own scope: its conditionals are about the slot's
+			// params, driven through the slot's own context, not the enclosing programmable's
+			switch node.type {
+				case SLOT(params, _) if (params != null):
+					continue;
+				default:
+			}
 			if (node.children != null)
 				collectChildConditionalParamRefs(node.children, result);
 		}
@@ -4545,8 +4961,10 @@ class MultiAnimBuilder {
 		}
 	}
 
-	/** Track param-dependent expressions for incremental updates */
-	function trackIncrementalExpressions(node:Node, object:h2d.Object, builtObject:BuiltHeapsComponent):Void {
+	/** Track param-dependent expressions for incremental updates. `offsetX`/`offsetY`: what an
+	 *  enclosing repeatable adds to the element's position after the build
+	 *  (pendingIterationOffsetX/Y); the tracked position adds it as well. */
+	function trackIncrementalExpressions(node:Node, object:h2d.Object, builtObject:BuiltHeapsComponent, offsetX:Float = 0, offsetY:Float = 0):Void {
 		final ctx = incrementalContext;
 		if (ctx == null) return;
 
@@ -4827,9 +5245,10 @@ class MultiAnimBuilder {
 				if (sRefs.length > 0) {
 					if (sm != null) {
 						final initCapture = initialState;
+						// A restart: replayed on a show only when its param changed meanwhile
 						ctx.trackExpression(() -> {
 							sm.play(resolveAsString(initCapture));
-						}, sRefs, object);
+						}, sRefs, object, true);
 					}
 				}
 				if (selectorReferences != null) {
@@ -4857,7 +5276,7 @@ class MultiAnimBuilder {
 						final initCapture = initialState;
 						ctx.trackExpression(() -> {
 							sm.play(resolveAsString(initCapture));
-						}, sRefs, object);
+						}, sRefs, object, true);
 					}
 				}
 				if (construct != null) {
@@ -4894,13 +5313,14 @@ class MultiAnimBuilder {
 					currentNode = nodeCapture;
 					try {
 						final p = calculatePosition(posCapture, gcs, hcs);
-						object.x = p.x;
-						object.y = p.y;
+						object.x = p.x + offsetX;
+						object.y = p.y + offsetY;
 					} catch (e:Dynamic) {
 						currentNode = prev;
 						throw e;
 					}
 					currentNode = prev;
+					ctx.ownPropsWritten(object, nodeCapture, true);
 				}, posRefs, object);
 			}
 		}
@@ -4933,6 +5353,7 @@ class MultiAnimBuilder {
 		if (extRefs.length > 0) {
 			ctx.trackExpression(() -> {
 				applyExtendedFormProperties(object, node);
+				ctx.ownPropsWritten(object, node, false);
 			}, extRefs, gateVisibility ? object : null);
 		}
 	}
@@ -4956,7 +5377,7 @@ class MultiAnimBuilder {
 		// fixed at build time, and a staticRef using only those is left as built (codegen does the
 		// same). The parser rejects a loop variable named like a param, so a name is one or the other.
 		final refs:Array<String> = [];
-		for (n in names)
+		for (n in expandFinalAliases(names))
 			if (ctx.hasParameter(n) && refs.indexOf(n) < 0)
 				refs.push(n);
 		if (refs.length == 0)
@@ -4991,14 +5412,14 @@ class MultiAnimBuilder {
 				current.remove();
 				container.addChild(fresh);
 				current = fresh;
-				for (o in freshResult.interactives)
+				for (o in freshResult.getInteractives())
 					ir.interactives.push(o);
 			} catch (e:Dynamic) {
 				indexedParams = saved;
 				throw e;
 			}
 			indexedParams = saved;
-		}, refs, container);
+		}, refs, container, true);
 		return container;
 	}
 
@@ -5007,10 +5428,7 @@ class MultiAnimBuilder {
 	 *  STATEANIM_CONSTRUCT). Used only by the @switch arm to feed `switchParamRefs` so
 	 *  setParameter on a param flowing into one of those nodes triggers the arm rebuild
 	 *  (incrementalMode is forced false inside an arm, so trackDynamicRef / markParamUntracked
-	 *  do not fire there; without this pass, setParameter would silently no-op). Not merged
-	 *  into `collectNodeParamRefs` because its other caller (materializeDeferred) relies on
-	 *  DYNAMIC_REF refs being absent — adding them would register a tracked-rebuild expression
-	 *  whose updateFn hits a "duplicate dynamicRef name" throw on second fire. */
+	 *  do not fire there; without this pass, setParameter would silently no-op). */
 	static function collectSwitchArmExtraParamRefs(node:Node, out:Array<String>):Void {
 		inline function add(r:String) if (out.indexOf(r) < 0) out.push(r);
 		inline function gatherInto(rv:ReferenceableValue):Void {
@@ -5857,6 +6275,13 @@ class MultiAnimBuilder {
 		// Consume unconditionally — the flag is only meaningful for the exact call it was set for
 		final chainArmLosing = pendingChainArmLosing;
 		pendingChainArmLosing = false;
+		// The arm a show materializes is tracked already: no second deferral, sentinel or entry
+		final materializing = materializingNode == node;
+		if (materializing) materializingNode = null;
+		final iterationOffsetX = pendingIterationOffsetX;
+		final iterationOffsetY = pendingIterationOffsetY;
+		pendingIterationOffsetX = 0;
+		pendingIterationOffsetY = 0;
 		final nodeVisible = shouldBuildInFullMode(node, indexedParams);
 		if (!nodeVisible && (!incrementalMode || suppressConditionalTracking))
 			return null;
@@ -5900,7 +6325,7 @@ class MultiAnimBuilder {
 		// flow and the element, so materialization would apply the props outside a flow parent
 		// and throw — these build eagerly and toggle via remove/add with saved FlowProperties.
 		if ((!nodeVisible || chainArmLosing) && incrementalMode && !suppressConditionalTracking && node.conditionals != NoConditional && incrementalContext != null
-				&& !node.type.match(APPLY) && !node.type.match(FINAL_VAR(_, _)) && node.flowProperties == null) {
+				&& !materializing && !node.type.match(APPLY) && !node.type.match(FINAL_VAR(_, _)) && node.flowProperties == null) {
 			final sentinel = new h2d.Object();
 			sentinel.visible = false; // keep h2d.Flow from counting the anchor as a layout child
 			addChild(sentinel);
@@ -6254,8 +6679,9 @@ class MultiAnimBuilder {
 				if (object == null)
 					throw builderErrorAt(node, 'could not build staticRef ${reference}');
 				// The target's interactives belong to the enclosing result: the nested build is a
-				// snapshot, so its list is final. A codegen instance lists them from its scene graph.
-				for (o in result.interactives)
+				// snapshot, so its list is final — with those of the dynamicRefs it places (out of
+				// reach otherwise). A codegen instance lists them from its scene graph.
+				for (o in result.getInteractives())
 					internalResults.interactives.push(o);
 
 				// When the referenced programmable has a non-zero pos, buildWithParameters wraps it:
@@ -6303,16 +6729,47 @@ class MultiAnimBuilder {
 				final dynRefKey = resolveDynamicRefKey(node, reference);
 				final hasExplicitName = !node.updatableName.match(UNTObject(null));
 				final existingArr = internalResults.dynamicRefs.get(dynRefKey);
-				if (hasExplicitName && existingArr != null && existingArr.length > 0)
-					throw builderErrorAt(node, "duplicate dynamicRef name \"" + dynRefKey + "\" — two #name dynamicRef sites share the same name. Names must be unique within a programmable.");
+				result.siteNode = node;
+				if (hasExplicitName && existingArr != null && existingArr.length > 0) {
+					// Allowed only between mutually exclusive arms: one of them is shown at a time
+					for (w in existingArr)
+						if (!inExclusiveArms(w.siteNode, node))
+							throw builderErrorAt(node, "duplicate dynamicRef name \"" + dynRefKey + "\" — two #name dynamicRef sites share the same name. Names must be unique within a programmable, except in mutually exclusive @()/@else/@default arms.");
+					for (w in existingArr)
+						w.exclusiveSite = true;
+					result.exclusiveSite = true;
+				}
 				if (existingArr == null) internalResults.dynamicRefs.set(dynRefKey, [result]);
 				else existingArr.push(result);
 
-				// Register parameter bindings for incremental propagation. The deferred-materialize
-				// path (rebuildDeferredContent) runs with incrementalMode=false but exposes its
-				// owning context via deferredForwardingCtx — register against that instead, or the
-				// materialized ref never receives later setParameter values.
-				final forwardingCtx = (incrementalMode && incrementalContext != null) ? incrementalContext : deferredForwardingCtx;
+				// Register parameter bindings for incremental propagation.
+				final forwardingCtx = (incrementalMode && incrementalContext != null) ? incrementalContext : null;
+				// The child animates its transitions with the enclosing build's manager: an imported
+				// file's builder has none of its own
+				final enclosingTweens = forwardingCtx != null && forwardingCtx.tweenManager != null ? forwardingCtx.tweenManager : tweenManager;
+				if (enclosingTweens != null && result.incrementalContext != null && result.incrementalContext.tweenManager == null)
+					result.setTweenManager(enclosingTweens);
+				if (forwardingCtx != null && result.incrementalContext != null)
+					result.incrementalContext.parentContext = forwardingCtx;
+				#if MULTIANIM_DEV
+				// The child's inputs are this site's arguments: a hot reload applies the file's
+				if (result.incrementalContext != null)
+					result.incrementalContext.clearSetByCaller();
+				#end
+				// A loop variable or nested @final in the arguments is gone from the owning context
+				// by the time a parameter changes: keep the build-time params as the site's scope
+				// (inScope lays the live params over it) for the forwarding and template swaps.
+				var refScope:Null<Map<String, ResolvedIndexParameters>> = null;
+				if (forwardingCtx != null) {
+					final argRefs:Array<String> = [];
+					for (value in parameters)
+						collectParamRefs(value, argRefs);
+					for (r in argRefs)
+						if (!forwardingCtx.hasParameter(r)) {
+							refScope = indexedParams.copy();
+							break;
+						}
+				}
 				if (forwardingCtx != null && result.incrementalContext != null) {
 					final childNode = builder.multiParserResult.nodes?.get(reference);
 					final childDefs = childNode != null ? builder.getProgrammableParameterDefinitions(childNode) : new Map();
@@ -6332,7 +6789,9 @@ class MultiAnimBuilder {
 								case PPTEnum(_): () -> resolveAsString(capturedValue);
 								default: () -> resolveAsInteger(capturedValue);
 							};
-							forwardingCtx.trackDynamicRef(result.incrementalContext, childParam, resolveFn, refs, result.object);
+							final scope = refScope;
+							final scopedFn:Void->Dynamic = scope == null ? resolveFn : () -> inScope(scope, resolveFn);
+							forwardingCtx.trackDynamicRef(result.incrementalContext, childParam, scopedFn, refs, result.object);
 						}
 					}
 				}
@@ -6352,6 +6811,7 @@ class MultiAnimBuilder {
 						parameters: parameters,
 						externalReference: externalReference,
 						internalResults: internalResults,
+						scope: refScope,
 					});
 				}
 
@@ -6377,8 +6837,10 @@ class MultiAnimBuilder {
 				final savedIncCtx = incrementalContext;
 				if (incrementalMode) incrementalMode = false;
 
+				// Arm children build as a whole (no incremental tracking): their own @()/@else/@default
+				// chains resolve here, as in any other full build
 				if (matchedArm != null) {
-					for (child in matchedArm.children)
+					for (child in resolveConditionalChildren(matchedArm.children))
 						build(child, ObjectMode(container), gridCoordinateSystem, hexCoordinateSystem, internalResults, builderParams);
 				}
 
@@ -6401,16 +6863,24 @@ class MultiAnimBuilder {
 								if (refs.indexOf(r) < 0) refs.push(r);
 							// Also collect refs that live in node-type payloads (DYNAMIC_REF params,
 							// INTERACTIVE id/metadata, STATEANIM selectors, STATEANIM_CONSTRUCT
-							// animName/fps). collectNodeParamRefs omits them because the deferred
-							// materialization caller would register tracked-rebuild expressions that
-							// don't handle repeat fire for dynamicRefs; the switch arm's rebuild path
-							// does clean up (cleanupDestroyedSubtree + removeChildren), so including
+							// animName/fps), which collectNodeParamRefs omits; the switch arm's rebuild
+							// path cleans up (cleanupDestroyedSubtree + removeChildren), so including
 							// these refs here is safe and correct.
 							collectSwitchArmExtraParamRefs(child, refs);
 						}
-						armRefs.push(refs);
-						for (r in refs)
+						// A @final in an arm is followed to the params it uses (the gate below reads these)
+						final armOwnRefs = expandFinalAliases(refs);
+						armRefs.push(armOwnRefs);
+						for (r in armOwnRefs)
 							if (switchParamRefs.indexOf(r) < 0) switchParamRefs.push(r);
+						// A pattern's own params (`<= $max:`) pick the arm as much as the key does: a
+						// change re-selects (the gate rebuilds only when the matched arm flips)
+						if (arm.pattern != null) {
+							final patternRefs:Array<String> = [];
+							collectConditionalValueParamRefs(arm.pattern, patternRefs);
+							for (r in patternRefs)
+								if (switchParamRefs.indexOf(r) < 0) switchParamRefs.push(r);
+						}
 					}
 					final capturedArms = arms;
 					final capturedParamName = paramName;
@@ -6451,12 +6921,12 @@ class MultiAnimBuilder {
 							incrementalContext = null;
 							final gcs = MultiAnimParser.getGridCoordinateSystem(node);
 							final hcs = MultiAnimParser.getHexCoordinateSystem(node);
-							for (child in newArm.children)
+							for (child in resolveConditionalChildren(newArm.children))
 								build(child, ObjectMode(capturedContainer), gcs, hcs, capturedIR, capturedBP);
 							incrementalMode = savedMode;
 							incrementalContext = savedCtx;
 						}
-					}, switchParamRefs, container);
+					}, switchParamRefs, container, true);
 				}
 
 				skipChildren = true;
@@ -6553,30 +7023,62 @@ class MultiAnimBuilder {
 				}
 
 				// Collect param refs for incremental tracking of param-dependent repeat counts
-				final repeatParamRefs:Array<String> = [];
+				final countRefs:Array<String> = [];
 				switch repeatType {
 					case StepIterator(dirX, dirY, repeats):
-						collectParamRefs(repeats, repeatParamRefs);
-						if (dirX != null) collectParamRefs(dirX, repeatParamRefs);
-						if (dirY != null) collectParamRefs(dirY, repeatParamRefs);
+						collectParamRefs(repeats, countRefs);
+						if (dirX != null) collectParamRefs(dirX, countRefs);
+						if (dirY != null) collectParamRefs(dirY, countRefs);
 					case RangeIterator(start, end, step):
-						collectParamRefs(start, repeatParamRefs);
-						collectParamRefs(end, repeatParamRefs);
-						collectParamRefs(step, repeatParamRefs);
+						collectParamRefs(start, countRefs);
+						collectParamRefs(end, countRefs);
+						collectParamRefs(step, countRefs);
 					default:
 				}
-				// Also collect param refs from conditions inside children (e.g. @($i < $level) references $level).
-				// This ensures changing those params triggers a repeatable rebuild even if the count is constant.
-				if (incrementalMode && incrementalContext != null) {
-					collectChildConditionalParamRefs(node.children, repeatParamRefs);
-					repeatParamRefs.remove(varName); // exclude loop variable — not a settable parameter
+				final repeatParamRefs:Array<String> = [];
+				final repeatCtx = incrementalContext;
+				if (incrementalMode && repeatCtx != null) {
+					// Only the context's own params can change while the repeat exists: a loop
+					// variable (this one, an enclosing or an inner repeat's), a parameterized slot's
+					// param, a constant @final are fixed. A @final is followed to the params it uses.
+					inline function addOwnParams(refs:Array<String>):Int {
+						var added = 0;
+						for (r in expandFinalAliases(refs))
+							if (repeatCtx.hasParameter(r) && repeatParamRefs.indexOf(r) < 0) {
+								repeatParamRefs.push(r);
+								added++;
+							}
+						return added;
+					}
+					final countParamCount = addOwnParams(countRefs);
+					// Param refs in conditions inside children (e.g. @($i < $level) references $level)
+					// trigger a rebuild even when the count is constant.
+					final condRefs:Array<String> = [];
+					collectChildConditionalParamRefs(node.children, condRefs);
+					final condParamCount = addOwnParams(condRefs);
+					// A constant count rebuilt whole for such a conditional: every param its body uses
+					// triggers the rebuild too, so the body follows them as an incremental one would
+					// (codegen tracks each). A param-dependent count keeps rejecting body-only params.
+					if (countParamCount == 0 && condParamCount > 0) {
+						final bodyRefs:Array<String> = [];
+						for (child in node.children) {
+							for (r in collectNodeParamRefs(child))
+								bodyRefs.push(r);
+							collectSwitchArmExtraParamRefs(child, bodyRefs);
+						}
+						addOwnParams(bodyRefs);
+					}
 				}
 				final hasIncrementalRepeat = incrementalMode && incrementalContext != null && repeatParamRefs.length > 0;
 
 				// Only create a wrapper when children need relative positioning (non-zero step offsets or layout iterator).
 				// Otherwise build directly into parent — this lets h2d.Flow see individual children.
-				// Also force wrapper for param-dependent repeats in incremental mode (need container for removeChildren).
-				final needsWrapper = (dx != 0 || dy != 0 || iterator != null || hasIncrementalRepeat);
+				// Also force wrapper for param-dependent repeats in incremental mode (need container for removeChildren),
+				// and for a repeat tracked as a conditional: its entry hides and shows one object (the same
+				// wrapper an initially hidden repeat gets from the deferred path).
+				final trackedAsConditional = incrementalMode && !suppressConditionalTracking && node.conditionals != NoConditional
+					&& incrementalContext != null && current != null && !materializing;
+				final needsWrapper = (dx != 0 || dy != 0 || iterator != null || hasIncrementalRepeat || trackedAsConditional);
 				var object = needsWrapper ? new h2d.Object() : null;
 				final buildTarget = needsWrapper ? object : current;
 				final ownPos = needsWrapper ? null : calculatePosition(node.pos, MultiAnimParser.getGridCoordinateSystem(node), MultiAnimParser.getHexCoordinateSystem(node));
@@ -6637,6 +7139,20 @@ class MultiAnimBuilder {
 						default: null;
 					};
 					for (childNode in resolvedChildren) {
+						if (needsWrapper) {
+							switch repeatType {
+								case StepIterator(_, _, _):
+									pendingIterationOffsetX = dx * count;
+									pendingIterationOffsetY = dy * count;
+								case LayoutIterator(_):
+									pendingIterationOffsetX = layoutPt.x;
+									pendingIterationOffsetY = layoutPt.y;
+								default:
+							}
+						} else {
+							pendingIterationOffsetX = ownPos.x;
+							pendingIterationOffsetY = ownPos.y;
+						}
 						var obj = build(childNode, ObjectMode(buildTarget), gridCoordinateSystem, hexCoordinateSystem, internalResults, builderParams);
 						if (obj == null)
 							continue;
@@ -6797,7 +7313,7 @@ class MultiAnimBuilder {
 						}
 						incrementalMode = savedMode;
 						incrementalContext = savedCtx;
-					}, repeatParamRefs, capturedObject);
+					}, repeatParamRefs, capturedObject, true);
 				}
 
 				skipChildren = true;
@@ -6898,6 +7414,8 @@ class MultiAnimBuilder {
 							if (yValueVariableName != null) indexedParams.set(yValueVariableName, StringValue(yAxis.arrayIterator[yCount]));
 							final resolvedChildren = resolveConditionalChildren(node.children);
 							for (childNode in resolvedChildren) {
+								pendingIterationOffsetX = xOffsetX + yOffsetX;
+								pendingIterationOffsetY = xOffsetY + yOffsetY;
 								var obj = build(childNode, ObjectMode(target), gridCoordinateSystem, hexCoordinateSystem, ir, bp);
 								if (obj == null)
 									continue;
@@ -6999,7 +7517,7 @@ class MultiAnimBuilder {
 						indexedParams.remove(capturedVarNameY);
 						incrementalMode = savedMode;
 						incrementalContext = savedCtx;
-					}, repeatParamRefs, capturedObject);
+					}, repeatParamRefs, capturedObject, true);
 				}
 
 				skipChildren = true;
@@ -7080,7 +7598,8 @@ class MultiAnimBuilder {
 		// Invisible so layout containers (h2d.Flow) skip it — a visible zero-size child would
 		// consume a spacing slot and diverge from the full (sentinel-free) build.
 		var conditionalSentinel:Null<h2d.Object> = null;
-		if (incrementalMode && !suppressConditionalTracking && node.conditionals != NoConditional && incrementalContext != null && current != null) {
+		if (incrementalMode && !suppressConditionalTracking && node.conditionals != NoConditional && incrementalContext != null && current != null
+				&& !materializing) {
 			conditionalSentinel = new h2d.Object();
 			conditionalSentinel.visible = false;
 			addChild(conditionalSentinel);
@@ -7142,10 +7661,15 @@ class MultiAnimBuilder {
 						// or a duplicate-value array iterator), the key collides and the
 						// lookup would silently return only the first entry. Reject loudly
 						// instead — symmetric with codegen rejecting it at macro time.
-						if (names.exists(indexedKey))
+						// (The same key from mutually exclusive arms is no recurrence: only one is shown.)
+						final existingNamed = names.get(indexedKey);
+						if (existingNamed != null && !allInExclusiveArms(existingNamed, node))
 							throw builderError('indexed name "${name}[${idx}]" is built more than once with the same index — a 1-D indexed name whose index recurs (nested loops, or a duplicate-value iterator) collides. Give the inner loop a unique index or use a 2-D indexed name (#name[indexX, indexY]).',
 								"indexed_name_collision");
-						names[indexedKey] = [toNamedResult(updatableName, builtObject, node)];
+						if (existingNamed != null)
+							existingNamed.push(toNamedResult(updatableName, builtObject, node));
+						else
+							names[indexedKey] = [toNamedResult(updatableName, builtObject, node)];
 					}
 				case UNTIndexed2D(name, indexVarX, indexVarY):
 					final indexValueX = indexedParams.get(indexVarX);
@@ -7154,10 +7678,14 @@ class MultiAnimBuilder {
 						final idxX = switch indexValueX { case Value(v): v; default: 0; };
 						final idxY = switch indexValueY { case Value(v): v; default: 0; };
 						final indexedKey = '${name} ${idxX} ${idxY}';
-						if (names.exists(indexedKey))
+						final existingNamed = names.get(indexedKey);
+						if (existingNamed != null && !allInExclusiveArms(existingNamed, node))
 							throw builderError('indexed name "${name}[${idxX},${idxY}]" is built more than once with the same index pair — the indices collide. Ensure each (indexX, indexY) is unique.',
 								"indexed_name_collision");
-						names[indexedKey] = [toNamedResult(updatableName, builtObject, node)];
+						if (existingNamed != null)
+							existingNamed.push(toNamedResult(updatableName, builtObject, node));
+						else
+							names[indexedKey] = [toNamedResult(updatableName, builtObject, node)];
 					}
 				default:
 			}
@@ -7175,7 +7703,7 @@ class MultiAnimBuilder {
 
 		// Track expressions for incremental updates
 		if (incrementalMode && incrementalContext != null) {
-			trackIncrementalExpressions(node, object, builtObject);
+			trackIncrementalExpressions(node, object, builtObject, iterationOffsetX, iterationOffsetY);
 		}
 
 		// In incremental mode: track conditional elements and remove non-visible ones from scene graph
@@ -7194,8 +7722,13 @@ class MultiAnimBuilder {
 		var savedSlotIncrementalMode:Bool = false;
 		var savedSlotIncrementalContext:Null<IncrementalUpdateContext> = null;
 		var savedSlotIndexedParams:Null<Map<String, ResolvedIndexParameters>> = null;
+		var savedSlotSuppressConditionalTracking = false;
 		switch node.type {
 			case SLOT(parameters, _) if (parameters != null):
+				// The slot's conditionals are tracked on its own context even inside a constant-count
+				// repeatable (whose body suppresses tracking of loop-variable conditionals)
+				savedSlotSuppressConditionalTracking = this.suppressConditionalTracking;
+				this.suppressConditionalTracking = false;
 				savedSlotIncrementalMode = this.incrementalMode;
 				savedSlotIncrementalContext = this.incrementalContext;
 				savedSlotIndexedParams = this.indexedParams;
@@ -7209,8 +7742,13 @@ class MultiAnimBuilder {
 				}
 				this.indexedParams = mergedParams;
 				slotIncrementalCtx = new IncrementalUpdateContext(this, mergedParams, builderParams, node);
-				if (tweenManager != null)
-					slotIncrementalCtx.setTweenManager(tweenManager);
+				slotIncrementalCtx.rootObject = object;
+				slotIncrementalCtx.parentContext = savedSlotIncrementalContext;
+				// The enclosing context's manager when this builder has none (an imported file's, or
+				// one set on the result after its build)
+				final slotTweens = tweenManager != null ? tweenManager : (savedSlotIncrementalContext != null ? savedSlotIncrementalContext.tweenManager : null);
+				if (slotTweens != null)
+					slotIncrementalCtx.setTweenManager(slotTweens);
 				this.incrementalMode = true;
 				this.incrementalContext = slotIncrementalCtx;
 			default:
@@ -7239,6 +7777,7 @@ class MultiAnimBuilder {
 			this.incrementalMode = savedSlotIncrementalMode;
 			this.incrementalContext = savedSlotIncrementalContext;
 			this.indexedParams = savedSlotIndexedParams;
+			this.suppressConditionalTracking = savedSlotSuppressConditionalTracking;
 		}
 
 		// Register slot handle after children are built
@@ -7252,16 +7791,20 @@ class MultiAnimBuilder {
 						break;
 					}
 				}
+				// The site node goes on the handle: a key that recurs in mutually exclusive arms is
+				// allowed (only one is shown), and getSlot answers with the shown one.
+				final handle = new SlotHandle(object, slotIncrementalCtx, slotContentTarget);
+				handle.siteNode = node;
 				switch node.updatableName {
 					case UNTIndexed(baseName, indexVar):
 						final index = resolveAsString(RVReference(indexVar)).toInt();
-						{ for (__se in internalResults.slots) switch __se.key { case Indexed(n, i) if (n == baseName && i == index): throw builderError('indexed slot "${baseName}[${index}]" is built more than once with the same index — a 1-D indexed slot whose index recurs (nested loops, or a duplicate-value iterator) collides. Give the inner loop a unique index or use a 2-D indexed slot (#name[indexX, indexY]).', "indexed_slot_collision"); default: } } internalResults.slots.push({key: Indexed(baseName, index), handle: new SlotHandle(object, slotIncrementalCtx, slotContentTarget)});
+						{ for (__se in internalResults.slots) switch __se.key { case Indexed(n, i) if (n == baseName && i == index && !inExclusiveArms(__se.handle.siteNode, node)): throw builderError('indexed slot "${baseName}[${index}]" is built more than once with the same index — a 1-D indexed slot whose index recurs (nested loops, or a duplicate-value iterator) collides. Give the inner loop a unique index or use a 2-D indexed slot (#name[indexX, indexY]).', "indexed_slot_collision"); default: } } internalResults.slots.push({key: Indexed(baseName, index), handle: handle});
 					case UNTIndexed2D(baseName, indexVarX, indexVarY):
 						final indexX = resolveAsString(RVReference(indexVarX)).toInt();
 						final indexY = resolveAsString(RVReference(indexVarY)).toInt();
-						{ for (__se in internalResults.slots) switch __se.key { case Indexed2D(n, ix, iy) if (n == baseName && ix == indexX && iy == indexY): throw builderError('indexed slot "${baseName}[${indexX},${indexY}]" is built more than once with the same index pair — the indices collide. Ensure each (indexX, indexY) is unique.', "indexed_slot_collision"); default: } } internalResults.slots.push({key: Indexed2D(baseName, indexX, indexY), handle: new SlotHandle(object, slotIncrementalCtx, slotContentTarget)});
+						{ for (__se in internalResults.slots) switch __se.key { case Indexed2D(n, ix, iy) if (n == baseName && ix == indexX && iy == indexY && !inExclusiveArms(__se.handle.siteNode, node)): throw builderError('indexed slot "${baseName}[${indexX},${indexY}]" is built more than once with the same index pair — the indices collide. Ensure each (indexX, indexY) is unique.', "indexed_slot_collision"); default: } } internalResults.slots.push({key: Indexed2D(baseName, indexX, indexY), handle: handle});
 					case UNTObject(name) | UNTUpdatable(name):
-						internalResults.slots.push({key: Named(name), handle: new SlotHandle(object, slotIncrementalCtx, slotContentTarget)});
+						internalResults.slots.push({key: Named(name), handle: handle});
 					default:
 				}
 			default:
@@ -7321,6 +7864,7 @@ class MultiAnimBuilder {
 		return {
 			type: updatableNameType,
 			object: obj,
+			siteNode: node,
 			settings: resolveSettings(node),
 			hexCoordinateSystem: MultiAnimParser.getHexCoordinateSystem(node),
 			gridCoordinateSystem: MultiAnimParser.getGridCoordinateSystem(node)
@@ -7549,9 +8093,39 @@ class MultiAnimBuilder {
 			}
 		}
 
+		// A root `pos:` that uses a param follows it on setParameter. It is the root's position inside
+		// the holder, so it keeps adding to what the caller sets on the result's object; the holder
+		// is there from the build on, even when the position starts at 0, 0.
+		var rootPosTracked = false;
+		final rootCtx = incrementalContext;
+		if (incrementalMode && rootCtx != null && rootNode.pos != null) {
+			final rootPosRefs:Array<String> = [];
+			collectCoordinateParamRefs(rootNode.pos, rootPosRefs);
+			if (rootPosRefs.length > 0) {
+				rootPosTracked = true;
+				final trackedRoot = retRoot;
+				final posNode = rootNode;
+				final gcs = gridCoordinateSystem;
+				final hcs = hexCoordinateSystem;
+				rootCtx.trackExpression(() -> {
+					final prev = currentNode;
+					currentNode = posNode;
+					try {
+						final p = calculatePosition(posNode.pos, gcs, hcs);
+						trackedRoot.x = p.x;
+						trackedRoot.y = p.y;
+					} catch (e:Dynamic) {
+						currentNode = prev;
+						throw e;
+					}
+					currentNode = prev;
+				}, rootPosRefs, null);
+			}
+		}
+
 		// Wrap in holder object if there's an offset
-		
-		final finalObject = if (retRoot.x != 0 || retRoot.y != 0) {
+
+		final finalObject = if (retRoot.x != 0 || retRoot.y != 0 || rootPosTracked) {
 			final holder = new h2d.Object();
 			holder.addChild(retRoot);
 			retRoot.setPosition(retRoot.x, retRoot.y);
@@ -7977,13 +8551,17 @@ class MultiAnimBuilder {
 	 *  resolve against the instance values rather than an empty/default scope.
 	 *  Used by ProgrammableBuilder.buildParticles. */
 	public function buildParticleWithParams(particlesDef:ParticlesDef, name:String,
-			programmableName:String, params:Null<Map<String, Dynamic>>):bh.base.Particles {
+			programmableName:String, params:Null<Map<String, Dynamic>>, ?particlesNode:Node):bh.base.Particles {
 		final node = multiParserResult.nodes.get(programmableName);
 		if (node == null)
 			throw builderError('could not find programmable node: $programmableName');
 		pushBuilderState();
 		try {
-			this.indexedParams = resolveProgrammableParamsToScope(node, params);
+			final scope = resolveProgrammableParamsToScope(node, params);
+			// The @final constants before the particles block are in scope, as in the full build
+			if (particlesNode != null)
+				replayEnclosingFinals(particlesNode, node, scope);
+			this.indexedParams = scope;
 			final particles = createParticleImpl(particlesDef, name);
 			popBuilderState();
 			return particles;
@@ -9066,6 +9644,20 @@ class MultiAnimBuilder {
 		this.indexedParams = retVal;
 	}
 
+	/** Runs `fn` (a ref's nested build for a codegen instance) with `from` — the programmable the
+	 *  instance builds — counted as in flight, as it is when the builder builds that programmable:
+	 *  a ref back to it is a circular reference in both. Null `from` runs `fn` as is. */
+	public function buildingFrom<T>(from:Null<String>, fn:Void -> T):T {
+		if (from == null) return fn();
+		buildingRefs.push(from);
+		final result = try fn() catch (e:Dynamic) {
+			buildingRefs.pop();
+			throw e;
+		}
+		buildingRefs.pop();
+		return result;
+	}
+
 	public function buildWithParameters(name:String, inputParameters:Map<String, Dynamic>, ?builderParams:BuilderParameters,
 			?inheritedParameters:Map<String, ResolvedIndexParameters>, incremental:Bool = false):BuilderResult {
 		// Circular reference guard: staticRef/dynamicRef resolve by recursing back into
@@ -9083,11 +9675,9 @@ class MultiAnimBuilder {
 		// context, where they re-resolve against the outer programmable's parameters by name
 		// (`staticRef($sail, dir=>e)` inside a programmable with its own `dir` redrew the sail with the
 		// outer value). pushBuilderState saved both; popBuilderState restores them.
-		final savedForwardingCtx = deferredForwardingCtx;
 		if (!incremental) {
 			this.incrementalMode = false;
 			this.incrementalContext = null;
-			this.deferredForwardingCtx = null;
 		}
 		// A constant-count repeatable suppresses conditional tracking for its body (its loop-var
 		// conditionals are static). That is the body's business, not the programmable a dynamicRef
@@ -9126,6 +9716,14 @@ class MultiAnimBuilder {
 				final ctx = this.incrementalContext;
 				retVal.incrementalContext = ctx;
 				if (ctx != null) {
+					ctx.rootObject = retVal.object;
+					#if MULTIANIM_DEV
+					// What the caller passed is kept by an in-place hot reload (a dynamicRef site
+					// clears these: its inputs are the file's arguments)
+					if (inputParameters != null)
+						for (k in inputParameters.keys())
+							ctx.markSetByCaller(k);
+					#end
 					// @final constants at the programmable body scope survive the build and
 					// must be persisted in the context so setParameter-triggered rebuilds can
 					// re-resolve references like `$MY_CONST`. Nested @finals (inside point{},
@@ -9154,7 +9752,6 @@ class MultiAnimBuilder {
 			#end
 
 			popBuilderState();
-			deferredForwardingCtx = savedForwardingCtx;
 			suppressConditionalTracking = savedSuppressConditionalTracking;
 			buildingRefs.pop();
 			return retVal;
@@ -9165,7 +9762,6 @@ class MultiAnimBuilder {
 			// builder; without this unwind, stateStack and the live indexedParams/currentNode
 			// would stay pinned to the failed call's transient state and corrupt every later build.
 			popBuilderState();
-			deferredForwardingCtx = savedForwardingCtx;
 			suppressConditionalTracking = savedSuppressConditionalTracking;
 			buildingRefs.pop();
 			throw e;
@@ -9217,6 +9813,36 @@ class MultiAnimBuilder {
 		return walk(root);
 	}
 
+	/** A build that starts inside a programmable (a slot body, a codegen @switch arm, tileGroup,
+	 *  particles or param-dependent repeat body) builds only that subtree, so the @final constants
+	 *  that precede `target` along its ancestor chain up to `progNode` are stored into `into` here:
+	 *  lazily, as ExpressionAlias (same as evaluateAndStoreFinal), so a param-dependent final
+	 *  resolves against `into` when referenced. A name already in `into` is left as it is. */
+	function replayEnclosingFinals(target:Node, progNode:Node, into:Map<String, ResolvedIndexParameters>):Void {
+		var chainWalk:Null<Node> = target;
+		final ancestorChain:Array<Node> = [];
+		while (chainWalk != null && chainWalk != progNode) {
+			ancestorChain.unshift(chainWalk);
+			chainWalk = chainWalk.parent;
+		}
+		if (chainWalk != progNode)
+			return;
+		var finalScope = progNode;
+		for (next in ancestorChain) {
+			for (child in finalScope.children) {
+				if (child == next)
+					break;
+				switch child.type {
+					case FINAL_VAR(fname, fexpr):
+						if (!into.exists(fname))
+							into.set(fname, ExpressionAlias(fexpr));
+					default:
+				}
+			}
+			finalScope = next;
+		}
+	}
+
 	/** Build a parameterized slot's children into its container with incremental mode.
 	 *  Used by codegen (via ProgrammableBuilder) for parameterized slots. */
 	public function buildSlotContent(programmableName:String, slotName:String,
@@ -9260,34 +9886,9 @@ class MultiAnimBuilder {
 				if (def.defaultValue != null && !mergedParams.exists(key))
 					mergedParams.set(key, def.defaultValue);
 			}
-			// Enclosing @final constants are in scope inside slot bodies. This path
-			// builds only the slot subtree, so the finals that precede the slot along
-			// its ancestor chain must be replayed here — stored lazily as
-			// ExpressionAlias (same as evaluateAndStoreFinal), so param-dependent
-			// finals resolve against the merged params at reference time. Finals
-			// declared after the slot were rejected at parse time and are skipped.
-			var chainWalk = slotNode;
-			final ancestorChain:Array<Node> = [];
-			while (chainWalk != null && chainWalk != progNode) {
-				ancestorChain.unshift(chainWalk);
-				chainWalk = chainWalk.parent;
-			}
-			if (chainWalk == progNode) {
-				var finalScope = progNode;
-				for (next in ancestorChain) {
-					for (child in finalScope.children) {
-						if (child == next)
-							break;
-						switch child.type {
-							case FINAL_VAR(fname, fexpr):
-								if (!mergedParams.exists(fname))
-									mergedParams.set(fname, ExpressionAlias(fexpr));
-							default:
-						}
-					}
-					finalScope = next;
-				}
-			}
+			// Enclosing @final constants are in scope inside slot bodies (finals declared
+			// after the slot were rejected at parse time).
+			replayEnclosingFinals(slotNode, progNode, mergedParams);
 			this.indexedParams = mergedParams;
 
 			// Create incremental context for the slot
@@ -9298,6 +9899,7 @@ class MultiAnimBuilder {
 			};
 			this.builderParams = builderParams;
 			final slotCtx = new IncrementalUpdateContext(this, mergedParams, builderParams, slotNode);
+			slotCtx.rootObject = container;
 			if (tweenManager != null)
 				slotCtx.setTweenManager(tweenManager);
 			this.incrementalMode = true;
@@ -9452,6 +10054,7 @@ class MultiAnimBuilder {
 					else
 						resolvedParams.set(key, dynamicToResolvedInferred(value));
 				}
+				replayEnclosingFinals(switchNode, progNode, resolvedParams);
 				this.indexedParams = resolvedParams;
 				this.incrementalMode = false;
 				this.incrementalContext = null;
@@ -9464,7 +10067,7 @@ class MultiAnimBuilder {
 				final ir:InternalBuilderResults = sink != null
 					? sink.ir
 					: {names: new Map(), interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
-				for (child in arm.children)
+				for (child in resolveConditionalChildren(arm.children))
 					build(child, ObjectMode(container), cast gridCS, cast hexCS, ir, bp);
 				popBuilderState();
 			} catch (e:Dynamic) {
@@ -9519,18 +10122,21 @@ class MultiAnimBuilder {
 	 *  conditional gate triggers the body rebuild rather than throwing. */
 	function markUntrackedParamsInSubtree(node:Null<Node>, ctx:IncrementalUpdateContext, excludeVar:Null<String>, rebuildRefs:Array<String>):Void {
 		if (node == null || ctx == null) return;
+		// A @final is followed to its params first: one that a rebuild trigger reaches is not frozen
 		inline function markRefs(rv:ReferenceableValue, reason:String):Void {
 			if (rv == null) return;
 			final refs:Array<String> = [];
 			collectParamRefs(rv, refs);
-			for (r in refs) {
+			for (r in expandFinalAliases(refs)) {
 				if (r == excludeVar) continue;
+				if (indexedParams.get(r)?.match(ExpressionAlias(_)) == true) continue;
 				if (rebuildRefs != null && rebuildRefs.indexOf(r) >= 0) continue;
 				ctx.markParamUntracked(r, reason);
 			}
 		}
 		inline function markRefList(refs:Array<String>, reason:String):Void {
-			for (r in refs) {
+			for (r in expandFinalAliases(refs)) {
+				if (indexedParams.get(r)?.match(ExpressionAlias(_)) == true) continue;
 				if (r == excludeVar) continue;
 				if (rebuildRefs != null && rebuildRefs.indexOf(r) >= 0) continue;
 				ctx.markParamUntracked(r, reason);
@@ -9626,6 +10232,7 @@ class MultiAnimBuilder {
 				else
 					resolvedParams.set(key, dynamicToResolvedInferred(value));
 			}
+			replayEnclosingFinals(node, progNode, resolvedParams);
 			this.indexedParams = resolvedParams;
 			this.incrementalMode = false;
 			this.incrementalContext = null;

@@ -169,6 +169,11 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.CodegenTextMaxWidthParityTest());
 		testRunner.addCase(new bh.test.examples.CodegenLayoutParamPointsTest());
 		testRunner.addCase(new bh.test.examples.CodegenForwardStringConcatTest());
+		testRunner.addCase(new bh.test.examples.CodegenSwitchFinalRefsTest());
+		testRunner.addCase(new bh.test.examples.IncrementalReviewTest());
+		testRunner.addCase(new bh.test.examples.RefsSlotsReviewTest());
+		testRunner.addCase(new bh.test.examples.CodegenParityReviewTest());
+		testRunner.addCase(new bh.test.examples.LifecycleReviewTest());
 		testRunner.addCase(new bh.test.examples.AllocationSmokeTest());
 		testRunner.addCase(new bh.test.examples.NinePatchModesTest());
 		testRunner.addCase(new bh.test.examples.CursorTest());
@@ -182,6 +187,7 @@ class TestApp extends hxd.App {
 		#if MULTIANIM_DEV
 		testRunner.addCase(new bh.test.examples.HotReloadTest());
 		testRunner.addCase(new bh.test.examples.DevBridgeTest());
+		testRunner.addCase(new bh.test.examples.HotReloadReviewTest());
 		#end
 
 		// Capture unit test results in memory for HTML report

@@ -57,7 +57,7 @@ class UIRichInteractiveHelper {
 								if (autoHelper != null && autoHelper.hasBinding(fullId))
 									throw 'interactive "$fullId" is already managed by screen auto-wiring ($RESERVED_KEY) — cannot also register with "$metadataKey"';
 							}
-							bind(fullId, source, paramName, prefix);
+							bind(fullId, source, paramName, prefix, ownerOf(source, obj));
 						}
 					}
 				default:
@@ -84,7 +84,7 @@ class UIRichInteractiveHelper {
 	public function resync(source:UIInteractiveSource, ?prefix:String, metadataKey:String = "bind"):Void {
 		// 1. Walk current interactives, build expected id set + collect new bindings to add
 		final expectedIds = new Map<String, Bool>();
-		final toAdd:Array<{id:String, paramName:String}> = [];
+		final toAdd:Array<{id:String, paramName:String, obj:bh.base.MAObject}> = [];
 		for (obj in source.getInteractives()) {
 			switch obj.multiAnimType {
 				case MAInteractive(_, _, identifier, meta):
@@ -95,7 +95,7 @@ class UIRichInteractiveHelper {
 							final fullId = prefix != null ? '$prefix.$identifier' : identifier;
 							expectedIds.set(fullId, true);
 							if (!bindings.exists(fullId))
-								toAdd.push({id: fullId, paramName: paramName});
+								toAdd.push({id: fullId, paramName: paramName, obj: obj});
 						}
 					}
 				default:
@@ -114,7 +114,7 @@ class UIRichInteractiveHelper {
 
 		// 3. Add bindings for new ids only — existing bindings keep their currentState
 		for (entry in toAdd)
-			bind(entry.id, source, entry.paramName, prefix);
+			bind(entry.id, source, entry.paramName, prefix, ownerOf(source, entry.obj));
 	}
 
 	/** Internal accessor for screen auto-wiring resync — uses the reserved metadata key. */
@@ -152,9 +152,11 @@ class UIRichInteractiveHelper {
 	/** Manually bind an interactive to a source's parameter. `prefix` records the scope used when
 	 *  the binding was created (from `register`/`registerAutoStatus`); it is consulted by `resync`
 	 *  to avoid wiping bindings on the same source that were registered under a different prefix. */
-	public function bind(interactiveId:String, source:UIInteractiveSource, stateParam:String = "status", ?prefix:String):Void {
+	public function bind(interactiveId:String, source:UIInteractiveSource, stateParam:String = "status", ?prefix:String,
+			?target:UIInteractiveSource):Void {
 		bindings.set(interactiveId, {
 			source: source,
+			target: target != null ? target : source,
 			prefix: prefix,
 			stateParam: stateParam,
 			currentState: Normal,
@@ -178,7 +180,7 @@ class UIRichInteractiveHelper {
 		final binding = bindings.get(interactiveId);
 		if (binding == null) return;
 		binding.currentState = Normal;
-		binding.source.setParameter(binding.stateParam, "normal");
+		binding.target.setParameter(binding.stateParam, "normal");
 	}
 
 	/** Set binding state to Hover and set the parameter to "hover".
@@ -187,7 +189,7 @@ class UIRichInteractiveHelper {
 		final binding = bindings.get(interactiveId);
 		if (binding == null) return;
 		binding.currentState = Hover;
-		binding.source.setParameter(binding.stateParam, "hover");
+		binding.target.setParameter(binding.stateParam, "hover");
 	}
 
 	/** Set disabled state. Also disables the UIInteractiveWrapper to gate events. */
@@ -201,11 +203,11 @@ class UIRichInteractiveHelper {
 
 		if (disabled) {
 			binding.currentState = Disabled;
-			binding.source.setParameter(binding.stateParam, "disabled");
+			binding.target.setParameter(binding.stateParam, "disabled");
 		} else {
 			final isHovered = wrapper != null && wrapper.hovered;
 			binding.currentState = isHovered ? Hover : Normal;
-			binding.source.setParameter(binding.stateParam, isHovered ? "hover" : "normal");
+			binding.target.setParameter(binding.stateParam, isHovered ? "hover" : "normal");
 		}
 	}
 
@@ -213,14 +215,39 @@ class UIRichInteractiveHelper {
 	public function setParameter(interactiveId:String, param:String, value:Dynamic):Void {
 		final binding = bindings.get(interactiveId);
 		if (binding != null)
-			binding.source.setParameter(param, value);
+			binding.target.setParameter(param, value);
 	}
 
 	/** Access the bound source for a given interactive. Returns the `UIInteractiveSource` that
-	 *  owns the interactive — either a `BuilderResult` (runtime path) or a codegen instance. */
+	 *  owns the interactive — either a `BuilderResult` (runtime path) or a codegen instance; for an
+	 *  interactive a dynamicRef placed, that dynamicRef's result. */
 	public function getSource(interactiveId:String):Null<UIInteractiveSource> {
 		final binding = bindings.get(interactiveId);
-		return binding?.source;
+		return binding?.target;
+	}
+
+	/** The result whose param an interactive's binding drives: the dynamicRef child (at any depth)
+	 *  whose own interactives hold it — a button placed by dynamicRef has its own `status` — else
+	 *  `source` (an interactive of its own, or of a staticRef target, which follows its params). */
+	static function ownerOf(source:UIInteractiveSource, obj:bh.base.MAObject):UIInteractiveSource {
+		final owner = findDynamicRefOwner(source, obj);
+		return owner != null ? owner : source;
+	}
+
+	static function findDynamicRefOwner(source:UIInteractiveSource, obj:bh.base.MAObject):Null<UIInteractiveSource> {
+		if (!Std.isOfType(source, bh.multianim.LiveProgrammable)) return null;
+		final live:bh.multianim.LiveProgrammable = cast source;
+		for (key in live.getDynamicRefKeys()) {
+			var child:Null<bh.multianim.MultiAnimBuilder.BuilderResult> = null;
+			try {
+				child = (cast source : Dynamic).getDynamicRef(key);
+			} catch (_:Dynamic) {} // unnamed sites colliding on one key: not reachable by key
+			if (child == null) continue;
+			if (child.interactives.indexOf(obj) >= 0) return child;
+			final deeper = findDynamicRefOwner(child, obj);
+			if (deeper != null) return deeper;
+		}
+		return null;
 	}
 
 	/**
@@ -238,25 +265,25 @@ class UIRichInteractiveHelper {
 					case UIEntering(_):
 						if (binding.currentState == Normal) {
 							binding.currentState = Hover;
-							binding.source.setParameter(binding.stateParam, "hover");
+							binding.target.setParameter(binding.stateParam, "hover");
 						}
 					case UIPush:
 						if (binding.currentState == Hover || binding.currentState == Normal) {
 							binding.enteredPressedViaHover = binding.currentState == Hover;
 							binding.currentState = Pressed;
-							binding.source.setParameter(binding.stateParam, "pressed");
+							binding.target.setParameter(binding.stateParam, "pressed");
 						}
 					case UIClick:
 						if (binding.currentState == Pressed) {
 							// Touch: no prior hover, return to Normal. Mouse: return to Hover.
 							final target = binding.enteredPressedViaHover ? Hover : Normal;
 							binding.currentState = target;
-							binding.source.setParameter(binding.stateParam, target == Hover ? "hover" : "normal");
+							binding.target.setParameter(binding.stateParam, target == Hover ? "hover" : "normal");
 						}
 					case UILeaving:
 						if (binding.currentState == Hover || binding.currentState == Pressed) {
 							binding.currentState = Normal;
-							binding.source.setParameter(binding.stateParam, "normal");
+							binding.target.setParameter(binding.stateParam, "normal");
 						}
 					default:
 				}
@@ -268,7 +295,11 @@ class UIRichInteractiveHelper {
 }
 
 private typedef InteractiveBinding = {
+	// The source registered (resync and unregister match on it)
 	source:UIInteractiveSource,
+	// The result whose state param the binding drives: source, or the dynamicRef child that
+	// placed the interactive (its `status` is its own)
+	target:UIInteractiveSource,
 	prefix:Null<String>,
 	stateParam:String,
 	currentState:InteractiveState,
