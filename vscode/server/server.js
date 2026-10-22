@@ -2588,6 +2588,30 @@ bh_multianim_MacroManimParser.prototype = {
 			this.error("" + kind + " loop variable $" + name + " shadows an outer $" + name + " already in scope — pick a different name");
 		}
 	}
+	,validateRefTargetParam: function(kind,progRef,currentDefs) {
+		var name;
+		if(progRef._hx_index == 6) {
+			var r = progRef.ref;
+			name = r;
+		} else {
+			return;
+		}
+		var def = currentDefs != null ? currentDefs.h[name] : null;
+		if(def == null) {
+			return;
+		}
+		var _g = def.type;
+		switch(_g._hx_index) {
+		case 3:
+			var _g1 = _g.values;
+			break;
+		case 9:
+			break;
+		default:
+			var other = _g;
+			this.error("" + kind + "($" + name + "): \"" + name + "\" is a " + bh_multianim_MacroManimParser.definitionTypeName(other) + " parameter, and only a string or enum parameter names the programmable to place. To place the programmable " + name + ", write " + kind + "(" + name + ", ...) without the $" + ", or give the parameter another name");
+		}
+	}
 	,iteratorOutputVars: function(rt) {
 		switch(rt._hx_index) {
 		case 2:
@@ -6902,6 +6926,7 @@ bh_multianim_MacroManimParser.prototype = {
 																					}
 																				}
 																				var progRef = this.expectReferenceOrIdentifierAsRV();
+																				this.validateRefTargetParam("staticRef",progRef,currentDefs);
 																				var params = new haxe_ds_StringMap();
 																				if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
 																					params = this.parseReferenceParams();
@@ -6926,6 +6951,7 @@ bh_multianim_MacroManimParser.prototype = {
 																						}
 																					}
 																					var progRef = this.expectReferenceOrIdentifierAsRV();
+																					this.validateRefTargetParam("dynamicRef",progRef,currentDefs);
 																					var params = new haxe_ds_StringMap();
 																					if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
 																						params = this.parseReferenceParams();

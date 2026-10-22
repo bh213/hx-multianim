@@ -71,17 +71,18 @@ class CodegenRepeatGateTest extends BuilderTestBase {
 
 	// ==================== dynamicRef($loopVar) in a static unroll ====================
 
-	/** Builder: the loop var resolves per iteration, so the missing-target
-	 *  error names the iteration value "0" (and never the loop var "i"). */
+	/** Builder: the loop var resolves per iteration, so the programmable the
+	 *  missing-target error says is not there is the iteration value "0", never
+	 *  one called "i" (the site itself is named as written, `dynamicRef($i)`). */
 	@Test
 	public function testDynRefLoopVar_Builder_ResolvesPerIteration():Void {
 		final msg = messageOf(() -> BuilderTestBase.buildFromFile(FIXTURE, "dynRefLoopHost", null));
 		Assert.notNull(msg, "builder: dynamicRef($i) with no matching programmable throws");
 		if (msg == null) return;
-		Assert.isTrue(new EReg("\\b0\\b", "").match(msg),
-			'builder: missing-target message names the resolved iteration value "0" — got: $msg');
-		Assert.isFalse(new EReg("\\bi\\b", "").match(msg),
-			'builder: missing-target message must not name the loop variable "i" — got: $msg');
+		Assert.isTrue(msg.indexOf('no programmable "0"') >= 0,
+			'builder: the missing programmable is the resolved iteration value "0" — got: $msg');
+		Assert.isFalse(msg.indexOf('programmable "i"') >= 0 || msg.indexOf('element "i"') >= 0,
+			'builder: the loop variable "i" is never looked up as a programmable — got: $msg');
 	}
 
 	/** Codegen: same contract — the loop var must be substituted before the

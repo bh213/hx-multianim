@@ -708,6 +708,8 @@ The reference name itself can be a parameter, allowing the target programmable t
 When `template` is a parameter of the enclosing programmable (string or enum type), changing it triggers a **full rebuild**: the old programmable is torn down and the new one is built from scratch. Forwarded parameters (`value=>$hp`) are propagated incrementally when the template doesn't change.
 
 - **Backward compatible**: `$progName` where `progName` is not a parameter falls back to literal name (existing behavior)
+- **Only a string or enum parameter names a programmable**: `dynamicRef($x)` / `staticRef($x)` with `x` a `bool`, number, `color` or `tile` parameter is a parse error. A programmable named like such a parameter (`panel:bool` beside `#panel`) is placed by its bare name: `@(panel=>true) #panel dynamicRef(panel, kind=>lobby)`
+- **A missing target is reported at the site**: `dynamicRef($template): $template is "nope", and there is no programmable "nope"` (`BuilderError`, code `missing_ref`), when the site is built or its template changes
 - **Strict validation**: forwarded parameters must exist on the target programmable (runtime error if missing, allowed if target has a default)
 - Works in both builder (via `IncrementalUpdateContext`) and codegen paths
 

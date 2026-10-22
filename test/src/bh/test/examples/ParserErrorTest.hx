@@ -5754,4 +5754,52 @@ class ParserErrorTest extends utest.Test {
 			}
 		'), "the FloatingTextHelper .manim usage in the rules file must parse");
 	}
+
+	// ===== A $ref target names a programmable by a string or enum parameter only =====
+
+	@Test
+	public function testRefNamingANonStringParameterIsAParseError() {
+		// `dynamicRef($x)` / `staticRef($x)` with `x` a parameter of the enclosing programmable
+		// places the programmable that parameter's value names. A bool's value names none: under
+		// a conditional the first show threw inside setParameter, and getDynamicRef("panel") then
+		// reported the site missing every frame. Say so as the file is read, shown or not.
+		final dynamicError = parseExpectingError("
+			#panel programmable(kind:[lobby,results]=lobby) {
+				bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+			#arena programmable(panel:bool=false) {
+				@(panel=>true) #panel dynamicRef($panel, kind=>lobby): 560, 110
+			}
+		");
+		Assert.notNull(dynamicError, "dynamicRef($panel) with panel a bool parameter should not parse");
+		Assert.stringContains("\"panel\" is a bool parameter", dynamicError ?? "");
+		Assert.stringContains("dynamicRef(panel", dynamicError ?? "");
+
+		final staticError = parseExpectingError("
+			#badge programmable() {
+				bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+			#arena programmable(badge:uint=0) {
+				staticRef($badge): 0, 0
+			}
+		");
+		Assert.notNull(staticError, "staticRef($badge) with badge a uint parameter should not parse");
+		Assert.stringContains("\"badge\" is a uint parameter", staticError ?? "");
+		Assert.stringContains("staticRef(badge", staticError ?? "");
+
+		// A string or enum parameter names the programmable to place; a bare name is the programmable.
+		Assert.isTrue(parseExpectingSuccess("
+			#a programmable() {
+				bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+			#b programmable() {
+				bitmap(generated(color(10, 10, #00ff00))): 0, 0
+			}
+			#host programmable(which:[a,b]=a, target:string=\"b\", a:bool=false) {
+				dynamicRef($which): 0, 0
+				staticRef($target): 0, 10
+				@(a=>true) #shown dynamicRef(a): 0, 20
+			}
+		"), "string and enum parameters, and a bare programmable name, still parse");
+	}
 }

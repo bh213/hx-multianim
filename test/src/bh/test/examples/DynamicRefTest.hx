@@ -1415,4 +1415,61 @@ class DynamicRefTest extends BuilderTestBase {
 		row.setParameter("status", "none");
 		Assert.equals(3, findVisibleBitmapDescendants(result.object).length, "the row hides its conditional again");
 	}
+
+	// ==================== A setParameter that throws, and a ref to a programmable that is not there ====================
+
+	static function errorOf(fn:Void -> Void):Null<String> {
+		try {
+			fn();
+			return null;
+		} catch (e:Dynamic) {
+			return Std.string(e);
+		}
+	}
+
+	@Test
+	public function testASetParameterThatThrowsRunsAgainWhenRetried():Void {
+		// A game sets the value its phase wants every frame. When the first show of a conditional
+		// throws, the same call on the next frame must try again and say why again — not return at
+		// once because the value it asks for is already stored, leaving the site unbuilt and only a
+		// later "DynamicRef not found" to see.
+		final result = buildFromSource("
+			#host programmable(show:bool=false, target:string=\"nothing\") {
+				@(show=>true) #site dynamicRef($target): 0, 0
+			}
+		", "host", null, Incremental);
+
+		final first = errorOf(() -> result.setParameter("show", true));
+		Assert.notNull(first, "the first show throws: no programmable is called \"nothing\"");
+		final again = errorOf(() -> result.setParameter("show", true));
+		Assert.notNull(again, "the same setParameter again runs again and throws again");
+		Assert.stringContains("nothing", again ?? "");
+	}
+
+	@Test
+	public function testARefToAMissingProgrammableNamesItsSite():Void {
+		// The error a missing target gives names the site that asked for it, and the parameter
+		// whose value named it, not only the name the nested build could not find.
+		final shown = buildFromSource("
+			#host programmable(show:bool=false, target:string=\"nothing\") {
+				@(show=>true) #site dynamicRef($target): 0, 0
+			}
+		", "host", null, Incremental);
+		final byParameter = errorOf(() -> shown.setParameter("show", true)) ?? "";
+		Assert.stringContains("dynamicRef($target): $target is \"nothing\", and there is no programmable \"nothing\"", byParameter);
+
+		final byName = errorOf(() -> buildFromSource("
+			#host programmable() {
+				dynamicRef($nothing): 0, 0
+			}
+		", "host", null, Incremental)) ?? "";
+		Assert.stringContains("dynamicRef($nothing): there is no programmable \"nothing\"", byName);
+
+		final staticByParameter = errorOf(() -> buildFromSource("
+			#host programmable(target:string=\"nothing\") {
+				staticRef($target): 0, 0
+			}
+		", "host")) ?? "";
+		Assert.stringContains("staticRef($target): $target is \"nothing\", and there is no programmable \"nothing\"", staticByParameter);
+	}
 }

@@ -69,7 +69,7 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `#name dynamicRef($ref, params)` | Named dynamic embed — `BuilderResult.getDynamicRef("name")` returns this specific site |
 | `#name[$i] dynamicRef($ref, params)` | Indexed dynamic embed inside a `repeatable` — keys each iteration under `"name idx"` (e.g. `"name 0"`, `"name 1"`) |
 | `dynamicRef(external("importName"), $ref, params)` | Dynamic embed from imported .manim file |
-| `dynamicRef($paramName, params)` | Dynamic embed where `$paramName` is a parameter naming the target programmable. Full rebuild on template change |
+| `dynamicRef($paramName, params)` | Dynamic embed where `$paramName` is a parameter naming the target programmable. Full rebuild on template change. Only a `string` or enum parameter names one: `dynamicRef($x)` / `staticRef($x)` with `x` a parameter of another type (`bool`, a number, `color`, `tile`, …) is a parse error. A programmable named like such a parameter (`panel:bool` beside `#panel`) is placed by its bare name, `dynamicRef(panel, …)`. A target that is not there is reported at the site: `dynamicRef($template): $template is "nope", and there is no programmable "nope"` (`BuilderError`, code `missing_ref`) |
 
 **Builder API:**
 - `result.getDynamicRef("name")` — returns the `BuilderResult` for the named site; throws if the name is unknown or multiple unnamed sites collide on the key

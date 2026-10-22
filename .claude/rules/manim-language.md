@@ -35,7 +35,7 @@
 | `staticRef($ref)` | Static embed of another programmable |
 | `dynamicRef($ref, params)` | Dynamic embed with runtime `setParameter()` support. Unnamed sibling sites that refer to the same programmable collide on the map key; `BuilderResult.getDynamicRef("X")` throws on ambiguity. Prefix with `#name` / `#name[$i]` to disambiguate |
 | `#name dynamicRef($ref, params)` / `#name[$i] dynamicRef($ref, params)` | Named dynamic embed — `getDynamicRef("name")` / map key `"name idx"` per iteration. Two explicit `#name` collisions throw at build time |
-| `dynamicRef($paramName, params)` | Dynamic embed where `$paramName` is a parameter naming the target programmable. Full rebuild on template change. `#foo dynamicRef($template)` stays keyed as `"foo"` across template swaps |
+| `dynamicRef($paramName, params)` | Dynamic embed where `$paramName` is a parameter naming the target programmable. Full rebuild on template change. `#foo dynamicRef($template)` stays keyed as `"foo"` across template swaps. Only a `string`/enum parameter names one: `dynamicRef($x)`/`staticRef($x)` with `x` of another type is a parse error (a programmable named like such a parameter is placed by its bare name, `dynamicRef(panel)`); a missing target is reported at the site (`missing_ref`) |
 | `#name slot` / `#name[$i] slot` | Swappable container (indexed variant for repeatables) |
 | `#name slot(param:type=default, ...)` | Parameterized slot with visual states |
 | `spacer(w, h)` | Empty space inside `flow` containers |

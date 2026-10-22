@@ -448,6 +448,10 @@ class IncrementalUpdateContext {
 	// alongside every changedParams.clear(); capacity persists across calls.
 	var changedParamList:Array<String> = [];
 	var hasChanges:Bool = false;
+	// Params whose last applyUpdates threw. The value stays set, so the no-op gate in setParameter
+	// would skip a retry with the same value and leave its content unbuilt without a word; it lets
+	// these through until they apply cleanly. Null while none failed, the usual case.
+	var failedParams:Null<Map<String, Bool>> = null;
 	var transitionsDef:Null<Map<String, TransitionType>>;
 	public var tweenManager:Null<TweenManager> = null;
 	// `restore` snaps the properties this transition was animating back to their captured
@@ -1166,7 +1170,7 @@ class IncrementalUpdateContext {
 		// trackedExpressions, dynamicRef forwarding, and rebuild listeners. Type.enumEq is
 		// cheap (no allocation) and works across all ResolvedIndexParameters variants.
 		final existing = indexedParams.get(name);
-		if (existing != null && Type.enumEq(existing, converted)) {
+		if (existing != null && Type.enumEq(existing, converted) && (failedParams == null || !failedParams.exists(name))) {
 			// In batch mode, we still skip — endUpdate guards on hasChanges, so a no-op
 			// inside a batch correctly remains a no-op for that name without disturbing
 			// other params already flagged in the batch.
@@ -1206,8 +1210,9 @@ class IncrementalUpdateContext {
 	 *  mid-batch throw — leaving the partial state pending would re-evaluate conditional
 	 *  chains and downstream forwardings against half-applied values, while leaking
 	 *  batchMode=true would wedge the next beginUpdate() with nested_begin_update. The
-	 *  committed indexedParams entries from the failed batch stay put; the next clean
-	 *  setParameter call resyncs. Also invoked automatically by setParameter's catch
+	 *  committed indexedParams entries from the failed batch stay put; those an applyUpdates
+	 *  threw on are in failedParams, so setting them again, to the same value too, applies
+	 *  them again. Also invoked automatically by setParameter's catch
 	 *  wrapper on any rejection path (untracked/unknown/invalid param), so user batches
 	 *  wrapped in try/catch recover without needing to call cancelUpdate explicitly. */
 	public function cancelUpdate():Void {
@@ -1707,6 +1712,7 @@ class IncrementalUpdateContext {
 
 		// Resolve the builder (external or local)
 		var targetBuilder = builder.importedBuilder(binding.externalReference);
+		builder.checkRefTarget(binding.node, "dynamicRef", targetBuilder, RVReference(binding.paramName), newName);
 
 		// Pass ReferenceableValue entries as Dynamic — buildWithParameters/updateIndexedParamsFromDynamicMap handles both
 		final paramMap = new Map<String, Dynamic>();
@@ -1767,7 +1773,15 @@ class IncrementalUpdateContext {
 			if (deferred != null && !isInGraph(entry.object)) {
 				// First show or re-show after hide: materialize deferred content and add to graph
 				addToGraph(entry);
-				materializeDeferred(deferred);
+				try {
+					materializeDeferred(deferred);
+				} catch (e:Dynamic) {
+					// A show whose build throws leaves the content unbuilt: out of the graph again, so
+					// the next pass that shows it builds it again (and says why again) instead of
+					// finding it shown.
+					removeFromGraph(entry);
+					throw e;
+				}
 				// Apply transition animation if configured
 				final transSpec = findTransitionSpec(entry.node);
 				if (transSpec != null && tweenManager != null && !transSpec.match(TransNone))
@@ -1950,6 +1964,17 @@ class IncrementalUpdateContext {
 		}
 
 		builder.popBuilderState();
+		// A throw leaves the values set: remember them, so the same values set again are applied
+		// again (and throw again while the cause stands). A clean apply forgets them.
+		if (caught != null) {
+			if (failedParams == null) failedParams = new Map();
+			for (param in changedParamList)
+				failedParams.set(param, true);
+		} else if (failedParams != null) {
+			for (param in changedParamList)
+				failedParams.remove(param);
+			if (!failedParams.keys().hasNext()) failedParams = null;
+		}
 		changedParams.clear();
 		changedParamList.resize(0);
 		hasChanges = false;
@@ -3577,6 +3602,21 @@ class MultiAnimBuilder {
 		}
 	}
 
+	/** A staticRef/dynamicRef site's target, checked before the nested build: a missing one is
+	 *  reported at the site, by its `$ref` and, where a parameter or loop variable names it, by its
+	 *  value, rather than by the nested build's "could not find element". */
+	function checkRefTarget(node:Node, kind:String, target:MultiAnimBuilder, progRefRV:ReferenceableValue, reference:String):Void {
+		final nodes = target.multiParserResult?.nodes;
+		if (nodes != null && nodes.exists(reference)) return;
+		final message = switch progRefRV {
+			case RVReference(r) if (indexedParams.exists(r)):
+				'$kind($$$r): $$$r is "$reference", and there is no programmable "$reference"';
+			case RVReference(r): '$kind($$$r): there is no programmable "$reference"';
+			default: '$kind($reference): there is no programmable "$reference"';
+		};
+		throw builderErrorAt(node, message, "missing_ref");
+	}
+
 	/** Compute the dynamicRefs map key for a DYNAMIC_REF node. Explicit `#name` wins; `#name[$i]`
 	 *  resolves the index from `indexedParams` and produces `"name idx"`; `#name[$x,$y]` produces
 	 *  `"name x y"`. Unnamed sites fall back to the referenced programmable name. See BuilderResult
@@ -4941,7 +4981,9 @@ class MultiAnimBuilder {
 			indexedParams = live;
 			try {
 				final reference = resolveRefName(progRefRV);
-				final freshResult = importedBuilder(externalReference, node).buildWithParameters(reference, parameters, capturedBP, live);
+				final target = importedBuilder(externalReference, node);
+				checkRefTarget(node, "staticRef", target, progRefRV, reference);
+				final freshResult = target.buildWithParameters(reference, parameters, capturedBP, live);
 				final fresh = freshResult?.object;
 				if (fresh == null)
 					throw builderErrorAt(node, 'could not build staticRef ${reference}');
@@ -6205,6 +6247,7 @@ class MultiAnimBuilder {
 			case STATIC_REF(externalReference, progRefRV, parameters):
 				final reference = resolveRefName(progRefRV);
 				var builder = importedBuilder(externalReference, node);
+				checkRefTarget(node, "staticRef", builder, progRefRV, reference);
 
 				var result = builder.buildWithParameters(reference, parameters, builderParams, indexedParams);
 				var object = result?.object;
@@ -6236,6 +6279,7 @@ class MultiAnimBuilder {
 				});
 				final reference = resolveRefName(progRefRV);
 				var builder = importedBuilder(externalReference, node);
+				checkRefTarget(node, "dynamicRef", builder, progRefRV, reference);
 
 				// Build with incremental: true so the dynamicRef supports setParameter
 				var result = builder.buildWithParameters(reference, parameters, builderParams, indexedParams, true);
@@ -9058,7 +9102,7 @@ class MultiAnimBuilder {
 				builderParams.callback = defaultCallback;
 			var node = multiParserResult.nodes.get(name);
 			if (node == null) {
-				throw 'buildWithParameters ${inputParameters}: could not find element "$name" to build';
+				throw BuilderError.of('buildWithParameters ${inputParameters}: could not find element "$name" to build', "missing_ref");
 			}
 
 			final hasParams = inputParameters != null && inputParameters.count() > 0;

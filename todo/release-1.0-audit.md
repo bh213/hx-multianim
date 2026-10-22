@@ -303,8 +303,7 @@ before assigning a new ID.
 
 ## Error-quality cleanup (P3 unless noted)
 
-- [ ] `ERR-1` Remaining plain string throws (builder convention is BuilderError): MB:8277
-  (`buildWithParameters` missing element — most user-visible, do for 1.0), :8227/:8231/:8244/:8247
+- [ ] `ERR-1` Remaining plain string throws (builder convention is BuilderError): MB:8227/:8231/:8244/:8247
   (`dynamicValueToIndex` raw rethrow), :3169, :6991→ParseUtils.hx:7, :7674; **all of
   MultiAnimPaths.hx** (:65 — which also corrupts state, :298, :332, :369, :388, :413);
   MultiAnimParser.hx:123.

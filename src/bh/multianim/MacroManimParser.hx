@@ -525,6 +525,25 @@ class MacroManimParser {
 			error('$kind loop variable $$' + name + ' shadows an outer $$' + name + ' already in scope — pick a different name');
 	}
 
+	// `staticRef($x)` / `dynamicRef($x)` with `x` a parameter of the enclosing programmable place
+	// the programmable that parameter's value names, so only a string or enum parameter can be
+	// one. Any other type names no programmable: the build looked one up by the value ("1" for a
+	// bool) and failed only where the site was first drawn — under a conditional, at its first
+	// show, from inside setParameter. A bare name (`dynamicRef(x)`) is always the programmable.
+	function validateRefTargetParam(kind:String, progRef:ReferenceableValue, currentDefs:ParametersDefinitions):Void {
+		final name = switch progRef {
+			case RVReference(r): r;
+			default: return;
+		};
+		final def = currentDefs != null ? currentDefs.get(name) : null;
+		if (def == null) return;
+		switch def.type {
+			case PPTString | PPTEnum(_):
+			case other:
+				error('$kind($$$name): "$name" is a ${definitionTypeName(other)} parameter, and only a string or enum parameter names the programmable to place. To place the programmable $name, write $kind($name, ...) without the $$, or give the parameter another name');
+		}
+	}
+
 	function iteratorOutputVars(rt:RepeatType):Array<String> {
 		return switch rt {
 			case ArrayIterator(valueVar, _): [valueVar];
@@ -3705,6 +3724,7 @@ class MacroManimParser {
 					default:
 				}
 				final progRef = expectReferenceOrIdentifierAsRV();
+				validateRefTargetParam("staticRef", progRef, currentDefs);
 				var params:Map<String, ReferenceableValue> = new Map();
 				if (match(TComma)) {
 					params = parseReferenceParams();
@@ -3726,6 +3746,7 @@ class MacroManimParser {
 					default:
 				}
 				final progRef = expectReferenceOrIdentifierAsRV();
+				validateRefTargetParam("dynamicRef", progRef, currentDefs);
 				var params:Map<String, ReferenceableValue> = new Map();
 				if (match(TComma)) {
 					params = parseReferenceParams();
