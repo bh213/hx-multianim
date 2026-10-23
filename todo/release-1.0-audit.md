@@ -342,7 +342,9 @@ before assigning a new ID.
 **Builder:**
 - [ ] `PERF-4` `applyConditionalChains` walks the entire tree per `setParameter` + Map-iterator alloc per node —
   needs a `param → conditional-chain` reverse index (mirroring `trackedByParam`).
-- [ ] `PERF-5` Unconditional `apply{}` reconcile re-allocates `h2d.filter.*` on every setParameter of any param.
+- [x] `PERF-5` Unconditional `apply{}` reconcile re-allocates `h2d.filter.*` on every setParameter of any param.
+  **FIXED 2026-10-23**: an apply is replayed only when its condition flips, its parent's own value changes,
+  or a parameter its values use changes (builder; codegen likewise for value-dependent conditional applies).
 - [ ] `PERF-6` `getCurves()` re-resolves the whole curves map per call (per colorStop segment during particle
   builds); `getLayouts()/getPaths()` allocate fresh facades inside tracked closures — memoize.
   *(2026-07-13: also hit per mouse move — `UICardHandTargeting` calls `builder.getPaths().getPath(...)`

@@ -1847,10 +1847,22 @@ class ScreenManager {
 			}
 			return false;
 		}
+		// Only a dynamicRef child is rebuilt with its host: a result the game put in a slot of another
+		// is under it too, but nothing rebuilds it but its own handle.
+		function isDynamicRefChildOf(child:BuilderResult, host:BuilderResult):Bool {
+			final refs = host.dynamicRefs;
+			if (refs == null) return false;
+			for (arr in refs)
+				for (r in arr)
+					if (r == child || isDynamicRefChildOf(child, r))
+						return true;
+			return false;
+		}
 		final nestedHandles:Array<bh.multianim.dev.HotReload.ReloadableHandle> = [];
 		for (handle in handles)
 			for (other in handles)
-				if (other != handle && isUnder(handle.result.object, other.result.object)) {
+				if (other != handle && isUnder(handle.result.object, other.result.object)
+					&& isDynamicRefChildOf(handle.result, other.result)) {
 					nestedHandles.push(handle);
 					break;
 				}

@@ -146,6 +146,10 @@ class ProgrammableCodeGen {
 	// valueRefs: params the apply's own values use (`apply { alpha: $a }`), which re-apply it
 	static var applyEntries:Array<{condition:Expr, applyExprs:Array<Expr>, revertExprs:Array<Expr>, valueRefs:Array<String>}> = [];
 
+	// True when an apply entry's own values use a param: _applyVisibility then takes the changed
+	// param, to reconcile on a change of one of those and on no other.
+	static var applyValueDependent:Bool = false;
+
 	// All parsed nodes from the .manim file (for looking up layouts etc.)
 	static var allParsedNodes:Map<String, Node> = new Map();
 
@@ -217,6 +221,7 @@ class ProgrammableCodeGen {
 		repeatRebuildEntries = [];
 		repeatForceUsesChangedParam = false;
 		applyEntries = [];
+		applyValueDependent = false;
 		allParsedNodes = new Map();
 		currentProcessingNode = null;
 		currentManimPath = "";
@@ -797,16 +802,25 @@ class ProgrammableCodeGen {
 		//
 		// The pass runs only when it changes something: an entry's condition flipped (the matched
 		// set is kept in _applyM_i), the parent's own value changed (_applyDirty, set by its
-		// re-save update), or an entry's own values use params. An unrelated setter no longer
-		// resets the parents to their baselines, undoing what the game set on them meanwhile —
-		// builder parity (reconcile on a flip only).
+		// re-save update), or a param an entry's own values use changed. An unrelated setter does
+		// not reset the parents to their baselines, undoing what the game set on them meanwhile —
+		// builder parity.
 		if (applyEntries.length > 0) {
 			instanceFields.push(makeField("_applyDirty", FVar(macro :Bool, macro true), [APrivate], pos));
-			var valueDependent = false;
+			final valueRefUnion:Array<String> = [];
 			for (entry in applyEntries)
-				if (entry.valueRefs.length > 0) valueDependent = true;
+				for (r in entry.valueRefs)
+					if (!valueRefUnion.contains(r)) valueRefUnion.push(r);
+			applyValueDependent = valueRefUnion.length > 0;
 			final applyBody:Array<Expr> = [];
-			var changedExpr:Expr = macro this._applyDirty || $v{valueDependent};
+			var changedExpr:Expr = macro this._applyDirty;
+			if (applyValueDependent) {
+				// null: the constructor's full pass
+				var valueChanged:Expr = macro _changedParam == null;
+				for (r in valueRefUnion)
+					valueChanged = macro $valueChanged || _changedParam == $v{r};
+				changedExpr = macro $changedExpr || $valueChanged;
+			}
 			for (i in 0...applyEntries.length) {
 				final matchedField = "_applyM_" + i;
 				final localName = "_ac" + i;
@@ -850,10 +864,10 @@ class ProgrammableCodeGen {
 		if (visExprs.length == 0)
 			visExprs.push(macro {});
 		// _applyVisibility takes the optional changed-param name when transitions, switches,
-		// OR forced repeat rebuilds need it. Constructor calls with no arg → null → all
-		// gates pass (full initial build).
+		// forced repeat rebuilds OR applies whose values use params need it. Constructor calls
+		// with no arg → null → all gates pass (full initial build).
 		final visArgs:Array<FunctionArg> = [];
-		if (hasTransitions || hasSwitches || repeatForceUsesChangedParam)
+		if (hasTransitions || hasSwitches || repeatForceUsesChangedParam || applyValueDependent)
 			visArgs.push({name: "_changedParam", type: macro :String, opt: true, value: null});
 		instanceFields.push(makeMethod("_applyVisibility", visExprs, visArgs, macro :Void, [APrivate], pos));
 
@@ -985,9 +999,9 @@ class ProgrammableCodeGen {
 				});
 			}
 			// Build the per-setter rebuild pass. Pass the param name to _applyVisibility when
-			// transitions, switches, or forced repeat rebuilds exist — their gates use it to
-			// skip work that doesn't reference this param. Expressions update first: a show
-			// transition starts from (and restores) the element's current position/alpha/scale.
+			// transitions, switches, forced repeat rebuilds or value-dependent applies exist — their
+			// gates use it to skip work that doesn't reference this param. Expressions update first:
+			// a show transition starts from (and restores) the element's current position/alpha/scale.
 			final applyExprs:Array<Expr> = [];
 			var refsParam = false;
 			for (update in expressionUpdates) {
@@ -1000,36 +1014,41 @@ class ProgrammableCodeGen {
 				applyExprs.push(macro this._updateExpressions($v{name}));
 
 			final hasSwitchEntries = switchUpdateEntries.length > 0;
-			if ((hasTransitions && transParamNames.exists(name)) || hasSwitchEntries || repeatForceUsesChangedParam) {
+			if ((hasTransitions && transParamNames.exists(name)) || hasSwitchEntries || repeatForceUsesChangedParam
+				|| applyValueDependent) {
 				final nameStr = name;
 				applyExprs.push(macro this._applyVisibility($v{nameStr}));
 			} else {
 				applyExprs.push(macro this._applyVisibility());
 			}
 
-			// Fire rebuild listeners after visibility + expression updates complete. Symmetric with
-			// the runtime path where `IncrementalUpdateContext.applyUpdates()` fires listeners at
-			// the end of each parameter-driven rebuild cycle. Enables `UIScreen.addInteractives`
-			// auto-resync after `@switch` arm flips that change the interactive set.
-			applyExprs.push(macro this._fireRebuildListeners());
-
 			// Defer the rebuild to endUpdate() while a batch is open — coalesces a multi-param
 			// state change (e.g. status + disabled) into ONE _applyVisibility/_updateExpressions/
 			// _fireRebuildListeners pass, matching BuilderResult.beginUpdate/endUpdate
 			// (MultiAnimBuilder.hx). Outside a batch, apply immediately (the backing field was
 			// already updated above, so non-batched behavior is unchanged).
+			// Rebuild listeners fire after visibility + expression updates complete, as
+			// `IncrementalUpdateContext.applyUpdates()` fires them at the end of its cycle (so
+			// `UIScreen.addInteractives` resyncs after a `@switch` arm flip). The pass may forward
+			// into dynamicRef children, and each child's rebuild runs this instance's listeners
+			// (onChildRebuilt): held back while the pass runs (_applying), they run once after it.
 			final applyBlock:Expr = {expr: EBlock(applyExprs), pos: pos};
 			setterExprs.push(macro {
 				if (this._batchMode) {
 					if (this._batchChanged.indexOf($v{name}) < 0)
 						this._batchChanged.push($v{name});
 				} else {
+					final _wasApplying = this._applying;
+					this._applying = true;
 					try $applyBlock catch (e:Dynamic) {
+						this._applying = _wasApplying;
 						if (this._failedParams == null) this._failedParams = [];
 						if (this._failedParams.indexOf($v{name}) < 0) this._failedParams.push($v{name});
 						throw e;
 					}
+					this._applying = _wasApplying;
 					if (this._failedParams != null) this._failedParams.remove($v{name});
+					this._fireRebuildListeners();
 				}
 			});
 
@@ -1048,6 +1067,8 @@ class ProgrammableCodeGen {
 		// Params whose last apply threw (the setters' same-value guard lets them through)
 		instanceFields.push(makeField("_failedParams", FVar(macro :Null<Array<String>>, macro null), [APrivate], pos));
 		instanceFields.push(makeField("_batchChanged", FVar(macro :Array<String>, macro []), [APrivate], pos));
+		// True while a setter's or endUpdate's pass runs: the rebuild listeners wait for its end
+		instanceFields.push(makeField("_applying", FVar(macro :Bool, macro false), [APrivate], pos));
 
 		instanceFields.push(makeMethod("beginUpdate", [
 			macro if (this._batchMode) throw "beginUpdate: already in batch; nesting is not supported",
@@ -1055,7 +1076,7 @@ class ProgrammableCodeGen {
 			macro this._batchChanged.resize(0),
 		], [], macro :Void, [APublic], pos));
 
-		final visTakesParam = hasTransitions || hasSwitches || repeatForceUsesChangedParam;
+		final visTakesParam = hasTransitions || hasSwitches || repeatForceUsesChangedParam || applyValueDependent;
 		// With transitions, every pass sees the whole batch (_visBatch): an entry animates with
 		// its own transition param that changed anywhere in the batch, whichever pass runs first.
 		if (hasTransitions)
@@ -1079,9 +1100,17 @@ class ProgrammableCodeGen {
 			macro if (!this._batchMode) throw "endUpdate: no matching beginUpdate",
 			macro this._batchMode = false,
 			macro if (this._batchChanged.length > 0) {
-				for (_bp in this._batchChanged)
-					this._updateExpressions(_bp);
-				$batchVisPass;
+				final _wasApplying = this._applying;
+				this._applying = true;
+				try {
+					for (_bp in this._batchChanged)
+						this._updateExpressions(_bp);
+					$batchVisPass;
+				} catch (e:Dynamic) {
+					this._applying = _wasApplying;
+					throw e;
+				}
+				this._applying = _wasApplying;
 				this._fireRebuildListeners();
 			},
 			macro this._batchChanged.resize(0),
@@ -1109,11 +1138,13 @@ class ProgrammableCodeGen {
 			macro this._rebuildListeners.remove(fn),
 		], [{name: "fn", type: macro :() -> Void}], macro :Void, [APublic], pos));
 
-		// Fired at end of every setter. Snapshot then iterate so listeners can mutate the array
-		// during dispatch (e.g. screen.removeInteractives from inside a listener).
+		// Fired at end of every setter, and by a dynamicRef child's own rebuild (onChildRebuilt) —
+		// not while this instance's own pass runs (_applying), which fires once at its end.
+		// Snapshot then iterate so listeners can mutate the array during dispatch (e.g.
+		// screen.removeInteractives from inside a listener).
 		instanceFields.push(makeMethod("_fireRebuildListeners", [
 			macro {
-				if (this._rebuildListeners.length == 0) return;
+				if (this._applying || this._rebuildListeners.length == 0) return;
 				final _snap = this._rebuildListeners.copy();
 				for (_fn in _snap) _fn();
 			},

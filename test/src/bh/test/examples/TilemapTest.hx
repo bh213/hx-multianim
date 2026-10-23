@@ -1712,6 +1712,33 @@ class TilemapTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testAFillMadeAgainByAReloadIsRefilledFromTheReloadedTileset() {
+		// a result the reload does not build again (codegen, reloadable = false) keeps its fill, which the
+		// reload made again from the new tileset: a later change of its size stays on that tileset
+		final fill = "#p programmable(cols:uint=3) { tilemap(fill(plains, terrain: dirt, cols: $cols, rows: 2)): 0, 0 }";
+		final builder = builderFromSource(source(fill));
+		final r = builder.buildWithParameters("p", new Map(), null, null, true);
+		final map = tilemapIn(r.object);
+		Assert.notNull(map);
+		if (map == null)
+			return;
+		final reloaded = builderFromSource(source(FILL_AUTOTILES + fill, FILL_TERRAINS));
+		final newTileset = reloaded.getTilesetDef("plains").def;
+		TileMap.showing.push(map);
+		TileMap.builderReplaced(map.sourceName, reloaded.refreshTilemap);
+		TileMap.showing.remove(map);
+		Assert.isTrue(map.tileset == newTileset, "precondition: the reload made it again from the reloaded tileset");
+
+		r.setParameter("cols", 4);
+		Assert.equals(6, map.width, "precondition: made again 4 wide");
+		Assert.isTrue(map.tileset == newTileset, "the result's own refill uses the reloaded tileset, not the one it was built from");
+		// codegen's factory still holds the builder it was made by
+		builder.refillTilemap(map, "dirt", 5, 2);
+		Assert.equals(7, map.width, "precondition: made again 5 wide");
+		Assert.isTrue(map.tileset == newTileset, "a refill through the old builder uses the reloaded tileset too");
+	}
+
+	@Test
 	public function testAFillIsTheSameFromTheBuilderAndFromCodegen() {
 		final mp = new bh.test.MultiProgrammable(TestResourceLoader.createLoader(false));
 		// fillFinal: sized by @finals over the parameters, which follow them on both backends

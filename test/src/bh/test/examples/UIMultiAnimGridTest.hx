@@ -157,6 +157,61 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 		Assert.equals(3, grid.get(0, 0).hp);
 	}
 
+	// A cell with a param of its own: lit draws a 10-wide mark over the 50-wide cell
+	static final LIT_CELL_MANIM = "
+		#litCell programmable(col:int=0, row:int=0, status:[normal,hover]=normal, highlight:[none,accept,reject]=none, lit:bool=false) {
+			bitmap(generated(color(50, 50, #666666))): 0, 0
+			@(lit=>true) bitmap(generated(color(10, 10, #ff0000))): 0, 0
+		}
+	";
+
+	function createLitGrid():UIMultiAnimGrid<Dynamic> {
+		final builder = BuilderTestBase.builderFromSource(LIT_CELL_MANIM);
+		final grid = new UIMultiAnimGrid(builder, {
+			gridType: Rect(50, 50, 2),
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "litCell"}),
+		});
+		grid.addRectRegion(1, 1);
+		return grid;
+	}
+
+	static function litMarkShown(grid:UIMultiAnimGrid<Dynamic>):Bool {
+		final result = grid.getCellVisual(0, 0).getResult();
+		for (b in BuilderTestBase.findVisibleBitmapDescendants(result.object))
+			if (Std.int(b.tile.width) == 10)
+				return true;
+		return false;
+	}
+
+	static function throwsSomething(fn:() -> Void):Bool {
+		try {
+			fn();
+		} catch (e:Dynamic) {
+			return true;
+		}
+		return false;
+	}
+
+	@Test
+	public function testSetCellParametersWithAnUnknownParamLeavesTheCellUpdatable():Void {
+		final grid = createLitGrid();
+		Assert.isTrue(throwsSomething(() -> grid.setCellParameters(0, 0, ["nope" => 1])), "precondition: an unknown param is refused");
+		Assert.isFalse(grid.getCellVisual(0, 0).getResult().batchMode, "the grid's own batch is closed after the throw");
+		grid.setCellParameter(0, 0, "lit", true);
+		Assert.isTrue(litMarkShown(grid), "a later setCellParameter applies");
+		Assert.isFalse(throwsSomething(() -> grid.setCellParameters(0, 0, ["lit" => false])), "a later setCellParameters opens its batch");
+		Assert.isFalse(litMarkShown(grid), "and applies");
+	}
+
+	@Test
+	public function testSetWithAnUnknownParamLeavesTheCellUpdatable():Void {
+		final grid = createLitGrid();
+		Assert.isTrue(throwsSomething(() -> grid.set(0, 0, {hp: 1}, ["nope" => 1])), "precondition: an unknown param is refused");
+		Assert.isFalse(grid.getCellVisual(0, 0).getResult().batchMode, "the grid's own batch is closed after the throw");
+		grid.set(0, 0, {hp: 2}, ["lit" => true]);
+		Assert.isTrue(litMarkShown(grid), "a later set with params applies");
+	}
+
 	@Test
 	public function testGetEmptyCell():Void {
 		var grid = createRectGrid(2, 2);

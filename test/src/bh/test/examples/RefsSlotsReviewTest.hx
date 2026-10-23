@@ -581,6 +581,37 @@ class RefsSlotsReviewTest extends BuilderTestBase {
 		Assert.equals("hover", result.getDynamicRef("bb").getParameterValues().get("status"), "the dynamicRef's status follows the hover");
 	}
 
+	@Test
+	public function testResyncAfterATemplateSwapDrivesTheNewDynamicRef():Void {
+		// Both templates have an interactive "sb": after the swap the id is the same, the result
+		// that owns it is the new child
+		final screen = new UITestScreen();
+		final result = BuilderTestBase.buildFromSource("
+			#swapBtnA programmable(status:[normal,hover,pressed]=normal) {
+				interactive(40, 20, \"sb\", bind => \"status\"): 0, 0
+			}
+			#swapBtnB programmable(status:[normal,hover,pressed]=normal) {
+				interactive(60, 20, \"sb\", bind => \"status\"): 0, 0
+			}
+			#swapHost programmable(tmpl:[swapBtnA, swapBtnB]=swapBtnA) {
+				#sb dynamicRef($tmpl): 0, 0
+			}
+		", "swapHost", null, Incremental);
+		final helper = new UIRichInteractiveHelper(screen);
+		helper.register(result);
+		final before = result.getDynamicRef("sb");
+		Assert.equals((before : bh.ui.UIInteractiveSource), helper.getSource("sb"), "precondition: bound to the first template's child");
+
+		result.setParameter("tmpl", "swapBtnB");
+		final after = result.getDynamicRef("sb");
+		Assert.isTrue(after != before, "precondition: the swap made a new child");
+		helper.resync(result);
+
+		Assert.equals((after : bh.ui.UIInteractiveSource), helper.getSource("sb"), "resync binds the id to the child that holds it now");
+		helper.handleEvent(UIInteractiveEvent(UIEntering(), "sb", null));
+		Assert.equals("hover", after.getParameterValues().get("status"), "a hover drives the child that is shown");
+	}
+
 	// ==================== placeholder objects reach ref targets ====================
 
 	/** Builder guard: the builder passes its BuilderParameters into the ref build. */

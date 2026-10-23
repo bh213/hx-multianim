@@ -239,6 +239,62 @@ class HotReloadReviewTest extends BuilderTestBase {
 		}, null, result -> result.getDynamicRef("bar").getSlot("s").setContent(content));
 	}
 
+	@Test
+	public function testAResultTheGamePutInASlotOfAnotherIsReloadedToo():Void {
+		// item is no dynamicRef child of host: the game built it and put it in host's slot
+		function file(hostWidth:Int, itemWidth:Int):String {
+			return "version: 1.0\n"
+				+ "#item programmable() {\n\tbitmap(generated(color(" + itemWidth + ", 12, #ff0000))): 0, 0\n}\n"
+				+ "#host programmable() {\n\tbitmap(generated(color(" + hostWidth + ", 5, #0000ff))): 0, 0\n\t#s slot: 0, 20\n}\n";
+		}
+		final fileName = "review-slotted-tmp.manim";
+		withTempManim(fileName, file(5, 10), filePath -> {
+			final sm = newManager();
+			final builder = sm.buildFromResourceName(fileName, false);
+			final host = builder.buildWithParameters("host", new Map(), null, null, true);
+			final item = builder.buildWithParameters("item", new Map(), null, null, true);
+			host.getSlot("s").setContent(item.object);
+			final stage = allocatedStage();
+			stage.addChild(host.object);
+
+			sys.io.File.saveContent(filePath, file(6, 99));
+			final report = sm.hotReload();
+			Assert.isTrue(report.success, 'sanity: the reload succeeds: ${report.errors}');
+			Assert.equals(6, widthOfDrawn(host.object, 5), "sanity: the host's edit shows");
+			Assert.equals(99, widthOfDrawn(item.object, 12), "the result in the slot is rebuilt from the edited file too");
+			Assert.isTrue(containsObject(host.object, item.object), "and stays in the host's slot");
+			host.object.remove();
+		});
+	}
+
+	@Test
+	public function testEachUnnamedDynamicRefOfARepeatKeepsItsOwnValuesAndSlotContent():Void {
+		// three unnamed dynamicRef sites of one repeat share the key "bar": each child keeps its own
+		function file(hostWidth:Int):String {
+			return "version: 1.0\n"
+				+ "#bar programmable(w:uint=10) {\n\tbitmap(generated(color($w, 12, #ff0000))): 0, 0\n\t#s slot: 0, 20\n}\n"
+				+ "#host programmable() {\n\tbitmap(generated(color(" + hostWidth + ", 5, #0000ff))): 0, 0\n"
+				+ "\trepeatable($i, step(3, dx: 100)) {\n\t\tdynamicRef($bar, w=>10): 0, 40\n\t}\n}\n";
+		}
+		final contents = [for (i in 0...3) new h2d.Object()];
+		reloadInPlace("review-repeatrefs-tmp.manim", file(5), file(6), "host", (sm, result, report) -> {
+			Assert.isTrue(report.success, 'sanity: the reload succeeds: ${report.errors}');
+			Assert.equals(6, widthOfDrawn(result.object, 5), "sanity: the host's edit shows");
+			final children = result.dynamicRefs.get("bar");
+			Assert.equals(3, children.length, "sanity: three children");
+			for (i in 0...children.length) {
+				Assert.equals(20 + i, widthOfDrawn(children[i].object, 12), 'child $i keeps the w set on it');
+				Assert.equals(contents[i], children[i].getSlot("s").getContent(), 'child $i keeps its own slot content');
+			}
+		}, null, result -> {
+			final children = result.dynamicRefs.get("bar");
+			for (i in 0...children.length) {
+				children[i].setParameter("w", 20 + i);
+				children[i].getSlot("s").setContent(contents[i]);
+			}
+		});
+	}
+
 	// ==================== A reload that fails part way ====================
 
 	@Test

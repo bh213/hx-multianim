@@ -100,7 +100,9 @@ hotReload("sidebar.manim")
   │   │   │       build or set through setParameter; defaults are left to the new file
   │   │   ├─ slots: each slot's content object + data
   │   │   ├─ dynamicRefs: recursively capture each child's set params, its slots and
-  │   │   │       its own dynamicRefs (not its site's arguments: the new file's apply)
+  │   │   │       its own dynamicRefs (not its site's arguments: the new file's apply);
+  │   │   │       one state per child under its key (the unnamed sites of a repeat share
+  │   │   │       one), given back by position
   │   │   └─ placeholders: devCapturedPlaceholders (+ where each one sits now)
   │   │
   │   ├─ 2. BUILD + RESTORE (fallible; the live result is untouched)
@@ -151,6 +153,10 @@ Nesting (instead of moving the rebuilt children into the old root) keeps the reb
 - Game-held `BuilderResult` reference (same object, updated internals)
 - Game-held `SlotHandle`s and `dynamicRef` results (the same objects, taking the rebuilt ones' internals, so `setContent`/`setParameter` on them reach the live tree)
 - Rebuild listeners registered on the result (fired once after the swap)
+
+A handle under another handle's result is skipped when it is that result's `dynamicRef` child (at any depth): the host's rebuild rebuilds it, and the kept child adopts the rebuilt one. A result the game put in another's slot is rebuilt by its own handle, and moved with the slot's content.
+
+A `tilemap(fill(…))` the reload made again (`refreshTilemap`, every fill in a scene from the file) keeps the builder that made it: a later change of its terrain or size, by the result's tracked expression or a codegen factory's `refillTilemap`, both holding the builder from before, is made from the reloaded tileset.
 
 **What is NOT preserved:**
 - `ExpressionAlias` parameters (unsnappable — returns null)
@@ -352,7 +358,7 @@ Captures and restores `BuilderResult` state across rebuilds:
 | Parameter values | `beginUpdate()` + `setParameter()` + `endUpdate()` | Only the values given at build or set through `setParameter` (`snapshotSetParams`, `-D MULTIANIM_DEV`); batch mode; only values that differ from the rebuild's (so `untracked_param` params are never set) |
 | Slot contents | `reparent to matching new slot` | Matched by `SlotKey`; moved last (`moveSlotContents`), after everything that can fail |
 | Slot data | `newHandle.data = saved.data` | Arbitrary payload |
-| DynamicRef state | Recursive restore of each child's set params, slots and own dynamicRefs | Matched by name; a child's site arguments are not captured, so the reloaded file's apply |
+| DynamicRef state | Recursive restore of each child's set params, slots and own dynamicRefs | Matched by name and position (the unnamed sites of a repeat share a name, each child gets its own state back); a child's site arguments are not captured, so the reloaded file's apply |
 | Kept handles | `SlotHandle.adoptFrom`, `BuilderResult.adoptFrom` | A handle or child result the game holds takes the rebuilt one's internals under the same key; the discarded child's reload handle is unregistered |
 | Placeholder objects | `PlaceholderReuser.wrapBuilderParams()` | Reused via wrapped BuilderParameters |
 
@@ -508,6 +514,9 @@ haxe test-hx-multianim-dev.hxml
 - [x] Build or restore error — live result untouched, same text retried (`testFailedInPlaceReloadLeavesTheLiveResultIntact`)
 - [x] Param used in an interactive id — reload succeeds (`testInPlaceReloadKeepsParamUsedInInteractiveId`)
 - [x] After reload: re-shown element, root `$param`, root literal edits, rebuild listeners (`testReshownElementAfterInPlaceReloadIsOnScreen`, `testRootParamAfterInPlaceReloadReachesTheScreen`, `testLiteralRootEditsApplyOnInPlaceReload`, `testRebuildListenersSurviveInPlaceReload`)
+- [x] A result the game put in another's slot — rebuilt too (`HotReloadReviewTest.testAResultTheGamePutInASlotOfAnotherIsReloadedToo`)
+- [x] Unnamed dynamicRefs of a repeat — each keeps its own set values and slot content (`HotReloadReviewTest.testEachUnnamedDynamicRefOfARepeatKeepsItsOwnValuesAndSlotContent`)
+- [x] A fill changed after the reload — made from the reloaded tileset (`TilemapTest.testAFillMadeAgainByAReloadIsRefilledFromTheReloadedTileset`)
 - [ ] `onReload` callback — verify it fires with correct report
 - [ ] `onReload` callback throws — doesn't break other handles
 

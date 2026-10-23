@@ -73,14 +73,17 @@ typedef ReloadableHandle = {
 
 typedef ParamSnapshot = Map<String, ResolvedIndexParameters>;
 typedef SlotSnapshot = Array<{key:SlotKey, content:Null<h2d.Object>, data:Dynamic}>;
-/** A dynamicRef child's state under its key: the values set on it, its slots, and its own
- *  dynamicRefs (captured at every depth). */
+/** A dynamicRef child's state: the values set on it, its slots, and its own dynamicRefs
+ *  (captured at every depth). */
 typedef DynamicRefState = {
 	params:ParamSnapshot,
 	slots:SlotSnapshot,
 	dynamicRefs:DynamicRefSnapshot,
 }
-typedef DynamicRefSnapshot = Map<String, DynamicRefState>;
+/** The children under each key, one state per child in build order: the unnamed sites of a
+ *  repeat share a key, and each child gets its own state back (by position, as the rebuilt
+ *  children are adopted). */
+typedef DynamicRefSnapshot = Map<String, Array<DynamicRefState>>;
 
 typedef PlaceholderSnapshot = Array<{name:String, index:Null<Int>, object:h2d.Object}>;
 
@@ -383,18 +386,18 @@ class StateSnapshotter {
 		final snapshot:DynamicRefSnapshot = new Map();
 		if (result.dynamicRefs == null)
 			return snapshot;
-		// Per-key arrays hold one writer per `dynamicRef` site. For the non-collision case
-		// (the common one — collisions are a build-time error users see immediately) the array
-		// has length 1. For collision cases, snapshot the first writer's params: hot reload is
-		// best-effort across pathological dev states, and `restoreDynamicRefs` reapplies the
-		// same snapshot to every writer under the key on the way back.
+		// Per-key arrays hold one child per `dynamicRef` site: one for a named site, one per
+		// iteration for an unnamed site in a repeat (the iterations share the key)
 		for (name => arr in result.dynamicRefs) {
 			if (arr.length > 0)
-				snapshot.set(name, {
-					params: captureParams(arr[0]),
-					slots: captureSlots(arr[0]),
-					dynamicRefs: captureDynamicRefs(arr[0]),
-				});
+				snapshot.set(name, [
+					for (child in arr)
+						{
+							params: captureParams(child),
+							slots: captureSlots(child),
+							dynamicRefs: captureDynamicRefs(child),
+						}
+				]);
 		}
 		return snapshot;
 	}
@@ -442,20 +445,23 @@ class StateRestorer {
 
 	static function detachDynamicRefSlots(refs:DynamicRefSnapshot):Void {
 		if (refs == null) return;
-		for (_ => state in refs) {
-			detachSlotList(state.slots);
-			detachDynamicRefSlots(state.dynamicRefs);
-		}
+		for (_ => states in refs)
+			for (state in states) {
+				detachSlotList(state.slots);
+				detachDynamicRefSlots(state.dynamicRefs);
+			}
 	}
 
+	/** Each new child under a key gets the state of the old child at its position. */
 	static function restoreDynamicRefSlots(newResult:BuilderResult, refs:DynamicRefSnapshot):Void {
 		if (refs == null || newResult.dynamicRefs == null) return;
-		for (name => state in refs) {
+		for (name => states in refs) {
 			final arr = newResult.dynamicRefs.get(name);
 			if (arr == null) continue;
-			for (child in arr) {
-				restoreSlots(child, state.slots);
-				restoreDynamicRefSlots(child, state.dynamicRefs);
+			for (i in 0...arr.length) {
+				if (i >= states.length) break;
+				restoreSlots(arr[i], states[i].slots);
+				restoreDynamicRefSlots(arr[i], states[i].dynamicRefs);
 			}
 		}
 	}
@@ -524,13 +530,14 @@ class StateRestorer {
 	static function restoreDynamicRefs(newResult:BuilderResult, drSnapshot:DynamicRefSnapshot):Void {
 		if (drSnapshot == null || newResult.dynamicRefs == null)
 			return;
-		for (name => state in drSnapshot) {
+		for (name => states in drSnapshot) {
 			final arr = newResult.dynamicRefs.get(name);
-			if (arr != null) {
-				for (dynRef in arr) {
-					restoreParams(dynRef, state.params);
-					restoreDynamicRefs(dynRef, state.dynamicRefs);
-				}
+			if (arr == null) continue;
+			// By position, as restoreDynamicRefSlots
+			for (i in 0...arr.length) {
+				if (i >= states.length) break;
+				restoreParams(arr[i], states[i].params);
+				restoreDynamicRefs(arr[i], states[i].dynamicRefs);
 			}
 		}
 	}

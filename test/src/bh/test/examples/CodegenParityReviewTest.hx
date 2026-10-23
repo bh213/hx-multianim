@@ -425,4 +425,105 @@ class CodegenParityReviewTest extends BuilderTestBase {
 		inst.setParameter("n", 3);
 		Assert.equals("4,5,6", widths(cast inst), "codegen: a third iteration with W = 6");
 	}
+
+	// ==================== A param forwarded into several dynamicRefs ====================
+
+	@Test
+	public function testParamForwardedIntoTwoDynamicRefs_Builder_FiresTheRebuildListenersOnce():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "cpFwdTwice", null, Incremental);
+		var fired = 0;
+		result.addRebuildListener(() -> fired++);
+		result.setParameter("v", 6);
+		Assert.equals("6,6", widths(result.object), "precondition: both children follow $v");
+		Assert.equals(1, fired, "builder: one setParameter, one rebuild of the host");
+	}
+
+	@Test
+	public function testParamForwardedIntoTwoDynamicRefs_Codegen_FiresTheRebuildListenersOnce():Void {
+		final inst:Dynamic = createMp().cpFwdTwice.create();
+		var fired = 0;
+		inst.addRebuildListener(() -> fired++);
+		inst.setParameter("v", 6);
+		Assert.equals("6,6", widths(cast inst), "precondition: both children follow $v");
+		Assert.equals(1, fired, "codegen: one setParameter, one rebuild of the instance, as in the builder; not once more per child it forwards into");
+		fired = 0;
+		inst.beginUpdate();
+		inst.setParameter("v", 8);
+		inst.endUpdate();
+		Assert.equals(1, fired, "codegen: one batch, one rebuild of the instance");
+		fired = 0;
+		(inst.getDynamicRef("c1") : BuilderResult).setParameter("v", 9);
+		Assert.equals(1, fired, "codegen: a child's own setParameter still reaches the instance's listeners");
+	}
+
+	// ==================== An apply whose value uses a param ====================
+
+	/** The parent of the bitmap `width` wide under `root`. */
+	static function parentOfWidth(root:h2d.Object, width:Int):Null<h2d.Object> {
+		for (b in BuilderTestBase.findVisibleBitmapDescendants(root))
+			if (Std.int(b.tile.width) == width)
+				return b.parent;
+		return null;
+	}
+
+	@Test
+	public function testValueDependentApply_Builder_UnrelatedParamLeavesTheParent():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "cpApplyValueGate", null, Incremental);
+		final point = parentOfWidth(result.object, 10);
+		Assert.notNull(point);
+		if (point == null) return;
+		Assert.floatEquals(0.5, point.alpha, 0.001, "precondition: the apply's alpha $a");
+		point.alpha = 0.3;
+		result.setParameter("other", 6);
+		Assert.floatEquals(0.3, point.alpha, 0.001, "builder: a param the apply does not use leaves the alpha the game set");
+		result.setParameter("a", 0.8);
+		Assert.floatEquals(0.8, point.alpha, 0.001, "builder: a change of $a applies it");
+	}
+
+	@Test
+	public function testValueDependentApply_Codegen_UnrelatedParamLeavesTheParent():Void {
+		final inst:Dynamic = createMp().cpApplyValueGate.create();
+		final point = parentOfWidth(cast inst, 10);
+		Assert.notNull(point);
+		if (point == null) return;
+		Assert.floatEquals(0.5, point.alpha, 0.001, "precondition: the apply's alpha $a");
+		point.alpha = 0.3;
+		inst.setParameter("other", 6);
+		Assert.floatEquals(0.3, point.alpha, 0.001, "codegen: a param the apply does not use leaves the alpha the game set, as in the builder");
+		inst.setParameter("a", 0.8);
+		Assert.floatEquals(0.8, point.alpha, 0.001, "codegen: a change of $a applies it");
+		point.alpha = 0.3;
+		inst.beginUpdate();
+		inst.setParameter("other", 8);
+		inst.endUpdate();
+		Assert.floatEquals(0.3, point.alpha, 0.001, "codegen: nor does a batch of it");
+	}
+
+	@Test
+	public function testValueDependentUnconditionalApply_Builder_UnrelatedParamLeavesTheParent():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "cpApplyValueUncond", null, Incremental);
+		final point = parentOfWidth(result.object, 10);
+		Assert.notNull(point);
+		if (point == null) return;
+		Assert.floatEquals(0.5, point.alpha, 0.001, "precondition: the apply's alpha $a");
+		point.alpha = 0.3;
+		result.setParameter("other", 6);
+		Assert.floatEquals(0.3, point.alpha, 0.001, "builder: a param the apply does not use leaves the alpha the game set");
+		result.setParameter("a", 0.8);
+		Assert.floatEquals(0.8, point.alpha, 0.001, "builder: a change of $a applies it");
+	}
+
+	@Test
+	public function testValueDependentUnconditionalApply_Codegen_UnrelatedParamLeavesTheParent():Void {
+		final inst:Dynamic = createMp().cpApplyValueUncond.create();
+		final point = parentOfWidth(cast inst, 10);
+		Assert.notNull(point);
+		if (point == null) return;
+		Assert.floatEquals(0.5, point.alpha, 0.001, "precondition: the apply's alpha $a");
+		point.alpha = 0.3;
+		inst.setParameter("other", 6);
+		Assert.floatEquals(0.3, point.alpha, 0.001, "codegen: a param the apply does not use leaves the alpha the game set");
+		inst.setParameter("a", 0.8);
+		Assert.floatEquals(0.8, point.alpha, 0.001, "codegen: a change of $a applies it");
+	}
 }

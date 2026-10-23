@@ -384,6 +384,10 @@ private class DynamicRefBinding {
 	}
 }
 
+/** An `apply` tracked by an incremental build: the parent it changes, whether it is on, and the
+ *  params its own values use (`alpha: $a`), @finals followed to theirs. */
+private typedef ConditionalApplyEntry = {parent:h2d.Object, node:Node, applied:Bool, valueRefs:Array<String>};
+
 @:nullSafety
 class IncrementalUpdateContext {
 	var builder:MultiAnimBuilder;
@@ -398,8 +402,9 @@ class IncrementalUpdateContext {
 	// entries for that parent are replayed in declaration order. This is what
 	// lets overlapping applies (two `@(cond) apply { alpha: ... }` on the same
 	// parent) compose correctly — per-entry save/restore can't, because the save
-	// includes sibling applies' effects.
-	var conditionalApplyEntries:Array<{parent:h2d.Object, node:Node, applied:Bool}> = [];
+	// includes sibling applies' effects. An entry that stays on is replayed when a param its
+	// values use changed; nothing else resets the parent (what the game set on it stays).
+	var conditionalApplyEntries:Array<ConditionalApplyEntry> = [];
 	var conditionalApplyBaselines:haxe.ds.ObjectMap<h2d.Object, {
 		filter:Null<h2d.filter.Filter>, alpha:Float,
 		scaleX:Float, scaleY:Float, rotation:Float, x:Float, y:Float,
@@ -502,8 +507,8 @@ class IncrementalUpdateContext {
 	 *  setParameter calls on a transition-bearing programmable must reuse the cache and
 	 *  leave this counter unchanged. Pure instrumentation. */
 	public var paramRefsRebuildCount:Int = 0;
-	/** Counts how many times applyUpdates allocated a defensive snapshot of rebuildListeners
-	 *  before dispatch. The snapshot exists to tolerate listeners that add/remove other
+	/** Counts how many times applyUpdates or childRebuilt allocated a defensive snapshot of
+	 *  rebuildListeners before dispatch. The snapshot exists to tolerate listeners that add/remove other
 	 *  listeners during dispatch — but the common steady-state shape on the UI hover/press
 	 *  hot path is exactly one listener (one per UIInteractiveSource from addInteractives,
 	 *  one per card from UICardHandHelper), where no defensive copy is needed. Pure
@@ -560,7 +565,7 @@ class IncrementalUpdateContext {
 	// those sites null these out so the next applyConditionalChains rebuilds them.
 	var cachedEntryMap:Null<haxe.ds.StringMap<{object:h2d.Object, node:Node, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
 		savedFlowProps:Null<SavedFlowProperties>}>> = null;
-	var cachedApplyMap:Null<haxe.ds.StringMap<{parent:h2d.Object, node:Node, applied:Bool}>> = null;
+	var cachedApplyMap:Null<haxe.ds.StringMap<ConditionalApplyEntry>> = null;
 
 	public function new(builder:MultiAnimBuilder, indexedParams:Map<String, ResolvedIndexParameters>,
 			builderParams:BuilderParameters, rootNode:Node) {
@@ -976,8 +981,27 @@ class IncrementalUpdateContext {
 	#end
 
 	public function trackConditionalApply(parent:h2d.Object, node:Node, applied:Bool):Void {
-		conditionalApplyEntries.push({parent: parent, node: node, applied: applied});
+		conditionalApplyEntries.push({parent: parent, node: node, applied: applied, valueRefs: applyValueRefs(node)});
 		cachedApplyMap = null;
+	}
+
+	/** The params an apply's own values use (`alpha: $a`, `pos: $x, 0`), @finals followed to theirs. */
+	function applyValueRefs(node:Node):Array<String> {
+		final refs:Array<String> = [];
+		final pos = node.pos; if (pos != null) MultiAnimBuilder.collectCoordinateParamRefs(pos, refs);
+		final scale = node.scale; if (scale != null) MultiAnimBuilder.collectParamRefs(scale, refs);
+		final rotation = node.rotation; if (rotation != null) MultiAnimBuilder.collectParamRefs(rotation, refs);
+		final alpha = node.alpha; if (alpha != null) MultiAnimBuilder.collectParamRefs(alpha, refs);
+		final tint = node.tint; if (tint != null) MultiAnimBuilder.collectParamRefs(tint, refs);
+		final filter = node.filter; if (filter != null) MultiAnimBuilder.collectFilterParamRefs(filter, refs);
+		return refs.length == 0 ? refs : builder.expandFinalAliases(refs);
+	}
+
+	/** True when a param `entry`'s values use changed in the update being applied. */
+	function applyValuesDirty(entry:ConditionalApplyEntry):Bool {
+		for (r in entry.valueRefs)
+			if (isParamDirty(r)) return true;
+		return false;
 	}
 
 	/** Capture a parent's pre-apply baseline. Must be called before the first inline
@@ -1201,13 +1225,17 @@ class IncrementalUpdateContext {
 		return false;
 	}
 
-	function applyConditionalApplyEntry(entry:{parent:h2d.Object, node:Node, applied:Bool}):Void {
-		if (entry.applied) return;
+	function applyConditionalApplyEntry(entry:ConditionalApplyEntry):Void {
+		if (entry.applied) {
+			// Still on: its values go on again when a param they use changed
+			if (applyValuesDirty(entry)) reconcileApplyParent(entry.parent);
+			return;
+		}
 		entry.applied = true;
 		reconcileApplyParent(entry.parent);
 	}
 
-	function unapplyConditionalApplyEntry(entry:{parent:h2d.Object, node:Node, applied:Bool}):Void {
+	function unapplyConditionalApplyEntry(entry:ConditionalApplyEntry):Void {
 		if (!entry.applied) return;
 		entry.applied = false;
 		reconcileApplyParent(entry.parent);
@@ -2211,25 +2239,30 @@ class IncrementalUpdateContext {
 		if (caught != null) throw caught;
 
 		// Fire rebuild listeners AFTER state cleanup so listeners can safely call setParameter()
-		// (re-entrancy enters a fresh applyUpdates cycle). The single-listener case — the
-		// steady state on the UI hover/press hot path — needs no defensive copy: self-removal
-		// during dispatch is safe because we never iterate further, and re-entrant
-		// addRebuildListener targets a future cycle. Snapshot only when a listener could
-		// mutate the array out from under us (length >= 2).
+		// (re-entrancy enters a fresh applyUpdates cycle). The single-listener case is the steady
+		// state on the UI hover/press hot path (dispatchRebuildListeners copies nothing for it).
 		if (firedRebuild) {
-			final n = rebuildListeners.length;
-			if (n == 1) {
-				rebuildListeners[0]();
-			} else if (n > 1) {
-				rebuildListenerSnapshotCount++;
-				final snapshot = rebuildListeners.copy();
-				for (fn in snapshot) fn();
-			}
+			dispatchRebuildListeners();
 			// What this context rebuilt is part of the enclosing result too (its getInteractives
 			// lists a dynamicRef child's and a slot's): a screen syncing on that result hears it
 			final parent = parentContext;
 			if (parent != null)
 				parent.childRebuilt();
+		}
+	}
+
+	/** Runs the rebuild listeners. The single-listener case needs no defensive copy: self-removal
+	 *  during dispatch is safe because we never iterate further, and re-entrant addRebuildListener
+	 *  targets a future cycle. Snapshot only when a listener could mutate the array out from under
+	 *  us (length >= 2). */
+	inline function dispatchRebuildListeners():Void {
+		final n = rebuildListeners.length;
+		if (n == 1) {
+			rebuildListeners[0]();
+		} else if (n > 1) {
+			rebuildListenerSnapshotCount++;
+			final snapshot = rebuildListeners.copy();
+			for (fn in snapshot) fn();
 		}
 	}
 
@@ -2239,8 +2272,7 @@ class IncrementalUpdateContext {
 	 *  end of that cycle anyway. */
 	function childRebuilt():Void {
 		if (applyingUpdates) return;
-		for (fn in rebuildListeners.copy())
-			fn();
+		dispatchRebuildListeners();
 		final parent = parentContext;
 		if (parent != null)
 			parent.childRebuilt();
@@ -2258,7 +2290,7 @@ class IncrementalUpdateContext {
 			for (entry in conditionalEntries)
 				fresh.set(entry.node.uniqueNodeName, entry);
 			cachedEntryMap = fresh;
-			final freshApply = new haxe.ds.StringMap<{parent:h2d.Object, node:Node, applied:Bool}>();
+			final freshApply = new haxe.ds.StringMap<ConditionalApplyEntry>();
 			for (ae in conditionalApplyEntries)
 				freshApply.set(ae.node.uniqueNodeName, ae);
 			cachedApplyMap = freshApply;
@@ -2269,7 +2301,7 @@ class IncrementalUpdateContext {
 	function resolveVisibilityForChildren(children:Array<Node>,
 			entryMap:haxe.ds.StringMap<{object:h2d.Object, node:Node, sentinel:h2d.Object, parent:h2d.Object, layer:Int,
 				savedFlowProps:Null<SavedFlowProperties>}>,
-			applyMap:haxe.ds.StringMap<{parent:h2d.Object, node:Node, applied:Bool}>):Void {
+			applyMap:haxe.ds.StringMap<ConditionalApplyEntry>):Void {
 		var prevSiblingMatched = false;
 		var anyConditionalSiblingMatched = false;
 
@@ -2325,9 +2357,10 @@ class IncrementalUpdateContext {
 				case NoConditional:
 					prevSiblingMatched = false;
 					anyConditionalSiblingMatched = false;
-					// Unconditional apply entries are always applied; reconcile so
-					// param-dependent expressions inside `apply { ... }` re-evaluate.
-					if (trackedApply != null)
+					// Unconditional apply entries are always applied; reconcile when a param their
+					// values use changed (`apply { scale: $k }`), not on every update: that would put
+					// the parent back to its baseline over what the game set on it meanwhile.
+					if (trackedApply != null && applyValuesDirty(trackedApply))
 						reconcileApplyParent(trackedApply.parent);
 			}
 
@@ -9055,6 +9088,7 @@ class MultiAnimBuilder {
 	 * a screen loaded again) is left as it is, its changes with it.
 	 */
 	function refreshTilemapFill(map:bh.base.TileMap):Void {
+		map.filledBy = this;
 		final current = map.sourceDef;
 		if (importedBuilder(current.tilesetImport).getTilesetDef(current.tileset).def == map.tileset)
 			return;
@@ -9079,7 +9113,9 @@ class MultiAnimBuilder {
 		final def = tilemapFillDef(tileset, tilesetImport, terrain, cols, rows, node);
 		final name = tilesetImport != null ? 'fill(external($tilesetImport), $tileset)' : 'fill($tileset)';
 		final parts = tilemapParts(name, node, def);
-		return new bh.base.TileMap(name, sourceName, def, parts.tileset, parts.tiles);
+		final map = new bh.base.TileMap(name, sourceName, def, parts.tileset, parts.tiles);
+		map.filledBy = this;
+		return map;
 	}
 
 	/**
@@ -9088,6 +9124,13 @@ class MultiAnimBuilder {
 	 * made to its cells with it.
 	 */
 	public function refillTilemap(map:bh.base.TileMap, terrain:String, cols:Int, rows:Int, ?node:Node):Void {
+		// A hot reload made it again from the reloaded file: made again from there (the result that
+		// placed it, or a codegen factory, may still hold this, the builder from before)
+		final filledBy = map.filledBy;
+		if (filledBy != null && filledBy != this) {
+			filledBy.refillTilemap(map, terrain, cols, rows, node);
+			return;
+		}
 		final current = map.sourceDef;
 		if (current.fill != true)
 			throw builderErrorAt(node, 'tilemap ${map.mapName} is not a fill: tilemap(fill(…)) makes one', "tilemap_fill");

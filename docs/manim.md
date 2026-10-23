@@ -230,7 +230,7 @@ ninepatch("cards", "card-base-patch9", 150,200) {
 }
 ```
 
-Supports `filter`, `scale`, `alpha`, `rotation`, `blendMode`, `tint`, and `pos`. `pos` composes *additively* with the parent's existing placement (`parent.x += dx; parent.y += dy`) — same semantics as the builder's `addPosition`. `tint` requires a Drawable parent. Overlapping `apply` entries on the same parent compose by declaration order via a reset-and-replay pass: every entry's baseline is restored, then matched entries fire in order.
+Supports `filter`, `scale`, `alpha`, `rotation`, `blendMode`, `tint`, and `pos`. `pos` composes *additively* with the parent's existing placement (`parent.x += dx; parent.y += dy`) — same semantics as the builder's `addPosition`. `tint` requires a Drawable parent. Overlapping `apply` entries on the same parent compose by declaration order via a reset-and-replay pass: every entry's baseline is restored, then matched entries fire in order. The pass runs when an entry's condition flips, when the parent's own `$param` value changes, or when a parameter an entry's own values use changes (`apply { alpha: $a }` follows `$a`), and on nothing else, so what the game set on the parent stays through an unrelated `setParameter`.
 
 ### text
 Creates simple text with font, content, and color. Always creates plain `h2d.Text`.
@@ -2015,7 +2015,9 @@ naming its terrains), a size below 1 cell (`tilemap_size`) and a tileset that is
 (`missing_ref`) are `BuilderError`s that begin `tilemap(fill(…))`. From code:
 `builder.buildTilemapFill("plains", "dirt", 6, 4)` (an imported tileset's: `buildTilemapFill("plains",
 "dirt", 6, 4, "tiles")`) and `builder.refillTilemap(map, "water", 6, 4)`. A hot reload of its file
-makes a fill again, of its terrain and size, from the tileset as it is then.
+makes a fill again, of its terrain and size, from the tileset as it is then, and a later change of its
+parameters makes it from that tileset too (a refill asked of the builder from before the reload goes to
+the one that made it last).
 
 ### From code
 

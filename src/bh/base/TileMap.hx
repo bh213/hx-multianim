@@ -173,6 +173,12 @@ class TileMap extends h2d.Object {
 
 	public var tileset(default, null):TilesetDef;
 
+	/** A `tilemap(fill(…))`'s: the builder that last made it, from whose tileset it is made again
+		(a hot reload makes it again from the reloaded file's; a refill asked of the old builder,
+		which a result or codegen factory still holds, goes to this one). **/
+	@:allow(bh.multianim.MultiAnimBuilder)
+	var filledBy:Null<bh.multianim.MultiAnimBuilder> = null;
+
 	/** Decor and actors, sorted by their feet (`y`) every frame unless `sortActors` is off. Add an actor with `addActor`. **/
 	public final actors:h2d.Layers;
 

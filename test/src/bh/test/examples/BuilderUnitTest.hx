@@ -8912,6 +8912,44 @@ class BuilderUnitTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testChildRebuiltSnapshotsTheHostListenersOnlyWhenThereAreTwo():Void {
+		// A dynamicRef child's own setParameter runs the host's listeners (childRebuilt): a hover on
+		// a button placed by dynamicRef. The same fast path as applyUpdates': no copy for none or
+		// one listener, one counted snapshot per dispatch for two or more.
+		final result = buildFromSource("
+			#child programmable(x:uint=10) {
+				bitmap(generated(color($x, 10, #f00))): 0, 0
+			}
+			#host programmable() {
+				#c dynamicRef($child): 0, 0
+			}
+		", "host", null, Incremental);
+		final ctx = result.incrementalContext;
+		Assert.notNull(ctx);
+		if (ctx == null) return;
+		final child = result.getDynamicRef("c");
+
+		var fired = 0;
+		child.setParameter("x", 11); // warm up, no host listener
+		var baseline = ctx.rebuildListenerSnapshotCount;
+		child.setParameter("x", 12);
+		Assert.equals(0, ctx.rebuildListenerSnapshotCount - baseline, "no host listener: no snapshot");
+
+		result.addRebuildListener(() -> fired++);
+		baseline = ctx.rebuildListenerSnapshotCount;
+		for (i in 0...5)
+			child.setParameter("x", 20 + i);
+		Assert.equals(5, fired, "the host's listener runs once per child rebuild");
+		Assert.equals(0, ctx.rebuildListenerSnapshotCount - baseline, "one host listener: no snapshot");
+
+		result.addRebuildListener(() -> {});
+		baseline = ctx.rebuildListenerSnapshotCount;
+		for (i in 0...5)
+			child.setParameter("x", 30 + i);
+		Assert.equals(5, ctx.rebuildListenerSnapshotCount - baseline, "two host listeners: one snapshot per dispatch, counted");
+	}
+
+	@Test
 	public function testIncrementalSwitchFixedRepeatableDifferentCounts():Void {
 		// Arms have different fixed repeatable counts — switching should change count
 		final result = buildFromSource("

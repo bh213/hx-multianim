@@ -450,9 +450,16 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 
 		entry.visual.beginUpdate(data);
 		final result = entry.visual.getResult();
-		if (result != null && params != null)
-			for (key => value in params)
-				result.setParameter(key, value);
+		if (result != null && params != null) {
+			try {
+				for (key => value in params)
+					result.setParameter(key, value);
+			} catch (e:Dynamic) {
+				// A rejected value leaves the batch open: end it (what was set applies), then report
+				entry.visual.endUpdate();
+				throw e;
+			}
+		}
 		entry.visual.endUpdate();
 
 		emitEvent(CellDataChanged(entry.coord, oldData, data));
@@ -626,8 +633,14 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 		final result = getEntry(col, row).visual.getResult();
 		if (result != null) {
 			result.beginUpdate();
-			for (key => value in params)
-				result.setParameter(key, value);
+			try {
+				for (key => value in params)
+					result.setParameter(key, value);
+			} catch (e:Dynamic) {
+				// A rejected value leaves the batch open: end it (what was set applies), then report
+				result.endUpdate();
+				throw e;
+			}
 			result.endUpdate();
 		}
 	}

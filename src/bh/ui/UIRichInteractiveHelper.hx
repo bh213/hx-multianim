@@ -78,10 +78,16 @@ class UIRichInteractiveHelper {
 
 	/** Resync bindings for a source against its current interactives list. Removes bindings whose
 	 *  ids no longer exist in source.getInteractives() (filtered by prefix), and adds bindings for
-	 *  any new ids. Existing bindings are PRESERVED — their currentState is not reset.
+	 *  any new ids. Existing bindings are PRESERVED — their currentState is not reset — and follow
+	 *  the result that holds their interactive now (a dynamicRef whose template was swapped, or
+	 *  that a rebuild made again, is a new result with the same ids).
 	 *  Used after a SWITCH arm flip / REPEAT rebuild changes which interactives are present.
 	 *  metadataKey must match what was used in the original register() call. */
 	public function resync(source:UIInteractiveSource, ?prefix:String, metadataKey:String = "bind"):Void {
+		// The owner of an interactive is another result only through a dynamicRef: without one, a
+		// binding that drives the source itself stays as it is
+		final sourceHasDynamicRefs = Std.isOfType(source, bh.multianim.LiveProgrammable)
+			&& (cast source : bh.multianim.LiveProgrammable).getDynamicRefKeys().length > 0;
 		// 1. Walk current interactives, build expected id set + collect new bindings to add
 		final expectedIds = new Map<String, Bool>();
 		final toAdd:Array<{id:String, paramName:String, obj:bh.base.MAObject}> = [];
@@ -94,8 +100,17 @@ class UIRichInteractiveHelper {
 						if (paramName != "") {
 							final fullId = prefix != null ? '$prefix.$identifier' : identifier;
 							expectedIds.set(fullId, true);
-							if (!bindings.exists(fullId))
+							final existing = bindings.get(fullId);
+							if (existing == null)
 								toAdd.push({id: fullId, paramName: paramName, obj: obj});
+							else if (existing.source == source && existing.prefix == prefix
+								&& (sourceHasDynamicRefs || existing.target != source)) {
+								final owner = ownerOf(source, obj);
+								if (owner != existing.target) {
+									existing.target = owner;
+									existing.stateParam = paramName;
+								}
+							}
 						}
 					}
 				default:

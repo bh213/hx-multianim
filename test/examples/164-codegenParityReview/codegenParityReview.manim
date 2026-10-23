@@ -152,3 +152,33 @@ layouts {
     bitmap(generated(color($W, 4, #FF0000))): 0, 0
   }
 }
+
+// A child two dynamicRefs place, each forwarded the host's $v: the child is $v wide.
+#cpFwdChild programmable(v:int=4) {
+  bitmap(generated(color($v, 4, #FF0000))): 0, 0
+}
+
+// One setParameter of the host that two dynamicRefs follow is one rebuild of the host.
+#cpFwdTwice programmable(v:int=4) {
+  #c1 dynamicRef($cpFwdChild, v => $v): 0, 0
+  #c2 dynamicRef($cpFwdChild, v => $v): 20, 0
+}
+
+// A conditional apply whose value uses $a (on the point holding the 10-wide bitmap), and a param
+// it does not use ($other, the 4-high bitmap's width).
+#cpApplyValueGate programmable(on:bool=true, a:float=0.5, other:int=4) {
+  point {
+    @(on=>true) apply { alpha: $a }
+    bitmap(generated(color(10, 10, #FF0000))): 0, 0
+  }
+  bitmap(generated(color($other, 4, #00FF00))): 20, 0
+}
+
+// The same with an unconditional apply.
+#cpApplyValueUncond programmable(a:float=0.5, other:int=4) {
+  point {
+    apply { alpha: $a }
+    bitmap(generated(color(10, 10, #FF0000))): 0, 0
+  }
+  bitmap(generated(color($other, 4, #00FF00))): 20, 0
+}
