@@ -181,6 +181,67 @@ class RefsSlotsReviewTest extends BuilderTestBase {
 		Assert.equals("10", widthsOf(shown.object));
 	}
 
+	static final EXCLUSIVE_TEMPLATE = "
+		#panelA programmable() {
+			bitmap(generated(color(10, 4, #f00))): 0, 0
+		}
+		#panelB programmable() {
+			bitmap(generated(color(20, 4, #0f0))): 0, 0
+		}
+		#panelC programmable() {
+			bitmap(generated(color(30, 4, #00f))): 0, 0
+		}
+		#exclusiveTemplate programmable(mode:[a,b]=a, tmpl:[panelA,panelB,panelC]=panelA) {
+			@(mode=>a) #panel dynamicRef($tmpl): 0, 0
+			@else #panel dynamicRef($tmpl): 0, 10
+		}
+	";
+
+	/** A template swap keeps the site's place among the exclusive arms: the other arm, built after
+	 *  it, still shares the #name. */
+	@Test
+	public function testTemplateSwapKeepsAnExclusiveDynamicRefNameShareable():Void {
+		final result = BuilderTestBase.buildFromSource(EXCLUSIVE_TEMPLATE, "exclusiveTemplate", null, Incremental);
+		result.setParameter("tmpl", "panelB");
+		Assert.equals("20", widthsOf(result.getDynamicRef("panel").object), "precondition: arm a shows the swapped template");
+
+		final err = errorOf(() -> result.setParameter("mode", "b"));
+		Assert.isNull(err, 'showing the @else arm after a template swap must not reject its #panel as a duplicate: $err');
+		if (err != null)
+			return;
+		final shown = result.getDynamicRef("panel");
+		Assert.isTrue(drawnUnder(shown.object, result.object), "getDynamicRef(\"panel\") answers with the arm that is shown");
+		Assert.equals(10.0, yUnder(shown.object, result.object), "the @else arm's panel");
+		Assert.equals("20", widthsOf(shown.object), "built with the current template");
+	}
+
+	/** Both arms built, then the template swapped: one of the two sites is still the shown one. */
+	@Test
+	public function testTemplateSwapWithBothExclusiveArmsBuiltAnswersWithTheShownArm():Void {
+		final result = BuilderTestBase.buildFromSource(EXCLUSIVE_TEMPLATE, "exclusiveTemplate", null, Incremental);
+		result.setParameter("mode", "b");
+		result.setParameter("mode", "a");
+
+		final err = errorOf(() -> result.setParameter("tmpl", "panelC"));
+		Assert.isNull(err, 'the template swap must not throw: $err');
+		if (err != null)
+			return;
+		final errGet = errorOf(() -> result.getDynamicRef("panel"));
+		Assert.isNull(errGet, 'getDynamicRef("panel") after the swap must not report a collision: $errGet');
+		if (errGet != null)
+			return;
+		final shown = result.getDynamicRef("panel");
+		Assert.isTrue(drawnUnder(shown.object, result.object), "getDynamicRef(\"panel\") answers with the arm that is shown");
+		Assert.equals(0.0, yUnder(shown.object, result.object), "arm a's panel");
+		Assert.equals("30", widthsOf(shown.object));
+
+		result.setParameter("mode", "b");
+		final other = result.getDynamicRef("panel");
+		Assert.isTrue(drawnUnder(other.object, result.object), "after the flip, the @else arm's panel answers");
+		Assert.equals(10.0, yUnder(other.object, result.object));
+		Assert.equals("30", widthsOf(other.object));
+	}
+
 	static final EXCLUSIVE_SLOT = "
 		#exclusiveSlot programmable(mode:[a,b]=a) {
 			@(mode=>a) #content slot: 0, 0
@@ -677,6 +738,23 @@ class RefsSlotsReviewTest extends BuilderTestBase {
 		final back:BuilderResult = inst.getDynamicRef("panel");
 		Assert.isTrue(drawnUnder(back.object, root));
 		Assert.equals("10", widthsOf(back.object));
+	}
+
+	/** A dynamic-name ref (`dynamicRef($tmpl)`) may share its #name across exclusive arms in codegen,
+	 *  as in the builder; the shown arm answers, after a template swap too. */
+	@Test
+	public function testCodegenSameDynamicNameRefNameInExclusiveArmsAnswersWithTheShownArm():Void {
+		final inst:Dynamic = createMp().rsExclTemplate.create();
+		final root:h2d.Object = cast inst;
+		inst.setParameter("tmpl", "rsPanelB");
+		final first:BuilderResult = inst.getDynamicRef("panel");
+		Assert.isTrue(drawnUnder(first.object, root), "precondition: arm a's panel answers");
+		Assert.equals("20", widthsOf(first.object));
+		inst.setParameter("mode", "b");
+		final shown:BuilderResult = inst.getDynamicRef("panel");
+		Assert.isTrue(drawnUnder(shown.object, root), "getDynamicRef(\"panel\") answers with the arm that is shown");
+		Assert.equals(10.0, yUnder(shown.object, root), "the @else arm's panel");
+		Assert.equals("20", widthsOf(shown.object));
 	}
 
 	@Test

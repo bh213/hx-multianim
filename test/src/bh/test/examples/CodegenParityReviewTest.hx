@@ -373,6 +373,48 @@ class CodegenParityReviewTest extends BuilderTestBase {
 		Assert.equals("10", widths(cast inst), "codegen: cpSwapA stays in place");
 	}
 
+	// ==================== A @final in a @switch arm not shown at build ====================
+
+	@Test
+	public function testFinalInSwitchArmShownLater_Builder_FollowsItsParam():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "cpSwitchArmFinal", null, Incremental);
+		result.setParameter("mode", "b");
+		Assert.equals("10", widths(result.object), "builder: arm b draws $W = 2 * 5");
+		result.setParameter("x", 7);
+		Assert.equals("14", widths(result.object), "builder: arm b follows $x through its @final");
+	}
+
+	@Test
+	public function testFinalInSwitchArmShownLater_Codegen_FollowsItsParam():Void {
+		final inst:Dynamic = createMp().cpSwitchArmFinal.create();
+		inst.setParameter("mode", "b");
+		Assert.equals("10", widths(cast inst), "codegen: arm b draws $W = 2 * 5");
+		inst.setParameter("x", 7);
+		Assert.equals("14", widths(cast inst), "codegen: arm b follows $x through its @final");
+	}
+
+	@Test
+	public function testFailedTemplateSwapInABatchSetAgain_Builder_IsAppliedAgain():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "cpSwapRetry", null, Incremental);
+		result.beginUpdate();
+		result.setParameter("tmpl", "cpSwapB");
+		Assert.notNull(errorOf(() -> result.endUpdate()), "builder: the batch's swap throws");
+		Assert.notNull(errorOf(() -> result.setParameter("tmpl", "cpSwapB")),
+			"builder: the same value set again after the batch is applied again");
+		Assert.equals("10", widths(result.object), "builder: cpSwapA stays in place");
+	}
+
+	@Test
+	public function testFailedTemplateSwapInABatchSetAgain_Codegen_IsAppliedAgain():Void {
+		final inst:Dynamic = createMp().cpSwapRetry.create();
+		inst.beginUpdate();
+		inst.setParameter("tmpl", "cpSwapB");
+		Assert.notNull(errorOf(() -> inst.endUpdate()), "codegen: the batch's swap throws");
+		Assert.notNull(errorOf(() -> inst.setParameter("tmpl", "cpSwapB")),
+			"codegen: the same value set again after the batch is applied again, not skipped as unchanged");
+		Assert.equals("10", widths(cast inst), "codegen: cpSwapA stays in place");
+	}
+
 	// ==================== Loop variables in subtrees codegen hands to the builder ====================
 
 	@Test

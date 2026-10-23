@@ -80,3 +80,7 @@ version: 1.0
     #c[$i] slot: 0, 30
   }
 }
+#rsExclTemplate programmable(mode:[a,b]=a, tmpl:[rsPanelA,rsPanelB]=rsPanelA) {
+  @(mode=>a) #panel dynamicRef($tmpl): 0, 0
+  @else #panel dynamicRef($tmpl): 0, 10
+}

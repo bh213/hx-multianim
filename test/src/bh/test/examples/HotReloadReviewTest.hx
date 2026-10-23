@@ -295,6 +295,60 @@ class HotReloadReviewTest extends BuilderTestBase {
 		});
 	}
 
+	@Test
+	public function testOneNameInExclusiveArmsKeepsTheShownArmsValuesAndHandle():Void {
+		// #panel in both arms, both built (each shown once): the reload builds the shown arm only
+		function file(hostWidth:Int):String {
+			return "version: 1.0\n"
+				+ "#panelA programmable(w:uint=10) {\n\tbitmap(generated(color($w, 12, #ff0000))): 0, 0\n}\n"
+				+ "#panelB programmable(v:uint=20) {\n\tbitmap(generated(color($v, 12, #00ff00))): 0, 0\n}\n"
+				+ "#host programmable(mode:[a,b]=a) {\n\tbitmap(generated(color(" + hostWidth + ", 5, #0000ff))): 0, 0\n"
+				+ "\t@(mode=>a) #panel dynamicRef($panelA): 0, 20\n\t@else #panel dynamicRef($panelB): 0, 20\n}\n";
+		}
+		var shown:Null<BuilderResult> = null;
+		reloadInPlace("review-exclref-tmp.manim", file(5), file(6), "host", (sm, result, report) -> {
+			Assert.isTrue(report.success, 'the reload succeeds (arm a\'s values are not set on arm b\'s panel): ${report.errors}');
+			Assert.equals(6, widthOfDrawn(result.object, 5), "sanity: the host's edit shows");
+			Assert.equals(33, widthOfDrawn(result.object, 12), "the shown arm's panel keeps the value set on it");
+			Assert.equals(shown, result.getDynamicRef("panel"), "the handle the game kept is the one that answers");
+			Assert.isTrue(containsObject(result.object, shown.object), "and it is drawn in the host");
+		}, null, result -> {
+			result.getDynamicRef("panel").setParameter("w", 15);
+			result.setParameter("mode", "b");
+			shown = result.getDynamicRef("panel");
+			shown.setParameter("v", 33);
+		});
+	}
+
+	@Test
+	public function testAnImportedFilesDynamicRefChildKeepsItsArgumentsAndItsHost():Void {
+		// bar comes from an imported file: reloading that file alone rebuilds the child on its own
+		function bar(h:Int):String {
+			return "version: 1.0\n#bar programmable(w:uint=10, h:uint=" + h + ") {\n\tbitmap(generated(color($w, $h, #ff0000))): 0, 0\n}\n";
+		}
+		final barFile = "review-imported-bar-tmp.manim";
+		final hostFile = "review-imported-host-tmp.manim";
+		final host = "version: 1.0\nimport \"" + barFile + "\" as \"w\"\n"
+			+ "#host programmable(hw:uint=30) {\n\tdynamicRef(external(w), $bar, w=>$hw): 0, 0\n}\n";
+		withTempManim(barFile, bar(12), barPath -> withTempManim(hostFile, host, _ -> {
+			final sm = newManager();
+			sm.buildFromResourceName(barFile, false);
+			final result = sm.buildFromResourceName(hostFile, false).buildWithParameters("host", new Map(), null, null, true);
+			final stage = allocatedStage();
+			stage.addChild(result.object);
+			Assert.equals(30, widthOfDrawn(result.object, 12), "precondition: the site passes w=30");
+
+			sys.io.File.saveContent(barPath, bar(13));
+			final report = sm.hotReload();
+			Assert.isTrue(report.success, 'sanity: the reload succeeds: ${report.errors}');
+			Assert.equals(30, widthOfDrawn(result.object, 13), "the edited default applies and the site's argument stays");
+
+			result.setParameter("hw", 44);
+			Assert.equals(44, widthOfDrawn(result.object, 13), "the host's forwarding reaches the rebuilt child");
+			result.object.remove();
+		}));
+	}
+
 	// ==================== A reload that fails part way ====================
 
 	@Test

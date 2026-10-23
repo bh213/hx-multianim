@@ -182,3 +182,15 @@ layouts {
   }
   bitmap(generated(color($other, 4, #00FF00))): 20, 0
 }
+
+// A @final in a @switch arm not shown at build: once shown, the arm follows the param its @final
+// uses ($x), the 2x-wide bitmap.
+#cpSwitchArmFinal programmable(mode:[a,b]=a, x:int=5) {
+  @switch(mode) {
+    a: bitmap(generated(color(4, 4, #FF0000)));
+    b {
+      @final W = $x * 2
+      bitmap(generated(color($W, 4, #00FF00))): 0, 0
+    }
+  }
+}

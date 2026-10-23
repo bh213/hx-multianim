@@ -98,8 +98,9 @@ class ProgrammableCodeGen {
 	static var dynamicRefFields:Map<String, {resultField:String, explicit:Bool, count:Int, alternatives:Array<String>, sites:Array<Node>}> = new Map();
 	// Dynamic-name dynamicRef sites (template named by a $param). explicitName is the stable
 	// #name lookup key when present — matching the builder's resolveDynamicRefKey, where the
-	// explicit name wins over the live template name and survives template swaps.
-	static var dynamicNameRefFields:Array<{fieldName:String, explicitName:Null<String>}> = [];
+	// explicit name wins over the live template name and survives template swaps. One #name may be
+	// shared by sites in mutually exclusive arms (node: the site), as for literal targets.
+	static var dynamicNameRefFields:Array<{fieldName:String, explicitName:Null<String>, node:Node}> = [];
 	static var literalDynamicRefSiteFields:Array<String> = []; // fieldNames of literal-name dynamicRefs with forwarded $param values
 	static var staticRefRebuildFields:Array<String> = []; // fieldNames of staticRefs rebuilt when a $param they use changes
 	// Indexed #name[$i] dynamicRefs in a static-unrolled repeat. Map key "base idx" -> the per-site
@@ -1108,9 +1109,18 @@ class ProgrammableCodeGen {
 					$batchVisPass;
 				} catch (e:Dynamic) {
 					this._applying = _wasApplying;
+					// The batch's values stay set: the same values set again apply again, as after
+					// a setter that threw (builder parity: applyUpdates marks the batch's params)
+					if (this._failedParams == null) this._failedParams = [];
+					for (_bp in this._batchChanged)
+						if (this._failedParams.indexOf(_bp) < 0) this._failedParams.push(_bp);
+					this._batchChanged.resize(0);
 					throw e;
 				}
 				this._applying = _wasApplying;
+				if (this._failedParams != null)
+					for (_bp in this._batchChanged)
+						this._failedParams.remove(_bp);
 				this._fireRebuildListeners();
 			},
 			macro this._batchChanged.resize(0),
@@ -1745,10 +1755,35 @@ class ProgrammableCodeGen {
 			}
 			// Dynamic name refs: an explicit #name is the stable lookup key (matching the
 			// builder's resolveDynamicRefKey); only unnamed sites match the live template name.
+			// A #name shared by sites in exclusive arms answers with the shown site's result.
+			final sharedNameFields = new Map<String, Array<String>>();
+			for (nameRefEntry in dynamicNameRefFields) {
+				final key = nameRefEntry.explicitName;
+				if (key == null) continue;
+				final arr = sharedNameFields.get(key);
+				if (arr == null) sharedNameFields.set(key, ["_dynref_" + nameRefEntry.fieldName]);
+				else arr.push("_dynref_" + nameRefEntry.fieldName);
+			}
+			final sharedNameDone = new Map<String, Bool>();
 			for (nameRefEntry in dynamicNameRefFields) {
 				final fn = nameRefEntry.fieldName;
 				if (nameRefEntry.explicitName != null) {
 					final keyLit = nameRefEntry.explicitName;
+					final alternatives = sharedNameFields.get(keyLit);
+					if (alternatives.length > 1) {
+						if (sharedNameDone.exists(keyLit)) continue;
+						sharedNameDone.set(keyLit, true);
+						final checks:Array<Expr> = [];
+						for (alt in alternatives)
+							checks.push(macro {
+								final _r = $p{["this", alt]};
+								if (_r != null && _r.object != null && bh.multianim.LiveProgrammable.LiveProgrammableTools.isDrawnUnder(_r.object, this))
+									return _r;
+							});
+						checks.push(macro return $p{["this", alternatives[0]]});
+						getDynRefExprs.push(macro if (name == $v{keyLit}) $b{checks});
+						continue;
+					}
 					getDynRefExprs.push(macro {
 						if (name == $v{keyLit})
 							return $p{["this", "_dynref_" + fn]};
@@ -2410,9 +2445,10 @@ class ProgrammableCodeGen {
 							// lookup key across template swaps — see resolveDynamicRefKey
 							// (MultiAnimBuilder.hx). Explicit-name collisions are a hard error
 							// there too, so reject them at macro time.
-							if (explicitName != null && (dynamicRefFields.exists(explicitName) || dynamicNameExplicitKeyExists(explicitName)))
+							if (explicitName != null && (dynamicRefFields.exists(explicitName)
+								|| (dynamicNameExplicitKeyExists(explicitName) && !dynamicNameSitesExclusive(explicitName, node))))
 								duplicateDynRefNameError(explicitName, pos);
-							dynamicNameRefFields.push({fieldName: fieldName, explicitName: explicitName});
+							dynamicNameRefFields.push({fieldName: fieldName, explicitName: explicitName, node: node});
 						} else {
 							// $progName backward compat — treat as literal
 							final resultField = explicitName != null ? "_dynref_lit_" + fieldName : "_comp_" + name;
@@ -2481,6 +2517,14 @@ class ProgrammableCodeGen {
 		for (entry in dynamicNameRefFields)
 			if (entry.explicitName == key) return true;
 		return false;
+	}
+
+	/** True when every dynamic-name site named `key` so far sits in an arm exclusive with `node`'s. */
+	static function dynamicNameSitesExclusive(key:String, node:Node):Bool {
+		for (entry in dynamicNameRefFields)
+			if (entry.explicitName == key && !bh.multianim.ConditionalArms.exclusive(entry.node, node))
+				return false;
+		return true;
 	}
 
 	static function duplicateDynRefNameError(key:String, pos:Position):Void {
@@ -9654,6 +9698,10 @@ class ProgrammableCodeGen {
 					collectParamRefsImpl(terrain, refs);
 					collectParamRefsImpl(cols, refs);
 					collectParamRefsImpl(rows, refs);
+				case FINAL_VAR(_, value):
+					// An arm's @final is not in finalVarExprs (the arm is built at runtime): what uses
+					// it uses the params of its value (builder parity)
+					collectParamRefsImpl(value, refs);
 				case STATEANIM(_, initialState, selector):
 					collectParamRefsImpl(initialState, refs);
 					if (selector != null) for (_ => v in selector) collectParamRefsImpl(v, refs);

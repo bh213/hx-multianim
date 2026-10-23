@@ -74,15 +74,16 @@ typedef ReloadableHandle = {
 typedef ParamSnapshot = Map<String, ResolvedIndexParameters>;
 typedef SlotSnapshot = Array<{key:SlotKey, content:Null<h2d.Object>, data:Dynamic}>;
 /** A dynamicRef child's state: the values set on it, its slots, and its own dynamicRefs
- *  (captured at every depth). */
+ *  (captured at every depth); site: where its site sits (BuilderResult.sitePathOf). */
 typedef DynamicRefState = {
+	site:Null<String>,
 	params:ParamSnapshot,
 	slots:SlotSnapshot,
 	dynamicRefs:DynamicRefSnapshot,
 }
 /** The children under each key, one state per child in build order: the unnamed sites of a
- *  repeat share a key, and each child gets its own state back (by position, as the rebuilt
- *  children are adopted). */
+ *  repeat share a key, and so do the sites of one #name in exclusive arms; each child gets its
+ *  own state back (BuilderResult.pairSites, as the rebuilt children are adopted). */
 typedef DynamicRefSnapshot = Map<String, Array<DynamicRefState>>;
 
 typedef PlaceholderSnapshot = Array<{name:String, index:Null<Int>, object:h2d.Object}>;
@@ -351,9 +352,11 @@ class SignatureChecker {
 // ---- StateSnapshotter ----
 
 class StateSnapshotter {
+	/** The state of a result its handle rebuilds on its own. A dynamicRef child's host is in another
+	 *  file (else the host's rebuild makes it): its site's arguments are kept with the rest. */
 	public static function capture(result:BuilderResult):BuilderResultSnapshot {
 		return {
-			params: captureParams(result),
+			params: result.incrementalContext == null ? new Map() : result.incrementalContext.snapshotInputParams(),
 			slots: captureSlots(result),
 			dynamicRefs: captureDynamicRefs(result),
 			placeholders: capturePlaceholders(result),
@@ -393,6 +396,7 @@ class StateSnapshotter {
 				snapshot.set(name, [
 					for (child in arr)
 						{
+							site: BuilderResult.sitePathOf(child),
 							params: captureParams(child),
 							slots: captureSlots(child),
 							dynamicRefs: captureDynamicRefs(child),
@@ -452,18 +456,24 @@ class StateRestorer {
 			}
 	}
 
-	/** Each new child under a key gets the state of the old child at its position. */
+	/** Each new child under a key gets the state of the old child it stands for. */
 	static function restoreDynamicRefSlots(newResult:BuilderResult, refs:DynamicRefSnapshot):Void {
 		if (refs == null || newResult.dynamicRefs == null) return;
 		for (name => states in refs) {
 			final arr = newResult.dynamicRefs.get(name);
 			if (arr == null) continue;
+			final pairs = pairStates(states, arr);
 			for (i in 0...arr.length) {
-				if (i >= states.length) break;
-				restoreSlots(arr[i], states[i].slots);
-				restoreDynamicRefSlots(arr[i], states[i].dynamicRefs);
+				if (pairs[i] < 0) continue;
+				final state = states[pairs[i]];
+				restoreSlots(arr[i], state.slots);
+				restoreDynamicRefSlots(arr[i], state.dynamicRefs);
 			}
 		}
+	}
+
+	static function pairStates(states:Array<DynamicRefState>, children:Array<BuilderResult>):Array<Int> {
+		return BuilderResult.pairSites([for (st in states) st.site], [for (c in children) BuilderResult.sitePathOf(c)]);
 	}
 
 	// Clear slot contents from old result so h2d.Objects can be reparented.
@@ -533,11 +543,13 @@ class StateRestorer {
 		for (name => states in drSnapshot) {
 			final arr = newResult.dynamicRefs.get(name);
 			if (arr == null) continue;
-			// By position, as restoreDynamicRefSlots
+			// Paired as restoreDynamicRefSlots pairs them
+			final pairs = pairStates(states, arr);
 			for (i in 0...arr.length) {
-				if (i >= states.length) break;
-				restoreParams(arr[i], states[i].params);
-				restoreDynamicRefs(arr[i], states[i].dynamicRefs);
+				if (pairs[i] < 0) continue;
+				final state = states[pairs[i]];
+				restoreParams(arr[i], state.params);
+				restoreDynamicRefs(arr[i], state.dynamicRefs);
 			}
 		}
 	}

@@ -96,13 +96,17 @@ hotReload("sidebar.manim")
   ├─ For each handle:
   │   │
   │   ├─ 1. SNAPSHOT current state
-  │   │   ├─ params: incrementalContext.snapshotSetParams() — only the values given at
-  │   │   │       build or set through setParameter; defaults are left to the new file
+  │   │   ├─ params: incrementalContext.snapshotInputParams() — only the values given at
+  │   │   │       build or set through setParameter; defaults are left to the new file.
+  │   │   │       A dynamicRef child rebuilt on its own (its file is imported by a host
+  │   │   │       in another file, which is not reloaded) keeps its site's arguments too
   │   │   ├─ slots: each slot's content object + data
   │   │   ├─ dynamicRefs: recursively capture each child's set params, its slots and
   │   │   │       its own dynamicRefs (not its site's arguments: the new file's apply);
   │   │   │       one state per child under its key (the unnamed sites of a repeat share
-  │   │   │       one), given back by position
+  │   │   │       one, and so do the sites of one #name in exclusive arms), given back to
+  │   │   │       the child of the same site (BuilderResult.pairSites; by position when the
+  │   │   │       key has one site)
   │   │   └─ placeholders: devCapturedPlaceholders (+ where each one sits now)
   │   │
   │   ├─ 2. BUILD + RESTORE (fallible; the live result is untouched)
@@ -358,7 +362,7 @@ Captures and restores `BuilderResult` state across rebuilds:
 | Parameter values | `beginUpdate()` + `setParameter()` + `endUpdate()` | Only the values given at build or set through `setParameter` (`snapshotSetParams`, `-D MULTIANIM_DEV`); batch mode; only values that differ from the rebuild's (so `untracked_param` params are never set) |
 | Slot contents | `reparent to matching new slot` | Matched by `SlotKey`; moved last (`moveSlotContents`), after everything that can fail |
 | Slot data | `newHandle.data = saved.data` | Arbitrary payload |
-| DynamicRef state | Recursive restore of each child's set params, slots and own dynamicRefs | Matched by name and position (the unnamed sites of a repeat share a name, each child gets its own state back); a child's site arguments are not captured, so the reloaded file's apply |
+| DynamicRef state | Recursive restore of each child's set params, slots and own dynamicRefs | Matched by name, then by site (one `#name` in exclusive arms: the shown arm's child gets its own state and the game's handle) and by position among a site's children (the unnamed sites of a repeat share a name, each child gets its own state back); a child's site arguments are not captured, so the reloaded file's apply. A child reloaded on its own (its imported file changed, its host's not) keeps them, and its host's forwarding and rebuild listeners reach the rebuilt child |
 | Kept handles | `SlotHandle.adoptFrom`, `BuilderResult.adoptFrom` | A handle or child result the game holds takes the rebuilt one's internals under the same key; the discarded child's reload handle is unregistered |
 | Placeholder objects | `PlaceholderReuser.wrapBuilderParams()` | Reused via wrapped BuilderParameters |
 

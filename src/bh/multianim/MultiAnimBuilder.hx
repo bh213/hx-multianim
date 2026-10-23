@@ -601,9 +601,18 @@ class IncrementalUpdateContext {
 		setByCaller.set(name, true);
 	}
 
+	// A dynamicRef child's params its site passes (its arguments). Not the caller's: a reload of its
+	// host's file applies the file's arguments. A reload of the child's own file alone (an imported
+	// file) keeps them, as its host still passes them.
+	var siteArguments:Null<Array<String>> = null;
+
 	/** A dynamicRef child's build inputs are its site's arguments, not the caller's values. */
-	public function clearSetByCaller():Void {
-		setByCaller = null;
+	public function markSiteArguments(names:Array<String>):Void {
+		siteArguments = names;
+		final set = setByCaller;
+		if (set != null)
+			for (n in names)
+				set.remove(n);
 	}
 
 	/** The current values of the params the caller gave or set (see setByCaller). */
@@ -616,6 +625,34 @@ class IncrementalUpdateContext {
 				if (v != null) copy.set(k, v);
 			}
 		return copy;
+	}
+
+	/** What a rebuild of this result alone is built from: the params the caller set and, for a
+	 *  dynamicRef child, the arguments its site passes now. */
+	public function snapshotInputParams():Map<String, ResolvedIndexParameters> {
+		final copy = snapshotSetParams();
+		final args = siteArguments;
+		if (args != null)
+			for (k in args) {
+				final v = indexedParams.get(k);
+				if (v != null) copy.set(k, v);
+			}
+		return copy;
+	}
+
+	/** Stand in for `prev`, the context of a dynamicRef child a hot reload rebuilt on its own (its
+	 *  file reloaded, its host's not): the host's forwarding reaches this one, its rebuilds reach
+	 *  the host, and its site's arguments stay its site's. */
+	public function replaceChildContext(prev:IncrementalUpdateContext):Void {
+		final host = prev.parentContext;
+		if (host == null || parentContext != null) return;
+		parentContext = host;
+		for (b in host.dynamicRefBindings)
+			if (b.childContext == prev)
+				b.childContext = this;
+		final args = prev.siteArguments;
+		if (args != null)
+			markSiteArguments(args);
 	}
 
 	public function getBuilderParams():BuilderParameters {
@@ -1940,8 +1977,21 @@ class IncrementalUpdateContext {
 		if (result.incrementalContext != null) {
 			result.incrementalContext.parentContext = this;
 			#if MULTIANIM_DEV
-			result.incrementalContext.clearSetByCaller(); // its inputs are the site's arguments
+			result.incrementalContext.markSiteArguments([for (k in binding.parameters.keys()) k]); // its inputs are the site's arguments
 			#end
+		}
+
+		// The new template stands at the same site: a #name it shares with mutually exclusive arms
+		// still is (getDynamicRef answers with the shown arm, and the other arm can still be built)
+		result.siteNode = binding.node;
+		final oldArr = binding.internalResults.dynamicRefs.get(binding.stableKey);
+		if (oldArr != null && binding.container.numChildren > 0) {
+			final oldObject = binding.container.getChildAt(0);
+			for (old in oldArr)
+				if (old.object == oldObject) {
+					result.exclusiveSite = old.exclusiveSite;
+					break;
+				}
 		}
 
 		// Target the OLD result.object (the only child of binding.container), NOT the container
@@ -2616,9 +2666,11 @@ class BuilderResult implements bh.multianim.LiveProgrammable {
 			for (key => arr in this.dynamicRefs) {
 				final prevArr = prevDynamicRefs.get(key);
 				if (prevArr == null) continue;
+				final pairs = pairSites([for (r in prevArr) sitePathOf(r)], [for (r in arr) sitePathOf(r)]);
 				for (i in 0...arr.length) {
-					if (i >= prevArr.length || prevArr[i] == arr[i]) continue;
-					final kept = prevArr[i];
+					final j = pairs[i];
+					if (j < 0 || prevArr[j] == arr[i]) continue;
+					final kept = prevArr[j];
 					final fresh = arr[i];
 					// The rebuilt child's reload handle goes to the kept one; the kept one's own is
 					// dropped (its old tree is gone)
@@ -2639,8 +2691,53 @@ class BuilderResult implements bh.multianim.LiveProgrammable {
 		if (prevTweenManager != null && this.incrementalContext != null)
 			this.incrementalContext.setTweenManager(prevTweenManager);
 		final nextContext = this.incrementalContext;
-		if (prevContext != null && nextContext != null && prevContext != nextContext)
+		if (prevContext != null && nextContext != null && prevContext != nextContext) {
 			prevContext.moveRebuildListenersTo(nextContext);
+			// A dynamicRef child rebuilt on its own (its imported file reloaded): its host forwards on
+			nextContext.replaceChildContext(prevContext);
+		}
+	}
+
+	/** Where a dynamicRef child's site sits in its programmable: the child indices from the root,
+	 *  the same in two parses of one text. Null for a result placed by no site. */
+	@:nullSafety(Off)
+	public static function sitePathOf(r:BuilderResult):Null<String> {
+		var node = r.siteNode;
+		if (node == null) return null;
+		var path = "";
+		while (node.parent != null) {
+			final p = node.parent;
+			path = p.children.indexOf(node) + "/" + path;
+			node = p;
+		}
+		return path;
+	}
+
+	/** Which old child each new child under one dynamicRef key stands for (-1: none). One site under
+	 *  the key on each side (a named site, or the iterations of an unnamed one in a repeat): by
+	 *  position, even where an edit moved the site. Several (one #name in exclusive arms, of which
+	 *  only the shown ones are built): by site, then in order among the children of a site. */
+	public static function pairSites(prev:Array<Null<String>>, fresh:Array<Null<String>>):Array<Int> {
+		function oneSite(sites:Array<Null<String>>):Bool {
+			for (s in sites)
+				if (s != sites[0]) return false;
+			return true;
+		}
+		if (oneSite(prev) && oneSite(fresh))
+			return [for (i in 0...fresh.length) i < prev.length ? i : -1];
+		final used = [for (_ in prev) false];
+		final out:Array<Int> = [];
+		for (s in fresh) {
+			var found = -1;
+			for (j in 0...prev.length)
+				if (!used[j] && prev[j] == s) {
+					found = j;
+					break;
+				}
+			if (found >= 0) used[found] = true;
+			out.push(found);
+		}
+		return out;
 	}
 
 	/** Run the rebuild listeners once, after hot reload replaced this result's internals wholesale. */
@@ -5571,6 +5668,10 @@ class MultiAnimBuilder {
 				collectParamRefs(terrain, refs);
 				collectParamRefs(cols, refs);
 				collectParamRefs(rows, refs);
+			case FINAL_VAR(_, value):
+				// What uses the @final uses its params: the alias is not defined yet where its body
+				// was never built (a @switch arm or a deferred conditional shown later)
+				collectParamRefs(value, refs);
 			default:
 		}
 		// Position refs
@@ -6801,7 +6902,7 @@ class MultiAnimBuilder {
 				#if MULTIANIM_DEV
 				// The child's inputs are this site's arguments: a hot reload applies the file's
 				if (result.incrementalContext != null)
-					result.incrementalContext.clearSetByCaller();
+					result.incrementalContext.markSiteArguments([for (k in parameters.keys()) k]);
 				#end
 				// A loop variable or nested @final in the arguments is gone from the owning context
 				// by the time a parameter changes: keep the build-time params as the site's scope

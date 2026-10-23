@@ -222,7 +222,7 @@ class ProgrammableBuilder {
 		#if MULTIANIM_DEV
 		// The child's inputs are the site's arguments: a hot reload applies the file's
 		if (result != null && result.incrementalContext != null)
-			result.incrementalContext.clearSetByCaller();
+			result.incrementalContext.markSiteArguments([for (k in parameters.keys()) k]);
 		#end
 		return result;
 	}
