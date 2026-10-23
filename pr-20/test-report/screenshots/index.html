@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-10-22 21:40:37</div>
+    <div class="timestamp">Generated: 2026-10-23 09:34:28</div>
     <div class="summary">
         <strong>Summary:</strong> 105 tests,         <span style="color: #4CAF50;">105 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.1s, visual 27.8s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 0.9s, visual 23.3s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>12147 assertions:</strong>             <span style="color: #4CAF50;">12147 passed</span>
+            <strong>12193 assertions:</strong>             <span style="color: #4CAF50;">12193 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -912,6 +912,7 @@
                 <div class="unit-method pass">testBuildWithParametersRestoresStateStackOnInnerThrow: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testBuildWithParametersStateStackBalancedAfterCaughtErrorThenSecondBuild: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testCenterTileSource: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testChildRebuiltSnapshotsTheHostListenersOnlyWhenThereAreTwo: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testCodeHoldingOnlyABuilderReachesItsLoader: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testCodegenTransitionFadeRecoversAlphaBaselineAfterMidFlightCancel: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testCodegenTransitionFlipXRecoversScaleBaselineAfterMidFlightCancel: OK <span class="dots">..</span></div>
@@ -1714,6 +1715,8 @@
                 <div class="unit-method pass">testLayoutPointByParam_Codegen_FollowsTheParam: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testParamDependentFinal_Builder_FollowsItsParam: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testParamDependentFinal_Codegen_FollowsItsParam: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testParamForwardedIntoTwoDynamicRefs_Builder_FiresTheRebuildListenersOnce: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testParamForwardedIntoTwoDynamicRefs_Codegen_FiresTheRebuildListenersOnce: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testParticlesInStaticRepeat_Builder_SeeTheLoopVariable: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testParticlesInStaticRepeat_Codegen_SeeTheLoopVariable: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testRepeatCountFromConstantFinal_Builder_KeepsBodyParamsTracked: OK <span class="dots">...</span></div>
@@ -1722,6 +1725,10 @@
                 <div class="unit-method pass">testSwitchArmPatternParam_Codegen_ReselectsWhenItChanges: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testTileGroupInStaticRepeat_Builder_SeesTheLoopVariable: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testTileGroupInStaticRepeat_Codegen_SeesTheLoopVariable: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testValueDependentApply_Builder_UnrelatedParamLeavesTheParent: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testValueDependentApply_Codegen_UnrelatedParamLeavesTheParent: OK <span class="dots">.....</span></div>
+                <div class="unit-method pass">testValueDependentUnconditionalApply_Builder_UnrelatedParamLeavesTheParent: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testValueDependentUnconditionalApply_Codegen_UnrelatedParamLeavesTheParent: OK <span class="dots">....</span></div>
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">CodegenRepeat2DParityTest</div>
@@ -3022,6 +3029,7 @@
                 <div class="unit-method pass">testInteractivesReachADynamicRefInsideAStaticRefTarget: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testParamCountRepeatStillRejectsAParamUsedOnlyInABodyInteractiveId: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testParameterizedSlotParamsDoNotMakeTheEnclosingRepeatRebuildWholesale: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testResyncAfterATemplateSwapDrivesTheNewDynamicRef: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testSameDynamicRefNameInExclusiveArmsAnswersWithTheShownArm: OK <span class="dots">.......</span></div>
                 <div class="unit-method pass">testSameDynamicRefNameInExclusiveArmsWorksWhenTheFirstArmIsShownLater: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testSameIndexedSlotNameInExclusiveArmsAnswersWithTheShownArm: OK <span class="dots">........</span></div>
@@ -3304,6 +3312,7 @@
                 <div class="unit-method pass">testAFillInARepeat: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testAFillIsTheSameFromTheBuilderAndFromCodegen: OK <span class="dots">.......................................</span></div>
                 <div class="unit-method pass">testAFillIsTheWrittenMapItStandsFor: OK <span class="dots">.....................................</span></div>
+                <div class="unit-method pass">testAFillMadeAgainByAReloadIsRefilledFromTheReloadedTileset: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testAFillOfAnImportedTileset: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testAHigherLevelGetsItsEdgeAndASideWithItsMetadata: OK <span class="dots">.................</span></div>
                 <div class="unit-method pass">testAPlatformIsDrawnOverTheGroundWithItsOwnSides: OK <span class="dots">................</span></div>
@@ -3854,6 +3863,7 @@
                 <div class="unit-method pass">testResolveAnimationCompleteWithDeferredEnable: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSetAndGetData: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSetCardEnabledDuringAnimationDefersEnable: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testSetCellParametersWithAnUnknownParamLeavesTheCellUpdatable: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testSetEmitsDataChangedEvent: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testSetLayerBuildsIncremental: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSetLayerOnCell: OK <span class="dots">..</span></div>
@@ -3861,6 +3871,7 @@
                 <div class="unit-method pass">testSetLayerRebuildsExisting: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testSetLayerUnregisteredThrows: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testSetLayerWithParams: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testSetWithAnUnknownParamLeavesTheCellUpdatable: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testSwapActiveAnimsCleanedOnDispose: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testSwapAnimEndsAtTargetCellPosition: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testSwapAnimMidpointPosition: OK <span class="dots">.....</span></div>
