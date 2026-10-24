@@ -373,6 +373,172 @@ class CodegenParityReviewTest extends BuilderTestBase {
 		Assert.equals("10", widths(cast inst), "codegen: cpSwapA stays in place");
 	}
 
+	// ==================== A repeat in a flow ====================
+
+	static function reflowAll(o:h2d.Object):Void {
+		final f = Std.downcast(o, h2d.Flow);
+		if (f != null) f.reflow();
+		for (i in 0...o.numChildren)
+			reflowAll(o.getChildAt(i));
+	}
+
+	/** x (relative to the root) of each drawn bitmap `w` wide, the flows laid out first. */
+	static function xsOfWidth(root:h2d.Object, w:Int):String {
+		reflowAll(root);
+		return [
+			for (b in BuilderTestBase.findVisibleBitmapDescendants(root))
+				if (Std.int(b.tile.width) == w) Std.int(offsetToRoot(b, root).x)
+		].join(",");
+	}
+
+	/** The flow lays out each item of the repeat (10 wide) between the 5-wide and 7-wide bitmaps. */
+	static function checkFlowItems(root:h2d.Object, items:String, last:String, label:String):Void {
+		Assert.equals(items, xsOfWidth(root, 10), '$label: the items, laid out by the flow');
+		Assert.equals(last, xsOfWidth(root, 7), '$label: the element after them');
+	}
+
+	@Test
+	public function testConditionalRepeatInFlow_Builder_LaysOutEachItem():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "cpFlowRepeatConst", null, Incremental);
+		checkFlowItems(result.object, "7,19,31", "43", "builder");
+		result.setParameter("open", false);
+		checkFlowItems(result.object, "", "7", "builder, hidden");
+		result.setParameter("open", true);
+		checkFlowItems(result.object, "7,19,31", "43", "builder, shown again");
+	}
+
+	@Test
+	public function testConditionalRepeatInFlow_Codegen_LaysOutEachItem():Void {
+		final inst:Dynamic = createMp().cpFlowRepeatConst.create();
+		checkFlowItems(cast inst, "7,19,31", "43", "codegen");
+		inst.setParameter("open", false);
+		checkFlowItems(cast inst, "", "7", "codegen, hidden");
+		inst.setParameter("open", true);
+		checkFlowItems(cast inst, "7,19,31", "43", "codegen, shown again");
+	}
+
+	@Test
+	public function testConditionalRepeatInFlowShownLater_Builder_LaysOutEachItem():Void {
+		final params:Map<String, Dynamic> = ["open" => false];
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "cpFlowRepeatConst", params, Incremental);
+		checkFlowItems(result.object, "", "7", "builder, hidden at build");
+		result.setParameter("open", true);
+		checkFlowItems(result.object, "7,19,31", "43", "builder, first shown");
+		result.setParameter("open", false);
+		checkFlowItems(result.object, "", "7", "builder, hidden again");
+	}
+
+	@Test
+	public function testParamCountRepeatInFlow_Builder_LaysOutEachItem():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "cpFlowRepeatCount", null, Incremental);
+		checkFlowItems(result.object, "7,19,31", "43", "builder");
+		result.setParameter("n", 2);
+		checkFlowItems(result.object, "7,19", "31", "builder, n 2");
+		result.setParameter("n", 4);
+		checkFlowItems(result.object, "7,19,31,43", "55", "builder, n 4");
+	}
+
+	@Test
+	public function testParamCountRepeatInFlow_Codegen_LaysOutEachItem():Void {
+		final inst:Dynamic = createMp().cpFlowRepeatCount.create();
+		checkFlowItems(cast inst, "7,19,31", "43", "codegen");
+		inst.setParameter("n", 2);
+		checkFlowItems(cast inst, "7,19", "31", "codegen, n 2");
+		inst.setParameter("n", 4);
+		checkFlowItems(cast inst, "7,19,31,43", "55", "codegen, n 4");
+	}
+
+	@Test
+	public function testConditionalParamCountRepeatInFlow_Builder_RebuildsWhileHidden():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "cpFlowRepeatBoth", null, Incremental);
+		checkFlowItems(result.object, "7,19,31", "43", "builder");
+		result.setParameter("open", false);
+		result.setParameter("n", 2);
+		checkFlowItems(result.object, "", "7", "builder, hidden, n set");
+		result.setParameter("open", true);
+		checkFlowItems(result.object, "7,19", "31", "builder, shown with n 2");
+		result.setParameter("n", 4);
+		checkFlowItems(result.object, "7,19,31,43", "55", "builder, n 4 while shown");
+	}
+
+	@Test
+	public function testConditionalParamCountRepeatInFlow_Codegen_RebuildsWhileHidden():Void {
+		final inst:Dynamic = createMp().cpFlowRepeatBoth.create();
+		checkFlowItems(cast inst, "7,19,31", "43", "codegen");
+		inst.setParameter("open", false);
+		inst.setParameter("n", 2);
+		checkFlowItems(cast inst, "", "7", "codegen, hidden, n set");
+		inst.setParameter("open", true);
+		checkFlowItems(cast inst, "7,19", "31", "codegen, shown with n 2");
+		inst.setParameter("n", 4);
+		checkFlowItems(cast inst, "7,19,31,43", "55", "codegen, n 4 while shown");
+	}
+
+	@Test
+	public function testRepeatFlowPropsInFlow_Builder_GoToEachItem():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "cpFlowRepeatProps", null, Incremental);
+		Assert.equals("", xsOfWidth(result.object, 4), "builder: hidden at build");
+		result.setParameter("show", true);
+		Assert.equals("36,36", xsOfWidth(result.object, 4), "builder: each item right-aligned by the repeat's @flow.halign");
+		Assert.equals("0", xsOfWidth(result.object, 10), "builder: the other element keeps its place");
+		result.setParameter("show", false);
+		result.setParameter("show", true);
+		Assert.equals("36,36", xsOfWidth(result.object, 4), "builder: and again after a hide");
+		final full = BuilderTestBase.buildFromFile(FIXTURE, "cpFlowRepeatProps", ["show" => true]);
+		Assert.equals("36,36", xsOfWidth(full.object, 4), "full build: the same");
+	}
+
+	@Test
+	public function testRepeatFlowPropsInFlow_Codegen_GoToEachItem():Void {
+		final inst:Dynamic = createMp().cpFlowRepeatProps.create();
+		Assert.equals("", xsOfWidth(cast inst, 4), "codegen: hidden at create");
+		inst.setParameter("show", true);
+		Assert.equals("36,36", xsOfWidth(cast inst, 4), "codegen: each item right-aligned by the repeat's @flow.halign");
+		Assert.equals("0", xsOfWidth(cast inst, 10), "codegen: the other element keeps its place");
+		inst.setParameter("show", false);
+		inst.setParameter("show", true);
+		Assert.equals("36,36", xsOfWidth(cast inst, 4), "codegen: and again after a hide");
+	}
+
+	@Test
+	public function testRepeatInFlow_FullBuild_IsTheReference():Void {
+		// A non-incremental build places the items in the flow (no tracking): what the others match
+		checkFlowItems(BuilderTestBase.buildFromFile(FIXTURE, "cpFlowRepeatConst", null).object, "7,19,31", "43", "full build");
+		checkFlowItems(BuilderTestBase.buildFromFile(FIXTURE, "cpFlowRepeatCount", null).object, "7,19,31", "43", "full build, count");
+	}
+
+	// ==================== A hidden element's expressions ====================
+
+	/** Hidden, an element on `layout(cpRow, $idx)` is not placed: $idx past the layout's end throws
+	 *  nothing, and shown it sits on the point $idx names then (500, 200 for 2). */
+	function checkHiddenLayout(setParameter:(String, Dynamic) -> Void, root:h2d.Object, label:String):Void {
+		Assert.equals("300,200", bitmapPositions(root), '$label: on point 1');
+		setParameter("on", false);
+		Assert.isNull(errorOf(() -> setParameter("idx", 5)), '$label: hidden, a point past the end is not looked up');
+		setParameter("idx", 2);
+		Assert.equals("", bitmapPositions(root), '$label: still hidden');
+		Assert.isNull(errorOf(() -> setParameter("on", true)), '$label: shown on a point that exists');
+		Assert.equals("500,200", bitmapPositions(root), '$label: shown, on the point set while hidden');
+		setParameter("idx", 0);
+		Assert.equals("100,200", bitmapPositions(root), '$label: and it follows the param again');
+	}
+
+	@Test
+	public function testHiddenElementExpressions_Builder_AreNotEvaluated():Void {
+		for (name in ["cpLayoutHidden", "cpLayoutHiddenNested"]) {
+			final result = BuilderTestBase.buildFromFile(FIXTURE, name, null, Incremental);
+			checkHiddenLayout((k, v) -> result.setParameter(k, v), result.object, 'builder $name');
+		}
+	}
+
+	@Test
+	public function testHiddenElementExpressions_Codegen_AreNotEvaluated():Void {
+		final mp = createMp();
+		final insts:Array<Dynamic> = [mp.cpLayoutHidden.create(), mp.cpLayoutHiddenNested.create()];
+		for (inst in insts)
+			checkHiddenLayout((k, v) -> inst.setParameter(k, v), cast inst, 'codegen ${Type.getClassName(Type.getClass(inst))}');
+	}
+
 	// ==================== A @final in a @switch arm not shown at build ====================
 
 	@Test

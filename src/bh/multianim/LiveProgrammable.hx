@@ -67,6 +67,18 @@ class LiveProgrammableTools {
 		return false;
 	}
 
+	/** True when `obj` is `ancestor` or under it, every parent on the way in place (visible or not):
+	 *  a codegen element out of its tree (a hidden conditional's, or under one) is not. */
+	public static function isAttachedTo(obj:h2d.Object, ancestor:h2d.Object):Bool {
+		var cur:Null<h2d.Object> = obj;
+		while (cur != null) {
+			if (cur == ancestor)
+				return true;
+			cur = cur.parent;
+		}
+		return false;
+	}
+
 	/** The `names`-map key for a name with optional indices. */
 	public static inline function namedKey(name:String, ?index:Null<Int>, ?indexY:Null<Int>):String {
 		return if (indexY != null) '${name} ${index} ${indexY}' else if (index != null) '${name} ${index}' else name;

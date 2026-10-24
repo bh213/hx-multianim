@@ -194,3 +194,57 @@ layouts {
     }
   }
 }
+
+// A repeat in a flow that is conditional, has a param count, or both: the flow lays out each item,
+// the 10-wide ones between the 5-wide and the 7-wide bitmap, 2 apart (at 7, 19, 31, ...).
+#cpFlowRepeatConst programmable(open:bool=true) {
+  flow(layout: horizontal, horizontalSpacing: 2) {
+    bitmap(generated(color(5, 4, #FF0000))): 0, 0
+    @(open=>true) repeatable($i, step(3, dx: 0)) {
+      bitmap(generated(color(10, 4, #00FF00))): 0, 0
+    }
+    bitmap(generated(color(7, 4, #0000FF))): 0, 0
+  }
+}
+#cpFlowRepeatCount programmable(n:uint=3) {
+  flow(layout: horizontal, horizontalSpacing: 2) {
+    bitmap(generated(color(5, 4, #FF0000))): 0, 0
+    repeatable($i, step($n, dx: 0)) {
+      bitmap(generated(color(10, 4, #00FF00))): 0, 0
+    }
+    bitmap(generated(color(7, 4, #0000FF))): 0, 0
+  }
+}
+#cpFlowRepeatBoth programmable(open:bool=true, n:uint=3) {
+  flow(layout: horizontal, horizontalSpacing: 2) {
+    bitmap(generated(color(5, 4, #FF0000))): 0, 0
+    @(open=>true) repeatable($i, step($n, dx: 0)) {
+      bitmap(generated(color(10, 4, #00FF00))): 0, 0
+    }
+    bitmap(generated(color(7, 4, #0000FF))): 0, 0
+  }
+}
+
+// A conditional repeat in a flow with its own @flow.halign: each 4-wide item is right-aligned
+// in the 40-wide column (x 36), the 10-wide bitmap stays left.
+#cpFlowRepeatProps programmable(show:bool=false) {
+  flow(layout: vertical, minWidth: 40) {
+    bitmap(generated(color(10, 10, #FF0000))): 0, 0
+    @(show=>true) @flow.halign(right) repeatable($i, range(0, 2)) {
+      bitmap(generated(color(4, 4, #00FF00))): 0, 0
+    }
+  }
+}
+
+// A hidden element on a layout point picked by a param: set past the layout's end while hidden it
+// is not placed (nothing throws), and shown it takes the point $idx names then.
+#cpLayoutHidden programmable(idx:int=1, on:bool=true) {
+  @(on=>true) bitmap(generated(color(10, 10, #FF0000))): layout(cpRow, $idx)
+}
+
+// The same under a hidden container.
+#cpLayoutHiddenNested programmable(idx:int=1, on:bool=true) {
+  @(on=>true) point {
+    bitmap(generated(color(10, 10, #FF0000))): layout(cpRow, $idx)
+  }
+}

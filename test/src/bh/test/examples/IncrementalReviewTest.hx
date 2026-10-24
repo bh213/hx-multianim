@@ -606,9 +606,12 @@ class IncrementalReviewTest extends BuilderTestBase {
 		if (cell != null) {
 			final flow = Std.downcast(result.object.getChildAt(0), h2d.Flow);
 			Assert.notNull(flow, "the root's first child is the flow");
-			if (flow != null)
-				Assert.equals(h2d.Flow.FlowAlign.Right, flow.getProperties(cell.parent).horizontalAlign,
-					"the repeat keeps its @flow.halign once shown");
+			// The flow lays out each item (no wrapper): each takes the repeat's @flow.*
+			if (flow != null) {
+				Assert.isTrue(cell.parent == flow, "the item is the flow's own child");
+				Assert.equals(h2d.Flow.FlowAlign.Right, flow.getProperties(cell).horizontalAlign,
+					"the repeat's @flow.halign is the item's once shown");
+			}
 		}
 
 		result.setParameter("show", false);

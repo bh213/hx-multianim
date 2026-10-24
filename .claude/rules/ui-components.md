@@ -428,3 +428,4 @@ override public function onMouseClick(pos, button, release) {
   - `@flow.offset(x, y)` — pixel offset, `@flow.absolute` — remove from layout (overlays)
   - Parse-time validation: must be inside a flow ancestor (REPEAT/REPEAT2D are transparent)
   - `NodeFlowProperties` typedef on `Node` — single nullable struct, created via `NodeFlowPropertiesTools.create()`
+- **A `repeatable` in a flow** (no step offsets, no layout) puts its items straight into the flow in every backend: a conditional or param-dependent one is spliced in (`FlowSpliceMarker` + its `end`, the items between; hidden they are `hold()`-en out of the flow with their props and `release()`-d back; a transition on it is instant), and `@flow.*` on the repeat goes to each item (`FlowItemProps`). Builder: `spliceFlowFor`, the `spliceAnchor` that builds right after the marker; codegen: `processSplicedRepeat`, `flowFieldNames`

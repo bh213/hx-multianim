@@ -298,6 +298,8 @@ Annotations on direct children of `flow()` to override per-element layout:
 Chainable: `@flow.halign(middle) @flow.offset(2, 4) bitmap(...)`
 Parse-time error when used outside a flow ancestor.
 
+**A `repeatable` in a flow** with no step offsets (`step(n)` with no `dx`/`dy`, or `dx: 0`) and no layout iterator puts its items straight into the flow, which lays out each one — conditional (`@(open=>true) repeatable(…)`) or not, with a constant or a param-dependent count, in an incremental build, a full build and a codegen instance alike. A conditional one shows and hides all its items at once (a `transition {}` on it is instant: there is no one object to animate); a param-dependent count rebuilds them in place, while hidden too. `@flow.*` on the repeat goes to each item (an item's own `@flow.*` wins). A repeat with step offsets or a layout places its items itself, in one wrapper that the flow lays out as a single child.
+
 ---
 
 ## Conditionals

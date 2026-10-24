@@ -316,6 +316,148 @@ private typedef SavedFlowProperties = {
 	paddingLeft:Int, paddingTop:Int, paddingRight:Int, paddingBottom:Int,
 };
 
+/** The start of a conditional or param-dependent `repeatable` in a flow, built with no wrapper so
+ *  the flow lays out each item (builder and codegen alike): its items are the flow's children from
+ *  here to `end`. Both are invisible (the flow skips them). Hidden, the repeat's items and its end
+ *  leave the flow (`held`, with the flow properties the flow drops) and come back after it. */
+/** A repeatable's own `@flow.*` (`@flow.halign(right) repeatable(…)`), resolved: a repeat the flow
+ *  lays out item by item gives each item its flow properties. */
+@:nullSafety
+class FlowItemProps {
+	public final horizontalAlign:Null<h2d.Flow.FlowAlign>;
+	public final verticalAlign:Null<h2d.Flow.FlowAlign>;
+	public final offsetX:Null<Int>;
+	public final offsetY:Null<Int>;
+	public final isAbsolute:Bool;
+
+	public function new(horizontalAlign:Null<h2d.Flow.FlowAlign>, verticalAlign:Null<h2d.Flow.FlowAlign>, offsetX:Null<Int>, offsetY:Null<Int>,
+			isAbsolute:Bool) {
+		this.horizontalAlign = horizontalAlign;
+		this.verticalAlign = verticalAlign;
+		this.offsetX = offsetX;
+		this.offsetY = offsetY;
+		this.isAbsolute = isAbsolute;
+	}
+
+	public function apply(flow:h2d.Flow, item:h2d.Object):Void {
+		final props = flow.getProperties(item);
+		if (props == null) return;
+		if (horizontalAlign != null) props.horizontalAlign = horizontalAlign;
+		if (verticalAlign != null) props.verticalAlign = verticalAlign;
+		final ox = offsetX;
+		if (ox != null) props.offsetX = ox;
+		final oy = offsetY;
+		if (oy != null) props.offsetY = oy;
+		if (isAbsolute) props.isAbsolute = true;
+	}
+}
+
+@:nullSafety
+class FlowSpliceMarker extends h2d.Object {
+	public final end:h2d.Object;
+	public final held:Array<h2d.Object> = [];
+	final heldProps:Array<Null<SavedFlowProperties>> = [];
+	/** The repeat's own `@flow.*`, given to an item that comes into the flow with no properties of
+	 *  its own (one added at runtime: a codegen loop's). */
+	public var itemProps:Null<FlowItemProps> = null;
+
+	public function new() {
+		super();
+		end = new h2d.Object();
+		end.visible = false;
+		visible = false;
+	}
+
+	/** The repeat's items, in the flow or held. */
+	public function items():Array<h2d.Object> {
+		final out:Array<h2d.Object> = [];
+		if (held.length > 0) {
+			for (item in held)
+				if (item != end) out.push(item);
+			return out;
+		}
+		final p = parent;
+		if (p == null || end.parent != p) return out;
+		var i = p.getChildIndex(this) + 1;
+		final last = p.getChildIndex(end);
+		while (i < last)
+			out.push(p.getChildAt(i++));
+		return out;
+	}
+
+	/** Take the items and the end out of the flow, into `held`. The marker itself stays. */
+	public function hold():Void {
+		final p = parent;
+		if (p == null || end.parent != p) return;
+		final taken = items();
+		taken.push(end);
+		for (item in taken) {
+			held.push(item);
+			heldProps.push(IncrementalUpdateContext.saveFlowProperties(item, p));
+			p.removeChild(item);
+		}
+	}
+
+	/** Put what `hold` took back after the marker, in order. */
+	public function release():Void {
+		final p = parent;
+		if (p == null || held.length == 0) return;
+		var at = p.getChildIndex(this) + 1;
+		for (i in 0...held.length) {
+			p.addChildAt(held[i], at++);
+			final saved = heldProps[i];
+			if (saved != null) IncrementalUpdateContext.restoreFlowProperties(held[i], p, saved);
+			else if (held[i] != end) giveItemProps(held[i]);
+		}
+		held.resize(0);
+		heldProps.resize(0);
+	}
+
+	/** Take every item out (in the flow or held), for a rebuild. */
+	public function removeItems():Array<h2d.Object> {
+		final taken = items();
+		if (held.length > 0) {
+			final endProps = heldProps[held.length - 1];
+			held.resize(0);
+			heldProps.resize(0);
+			held.push(end);
+			heldProps.push(endProps);
+		} else
+			for (item in taken)
+				item.remove();
+		return taken;
+	}
+
+	/** Add an item before the end (held, while the repeat is). */
+	public function addItem(item:h2d.Object):Void {
+		if (held.length > 0) {
+			held.insert(held.length - 1, item);
+			heldProps.insert(heldProps.length - 1, null);
+			return;
+		}
+		final p = end.parent;
+		if (p != null) {
+			p.addChildAt(item, p.getChildIndex(end));
+			giveItemProps(item);
+		}
+	}
+
+	function giveItemProps(item:h2d.Object):Void {
+		final props = itemProps;
+		final flow = Std.downcast(item.parent, h2d.Flow);
+		if (props != null && flow != null) props.apply(flow, item);
+	}
+
+	/** Make the marker's own children (what a codegen loop built into it) items, in order. */
+	public function spliceChildren():Void {
+		while (numChildren > 0) {
+			final child = getChildAt(0);
+			removeChild(child);
+			addItem(child);
+		}
+	}
+}
+
 @:nullSafety
 private typedef DynamicNameBinding = {
 	paramName:String,
@@ -696,7 +838,8 @@ class IncrementalUpdateContext {
 	}
 
 	/** Save Flow layout properties of an object so they can be restored when re-adding to a Flow parent. */
-	function saveFlowProperties(object:h2d.Object, parent:h2d.Object):Null<SavedFlowProperties> {
+	@:allow(bh.multianim.FlowSpliceMarker)
+	static function saveFlowProperties(object:h2d.Object, parent:h2d.Object):Null<SavedFlowProperties> {
 		if (!Std.isOfType(parent, h2d.Flow)) return null;
 		final flow:h2d.Flow = cast parent;
 		final props = flow.getProperties(object);
@@ -712,7 +855,8 @@ class IncrementalUpdateContext {
 	}
 
 	/** Restore saved Flow layout properties after re-adding a child to a Flow parent. */
-	function restoreFlowProperties(object:h2d.Object, parent:h2d.Object, saved:Null<SavedFlowProperties>):Void {
+	@:allow(bh.multianim.FlowSpliceMarker)
+	static function restoreFlowProperties(object:h2d.Object, parent:h2d.Object, saved:Null<SavedFlowProperties>):Void {
 		if (saved == null) return;
 		if (!Std.isOfType(parent, h2d.Flow)) return;
 		final flow:h2d.Flow = cast parent;
@@ -1169,14 +1313,22 @@ class IncrementalUpdateContext {
 			parent.addChildAt(entry.object, sentinelIndex + 1);
 		}
 		restoreFlowProperties(entry.object, parent, entry.savedFlowProps);
+		// A spliced repeat's items (and its end) follow the marker again, in their order
+		final splice = Std.downcast(entry.object, FlowSpliceMarker);
+		if (splice != null) splice.release();
 		// Re-fire tracked expressions to restore content lost on removeChild.
 		// h2d.Graphics clears draw commands in onRemove(), so content must be re-drawn.
 		refreshTrackedExpressionsFor(entry.object);
+		if (splice != null)
+			for (item in splice.items())
+				refreshTrackedExpressionsFor(item);
 	}
 
 	/** Remove a conditional element from the scene graph. Its sentinel stays. */
 	function removeFromGraph(entry:{object:h2d.Object}):Void {
 		if (entry.object.parent == null) return; // already removed
+		final splice = Std.downcast(entry.object, FlowSpliceMarker);
+		if (splice != null) splice.hold();
 		entry.object.parent.removeChild(entry.object);
 	}
 
@@ -1698,7 +1850,8 @@ class IncrementalUpdateContext {
 			return;
 
 		final transSpec = findTransitionSpec(node);
-		if (transSpec == null || tweenManager == null || transSpec.match(TransNone)) {
+		// A repeat spliced into a flow has no one object to animate: it shows and hides at once
+		if (transSpec == null || tweenManager == null || transSpec.match(TransNone) || Std.isOfType(obj, FlowSpliceMarker)) {
 			cancelActiveTransition(obj);
 			if (newVisible)
 				addToGraph(entry);
@@ -1893,31 +2046,40 @@ class IncrementalUpdateContext {
 	}
 
 	/** Drop everything a (partial) materialization registered under the deferred wrapper and its
-	 *  children, keeping the wrapper's own conditional entry. */
+	 *  children (a spliced repeat's: its items), keeping the wrapper's own conditional entry. */
 	function reapMaterialized(entry:{wrapper:h2d.Object, internalResults:InternalBuilderResults}):Void {
-		final wrapper = entry.wrapper;
-		while (wrapper.numChildren > 0) {
-			final child = wrapper.getChildAt(0);
-			cleanupDestroyedSubtree(entry.internalResults, child);
-			// cleanupDestroyedSubtree keeps a tracked expression on the container itself (a rebuild
-			// closure's own entry); the child goes, so its own expressions go too
-			var ti = 0;
-			while (ti < trackedExpressions.length) {
-				final tracked = trackedExpressions[ti];
-				if (tracked.object == child) {
-					trackedExpressions.splice(ti, 1);
-					for (ref in tracked.paramRefs) {
-						final arr = trackedByParam.get(ref);
-						if (arr != null) arr.remove(tracked);
-					}
-				} else ti++;
-			}
-			wrapper.removeChild(child);
+		final splice = Std.downcast(entry.wrapper, FlowSpliceMarker);
+		if (splice != null) {
+			for (item in splice.removeItems())
+				discardSubtree(entry.internalResults, item);
+			return;
 		}
+		final wrapper = entry.wrapper;
+		while (wrapper.numChildren > 0)
+			discardSubtree(entry.internalResults, wrapper.getChildAt(0));
+	}
+
+	/** Drop what `obj` and everything under it registered, and take it out of the scene graph. */
+	public function discardSubtree(ir:InternalBuilderResults, obj:h2d.Object):Void {
+		cleanupDestroyedSubtree(ir, obj);
+		// cleanupDestroyedSubtree keeps a tracked expression on the container itself (a rebuild
+		// closure's own entry); the object goes, so its own expressions go too
+		var ti = 0;
+		while (ti < trackedExpressions.length) {
+			final tracked = trackedExpressions[ti];
+			if (tracked.object == obj) {
+				trackedExpressions.splice(ti, 1);
+				for (ref in tracked.paramRefs) {
+					final arr = trackedByParam.get(ref);
+					if (arr != null) arr.remove(tracked);
+				}
+			} else ti++;
+		}
+		obj.remove();
 	}
 
 	function rebuildDeferredContent(entry:{
-		wrapper:h2d.Object, node:Node,
+		wrapper:h2d.Object, node:Node, parent:h2d.Object,
 		gridCS:GridCoordinateSystem, hexCS:HexCoordinateSystem,
 		internalResults:InternalBuilderResults, builderParams:BuilderParameters,
 	}):Void {
@@ -1928,15 +2090,21 @@ class IncrementalUpdateContext {
 		builder.pendingChainArmLosing = false;
 		builder.builderParams = entry.builderParams;
 		builder.materializingNode = entry.node;
+		// A spliced repeat builds into its flow, after its marker
+		final splice = Std.downcast(entry.wrapper, FlowSpliceMarker);
+		builder.materializingSplice = splice;
 		try {
-			builder.build(entry.node, ObjectMode(entry.wrapper), entry.gridCS, entry.hexCS, entry.internalResults, entry.builderParams);
+			builder.build(entry.node, ObjectMode(splice != null ? entry.parent : entry.wrapper), entry.gridCS, entry.hexCS, entry.internalResults,
+				entry.builderParams);
 		} catch (e:Dynamic) {
+			builder.materializingSplice = null;
 			builder.materializingNode = null;
 			builder.incrementalMode = false;
 			builder.incrementalContext = null;
 			builder.suppressConditionalTracking = savedSuppress;
 			throw e;
 		}
+		builder.materializingSplice = null;
 		builder.materializingNode = null;
 		builder.incrementalMode = false;
 		builder.incrementalContext = null;
@@ -2063,7 +2231,7 @@ class IncrementalUpdateContext {
 				}
 				// Apply transition animation if configured
 				final transSpec = findTransitionSpec(entry.node);
-				if (transSpec != null && tweenManager != null && !transSpec.match(TransNone))
+				if (transSpec != null && tweenManager != null && !transSpec.match(TransNone) && !Std.isOfType(entry.object, FlowSpliceMarker))
 					executePresenceTransition(entry, true, transSpec);
 				return;
 			}
@@ -3307,6 +3475,12 @@ class MultiAnimBuilder {
 	 *  second sentinel and entry; its content is built incrementally like an arm shown at build
 	 *  time. build() consumes and resets it on entry. */
 	var materializingNode:Null<Node> = null;
+	// A spliced repeat (FlowSpliceMarker) built by its deferred entry's first show: the repeat
+	// fills the marker already in the flow instead of making its own
+	var materializingSplice:Null<FlowSpliceMarker> = null;
+	// While set, what is built into this object's parent goes right after it (and the anchor moves
+	// on to it): a spliced repeat's items between its marker and end, in order
+	var spliceAnchor:Null<h2d.Object> = null;
 	/** Set by a repeatable immediately before build() on a body child: the offset the repeat adds
 	 *  to that child once it is built (the iteration's step or layout point, or the repeat's own
 	 *  position when it has no wrapper). build() consumes it so the child's tracked position adds
@@ -4118,6 +4292,34 @@ class MultiAnimBuilder {
 			throw e;
 		}
 		indexedParams = saved;
+	}
+
+	/** A repeat's own `@flow.*`, resolved for its items (null without any). */
+	function resolveFlowItemProps(node:Node):Null<FlowItemProps> {
+		final fp = node.flowProperties;
+		if (fp == null) return null;
+		return new FlowItemProps(fp.hAlign != null ? MacroCompatConvert.toH2dFlowAlign(fp.hAlign) : null,
+			fp.vAlign != null ? MacroCompatConvert.toH2dFlowAlign(fp.vAlign) : null, fp.offsetX != null ? resolveAsInteger(fp.offsetX) : null,
+			fp.offsetY != null ? resolveAsInteger(fp.offsetY) : null, fp.isAbsolute);
+	}
+
+	/** The flow a conditional or param-dependent `repeatable` is spliced into (built with no wrapper,
+	 *  so the flow lays out each item): its parent while that is a flow, the repeat on no layer,
+	 *  with no step offsets and no layout iterator (those place the items themselves). */
+	static function spliceFlowFor(node:Node, current:Null<h2d.Object>):Null<h2d.Flow> {
+		if (current == null || node.layer != -1) return null;
+		inline function zero(rv:Null<ReferenceableValue>):Bool
+			return rv == null || rv.match(RVInteger(0));
+		switch node.type {
+			case REPEAT(_, StepIterator(dirX, dirY, _)):
+				if (!zero(dirX) || !zero(dirY)) return null;
+			case REPEAT(_, LayoutIterator(_)):
+				return null;
+			case REPEAT(_, _):
+			default:
+				return null;
+		}
+		return Std.downcast(current, h2d.Flow);
 	}
 
 	/** True when `a` and `b` sit in different arms of one @()/@else/@default chain: they may share
@@ -6453,8 +6655,14 @@ class MultiAnimBuilder {
 					layersParent.add(toAdd, node.layer);
 				else
 					throw builderErrorAt(node, 'No layers parent for ${node.uniqueNodeName}-${node.type}');
-			} else if (current != null)
-				current.addChild(toAdd);
+			} else if (current != null) {
+				final anchor = spliceAnchor;
+				if (anchor != null && anchor.parent == current) {
+					current.addChildAt(toAdd, current.getChildIndex(anchor) + 1);
+					spliceAnchor = toAdd;
+				} else
+					current.addChild(toAdd);
+			}
 			// else do not add as this is root node
 		}
 
@@ -6472,12 +6680,19 @@ class MultiAnimBuilder {
 			final sentinel = new h2d.Object();
 			sentinel.visible = false; // keep h2d.Flow from counting the anchor as a layout child
 			addChild(sentinel);
-			var wrapper = new h2d.Object();
+			// A repeat in a flow is spliced into it: its marker stands for it until it is shown
+			final splice = spliceFlowFor(node, current) != null ? new FlowSpliceMarker() : null;
+			var wrapper = splice != null ? (splice : h2d.Object) : new h2d.Object();
 			addChild(wrapper);
 			wrapper.name = node.uniqueNodeName;
 			final deferParent = if (node.layer != -1 && layersParent != null) cast(layersParent, h2d.Object) else current;
 			incrementalContext.trackDeferredConditional(wrapper, node, sentinel, deferParent, node.layer,
 				gridCoordinateSystem, hexCoordinateSystem, internalResults, builderParams);
+			// Its end comes back with it (no items yet)
+			if (splice != null) {
+				addChild(splice.end);
+				splice.hold();
+			}
 			// Remove from graph — sentinel stays as position anchor
 			if (deferParent != null) deferParent.removeChild(wrapper);
 			return wrapper;
@@ -7226,13 +7441,41 @@ class MultiAnimBuilder {
 				// wrapper an initially hidden repeat gets from the deferred path).
 				final trackedAsConditional = incrementalMode && !suppressConditionalTracking && node.conditionals != NoConditional
 					&& incrementalContext != null && current != null && !materializing;
-				final needsWrapper = (dx != 0 || dy != 0 || iterator != null || hasIncrementalRepeat || trackedAsConditional);
+				// In a flow, such a repeat is spliced in instead (no wrapper): its items are laid out by
+				// the flow, between a marker that hides, shows and rebuilds them and its end. The
+				// marker of a deferred one is in the flow already (its first show builds it).
+				final reusedSplice = materializing ? materializingSplice : null;
+				if (reusedSplice != null) materializingSplice = null;
+				final spliceFlow = incrementalMode && incrementalContext != null ? spliceFlowFor(node, current) : null;
+				final splice:Null<FlowSpliceMarker> = if (spliceFlow == null) null
+					else if (reusedSplice != null) reusedSplice
+					else if (hasIncrementalRepeat || trackedAsConditional) new FlowSpliceMarker()
+					else null;
+				final needsWrapper = splice == null && (dx != 0 || dy != 0 || iterator != null || hasIncrementalRepeat || trackedAsConditional);
 				var object = needsWrapper ? new h2d.Object() : null;
 				final buildTarget = needsWrapper ? object : current;
 				final ownPos = needsWrapper ? null : calculatePosition(node.pos, MultiAnimParser.getGridCoordinateSystem(node), MultiAnimParser.getHexCoordinateSystem(node));
 
 				if (indexedParams.exists(varName))
 					throw builderErrorAt(node, 'cannot use repeatable index param "$varName" as it is already defined');
+
+				// Laid out item by item, the items take the repeat's own @flow.* (an item's own wins)
+				final itemFlowProps = !needsWrapper && Std.isOfType(buildTarget, h2d.Flow) ? resolveFlowItemProps(node) : null;
+				var spliceSentinel:Null<h2d.Object> = null;
+				final outerAnchor = spliceAnchor;
+				if (splice != null) {
+					splice.itemProps = itemFlowProps;
+					if (splice != reusedSplice) {
+						if (trackedAsConditional) {
+							spliceSentinel = new h2d.Object();
+							spliceSentinel.visible = false;
+							addChild(spliceSentinel);
+						}
+						addChild(splice);
+						splice.name = node.uniqueNodeName;
+					}
+					spliceAnchor = splice;
+				}
 
 				// Disable incremental tracking for children of param-dependent repeats
 				// (they will be fully rebuilt when the tracked params change)
@@ -7304,6 +7547,8 @@ class MultiAnimBuilder {
 						var obj = build(childNode, ObjectMode(buildTarget), gridCoordinateSystem, hexCoordinateSystem, internalResults, builderParams);
 						if (obj == null)
 							continue;
+						if (itemFlowProps != null && childNode.flowProperties == null)
+							itemFlowProps.apply(cast buildTarget, obj);
 						if (needsWrapper) {
 							switch repeatType {
 								case StepIterator(_, _, _):
@@ -7319,6 +7564,21 @@ class MultiAnimBuilder {
 					cleanupFinalVars(resolvedChildren, indexedParams);
 				}
 				suppressConditionalTracking = savedSuppressConditionalTracking;
+
+				if (splice != null) {
+					// The end after the last item; an enclosing splice's build goes on after it
+					if (splice != reusedSplice)
+						spliceFlow.addChildAt(splice.end, spliceFlow.getChildIndex(spliceAnchor) + 1);
+					spliceAnchor = outerAnchor != null && outerAnchor.parent == spliceFlow ? splice.end : outerAnchor;
+					if (spliceSentinel != null) {
+						savedIncrementalCtx.trackConditional(splice, node, spliceSentinel, spliceFlow, -1);
+						// Built while hidden (a repeat with @flow.* is never deferred): out of the flow
+						if (!nodeVisible) {
+							splice.hold();
+							spliceFlow.removeChild(splice);
+						}
+					}
+				}
 
 				indexedParams.remove(varName);
 				switch repeatType {
@@ -7336,7 +7596,10 @@ class MultiAnimBuilder {
 				if (hasIncrementalRepeat) {
 					incrementalMode = savedIncrementalMode;
 					final capturedNode = node;
-					final capturedObject = object;
+					final capturedSplice = splice;
+					final capturedOwnPos = ownPos;
+					final capturedItemFlowProps = itemFlowProps;
+					final capturedObject:h2d.Object = splice != null ? splice : object;
 					final capturedVarName = varName;
 					final capturedRepeatType = repeatType;
 					final capturedBP = builderParams;
@@ -7401,8 +7664,19 @@ class MultiAnimBuilder {
 						// Drop registrations + per-element bookkeeping from the previous iterations before
 						// tearing down their scene graph, then build the new iterations into the parent
 						// internalResults so their registrations are visible via the parent BuilderResult.
-						capturedCtx.cleanupDestroyedSubtree(capturedIR, capturedObject);
-						capturedObject.removeChildren();
+						// A spliced repeat's items are the flow's children up to its end; the new ones go
+						// between the two again
+						final rebuildTarget:h2d.Object = if (capturedSplice != null) {
+							for (item in capturedSplice.removeItems())
+								capturedCtx.discardSubtree(capturedIR, item);
+							capturedSplice.parent;
+						} else {
+							capturedCtx.cleanupDestroyedSubtree(capturedIR, capturedObject);
+							capturedObject.removeChildren();
+							capturedObject;
+						}
+						final savedAnchor = spliceAnchor;
+						spliceAnchor = capturedSplice;
 						// Mirror initial repeat build: disable incremental tracking so iteration children
 						// don't register tracked expressions / dynamicRef bindings on the parent ctx.
 						final savedMode = incrementalMode;
@@ -7411,7 +7685,7 @@ class MultiAnimBuilder {
 						incrementalContext = null;
 						final gcs = MultiAnimParser.getGridCoordinateSystem(capturedNode);
 						final hcs = MultiAnimParser.getHexCoordinateSystem(capturedNode);
-						for (count in 0...newCount) {
+						try for (count in 0...newCount) {
 							final resolvedIndex = switch capturedRepeatType {
 								case RangeIterator(_, _, _): newRangeStart + count * newRangeStep;
 								case _: count;
@@ -7434,9 +7708,16 @@ class MultiAnimBuilder {
 								default: null;
 							};
 							for (childNode in resolvedChildren) {
-								var obj = build(childNode, ObjectMode(capturedObject), gcs, hcs, capturedIR, capturedBP);
+								var obj = build(childNode, ObjectMode(rebuildTarget), gcs, hcs, capturedIR, capturedBP);
 								if (obj == null)
 									continue;
+								if (capturedSplice != null) {
+									if (capturedOwnPos != null && (capturedOwnPos.x != 0 || capturedOwnPos.y != 0))
+										addPosition(obj, capturedOwnPos.x, capturedOwnPos.y);
+									if (capturedItemFlowProps != null && childNode.flowProperties == null)
+										capturedItemFlowProps.apply(cast rebuildTarget, obj);
+									continue;
+								}
 								switch capturedRepeatType {
 									case StepIterator(_, _, _):
 										if (newDx != 0 || newDy != 0)
@@ -7447,7 +7728,13 @@ class MultiAnimBuilder {
 								}
 							}
 							cleanupFinalVars(resolvedChildren, indexedParams);
+						} catch (e:Dynamic) {
+							spliceAnchor = savedAnchor;
+							incrementalMode = savedMode;
+							incrementalContext = savedCtx;
+							throw e;
 						}
+						spliceAnchor = savedAnchor;
 						indexedParams.remove(capturedVarName);
 						switch capturedRepeatType {
 							case ArrayIterator(valueVariableName, _):

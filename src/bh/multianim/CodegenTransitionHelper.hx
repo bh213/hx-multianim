@@ -329,6 +329,9 @@ class CodegenTransitionHelper {
 
 	function addToGraph(obj:h2d.Object, parent:h2d.Object, sentinel:h2d.Object):Void {
 		if (obj.parent != null) return;
+		// Its sentinel is out of the parent while a spliced repeat that holds both is hidden: the
+		// repeat brings the element back with it
+		if (sentinel.parent != parent) return;
 		final layersParent = Std.downcast(parent, h2d.Layers);
 		if (layersParent != null) {
 			final sentinelLayer = layersParent.getChildLayer(sentinel);

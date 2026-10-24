@@ -72,7 +72,10 @@ private enum MacroSlotKey {
 class ProgrammableCodeGen {
 	static var elementCounter:Int = 0;
 	static var expressionUpdates:Array<{fieldName:String, updateExpr:Expr, paramRefs:Array<String>}> = [];
-	static var visibilityEntries:Array<{fieldName:String, condition:Expr, paramRefs:Array<String>, sentinelField:String, parentField:String, layer:Int, restoreFlowPropsExpr:Null<Expr>}> = [];
+	static var visibilityEntries:Array<{fieldName:String, condition:Expr, paramRefs:Array<String>, sentinelField:String, parentField:String, layer:Int, restoreFlowPropsExpr:Null<Expr>, ?spliceMarker:Bool}> = [];
+	// Fields of the flows built so far: a conditional or param-dependent repeat in one is spliced
+	// into it (FlowSpliceMarker), as by the builder
+	static var flowFieldNames:Map<String, Bool> = new Map();
 	static var namedElements:Map<String, Array<String>> = [];
 	// node: the site — an index may recur in mutually exclusive arms (get_name answers with the shown one)
 	static var indexedNamedElements:Map<String, Array<{index:Int, fieldName:String, node:Node}>> = new Map();
@@ -198,6 +201,7 @@ class ProgrammableCodeGen {
 		elementCounter = 0;
 		expressionUpdates = [];
 		visibilityEntries = [];
+		flowFieldNames = new Map();
 		switchUpdateEntries = [];
 		switchSinkFields = [];
 		repeatSinkFields = [];
@@ -695,6 +699,22 @@ class ProgrammableCodeGen {
 			}
 		}
 
+		// An element out of its tree (a hidden conditional's, or under one) does not evaluate its
+		// expressions: an update of one is skipped and marked stale, and replayed when it is shown
+		// again (builder parity: tracked expressions of a detached object). Only with conditionals,
+		// and for element fields (`_eN`) — not root properties or dynamicRef forwarding.
+		final elementFieldRe = ~/^_e[0-9]+$/;
+		final gatedUpdates:Array<Int> = [];
+		if (visibilityEntries.length > 0)
+			for (i in 0...expressionUpdates.length)
+				if (elementFieldRe.match(expressionUpdates[i].fieldName))
+					gatedUpdates.push(i);
+		final hasGated = gatedUpdates.length > 0;
+		final replayBeforeShow:Expr->Expr->Expr = (fieldRef, parentRef) -> hasGated
+			? macro if (this._stale != null && bh.multianim.LiveProgrammable.LiveProgrammableTools.isAttachedTo($parentRef, this))
+				this._replayStaleUnder($fieldRef)
+			: macro {};
+
 		// 4. _applyVisibility(?_changedParam)
 		// Collect the set of param names that have transitions
 		final transParamNames:Map<String, Bool> = new Map();
@@ -730,7 +750,22 @@ class ProgrammableCodeGen {
 				transParamExpr = macro if (_changedParam == $v{tpLit} || (this._visBatch != null && this._visBatch.indexOf($v{tpLit}) >= 0)) $v{tpLit} else $transParamExpr;
 				tpi--;
 			}
-			if (sentinelRef != null) {
+			if (sentinelRef != null && entry.spliceMarker == true) {
+				// A repeat spliced into a flow: the marker leaves and comes back with its items, at
+				// once (builder parity: no one object to animate)
+				final markerRef = macro (cast $fieldRef : bh.multianim.MultiAnimBuilder.FlowSpliceMarker);
+				visExprs.push(macro {
+					final _newVis = ${entry.condition};
+					final _inGraph = $fieldRef.parent != null;
+					if (_newVis && !_inGraph) {
+						$parentRef.addChildAt($fieldRef, $parentRef.getChildIndex($sentinelRef) + 1);
+						$markerRef.release();
+					} else if (!_newVis && _inGraph) {
+						$markerRef.hold();
+						$parentRef.removeChild($fieldRef);
+					}
+				});
+			} else if (sentinelRef != null) {
 				// Scene graph add/remove via sentinel
 				var addExpr = if (entry.layer != -1) {
 					final layerVal = entry.layer;
@@ -740,7 +775,11 @@ class ProgrammableCodeGen {
 						_lp.add($fieldRef, $v{layerVal}, _si + 1);
 					};
 				} else {
-					macro $parentRef.addChildAt($fieldRef, $parentRef.getChildIndex($sentinelRef) + 1);
+					// Not while its sentinel is held by a hidden spliced repeat: that brings it back
+					macro {
+						final _si = $parentRef.getChildIndex($sentinelRef);
+						if (_si >= 0) $parentRef.addChildAt($fieldRef, _si + 1);
+					};
 				};
 				// Append flow property restore after re-add (Flow.removeChild discards FlowProperties)
 				if (entry.restoreFlowPropsExpr != null) {
@@ -753,13 +792,16 @@ class ProgrammableCodeGen {
 						final _newVis = ${entry.condition};
 						final _tp:Null<String> = $transParamExpr;
 						if (this._transHelper != null && _tp != null && this._transHelper.tweenManager != null) {
+							// What changed while it was hidden first: the show starts from it
+							if (_newVis && $fieldRef.parent == null) ${replayBeforeShow(fieldRef, parentRef)};
 							this._transHelper.setPresenceWithTransition($fieldRef, _newVis, _tp, $parentRef, $sentinelRef);
 							${if (transRestoreExpr != null) macro { if ($fieldRef.parent != null) $transRestoreExpr; } else macro {}}
 						} else if (this._transHelper == null || !this._transHelper.inFlightToward($fieldRef, _newVis)) {
 							final _inGraph = $fieldRef.parent != null;
-							if (_newVis && !_inGraph)
-								$addExpr
-							else if (!_newVis && _inGraph)
+							if (_newVis && !_inGraph) {
+								${replayBeforeShow(fieldRef, parentRef)};
+								$addExpr;
+							} else if (!_newVis && _inGraph)
 								$parentRef.removeChild($fieldRef);
 						}
 					});
@@ -767,9 +809,10 @@ class ProgrammableCodeGen {
 					visExprs.push(macro {
 						final _newVis = ${entry.condition};
 						final _inGraph = $fieldRef.parent != null;
-						if (_newVis && !_inGraph)
-							$addExpr
-						else if (!_newVis && _inGraph)
+						if (_newVis && !_inGraph) {
+							${replayBeforeShow(fieldRef, parentRef)};
+							$addExpr;
+						} else if (!_newVis && _inGraph)
 							$parentRef.removeChild($fieldRef);
 					});
 				}
@@ -862,6 +905,10 @@ class ProgrammableCodeGen {
 				visExprs.push(macro if ($orChain) $updateBody);
 			}
 		}
+		// Whatever came back without a show of its own (a spliced repeat's items, a hidden element's
+		// child) replays what went stale meanwhile
+		if (hasGated)
+			visExprs.push(macro if (this._stale != null) this._replayStaleUnder(this));
 		if (visExprs.length == 0)
 			visExprs.push(macro {});
 		// _applyVisibility takes the optional changed-param name when transitions, switches,
@@ -879,16 +926,41 @@ class ProgrammableCodeGen {
 		// full pass) runs everything. Entries with no recorded refs run unconditionally
 		// (conservative — they gate internally or are cheap).
 		final exprUpdateExprs:Array<Expr> = [];
-		for (update in expressionUpdates) {
+		final replayExprs:Array<Expr> = [macro if (this._stale == null) return, macro var _changedParam:String = null];
+		final gatedCount = gatedUpdates.length;
+		for (ui in 0...expressionUpdates.length) {
+			final update = expressionUpdates[ui];
+			final k = gatedUpdates.indexOf(ui);
+			var body = update.updateExpr;
+			if (k >= 0) {
+				final elementRef = macro $p{["this", update.fieldName]};
+				final original = body;
+				body = macro if (bh.multianim.LiveProgrammable.LiveProgrammableTools.isAttachedTo($elementRef, this)) {
+					$original;
+					if (this._stale != null) this._stale[$v{k}] = false;
+				} else {
+					if (this._stale == null) this._stale = [for (_ in 0...$v{gatedCount}) false];
+					this._stale[$v{k}] = true;
+				};
+				replayExprs.push(macro if (this._stale[$v{k}] && bh.multianim.LiveProgrammable.LiveProgrammableTools.isAttachedTo($elementRef, _target)) {
+					this._stale[$v{k}] = false;
+					$original;
+				});
+			}
 			if (update.paramRefs == null || update.paramRefs.length == 0) {
-				exprUpdateExprs.push(update.updateExpr);
+				exprUpdateExprs.push(body);
 			} else {
 				var orChain:Expr = macro _changedParam == null;
 				for (r in update.paramRefs)
 					orChain = macro $orChain || _changedParam == $v{r};
-				final body = update.updateExpr;
 				exprUpdateExprs.push(macro if ($orChain) $body);
 			}
+		}
+		if (hasGated) {
+			instanceFields.push(makeField("_stale", FVar(macro :Null<Array<Bool>>, macro null), [APrivate], pos));
+			// The stale updates of the elements under `_target` (attached all the way up to it)
+			instanceFields.push(makeMethod("_replayStaleUnder", replayExprs, [{name: "_target", type: macro :h2d.Object}], macro :Void,
+				[APrivate], pos));
 		}
 		if (exprUpdateExprs.length == 0)
 			exprUpdateExprs.push(macro {});
@@ -2868,11 +2940,19 @@ class ProgrammableCodeGen {
 		// non-conditional, unpositioned repeat unrolls its children directly into the
 		// parent so containers like h2d.Flow lay out each iteration child.
 		final hasOwnPos = node.pos != null && !node.pos.match(ZERO);
-		final needsWrapper = !fullyStatic || info.dx != 0 || info.dy != 0
-			|| !node.conditionals.match(NoConditional) || hasOwnPos;
+		// In a flow (no layer, no step offsets) the flow places each item, as in the builder: an
+		// unconditional fixed repeat unrolls into it, any other is spliced into it
+		final inFlow = parentField != null && flowFieldNames.exists(parentField) && node.layer == -1 && zeroStepOffsets(repeatType);
+		if (inFlow && (!fullyStatic || !node.conditionals.match(NoConditional))) {
+			processSplicedRepeat(node, varName, repeatType, info, fullyStatic, parentField, fields, ctorExprs, siblings, pos);
+			return;
+		}
+		final needsWrapper = !inFlow && (!fullyStatic || info.dx != 0 || info.dy != 0
+			|| !node.conditionals.match(NoConditional) || hasOwnPos);
 		if (!needsWrapper) {
 			siblings.push({node: node, fieldName: null});
-			unrollRepeatChildren(node, varName, info.staticCount, 0, 0, info.rangeStart, info.rangeStep, parentField, fields, ctorExprs, pos);
+			withRepeatFlowProps(node, () -> unrollRepeatChildren(node, varName, info.staticCount, 0, 0, info.rangeStart, info.rangeStep, parentField,
+				fields, ctorExprs, pos));
 			return;
 		}
 
@@ -2917,6 +2997,91 @@ class ProgrammableCodeGen {
 					collectSubtreeConditionalRefs(child, condRefs);
 			final forcedRefs = [for (r in condRefs) if (!triggerRefs.contains(r)) r];
 			rebuildRepeatChildren(node, varName, containerName, fields, ctorExprs, triggerRefs, forcedRefs, info.countRV, repeatType, pos);
+		}
+	}
+
+	/** Unrolled into a flow, a repeat's children take its own `@flow.*` (one of their own wins), as
+	 *  in the builder: given to them for the unroll only. */
+	static function withRepeatFlowProps(node:Node, unroll:Void -> Void):Void {
+		final fp = node.flowProperties;
+		if (fp == null || node.children == null) {
+			unroll();
+			return;
+		}
+		final given = [for (child in node.children) if (child.flowProperties == null) child];
+		for (child in given)
+			child.flowProperties = fp;
+		try
+			unroll()
+		catch (e:Dynamic) {
+			for (child in given)
+				child.flowProperties = null;
+			throw e;
+		}
+		for (child in given)
+			child.flowProperties = null;
+	}
+
+	/** `marker.itemProps = …` for a repeat with its own `@flow.*`, whose items a loop builds at runtime. */
+	static function repeatItemPropsExpr(node:Node, markerRef:Expr):Null<Expr> {
+		final fp = node.flowProperties;
+		if (fp == null) return null;
+		final h = fp.hAlign != null ? flowAlignToExpr(fp.hAlign) : macro null;
+		final v = fp.vAlign != null ? flowAlignToExpr(fp.vAlign) : macro null;
+		final ox = fp.offsetX != null ? rvToExprInt(fp.offsetX) : macro null;
+		final oy = fp.offsetY != null ? rvToExprInt(fp.offsetY) : macro null;
+		return macro $markerRef.itemProps = new bh.multianim.MultiAnimBuilder.FlowItemProps($h, $v, $ox, $oy, $v{fp.isAbsolute});
+	}
+
+	/** True when a repeat places nothing itself: no step offsets (absent or literal 0), no layout. */
+	static function zeroStepOffsets(repeatType:RepeatType):Bool {
+		inline function zero(rv:Null<ReferenceableValue>):Bool
+			return rv == null || rv.match(RVInteger(0));
+		return switch repeatType {
+			case StepIterator(dirX, dirY, _): zero(dirX) && zero(dirY);
+			case LayoutIterator(_): false;
+			default: true;
+		};
+	}
+
+	/** A conditional or param-dependent repeat in a flow, spliced into it (builder parity): a
+	 *  FlowSpliceMarker field and its end in the flow with the items between them, so the flow lays
+	 *  out each item. The marker is the repeat's conditional element (it hides and shows them); a
+	 *  param-dependent count builds into the marker and moves what it built in before the end. */
+	static function processSplicedRepeat(node:Node, varName:String, repeatType:RepeatType,
+			info:{staticCount:Null<Int>, dx:Int, dy:Int, rangeStart:Int, rangeStep:Int, countRV:Null<ReferenceableValue>, paramScalars:Bool},
+			fullyStatic:Bool, parentField:String, fields:Array<Field>, ctorExprs:Array<Expr>, siblings:Array<{node:Node, fieldName:String}>,
+			pos:Position):Void {
+		final markerName = "_e" + (elementCounter++);
+		fields.push(makeField(markerName, FVar(macro :bh.multianim.MultiAnimBuilder.FlowSpliceMarker, null), [APrivate], pos));
+		final markerRef = macro $p{["this", markerName]};
+		final parentRef = macro $p{["this", parentField]};
+		ctorExprs.push(macro $markerRef = new bh.multianim.MultiAnimBuilder.FlowSpliceMarker());
+		final itemPropsExpr = repeatItemPropsExpr(node, markerRef);
+		if (itemPropsExpr != null) ctorExprs.push(itemPropsExpr);
+		final sentinelName = createSentinelIfConditional(node, parentField, fields, ctorExprs, pos);
+		ctorExprs.push(macro $parentRef.addChild($markerRef));
+
+		// Before the items' own entries: a show puts them back before they are looked at
+		final visCond = generateVisibilityCondition(node, siblings, markerName, pos);
+		if (visCond != null)
+			visibilityEntries.push({fieldName: markerName, condition: visCond, paramRefs: extractConditionalParamRefs(node, siblings),
+				sentinelField: sentinelName, parentField: parentField, layer: -1, restoreFlowPropsExpr: null, spliceMarker: true});
+		siblings.push({node: node, fieldName: markerName});
+
+		if (fullyStatic) {
+			withRepeatFlowProps(node, () -> unrollRepeatChildren(node, varName, info.staticCount, 0, 0, info.rangeStart, info.rangeStep, parentField,
+				fields, ctorExprs, pos));
+			ctorExprs.push(macro $parentRef.addChild($markerRef.end));
+		} else {
+			ctorExprs.push(macro $parentRef.addChild($markerRef.end));
+			final triggerRefs = collectRepeatTriggerRefs(repeatType);
+			final condRefs:Array<String> = [];
+			if (node.children != null)
+				for (child in node.children)
+					collectSubtreeConditionalRefs(child, condRefs);
+			final forcedRefs = [for (r in condRefs) if (!triggerRefs.contains(r)) r];
+			rebuildRepeatChildren(node, varName, markerName, fields, ctorExprs, triggerRefs, forcedRefs, info.countRV, repeatType, pos, true);
 		}
 	}
 
@@ -2985,7 +3150,7 @@ class ProgrammableCodeGen {
 	}
 
 	/** Runtime rebuild repeat: generates a method that creates/recreates children based on count param */
-	static function rebuildRepeatChildren(node:Node, varName:String, containerField:String, fields:Array<Field>, ctorExprs:Array<Expr>, countParamRefs:Array<String>, forcedRefs:Array<String>, countRV:ReferenceableValue, repeatType:RepeatType, pos:Position):Void {
+	static function rebuildRepeatChildren(node:Node, varName:String, containerField:String, fields:Array<Field>, ctorExprs:Array<Expr>, countParamRefs:Array<String>, forcedRefs:Array<String>, countRV:ReferenceableValue, repeatType:RepeatType, pos:Position, splice:Bool = false):Void {
 		if (node.children == null) return;
 
 		// Generate the count expression: for StepIterator it's the count directly, for RangeIterator it needs calculation
@@ -3068,12 +3233,17 @@ class ProgrammableCodeGen {
 		if (isRange) {
 			forBodyExprs.push(macro final _rt_val = _rt_start + _rt_i * _rt_step);
 		}
-		forBodyExprs.push(macro final _rt_cont = new h2d.Object());
-		if (repeatType.match(StepIterator(_, _, _))) {
-			forBodyExprs.push(macro _rt_cont.setPosition(_rt_dx * _rt_i, _rt_dy * _rt_i));
-		}
 		final containerFieldRef = macro $p{["this", containerField]};
-		forBodyExprs.push(macro $containerFieldRef.addChild(_rt_cont));
+		if (splice) {
+			// Each iteration's elements into the marker; moved in before its end once all are built
+			forBodyExprs.push(macro final _rt_cont:h2d.Object = $containerFieldRef);
+		} else {
+			forBodyExprs.push(macro final _rt_cont = new h2d.Object());
+			if (repeatType.match(StepIterator(_, _, _))) {
+				forBodyExprs.push(macro _rt_cont.setPosition(_rt_dx * _rt_i, _rt_dy * _rt_i));
+			}
+			forBodyExprs.push(macro $containerFieldRef.addChild(_rt_cont));
+		}
 		for (e in loopBodyExprs) forBodyExprs.push(e);
 
 		final forBody:Expr = {expr: EBlock(forBodyExprs), pos: pos};
@@ -3111,9 +3281,17 @@ class ProgrammableCodeGen {
 		rebuildBody.push(macro $p{["this", dyTrackingField]} = _rt_dy);
 		// Evict the previous count's registrations from the sink BEFORE removeChildren (parent links
 		// must still be intact), then rebuild the body into the same sink.
-		rebuildBody.push(macro this._pb.resetRepeatSink($p{["this", repeatSinkField]}, $containerFieldRef));
-		rebuildBody.push(macro $containerFieldRef.removeChildren());
-		rebuildBody.push(macro for (_rt_i in 0..._rt_count) $forBody);
+		if (splice) {
+			final markerRef = macro (cast $containerFieldRef : bh.multianim.MultiAnimBuilder.FlowSpliceMarker);
+			rebuildBody.push(macro for (_rt_item in $markerRef.removeItems())
+				this._pb.resetRepeatSink($p{["this", repeatSinkField]}, _rt_item));
+			rebuildBody.push(macro for (_rt_i in 0..._rt_count) $forBody);
+			rebuildBody.push(macro $markerRef.spliceChildren());
+		} else {
+			rebuildBody.push(macro this._pb.resetRepeatSink($p{["this", repeatSinkField]}, $containerFieldRef));
+			rebuildBody.push(macro $containerFieldRef.removeChildren());
+			rebuildBody.push(macro for (_rt_i in 0..._rt_count) $forBody);
+		}
 
 		fields.push(makeMethod(rebuildMethodName, rebuildBody, [
 			{name: "_rt_count", type: macro :Int},
@@ -3484,24 +3662,37 @@ class ProgrammableCodeGen {
 	 *  so we generate a runtime loop in the constructor. */
 	static function processRuntimeRepeat(node:Node, varName:String, repeatType:RepeatType, parentField:String, fields:Array<Field>, ctorExprs:Array<Expr>,
 			siblings:Array<{node:Node, fieldName:String}>, pos:Position):Void {
+		// In a flow the items are spliced into it (builder parity: the flow places each): the loop
+		// builds into the marker, and what it built moves in before the marker's end
+		final inFlow = parentField != null && flowFieldNames.exists(parentField) && node.layer == -1;
 		// Create a container for the repeat
 		final containerName = "_e" + (elementCounter++);
-		fields.push(makeField(containerName, FVar(macro :h2d.Object, null), [APrivate], pos));
-		ctorExprs.push(macro $p{["this", containerName]} = new h2d.Object());
+		if (inFlow) {
+			fields.push(makeField(containerName, FVar(macro :bh.multianim.MultiAnimBuilder.FlowSpliceMarker, null), [APrivate], pos));
+			ctorExprs.push(macro $p{["this", containerName]} = new bh.multianim.MultiAnimBuilder.FlowSpliceMarker());
+			final itemPropsExpr = repeatItemPropsExpr(node, macro $p{["this", containerName]});
+			if (itemPropsExpr != null) ctorExprs.push(itemPropsExpr);
+		} else {
+			fields.push(makeField(containerName, FVar(macro :h2d.Object, null), [APrivate], pos));
+			ctorExprs.push(macro $p{["this", containerName]} = new h2d.Object());
 
-		ensureHexLayoutIfNeeded(node.pos, node, fields, ctorExprs, pos);
-		final posExpr = generatePositionExpr(node.pos, containerName, pos, node);
-		if (posExpr != null)
-			ctorExprs.push(posExpr);
+			ensureHexLayoutIfNeeded(node.pos, node, fields, ctorExprs, pos);
+			final posExpr = generatePositionExpr(node.pos, containerName, pos, node);
+			if (posExpr != null)
+				ctorExprs.push(posExpr);
+		}
 
 		final runtimeRepeatSentinel = createSentinelIfConditional(node, parentField, fields, ctorExprs, pos);
 		final parentRef = parentField != null ? (macro $p{["this", parentField]}) : (macro this);
 		ctorExprs.push(emitAddToParent(parentRef, macro $p{["this", containerName]}, node.layer));
+		if (inFlow)
+			ctorExprs.push(macro $parentRef.addChild($p{["this", containerName]}.end));
 
 		final visCond = generateVisibilityCondition(node, siblings, containerName, pos);
 		if (visCond != null)
 			visibilityEntries.push({fieldName: containerName, condition: visCond, paramRefs: extractConditionalParamRefs(node, siblings),
-				sentinelField: runtimeRepeatSentinel, parentField: parentField, layer: node.layer, restoreFlowPropsExpr: null});
+				sentinelField: runtimeRepeatSentinel, parentField: parentField, layer: node.layer, restoreFlowPropsExpr: null,
+				spliceMarker: inFlow});
 		siblings.push({node: node, fieldName: containerName});
 
 		final containerRef = macro $p{["this", containerName]};
@@ -3588,6 +3779,8 @@ class ProgrammableCodeGen {
 
 			default:
 		}
+		if (inFlow)
+			ctorExprs.push(macro $p{["this", containerName]}.spliceChildren());
 	}
 
 	/** Generate runtime loop body expressions for a list of sibling child nodes, gating each
@@ -4736,6 +4929,7 @@ class ProgrammableCodeGen {
 				};
 
 			case FLOW(maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, horizontalSpacing, verticalSpacing, debug, multiline, bgSheet, bgTile, overflow, fillWidth, fillHeight, reverse, hAlign, vAlign, bgMode):
+				flowFieldNames.set(fieldName, true);
 				generateFlowCreate(node, fieldName, maxWidth, maxHeight, minWidth, minHeight, lineHeight, colWidth, layout, paddingTop, paddingBottom, paddingLeft, paddingRight, horizontalSpacing, verticalSpacing, debug, multiline, bgSheet, bgTile, overflow, fillWidth, fillHeight, reverse, hAlign, vAlign, bgMode, pos);
 
 			case SPACER(width, height):
