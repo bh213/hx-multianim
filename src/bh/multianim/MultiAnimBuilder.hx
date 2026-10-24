@@ -442,9 +442,11 @@ class FlowSpliceMarker extends h2d.Object {
 		}
 	}
 
+	// Off: on JavaScript Std.downcast takes and gives only non-null values under null safety (the studio's bundle)
+	@:nullSafety(Off)
 	function giveItemProps(item:h2d.Object):Void {
 		final props = itemProps;
-		final flow = Std.downcast(item.parent, h2d.Flow);
+		final flow:Null<h2d.Flow> = Std.downcast(item.parent, h2d.Flow);
 		if (props != null && flow != null) props.apply(flow, item);
 	}
 
@@ -1314,7 +1316,7 @@ class IncrementalUpdateContext {
 		}
 		restoreFlowProperties(entry.object, parent, entry.savedFlowProps);
 		// A spliced repeat's items (and its end) follow the marker again, in their order
-		final splice = Std.downcast(entry.object, FlowSpliceMarker);
+		final splice:Null<FlowSpliceMarker> = Std.downcast(entry.object, FlowSpliceMarker);
 		if (splice != null) splice.release();
 		// Re-fire tracked expressions to restore content lost on removeChild.
 		// h2d.Graphics clears draw commands in onRemove(), so content must be re-drawn.
@@ -1327,7 +1329,7 @@ class IncrementalUpdateContext {
 	/** Remove a conditional element from the scene graph. Its sentinel stays. */
 	function removeFromGraph(entry:{object:h2d.Object}):Void {
 		if (entry.object.parent == null) return; // already removed
-		final splice = Std.downcast(entry.object, FlowSpliceMarker);
+		final splice:Null<FlowSpliceMarker> = Std.downcast(entry.object, FlowSpliceMarker);
 		if (splice != null) splice.hold();
 		entry.object.parent.removeChild(entry.object);
 	}
@@ -2048,7 +2050,7 @@ class IncrementalUpdateContext {
 	/** Drop everything a (partial) materialization registered under the deferred wrapper and its
 	 *  children (a spliced repeat's: its items), keeping the wrapper's own conditional entry. */
 	function reapMaterialized(entry:{wrapper:h2d.Object, internalResults:InternalBuilderResults}):Void {
-		final splice = Std.downcast(entry.wrapper, FlowSpliceMarker);
+		final splice:Null<FlowSpliceMarker> = Std.downcast(entry.wrapper, FlowSpliceMarker);
 		if (splice != null) {
 			for (item in splice.removeItems())
 				discardSubtree(entry.internalResults, item);
@@ -2091,7 +2093,7 @@ class IncrementalUpdateContext {
 		builder.builderParams = entry.builderParams;
 		builder.materializingNode = entry.node;
 		// A spliced repeat builds into its flow, after its marker
-		final splice = Std.downcast(entry.wrapper, FlowSpliceMarker);
+		final splice:Null<FlowSpliceMarker> = Std.downcast(entry.wrapper, FlowSpliceMarker);
 		builder.materializingSplice = splice;
 		try {
 			builder.build(entry.node, ObjectMode(splice != null ? entry.parent : entry.wrapper), entry.gridCS, entry.hexCS, entry.internalResults,
@@ -4306,6 +4308,7 @@ class MultiAnimBuilder {
 	/** The flow a conditional or param-dependent `repeatable` is spliced into (built with no wrapper,
 	 *  so the flow lays out each item): its parent while that is a flow, the repeat on no layer,
 	 *  with no step offsets and no layout iterator (those place the items themselves). */
+	@:nullSafety(Off) // Std.downcast on JavaScript, as giveItemProps
 	static function spliceFlowFor(node:Node, current:Null<h2d.Object>):Null<h2d.Flow> {
 		if (current == null || node.layer != -1) return null;
 		inline function zero(rv:Null<ReferenceableValue>):Bool
@@ -4663,12 +4666,16 @@ class MultiAnimBuilder {
 			case TSGenerated(AutotileRef(autotileName, index)):
 				// Autotile tiles are cached per builder by getAutotileTiles — no placeholder cache.
 				getAutotileTile(resolveAsString(autotileName), resolveAsInteger(index));
+			case TSGenerated(ShaderGround(_, width, height, _)):
+				// The shader draws the picture: the tile only gives the bitmap its size
+				solidTile(0xFFFFFFFF, resolveAsInteger(width), resolveAsInteger(height));
 			case TSGenerated(type):
 				var resolvedType:ResolvedGeneratedTileType = switch type {
 					case Cross(width, height, color, thickness): Cross(resolveAsInteger(width), resolveAsInteger(height), resolveAsColorInteger(color), resolveAsInteger(thickness));
 					case SolidColor(width, height, color): SolidColor(resolveAsInteger(width), resolveAsInteger(height), resolveAsColorInteger(color));
 					case SolidColorWithText(width, height, color, text, textColor, font): SolidColorWithText(resolveAsInteger(width), resolveAsInteger(height), resolveAsColorInteger(color), resolveAsString(text), resolveAsColorInteger(textColor), resolveAsString(font));
 					case AutotileRef(_, _): throw builderError('unreachable: autotile ref handled above');
+					case ShaderGround(_, _, _, _): throw builderError('unreachable: shader ground handled above');
 					case AutotileRegionSheet(autotileName, scale, font, fontColor): resolveAutotileRegionSheet(autotileName, scale, font, fontColor);
 				}
 
@@ -5264,6 +5271,9 @@ class MultiAnimBuilder {
 					case SolidColorWithText(w, h, color, text, textColor, font):
 						collectParamRefs(w, result); collectParamRefs(h, result); collectParamRefs(color, result);
 						collectParamRefs(text, result); collectParamRefs(textColor, result); collectParamRefs(font, result);
+					case ShaderGround(_, w, h, args):
+						collectParamRefs(w, result); collectParamRefs(h, result);
+						for (a in args) collectParamRefs(a.value, result);
 					default:
 				}
 			case TSReference(varName): result.push(varName);
@@ -5427,6 +5437,7 @@ class MultiAnimBuilder {
 										resolveAsInteger(wCapture), resolveAsInteger(hCapture));
 								}, bmpRefs, object);
 							default:
+								// A ground (generated(shader(…))) takes its size here, aligned as any tile, and its shader set in place
 								final tileSourceCapture = tileSource;
 								final hAlignCapture = hAlign;
 								final vAlignCapture = vAlign;
@@ -5443,6 +5454,10 @@ class MultiAnimBuilder {
 										case Center: -(tile.width * .5);
 									};
 									bmp.tile = tile.sub(0, 0, tile.width, tile.height, wh, dh);
+									switch tileSourceCapture {
+										case TSGenerated(ShaderGround(name, _, _, args)): bmp.filter = groundFilter(bmp.filter, name, args);
+										default:
+									}
 								}, bmpRefs, object);
 						}
 					}
@@ -5684,7 +5699,7 @@ class MultiAnimBuilder {
 		final _filter = node.filter; if (_filter != null) collectFilterParamRefs(_filter, extRefs);
 		if (extRefs.length > 0) {
 			ctx.trackExpression(() -> {
-				applyExtendedFormProperties(object, node);
+				applyExtendedFormProperties(object, node, true);
 				ctx.ownPropsWritten(object, node, false);
 			}, extRefs, gateVisibility ? object : null);
 		}
@@ -6811,6 +6826,10 @@ class MultiAnimBuilder {
 
 				tile = tile.sub(0, 0, width, height, wh, dh);
 				var b = new h2d.Bitmap(tile);
+				switch tileSource {
+					case TSGenerated(ShaderGround(name, _, _, args)): b.filter = groundFilter(null, name, args);
+					default:
+				}
 				HeapsBitmap(b);
 			case TEXT(textDef):
 				final font = resourceLoader.loadFont(resolveAsString(textDef.fontName));
@@ -8306,7 +8325,8 @@ class MultiAnimBuilder {
 		}
 	}
 
-	function applyExtendedFormProperties(object:h2d.Object, node:Node) {
+	/** A node's scale, rotation, alpha, blend, filter and tint on its object. `inPlace`: a `$param`'s change, where a shader already on the object is set, not made again (never for an apply, whose parent's filter is saved to be put back). */
+	function applyExtendedFormProperties(object:h2d.Object, node:Node, inPlace = false) {
 		if (node.scale != null)
 			object.setScale(resolveAsNumber(node.scale));
 		if (node.rotation != null)
@@ -8316,7 +8336,7 @@ class MultiAnimBuilder {
 		if (node.blendMode != null)
 			object.blendMode = MacroCompatConvert.toH2dBlendMode(node.blendMode);
 		if (node.filter != null) {
-			final f = buildFilter(node.filter);
+			final f = inPlace ? buildFilterIn(object.filter, node.filter) : buildFilter(node.filter);
 			if (f != null) object.filter = f;
 		}
 		if (node.tint != null) {
@@ -8402,23 +8422,60 @@ class MultiAnimBuilder {
 				final reg = bh.base.FilterManager.getFilter(name);
 				if (reg == null)
 					throw builderError('Unknown custom filter "$name". Register it via FilterManager.registerFilter().');
-				final resolved = new Map<String, Dynamic>();
-				for (i in 0...reg.params.length) {
-					final paramDef = reg.params[i];
-					if (i < args.length) {
-						switch paramDef.type {
-							case CFFloat: resolved[paramDef.name] = resolveAsNumber(args[i].value);
-							case CFColor: resolved[paramDef.name] = resolveAsColorInteger(args[i].value);
-							case CFBool: resolved[paramDef.name] = resolveAsNumber(args[i].value) != 0;
-						}
-					} else if (paramDef.defaultValue != null) {
-						resolved[paramDef.name] = paramDef.defaultValue;
-					} else {
-						throw builderError('Custom filter "$name" missing required argument "${paramDef.name}"');
-					}
-				}
-				reg.factory(resolved);
+				reg.factory(customFilterValues(name, reg, args));
 		}
+	}
+
+	/**
+		A filter for a node whose `$param`s changed: a shader filter of the same name already on the
+		object is set in place (its uniforms written, its time and target kept); anything else is made.
+	**/
+	function buildFilterIn(previous:Null<h2d.filter.Filter>, type:FilterType):Null<h2d.filter.Filter> {
+		return switch type {
+			case FilterCustom(name, args):
+				final kept = bh.base.FilterManager.sameShader(previous, name);
+				final reg = bh.base.FilterManager.getFilter(name);
+				if (kept == null || reg == null)
+					buildFilter(type);
+				else {
+					kept.setParams(customFilterValues(name, reg, args));
+					kept;
+				}
+			default:
+				buildFilter(type);
+		}
+	}
+
+	/** A ground's shader (`generated(shader(…))`), drawn from nothing: set in place where one of its name is. */
+	function groundFilter(previous:Null<h2d.filter.Filter>, name:String, args:Array<CustomFilterArg>):h2d.filter.Filter {
+		final reg = bh.base.FilterManager.getFilter(name);
+		if (reg == null)
+			throw builderError('Unknown shader "$name" for a ground. The engine\'s are ShaderCatalog\'s; register a game\'s own via FilterManager.registerFilter().');
+		final values = customFilterValues(name, reg, args);
+		values["ground"] = true;
+		final kept = bh.base.FilterManager.sameShader(previous, name);
+		if (kept != null) {
+			kept.setParams(values);
+			return kept;
+		}
+		return reg.factory(values);
+	}
+
+	/** Every parameter's value of a custom filter or shader: each argument resolved as the type of the parameter it is given to. */
+	function customFilterValues(name:String, reg:bh.base.FilterManager.CustomFilterRegistration,
+			args:Array<CustomFilterArg>):Map<String, Dynamic> {
+		final indexes = try bh.base.FilterManager.argIndexes(name, reg.params, [for (a in args) a.name]) catch (e:String) throw builderError(e);
+		final given:Array<bh.base.FilterManager.GivenFilterArg> = [];
+		for (i in 0...args.length) {
+			final def = reg.params[indexes[i]];
+			final value:Dynamic = switch def.type {
+				case CFFloat | CFInt | CFBool: resolveAsNumber(args[i].value);
+				case CFColor: resolveAsColorInteger(args[i].value);
+				case CFWord | CFPalette: resolveAsString(args[i].value);
+			};
+			given.push({value: value, name: def.name});
+		}
+		return try bh.base.FilterManager.valuesOf(name, reg.params, given, n -> getPalette(n).colorList()) catch (e:String) throw builderError(e);
 	}
 
 	function stringToInt(n:String):Int {
@@ -8614,7 +8671,8 @@ class MultiAnimBuilder {
 	}
 	#end
 
-	function getPalette(name:String) {
+	/** A palette of this file by its name (`#name palette { ... }`): what a game reads its own colours from. **/
+	public function getPalette(name:String):Palette {
 		return buildPalettes(name);
 	}
 

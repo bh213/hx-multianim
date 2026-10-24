@@ -478,6 +478,7 @@ class MacroManimParser {
 	var namedCoordSystems:Null<Array<String>>; // names registered via hex: #name or grid: #name
 	var namedElements:Null<Array<String>>; // names registered via #name element(...)
 	var customFilterRefs:Array<CustomFilterRef>; // accumulated custom filter references for post-parse validation
+	var groundTileAllowed:Bool = false; // generated(shader(…)) is read only as a bitmap's own tile (its shader is the bitmap's filter)
 
 	static final defaultLayoutNodeName = "#defaultLayout";
 	static final defaultPathNodeName = "#defaultPaths";
@@ -1648,7 +1649,10 @@ class MacroManimParser {
 			case TIdentifier(s) if (isKeyword(s, "center")):
 				advance();
 				expect(TOpen);
+				final allowed = groundTileAllowed;
+				groundTileAllowed = false;
 				final inner = parseTileSource();
+				groundTileAllowed = allowed;
 				expect(TClosed);
 				if (inner.match(TSPivot(_, _, _)))
 					return error('center(...): nested pivot/center is not allowed (outer would override inner)');
@@ -1660,7 +1664,10 @@ class MacroManimParser {
 				expect(TComma);
 				final py = parseFloat_();
 				expect(TComma);
+				final allowed = groundTileAllowed;
+				groundTileAllowed = false;
 				final inner = parseTileSource();
+				groundTileAllowed = allowed;
 				expect(TClosed);
 				if (px < 0.0 || px > 1.0 || py < 0.0 || py > 1.0)
 					return error('pivot($px, $py, ...): pivot ratios must be in range 0..1');
@@ -1711,6 +1718,27 @@ class MacroManimParser {
 
 	function parseGeneratedTileType():GeneratedTileType {
 		switch (peek()) {
+			case TIdentifier(s) if (isKeyword(s, "shader")):
+				// shader(name, width, height, args…): a ground drawn by one of the engine's shaders or a registered one
+				if (!groundTileAllowed)
+					error('generated(shader(…)) is only a bitmap\'s own tile, bitmap(generated(shader(water, 320, 180))), its shader the bitmap\'s filter: not inside center() or pivot() (align with bitmap(…, center)), nor a parameter\'s value, particles\' tiles or a placeholder');
+				advance();
+				expect(TOpen);
+				final shaderPos = posString();
+				final shaderName = expectIdentifierOrString().toLowerCase();
+				expect(TComma);
+				final w = parseIntegerOrReference();
+				expect(TComma);
+				final h = parseIntegerOrReference();
+				final args = parseCustomFilterArgs(false);
+				customFilterRefs.push({
+					name: shaderName,
+					argCount: args.length,
+					argTypes: [for (a in args) a.type],
+					args: args,
+					pos: shaderPos,
+				});
+				return ShaderGround(shaderName, w, h, args);
 			case TIdentifier(s) if (isKeyword(s, "cross")):
 				advance();
 				expect(TOpen);
@@ -2548,11 +2576,7 @@ class MacroManimParser {
 				final filterPos = posString();
 				advance();
 				expect(TOpen);
-				var args:Array<CustomFilterArg> = [];
-				while (!match(TClosed)) {
-					if (args.length > 0) eatComma();
-					args.push(parseCustomFilterArg());
-				}
+				final args = parseCustomFilterArgs(true);
 				customFilterRefs.push({
 					name: filterName,
 					argCount: args.length,
@@ -2564,6 +2588,37 @@ class MacroManimParser {
 			default:
 				return error('unknown filter type: ${peek()}');
 		}
+	}
+
+	static function isShaderGround(ts:TileSource):Bool {
+		return ts.match(TSGenerated(ShaderGround(_, _, _, _)));
+	}
+
+	/** A ground's shader is its bitmap's filter: a `filter:` on the bitmap, or on an `apply` in it, would take its place. */
+	function rejectFilterOnGround(node:Node):Void {
+		final target = node.type.match(APPLY) ? node.parent : node;
+		if (target != null && target.type.match(BITMAP(TSGenerated(ShaderGround(_, _, _, _)), _, _)))
+			error('a ground\'s shader is its bitmap\'s filter: a filter: here would take its place (put the ground in a layers() and the filter on that)');
+	}
+
+	/**
+		A filter's arguments up to the closing bracket, by name (`crt(curve: 0.2, scanlines: 0.5)`) or by
+		position, a name after positions. `first`: none read yet (a filter's list); else each follows a comma.
+	**/
+	function parseCustomFilterArgs(first:Bool):Array<CustomFilterArg> {
+		final args:Array<CustomFilterArg> = [];
+		while (!match(TClosed)) {
+			if (!first || args.length > 0) eatComma();
+			var argName:Null<String> = null;
+			if (isNamedParamNext()) {
+				argName = expectIdentifierOrString();
+				expect(TColon);
+			}
+			final arg = parseCustomFilterArg();
+			if (argName != null) arg.name = argName;
+			args.push(arg);
+		}
+		return args;
 	}
 
 	function parseCustomFilterArg():CustomFilterArg {
@@ -2581,6 +2636,11 @@ class MacroManimParser {
 			case TIdentifier(s) if (isKeyword(s, "false") || isKeyword(s, "no")):
 				advance();
 				return {value: RVFloat(0.0), type: CFBool};
+			case TIdentifier(s) if (!isKeyword(s, "callback")):
+				// A word: one of a parameter's choices, or a palette's name (checked against the filter's parameters).
+				// `callback(…)` stays a number, as parseFloatOrReference reads it
+				advance();
+				return {value: RVString(s), type: CFWord};
 			default:
 				return {value: parseFloatOrReference(), type: CFFloat};
 		}
@@ -3218,7 +3278,21 @@ class MacroManimParser {
 			case TIdentifier(s) if (isKeyword(s, "bitmap")):
 				advance();
 				expect(TOpen);
+				groundTileAllowed = true;
 				final ts = parseTileSource();
+				groundTileAllowed = false;
+				if (isShaderGround(ts)) {
+					// A tilegroup bakes its bitmaps' tiles: no filter, so no shader
+					var p = parent;
+					while (p != null) {
+						switch p.type {
+							case TILEGROUP | PROGRAMMABLE(true, _, _):
+								error('generated(shader(…)) cannot be drawn in a tilegroup: its tiles are baked, with no filter to draw the shader');
+							default:
+						}
+						p = p.parent;
+					}
+				}
 				var hAlign:HorizontalAlign = Left;
 				var vAlign:VerticalAlign = Top;
 				if (match(TComma)) {
@@ -5519,6 +5593,7 @@ class MacroManimParser {
 						advance();
 						expect(TColon);
 						if (node == null) error("filter not supported on root");
+						rejectFilterOnGround(node);
 						node.filter = parseFilter();
 						eatSemicolon();
 					} else {

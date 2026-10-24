@@ -164,7 +164,11 @@ class CompletionProvider {
 	}
 
 	static function filterCompletions():Array<LspCompletionItem> {
-		return [for (f in ManimKeywordInfo.completableFilters) kw(ManimKeywordInfo.filterName(f), ManimKeywordInfo.filterDescription(f))];
+		final items = [for (f in ManimKeywordInfo.completableFilters) kw(ManimKeywordInfo.filterName(f), ManimKeywordInfo.filterDescription(f))];
+		// The engine's shaders are filters too (filter: crt(curve: 0.2))
+		for (info in bh.multianim.ShaderCatalog.shaders)
+			items.push(kw(info.name, ManimKeywordInfo.shaderDescription(info)));
+		return items;
 	}
 
 	static function paramTypeCompletions():Array<LspCompletionItem> {

@@ -61,6 +61,8 @@ typedef ManimNeeds = {
 	anims:Array<String>,
 	imports:Map<String, String>,
 	filters:Array<String>,
+	/** The engine's shaders the file uses (`filter: crt(…)`, `generated(shader(water, …))`): built in, so not in `filters`. */
+	shaders:Array<String>,
 	cursors:Array<String>,
 	fromParameters:Bool,
 	sounds:Array<String>,
@@ -144,7 +146,15 @@ class ManimNeedsTools {
 		n.tiles.sort(Reflect.compare);
 		n.fonts.sort(Reflect.compare);
 		n.anims.sort(Reflect.compare);
-		n.filters.sort(Reflect.compare);
+		// The engine's shaders need nothing of the host: listed apart, by the name the catalog writes
+		final shaders:Array<String> = [];
+		for (f in n.filters) {
+			final info = ShaderCatalog.find(f);
+			if (info != null) shaders.push(info.name);
+		}
+		shaders.sort(Reflect.compare);
+		final filters = [for (f in n.filters) if (!ShaderCatalog.isBuiltin(f)) f];
+		filters.sort(Reflect.compare);
 		n.sounds.sort(Reflect.compare);
 		n.music.sort(Reflect.compare);
 		n.soundFiles.sort(Reflect.compare);
@@ -155,7 +165,8 @@ class ManimNeedsTools {
 			fonts: n.fonts,
 			anims: n.anims,
 			imports: imports,
-			filters: n.filters,
+			filters: filters,
+			shaders: shaders,
 			cursors: cursors,
 			fromParameters: n.fromParameters,
 			sounds: n.sounds,
@@ -582,6 +593,7 @@ class ManimNeedsTools {
 					case SolidColorWithText(_, _, _, _, _, font): fontRV(font);
 					case AutotileRegionSheet(_, _, font, _): fontRV(font);
 					case Cross(_, _, _, _) | SolidColor(_, _, _) | AutotileRef(_, _):
+					case ShaderGround(_, _, _, _):
 				}
 			#if (!macro && !noheaps)
 			case TSTile(_):

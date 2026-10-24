@@ -292,7 +292,9 @@ class ManimNeedsTest extends utest.Test {
 				}
 			}
 		');
-		Assert.same(["perlinnoise", "scanlines"], n.filters);
+		// scanlines is one of the engine's shaders: it needs nothing of the host, and is said apart
+		Assert.same(["perlinnoise"], n.filters);
+		Assert.same(["scanlines"], n.shaders);
 	}
 
 	@Test

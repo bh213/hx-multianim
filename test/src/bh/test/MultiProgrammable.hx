@@ -910,4 +910,16 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/165-tilemapFill/tilemapFill.manim", "fillFinal")
 	public var fillFinal;
+
+	@:manim("test/examples/166-shaders/shaders.manim", "shaderInPlace")
+	public var shaderInPlace;
+
+	@:manim("test/examples/166-shaders/shaders.manim", "shaders")
+	public var shaders;
+
+	@:manim("test/examples/166-shaders/shaders.manim", "shaderPalette")
+	public var shaderPalette;
+
+	@:manim("test/examples/166-shaders/shaders.manim", "shaderApply")
+	public var shaderApply;
 }

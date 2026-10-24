@@ -1,0 +1,122 @@
+version: 1.0
+
+#gameboy palette { #0F380F #306230 #8BAC0F #9BBC0F }
+
+// A shader on a thing, set in place by its generated setter, and a ground drawn by one (ShaderTest)
+#shaderInPlace programmable(hit:float=0, speed:float=0.5) {
+	#hero bitmap(generated(color(8, 8, #f00))) {
+		filter: flash(amount: $hit)
+		pos: 0, 0
+	}
+	#sea bitmap(generated(shader(water, 32, 16, speed: $speed))): 10, 0
+}
+
+#mono palette { #000000 #FFFFFF }
+
+// A palette picked by an enum parameter: given by its value's name in both backends (ShaderTest)
+#shaderPalette programmable(pal:[gameboy, mono]=gameboy) {
+	#a bitmap(generated(color(8, 8, #f00))) {
+		filter: paletteLock(palette: $pal)
+		pos: 0, 0
+	}
+}
+
+// An apply's shader is made again when its parameter changes, never set in place, in both backends (ShaderTest)
+#shaderApply programmable(hit:float=0) {
+	apply {
+		filter: flash(amount: $hit)
+	}
+	bitmap(generated(color(8, 8, #f00))): 0, 0
+}
+
+// Every one of the engine's shaders, drawn at a fixed time (test166_Shaders): a picture each, the grounds from nothing
+#shaders programmable() {
+	text(dd, "crt", #cccccc): 10, 10
+	bitmap(generated(colorwithtext(180, 120, #4488ff, "Shader", #ffee88, dd))) {
+		filter: crt(curve: 0.2)
+		pos: 10, 26
+	}
+	text(dd, "scanlines", #cccccc): 220, 10
+	bitmap(generated(colorwithtext(180, 120, #4488ff, "Shader", #ffee88, dd))) {
+		filter: scanlines(strength: 0.6)
+		pos: 220, 26
+	}
+	text(dd, "vignette", #cccccc): 430, 10
+	bitmap(generated(colorwithtext(180, 120, #4488ff, "Shader", #ffee88, dd))) {
+		filter: vignette(strength: 0.9, radius: 0.5)
+		pos: 430, 26
+	}
+	text(dd, "grade", #cccccc): 640, 10
+	bitmap(generated(colorwithtext(180, 120, #4488ff, "Shader", #ffee88, dd))) {
+		filter: grade(saturation: 0.2, tint: #FFC080, tintAmount: 0.5)
+		pos: 640, 26
+	}
+	text(dd, "paletteLock", #cccccc): 850, 10
+	bitmap(generated(colorwithtext(180, 120, #4488ff, "Shader", #ffee88, dd))) {
+		filter: paletteLock(palette: gameboy, dither: 0.5)
+		pos: 850, 26
+	}
+	text(dd, "pixelate", #cccccc): 1060, 10
+	bitmap(generated(colorwithtext(180, 120, #4488ff, "Shader", #ffee88, dd))) {
+		filter: pixelate(size: 8)
+		pos: 1060, 26
+	}
+	text(dd, "dither", #cccccc): 10, 185
+	bitmap(generated(colorwithtext(180, 120, #4488ff, "Shader", #ffee88, dd))) {
+		filter: dither(levels: 3, size: 2)
+		pos: 10, 201
+	}
+	text(dd, "aberration", #cccccc): 220, 185
+	bitmap(generated(colorwithtext(180, 120, #4488ff, "Shader", #ffee88, dd))) {
+		filter: aberration(amount: 4)
+		pos: 220, 201
+	}
+	text(dd, "wave", #cccccc): 430, 185
+	bitmap(generated(colorwithtext(180, 120, #4488ff, "Shader", #ffee88, dd))) {
+		filter: wave(amplitude: 4, frequency: 3)
+		pos: 430, 201
+	}
+	text(dd, "shockwave", #cccccc): 640, 185
+	bitmap(generated(colorwithtext(180, 120, #4488ff, "Shader", #ffee88, dd))) {
+		filter: shockwave(radius: 0.3, strength: 0.08)
+		pos: 640, 201
+	}
+	text(dd, "fog", #cccccc): 850, 185
+	bitmap(generated(colorwithtext(180, 120, #4488ff, "Shader", #ffee88, dd))) {
+		filter: fog(amount: 0.7, scale: 3)
+		pos: 850, 201
+	}
+	text(dd, "flash", #cccccc): 1060, 185
+	bitmap(generated(colorwithtext(180, 120, #4488ff, "Shader", #ffee88, dd))) {
+		filter: flash(amount: 0.6)
+		pos: 1060, 201
+	}
+	text(dd, "dissolve", #cccccc): 10, 360
+	bitmap(generated(colorwithtext(180, 120, #4488ff, "Shader", #ffee88, dd))) {
+		filter: dissolve(amount: 0.4)
+		pos: 10, 376
+	}
+	text(dd, "shimmer", #cccccc): 220, 360
+	bitmap(generated(colorwithtext(180, 120, #4488ff, "Shader", #ffee88, dd))) {
+		filter: shimmer(every: 1)
+		pos: 220, 376
+	}
+	text(dd, "pulse", #cccccc): 430, 360
+	bitmap(generated(colorwithtext(180, 120, #4488ff, "Shader", #ffee88, dd))) {
+		filter: pulse(amount: 0.8, speed: 0.4)
+		pos: 430, 376
+	}
+	text(dd, "silhouette", #cccccc): 640, 360
+	bitmap(generated(colorwithtext(180, 120, #4488ff, "Shader", #ffee88, dd))) {
+		filter: silhouette()
+		pos: 640, 376
+	}
+	text(dd, "water", #cccccc): 850, 360
+	bitmap(generated(shader(water, 180, 120))): 850, 376
+	text(dd, "sky", #cccccc): 1060, 360
+	bitmap(generated(shader(sky, 180, 120, clouds: 0.6))): 1060, 376
+	text(dd, "stars", #cccccc): 10, 535
+	bitmap(generated(shader(stars, 180, 120, density: 0.6))): 10, 551
+	text(dd, "fog ground", #cccccc): 220, 535
+	bitmap(generated(shader(fog, 180, 120, amount: 0.8))): 220, 551
+}

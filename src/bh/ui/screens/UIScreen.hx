@@ -120,6 +120,13 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	 *  playing) as a screen naming another or "none" comes up; a screen naming the same one keeps it,
 	 *  a dialog that says nothing keeps its caller's. Beside the music, not instead of it. */
 	public var screenAmbience:Null<String> = null;
+	/** The shader over the whole stage while this screen shows (`ScreenManager.setStageShader`), or
+	 *  null for the manager's `defaultScreenShader`; `screenShaderOff` shows it with none. A dialog is
+	 *  drawn under its caller's; a master-and-single has the single's. The manager crossfades from one
+	 *  to the next over `screenShaderFade` as the mode changes, so a screen's picture never depends on
+	 *  the way it was reached. */
+	public var screenShader:Null<h2d.filter.Filter> = null;
+	public var screenShaderOff:Bool = false;
 	private var _autoSyncInitialState:Bool = false;
 	var autoSyncInitialState(never, set):Bool;
 	var initialSyncDone:Bool = false;

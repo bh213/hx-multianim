@@ -85,6 +85,7 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.AnimLayersTest());
 		testRunner.addCase(new bh.test.examples.TilemapTest());
 		testRunner.addCase(new bh.test.examples.BuilderUnitTest());
+		testRunner.addCase(new bh.test.examples.ShaderTest());
 		testRunner.addCase(new bh.test.examples.DataTablesTest());
 		testRunner.addCase(new bh.test.examples.AutotileTest());
 		testRunner.addCase(new bh.test.examples.UIComponentTest());

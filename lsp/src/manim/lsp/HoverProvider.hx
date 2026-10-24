@@ -60,6 +60,11 @@ class HoverProvider {
 			}
 		}
 
+		// The engine's shaders, by name in any case
+		final shader = bh.multianim.ShaderCatalog.find(word);
+		if (shader != null)
+			return '**${shader.name}** — ${ManimKeywordInfo.shaderDescription(shader)}';
+
 		// Try param types (from DefinitionType — exhaustive switch)
 		for (defType in ManimKeywordInfo.simpleParamTypes) {
 			if (ManimKeywordInfo.paramTypeName(defType) == word) {

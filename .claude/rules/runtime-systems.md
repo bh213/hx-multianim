@@ -282,7 +282,7 @@ screenManager.reenter(screen, data); // UILeaving then UIEntering(data) to a sho
 - `reenter(screen, ?data)` restarts a screen that stays up (a screen resets itself on `UIEntering`, which `updateScreenMode` does not send to a screen already present). Order: controller `LifecycleControllerFinished`, `UILeaving`, `UIOnControllerEvent(Leaving)`, the screen's tweens cancelled, `UIEntering(data)`, `UIOnControllerEvent(Entering)`, `LifecycleControllerStarted`. The root stays in the scene; mode, input routing and a dialog open over the screen are untouched. Finishes a running transition first; throws if the screen is not showing.
 - DevBridge `get_screen_state` returns the same view by screen name (`base`, `master`, `dialog`, `dialogName`) beside `mode`.
 
-**Disposing:** `screenManager.dispose()` takes the manager's event target off `hxd.Window` (it hears no more input) and, in a dev build, stops its DevBridge; screens, sound and tweens are left alone. A manager never disposed hears every key and click for the life of the window, so a game or test that makes another disposes the old one (tests: dispose in `teardown`).
+**Disposing:** `screenManager.dispose()` takes the manager's event target off `hxd.Window` (it hears no more input) and, in a dev build, stops its DevBridge; its stage shader (`setStageShader`) comes off the stage unless the game put another filter there since; screens, sound and tweens are left alone. A manager never disposed hears every key and click for the life of the window, so a game or test that makes another disposes the old one (tests: dispose in `teardown`).
 
 ## Modal Dialog Overlay
 

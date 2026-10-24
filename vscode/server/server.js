@@ -2150,6 +2150,7 @@ bh_multianim__$MacroManimParser_MacroLexer.prototype = {
 };
 var bh_multianim_MacroManimParser = function(tokens,sourceName,resourceLoader) {
 	this.dataRefs = [];
+	this.groundTileAllowed = false;
 	this.tokens = tokens;
 	this.tpos = 0;
 	this.sourceName = sourceName;
@@ -2299,6 +2300,22 @@ bh_multianim_MacroManimParser.tryStringToColor = function(s) {
 		return -16777216 | colorVal;
 	}
 	return Std.parseInt(s);
+};
+bh_multianim_MacroManimParser.isShaderGround = function(ts) {
+	if(ts._hx_index == 3) {
+		var _g = ts.type;
+		if(_g._hx_index == 5) {
+			var _g1 = _g.name;
+			var _g1 = _g.width;
+			var _g1 = _g.height;
+			var _g1 = _g.args;
+			return true;
+		} else {
+			return false;
+		}
+	} else {
+		return false;
+	}
 };
 bh_multianim_MacroManimParser.rangeStepDirection = function(step) {
 	if(step._hx_index == 2) {
@@ -3864,7 +3881,10 @@ bh_multianim_MacroManimParser.prototype = {
 			if(bh_multianim_MacroManimParser.isKeyword(s,"center")) {
 				this.advance();
 				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
+				var allowed = this.groundTileAllowed;
+				this.groundTileAllowed = false;
 				var inner = this.parseTileSource();
+				this.groundTileAllowed = allowed;
 				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
 				var tmp;
 				if(inner._hx_index == 5) {
@@ -3888,7 +3908,10 @@ bh_multianim_MacroManimParser.prototype = {
 					this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 					var py = this.parseFloat_();
 					this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
+					var allowed = this.groundTileAllowed;
+					this.groundTileAllowed = false;
 					var inner = this.parseTileSource();
+					this.groundTileAllowed = allowed;
 					this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
 					if(px < 0.0 || px > 1.0 || py < 0.0 || py > 1.0) {
 						return this.error("pivot(" + px + ", " + py + ", ...): pivot ratios must be in range 0..1");
@@ -3973,78 +3996,105 @@ bh_multianim_MacroManimParser.prototype = {
 		if(_g._hx_index == 32) {
 			var _g1 = _g.s;
 			var s = _g1;
-			if(bh_multianim_MacroManimParser.isKeyword(s,"cross")) {
+			if(bh_multianim_MacroManimParser.isKeyword(s,"shader")) {
+				if(!this.groundTileAllowed) {
+					this.error("generated(shader(…)) is only a bitmap's own tile, bitmap(generated(shader(water, 320, 180))), its shader the bitmap's filter: not inside center() or pivot() (align with bitmap(…, center)), nor a parameter's value, particles' tiles or a placeholder");
+				}
 				this.advance();
 				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
+				var shaderPos = this.posString();
+				var shaderName = this.expectIdentifierOrString().toLowerCase();
+				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 				var w = this.parseIntegerOrReference();
 				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 				var h = this.parseIntegerOrReference();
-				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
-				var color = this.parseColorOrReference();
-				var thickness = bh_multianim_ReferenceableValue.RVInteger(1);
-				if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
-					thickness = this.parseIntegerOrReference();
+				var args = this.parseCustomFilterArgs(false);
+				var tmp = this.customFilterRefs;
+				var args1 = args.length;
+				var _g = [];
+				var _g2 = 0;
+				while(_g2 < args.length) {
+					var a = args[_g2];
+					++_g2;
+					_g.push(a.type);
 				}
-				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
-				return bh_multianim_GeneratedTileType.Cross(w,h,color,thickness);
+				tmp.push({ name : shaderName, argCount : args1, argTypes : _g, args : args, pos : shaderPos});
+				return bh_multianim_GeneratedTileType.ShaderGround(shaderName,w,h,args);
 			} else {
 				var s = _g1;
-				if(bh_multianim_MacroManimParser.isKeyword(s,"color")) {
+				if(bh_multianim_MacroManimParser.isKeyword(s,"cross")) {
 					this.advance();
 					this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
 					var w = this.parseIntegerOrReference();
 					this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 					var h = this.parseIntegerOrReference();
-					var color = bh_multianim_ReferenceableValue.RVInteger(16711680);
+					this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
+					var color = this.parseColorOrReference();
+					var thickness = bh_multianim_ReferenceableValue.RVInteger(1);
 					if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
-						color = this.parseColorOrReference();
+						thickness = this.parseIntegerOrReference();
 					}
 					this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
-					return bh_multianim_GeneratedTileType.SolidColor(w,h,color);
+					return bh_multianim_GeneratedTileType.Cross(w,h,color,thickness);
 				} else {
 					var s = _g1;
-					if(bh_multianim_MacroManimParser.isKeyword(s,"colorwithtext")) {
+					if(bh_multianim_MacroManimParser.isKeyword(s,"color")) {
 						this.advance();
 						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
 						var w = this.parseIntegerOrReference();
 						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 						var h = this.parseIntegerOrReference();
-						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
-						var color = this.parseColorOrReference();
-						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
-						var text = this.parseAnything();
-						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
-						var textColor = this.parseColorOrReference();
-						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
-						var font = this.parseStringOrReference();
+						var color = bh_multianim_ReferenceableValue.RVInteger(16711680);
+						if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
+							color = this.parseColorOrReference();
+						}
 						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
-						return bh_multianim_GeneratedTileType.SolidColorWithText(w,h,color,text,textColor,font);
+						return bh_multianim_GeneratedTileType.SolidColor(w,h,color);
 					} else {
 						var s = _g1;
-						if(bh_multianim_MacroManimParser.isKeyword(s,"autotile")) {
+						if(bh_multianim_MacroManimParser.isKeyword(s,"colorwithtext")) {
 							this.advance();
 							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
-							var name = this.parseStringOrReference();
+							var w = this.parseIntegerOrReference();
 							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
-							var index = this.parseIntegerOrReference();
+							var h = this.parseIntegerOrReference();
+							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
+							var color = this.parseColorOrReference();
+							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
+							var text = this.parseAnything();
+							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
+							var textColor = this.parseColorOrReference();
+							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
+							var font = this.parseStringOrReference();
 							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
-							return bh_multianim_GeneratedTileType.AutotileRef(name,index);
+							return bh_multianim_GeneratedTileType.SolidColorWithText(w,h,color,text,textColor,font);
 						} else {
 							var s = _g1;
-							if(bh_multianim_MacroManimParser.isKeyword(s,"autotileregionsheet")) {
+							if(bh_multianim_MacroManimParser.isKeyword(s,"autotile")) {
 								this.advance();
 								this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
 								var name = this.parseStringOrReference();
 								this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
-								var atScale = this.parseAnything();
-								this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
-								var font = this.parseStringOrReference();
-								this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
-								var fontColor = this.parseColorOrReference();
+								var index = this.parseIntegerOrReference();
 								this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
-								return bh_multianim_GeneratedTileType.AutotileRegionSheet(name,atScale,font,fontColor);
+								return bh_multianim_GeneratedTileType.AutotileRef(name,index);
 							} else {
-								return this.error("unknown generated tile type");
+								var s = _g1;
+								if(bh_multianim_MacroManimParser.isKeyword(s,"autotileregionsheet")) {
+									this.advance();
+									this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
+									var name = this.parseStringOrReference();
+									this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
+									var atScale = this.parseAnything();
+									this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
+									var font = this.parseStringOrReference();
+									this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
+									var fontColor = this.parseColorOrReference();
+									this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
+									return bh_multianim_GeneratedTileType.AutotileRegionSheet(name,atScale,font,fontColor);
+								} else {
+									return this.error("unknown generated tile type");
+								}
 							}
 						}
 					}
@@ -5147,13 +5197,7 @@ bh_multianim_MacroManimParser.prototype = {
 																var filterPos = this.posString();
 																this.advance();
 																this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
-																var args = [];
-																while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TClosed)) {
-																	if(args.length > 0) {
-																		this.eatComma();
-																	}
-																	args.push(this.parseCustomFilterArg());
-																}
+																var args = this.parseCustomFilterArgs(true);
 																var tmp = this.customFilterRefs;
 																var args1 = args.length;
 																var _g = [];
@@ -5182,6 +5226,58 @@ bh_multianim_MacroManimParser.prototype = {
 			return this.error("unknown filter type: " + Std.string(this.tokens[this.tpos].type));
 		}
 	}
+	,rejectFilterOnGround: function(node) {
+		var target = node.type._hx_index == 16 ? node.parent : node;
+		var tmp;
+		if(target != null) {
+			var _g = target.type;
+			if(_g._hx_index == 2) {
+				var _g1 = _g.tileSource;
+				var _g2 = _g.hAlign;
+				var _g2 = _g.vAlign;
+				if(_g1._hx_index == 3) {
+					var _g = _g1.type;
+					if(_g._hx_index == 5) {
+						var _g1 = _g.name;
+						var _g1 = _g.width;
+						var _g1 = _g.height;
+						var _g1 = _g.args;
+						tmp = true;
+					} else {
+						tmp = false;
+					}
+				} else {
+					tmp = false;
+				}
+			} else {
+				tmp = false;
+			}
+		} else {
+			tmp = false;
+		}
+		if(tmp) {
+			this.error("a ground's shader is its bitmap's filter: a filter: here would take its place (put the ground in a layers() and the filter on that)");
+		}
+	}
+	,parseCustomFilterArgs: function(first) {
+		var args = [];
+		while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TClosed)) {
+			if(!first || args.length > 0) {
+				this.eatComma();
+			}
+			var argName = null;
+			if(this.isNamedParamNext()) {
+				argName = this.expectIdentifierOrString();
+				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+			}
+			var arg = this.parseCustomFilterArg();
+			if(argName != null) {
+				arg.name = argName;
+			}
+			args.push(arg);
+		}
+		return args;
+	}
 	,parseCustomFilterArg: function() {
 		var _g = this.tokens[this.tpos].type;
 		switch(_g._hx_index) {
@@ -5204,7 +5300,13 @@ bh_multianim_MacroManimParser.prototype = {
 					this.advance();
 					return { value : bh_multianim_ReferenceableValue.RVFloat(0.0), type : bh_multianim_CustomFilterArgType.CFBool};
 				} else {
-					return { value : this.parseFloatOrReference(), type : bh_multianim_CustomFilterArgType.CFFloat};
+					var s = _g1;
+					if(!bh_multianim_MacroManimParser.isKeyword(s,"callback")) {
+						this.advance();
+						return { value : bh_multianim_ReferenceableValue.RVString(s), type : bh_multianim_CustomFilterArgType.CFWord};
+					} else {
+						return { value : this.parseFloatOrReference(), type : bh_multianim_CustomFilterArgType.CFFloat};
+					}
 				}
 			}
 			break;
@@ -6221,7 +6323,29 @@ bh_multianim_MacroManimParser.prototype = {
 			if(bh_multianim_MacroManimParser.isKeyword(s,"bitmap")) {
 				this.advance();
 				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
+				this.groundTileAllowed = true;
 				var ts = this.parseTileSource();
+				this.groundTileAllowed = false;
+				if(bh_multianim_MacroManimParser.isShaderGround(ts)) {
+					var p = parent;
+					while(p != null) {
+						var _g = p.type;
+						switch(_g._hx_index) {
+						case 9:
+							var _g2 = _g.parameters;
+							var _g3 = _g.paramOrder;
+							if(_g.isTileGroup == true) {
+								this.error("generated(shader(…)) cannot be drawn in a tilegroup: its tiles are baked, with no filter to draw the shader");
+							}
+							break;
+						case 10:
+							this.error("generated(shader(…)) cannot be drawn in a tilegroup: its tiles are baked, with no filter to draw the shader");
+							break;
+						default:
+						}
+						p = p.parent;
+					}
+				}
 				var hAlign = bh_multianim_HorizontalAlign.Left;
 				var vAlign = bh_multianim_VerticalAlign.Top;
 				if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
@@ -9342,6 +9466,7 @@ bh_multianim_MacroManimParser.prototype = {
 													if(node == null) {
 														this.error("filter not supported on root");
 													}
+													this.rejectFilterOnGround(node);
 													node.filter = this.parseFilter();
 													this.eatSemicolon();
 												} else {
@@ -14825,6 +14950,18 @@ bh_multianim_ManimKeywordInfo.filterDescription = function(type) {
 		return "Custom registered filter";
 	}
 };
+bh_multianim_ManimKeywordInfo.shaderDescription = function(info) {
+	var _g = [];
+	var _g1 = 0;
+	var _g2 = info.params;
+	while(_g1 < _g2.length) {
+		var p = _g2[_g1];
+		++_g1;
+		_g.push(p.name);
+	}
+	var params = _g.join(", ");
+	return "Shader (" + info.places.join(" or ") + "): " + info.says + ". " + info.name + "(" + params + "), each by name or position" + (info.time ? "; moves with the game's clock" : "");
+};
 bh_multianim_ManimKeywordInfo.transitionName = function(type) {
 	switch(type._hx_index) {
 	case 0:
@@ -15369,8 +15506,9 @@ var bh_multianim_GeneratedTileType = $hxEnums["bh.multianim.GeneratedTileType"] 
 	,SolidColorWithText: ($_=function(width,height,color,text,textColor,font) { return {_hx_index:2,width:width,height:height,color:color,text:text,textColor:textColor,font:font,__enum__:"bh.multianim.GeneratedTileType",toString:$estr}; },$_._hx_name="SolidColorWithText",$_.__params__ = ["width","height","color","text","textColor","font"],$_)
 	,AutotileRef: ($_=function(autotileName,index) { return {_hx_index:3,autotileName:autotileName,index:index,__enum__:"bh.multianim.GeneratedTileType",toString:$estr}; },$_._hx_name="AutotileRef",$_.__params__ = ["autotileName","index"],$_)
 	,AutotileRegionSheet: ($_=function(autotileName,scale,font,fontColor) { return {_hx_index:4,autotileName:autotileName,scale:scale,font:font,fontColor:fontColor,__enum__:"bh.multianim.GeneratedTileType",toString:$estr}; },$_._hx_name="AutotileRegionSheet",$_.__params__ = ["autotileName","scale","font","fontColor"],$_)
+	,ShaderGround: ($_=function(name,width,height,args) { return {_hx_index:5,name:name,width:width,height:height,args:args,__enum__:"bh.multianim.GeneratedTileType",toString:$estr}; },$_._hx_name="ShaderGround",$_.__params__ = ["name","width","height","args"],$_)
 };
-bh_multianim_GeneratedTileType.__constructs__ = [bh_multianim_GeneratedTileType.Cross,bh_multianim_GeneratedTileType.SolidColor,bh_multianim_GeneratedTileType.SolidColorWithText,bh_multianim_GeneratedTileType.AutotileRef,bh_multianim_GeneratedTileType.AutotileRegionSheet];
+bh_multianim_GeneratedTileType.__constructs__ = [bh_multianim_GeneratedTileType.Cross,bh_multianim_GeneratedTileType.SolidColor,bh_multianim_GeneratedTileType.SolidColorWithText,bh_multianim_GeneratedTileType.AutotileRef,bh_multianim_GeneratedTileType.AutotileRegionSheet,bh_multianim_GeneratedTileType.ShaderGround];
 var bh_multianim_TileSource = $hxEnums["bh.multianim.TileSource"] = { __ename__:true,__constructs__:null
 	,TSFile: ($_=function(filename) { return {_hx_index:0,filename:filename,__enum__:"bh.multianim.TileSource",toString:$estr}; },$_._hx_name="TSFile",$_.__params__ = ["filename"],$_)
 	,TSSheet: ($_=function(sheet,name) { return {_hx_index:1,sheet:sheet,name:name,__enum__:"bh.multianim.TileSource",toString:$estr}; },$_._hx_name="TSSheet",$_.__params__ = ["sheet","name"],$_)
@@ -15512,8 +15650,11 @@ var bh_multianim_CustomFilterArgType = $hxEnums["bh.multianim.CustomFilterArgTyp
 	,CFFloat: {_hx_name:"CFFloat",_hx_index:0,__enum__:"bh.multianim.CustomFilterArgType",toString:$estr}
 	,CFColor: {_hx_name:"CFColor",_hx_index:1,__enum__:"bh.multianim.CustomFilterArgType",toString:$estr}
 	,CFBool: {_hx_name:"CFBool",_hx_index:2,__enum__:"bh.multianim.CustomFilterArgType",toString:$estr}
+	,CFInt: {_hx_name:"CFInt",_hx_index:3,__enum__:"bh.multianim.CustomFilterArgType",toString:$estr}
+	,CFWord: {_hx_name:"CFWord",_hx_index:4,__enum__:"bh.multianim.CustomFilterArgType",toString:$estr}
+	,CFPalette: {_hx_name:"CFPalette",_hx_index:5,__enum__:"bh.multianim.CustomFilterArgType",toString:$estr}
 };
-bh_multianim_CustomFilterArgType.__constructs__ = [bh_multianim_CustomFilterArgType.CFFloat,bh_multianim_CustomFilterArgType.CFColor,bh_multianim_CustomFilterArgType.CFBool];
+bh_multianim_CustomFilterArgType.__constructs__ = [bh_multianim_CustomFilterArgType.CFFloat,bh_multianim_CustomFilterArgType.CFColor,bh_multianim_CustomFilterArgType.CFBool,bh_multianim_CustomFilterArgType.CFInt,bh_multianim_CustomFilterArgType.CFWord,bh_multianim_CustomFilterArgType.CFPalette];
 var bh_multianim_PixelOutlineModeDef = $hxEnums["bh.multianim.PixelOutlineModeDef"] = { __ename__:true,__constructs__:null
 	,POKnockout: ($_=function(color,knockout) { return {_hx_index:0,color:color,knockout:knockout,__enum__:"bh.multianim.PixelOutlineModeDef",toString:$estr}; },$_._hx_name="POKnockout",$_.__params__ = ["color","knockout"],$_)
 	,POInlineColor: ($_=function(color,inlineColor) { return {_hx_index:1,color:color,inlineColor:inlineColor,__enum__:"bh.multianim.PixelOutlineModeDef",toString:$estr}; },$_._hx_name="POInlineColor",$_.__params__ = ["color","inlineColor"],$_)
@@ -15554,6 +15695,40 @@ bh_multianim_ParseUtils.toInt = function(s) {
 		return tmp;
 	} else {
 		throw haxe_Exception.thrown("expected integer, got \"" + s + "\"");
+	}
+};
+var bh_multianim_ShaderCatalog = function() { };
+bh_multianim_ShaderCatalog.__name__ = true;
+bh_multianim_ShaderCatalog.find = function(name) {
+	var lower = name.toLowerCase();
+	var _g = 0;
+	var _g1 = bh_multianim_ShaderCatalog.shaders;
+	while(_g < _g1.length) {
+		var shader = _g1[_g];
+		++_g;
+		if(shader.name.toLowerCase() == lower) {
+			return shader;
+		}
+	}
+	return null;
+};
+bh_multianim_ShaderCatalog.isBuiltin = function(name) {
+	return bh_multianim_ShaderCatalog.find(name) != null;
+};
+bh_multianim_ShaderCatalog.typeName = function(type) {
+	switch(type._hx_index) {
+	case 0:
+		return "float";
+	case 1:
+		return "color";
+	case 2:
+		return "bool";
+	case 3:
+		return "int";
+	case 4:
+		return "word";
+	case 5:
+		return "palette";
 	}
 };
 var bh_multianim_TextMarkupConverter = function() { };
@@ -18138,7 +18313,15 @@ manim_lsp_CompletionProvider.filterCompletions = function() {
 		++_g1;
 		_g.push(manim_lsp_CompletionProvider.kw(bh_multianim_ManimKeywordInfo.filterName(f),bh_multianim_ManimKeywordInfo.filterDescription(f)));
 	}
-	return _g;
+	var items = _g;
+	var _g = 0;
+	var _g1 = bh_multianim_ShaderCatalog.shaders;
+	while(_g < _g1.length) {
+		var info = _g1[_g];
+		++_g;
+		items.push(manim_lsp_CompletionProvider.kw(info.name,bh_multianim_ManimKeywordInfo.shaderDescription(info)));
+	}
+	return items;
 };
 manim_lsp_CompletionProvider.paramTypeCompletions = function() {
 	var _g = [];
@@ -18587,6 +18770,10 @@ manim_lsp_HoverProvider.lookupKeyword = function(word) {
 		if(bh_multianim_ManimKeywordInfo.filterName(filterType) == word) {
 			return "**" + word + "** filter — " + bh_multianim_ManimKeywordInfo.filterDescription(filterType);
 		}
+	}
+	var shader = bh_multianim_ShaderCatalog.find(word);
+	if(shader != null) {
+		return "**" + shader.name + "** — " + bh_multianim_ManimKeywordInfo.shaderDescription(shader);
 	}
 	var _g = 0;
 	var _g1 = bh_multianim_ManimKeywordInfo.simpleParamTypes;
@@ -19720,6 +19907,8 @@ bh_multianim_ManimKeywordInfo.allTransitions = [bh_multianim_TransitionType.Tran
 bh_multianim_ManimKeywordInfo.allEasings = [bh_multianim_EasingType.Linear,bh_multianim_EasingType.EaseInQuad,bh_multianim_EasingType.EaseOutQuad,bh_multianim_EasingType.EaseInOutQuad,bh_multianim_EasingType.EaseInCubic,bh_multianim_EasingType.EaseOutCubic,bh_multianim_EasingType.EaseInOutCubic,bh_multianim_EasingType.EaseInBack,bh_multianim_EasingType.EaseOutBack,bh_multianim_EasingType.EaseInOutBack,bh_multianim_EasingType.EaseOutBounce,bh_multianim_EasingType.EaseOutElastic];
 bh_multianim_ManimKeywordInfo.allPathCommands = [bh_multianim_ParsedPaths.MoveTo(null,null),bh_multianim_ParsedPaths.LineTo(null,null),bh_multianim_ParsedPaths.Forward(null),bh_multianim_ParsedPaths.TurnDegrees(null),bh_multianim_ParsedPaths.Checkpoint(""),bh_multianim_ParsedPaths.Bezier3To(null,null,null,null,null),bh_multianim_ParsedPaths.Arc(null,null),bh_multianim_ParsedPaths.Close,bh_multianim_ParsedPaths.Spiral(null,null,null),bh_multianim_ParsedPaths.Wave(null,null,null)];
 bh_multianim_ManimKeywordInfo.allCurveOps = [bh_multianim_CurveOperation.Multiply(null),bh_multianim_CurveOperation.Compose("",""),bh_multianim_CurveOperation.Invert(""),bh_multianim_CurveOperation.Scale("",null)];
+bh_multianim_ShaderCatalog.SWEETIE_16 = [1711148,6104925,11615827,15695191,16764277,11006064,3716964,2453881,2700911,3890633,4302582,7598071,16053492,9744578,5663878,3357783];
+bh_multianim_ShaderCatalog.shaders = [{ name : "crt", places : ["screen"], says : "An old television: the picture curved, scan lines, dark corners, colours a little apart, a faint flicker", time : true, params : [{ name : "curve", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 0.12, min : 0, max : 0.5, step : 0.01, label : "Curve"},{ name : "scanlines", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 0.35, min : 0, max : 1, step : 0.01, label : "Scan lines"},{ name : "lineSize", type : bh_multianim_CustomFilterArgType.CFInt, defaultValue : 3, min : 2, max : 8, step : 1, unit : "px", label : "Line spacing"},{ name : "vignette", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 0.35, min : 0, max : 1, step : 0.01, label : "Dark corners"},{ name : "shift", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 1, min : 0, max : 4, step : 0.1, unit : "px", label : "Colour shift"},{ name : "flicker", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 0.03, min : 0, max : 0.3, step : 0.01, label : "Flicker"}]},{ name : "scanlines", places : ["screen"], says : "Dark lines across the picture, as a screen's rows", time : false, params : [{ name : "strength", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 0.3, min : 0, max : 1, step : 0.01, label : "Strength"},{ name : "spacing", type : bh_multianim_CustomFilterArgType.CFInt, defaultValue : 3, min : 2, max : 8, step : 1, unit : "px", label : "Spacing"}]},{ name : "vignette", places : ["screen"], says : "The edges darkened, the middle left as it is", time : false, params : [{ name : "strength", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 0.45, min : 0, max : 1, step : 0.01, label : "Strength"},{ name : "radius", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 0.75, min : 0.2, max : 1.5, step : 0.01, label : "Radius"},{ name : "softness", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 0.45, min : 0.05, max : 1, step : 0.01, label : "Softness"},{ name : "color", type : bh_multianim_CustomFilterArgType.CFColor, defaultValue : 0, label : "Colour"}]},{ name : "grade", places : ["screen","thing"], says : "The colours graded: brighter or darker, more or less contrast and colour, a tint over all", time : false, params : [{ name : "brightness", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 1, min : 0, max : 2, step : 0.01, label : "Brightness"},{ name : "contrast", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 1, min : 0, max : 2, step : 0.01, label : "Contrast"},{ name : "saturation", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 1, min : 0, max : 2, step : 0.01, label : "Colour"},{ name : "tint", type : bh_multianim_CustomFilterArgType.CFColor, defaultValue : 16777215, label : "Tint"},{ name : "tintAmount", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 0, min : 0, max : 1, step : 0.01, label : "Tint amount"}]},{ name : "paletteLock", places : ["screen"], says : "Every colour held to a palette, the nearest of its colours, dithered if asked", time : false, params : [{ name : "palette", type : bh_multianim_CustomFilterArgType.CFPalette, defaultValue : bh_multianim_ShaderCatalog.SWEETIE_16, label : "Palette"},{ name : "dither", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 0, min : 0, max : 1, step : 0.01, label : "Dither"}]},{ name : "pixelate", places : ["screen","thing"], says : "Big pixels: the picture drawn in blocks", time : false, params : [{ name : "size", type : bh_multianim_CustomFilterArgType.CFInt, defaultValue : 4, min : 1, max : 32, step : 1, unit : "px", label : "Block size"}]},{ name : "dither", places : ["screen"], says : "Fewer colours, the steps between them dithered in a pattern", time : false, params : [{ name : "levels", type : bh_multianim_CustomFilterArgType.CFInt, defaultValue : 4, min : 2, max : 16, step : 1, label : "Levels a colour"},{ name : "size", type : bh_multianim_CustomFilterArgType.CFInt, defaultValue : 1, min : 1, max : 4, step : 1, unit : "px", label : "Pattern size"}]},{ name : "aberration", places : ["screen"], says : "The colours split apart towards the edges, as a cheap lens", time : false, params : [{ name : "amount", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 2, min : 0, max : 8, step : 0.1, unit : "px", label : "Amount"},{ name : "angle", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 0, min : 0, max : 360, step : 1, unit : "°", label : "Angle"}]},{ name : "wave", places : ["screen","thing"], says : "The picture waving: heat haze, under water", time : true, params : [{ name : "amplitude", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 2, min : 0, max : 16, step : 0.1, unit : "px", label : "Amplitude"},{ name : "frequency", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 4, min : 0.5, max : 20, step : 0.1, label : "Waves across"},{ name : "speed", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 1, min : 0, max : 10, step : 0.1, label : "Speed"}]},{ name : "shockwave", places : ["screen"], says : "A ring that bends what is under it, from a point outwards (move its radius from the game)", time : false, params : [{ name : "x", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 0.5, min : 0, max : 1, step : 0.01, label : "Centre, across"},{ name : "y", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 0.5, min : 0, max : 1, step : 0.01, label : "Centre, down"},{ name : "radius", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 0.3, min : 0, max : 1.5, step : 0.01, label : "Radius"},{ name : "thickness", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 0.08, min : 0.01, max : 0.5, step : 0.01, label : "Thickness"},{ name : "strength", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 0.04, min : 0, max : 0.2, step : 0.005, label : "Strength"}]},{ name : "fog", places : ["screen","ground"], says : "Fog or smoke drifting over the picture, or drawn on its own as a ground", time : true, params : [{ name : "color", type : bh_multianim_CustomFilterArgType.CFColor, defaultValue : 13160664, label : "Colour"},{ name : "amount", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 0.5, min : 0, max : 1, step : 0.01, label : "Amount"},{ name : "scale", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 6, min : 1, max : 40, step : 0.5, label : "Size"},{ name : "speed", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 0.2, min : 0, max : 2, step : 0.01, label : "Speed"}]},{ name : "flash", places : ["thing"], says : "The thing flashed with a colour: a hit (move its amount from the game)", time : false, params : [{ name : "color", type : bh_multianim_CustomFilterArgType.CFColor, defaultValue : 16777215, label : "Colour"},{ name : "amount", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 0, min : 0, max : 1, step : 0.01, label : "Amount"}]},{ name : "dissolve", places : ["thing"], says : "The thing breaking up into grains, a burning edge at the front (move its amount from 0 to 1)", time : false, params : [{ name : "amount", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 0, min : 0, max : 1, step : 0.01, label : "Amount"},{ name : "edge", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 0.06, min : 0, max : 0.3, step : 0.01, label : "Edge width"},{ name : "edgeColor", type : bh_multianim_CustomFilterArgType.CFColor, defaultValue : 16747040, label : "Edge colour"},{ name : "grain", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 3, min : 1, max : 32, step : 0.5, unit : "px", label : "Grain size"},{ name : "seed", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 0, min : 0, max : 100, step : 1, label : "Seed"}]},{ name : "shimmer", places : ["thing"], says : "A glint sweeping across the thing now and then: a pickup", time : true, params : [{ name : "color", type : bh_multianim_CustomFilterArgType.CFColor, defaultValue : 16777215, label : "Colour"},{ name : "strength", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 0.6, min : 0, max : 1, step : 0.01, label : "Strength"},{ name : "width", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 0.15, min : 0.02, max : 0.6, step : 0.01, label : "Width"},{ name : "every", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 2, min : 0.3, max : 10, step : 0.1, unit : "s", label : "Every"}]},{ name : "pulse", places : ["thing"], says : "The thing glowing with a colour and fading, again and again: something live", time : true, params : [{ name : "color", type : bh_multianim_CustomFilterArgType.CFColor, defaultValue : 16777215, label : "Colour"},{ name : "amount", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 0.35, min : 0, max : 1, step : 0.01, label : "Amount"},{ name : "speed", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 1, min : 0.1, max : 8, step : 0.1, unit : "/s", label : "Pulses a second"}]},{ name : "silhouette", places : ["thing"], says : "The thing as a flat shape of one colour: behind a wall, not known yet", time : false, params : [{ name : "color", type : bh_multianim_CustomFilterArgType.CFColor, defaultValue : 2105384, label : "Colour"},{ name : "amount", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 1, min : 0, max : 1, step : 0.01, label : "Amount"}]},{ name : "water", places : ["ground"], says : "Water: ripples between a deep and a shallow colour, moving", time : true, params : [{ name : "deep", type : bh_multianim_CustomFilterArgType.CFColor, defaultValue : 1789834, label : "Deep"},{ name : "shallow", type : bh_multianim_CustomFilterArgType.CFColor, defaultValue : 4171734, label : "Shallow"},{ name : "scale", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 24, min : 4, max : 128, step : 1, unit : "px", label : "Ripple size"},{ name : "speed", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 0.6, min : 0, max : 4, step : 0.05, label : "Speed"}]},{ name : "sky", places : ["ground"], says : "A sky from a top colour to a bottom one, with clouds drifting", time : true, params : [{ name : "top", type : bh_multianim_CustomFilterArgType.CFColor, defaultValue : 3829413, label : "Top"},{ name : "bottom", type : bh_multianim_CustomFilterArgType.CFColor, defaultValue : 12575743, label : "Bottom"},{ name : "clouds", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 0.4, min : 0, max : 1, step : 0.01, label : "Clouds"},{ name : "scale", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 96, min : 16, max : 512, step : 1, unit : "px", label : "Cloud size"},{ name : "speed", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 0.1, min : 0, max : 2, step : 0.01, label : "Speed"}]},{ name : "stars", places : ["ground"], says : "A starfield on black, twinkling and drifting", time : true, params : [{ name : "density", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 0.25, min : 0, max : 1, step : 0.01, label : "Density"},{ name : "twinkle", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 0.5, min : 0, max : 1, step : 0.01, label : "Twinkle"},{ name : "speed", type : bh_multianim_CustomFilterArgType.CFFloat, defaultValue : 0.1, min : 0, max : 2, step : 0.01, label : "Drift"},{ name : "color", type : bh_multianim_CustomFilterArgType.CFColor, defaultValue : 329228, label : "Background"}]}];
 bh_stateanim_AnimKeywordInfo.all = [new bh_stateanim_AnimKeywordInfo("sheet",bh_stateanim_AnimKeywordContext.AKTopLevel,"Sprite sheet name","sheet: "),new bh_stateanim_AnimKeywordInfo("states",bh_stateanim_AnimKeywordContext.AKTopLevel,"State variable declaration: `states: stateName(value1, value2)`","states: "),new bh_stateanim_AnimKeywordInfo("center",bh_stateanim_AnimKeywordContext.AKTopLevel,"Default center point: `center: x,y`","center: "),new bh_stateanim_AnimKeywordInfo("fps",bh_stateanim_AnimKeywordContext.AKTopLevel,"Default frames per second","fps: "),new bh_stateanim_AnimKeywordInfo("loop",bh_stateanim_AnimKeywordContext.AKTopLevel,"Default loop count. `yes` = forever, number = N times","loop: "),new bh_stateanim_AnimKeywordInfo("flipX",bh_stateanim_AnimKeywordContext.AKTopLevel,"Default horizontal flip (yes/no)","flipX: yes"),new bh_stateanim_AnimKeywordInfo("flipY",bh_stateanim_AnimKeywordContext.AKTopLevel,"Default vertical flip (yes/no)","flipY: yes"),new bh_stateanim_AnimKeywordInfo("allowedExtraPoints",bh_stateanim_AnimKeywordContext.AKTopLevel,"Declare valid extra point names for validation"),new bh_stateanim_AnimKeywordInfo("animation",bh_stateanim_AnimKeywordContext.AKTopLevel,"Named animation definition with playlist, extrapoints, and filters","animation ${1:name} {\n\t$0\n}",true),new bh_stateanim_AnimKeywordInfo("anim",bh_stateanim_AnimKeywordContext.AKTopLevel,"One-liner animation shorthand: `anim name(fps:N, loop:yes): \"sheetName\"`","anim ${1:name}(fps:${2:20}): \"${3:sheetName}\""),new bh_stateanim_AnimKeywordInfo("layers",bh_stateanim_AnimKeywordContext.AKTopLevel,"The file's layers, drawn bottom first: `layers: shadow, body, hat`. Before animations","layers: "),new bh_stateanim_AnimKeywordInfo("metadata",bh_stateanim_AnimKeywordContext.AKTopLevel,"Typed key-value pairs (int, float, string, color, [list of words]). Supports state conditionals","metadata {\n\t$0\n}",true),new bh_stateanim_AnimKeywordInfo("sounds",bh_stateanim_AnimKeywordContext.AKTopLevel,"The sound each event plays, by the screen manager's audio: `sounds { fire: \"fx.shot\" }`; `hold thrust: \"fx.engine\"` a sound held while that animation plays. Before animations","sounds {\n\t${1:event}: \"${2:block.sound}\"\n\t$0\n}",true),new bh_stateanim_AnimKeywordInfo("fps",bh_stateanim_AnimKeywordContext.AKAnimationBody,"Frames per second","fps: "),new bh_stateanim_AnimKeywordInfo("loop",bh_stateanim_AnimKeywordContext.AKAnimationBody,"Loop count (yes = forever)","loop: "),new bh_stateanim_AnimKeywordInfo("playlist",bh_stateanim_AnimKeywordContext.AKAnimationBody,"Frame playlist","playlist {\n\tsheet: \"${1:name}\"\n\t$0\n}",true),new bh_stateanim_AnimKeywordInfo("extrapoints",bh_stateanim_AnimKeywordContext.AKAnimationBody,"Named points for effects/interactions. Supports state conditionals","extrapoints {\n\t$0\n}",true),new bh_stateanim_AnimKeywordInfo("filters",bh_stateanim_AnimKeywordContext.AKAnimationBody,"Per-animation filter block with state conditionals","filters {\n\t$0\n}",true),new bh_stateanim_AnimKeywordInfo("flipX",bh_stateanim_AnimKeywordContext.AKAnimationBody,"Horizontal flip (yes/no)","flipX: yes"),new bh_stateanim_AnimKeywordInfo("flipY",bh_stateanim_AnimKeywordContext.AKAnimationBody,"Vertical flip (yes/no)","flipY: yes"),new bh_stateanim_AnimKeywordInfo("layer",bh_stateanim_AnimKeywordContext.AKAnimationBody,"A layer's frames, in place of a playlist: `layer hat @(hat != none) { sheet: \"hat_walk\" }`","layer ${1:name} {\n\tsheet: \"${2:name}\"\n\t$0\n}",true),new bh_stateanim_AnimKeywordInfo("timeline",bh_stateanim_AnimKeywordContext.AKAnimationBody,"The layer whose frames, durations and events are the animation's (default: the first in `layers:` order)","timeline: "),new bh_stateanim_AnimKeywordInfo("sheet",bh_stateanim_AnimKeywordContext.AKPlaylistBody,"Sheet name. Supports `${stateName}` interpolation","sheet: \""),new bh_stateanim_AnimKeywordInfo("event",bh_stateanim_AnimKeywordContext.AKPlaylistBody,"Trigger event: `event <name> trigger | random x,y,radius | x,y`"),new bh_stateanim_AnimKeywordInfo("filter",bh_stateanim_AnimKeywordContext.AKPlaylistBody,"Per-frame filter change"),new bh_stateanim_AnimKeywordInfo("blend",bh_stateanim_AnimKeywordContext.AKPlaylistBody,"In a layer block: how it is drawn, `blend: add` (alpha, add, multiply, screen, …)","blend: "),new bh_stateanim_AnimKeywordInfo("offset",bh_stateanim_AnimKeywordContext.AKPlaylistBody,"After a `sheet:` or `file:` line: its frames drawn this many pixels over, `offset: x, y`","offset: "),new bh_stateanim_AnimKeywordInfo("tint",bh_stateanim_AnimKeywordContext.AKFilterBody,"Tint filter: `tint: #RRGGBB`","tint: "),new bh_stateanim_AnimKeywordInfo("brightness",bh_stateanim_AnimKeywordContext.AKFilterBody,"Brightness filter: `brightness: 0.0-1.0`","brightness: "),new bh_stateanim_AnimKeywordInfo("saturate",bh_stateanim_AnimKeywordContext.AKFilterBody,"Saturation filter","saturate: "),new bh_stateanim_AnimKeywordInfo("grayscale",bh_stateanim_AnimKeywordContext.AKFilterBody,"Grayscale filter","grayscale: "),new bh_stateanim_AnimKeywordInfo("hue",bh_stateanim_AnimKeywordContext.AKFilterBody,"Hue rotation filter","hue: "),new bh_stateanim_AnimKeywordInfo("outline",bh_stateanim_AnimKeywordContext.AKFilterBody,"Outline filter: `outline: size, #color`","outline: "),new bh_stateanim_AnimKeywordInfo("pixelOutline",bh_stateanim_AnimKeywordContext.AKFilterBody,"Pixel outline filter: `pixelOutline: #color`","pixelOutline: "),new bh_stateanim_AnimKeywordInfo("replaceColor",bh_stateanim_AnimKeywordContext.AKFilterBody,"Color replacement: `replaceColor: [#src] => [#dst]`","replaceColor: "),new bh_stateanim_AnimKeywordInfo("none",bh_stateanim_AnimKeywordContext.AKFilterBody,"Clear filters"),new bh_stateanim_AnimKeywordInfo("@(",bh_stateanim_AnimKeywordContext.AKConditional,"Conditional: `@(state=>value)`","@(${1:state}=>${2:value}) "),new bh_stateanim_AnimKeywordInfo("@else",bh_stateanim_AnimKeywordContext.AKConditional,"Else branch"),new bh_stateanim_AnimKeywordInfo("@else(",bh_stateanim_AnimKeywordContext.AKConditional,"Else-if with condition","@else(${1:state}=>${2:value}) "),new bh_stateanim_AnimKeywordInfo("@default",bh_stateanim_AnimKeywordContext.AKConditional,"Default fallback"),new bh_stateanim_AnimKeywordInfo("@final",bh_stateanim_AnimKeywordContext.AKConditional,"Named constant","@final ${1:NAME} = ${2:value}"),new bh_stateanim_AnimKeywordInfo("@name(",bh_stateanim_AnimKeywordContext.AKConditional,"Annotation for tools, before an animation or at the top level: `@from(\"walk.png\", grid: 32)`. Kept, never acted on","@${1:name}(${2:value}) ")];
 bh_stateanim__$AnimParser_AnimLexerHC.keywordMap = (function($this) {
 	var $r;

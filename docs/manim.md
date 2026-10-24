@@ -1049,6 +1049,9 @@ Filters can be applied to any visual element. Most parameters support expression
 * `glow(color, alpha, [radius], [gain], [quality], [smoothColor], [knockout])`
 * `group(filter1, filter2, ...)`
 * Custom filters registered via `FilterManager.registerFilter(name, paramDefs, factory)` — see below
+* The engine's shaders, written the same way (`crt(curve: 0.2)`, `dissolve(amount: $t)`, a ground with
+  `generated(shader(water, w, h))`, a whole stage with `ScreenManager.setStageShader`): see Shaders in
+  `manim-reference.md`, and `bh.multianim.ShaderCatalog` for every parameter
 
 **Examples:**
 ```

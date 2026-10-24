@@ -672,7 +672,7 @@ class ProgrammableCodeGen {
 			}
 
 			if (rootNode.filter != null) {
-				final filterExpr = generateFilterExpr(rootNode.filter, pos);
+				final filterExpr = generateFilterExpr(rootNode.filter, pos, macro $rootTargetExpr.filter);
 				if (filterExpr != null) {
 					final filterUpdateExpr = macro $rootTargetExpr.filter = $filterExpr;
 					constructorExprs.push(filterUpdateExpr);
@@ -2307,9 +2307,9 @@ class ProgrammableCodeGen {
 
 		// Filters
 		if (node.filter != null) {
-			final filterExpr = generateFilterExpr(node.filter, pos);
+			final fieldRef = macro $p{["this", fieldName]};
+			final filterExpr = generateFilterExpr(node.filter, pos, macro $fieldRef.filter);
 			if (filterExpr != null) {
-				final fieldRef = macro $p{["this", fieldName]};
 				ctorExprs.push(macro $fieldRef.filter = $filterExpr);
 
 				// Filter expression updates: if filter has $param references, update on setter calls
@@ -7207,7 +7207,7 @@ class ProgrammableCodeGen {
 				expressionUpdates.push({fieldName: metaField, updateExpr: tintUpdateExpr, paramRefs: tintRefs});
 		}
 
-		// Filter
+		// Filter: made again on a change, never set in place — the parent's own filter may be what is there (as the builder's apply)
 		if (node.filter != null) {
 			final filterExpr = generateFilterExpr(node.filter, pos);
 			if (filterExpr != null) {
@@ -7418,6 +7418,35 @@ class ProgrammableCodeGen {
 			siblings.push({node: node, fieldName: ""});
 	}
 
+	/** A custom filter's or a ground's arguments as the array `FilterManager` takes: each value, its type as written, its name when given by one.
+	 *  An enum parameter's value goes as its index and as its name (`word`), so a word or palette parameter
+	 *  is given the name, as the builder's `resolveAsString` gives it. */
+	static function customFilterArgsExpr(args:Array<CustomFilterArg>, pos:Position):Expr {
+		final argExprs:Array<Expr> = [];
+		for (a in args) {
+			final valExpr = rvToExpr(a.value);
+			final typeExpr = switch a.type {
+				case CFFloat: macro bh.multianim.MultiAnimParser.CustomFilterArgType.CFFloat;
+				case CFColor: macro bh.multianim.MultiAnimParser.CustomFilterArgType.CFColor;
+				case CFBool: macro bh.multianim.MultiAnimParser.CustomFilterArgType.CFBool;
+				case CFInt: macro bh.multianim.MultiAnimParser.CustomFilterArgType.CFInt;
+				case CFWord: macro bh.multianim.MultiAnimParser.CustomFilterArgType.CFWord;
+				case CFPalette: macro bh.multianim.MultiAnimParser.CustomFilterArgType.CFPalette;
+			};
+			final fields:Array<ObjectField> = [
+				{field: "value", expr: macro($valExpr : Dynamic)},
+				{field: "type", expr: typeExpr},
+			];
+			final argName = a.name;
+			if (argName != null)
+				fields.push({field: "name", expr: macro $v{argName}});
+			if (isStringOrEnumRV(a.value) && !isStringRV(a.value))
+				fields.push({field: "word", expr: rvToExpr(a.value, true)});
+			argExprs.push({expr: EObjectDecl(fields), pos: pos});
+		}
+		return {expr: EArrayDecl(argExprs), pos: pos};
+	}
+
 	static function generateBitmapCreate(node:Node, fieldName:String, tileSource:TileSource, hAlign:HorizontalAlign, vAlign:VerticalAlign, pos:Position):CreateResult {
 		final tileExpr = tileSourceToExpr(tileSource);
 		final fieldRef = macro $p{["this", fieldName]};
@@ -7438,20 +7467,31 @@ class ProgrammableCodeGen {
 			default: macro 0.0;
 		};
 
+		// A ground drawn by a shader: the bitmap is given it as its filter, set in place on a change
+		final groundExpr:Null<Expr> = switch tileSource {
+			case TSGenerated(ShaderGround(name, _, _, args)):
+				final argsArr = customFilterArgsExpr(args, pos);
+				macro $fieldRef.filter = bh.base.FilterManager.groundFilterIn($fieldRef.filter, $v{name}, $argsArr,
+					(n:String) -> this._pb.paletteColors(n));
+			default: null;
+		};
+
 		{
 			final block:Array<Expr> = [macro var tile = $tileExpr];
 			block.push(macro $fieldRef = new h2d.Bitmap(tile.sub(0, 0, tile.width, tile.height, $dxExpr, $dyExpr)));
+			if (groundExpr != null) block.push(groundExpr);
 			createExprs.push(macro $b{block});
 		}
 
 		final tileRefs = collectTileSourceParamRefs(tileSource);
 		if (tileRefs.length > 0) {
+			final update:Array<Expr> = [];
+			update.push(macro var tile = $tileExpr);
+			update.push(macro $fieldRef.tile = tile.sub(0, 0, tile.width, tile.height, $dxExpr, $dyExpr));
+			if (groundExpr != null) update.push(groundExpr);
 			exprUpdates.push({
 				fieldName: fieldName,
-				updateExpr: macro {
-					var tile = $tileExpr;
-					$fieldRef.tile = tile.sub(0, 0, tile.width, tile.height, $dxExpr, $dyExpr);
-				},
+				updateExpr: macro $b{update},
 				paramRefs: tileRefs,
 			});
 		}
@@ -8767,6 +8807,9 @@ class ProgrammableCodeGen {
 					case SolidColorWithText(w, h, color, text, textColor, font):
 						collectParamRefsImpl(w, refs); collectParamRefsImpl(h, refs); collectParamRefsImpl(color, refs);
 						collectParamRefsImpl(text, refs); collectParamRefsImpl(textColor, refs); collectParamRefsImpl(font, refs);
+					case ShaderGround(_, w, h, args):
+						collectParamRefsImpl(w, refs); collectParamRefsImpl(h, refs);
+						for (a in args) collectParamRefsImpl(a.value, refs);
 					default:
 				}
 			case TSReference(ref):
@@ -8995,6 +9038,11 @@ class ProgrammableCodeGen {
 							if (fc >>> 24 == 0) fc |= 0xFF000000;
 							this._pb.getAutotileRegionSheetTile($nameExpr, $scaleExpr, $fontExpr, fc);
 						};
+					case ShaderGround(_, w, h, _):
+						// The shader draws the picture (generateBitmapCreate gives it): the tile only gives the size
+						final wExpr = rvToExprInt(w);
+						final hExpr = rvToExprInt(h);
+						macro bh.base.HeapsUtils.solidTile(0xFFFFFFFF, $wExpr, $hExpr);
 					default:
 						macro this._pb.loadTileFile("placeholder.png");
 				};
@@ -9935,7 +9983,10 @@ class ProgrammableCodeGen {
 		}
 	}
 
-	static function generateFilterExpr(filter:FilterType, pos:Position):Null<Expr> {
+	/** A filter as an expression. `previous`: where the filter already is, so a shader of the same name
+	 *  there is set in place on a `$param`'s change (`FilterManager.customFilterIn`); none for an apply
+	 *  (conditional or not), where the parent's own filter may be what is there. */
+	static function generateFilterExpr(filter:FilterType, pos:Position, ?previous:Expr):Null<Expr> {
 		return switch (filter) {
 			case FilterNone: null;
 			case FilterGroup(filters):
@@ -10047,19 +10098,12 @@ class ProgrammableCodeGen {
 				final dstArr:Expr = {expr: EArrayDecl(dstExprs), pos: pos};
 				macro bh.base.filters.ReplacePaletteShader.createAsColorsFilter($srcArr, $dstArr);
 			case FilterCustom(name, args):
-				// Generate runtime call to FilterManager — custom filters are resolved at runtime only
-				final argExprs:Array<Expr> = [];
-				for (a in args) {
-					final valExpr = rvToExpr(a.value);
-					final typeExpr = switch a.type {
-						case CFFloat: macro bh.multianim.MultiAnimParser.CustomFilterArgType.CFFloat;
-						case CFColor: macro bh.multianim.MultiAnimParser.CustomFilterArgType.CFColor;
-						case CFBool: macro bh.multianim.MultiAnimParser.CustomFilterArgType.CFBool;
-					};
-					argExprs.push(macro {value: $valExpr, type: $typeExpr});
-				}
-				final argsArr:Expr = {expr: EArrayDecl(argExprs), pos: pos};
-				macro bh.base.FilterManager.buildCustomFilter($v{name}, $argsArr);
+				// Generate runtime call to FilterManager — custom filters and the engine's shaders are resolved at runtime only
+				final argsArr = customFilterArgsExpr(args, pos);
+				final palette = macro (n:String) -> this._pb.paletteColors(n);
+				previous != null
+					? macro bh.base.FilterManager.customFilterIn($previous, $v{name}, $argsArr, $palette)
+					: macro bh.base.FilterManager.buildCustomFilter($v{name}, $argsArr, $palette);
 		};
 	}
 

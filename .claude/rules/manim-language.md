@@ -140,6 +140,20 @@ Works on discrete param types — `enum`, `int`, `uint`, `range`, `string` (quot
 
 `outline`, `glow`, `blur`, `saturate`, `brightness`, `grayscale`, `hue`, `dropShadow`, `replacePalette`, `replaceColor`, `pixelOutline`, `group`, custom filters via `FilterManager`
 
+### Shaders
+
+The engine's shaders are filters by name (`ShaderCatalog`: crt, scanlines, vignette, grade,
+paletteLock, pixelate, dither, aberration, wave, shockwave, fog, flash, dissolve, shimmer, pulse,
+silhouette, water, sky, stars): `filter: crt(curve: 0.2, lineSize: 4)`, args by name or position,
+defaults for the rest; a colour by name too (`vignette(color: black)`); an enum `$param` to a
+word/palette parameter is its value's name. A `$param` sets the uniform in place
+(`EngineShaderFilter.setParams`), never makes the filter again (but an `apply`'s filter and one in a
+`group` are made again). A ground: `bitmap(generated(shader(water, 320, 180, speed: 0.4)))` — only a
+bitmap's own tile (not in `center()`/`pivot()`, a param value, a tilegroup), no `filter:` on it or an
+`apply` in it (parse errors; wrap in `layers()` for one). Over the
+whole stage: `ScreenManager.setStageShader(filter, fade)`. Time: `ShaderClock` (advanced by
+`ScreenManager.update(dt)`; `fixed` for captures). Docs: manim-reference.md, Shaders.
+
 ### Custom Filters
 
 Register custom filters from game code, use them in `.manim` by name:

@@ -708,6 +708,8 @@ enum GeneratedTileType {
 	SolidColorWithText(width:ReferenceableValue, height:ReferenceableValue, color:ReferenceableValue, text:ReferenceableValue, textColor:ReferenceableValue, font:ReferenceableValue);
 	AutotileRef(autotileName:ReferenceableValue, index:ReferenceableValue);  // Resolved tile for autotile index (0-12 cross, 0-46 blob47, 0-15 corner)
 	AutotileRegionSheet(autotileName:ReferenceableValue, scale:ReferenceableValue, font:ReferenceableValue, fontColor:ReferenceableValue);  // Shows entire region with numbered grid overlay
+	/** A ground drawn by a shader from nothing (`generated(shader(water, 320, 180, speed: 0.4))`): a plain tile of that size, the bitmap that shows it given the shader as its filter. */
+	ShaderGround(name:String, width:ReferenceableValue, height:ReferenceableValue, args:Array<CustomFilterArg>);
 }
 
 @:nullSafety
@@ -1359,12 +1361,20 @@ enum CustomFilterArgType {
 	CFFloat;
 	CFColor;
 	CFBool;
+	/** A whole number: written as a number, taken as an `Int`. */
+	CFInt;
+	/** A word written bare (`mode: soft`): one of a parameter's `choices`, taken as a `String`. */
+	CFWord;
+	/** A palette of the file, by its name written bare (`palette: gameboy`): taken as its colours, an `Array<Int>`. */
+	CFPalette;
 }
 
 @:nullSafety
 typedef CustomFilterArg = {
 	value:ReferenceableValue,
 	type:CustomFilterArgType,
+	/** The parameter it is given to, when written by name (`crt(curve: 0.2)`); by position when none. */
+	?name:String,
 };
 
 @:nullSafety

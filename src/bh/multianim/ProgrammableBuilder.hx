@@ -191,6 +191,11 @@ class ProgrammableBuilder {
 		return getBuilder().importedBuilder(externalRef);
 	}
 
+	/** A palette's colours, by its name: what a shader holding a picture to a palette is given (`paletteLock(palette: name)`). */
+	public function paletteColors(paletteName:String):Array<Int> {
+		return getBuilder().getPalette(paletteName).colorList();
+	}
+
 	/** Build a palette replace filter via the builder (for FilterPaletteReplace) */
 	public function buildPaletteReplaceFilter(paletteName:String, sourceRow:Int, replacementRow:Int):h2d.filter.Filter {
 		var palette = getBuilder().getPalette(paletteName);

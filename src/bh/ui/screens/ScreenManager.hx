@@ -120,6 +120,18 @@ class ScreenManager {
 	var modalOverlay:Null<h2d.Bitmap> = null;
 	var modalOverlayTargetAlpha:Float = 0.0;
 	var modalOverlayBlurTargets:Array<{root:h2d.Object, saved:Null<h2d.filter.Filter>}> = [];
+	/** The shader over the whole stage, or none: `setStageShader`. */
+	public var stageShader(default, null):Null<h2d.filter.Filter> = null;
+	/** The shader a screen that says none of its own shows under (`UIScreenBase.screenShader`). */
+	public var defaultScreenShader:Null<h2d.filter.Filter> = null;
+	/** Seconds one screen's shader gives way to the next's in. */
+	public var screenShaderFade:Float = 0.25;
+	/** Set once a screen or the default has said a shader: from then on every mode change puts the
+	 *  screens' own on, none included. Before, the stage's shader is left to the game. */
+	var screenShadersUsed = false;
+	var stageFade:Null<bh.base.filters.StageFade> = null;
+	var stageFadeLeft:Float = 0;
+	var stageFadeLength:Float = 0;
 	final sceneLayers:{content:Int, master:Int, overlay:Int, dialog:Int};
 	#if MULTIANIM_DEV
 	var hotReloadRegistry:bh.multianim.dev.HotReload.ReloadableRegistry = new bh.multianim.dev.HotReload.ReloadableRegistry();
@@ -160,9 +172,11 @@ class ScreenManager {
 	}
 
 	/** Done with this manager: it no longer hears the window's input nor watches its files for hot
-	 *  reload and, in a dev build, its DevBridge stops. Screens, sound and tweens are left as they are. */
+	 *  reload, its stage shader comes off the stage (a filter the game put there since is left) and, in
+	 *  a dev build, its DevBridge stops. Screens, sound and tweens are left as they are. */
 	public function dispose():Void {
 		handler.dispose();
+		takeStageShaderOff();
 		// A disposed manager reloads nothing: the files it watched are watched no more
 		for (resource in watchedResources)
 			resource.watch(null);
@@ -252,9 +266,52 @@ class ScreenManager {
 			audio.playAmbience(ambience);
 	}
 
+	/** The shader a mode is shown under: a dialog its caller's, a master-and-single the single's, a
+	 *  screen its own, else the default; none for a screen that says it is off. */
+	function screenShaderFor(screenMode:ScreenManagerMode):Null<h2d.filter.Filter> {
+		function of(screen:UIScreen):Null<h2d.filter.Filter> {
+			if (!Std.isOfType(screen, UIScreenBase))
+				return defaultScreenShader;
+			final base:UIScreenBase = cast screen;
+			if (base.screenShaderOff)
+				return null;
+			return base.screenShader ?? defaultScreenShader;
+		}
+		return switch screenMode {
+			case None: null;
+			case Single(single): of(single);
+			case MasterAndSingle(_, single): of(single);
+			case Dialog(_, _, previousMode, _): screenShaderFor(previousMode);
+		};
+	}
+
+	/** As the mode changes: the screens' shader put on over the stage, crossfaded from the one before. */
+	function applyScreenShader(newMode:ScreenManagerMode):Void {
+		final wanted = screenShaderFor(newMode);
+		if (!screenShadersUsed) {
+			if (wanted == null && !hasScreenShaders(newMode))
+				return;
+			screenShadersUsed = true;
+		}
+		if (wanted != stageShader)
+			setStageShader(wanted, screenShaderFade);
+	}
+
+	function hasScreenShaders(screenMode:ScreenManagerMode):Bool {
+		if (defaultScreenShader != null)
+			return true;
+		return switch screenMode {
+			case Single(s) | MasterAndSingle(_, s): Std.isOfType(s, UIScreenBase) && (cast(s, UIScreenBase).screenShader != null
+					|| cast(s, UIScreenBase).screenShaderOff);
+			case Dialog(_, _, previousMode, _): hasScreenShaders(previousMode);
+			case None: false;
+		};
+	}
+
 	function notifyScreenChange(previousMode:ScreenManagerMode, newMode:ScreenManagerMode,
 			entering:Null<Array<UIScreen>>, leaving:Null<Array<UIScreen>>):Void {
 		applyScreenAudio(newMode);
+		applyScreenShader(newMode);
 		if (screenChangeListeners.length == 0) return;
 		var action = switch newMode {
 			case Dialog(_, _, _, _): "dialog_open";
@@ -374,8 +431,62 @@ class ScreenManager {
 
 	public dynamic function onReload(?resource:hxd.res.Resource) {}
 
+	/**
+		A shader over the whole stage, every screen and dialog drawn under it, or none (null): one of
+		the engine's (`FilterManager.buildCustomFilter("crt", [{name: "curve", value: 0.2}])`), a
+		game's own, or any filter. It takes the place of the one there over `fade` seconds of the
+		game's time, the two drawn and mixed, so a screen gives way to the next with its look; 0 is at
+		once. The stage's filter (`app.s2d.filter`) is the manager's while one is set.
+	**/
+	public function setStageShader(filter:Null<h2d.filter.Filter>, fade:Float = 0.25):Void {
+		final previous = stageShader;
+		if (filter == previous && stageFade == null)
+			return;
+		stageShader = filter;
+		if (fade <= 0 || previous == filter) {
+			stageFade = null;
+			setSceneFilter(filter);
+			return;
+		}
+		final mix = new bh.base.filters.StageFade(previous, filter);
+		stageFade = mix;
+		stageFadeLeft = fade;
+		stageFadeLength = fade;
+		setSceneFilter(mix);
+	}
+
+	function stepStageFade(dt:Float):Void {
+		final mix = stageFade;
+		if (mix == null)
+			return;
+		stageFadeLeft -= dt;
+		if (stageFadeLeft <= 0) {
+			stageFade = null;
+			setSceneFilter(stageShader);
+			return;
+		}
+		mix.t = 1 - stageFadeLeft / stageFadeLength;
+	}
+
+	@:nullSafety(Off)
+	function setSceneFilter(filter:Null<h2d.filter.Filter>):Void {
+		app.s2d.filter = filter;
+	}
+
+	@:nullSafety(Off)
+	function takeStageShaderOff():Void {
+		final on = app.s2d.filter;
+		if (on != null && (on == stageShader || on == stageFade))
+			app.s2d.filter = null;
+		stageShader = null;
+		stageFade = null;
+	}
+
 	public function update(dt:Float):Void {
 		fitModalOverlayToScene();
+		// Shaders move by the game's own time: the dt it gives, slowed or stopped as it is
+		bh.base.ShaderClock.advance(dt);
+		stepStageFade(dt);
 		tweens.update(dt);
 		audio.update(dt);
 		#if MULTIANIM_DEV

@@ -230,6 +230,13 @@ class ManimKeywordInfo {
 		};
 	}
 
+	/** One of the engine's shaders in a line: where it goes, what it does, and how it is written with its parameters by name. */
+	public static function shaderDescription(info:ShaderCatalog.ShaderInfo):String {
+		final params = [for (p in info.params) p.name].join(", ");
+		return 'Shader (${info.places.join(" or ")}): ${info.says}. ${info.name}($params), each by name or position'
+			+ (info.time ? "; moves with the game's clock" : "");
+	}
+
 	public static final completableFilters:Array<FilterType> = [
 		FilterOutline(null, null), FilterGlow(null, null, null, null, null, false, false),
 		FilterBlur(null, null, null, null), FilterSaturate(null), FilterBrightness(null),

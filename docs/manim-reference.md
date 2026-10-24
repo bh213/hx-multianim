@@ -130,6 +130,7 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `generated(colorwithtext(w, h, color, text, textColor, font))` | Colored rect with text label |
 | `generated(autotile(name, index))` | Resolved tile of an autotile definition |
 | `generated(autotileRegionSheet(name, scale, font, color))` | `file:` autotile region with source indices overlaid (debug) |
+| `generated(shader(name, w, h, args…))` | A ground drawn by a shader (`water`, `sky`, `stars`, `fog`, or any): a `w`×`h` tile, the bitmap given the shader as its filter (see Shaders) |
 | `$variable` | Tile from parameter or iterator variable |
 | `center(source)` | Set tile pivot to center (0.5, 0.5) — shorthand for `pivot(0.5, 0.5, source)`. Nested pivot/center rejected at parse time |
 | `pivot(x, y, source)` | Set tile pivot point (0–1 ratio, validated at parse time). Overrides bitmap's hAlign/vAlign. Nested pivot/center rejected at parse time |
@@ -658,6 +659,76 @@ Slots with parameters support visual states via conditionals. `slotContent` mark
 | `group(filter1, filter2, ...)` | Combine multiple filters |
 | `none` | No filter / remove inherited filter |
 | `customName(args...)` | Custom filter registered via `FilterManager` |
+| `crt(…)`, `vignette(…)`, `dissolve(…)`, … | One of the engine's shaders (below) |
+
+### Shaders
+
+The engine has shaders built in, written as filters: `filter: crt(curve: 0.15, scanlines: 0.4)`.
+Their descriptions (where each goes, what it does, each parameter's type, default, range, step,
+unit and label) are `bh.multianim.ShaderCatalog`, with no Heaps, for tools; the shaders are
+`bh.base.shaders.BuiltinShaders`. A game may not register a filter of the same name.
+
+- **Arguments by name or by position** (`crt(0.2, lineSize: 4)`): every parameter left out takes its
+  default; a name the shader has not, a parameter given twice, or one by position after one by
+  name is an error. Custom filters take names the same way. A colour is `#RRGGBB`, `0x…` or a
+  colour's name written bare (`vignette(color: black)`); an enum `$param` given to a word or palette
+  parameter is its value's name (`paletteLock(palette: $pal)`, `pal:[gameboy, mono]`), in both backends.
+- **Three places.** On a thing (`flash`, `dissolve`, …: the element's `filter:`); over the whole
+  stage (`ScreenManager.setStageShader(FilterManager.buildCustomFilter("crt", []), 0.25)`: every
+  screen and dialog under it, the one before crossfaded out over the seconds given); a **ground**
+  drawn from nothing, `bitmap(generated(shader(water, 320, 180, speed: 0.4)))`: a plain tile of that
+  size, the bitmap given the shader as its filter. So a `filter:` on it, or on an `apply` in it, is a
+  parse error (put the ground in a `layers()` and the filter on that), and it is only a bitmap's own
+  tile: inside `center()`/`pivot()` (align with `bitmap(…, center)`), as a parameter's value,
+  particles' tiles, a placeholder or in a `tilegroup` (baked, no filter) it is a parse error.
+- **A screen's own.** `screen.screenShader = filter` (or `screenShaderOff = true`) on a `UIScreenBase`,
+  and `screenManager.defaultScreenShader` for a screen that says none: the manager puts the screens'
+  shader on as the mode changes, crossfaded over `screenShaderFade` seconds; a dialog is drawn under
+  its caller's, a master-and-single under the single's. A game none of whose screens says one keeps
+  the stage shader it set itself.
+- **All off at once**: `EngineShaderFilter.off = true` draws every shader filter as if it were not
+  there (a game seen without its shaders).
+- **Set in place.** A `$param` in a shader's arguments (`flash(amount: $hit)`) writes the shader's
+  uniforms when it changes, in an incremental build and in codegen alike: the filter is not made
+  again (`FilterManager.customFilterIn`, `EngineShaderFilter.setParams`). Inside a `group(…)`, and as
+  an `apply`'s filter (the parent's own may be what is there, kept to be put back), it is made again.
+- **A disposed manager** (`ScreenManager.dispose()`) takes its stage shader off the stage; a filter
+  the game put there since is left.
+- **Time** is `bh.base.ShaderClock`: `ScreenManager.update(dt)` advances it by the `dt` it is given,
+  so a game that slows or stops its `dt` slows or stops its shaders; `ShaderClock.fixed = t` holds
+  every shader at one time (a capture to compare). Nothing sets a shader's time by hand.
+- **Noise** is a hash of arithmetic (`fract`, `dot`), so a shader draws alike on every GPU.
+- **A game's own shader** extends `bh.base.filters.EngineScreenShader` (it is given `texture`, `size`
+  and `time`, and writes `pixelColor` from `calculatedUV`; the picture is premultiplied) and is
+  registered as a filter whose factory returns `EngineShaderFilter.of(name, shader, apply, params)`:
+  set in place and moved by the clock as the engine's are.
+
+| Shader | Where | What | Parameters (default) |
+|---|---|---|---|
+| `crt` | screen | An old television: the picture curved, scan lines, dark corners, colours a little apart, a faint flicker. Moves with the clock. | `curve` 0–0.5 (0.12), `scanlines` 0–1 (0.35), `lineSize` int 2–8 (3), `vignette` 0–1 (0.35), `shift` 0–4 (1), `flicker` 0–0.3 (0.03) |
+| `scanlines` | screen | Dark lines across the picture, as a screen's rows | `strength` 0–1 (0.3), `spacing` int 2–8 (3) |
+| `vignette` | screen | The edges darkened, the middle left as it is | `strength` 0–1 (0.45), `radius` 0.2–1.5 (0.75), `softness` 0.05–1 (0.45), `color` colour (#000000) |
+| `grade` | screen, thing | The colours graded: brighter or darker, more or less contrast and colour, a tint over all | `brightness` 0–2 (1), `contrast` 0–2 (1), `saturation` 0–2 (1), `tint` colour (#FFFFFF), `tintAmount` 0–1 (0) |
+| `paletteLock` | screen | Every colour held to a palette, the nearest of its colours, dithered if asked | `palette` palette (Sweetie 16 when none is given), `dither` 0–1 (0) |
+| `pixelate` | screen, thing | Big pixels: the picture drawn in blocks | `size` int 1–32 (4) |
+| `dither` | screen | Fewer colours, the steps between them dithered in a pattern | `levels` int 2–16 (4), `size` int 1–4 (1) |
+| `aberration` | screen | The colours split apart towards the edges, as a cheap lens | `amount` 0–8 (2), `angle` 0–360 (0) |
+| `wave` | screen, thing | The picture waving: heat haze, under water. Moves with the clock. | `amplitude` 0–16 (2), `frequency` 0.5–20 (4), `speed` 0–10 (1) |
+| `shockwave` | screen | A ring that bends what is under it, from a point outwards (move its radius from the game) | `x` 0–1 (0.5), `y` 0–1 (0.5), `radius` 0–1.5 (0.3), `thickness` 0.01–0.5 (0.08), `strength` 0–0.2 (0.04) |
+| `fog` | screen, ground | Fog or smoke drifting over the picture, or drawn on its own as a ground. Moves with the clock. | `color` colour (#C8D0D8), `amount` 0–1 (0.5), `scale` 1–40 (6), `speed` 0–2 (0.2) |
+| `flash` | thing | The thing flashed with a colour: a hit (move its amount from the game) | `color` colour (#FFFFFF), `amount` 0–1 (0) |
+| `dissolve` | thing | The thing breaking up into grains, a burning edge at the front (move its amount from 0 to 1) | `amount` 0–1 (0), `edge` 0–0.3 (0.06), `edgeColor` colour (#FF8A20), `grain` 1–32 (3), `seed` 0–100 (0) |
+| `shimmer` | thing | A glint sweeping across the thing now and then: a pickup. Moves with the clock. | `color` colour (#FFFFFF), `strength` 0–1 (0.6), `width` 0.02–0.6 (0.15), `every` 0.3–10 (2) |
+| `pulse` | thing | The thing glowing with a colour and fading, again and again: something live. Moves with the clock. | `color` colour (#FFFFFF), `amount` 0–1 (0.35), `speed` 0.1–8 (1) |
+| `silhouette` | thing | The thing as a flat shape of one colour: behind a wall, not known yet | `color` colour (#202028), `amount` 0–1 (1) |
+| `water` | ground | Water: ripples between a deep and a shallow colour, moving. Moves with the clock. | `deep` colour (#1B4F8A), `shallow` colour (#3FA7D6), `scale` 4–128 (24), `speed` 0–4 (0.6) |
+| `sky` | ground | A sky from a top colour to a bottom one, with clouds drifting. Moves with the clock. | `top` colour (#3A6EA5), `bottom` colour (#BFE3FF), `clouds` 0–1 (0.4), `scale` 16–512 (96), `speed` 0–2 (0.1) |
+| `stars` | ground | A starfield on black, twinkling and drifting. Moves with the clock. | `density` 0–1 (0.25), `twinkle` 0–1 (0.5), `speed` 0–2 (0.1), `color` colour (#05060C) |
+
+Parameter types beyond `CFFloat`, `CFColor` and `CFBool`: `CFInt` (a number, taken whole), `CFWord`
+(a bare word, one of the parameter's `choices`) and `CFPalette` (a palette of the file by its name,
+taken as its colours). A parameter's `min`, `max`, `step`, `unit`, `label` and `choices` are for a
+tool's controls (`FilterParamDef`, which is `ShaderCatalog.ShaderParamInfo`).
 
 ### Custom Filters
 
@@ -680,7 +751,7 @@ filter: perlinNoise(42.0, 8.0, 0.6)
 filter: group(perlinNoise(42.0, 12.0, 0.8), outline(1, #000000))
 ```
 
-**Parameter types:** `CFFloat`, `CFColor` (hex colors), `CFBool` (true/false). Parameters support `$param` references. Extra args beyond the schema are ignored; missing args use defaults (or throw if no default). Filter names are case-insensitive and cannot shadow built-in filter names.
+**Parameter types:** `CFFloat`, `CFColor` (hex colors), `CFBool` (true/false), `CFInt`, `CFWord`, `CFPalette` (see Shaders). Parameters support `$param` references. Arguments go by position or by name (`perlinNoise(scale: 8)`); more than the schema has is an error; missing args use defaults (or throw if no default). Filter names are case-insensitive and cannot shadow built-in filter names or the engine's shaders. A factory that returns an `EngineShaderFilter` is set in place when a `$param` changes.
 
 **Validation:** `FilterManager.validateCustomFilters(parseResult.customFilterRefs)` checks all custom filter references against the registry. Called automatically by `MultiAnimBuilder` and `DevBridge.eval_manim`.
 

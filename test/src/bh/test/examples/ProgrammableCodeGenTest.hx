@@ -36,6 +36,12 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		return new bh.test.MultiProgrammable(TestResourceLoader.createLoader(false));
 	}
 
+	// After each test, its capture taken (utest runs it once an async test resolves): a fixed
+	// shader time (test166) holds no later test
+	function teardown():Void {
+		bh.base.ShaderClock.fixed = null;
+	}
+
 	// ==================== Button: unit tests ====================
 
 	@Test
@@ -1564,6 +1570,15 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	@Test
 	public function test157_NinePatchModes(async:utest.Async):Void {
 		simpleMacroTest(157, "ninePatchModes", () -> createMp().ninePatchModes.create(), async);
+	}
+
+	// ==================== Shaders: every one of the engine's, at a fixed time ====================
+
+	@Test
+	public function test166_Shaders(async:utest.Async):Void {
+		// A moving shader draws the same each run: the time a capture is taken at
+		bh.base.ShaderClock.fixed = 1.25;
+		simpleMacroTest(166, "shaders", () -> createMp().shaders.create(), async, null, null, 1.0);
 	}
 
 	@Test
