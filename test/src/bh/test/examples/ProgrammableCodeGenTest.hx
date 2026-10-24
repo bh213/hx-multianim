@@ -1578,7 +1578,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	public function test166_Shaders(async:utest.Async):Void {
 		// A moving shader draws the same each run: the time a capture is taken at
 		bh.base.ShaderClock.fixed = 1.25;
-		simpleMacroTest(166, "shaders", () -> createMp().shaders.create(), async, null, null, 1.0);
+		// 0.9999: CI's software renderer (llvmpipe) lights a few one-pixel stars a little differently (7 of 921600)
+		simpleMacroTest(166, "shaders", () -> createMp().shaders.create(), async, null, null, 1.0, 0.9999);
 	}
 
 	@Test

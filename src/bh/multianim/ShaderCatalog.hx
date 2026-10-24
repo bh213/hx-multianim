@@ -39,7 +39,7 @@ typedef ShaderInfo = {
 	Each is a filter, written as one: `filter: crt(curve: 0.15, scanlines: 0.4)`, by name or by
 	position, every parameter left out at its default. `time` is never a parameter: a shader that
 	moves is given the game's clock (`bh.base.ShaderClock`). Their noise is arithmetic, never `sin`
-	of a large number, so they draw alike on every GPU.
+	of a large number, so they draw near alike on every GPU (a software renderer differs in a few pixels).
 **/
 class ShaderCatalog {
 	/**

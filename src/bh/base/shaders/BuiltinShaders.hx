@@ -10,7 +10,8 @@ import bh.base.filters.EngineShaderFilter;
 	leaves out from there before `make` is called, so `make` is always given them all.
 
 	Every shader reads a premultiplied picture (Heaps' filters draw colour times alpha) and writes one.
-	Their noise is a hash of arithmetic, never `sin` of a large number, so it draws alike on every GPU.
+	Their noise is a hash of arithmetic, never `sin` of a large number, so it draws near alike on every
+	GPU (a software renderer differs in a few pixels).
 **/
 class BuiltinShaders {
 	/** A built-in shader's filter with its first values, or null when the name is none of them. **/

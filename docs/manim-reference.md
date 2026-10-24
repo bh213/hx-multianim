@@ -697,7 +697,8 @@ unit and label) are `bh.multianim.ShaderCatalog`, with no Heaps, for tools; the 
 - **Time** is `bh.base.ShaderClock`: `ScreenManager.update(dt)` advances it by the `dt` it is given,
   so a game that slows or stops its `dt` slows or stops its shaders; `ShaderClock.fixed = t` holds
   every shader at one time (a capture to compare). Nothing sets a shader's time by hand.
-- **Noise** is a hash of arithmetic (`fract`, `dot`), so a shader draws alike on every GPU.
+- **Noise** is a hash of arithmetic (`fract`, `dot`), so a shader draws near alike on every GPU (a
+  software renderer differs in a few pixels: compare captures with a threshold, as test 166 does).
 - **A game's own shader** extends `bh.base.filters.EngineScreenShader` (it is given `texture`, `size`
   and `time`, and writes `pixelColor` from `calculatedUV`; the picture is premultiplied) and is
   registered as a filter whose factory returns `EngineShaderFilter.of(name, shader, apply, params)`:
