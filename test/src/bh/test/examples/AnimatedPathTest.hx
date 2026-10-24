@@ -35,6 +35,109 @@ class AnimatedPathTest extends BuilderTestBase {
 		return new Curve(null, Linear);
 	}
 
+	// ==================== PingPong reversed-cycle consistency ====================
+
+	@Test
+	public function testPingPongDistanceModeSpeedCurveFollowsPathPosition():Void {
+		// The speed curve maps PATH RATE -> speed multiplier, exactly like the
+		// scale/alpha/rotation slots, which are all evaluated at the mirrored
+		// (position) rate during reversed cycles. The speed curve must follow the
+		// same convention: entering the reversed cycle at path position ~1.0 must
+		// use the multiplier at rate ~1.0, not the multiplier at forward progress ~0.
+		var path = createLinePath(); // 100 px
+		var ap = new AnimatedPath(path, Distance(100.0));
+		ap.pingPong = true;
+		// Asymmetric speed curve: 0.5 at rate 0 -> 1.0 at rate 1.
+		ap.addCurveSegment(Speed, 0.0, new Curve([{time: 0.0, value: 0.5}, {time: 1.0, value: 1.0}], null, null));
+
+		// Drive to the end of the forward cycle (100 px at avg <1.0 multiplier).
+		var state = ap.update(0.0001);
+		var guard = 0;
+		while (state.cycle == 0 && guard < 10000) {
+			state = ap.update(0.016);
+			guard++;
+		}
+		Assert.equals(1, state.cycle, "sanity: reached the reversed cycle");
+
+		// One small step into the reversed cycle: the object sits near path
+		// position 1.0, where the multiplier is ~1.0 -> speed ~100 px/s.
+		state = ap.update(0.001);
+		Assert.isTrue(state.speed > 75.0,
+			'speed at the start of the reversed cycle must reflect the curve at path position ~1.0 (multiplier ~1.0, speed ~100); got ${state.speed} — evaluating at forward progress ~0 gives ~50');
+	}
+
+	@Test
+	public function testPingPongEventFiresAtPathPositionInReversedCycle():Void {
+		// An event registered at rate R marks a POSITION on the path. In a
+		// reversed cycle the object passes position R when its mirrored progress
+		// reaches R — the event state must carry position ≈ R and the event must
+		// fire at the matching time, not simply when forward progress hits R.
+		var path = createLinePath(); // (0,0) -> (100,0), 100 px
+		var ap = new AnimatedPath(path, Time(1.0));
+		ap.pingPong = true;
+		ap.addEvent(0.75, "mark");
+
+		var positions:Array<Float> = [];
+		var times:Array<Float> = [];
+		var elapsed = 0.0;
+		ap.onEvent = (name, state) -> {
+			if (name == "mark") {
+				positions.push(state.position.x);
+				times.push(elapsed);
+			}
+		};
+
+		final step = 0.01;
+		while (elapsed < 2.0) {
+			elapsed += step;
+			ap.update(step);
+		}
+
+		Assert.equals(2, positions.length, 'event at 0.75 must fire once per cycle over 2 cycles; fired ${positions.length} times');
+		if (positions.length == 2) {
+			// Forward cycle: fires at position 75 around t=0.75.
+			Assert.floatEquals(75.0, positions[0], 2.0, 'forward-cycle event must fire at position 75, got ${positions[0]}');
+			// Reversed cycle: the object starts at 100 and moves back — it passes
+			// position 75 at ~25% of the cycle (t ≈ 1.25), not at 75% (t ≈ 1.75).
+			Assert.floatEquals(75.0, positions[1], 2.0, 'reversed-cycle event must fire AT path position 75, got ${positions[1]}');
+			Assert.isTrue(times[1] < 1.5,
+				'reversed-cycle event at path position 75 must fire when the object passes it (~t=1.25), got t=${times[1]}');
+		}
+	}
+
+	@Test
+	public function testCycleStartEventCarriesNewCycleState():Void {
+		// cycleStart announces the START of the new cycle: its state must carry
+		// the new cycle index and the new cycle's starting position — not the
+		// end state of the cycle that just finished.
+		var path = createLinePath(); // (0,0) -> (100,0)
+		var ap = new AnimatedPath(path, Time(0.5));
+		ap.loop = true; // plain loop: every cycle starts at position 0
+
+		var startCycles:Array<Int> = [];
+		var startPositions:Array<Float> = [];
+		ap.onEvent = (name, state) -> {
+			if (name == "cycleStart") {
+				startCycles.push(state.cycle);
+				startPositions.push(state.position.x);
+			}
+		};
+
+		var elapsed = 0.0;
+		final step = 0.01;
+		while (elapsed < 0.7) {
+			elapsed += step;
+			ap.update(step);
+		}
+
+		Assert.equals(1, startCycles.length, 'expected exactly one cycleStart in 0.7s of a 0.5s loop; got ${startCycles.length}');
+		if (startCycles.length == 1) {
+			Assert.equals(1, startCycles[0], 'cycleStart must carry the NEW cycle index (1), got ${startCycles[0]}');
+			Assert.isTrue(startPositions[0] < 10.0,
+				'cycleStart of a loop must carry the new cycle\'s start position (~0), got ${startPositions[0]} — the previous cycle\'s end state is 100');
+		}
+	}
+
 	// ==================== Construction ====================
 
 	@Test
@@ -53,16 +156,91 @@ class AnimatedPathTest extends BuilderTestBase {
 	}
 
 	@Test
-	public function testZeroLengthPathThrows():Void {
-		// A zero-length path (start == end) should throw
-		var sp = new SinglePath(new FPoint(0, 0), new FPoint(0, 0), Line);
+	public function testZeroLengthPathAnimatesInPlace():Void {
+		// A zero-length path (start == end — what Stretch(p, p) produces) is a valid path: the
+		// object stays at that point for the whole duration while its curves play.
+		var sp = new SinglePath(new FPoint(5, 7), new FPoint(5, 7), Line);
+		var threw:Null<Dynamic> = null;
 		try {
-			var zeroPath = new Path([sp]);
-			var ap = new AnimatedPath(zeroPath, Time(1.0));
-			Assert.fail("Should have thrown for zero-length path");
+			var ap = new AnimatedPath(new Path([sp]), Time(1.0));
+			ap.addCurveSegment(Scale, 0.0, createLinearCurve());
+			var state = ap.update(0.5);
+			Assert.floatEquals(5.0, state.position.x, null, "a zero-length path stays at its point");
+			Assert.floatEquals(7.0, state.position.y, null, "a zero-length path stays at its point");
+			Assert.floatEquals(0.5, state.scale, null, "curves still play along a zero-length path");
+			Assert.isFalse(state.done, "a zero-length path still runs its duration");
+			state = ap.update(0.5);
+			Assert.isTrue(state.done);
+			Assert.floatEquals(5.0, state.position.x);
 		} catch (e:Dynamic) {
-			Assert.stringContains("pathLength", Std.string(e));
+			threw = e;
 		}
+		Assert.isNull(threw, 'a zero-length path must animate in place, got: $threw');
+	}
+
+	@Test
+	public function testZeroLengthPathDistanceModeCompletesOnFirstUpdate():Void {
+		// Distance mode has no distance to cover — it ends at once instead of never.
+		var sp = new SinglePath(new FPoint(5, 7), new FPoint(5, 7), Line);
+		var threw:Null<Dynamic> = null;
+		try {
+			var ap = new AnimatedPath(new Path([sp]), Distance(100.0));
+			var state = ap.update(0.016);
+			Assert.isTrue(state.done, "a zero-length distance-mode path is covered at once");
+			Assert.floatEquals(5.0, state.position.x);
+			Assert.floatEquals(7.0, state.position.y);
+		} catch (e:Dynamic) {
+			threw = e;
+		}
+		Assert.isNull(threw, 'a zero-length distance-mode path must not throw, got: $threw');
+	}
+
+	@Test
+	public function testPathWithoutSegmentsThrowsAtConstruction():Void {
+		// A path with nothing to follow (no segments) still fails where it is created.
+		var threw = false;
+		try {
+			new AnimatedPath(new Path([]), Time(1.0));
+		} catch (e:Dynamic) {
+			threw = true;
+		}
+		Assert.isTrue(threw, "an AnimatedPath over a path without segments must throw at construction");
+	}
+
+	@Test
+	public function testZeroLengthPathPointsAreItsPoint():Void {
+		// Path lookups on a zero-length path return its point — no NaN, no "rate out of range".
+		var sp = new SinglePath(new FPoint(5, 7), new FPoint(5, 7), Line);
+		var threw:Null<Dynamic> = null;
+		try {
+			var path = new Path([sp]);
+			for (rate in [0.0, 0.5, 1.0]) {
+				var p = path.getPoint(rate);
+				Assert.floatEquals(5.0, p.x, null, 'getPoint($rate).x');
+				Assert.floatEquals(7.0, p.y, null, 'getPoint($rate).y');
+				Assert.isFalse(Math.isNaN(path.getTangentAngle(rate)), 'getTangentAngle($rate) must not be NaN');
+			}
+		} catch (e:Dynamic) {
+			threw = e;
+		}
+		Assert.isNull(threw, 'getPoint on a zero-length path must not throw, got: $threw');
+	}
+
+	@Test
+	public function testLeadingZeroLengthSegmentHasNoNaNStart():Void {
+		// lineTo(0, 0) first: a zero-length segment ahead of the real one must not make the
+		// start position NaN (0 / 0 local rate).
+		var zero = new SinglePath(new FPoint(0, 0), new FPoint(0, 0), Line);
+		var line = new SinglePath(new FPoint(0, 0), new FPoint(0, 100), Line);
+		var path = new Path([zero, line]);
+		var start = path.getPoint(0.0);
+		Assert.isFalse(Math.isNaN(start.x) || Math.isNaN(start.y), 'start of the path must not be NaN, got (${start.x}, ${start.y})');
+		Assert.floatEquals(0.0, start.y);
+		Assert.floatEquals(Math.PI / 2, path.getTangentAngle(0.0), null, "tangent at the start follows the first real segment (down)");
+		Assert.floatEquals(50.0, path.getPoint(0.5).y);
+		var ap = new AnimatedPath(path, Time(1.0));
+		var state = ap.seek(0.0);
+		Assert.isFalse(Math.isNaN(state.position.x), "AnimatedPath start position must not be NaN");
 	}
 
 	// ==================== Seek ====================
@@ -429,10 +607,29 @@ class AnimatedPathTest extends BuilderTestBase {
 
 	@Test
 	public function testDefaultColorWithoutCurve():Void {
+		// Opaque white in the library's 0xAARRGGBB convention (0xFFFFFF would be transparent white)
 		var path = createLinePath();
 		var ap = new AnimatedPath(path, Time(1.0));
 		var state = ap.seek(0.5);
-		Assert.equals(0xFFFFFF, state.color);
+		Assert.equals(0xFFFFFFFF, state.color);
+	}
+
+	@Test
+	public function testColorCurveKeepsAlpha():Void {
+		// Colors are 0xAARRGGBB: a curve between two opaque colors stays opaque, and alpha
+		// is interpolated like the other channels.
+		var path = createLinePath();
+		var ap = new AnimatedPath(path, Time(1.0));
+		ap.addColorCurveSegment(0.0, createLinearCurve(), 0xFFFF0000, 0xFF0000FF);
+
+		Assert.equals(0xFFFF0000, ap.seek(0.0).color);
+		Assert.equals(0xFF, (ap.seek(0.5).color >>> 24) & 0xFF, "midpoint stays opaque");
+		Assert.equals(0xFF0000FF, ap.seek(1.0).color);
+
+		var fading = new AnimatedPath(path, Time(1.0));
+		fading.addColorCurveSegment(0.0, createLinearCurve(), 0xFFFFFFFF, 0x00FFFFFF);
+		final alpha = (fading.seek(0.5).color >>> 24) & 0xFF;
+		Assert.isTrue(alpha > 100 && alpha < 160, 'alpha is interpolated (~127), got $alpha');
 	}
 
 	// ==================== Custom Curves ====================

@@ -1,0 +1,14 @@
+version: 1.0
+
+#pal palette { #FF0000 #00FF00 #0000FF }
+
+// The codegen's private collectParamRefsImpl must see the $idx ref inside the
+// palette color lookup so setParameter("idx", ...) re-applies the tint. (The
+// builder's collector was fixed for the same shape; the codegen keeps its own
+// copy which still drops RVColor/RVColorXY/RVElementOfArray/RVArray refs.)
+#palIdx programmable(idx:int=0) {
+  bitmap(generated(color(8, 8, #FFFFFF))) {
+    tint: palette(pal, $idx)
+    pos: 0, 0
+  }
+}

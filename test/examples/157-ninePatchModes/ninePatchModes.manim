@@ -1,0 +1,81 @@
+version: 1.0
+
+// Fixture: how a nine-patch fills (tiled by default, `stretch`, `tile`), the frames of an indexed
+// atlas name (`index:`), a sheet and cell given as parameters, a programmable's
+// `settings { ninepatch => … }` default, and a flow background that tiles. The visual test
+// draws the same cell both ways side by side, builder and codegen alike.
+
+#ninePatchModes programmable() {
+  pos: 0, 0
+  @alpha(0.5) bitmap(generated(color(1280, 720, blue)));
+
+  // Row 1: button-hover (a gradient fill) 80x60 — tiled (the default), stretched, tiled by word
+  @scale(4) ninepatch("ui", "button-hover", 80, 60): 40, 40
+  @scale(4) ninepatch("ui", "button-hover", 80, 60, stretch): 400, 40
+  @scale(4) ninepatch("ui", "button-hover", 80, 60, tile): 760, 40
+
+  // Row 2: the four frames of an indexed name
+  @scale(4) ninepatch("ui", "Animated button test - Altcolor/Button_Warning_3x3_idle", 50, 30, index: 0): 40, 320
+  @scale(4) ninepatch("ui", "Animated button test - Altcolor/Button_Warning_3x3_idle", 50, 30, index: 1): 300, 320
+  @scale(4) ninepatch("ui", "Animated button test - Altcolor/Button_Warning_3x3_idle", 50, 30, index: 2): 560, 320
+  @scale(4) ninepatch("ui", "Animated button test - Altcolor/Button_Warning_3x3_idle", 50, 30, index: 3): 820, 320
+
+  // Row 3: a flow background stretched (the flow default) beside one that tiles, and a cell from a parameter
+  flow(background: ninepatch("ui", "Droppanel_3x3_idle"), padding: 12) {
+    pos: 40, 480
+    scale: 4
+    bitmap(generated(color(50, 20, red)));
+  }
+  flow(background: ninepatch("ui", "Droppanel_3x3_idle", tile), padding: 12) {
+    pos: 400, 480
+    scale: 4
+    bitmap(generated(color(50, 20, red)));
+  }
+  @scale(4) staticRef($npStyled, style => "hover"): 760, 480
+}
+
+// The sheet and the cell as string expressions: one programmable for every style of a kit.
+#npStyled programmable(style:string="idle") {
+  ninepatch("ui", "button-" + $style, 100, 40): 0, 0
+}
+
+#npParamSheet programmable(sheet:string="ui", cell:string="button-idle") {
+  ninepatch($sheet, $cell, 100, 40, stretch): 0, 0
+}
+
+// A frame of an indexed name, driven by a parameter.
+#npFrame programmable(frame:int=0) {
+  ninepatch("ui", "Animated button test - Altcolor/Button_Warning_3x3_idle", 60, 30, index: $frame): 0, 0
+}
+
+// The frames played in a loop.
+#npAnim programmable(speed:float=10) {
+  ninepatch("ui", "Animated button test - Altcolor/Button_Warning_3x3_idle", 60, 30, fps: $speed): 0, 0
+}
+
+// The programmable's default for every ninepatch in it; the element's own word wins.
+#npSettings programmable() {
+  settings { ninepatch => stretch }
+  #plain ninepatch("ui", "button-idle", 60, 30): 0, 0
+  #tiled ninepatch("ui", "button-idle", 60, 30, tile): 0, 40
+  #bg flow(background: ninepatch("ui", "button-idle"), padding: 4) {
+    pos: 0, 80
+    bitmap(generated(color(20, 10, red)));
+  }
+}
+
+#npFlowBg programmable() {
+  #stretched flow(background: ninepatch("ui", "Droppanel_3x3_idle"), padding: 8) {
+    bitmap(generated(color(40, 20, red)));
+  }
+  #tiled flow(background: ninepatch("ui", "Droppanel_3x3_idle", tile), padding: 8) {
+    pos: 0, 60
+    bitmap(generated(color(40, 20, red)));
+  }
+}
+
+// A nine-patch baked into a tile group, repeated.
+#npTileGroup programmable tileGroup() {
+  ninepatch("ui", "Droppanel_3x3_idle", 80, 60, tile): 0, 0
+  ninepatch("ui", "Droppanel_3x3_idle", 80, 60): 100, 0
+}

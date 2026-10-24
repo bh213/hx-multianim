@@ -1,0 +1,86 @@
+version: 1.0
+
+// Refs and slots, built by the builder and as codegen instances of the same programmables:
+// a constant-count repeat whose body is gated by a param, an interactive shown inside a
+// dynamicRef, a dynamicRef inside a staticRef target, placeholder objects reaching ref
+// targets, and a staticRef to its own programmable. Bitmaps are told apart by tile width.
+
+// Four iterations 12px apart: a 4px bitmap at $ox shown while $i < $level, a text of $label.
+#rsGatedRow programmable(level:uint=2, ox:int=0, label:string="a") {
+  repeatable($i, step(4, dx: 12)) {
+    @($i < $level) bitmap(generated(color(4, 4, #f00))): $ox, 0
+    text(dd, $label, #fff): 0, 12
+  }
+}
+
+// An interactive inside a dynamicRef, shown by the dynamicRef's own param.
+#rsMenu programmable(open:bool=false) {
+  @(open=>true) interactive(40, 40, "item"): 0, 0
+}
+
+#rsMenuHost programmable() {
+  #m dynamicRef($rsMenu): 0, 0
+}
+
+// An interactive two refs down: staticRef -> dynamicRef -> interactive.
+#rsKey programmable() {
+  interactive(20, 20, "k"): 0, 0
+}
+
+#rsMid programmable() {
+  dynamicRef($rsKey): 0, 0
+}
+
+#rsTop programmable() {
+  staticRef($rsMid): 0, 0
+}
+
+// A builderParameter placeholder in a ref target: the object passed for "portrait" goes there.
+// The holders have one of their own ("top"), so their create() takes the placeholders.
+#rsFrame programmable() {
+  placeholder(generated(color(4, 4, #f00)), builderParameter("portrait")): 0, 0
+}
+
+#rsHolder programmable() {
+  placeholder(nothing, builderParameter("top")): 0, 0
+  staticRef($rsFrame): 0, 10
+}
+
+#rsDynHolder programmable() {
+  placeholder(nothing, builderParameter("top")): 0, 0
+  dynamicRef($rsFrame): 0, 10
+}
+
+// A staticRef to its own programmable is a circular reference, whatever gates it.
+#rsTree programmable(d:int=1) {
+  bitmap(generated(color(4, 4, #0f0))): 0, 0
+  @(d > 0) staticRef($rsTree, d=>$d - 1): 10, 0
+}
+
+// One #name in mutually exclusive arms: the shown arm's dynamicRef / slot answers.
+#rsPanelA programmable() {
+  bitmap(generated(color(10, 4, #f00))): 0, 0
+}
+#rsPanelB programmable() {
+  bitmap(generated(color(20, 4, #0f0))): 0, 0
+}
+#rsExclRef programmable(mode:[a,b]=a) {
+  @(mode=>a) #panel dynamicRef($rsPanelA): 0, 0
+  @else #panel dynamicRef($rsPanelB): 0, 0
+}
+#rsExclSlot programmable(mode:[a,b]=a) {
+  @(mode=>a) #content slot: 0, 0
+  @else #content slot: 0, 20
+}
+#rsExclIndexedSlot programmable(mode:[a,b]=a) {
+  @(mode=>a) repeatable($i, step(2, dx: 10)) {
+    #c[$i] slot: 0, 0
+  }
+  @else repeatable($i, step(2, dx: 10)) {
+    #c[$i] slot: 0, 30
+  }
+}
+#rsExclTemplate programmable(mode:[a,b]=a, tmpl:[rsPanelA,rsPanelB]=rsPanelA) {
+  @(mode=>a) #panel dynamicRef($tmpl): 0, 0
+  @else #panel dynamicRef($tmpl): 0, 10
+}

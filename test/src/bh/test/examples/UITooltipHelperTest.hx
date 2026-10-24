@@ -448,6 +448,25 @@ class UITooltipHelperTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testHideAfterFadeInWasCancelledElsewhereLeavesOtherTweensAlone():Void {
+		// The fade-in is cancelled from outside (e.g. a screen teardown cancelling every tween),
+		// so its Tween goes back to the pool and is reused. Hiding later must not cancel
+		// whatever tween reuses it.
+		var ctx = createHelperWithTweens(0.5, 0.0);
+		ctx.helper.show("btn1", "tip");
+		ctx.tweens.clear();
+
+		var others = [for (_ in 0...3) new h2d.Object()];
+		for (o in others)
+			ctx.tweens.tween(o, 0.2, [X(50.0)]);
+
+		ctx.helper.hide();
+		ctx.tweens.update(0.3);
+		for (o in others)
+			Assert.floatEquals(50.0, o.x, "an unrelated tween must not be cancelled by the tooltip's stale fade-in");
+	}
+
+	@Test
 	public function testFadeOutRemovesOnComplete():Void {
 		var ctx = createHelperWithTweens(0.0, 0.2);
 		ctx.helper.show("btn1", "tip");

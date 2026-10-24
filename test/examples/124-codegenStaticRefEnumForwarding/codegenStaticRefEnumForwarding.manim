@@ -1,0 +1,18 @@
+version: 1.0
+
+// Fixture: staticRef forwarding a parent ENUM param into a child enum param.
+// Parent default parentMode=a; staticRef($child, mode => $parentMode).
+// Codegen emits the parent enum field (an Int index) for the forwarded value;
+// buildStaticRef -> buildWithParameters -> dynamicValueToIndex stringifies the int
+// ("0") and rejects it against [a,b,c] -> throws. The builder path resolves the
+// reference in context and succeeds. Mirrors the dynamicRef enum-forwarding fixture.
+
+#cgStaticFwdEnumChild programmable(mode:[a,b,c]=a) {
+  @(mode => a) bitmap(generated(color(11, 5, #ff0000))): 0, 0
+  @(mode => b) bitmap(generated(color(22, 5, #00ff00))): 0, 0
+  @(mode => c) bitmap(generated(color(33, 5, #0000ff))): 0, 0
+}
+
+#codegenStaticRefEnumForwarding programmable(parentMode:[a,b,c]=a) {
+  staticRef($cgStaticFwdEnumChild, mode => $parentMode): 0, 0
+}

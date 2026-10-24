@@ -3,6 +3,7 @@ package bh.ui.controllers;
 import bh.ui.UIElement;
 // import bh.ui.controllers.UIController.EventWrapper;
 import bh.ui.controllers.UIController;
+import bh.base.CursorManager;
 import h2d.col.Point;
 
 private class CaptureEventsImpl implements CaptureEventsControl {
@@ -99,6 +100,11 @@ class UIDefaultController implements UIController {
 	#end
 
 	var currentOver:Null<UIElement> = null;
+	// The cursor updateCursor last set, and CursorManager's override version then: as a new
+	// controller starts, the default with no override changed, so it sets nothing until the
+	// mouse moves onto something with a cursor of its own (or an override comes or goes)
+	var lastCursor:hxd.Cursor = CursorManager.getDefaultCursor();
+	var lastOverrideVersion:Int = CursorManager.getOverrideVersion();
 	final controllable:ControllableImpl;
 	final integration:bh.ui.controllers.UIController.UIControllerScreenIntegration;
 
@@ -113,6 +119,11 @@ class UIDefaultController implements UIController {
 	// Scratch buffer reused across getEventElements calls — avoids per-event
 	// Array allocation on every mouse move/click/wheel/key.
 	final _hits:Array<UIElement> = [];
+
+	// State threaded into the cached hit-test callback so getEventElements
+	// doesn't allocate a fresh closure capturing `pos` per input event.
+	var _hitsPos:Null<Point> = null;
+	final _hitsCallback:UIElement->Void;
 
 	// Stable sort comparator: higher eventPriority first, registration order as
 	// tiebreaker. Hoisted to a static field so it's allocated once per program
@@ -131,6 +142,9 @@ class UIDefaultController implements UIController {
 		// "this not fully initialised" complaint is a false positive here.
 		this._updateCallback = function(element:UIElement):Void {
 			@:nullSafety(Off) redrawAndUpdate(element, _updateDt);
+		};
+		this._hitsCallback = function(element:UIElement):Void {
+			@:nullSafety(Off) if (element.containsPoint(_hitsPos)) _hits.push(element);
 		};
 		this.controllable = new ControllableImpl(this);
 		#if MULTIANIM_ALLOC_TRACK
@@ -215,10 +229,9 @@ class UIDefaultController implements UIController {
 			_hits.push(controllable.captureEvents.target);
 			return _hits;
 		}
-		integration.forEachElement(SETReceiveEvents, function(element:UIElement):Void {
-			if (element.containsPoint(pos))
-				_hits.push(element);
-		});
+		_hitsPos = pos;
+		integration.forEachElement(SETReceiveEvents, _hitsCallback);
+		_hitsPos = null;
 		if (_hits.length > 1) {
 			haxe.ds.ArraySort.sort(_hits, _priorityComparator);
 		}
@@ -232,27 +245,35 @@ class UIDefaultController implements UIController {
 
 		if (element != null)
 			handleEvent(element, OnMouseMove, mousePoint);
-		if (element == currentOver)
-			return;
-		else if (element == null && currentOver != null) {
+		if (element == null && currentOver != null) {
 			handleEvent(currentOver, OnLeave, mousePoint);
 			currentOver = null;
-		} else if (element != null) {
+		} else if (element != null && element != currentOver) {
 			if (currentOver != null) {
 				handleEvent(currentOver, OnLeave, mousePoint);
 			}
 			handleEvent(element, OnEnter, mousePoint);
 			currentOver = element;
 		}
+		// on every move, not only when the hovered element changes: its cursor may follow its state
 		updateCursor();
 	}
 
+	/**
+		Sets the cursor: `CursorManager`'s override while there is one, else the hovered element's,
+		else the default. Only when that or the override changed since the controller last set it,
+		so a cursor game code sets lasts until the UI's own changes. Run on every move and frame.
+	**/
 	function updateCursor() {
-		if (currentOver != null && Std.isOfType(currentOver, UIElementCursor)) {
-			hxd.System.setCursor((cast(currentOver, UIElementCursor)).getCursor());
-		} else {
-			hxd.System.setCursor(bh.base.CursorManager.getDefaultCursor());
-		}
+		final overrideCursor = CursorManager.getOverrideCursor();
+		final cursor = if (overrideCursor != null) overrideCursor else if (currentOver != null && Std.isOfType(currentOver, UIElementCursor))
+			(cast(currentOver, UIElementCursor)).getCursor() else CursorManager.getDefaultCursor();
+		final version = CursorManager.getOverrideVersion();
+		if (version == lastOverrideVersion && Type.enumEq(cursor, lastCursor))
+			return;
+		lastCursor = cursor;
+		lastOverrideVersion = version;
+		hxd.System.setCursor(cursor);
 	}
 
 	function redrawAndUpdate(element:UIElement, dt:Float) {
@@ -269,6 +290,8 @@ class UIDefaultController implements UIController {
 	public function update(dt:Float) {
 		_updateDt = dt;
 		integration.forEachElement(SETReceiveUpdates, _updateCallback);
+		// the hovered element's state may have changed its cursor without the mouse moving
+		updateCursor();
 
 		if (exitResponse != null) {
 			final retVal = exitResponse;

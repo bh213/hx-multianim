@@ -1,0 +1,15 @@
+version: 1.0
+
+// @switch mixed-arm chain with a non-last `default:`. The codegen mixed-arm
+// path folds the if-chain in reverse and a default arm REPLACES the
+// accumulated chain, discarding arms that appear after it in document order.
+// The builder resolves default position-independently (first matching
+// non-default arm wins, default only as fallback).
+// Arms are distinguished by tile width: <=2 -> 10px, default -> 12px, >=8 -> 14px.
+#switchDefaultOrder programmable(n:int=5) {
+  @switch(n) {
+    <= 2: bitmap(generated(color(10, 10, #FF0000)));
+    default: bitmap(generated(color(12, 12, #00FF00)));
+    >= 8: bitmap(generated(color(14, 14, #0000FF)));
+  }
+}

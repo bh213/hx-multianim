@@ -9,8 +9,12 @@ import h2d.col.Point;
 
 @:nullSafety
 class UIStandardMultiCheckbox implements UIElement implements UIElementDisablable implements UIElementSelectable implements StandardUIElementEvents
-		implements UIElementNumberValue implements UIElementCursor {
+		implements UIElementNumberValue implements UIElementCursor implements UIElementRootSettings {
 	final result:BuilderResult;
+
+	public function getRootSettings():Null<bh.multianim.MultiAnimBuilder.BuilderResolvedSettings> {
+		return result.rootSettings;
+	}
 
 	public var disabled(default, set):Bool = false;
 	public var selected(default, set):Bool = false;

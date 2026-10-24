@@ -691,6 +691,52 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		async.done();
 	}
 
+	// A $param referenced inside a particles block must resolve against the codegen
+	// instance's parameter value, not against an empty/default scope.
+	@Test
+	public function testCodegenParticlesResolveParamScope():Void {
+		clearScene();
+		final inst = createMp().paramParticles.create(99);
+		s2d.addChild(inst);
+
+		final particles = findParticles(inst);
+		Assert.notNull(particles, "expected a Particles object in the codegen instance");
+
+		var foundGroup = false;
+		for (group in particles.getGroups()) {
+			foundGroup = true;
+			Assert.equals(99, group.nparts,
+				"particles count: particleCount param must resolve to the instance value (99), not the default (11)");
+		}
+		Assert.isTrue(foundGroup, "expected at least one particle group");
+	}
+
+	// A $param referenced inside a tileGroup block must resolve against the codegen
+	// instance's parameter value, not against a throwaway empty-parameter rebuild.
+	@Test
+	public function testCodegenTileGroupResolveParamScope():Void {
+		clearScene();
+		final inst = createMp().paramTileGroup.create(250);
+		s2d.addChild(inst);
+
+		final tg = findTileGroup(inst);
+		Assert.notNull(tg, "expected a TileGroup object in the codegen instance");
+		// The baked bitmap is offset by $tileX inside the group, so the group's
+		// local content bounds start at tileX. Resolved against the instance value
+		// (250) by the fix; against the default (7) by the buggy empty rebuild.
+		Assert.equals(250.0, tg.getBounds(tg).xMin,
+			"tileGroup baked bitmap offset (tileX param) must resolve to the instance value (250), not the default (7)");
+	}
+
+	static function findTileGroup(obj:h2d.Object):Null<h2d.TileGroup> {
+		if (Std.isOfType(obj, h2d.TileGroup)) return cast obj;
+		for (i in 0...obj.numChildren) {
+			var result = findTileGroup(obj.getChildAt(i));
+			if (result != null) return result;
+		}
+		return null;
+	}
+
 	static function findParticles(obj:h2d.Object):Null<bh.base.Particles> {
 		if (Std.isOfType(obj, bh.base.Particles)) return cast obj;
 		for (i in 0...obj.numChildren) {
@@ -1331,8 +1377,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		final scale = 2.0;
 		final threshold = 1.0;
 		final autotileConfigs:Array<{name:String, grid:Array<Array<Int>>, x:Float, y:Float, background:Bool}> = [
-			{name: "blob47Colored", grid: AutotileTestHelper.LARGE_SEA_GRID, x: 40.0, y: 326.0, background: false},
-			{name: "blob47Water", grid: AutotileTestHelper.LARGE_SEA_GRID, x: 684.0, y: 326.0, background: true}
+			{name: "blob47Colored", grid: AutotileTestHelper.BLOB47_ALL_TILES_GRID, x: 40.0, y: 326.0, background: false},
+			{name: "blob47Water", grid: AutotileTestHelper.BLOB47_ALL_TILES_GRID, x: 684.0, y: 326.0, background: true}
 		];
 
 		// Phase 1: builder + autotile grids
@@ -1420,8 +1466,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		final scale = 4.0;
 		final threshold = 1.0;
 		final autotileConfigs:Array<{name:String, grid:Array<Array<Int>>, x:Float, y:Float, background:Bool}> = [
-			{name: "grassTerrain", grid: AutotileTestHelper.CROSS_HOLE_GRID, x: 40.0, y: 360.0, background: false},
-			{name: "grassDemo", grid: AutotileTestHelper.CROSS_HOLE_GRID, x: 320.0, y: 360.0, background: false}
+			{name: "dirtTerrain", grid: AutotileTestHelper.CROSS_HOLE_GRID, x: 40.0, y: 360.0, background: false},
+			{name: "dirtDemo", grid: AutotileTestHelper.CROSS_HOLE_GRID, x: 320.0, y: 360.0, background: false}
 		];
 
 		// Phase 1: builder + autotile grids
@@ -1465,8 +1511,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		final scale = 2.0;
 		final threshold = 1.0;
 		final autotileConfigs:Array<{name:String, grid:Array<Array<Int>>, x:Float, y:Float, background:Bool}> = [
-			{name: "blob47Demo", grid: AutotileTestHelper.LARGE_SEA_GRID, x: 20.0, y: 304.0, background: false},
-			{name: "blob47Grass", grid: AutotileTestHelper.LARGE_SEA_GRID, x: 320.0, y: 304.0, background: false}
+			{name: "blob47Demo", grid: AutotileTestHelper.BLOB47_ALL_TILES_GRID, x: 20.0, y: 304.0, background: false},
+			{name: "blob47Dirt", grid: AutotileTestHelper.BLOB47_ALL_TILES_GRID, x: 320.0, y: 304.0, background: false}
 		];
 
 		// Phase 1: builder + autotile grids
@@ -1486,6 +1532,88 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		// Phase 2: macro + autotile grids
 		clearScene();
 		var macroRoot = createMp().blob47Fallback.create();
+		macroRoot.setScale(scale);
+		s2d.addChild(macroRoot);
+		addAutotileOverlays(animFilePath, autotileConfigs, scale);
+		if (testTitle != null && testTitle.length > 0) addTitleOverlay();
+
+		var macroRaw = captureScreenshotRaw(1280, 720);
+		Assert.pass();
+		enqueueBuilderAndMacro(builderRaw, macroRaw, threshold, threshold, orderIdx);
+
+		VisualTestBase.pendingVisualTests--;
+		async.done();
+	}
+
+	// ==================== AnimLayers: layers in .anim ====================
+
+	@Test
+	public function test154_AnimLayers(async:utest.Async):Void {
+		simpleMacroTest(154, "animLayers", () -> createMp().animLayers.create(), async, null, null, 4.0);
+	}
+
+	// ==================== Tilemap: tilesets and tile maps ====================
+
+	@Test
+	public function test155_Tilemap(async:utest.Async):Void {
+		simpleMacroTest(155, "tilemap", () -> createMp().tilemapDemo.create(), async, "tilemapDemo", null, 4.0);
+	}
+
+	// ==================== NinePatchModes: the same cell tiled beside stretched; frames ====================
+
+	@Test
+	public function test157_NinePatchModes(async:utest.Async):Void {
+		simpleMacroTest(157, "ninePatchModes", () -> createMp().ninePatchModes.create(), async);
+	}
+
+	@Test
+	public function testGeneratedTilemapIsATileMap():Void {
+		final root = createMp().tilemapDemo.create();
+		var found:Null<bh.base.TileMap> = null;
+		function walk(o:h2d.Object)
+			for (child in o) {
+				if (Std.isOfType(child, bh.base.TileMap)) found = cast child;
+				walk(child);
+			}
+		walk(root);
+		Assert.notNull(found, "tilemap(name) is a bh.base.TileMap, with its API");
+		Assert.equals("grass", found.terrainAt(0, 0));
+	}
+
+	// ==================== AutotileCorner: macro comparison ====================
+
+	@Test
+	public function test153_AutotileCorner(async:utest.Async):Void {
+		setupTest(153, "autotileCorner");
+		VisualTestBase.pendingVisualTests++;
+		async.setTimeout(15000);
+		final animFilePath = "test/examples/153-autotileCorner/autotileCorner.manim";
+		final scale = 2.0;
+		final threshold = 1.0;
+		// Terrain sits 4px (.manim units) inside each background so the half-tile overhang shows.
+		final autotileConfigs:Array<{name:String, grid:Array<Array<Int>>, x:Float, y:Float, background:Bool}> = [
+			{name: "cornerDemo", grid: AutotileTestHelper.EDGE_CASES_GRID, x: 28.0, y: 168.0, background: false},
+			{name: "dirtCorner", grid: AutotileTestHelper.EDGE_CASES_GRID, x: 328.0, y: 168.0, background: false},
+			{name: "dirtCorner", grid: AutotileTestHelper.BLOB47_ALL_TILES_GRID, x: 628.0, y: 168.0, background: false}
+		];
+
+		// Phase 1: builder + autotile grids
+		clearScene();
+		var result = buildAndAddToScene(animFilePath, "autotileCorner", scale);
+		if (result == null) {
+			Assert.fail('Failed to build "autotileCorner"');
+			VisualTestBase.pendingVisualTests--;
+			async.done();
+			return;
+		}
+		addAutotileOverlays(animFilePath, autotileConfigs, scale);
+
+		var orderIdx = HtmlReportGenerator.reserveOrderIndex();
+		var builderRaw = captureScreenshotRaw(1280, 720);
+
+		// Phase 2: macro + autotile grids
+		clearScene();
+		var macroRoot = createMp().autotileCorner.create();
 		macroRoot.setScale(scale);
 		s2d.addChild(macroRoot);
 		addAutotileOverlays(animFilePath, autotileConfigs, scale);
@@ -2892,15 +3020,23 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		final mp = createMp();
 		final instance = mp.dynamicRefs.create();
 		Assert.notNull(instance, "DynamicRefs instance should be created");
-		final dynRef = instance.getDynamicRef("statusBar");
-		Assert.notNull(dynRef, "Should have statusBar dynamicRef via codegen");
+		// "probe" is the #name-disambiguated handle in the fixture; the 16 unnamed
+		// dynamicRef($statusBar) siblings collide on the "statusBar" key, so lookups
+		// on it must throw with a #name hint — matching BuilderResult.getDynamicRef.
+		final dynRef = instance.getDynamicRef("probe");
+		Assert.notNull(dynRef, "Should have probe dynamicRef via codegen");
+		var err:String = null;
+		try instance.getDynamicRef("statusBar") catch (e:Dynamic) err = Std.string(e);
+		Assert.notNull(err, "getDynamicRef on the collided unnamed key must throw");
+		if (err != null)
+			Assert.isTrue(err.indexOf("#name") >= 0, "error must hint at #name disambiguation; got: " + err);
 	}
 
 	@Test
 	public function testDynamicRefCodegenSubResultHasObject():Void {
 		final mp = createMp();
 		final instance = mp.dynamicRefs.create();
-		final dynRef = instance.getDynamicRef("statusBar");
+		final dynRef = instance.getDynamicRef("probe");
 		Assert.notNull(dynRef, "getDynamicRef should return non-null");
 		Assert.notNull(dynRef.object, "DynamicRef sub-result should have an object");
 	}
@@ -2909,7 +3045,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	public function testDynamicRefCodegenSubResultIsIncremental():Void {
 		final mp = createMp();
 		final instance = mp.dynamicRefs.create();
-		final dynRef = instance.getDynamicRef("statusBar");
+		final dynRef = instance.getDynamicRef("probe");
 		Assert.notNull(dynRef, "getDynamicRef should return non-null");
 		Assert.notNull(dynRef.incrementalContext, "DynamicRef should be built incrementally");
 	}
@@ -5389,6 +5525,92 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		}
 	}
 
+	// Regression: slots, dynamicRefs and indexed names declared inside a PARAM-DEPENDENT
+	// repeatable body must be reachable on codegen instances, the same way they already are
+	// on builder results. A param-dependent count forces codegen down the runtime-rebuild
+	// branch, which forwards these kinds to the builder via buildNodeByUniqueNameWithParams;
+	// their registrations must persist into a sink the instance's getSlot / getDynamicRef /
+	// getUpdatableByIndex dispatchers can reach. Without the sink, the builder result resolves
+	// them but the codegen instance throws / returns null (the registrations are discarded into
+	// a throwaway IR by buildSingleNodeWithParams).
+	@Test
+	public function testCodegenParamDepRepeatSlotReachable():Void {
+		// Baseline: the builder result resolves all three kinds inside the param-dependent repeat.
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/125-codegenRepeatSlot/repeatSlot.manim"));
+		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "repeatSlot.manim");
+		final result = builder.buildWithParameters("repeatSlotPanel", new Map()); // rows defaults to 2
+
+		Assert.notNull(result.getSlot("cell", 0), "builder: cell slot 0 should resolve inside a param-dependent repeat");
+		Assert.notNull(result.getSlot("cell", 1), "builder: cell slot 1 should resolve inside a param-dependent repeat");
+		Assert.notNull(result.getUpdatableByIndex("tag", 0), "builder: tag[0] indexed name should resolve inside a param-dependent repeat");
+		Assert.notNull(result.getDynamicRef("embed 0"), "builder: embed[0] dynamicRef should resolve inside a param-dependent repeat");
+
+		// Codegen instance must match. These currently fail because the runtime-rebuild fallback
+		// discards the slot/dynamicRef/indexed-name registrations.
+		final mp = createMp();
+		final instance:Dynamic = mp.repeatSlotPanel.create(); // rows defaults to 2
+
+		var slot0:Null<bh.multianim.MultiAnimBuilder.SlotHandle> = null;
+		try { slot0 = instance.getSlot("cell", 0, null); } catch (e:Dynamic) {}
+		Assert.notNull(slot0, "codegen: cell slot 0 inside a param-dependent repeat should be addressable via getSlot");
+
+		var slot1:Null<bh.multianim.MultiAnimBuilder.SlotHandle> = null;
+		try { slot1 = instance.getSlot("cell", 1, null); } catch (e:Dynamic) {}
+		Assert.notNull(slot1, "codegen: cell slot 1 inside a param-dependent repeat should be addressable via getSlot");
+
+		var tag0:Null<h2d.Object> = null;
+		try { tag0 = instance.getUpdatableByIndex("tag", 0); } catch (e:Dynamic) {}
+		Assert.notNull(tag0, "codegen: tag[0] indexed name inside a param-dependent repeat should be addressable");
+
+		var embed0:Null<bh.multianim.MultiAnimBuilder.BuilderResult> = null;
+		try { embed0 = instance.getDynamicRef("embed 0"); } catch (e:Dynamic) {}
+		Assert.notNull(embed0, "codegen: embed[0] dynamicRef inside a param-dependent repeat should be addressable");
+	}
+
+	// An indexed #seg[$i] dynamicRef inside a STATIC-count repeatable (count is a literal, so
+	// codegen unrolls at macro time rather than building through the runtime sink). Each
+	// unrolled iteration must register a distinct dynamicRef keyed "seg 0", "seg 1", ... and
+	// stay reachable from the codegen instance — matching the builder. The codegen dynamicRef
+	// tracking ignores node.updatableName and keys every iteration under the target
+	// programmable name (last-writer-wins), so the indexed refs are unaddressable.
+	// Fixture: test/examples/129-codegenIndexedDynamicRef/indexedDynamicRef.manim
+	@Test
+	public function testCodegenIndexedDynamicRefInStaticRepeatIsAddressable():Void {
+		// Baseline: the builder result keys each iteration "seg 0".."seg 2".
+		final fileContent = byte.ByteData.ofString(sys.io.File.getContent("test/examples/129-codegenIndexedDynamicRef/indexedDynamicRef.manim"));
+		final loader:bh.base.ResourceLoader = TestResourceLoader.createLoader(false);
+		final builder = bh.multianim.MultiAnimBuilder.load(fileContent, loader, "indexedDynamicRef.manim");
+		final result = builder.buildWithParameters("indexedDynamicRef", new Map());
+
+		Assert.notNull(result.getDynamicRef("seg 0"), "builder: seg[0] dynamicRef should resolve in a static repeat");
+		Assert.notNull(result.getDynamicRef("seg 1"), "builder: seg[1] dynamicRef should resolve in a static repeat");
+		Assert.notNull(result.getDynamicRef("seg 2"), "builder: seg[2] dynamicRef should resolve in a static repeat");
+		Assert.notNull(result.getDynamicRefByIndex("seg", 1), "builder: getDynamicRefByIndex('seg', 1) should resolve in a static repeat");
+
+		// Codegen instance must match — each unrolled indexed dynamicRef addressable & distinct.
+		final mp = createMp();
+		final instance:Dynamic = mp.indexedDynamicRef.create();
+
+		var seg0:Null<bh.multianim.MultiAnimBuilder.BuilderResult> = null;
+		var seg1:Null<bh.multianim.MultiAnimBuilder.BuilderResult> = null;
+		var seg2:Null<bh.multianim.MultiAnimBuilder.BuilderResult> = null;
+		try { seg0 = instance.getDynamicRef("seg 0"); } catch (e:Dynamic) {}
+		try { seg1 = instance.getDynamicRef("seg 1"); } catch (e:Dynamic) {}
+		try { seg2 = instance.getDynamicRef("seg 2"); } catch (e:Dynamic) {}
+
+		Assert.notNull(seg0, "codegen: seg[0] indexed dynamicRef in a static repeat should be addressable");
+		Assert.notNull(seg1, "codegen: seg[1] indexed dynamicRef in a static repeat should be addressable");
+		Assert.notNull(seg2, "codegen: seg[2] indexed dynamicRef in a static repeat should be addressable");
+		Assert.isFalse(seg0 == seg1, "codegen: each indexed dynamicRef iteration must be a distinct result, not last-writer-wins");
+
+		// getDynamicRefByIndex convenience must resolve the same per-iteration result.
+		var byIdx1:Null<bh.multianim.MultiAnimBuilder.BuilderResult> = null;
+		try { byIdx1 = instance.getDynamicRefByIndex("seg", 1); } catch (e:Dynamic) {}
+		Assert.notNull(byIdx1, "codegen: getDynamicRefByIndex('seg', 1) should resolve the indexed dynamicRef");
+		Assert.isTrue(byIdx1 == seg1, "codegen: getDynamicRefByIndex('seg', 1) must match getDynamicRef('seg 1')");
+	}
+
 	// 2D variant of the same visibility contract: get_name(x, y) returns null when the
 	// inner conditional hides that (x, y) cell. The 2D accessor is an if/else chain
 	// rather than a switch, but it has the same dangling-ref bug shape.
@@ -5461,6 +5683,42 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		instance.setMode(0);
 		final panelAgain:Null<bh.multianim.MultiAnimBuilder.SlotHandle> = instance.getSlot("panel", null, null);
 		Assert.notNull(panelAgain, "panel slot should reappear after swap back to active arm");
+	}
+
+	// Regression: a #name dynamicRef declared inside a @switch arm must be reachable via
+	// getDynamicRef("name") on a codegen instance. The runtime builder resolves switch-arm
+	// dynamicRefs (arm children build into the parent IR); the codegen getDynamicRef
+	// dispatcher must likewise consult the switch sink, mirroring getSlot / getUpdatable*.
+	@Test
+	public function testCodegenSwitchArmDynamicRefIsReachable():Void {
+		final mp = createMp();
+		final instance:Dynamic = mp.switchArmDynamicRef.create(); // default mode=alpha
+
+		// The active (alpha) arm declares #embed dynamicRef($switchArmChild, value=>10).
+		// Wrap the call: when a programmable has no static dynamicRefs the dispatcher may
+		// not be generated at all, so a missing-method runtime error must surface as a clean
+		// notNull assertion failure (the right reason) rather than aborting the test.
+		var embedRef:Null<bh.multianim.MultiAnimBuilder.BuilderResult> = null;
+		try {
+			embedRef = instance.getDynamicRef("embed");
+		} catch (e:Dynamic) {}
+		Assert.notNull(embedRef,
+			"dynamicRef declared inside the active @switch arm must be reachable via "
+			+ "getDynamicRef('embed') on a codegen instance — the runtime builder resolves it, "
+			+ "so the codegen dispatcher must consult the switch sink too.");
+
+		// hasDynamicRef must agree with getDynamicRef: a ref reachable via getDynamicRef must
+		// report present. The presence companion has to consult the same switch sink as the
+		// dispatcher (not only the repeat sink), matching BuilderResult where both methods read
+		// the same map and can never disagree.
+		var hasEmbed:Bool = false;
+		try {
+			hasEmbed = instance.hasDynamicRef("embed");
+		} catch (e:Dynamic) {}
+		Assert.isTrue(hasEmbed,
+			"hasDynamicRef('embed') must return true for a dynamicRef declared inside the active "
+			+ "@switch arm — it is reachable via getDynamicRef, so presence and lookup must stay "
+			+ "in sync (the guard-before-access pattern relies on this).");
 	}
 
 	// Setting a parameter that is not referenced anywhere inside any @switch arm must NOT
@@ -5613,5 +5871,155 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	static function addAt(parent:h2d.Object, obj:h2d.Object, x:Float, y:Float):Void {
 		obj.setPosition(x, y);
 		parent.addChild(obj);
+	}
+
+	// ==================== LiveProgrammable: a codegen instance beside its BuilderResult ====================
+	// bh.multianim.LiveProgrammable is what a tool (the DevBridge, a studio measuring a screen) sees
+	// of a built programmable. Both paths implement it; these tests hold them to the same answers.
+
+	/** `name` of `path` built by the runtime builder, incrementally, with default parameters. */
+	@Test
+	public function testHexOffsetParityCodegenMatchesBuilder():Void {
+		// Red Blob convention, pinned in pixels (size 16: pitches 27.713 / 24,
+		// half pitch 13.856): pointy shoves rows (odd-r / even-r, double-width),
+		// flat shoves columns (odd-q / even-q, double-height). Codegen resolves
+		// the static coordinates at compile time and the $col/$row ones at
+		// runtime; both must match the builder.
+		final inst = createMp().hexOffsetParity.create();
+		final res = liveBuilderResult("test/examples/160-hexOffsetParity/hexOffsetParity.manim", "hexOffsetParity");
+		final live:Array<bh.multianim.LiveProgrammable> = [inst, res];
+		final labels = ["codegen", "builder"];
+
+		function check(name:String, x:Float, y:Float):Void {
+			for (i in 0...live.length) {
+				final obj = live[i].getNamedDrawn(name);
+				Assert.notNull(obj, '${labels[i]}: $name drawn');
+				if (obj == null) continue;
+				Assert.floatEquals(x, obj.x, 0.01, '${labels[i]}: x of $name');
+				Assert.floatEquals(y, obj.y, 0.01, '${labels[i]}: y of $name');
+			}
+		}
+
+		check("pOdd", 13.856, 24.0);      // pointy offset(0, 1, odd)
+		check("pEven", -13.856, 24.0);    // pointy offset(0, 1, even)
+		check("pParam", 13.856, 24.0);    // pointy offset($col=0, $row=1, odd)
+		check("pDoubled", 27.713, 0.0);   // pointy doubled(2, 0)
+		check("fOdd", 24.0, 13.856);      // flat offset(1, 0, odd)
+		check("fEven", 24.0, -13.856);    // flat offset(1, 0, even)
+		check("fParam", 0.0, 27.713);     // flat offset($col=0, $row=1, even)
+		check("fDoubled", 0.0, 27.713);   // flat doubled(0, 2)
+
+		for (l in live) {
+			l.setParameter("col", 2);
+			l.setParameter("row", 0);
+		}
+		check("pParam", 55.426, 0.0);     // pointy offset(2, 0, odd)
+		check("fParam", 48.0, 0.0);       // flat offset(2, 0, even): an even column is not shoved, level with (0, 0)
+	}
+
+	function liveBuilderResult(path:String, name:String):bh.multianim.MultiAnimBuilder.BuilderResult {
+		final builder = TestResourceLoader.createLoader(false).loadMultiAnim(path);
+		return builder.buildWithParameters(name, new Map(), null, null, true);
+	}
+
+	static function sortedCopy(a:Array<String>):Array<String> {
+		final c = a.copy();
+		c.sort(Reflect.compare);
+		return c;
+	}
+
+	static function liveSlotKeys(live:bh.multianim.LiveProgrammable):Array<String> {
+		return sortedCopy([for (e in live.getSlotEntries()) Std.string(e.key)]);
+	}
+
+	/** Splits a names-map key ("name", "name idx", "name ix iy") and asks for the drawn object. */
+	static function drawnByKey(live:bh.multianim.LiveProgrammable, key:String):Null<h2d.Object> {
+		final parts = key.split(" ");
+		final index = parts.length > 1 ? Std.parseInt(parts[1]) : null;
+		final indexY = parts.length > 2 ? Std.parseInt(parts[2]) : null;
+		return live.getNamedDrawn(parts[0], index, indexY);
+	}
+
+	/** The two views agree: name, named keys, slot keys, dynamicRef keys, parameter values, and
+	 *  which named keys are drawn. */
+	function assertLiveParity(label:String, inst:bh.multianim.LiveProgrammable, res:bh.multianim.LiveProgrammable):Void {
+		Assert.equals(res.getProgrammableName(), inst.getProgrammableName(), '$label: programmable name');
+		Assert.same(sortedCopy(res.getNamedKeys()), sortedCopy(inst.getNamedKeys()), '$label: named keys');
+		Assert.same(liveSlotKeys(res), liveSlotKeys(inst), '$label: slot keys');
+		Assert.same(sortedCopy(res.getDynamicRefKeys()), sortedCopy(inst.getDynamicRefKeys()), '$label: dynamicRef keys');
+		final rp = res.getParameterValues();
+		final ip = inst.getParameterValues();
+		Assert.same(sortedCopy([for (k in rp.keys()) k]), sortedCopy([for (k in ip.keys()) k]), '$label: parameter names');
+		for (k => v in rp)
+			Assert.same(v, ip.get(k), '$label: value of "$k"');
+		for (key in res.getNamedKeys())
+			Assert.equals(drawnByKey(res, key) != null, drawnByKey(inst, key) != null, '$label: "$key" drawn on both sides or on neither');
+	}
+
+	@Test
+	public function testLiveProgrammableParity():Void {
+		final mp = createMp();
+		final cases:Array<{label:String, path:String, name:String, inst:bh.multianim.LiveProgrammable}> = [
+			{label: "liveProgrammable", path: "test/examples/159-liveProgrammable/liveProgrammable.manim", name: "liveProgrammable", inst: mp.liveProgrammable.create()},
+			{label: "codegenButton", path: "test/examples/36-codegenButton/codegenButton.manim", name: "codegenButton", inst: mp.button.create()},
+			{label: "codegenDialog", path: "test/examples/38-codegenDialog/codegenDialog.manim", name: "codegenDialog", inst: mp.dialog.create()},
+			{label: "codegenRepeat", path: "test/examples/39-codegenRepeat/codegenRepeat.manim", name: "codegenRepeat", inst: mp.repeat.create()},
+			{label: "codegenRepeat2d", path: "test/examples/40-codegenRepeat2d/codegenRepeat2d.manim", name: "codegenRepeat2d", inst: mp.repeat2d.create()},
+			{label: "dynamicRefs", path: "test/examples/73-dynamicRefs/dynamicRefs.manim", name: "dynamicRefs", inst: mp.dynamicRefs.create()},
+			{label: "slotContentDemo", path: "test/examples/84-slotContent/slotContent.manim", name: "slotContentDemo", inst: mp.slotContentDemo.create()},
+			{label: "switchArmNames", path: "test/examples/106-switchArmNames/switchArmNames.manim", name: "switchArmNames", inst: mp.switchArmNames.create()},
+			{label: "switchArmSlot", path: "test/examples/106-switchArmNames/switchArmNames.manim", name: "switchArmSlot", inst: mp.switchArmSlot.create()},
+			{label: "switchArmDynamicRef", path: "test/examples/106-switchArmNames/switchArmNames.manim", name: "switchArmDynamicRef", inst: mp.switchArmDynamicRef.create()},
+			{label: "switchUnrelatedParam", path: "test/examples/106-switchArmNames/switchArmNames.manim", name: "switchUnrelatedParam", inst: mp.switchUnrelatedParam.create()},
+			{label: "switchRepeat", path: "test/examples/102-switchRepeat/switchRepeat.manim", name: "switchRepeat", inst: mp.switchRepeat.create()},
+		];
+		for (c in cases)
+			assertLiveParity(c.label, c.inst, liveBuilderResult(c.path, c.name));
+	}
+
+	@Test
+	public function testLiveProgrammableParityAfterChanges():Void {
+		final path = "test/examples/159-liveProgrammable/liveProgrammable.manim";
+		final inst = createMp().liveProgrammable.create();
+		final res = liveBuilderResult(path, "liveProgrammable");
+		final live:Array<bh.multianim.LiveProgrammable> = [inst, res];
+
+		// The drawn #frame changes with status: another object, still exactly one drawn
+		final before = inst.getNamedDrawn("frame");
+		Assert.notNull(before, "frame drawn in the normal arm");
+		for (l in live) l.setParameter("status", "hover");
+		final after = inst.getNamedDrawn("frame");
+		Assert.notNull(after, "frame drawn in the hover arm");
+		Assert.isFalse(before == after, "the hover arm's frame is another object");
+		Assert.isFalse(bh.multianim.LiveProgrammable.LiveProgrammableTools.isDrawnUnder(before, inst), "the normal arm's frame is no longer drawn");
+		assertLiveParity("hover", inst, res);
+
+		// Fewer pips: the indexed keys shrink on both sides
+		for (l in live) l.setParameter("count", 1);
+		Assert.isTrue(inst.getNamedKeys().indexOf("pip 0") >= 0, "pip 0 stays");
+		Assert.isTrue(inst.getNamedKeys().indexOf("pip 2") < 0, "pip 2 is gone");
+		Assert.isNull(inst.getNamedDrawn("pip", 2), "pip 2 not drawn");
+		assertLiveParity("count 1", inst, res);
+
+		// The other switch arm: armSlot is gone, armMark is the other arm's object
+		for (l in live) l.setParameter("mode", "b");
+		Assert.isTrue(liveSlotKeys(inst).indexOf("Named(armSlot)") < 0, "armSlot left with arm a");
+		Assert.notNull(inst.getNamedDrawn("armMark"), "arm b's armMark drawn");
+		Assert.equals("b", inst.getParameterValues().get("mode"));
+		assertLiveParity("mode b", inst, res);
+	}
+
+	@Test
+	public function testLiveProgrammableParameterValues():Void {
+		final inst = createMp().liveProgrammable.create();
+		final values = inst.getParameterValues();
+		Assert.equals("normal", values.get("status"), "enum as its value's name");
+		Assert.equals(1, values.get("on"), "bool as 1/0, the builder's resolved form");
+		Assert.equals(3, values.get("count"));
+		Assert.equals(0.5, values.get("ratio"));
+		Assert.equals("hi", values.get("label"));
+		Assert.equals(0xFFFF0000, values.get("tint"), "color as 0xAARRGGBB");
+		Assert.isTrue((inst : h2d.Object) == inst.getRoot(), "the instance is its own root");
+		Assert.equals("liveProgrammable", inst.getProgrammableName());
 	}
 }

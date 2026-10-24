@@ -4,6 +4,7 @@ import utest.Assert;
 import bh.test.BuilderTestBase;
 import bh.test.BuilderTestBase.BuildMode;
 import bh.test.BuilderTestBase.buildFromFile;
+import bh.test.BuilderTestBase.buildFromSource;
 
 /**
  * Regression — unconditional `apply { ... }` must re-apply when a referenced
@@ -29,6 +30,25 @@ class ApplyParamUpdateTest extends BuilderTestBase {
 
 		result.setParameter("a", 0.25);
 		Assert.floatEquals(0.25, result.object.alpha, "alpha after setParameter(a, 0.25)");
+	}
+
+	@Test
+	public function testRootLevelExtendedProps_RefireOnSetParameter_Builder():Void {
+		final result = buildFromSource("
+			#x programmable(s:float=1.0, a:float=1.0) {
+				scale: $s
+				alpha: $a
+				bitmap(generated(color(40, 40, #4488ff))): 0, 0
+			}
+		", "x", null, Incremental);
+		Assert.floatEquals(1.0, result.object.scaleX, "ctor scaleX from s=1.0");
+		Assert.floatEquals(1.0, result.object.alpha,  "ctor alpha from a=1.0");
+
+		result.setParameter("s", 2.0);
+		Assert.floatEquals(2.0, result.object.scaleX, "root scaleX after setParameter(s, 2.0)");
+
+		result.setParameter("a", 0.25);
+		Assert.floatEquals(0.25, result.object.alpha, "root alpha after setParameter(a, 0.25)");
 	}
 
 	@Test

@@ -1,0 +1,12 @@
+version: 1.0
+
+#childLbl programmable(label:string="") {
+  text(dd, $label, white): 0, 0
+}
+
+// Forwarding `$a + $b` into a string param must concatenate ("1" + "2" ->
+// "12"): the builder resolves forwarded values by the TARGET param type; the
+// codegen lowers by source expression shape, producing a numeric add (3).
+#concatHost programmable(a:int=1, b:int=2) {
+  dynamicRef($childLbl, label => $a + $b): 0, 0
+}

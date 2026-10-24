@@ -1,0 +1,8 @@
+version: 1.0
+
+// Imported by staticRefIncremental.manim as "ext": the target of a staticRef(external(ext), ...)
+// that is built again when the importing programmable's parameter changes.
+
+#sriExtLeaf programmable(w:uint=11) {
+  bitmap(generated(color($w, 3, #ffaa00))): 0, 0
+}
