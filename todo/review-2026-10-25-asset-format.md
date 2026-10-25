@@ -33,10 +33,10 @@ or fixed item of the two earlier lists; where one extends a filed item it says s
 **Status, second batch:** the codegen and the UI-widget P2s are done (ticked below): CG-49..53, UI-96
 and UI-77..84 fixed, each with a test that failed first (`CodegenParityReviewTest`,
 `RefsSlotsReviewTest`, `ShaderTest`, `UIComponentTest`, `UIScrollbarWidgetTest`, the 152 harness's
-`CgParamNamesHost`; CHANGELOG names them). BLD-38 was resolved by correcting the docs: a `@switch` arm
-is a rebuild unit by design, so a shader driven every frame belongs outside it. Left open from these:
-updating a shader's uniforms in place inside a `@switch` arm (no rebuild), and UI-78's second half
-(the list still holds the array it was made with, shared with a dropdown; only `setItems` copies).
+`CgParamNamesHost`; CHANGELOG names them). BLD-38 is fixed in code as well: a param that only the
+active arm's shaders use sets them in place (builder and codegen), the arm built again for anything
+else and for any arm with elements whose params its change is not matched against. UI-78's second
+half too: the list copies the array it is made with, and a dropdown reads its list's array.
 
 ## Start here
 
@@ -304,6 +304,15 @@ session scratchpad, not the repo).
   repeat in a flow, so its `alpha`, `scale`, `filter` and `#name` (applied later, :8100, :8156) are
   lost; before they went on the wrapper. Codegen never applied them. *Fix:* reject them at parse for a
   spliced repeat, or give them to each item.
+- [ ] `BLD-40` **P2** **A `@switch` arm misses a change of a param used only where its collectors do not
+  look** — found with BLD-38's fix, traced in the builder (codegen's `collectArmParamRefs` not checked).
+  The arm's refs come from `collectNodeParamRefs`, `collectSwitchArmExtraParamRefs` and
+  `collectChildConditionalParamRefs`, which leave out `flow` sizes, `mask`/`spacer` sizes, `particles`,
+  a text's font, styles and `autoFit`, a `TAWValue` width, `@flow.offset`, repeats other than
+  `step`/`range`, `REPEAT2D` counts and conditions inside a nested `@switch`'s arms; the arm is built
+  non-incrementally, so `@(mode=>a) { mask($w, 8) {…} }` and `setParameter("w", …)` leaves the mask as
+  it was, with no `untracked_param`. `armRefsAllKnown` lists the node kinds that are complete. *Fix:*
+  complete the collectors (then `armRefsAllKnown` can go), or mark the missed refs untracked.
 - [ ] `CG-54` **P3** **Codegen rejects one `#name` shared by a literal and a dynamic-name `dynamicRef`
   in exclusive arms** — `6895917`, CONFIRMED (compile probe: "duplicate dynamicRef name").
   ProgrammableCodeGen.hx:2520-2522, :2577-2578 check each list alone; the builder accepts it

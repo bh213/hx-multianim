@@ -80,7 +80,9 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 		this.root = new h2d.Object();
 		this.panelSizeMode = panelSizeMode ?? FixedScroll;
 
-		this.items = items;
+		// Its own copy: the caller's array stays the caller's (setItems would clear it, a push to it
+		// would add an item the list never built)
+		this.items = items.copy();
 		this.width = width;
 		this.maxHeight = height;
 		this.topClearance = topClearance;
@@ -132,8 +134,8 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 
 		final savedScrollY = this.mask.scrollY;
 
-		// Clear and repopulate (items is final, can't reassign). The new items are read first: they may
-		// be this very array (`setItems(list.items)`, or the caller's array the list was made with)
+		// Clear and repopulate (items is final, can't reassign; a dropdown reads this array). The new
+		// items are read first: they may be this very array (`setItems(list.items)`)
 		final incoming = newItems.copy();
 		this.items.resize(0);
 		for (item in incoming)

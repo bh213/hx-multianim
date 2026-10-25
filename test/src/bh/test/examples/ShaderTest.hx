@@ -163,6 +163,101 @@ class ShaderTest extends utest.Test {
 	}
 
 	@Test
+	public function testAShaderInASwitchArmIsSetInPlace():Void {
+		final result = buildFromSource("
+			#test programmable(mode:[calm, hurt]=hurt, hit:float=0, speed:float=0.5) {
+				@switch(mode) {
+					hurt {
+						#hero bitmap(generated(color(8, 8, #f00))) { filter: flash(amount: $hit) pos: 0, 0 }
+						#sea bitmap(generated(shader(water, 32, 16, speed: $speed))): 10, 0
+					}
+					default: bitmap(generated(color(8, 8, #0f0))): 0, 0;
+				}
+			}
+		", "test", null, Incremental);
+		final hero = result.getNamedDrawn("hero");
+		final sea:h2d.Bitmap = cast result.getNamedDrawn("sea");
+		final flash = shaderOf(hero.filter);
+		final water = shaderOf(sea.filter);
+		result.setParameter("hit", 0.75);
+		result.setParameter("speed", 2.0);
+		Assert.equals(hero, result.getNamedDrawn("hero"), "the arm is not built again for a shader's value");
+		Assert.equals((flash : h2d.filter.Filter), hero.filter, "its shader set in place");
+		Assert.floatEquals(0.75, flash.values["amount"]);
+		Assert.equals((sea : h2d.Object), result.getNamedDrawn("sea"), "nor for a ground's");
+		Assert.equals((water : h2d.filter.Filter), sea.filter, "the ground's shader set in place");
+		Assert.floatEquals(2.0, water.values["speed"]);
+		// Another arm and back: built again with the values set, and set in place from then on
+		result.setParameter("mode", "calm");
+		result.setParameter("mode", "hurt");
+		final again = result.getNamedDrawn("hero");
+		Assert.notEquals(hero, again);
+		Assert.floatEquals(0.75, shaderOf(again.filter).values["amount"]);
+		result.setParameter("hit", 0.25);
+		Assert.equals(again, result.getNamedDrawn("hero"));
+		Assert.floatEquals(0.25, shaderOf(again.filter).values["amount"]);
+	}
+
+	@Test
+	public function testAShaderValueTheArmUsesElsewhereStillUpdatesAll():Void {
+		final result = buildFromSource("
+			#test programmable(mode:[a, b]=a, hit:float=0.2) {
+				@switch(mode) {
+					a {
+						#hero bitmap(generated(color(8, 8, #f00))) { filter: flash(amount: $hit) alpha: $hit pos: 0, 0 }
+					}
+					default: bitmap(generated(color(8, 8, #0f0))): 0, 0;
+				}
+			}
+		", "test", null, Incremental);
+		result.setParameter("hit", 0.5);
+		final hero = result.getNamedDrawn("hero");
+		Assert.floatEquals(0.5, hero.alpha, "the alpha that uses it follows");
+		Assert.floatEquals(0.5, shaderOf(hero.filter).values["amount"], "and the shader");
+	}
+
+	@Test
+	public function testAShaderValueAMaskInTheArmUsesStillBuildsTheArm():Void {
+		// A mask's size is not among what an arm's change is matched against: an arm with one is built
+		// again for any change, its shaders' too, so the mask follows as before
+		final result = buildFromSource("
+			#test programmable(mode:[a, b]=a, w:float=0.5) {
+				@switch(mode) {
+					a {
+						#m mask($w * 20, 8) {
+							#hero bitmap(generated(color(8, 8, #f00))) { filter: flash(amount: $w) pos: 0, 0 }
+						}
+					}
+					default: bitmap(generated(color(8, 8, #0f0))): 0, 0;
+				}
+			}
+		", "test", null, Incremental);
+		result.setParameter("w", 1.0);
+		final m:h2d.Mask = cast result.getNamedDrawn("m");
+		Assert.equals(20, m.width, "the mask follows");
+		Assert.floatEquals(1.0, shaderOf(result.getNamedDrawn("hero").filter).values["amount"], "and the shader");
+	}
+
+	@Test
+	public function testAShaderInASwitchArmIsSetInPlaceInGeneratedCode():Void {
+		final mp = new bh.test.MultiProgrammable(bh.test.TestResourceLoader.createLoader(false));
+		final made:Dynamic = mp.shaderSwitch.create();
+		final bitmaps = bh.test.BuilderTestBase.findVisibleBitmapDescendants(cast made);
+		final hero = bitmaps[0], sea = bitmaps[1];
+		final flash = shaderOf(hero.filter);
+		final water = shaderOf(sea.filter);
+		made.setHit(0.5);
+		made.setSpeed(2.0);
+		final after = bh.test.BuilderTestBase.findVisibleBitmapDescendants(cast made);
+		Assert.equals(hero, after[0], "codegen: the arm is not built again for a shader's value");
+		Assert.equals((flash : h2d.filter.Filter), hero.filter, "codegen: its shader set in place");
+		Assert.floatEquals(0.5, flash.values["amount"]);
+		Assert.equals(sea, after[1], "codegen: nor for a ground's");
+		Assert.equals((water : h2d.filter.Filter), sea.filter);
+		Assert.floatEquals(2.0, water.values["speed"]);
+	}
+
+	@Test
 	public function testAGroundInARepeatCountedByAParamHasItsShaderInGeneratedCode():Void {
 		final mp = new bh.test.MultiProgrammable(bh.test.TestResourceLoader.createLoader(false));
 		final made:Dynamic = mp.shaderGroundRepeat.create();

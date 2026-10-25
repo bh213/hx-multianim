@@ -37,6 +37,20 @@ version: 1.0
   }
 }
 
+// A shader and a ground in a @switch arm: set in place by their parameter, the arm not built again (ShaderTest)
+#shaderSwitch programmable(mode:[calm, hurt]=hurt, hit:float=0, speed:float=0.5) {
+	@switch(mode) {
+		hurt {
+			bitmap(generated(color(8, 8, #f00))) {
+				filter: flash(amount: $hit)
+				pos: 0, 0
+			}
+			bitmap(generated(shader(water, 32, 16, speed: $speed))): 10, 0
+		}
+		default: bitmap(generated(color(8, 8, #0f0))): 0, 0;
+	}
+}
+
 #shaders programmable() {
 	text(dd, "crt", #cccccc): 10, 10
 	bitmap(generated(colorwithtext(180, 120, #4488ff, "Shader", #ffee88, dd))) {

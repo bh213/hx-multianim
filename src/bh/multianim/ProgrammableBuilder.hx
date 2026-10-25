@@ -622,6 +622,13 @@ class ProgrammableBuilder {
 		getBuilder().rebuildSwitchArmByOrdinal(programmableName, switchOrdinal, armIndex, container, params, sink);
 	}
 
+	/** Set a @switch arm's shaders in place for a change of `changedParam` that only they see,
+	 *  instead of building the arm again. False when the arm must be built again (rebuildSwitchArm). */
+	public function setSwitchArmInPlace(programmableName:String, switchOrdinal:Int, params:Map<String, Dynamic>,
+			sink:bh.multianim.MultiAnimBuilder.SwitchArmResults, changedParam:String):Bool {
+		return getBuilder().setSwitchArmInPlace(programmableName, switchOrdinal, params, sink, changedParam);
+	}
+
 	/** Build an arbitrary node by its unique name, forwarding to the builder.
 	 *  Used by generated repeatable code for node types not handled inline. */
 	public function buildNodeByUniqueName(programmableName:String, uniqueNodeName:String):Null<h2d.Object> {

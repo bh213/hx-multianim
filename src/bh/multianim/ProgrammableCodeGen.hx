@@ -2794,13 +2794,19 @@ class ProgrammableCodeGen {
 		}
 		final relevanceSwitch:Expr = {expr: ESwitch(macro _newArmIdx, relevanceCases, macro {}), pos: pos};
 		final switchKeyLit = paramName;
+		// A change only the active arm's shaders see sets them in place instead (builder parity:
+		// setArmShadersInPlace), asked of the sink first so no params map is made for a rebuild
 		final updateBlock:Expr = macro {
 			final _oldArmIdx = $p{["this", armIdxField]};
 			$p{["this", armIdxField]} = $armIndexExpr;
 			final _newArmIdx = $p{["this", armIdxField]};
-			var _relevant = _changedParam == null || _newArmIdx != _oldArmIdx || _changedParam == $v{switchKeyLit};
+			final _forced = _changedParam == null || _newArmIdx != _oldArmIdx || _changedParam == $v{switchKeyLit};
+			var _relevant = _forced;
 			if (!_relevant) $relevanceSwitch;
-			if (_relevant)
+			if (_relevant
+				&& (_forced
+					|| !$p{["this", sinkField]}.setsInPlace(_changedParam)
+					|| !this._pb.setSwitchArmInPlace($v{progName}, $v{switchOrdinal}, $paramsMapExpr, $p{["this", sinkField]}, _changedParam)))
 				this._pb.rebuildSwitchArm($v{progName}, $v{switchOrdinal}, $p{["this", armIdxField]}, $p{["this", switchField]}, $paramsMapExpr, $p{["this", sinkField]});
 		};
 		switchUpdateEntries.push({

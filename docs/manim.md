@@ -3549,7 +3549,8 @@ list.doubleClickThreshold = 0.5;
 list.wheelScrollMultiplier = 20;
 list.clickMode = SingleClick; // single-click fires UIClickItem
 
-// Replace items at runtime
+// Replace items at runtime. The list keeps its own copy of what it was made with (list.items);
+// a dropdown's items are its list's, so setItems on a dropdown's list changes what it shows
 list.setItems(newItems, 0); // replaces content, selects first item
 list.setItems(newItems, 0, true); // preserveScroll: keep current scroll position
 

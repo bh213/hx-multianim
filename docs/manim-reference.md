@@ -432,7 +432,7 @@ Works with `@()`, `@if()`, `@any()`, `@all()`, `@else`, `@else(cond)`, `@default
 - `#name` cannot be applied to `@switch` (parse error) — name the elements inside the arms instead
 - Cannot be used at root level (must be inside a programmable body)
 - Only one `default` arm per `@switch` block (duplicate rejected at parse time)
-- **Incremental mode:** `setParameter()` triggers full arm rebuild (teardown + rebuild of active arm). All param refs inside all arms are collected — changing any referenced param (not just the switch param) triggers rebuild. Supports nested `@switch`, `@()` conditionals, repeatables, and `$param` expressions inside arms
+- **Incremental mode:** `setParameter()` triggers full arm rebuild (teardown + rebuild of active arm). All param refs inside all arms are collected — changing any referenced param (not just the switch param) triggers rebuild. Supports nested `@switch`, `@()` conditionals, repeatables, and `$param` expressions inside arms. One exception: a param that only the active arm's shaders use (`filter: flash(amount: $hit)`, a ground's shader) sets them in place, the arm kept — see Shaders, Set in place
 - **Codegen:** lazy rebuild via ordinal-based arm lookup. Generated `_applyVisibility` always rebuilds on any parameter change, forwarding current param values to the builder
 
 ---
@@ -696,9 +696,12 @@ unit and label) are `bh.multianim.ShaderCatalog`, with no Heaps, for tools; the 
   uniforms when it changes, in an incremental build and in codegen alike: the filter is not made
   again (`FilterManager.customFilterIn`, `EngineShaderFilter.setParams`). Inside a `group(…)`, and as
   an `apply`'s filter (the parent's own may be what is there, kept to be put back), it is made again.
-  Inside a `@switch` arm the whole arm is built again on any change to a parameter it uses (its
-  stateanims and particles too), so a shader driven every frame belongs outside the `@switch`: put it
-  on an element around it, or use `@()` arms.
+  Inside a `@switch` arm too (an element's `filter:` or a ground's shader, builder and codegen): a
+  parameter that only the arm's shaders use sets them in place, the arm's objects, stateanims and
+  particles kept. A parameter the arm uses anywhere else, or any change in an arm that holds a
+  `flow`, `mask`, `spacer`, `particles`, a nested `@switch`, a slot, a placeholder, a repeat that is
+  not `step`/`range`, a text whose font or styles use parameters, or a `@flow.offset` with one,
+  builds the arm again, its shaders made again with it.
 - **A disposed manager** (`ScreenManager.dispose()`) takes its stage shader off the stage; a filter
   the game put there since is left.
 - **Time** is `bh.base.ShaderClock`: `ScreenManager.update(dt)` advances it by the `dt` it is given,

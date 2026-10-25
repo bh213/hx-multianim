@@ -3312,6 +3312,14 @@ private typedef InternalBuilderResults = {
 	htmlTextsWithLinks:Array<h2d.HtmlText>
 }
 
+/** A shader of a built `@switch` arm: a node's `filter:` or a ground bitmap's shader, the object it
+ *  was built as, and the parameters its values use (set by armInPlaceOf). */
+private typedef ArmShader = {node:Node, object:h2d.Object, refs:Null<Array<String>>};
+
+/** What of a built `@switch` arm a parameter change sets in place instead of building the arm again:
+ *  its shaders, and the parameters nothing else in the arm uses. */
+private typedef ArmInPlace = {shaders:Array<ArmShader>, params:Array<String>};
+
 /** Persistent sink for results produced inside a lazily/runtime-built subtree — a @switch arm
  *  (one instance per switch ordinal) or a param-dependent repeatable body (one instance per
  *  repeat). Passed to rebuildSwitchArmByOrdinal / buildSingleNodeWithParams so indexed names,
@@ -3322,8 +3330,19 @@ class SwitchArmResults {
 	@:allow(bh.multianim.MultiAnimBuilder)
 	var ir:InternalBuilderResults;
 
+	/** A `@switch` arm's shaders a change sets in place (null for a repeat body, or an arm with none) */
+	@:allow(bh.multianim.MultiAnimBuilder)
+	var inPlace:Null<ArmInPlace> = null;
+
 	public function new() {
 		ir = {names: new Map(), interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
+	}
+
+	/** True when a change of `param` only sets the arm's shaders in place (`setSwitchArmInPlace`),
+	 *  so generated code asks before it builds the arm again. */
+	public function setsInPlace(param:String):Bool {
+		final arm = inPlace;
+		return arm != null && arm.params.indexOf(param) >= 0;
 	}
 
 	public function getUpdatable(name:String):Null<h2d.Object> {
@@ -3472,6 +3491,9 @@ class MultiAnimBuilder {
 	 *  and not registered as incremental entries; expression tracking stays active. */
 	var suppressConditionalTracking:Bool = false;
 	var incrementalContext:Null<IncrementalUpdateContext> = null;
+	/** While a `@switch` arm is built for a result that changes later: every node built with a shader
+	 *  (a `filter:`, a ground), what armInPlaceOf picks the arm's own from. Null otherwise. */
+	var armShaderSink:Null<Array<ArmShader>> = null;
 	/** Set by rebuildDeferredContent immediately before build() on the conditional node of an
 	 *  arm that was hidden at build time and is shown now. Its conditional entry (the deferred
 	 *  wrapper) is already tracked, so that one build must neither defer it again nor give it a
@@ -5825,8 +5847,10 @@ class MultiAnimBuilder {
 		}
 	}
 
-	/** Collect all parameter references from a node's expressions (for deferred rebuild tracking). */
-	static function collectNodeParamRefs(node:Node):Array<String> {
+	/** Collect all parameter references from a node's expressions (for deferred rebuild tracking).
+	 *  `inPlace`: nodes whose shader values are left out (a `@switch` arm's shaders set in place). */
+	static function collectNodeParamRefs(node:Node, ?inPlace:Array<Node>):Array<String> {
+		final shaderSetInPlace = inPlace != null && inPlace.indexOf(node) >= 0;
 		final refs:Array<String> = [];
 		inline function addRef(ref:String) {
 			if (refs.indexOf(ref) < 0) refs.push(ref);
@@ -5847,7 +5871,14 @@ class MultiAnimBuilder {
 				if (index != null) collectParamRefs(index, refs);
 				if (fps != null) collectParamRefs(fps, refs);
 			case BITMAP(tileSource, _, _):
-				collectTileSourceParamRefs(tileSource, refs);
+				switch tileSource {
+					case TSGenerated(ShaderGround(_, w, h, _)) if (shaderSetInPlace):
+						// its size makes the tile again; its shader's values are set in place
+						collectParamRefs(w, refs);
+						collectParamRefs(h, refs);
+					default:
+						collectTileSourceParamRefs(tileSource, refs);
+				}
 			case GRAPHICS(elements):
 				for (item in elements) {
 					collectCoordinateParamRefs(item.pos, refs);
@@ -5871,7 +5902,7 @@ class MultiAnimBuilder {
 				addRef(paramName);
 				for (arm in arms)
 					for (child in arm.children)
-						addRefs(collectNodeParamRefs(child));
+						addRefs(collectNodeParamRefs(child, inPlace));
 			case STATIC_REF(_, programmableRef, parameters):
 				// A deferred conditional materializes non-incrementally, so a staticRef in it is not
 				// tracked on its own: the wrapper's rebuild must follow its target and arguments.
@@ -5904,13 +5935,159 @@ class MultiAnimBuilder {
 		if (node.rotation != null) collectParamRefs(node.rotation, refs);
 		if (node.alpha != null) collectParamRefs(node.alpha, refs);
 		if (node.tint != null) collectParamRefs(node.tint, refs);
-		if (node.filter != null) collectFilterParamRefs(node.filter, refs);
+		if (node.filter != null && !shaderSetInPlace) collectFilterParamRefs(node.filter, refs);
 		// Recurse into children
 		if (node.children != null) {
 			for (child in node.children)
-				addRefs(collectNodeParamRefs(child));
+				addRefs(collectNodeParamRefs(child, inPlace));
 		}
 		return refs;
+	}
+
+	static function isShaderGround(node:Node):Bool {
+		return switch node.type {
+			case BITMAP(TSGenerated(ShaderGround(_, _, _, _)), _, _): true;
+			default: false;
+		}
+	}
+
+	/** The arm's own nodes: built once each with the arm's parameters (not a repeat's body, whose
+	 *  loop variable a change cannot see; a nested `@switch`'s arms are not its children). */
+	static function collectArmOwnNodes(nodes:Array<Node>, out:Array<Node>):Void {
+		for (node in nodes) {
+			out.push(node);
+			switch node.type {
+				case REPEAT(_, _) | REPEAT2D(_, _, _, _):
+				default:
+					if (node.children != null)
+						collectArmOwnNodes(node.children, out);
+			}
+		}
+	}
+
+	/** What of a `@switch` arm just built a parameter change sets in place instead of building the arm
+	 *  again: the shaders of the arm's own nodes (`recorded` while it was built), and the parameters
+	 *  they use that nothing else in the arm does (a position, a condition, another node's text…).
+	 *  Null when there is none. Called with the arm's parameters in place (its @finals followed). */
+	function armInPlaceOf(arm:SwitchArm, recorded:Array<ArmShader>):Null<ArmInPlace> {
+		if (recorded.length == 0 || !armRefsAllKnown(arm.children))
+			return null;
+		final own:Array<Node> = [];
+		collectArmOwnNodes(arm.children, own);
+		final shaders:Array<ArmShader> = [];
+		final nodes:Array<Node> = [];
+		for (s in recorded)
+			if (own.indexOf(s.node) >= 0 && nodes.indexOf(s.node) < 0) {
+				nodes.push(s.node);
+				shaders.push(s);
+			}
+		if (shaders.length == 0)
+			return null;
+		final other:Array<String> = [];
+		collectChildConditionalParamRefs(arm.children, other);
+		for (child in arm.children) {
+			for (r in collectNodeParamRefs(child, nodes))
+				if (other.indexOf(r) < 0) other.push(r);
+			collectSwitchArmExtraParamRefs(child, other);
+		}
+		final otherAll = expandFinalAliases(other);
+		final params:Array<String> = [];
+		for (s in shaders) {
+			final refs:Array<String> = [];
+			if (s.node.filter != null)
+				collectFilterParamRefs(s.node.filter, refs);
+			switch s.node.type {
+				case BITMAP(TSGenerated(ShaderGround(_, _, _, args)), _, _):
+					for (a in args) collectParamRefs(a.value, refs);
+				default:
+			}
+			final all = expandFinalAliases(refs);
+			s.refs = all;
+			for (r in all)
+				if (otherAll.indexOf(r) < 0 && params.indexOf(r) < 0) params.push(r);
+		}
+		return params.length == 0 ? null : {shaders: shaders, params: params};
+	}
+
+	/** Whether every parameter these nodes use is one the arm's collectors see (collectNodeParamRefs,
+	 *  collectSwitchArmExtraParamRefs, collectChildConditionalParamRefs). Only then may a change skip
+	 *  the arm's rebuild: a `flow`'s or a mask's sizes, particles, a text's font, a `@flow.offset`, a
+	 *  nested `@switch`'s conditions… are not seen there, and the rebuild is what keeps them right. */
+	static function armRefsAllKnown(nodes:Array<Node>):Bool {
+		inline function noRefs(rv:Null<ReferenceableValue>):Bool {
+			if (rv == null)
+				return true;
+			final tmp:Array<String> = [];
+			collectParamRefs(rv, tmp);
+			return tmp.length == 0;
+		}
+		for (node in nodes) {
+			final fp = node.flowProperties;
+			if (fp != null && (!noRefs(fp.offsetX) || !noRefs(fp.offsetY)))
+				return false;
+			final known = switch node.type {
+				case BITMAP(_, _, _) | POINT | LAYERS | APPLY | NINEPATCH(_, _, _, _, _, _, _) | GRAPHICS(_) | PIXELS(_) | STATIC_REF(_, _, _)
+					| DYNAMIC_REF(_, _, _) | INTERACTIVE(_, _, _, _, _) | STATEANIM(_, _, _) | STATEANIM_CONSTRUCT(_, _, _)
+					| TILEMAP_FILL(_, _, _, _, _) | FINAL_VAR(_, _):
+					true;
+				case TEXT(t) | RICHTEXT(t):
+					noRefs(t.fontName) && t.styles == null && t.images == null && t.autoFitFonts == null && t.autoFitMode == null
+						&& switch t.textAlignWidth {
+							case TAWValue(v): noRefs(v);
+							default: true;
+						};
+				case REPEAT(_, StepIterator(_, _, _) | RangeIterator(_, _, _)):
+					true;
+				default:
+					false;
+			}
+			if (!known)
+				return false;
+			if (node.children != null && !armRefsAllKnown(node.children))
+				return false;
+		}
+		return true;
+	}
+
+	/** A change of only the arm's in-place parameters: each shader that uses one is set in place
+	 *  (buildFilterIn, groundFilter), the arm's objects, stateanims and particles kept as they are. */
+	function setArmShadersInPlace(inPlace:ArmInPlace, changed:(String) -> Bool):Void {
+		final savedNode = currentNode;
+		for (s in inPlace.shaders) {
+			final refs = s.refs;
+			var uses = false;
+			if (refs != null)
+				for (r in refs)
+					if (changed(r)) {
+						uses = true;
+						break;
+					}
+			if (!uses)
+				continue;
+			currentNode = s.node;
+			switch s.node.type {
+				case BITMAP(TSGenerated(ShaderGround(name, _, _, args)), _, _):
+					s.object.filter = groundFilter(s.object.filter, name, args);
+				default:
+					final type = s.node.filter;
+					if (type != null) {
+						final f = buildFilterIn(s.object.filter, type);
+						if (f != null)
+							s.object.filter = f;
+					}
+			}
+		}
+		currentNode = savedNode;
+	}
+
+	/** Whether every one of `dirty` is set in place in this arm. */
+	static function armSetsAllInPlace(inPlace:Null<ArmInPlace>, dirty:Array<String>):Bool {
+		if (inPlace == null || dirty.length == 0)
+			return false;
+		for (r in dirty)
+			if (inPlace.params.indexOf(r) < 0)
+				return false;
+		return true;
 	}
 
 	function addPosition(obj:h2d.Object, x, y) {
@@ -7221,13 +7398,24 @@ class MultiAnimBuilder {
 				if (incrementalMode) incrementalMode = false;
 
 				// Arm children build as a whole (no incremental tracking): their own @()/@else/@default
-				// chains resolve here, as in any other full build
+				// chains resolve here, as in any other full build. A result that changes later keeps the
+				// arm's shaders, to set in place a change only they see (armInPlaceOf)
+				final savedShaderSink = armShaderSink;
+				final recordedShaders:Null<Array<ArmShader>> = savedIncMode ? [] : null;
+				armShaderSink = recordedShaders;
 				if (matchedArm != null) {
-					for (child in resolveConditionalChildren(matchedArm.children))
-						build(child, ObjectMode(container), gridCoordinateSystem, hexCoordinateSystem, internalResults, builderParams);
+					try {
+						for (child in resolveConditionalChildren(matchedArm.children))
+							build(child, ObjectMode(container), gridCoordinateSystem, hexCoordinateSystem, internalResults, builderParams);
+					} catch (e:Dynamic) {
+						armShaderSink = savedShaderSink;
+						throw e;
+					}
 				}
+				armShaderSink = savedShaderSink;
 
 				if (savedIncMode) {
+					var armInPlace = matchedArm != null && recordedShaders != null ? armInPlaceOf(matchedArm, recordedShaders) : null;
 					incrementalMode = savedIncMode;
 					// Collect param refs PER ARM. The union (switchParamRefs) registers the tracked
 					// expression so any in-arm ref change still gives the update fn a chance to run.
@@ -7281,13 +7469,17 @@ class MultiAnimBuilder {
 						// switch key OR is referenced by THIS arm's own refs. If neither, the change targets
 						// an inactive arm only — skip the needless teardown so the active arm's stateanim
 						// playheads / particles are preserved.
-						if (newArmIdx == currentArmIdx) {
-							var relevant = capturedCtx.isParamDirty(capturedParamName);
-							if (!relevant && newArmIdx >= 0) {
-								for (r in capturedArmRefs[newArmIdx])
-									if (capturedCtx.isParamDirty(r)) { relevant = true; break; }
+						// A change only the arm's shaders see sets them in place instead (its stateanims and
+						// particles keep running, a value driven every frame makes nothing again).
+						if (newArmIdx == currentArmIdx && !capturedCtx.isParamDirty(capturedParamName)) {
+							if (newArmIdx < 0) return;
+							final dirtyRefs = [for (r in capturedArmRefs[newArmIdx]) if (capturedCtx.isParamDirty(r)) r];
+							if (dirtyRefs.length == 0) return;
+							final inPlace = armInPlace;
+							if (inPlace != null && armSetsAllInPlace(inPlace, dirtyRefs)) {
+								setArmShadersInPlace(inPlace, r -> dirtyRefs.indexOf(r) >= 0);
+								return;
 							}
-							if (!relevant) return;
 						}
 						currentArmIdx = newArmIdx;
 						// Drop registrations + per-element bookkeeping from the previous arm before tearing
@@ -7295,19 +7487,30 @@ class MultiAnimBuilder {
 						// its registrations are visible via the parent BuilderResult.
 						capturedCtx.cleanupDestroyedSubtree(capturedIR, capturedContainer);
 						capturedContainer.removeChildren();
+						armInPlace = null;
 						if (newArm != null) {
 							// Mirror initial arm build: disable incremental tracking so arm children
 							// don't register tracked expressions / dynamicRef bindings on the parent ctx.
 							final savedMode = incrementalMode;
 							final savedCtx = incrementalContext;
+							final savedSink = armShaderSink;
+							final recorded:Array<ArmShader> = [];
 							incrementalMode = false;
 							incrementalContext = null;
+							armShaderSink = recorded;
 							final gcs = MultiAnimParser.getGridCoordinateSystem(node);
 							final hcs = MultiAnimParser.getHexCoordinateSystem(node);
-							for (child in resolveConditionalChildren(newArm.children))
-								build(child, ObjectMode(capturedContainer), gcs, hcs, capturedIR, capturedBP);
+							try {
+								for (child in resolveConditionalChildren(newArm.children))
+									build(child, ObjectMode(capturedContainer), gcs, hcs, capturedIR, capturedBP);
+							} catch (e:Dynamic) {
+								armShaderSink = savedSink;
+								throw e;
+							}
 							incrementalMode = savedMode;
 							incrementalContext = savedCtx;
+							armShaderSink = savedSink;
+							armInPlace = armInPlaceOf(newArm, recorded);
 						}
 					}, switchParamRefs, container, true);
 				}
@@ -8155,6 +8358,9 @@ class MultiAnimBuilder {
 		var pos = calculatePosition(node.pos, MultiAnimParser.getGridCoordinateSystem(node), MultiAnimParser.getHexCoordinateSystem(node));
 		addPosition(object, pos.x, pos.y);
 		applyExtendedFormProperties(object, node);
+		final shaderSink = armShaderSink;
+		if (shaderSink != null && (node.filter != null || isShaderGround(node)))
+			shaderSink.push({node: node, object: object, refs: null});
 
 		// Track expressions for incremental updates
 		if (incrementalMode && incrementalContext != null) {
@@ -10697,52 +10903,94 @@ class MultiAnimBuilder {
 		// Drop registrations from the previous arm BEFORE removeChildren (needs intact parent chain).
 		// Only IR collections are cleaned here — the arm build path runs with incrementalMode=false,
 		// so there are no trackedExpressions or dynamicRefBindings to reap.
-		if (sink != null)
+		if (sink != null) {
 			MultiAnimBuilder.removeRegistrationsUnder(sink.ir, container);
+			sink.inPlace = null;
+		}
 		container.removeChildren();
 		if (armIndex >= 0 && armIndex < arms.length) {
 			final arm = arms[armIndex];
-			// Capture parent context BEFORE pushBuilderState resets builderParams.
-			// Arm children inherit the caller's callback/placeholderObjects and the
-			// programmable's grid/hex coordinate systems (resolved via node parent chain).
-			final parentBP = this.builderParams;
+			// Arm children inherit the programmable's grid/hex coordinate systems (resolved via node parent chain)
 			final gridCS = MultiAnimParser.getGridCoordinateSystem(switchNode);
 			final hexCS = MultiAnimParser.getHexCoordinateSystem(switchNode);
+			final savedSink = armShaderSink;
+			final recorded:Null<Array<ArmShader>> = sink != null ? [] : null;
+			// Captured before pushBuilderState resets builderParams
+			final parentBP = this.builderParams;
 			pushBuilderState();
 			try {
-				// Convert parent params to resolved index params
-				final resolvedParams:Map<String, ResolvedIndexParameters> = new Map();
-				final progDefs = getProgrammableParameterDefinitions(progNode, false);
-				for (key => value in parentParams) {
-					final def = progDefs.get(key);
-					if (def != null)
-						resolvedParams.set(key, dynamicToResolvedWithDef(def.type, value));
-					else
-						resolvedParams.set(key, dynamicToResolvedInferred(value));
-				}
-				replayEnclosingFinals(switchNode, progNode, resolvedParams);
-				this.indexedParams = resolvedParams;
-				this.incrementalMode = false;
-				this.incrementalContext = null;
-				final bp:BuilderParameters = {
-					callback: (parentBP != null && parentBP.callback != null) ? parentBP.callback : defaultCallback,
-					placeholderObjects: parentBP != null ? parentBP.placeholderObjects : null,
-					scene: parentBP != null ? parentBP.scene : null,
-				};
-				this.builderParams = bp;
+				final bp = enterSwitchArmState(progNode, switchNode, parentParams, parentBP);
 				final ir:InternalBuilderResults = sink != null
 					? sink.ir
 					: {names: new Map(), interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
+				armShaderSink = recorded;
 				for (child in resolveConditionalChildren(arm.children))
 					build(child, ObjectMode(container), cast gridCS, cast hexCS, ir, bp);
+				armShaderSink = savedSink;
+				// The arm's shaders a later change sets in place (setSwitchArmInPlace), worked out with
+				// the arm's parameters and @finals still in place
+				if (sink != null && recorded != null)
+					sink.inPlace = armInPlaceOf(arm, recorded);
 				popBuilderState();
 			} catch (e:Dynamic) {
 				// Keep the state stack balanced and the live indexedParams restored on any
 				// throw — same unwind contract as buildWithParameters
+				armShaderSink = savedSink;
 				popBuilderState();
 				throw e;
 			}
 		}
+	}
+
+	/** The state a codegen `@switch` arm is built or set in, after pushBuilderState: the instance's
+	 *  parameters as the builder holds them, the @finals around the switch replayed, the caller's
+	 *  callback and placeholders (`parentBP`, the builderParams before the push). */
+	function enterSwitchArmState(progNode:Node, switchNode:Node, parentParams:Map<String, Dynamic>, parentBP:Null<BuilderParameters>):BuilderParameters {
+		final resolvedParams:Map<String, ResolvedIndexParameters> = new Map();
+		final progDefs = getProgrammableParameterDefinitions(progNode, false);
+		for (key => value in parentParams) {
+			final def = progDefs.get(key);
+			if (def != null)
+				resolvedParams.set(key, dynamicToResolvedWithDef(def.type, value));
+			else
+				resolvedParams.set(key, dynamicToResolvedInferred(value));
+		}
+		replayEnclosingFinals(switchNode, progNode, resolvedParams);
+		this.indexedParams = resolvedParams;
+		this.incrementalMode = false;
+		this.incrementalContext = null;
+		final bp:BuilderParameters = {
+			callback: (parentBP != null && parentBP.callback != null) ? parentBP.callback : defaultCallback,
+			placeholderObjects: parentBP != null ? parentBP.placeholderObjects : null,
+			scene: parentBP != null ? parentBP.scene : null,
+		};
+		this.builderParams = bp;
+		return bp;
+	}
+
+	/** A codegen `@switch` arm's shaders set in place for a change of `changedParam` that only they
+	 *  see (`sink.setsInPlace(changedParam)`, worked out as the arm was built). False when the arm
+	 *  must be built again instead (rebuildSwitchArmByOrdinal). Used by ProgrammableBuilder. */
+	function setSwitchArmInPlace(programmableName:String, switchOrdinal:Int, parentParams:Map<String, Dynamic>, sink:SwitchArmResults,
+			changedParam:String):Bool {
+		final inPlace = sink.inPlace;
+		if (inPlace == null || inPlace.params.indexOf(changedParam) < 0)
+			return false;
+		final progNode = multiParserResult.nodes.get(programmableName);
+		if (progNode == null) throw builderError('programmable "$programmableName" not found');
+		final switchNode = findNthSwitchNode(progNode, switchOrdinal);
+		if (switchNode == null) throw builderError('switch node #$switchOrdinal not found in "$programmableName"');
+		final parentBP = this.builderParams;
+		pushBuilderState();
+		try {
+			enterSwitchArmState(progNode, switchNode, parentParams, parentBP);
+			setArmShadersInPlace(inPlace, r -> r == changedParam);
+			popBuilderState();
+		} catch (e:Dynamic) {
+			popBuilderState();
+			throw e;
+		}
+		return true;
 	}
 
 	/** Find the N-th SWITCH node in DFS order within a node tree. */

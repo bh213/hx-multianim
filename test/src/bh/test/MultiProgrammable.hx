@@ -938,6 +938,9 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/166-shaders/shaders.manim", "shaderGroundRepeat")
 	public var shaderGroundRepeat;
 
+	@:manim("test/examples/166-shaders/shaders.manim", "shaderSwitch")
+	public var shaderSwitch;
+
 	@:manim("test/examples/167-exportDocs/exportDocs.manim", "exportDocs")
 	public var exportDocs;
 

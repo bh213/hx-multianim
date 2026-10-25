@@ -1500,6 +1500,23 @@ class UIComponentTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testAListKeepsItsOwnCopyOfItsItems():Void {
+		final mine = createScrollableListItems();
+		final list = createScrollableList(mine);
+		list.setItems([{name: "Only"}], 0);
+		Assert.equals(5, mine.length, "the array the list was made with is the caller's, left as it was");
+		mine.push({name: "Item 6"});
+		Assert.equals(1, list.items.length, "and what the caller does to it later is not the list's");
+		// A dropdown reads its list's items: replacing them there changes what it shows
+		final given = createDropdownItems();
+		final dropdown = createDropdown(given);
+		@:privateAccess dropdown.panel.setItems([{name: "A"}, {name: "B"}], 0);
+		Assert.equals(5, given.length, "the dropdown's caller keeps its array");
+		Assert.equals(2, dropdown.items.length, "the dropdown follows its list");
+		Assert.equals("B", dropdown.items[1].name);
+	}
+
+	@Test
 	public function testItemsScrolledOutOfTheListsViewCannotBeChosen():Void {
 		final list = createScrollableList(createManyScrollableListItems(30), 5);
 		@:privateAccess list.mask.scrollY = 60;

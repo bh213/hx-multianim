@@ -58,7 +58,9 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 		this.builder = builder;
 
 		this.root = new h2d.Object();
-		this.items = items;
+		// Its list's own array, so what the list's setItems puts there is what the dropdown shows;
+		// `items` is what the list was made with
+		this.items = builtPanel.items;
 
 		var inputParams:Map<String, Dynamic> = ["status" => "normal", "panel" => "closed"];
 		final extra = builder.extraParams;
