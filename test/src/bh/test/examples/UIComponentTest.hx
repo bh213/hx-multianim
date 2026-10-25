@@ -135,6 +135,32 @@ class UIComponentTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testAButtonClicksOnlyForALeftPressAndReleaseOnIt():Void {
+		final builder = BuilderTestBase.builderFromSource(BUTTON_MANIM);
+		final button = UIStandardMultiAnimButton.create(builder, "button", "Test");
+		final mock = new MockControllable();
+
+		// pressed elsewhere, dragged over it and let go there
+		button.onEvent(UITestHarness.createEventWrapper(OnRelease(0), mock));
+		Assert.isFalse(mock.hasEvent(UIClick), "a release with no press on the button is no click");
+		// the right button
+		button.onEvent(UITestHarness.createEventWrapper(OnPush(1), mock));
+		button.onEvent(UITestHarness.createEventWrapper(OnRelease(1), mock));
+		Assert.isFalse(mock.hasEvent(UIClick), "a right click is no click");
+		UITestHarness.simulateClick(button, mock);
+		Assert.isTrue(mock.hasEvent(UIClick), "a left press and release is");
+
+		// a checkbox and a tab button act on the left button only
+		final checkbox = UIStandardMultiCheckbox.create(BuilderTestBase.builderFromSource(CHECKBOX_MANIM), "checkbox", false);
+		checkbox.onEvent(UITestHarness.createEventWrapper(OnPush(1), mock));
+		Assert.isFalse(checkbox.selected, "a right push does not toggle a checkbox");
+		final tabs = createTabs();
+		final tabMock = new MockControllable();
+		getTabButton(tabs.tabs, 1).onEvent(UITestHarness.createEventWrapper(OnPush(1), tabMock));
+		Assert.equals(0, tabs.tabs.getSelectedIndex(), "a right push does not select a tab");
+	}
+
+	@Test
 	public function testButtonDisabledNoClick():Void {
 		var builder = BuilderTestBase.builderFromSource(BUTTON_MANIM);
 		var button = UIStandardMultiAnimButton.create(builder, "button", "Test");
@@ -940,6 +966,19 @@ class UIComponentTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testTextInputTellsItsScreenBeforeTheMouseEverTouchesIt():Void {
+		ensureTestFont();
+		final builder = BuilderTestBase.builderFromSource(TEXTINPUT_MANIM);
+		final input = UIMultiAnimTextInput.create(builder, "textInput", {font: "testfont"});
+		final screen = new UITestScreen();
+		screen.testAddElement(input);
+		// Focused by Tab and typed into: no mouse event has reached the input
+		input.setText("hi");
+		@:privateAccess input.textInput.onChange();
+		Assert.isTrue(screen.hasEvent(UITextChange("hi")), "the change reaches the screen with no mouse event first");
+	}
+
+	@Test
 	public function testTextInputDisabledState():Void {
 		ensureTestFont();
 		var builder = BuilderTestBase.builderFromSource(TEXTINPUT_MANIM);
@@ -1253,6 +1292,37 @@ class UIComponentTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testADropdownChoiceIsOneChangeFromTheDropdown():Void {
+		final dropdown = createDropdown();
+		dropdown.autoOpen = false;
+		final mock = new MockControllable();
+		UITestHarness.simulateClick(dropdown, mock, new h2d.col.Point(60, -100));
+		mock.clearEvents();
+		final list:UIMultiAnimScrollableList = @:privateAccess dropdown.panel;
+		final itemBounds = @:privateAccess list.interactives[2].getBounds();
+		UITestHarness.simulateClick(dropdown, mock, new h2d.col.Point(itemBounds.getCenter().x, itemBounds.getCenter().y));
+		Assert.equals(2, dropdown.getSelectedIndex(), "precondition: the third item was chosen");
+		final changes = [for (e in mock.recordedEvents) if (e.event.match(UIChangeItem(_, _))) e];
+		Assert.equals(1, changes.length, "one choice is one UIChangeItem, not one from the dropdown and one from its list");
+		if (changes.length > 0)
+			Assert.equals((dropdown : UIElement), changes[0].source, "said by the dropdown");
+	}
+
+	@Test
+	public function testDisablingAnOpenDropdownClosesItsPanel():Void {
+		final dropdown = createDropdown();
+		dropdown.autoOpen = false;
+		final mock = new MockControllable();
+		final panelObj = getDropdownPanelObject(dropdown);
+		UITestHarness.simulateClick(dropdown, mock, new h2d.col.Point(60, -100));
+		Assert.isTrue(panelObj.visible, "precondition: open");
+		dropdown.disabled = true;
+		dropdown.update(2.0);
+		Assert.isFalse(panelObj.visible, "a disabled dropdown's panel closes: it could never be closed by the player");
+		Assert.equals(bh.ui.UIElement.UIEventPriority.Content, dropdown.eventPriority, "and no longer takes the clicks over it");
+	}
+
+	@Test
 	public function testDropdownSetSelectedIndexOutOfBounds():Void {
 		var dropdown = createDropdown();
 
@@ -1415,6 +1485,53 @@ class UIComponentTest extends BuilderTestBase {
 		var builder = BuilderTestBase.builderFromSource(SCROLLABLE_LIST_MANIM);
 		return UIMultiAnimScrollableList.createWithSingleBuilder(builder, "list-panel", "list-item", "scrollbar", "scrollbar", 120, 200, items, 0,
 			initialIndex, panelSizeMode);
+	}
+
+	@Test
+	public function testSetItemsWithTheListsOwnArrayKeepsTheItems():Void {
+		final list = createScrollableList();
+		list.setItems(list.items, 0);
+		Assert.equals(5, list.items.length, "setItems(list.items) keeps them");
+		final mine = createScrollableListItems();
+		final shared = createScrollableList(mine);
+		mine.push({name: "Item 6"});
+		shared.setItems(mine, 0);
+		Assert.equals(6, shared.items.length, "the caller's array, grown and given again, is the list");
+	}
+
+	@Test
+	public function testItemsScrolledOutOfTheListsViewCannotBeChosen():Void {
+		final list = createScrollableList(createManyScrollableListItems(30), 5);
+		@:privateAccess list.mask.scrollY = 60;
+		final mock = new MockControllable();
+		// Item 1 lies at -40..-20 now: above the list's view, under its header
+		final above = new h2d.col.Point(50, -30);
+		list.onEvent(UITestHarness.createEventWrapper(OnMouseMove, mock, above));
+		Assert.equals(-1, list.currentHoverIndex, "an item out of view is not hovered");
+		UITestHarness.simulateClick(list, mock, above);
+		Assert.equals(5, list.currentItemIndex, "nor chosen");
+	}
+
+	@Test
+	public function testARadioGroupSaysOneChangeForAClick():Void {
+		final builder = BuilderTestBase.builderFromSource("
+			#radioGroup programmable(count:uint=2) {
+				repeatable($i, step($count, dy: 20)) {
+					placeholder(generated(color(10, 10, #ffffff)), callback(\"checkbox\", $i)): 0, 0
+				}
+			}
+			#radio programmable(status:[normal,hover,pressed,disabled]=normal, disabled:bool=false, checked:bool=false) {
+				bitmap(generated(color(10, 10, #ffffff))): 0, 0
+			}
+		");
+		final items:Array<UIElementListItem> = [{name: "a"}, {name: "b"}];
+		final group = bh.ui.UIMultiAnimRadioButtons.create(builder, "radioGroup", "radio", items, 0);
+		final mock = new MockControllable();
+		final second:bh.ui.UIElement.StandardUIElementEvents = cast group.getSubElements(SETReceiveEvents)[1];
+		UITestHarness.simulateClick(second, mock);
+		Assert.equals(1, group.getSelectedIndex(), "precondition: the second chosen");
+		Assert.isTrue(mock.hasEvent(UIChangeItem(1, items)), "the group says its change");
+		Assert.isFalse(mock.hasEvent(UIToggle(true)), "its button does not say a toggle of its own beside it");
 	}
 
 	@Test

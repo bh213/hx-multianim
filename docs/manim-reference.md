@@ -696,6 +696,9 @@ unit and label) are `bh.multianim.ShaderCatalog`, with no Heaps, for tools; the 
   uniforms when it changes, in an incremental build and in codegen alike: the filter is not made
   again (`FilterManager.customFilterIn`, `EngineShaderFilter.setParams`). Inside a `group(…)`, and as
   an `apply`'s filter (the parent's own may be what is there, kept to be put back), it is made again.
+  Inside a `@switch` arm the whole arm is built again on any change to a parameter it uses (its
+  stateanims and particles too), so a shader driven every frame belongs outside the `@switch`: put it
+  on an element around it, or use `@()` arms.
 - **A disposed manager** (`ScreenManager.dispose()`) takes its stage shader off the stage; a filter
   the game put there since is left.
 - **Time** is `bh.base.ShaderClock`: `ScreenManager.update(dt)` advances it by the `dt` it is given,

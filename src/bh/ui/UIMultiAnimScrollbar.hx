@@ -50,6 +50,9 @@ class UIMultiAnimScrollbar implements UIElement implements UIElementDisablable i
 	public var position(default, set):Int;
 	/** What an arrow click scrolls by, in content pixels (`settings { arrowStep:int => 20 }`). */
 	public var arrowStep:Int = 20;
+	/** False when a widget made of this bar (a list's scrollbar) says its changes itself: no
+	 *  `UIChangeValue` is pushed to the screen, `onChange` still runs. */
+	public var pushesScreenEvents:Bool = true;
 	public var isDragging(default, null):Bool = false;
 
 	var dragOffset:Float = 0;
@@ -233,7 +236,7 @@ class UIMultiAnimScrollbar implements UIElement implements UIElementDisablable i
 		position = newPosition;
 		if (position != before) {
 			onChange(position);
-			if (wrapper != null)
+			if (wrapper != null && pushesScreenEvents)
 				wrapper.control.pushEvent(UIChangeValue(position), this);
 		}
 	}

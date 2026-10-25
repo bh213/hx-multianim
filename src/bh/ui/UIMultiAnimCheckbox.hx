@@ -19,6 +19,9 @@ class UIStandardMultiCheckbox implements UIElement implements UIElementDisablabl
 	public var disabled(default, set):Bool = false;
 	public var selected(default, set):Bool = false;
 	public var ignoreSelectEvents = false;
+	/** False when a widget made of this checkbox (a radio group's button) says its changes itself:
+	 *  no `UIToggle` is pushed to the screen, `onToggle` still runs. */
+	public var pushesScreenEvents:Bool = true;
 
 	public function clear() {}
 
@@ -74,7 +77,7 @@ class UIStandardMultiCheckbox implements UIElement implements UIElementDisablabl
 			return;
 		switch wrapper.event {
 			case OnPush(button):
-				if (!ignoreSelectEvents) {
+				if (button == 0 && !ignoreSelectEvents) {
 					this.selected = !this.selected;
 					result.beginUpdate();
 					result.setParameter("status", "pressed");
@@ -99,7 +102,8 @@ class UIStandardMultiCheckbox implements UIElement implements UIElementDisablabl
 	function triggerToggle(checked, controllable:Controllable) {
 		onToggle(checked);
 		onInternalToggle(checked, controllable);
-		controllable.pushEvent(UIToggle(checked), this);
+		if (pushesScreenEvents)
+			controllable.pushEvent(UIToggle(checked), this);
 	}
 
 	public dynamic function onToggle(checked:Bool) {}

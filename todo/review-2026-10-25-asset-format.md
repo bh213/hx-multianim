@@ -30,6 +30,14 @@ and the LSP suite's `testIntegerLiteralsAreThirtyTwoBits`,
 `StaticRefIncrementalTest.testCodegen_ImportedProgrammableOfTheWrappersNameIsNoCycle`. None duplicates an open
 or fixed item of the two earlier lists; where one extends a filed item it says so.
 
+**Status, second batch:** the codegen and the UI-widget P2s are done (ticked below): CG-49..53, UI-96
+and UI-77..84 fixed, each with a test that failed first (`CodegenParityReviewTest`,
+`RefsSlotsReviewTest`, `ShaderTest`, `UIComponentTest`, `UIScrollbarWidgetTest`, the 152 harness's
+`CgParamNamesHost`; CHANGELOG names them). BLD-38 was resolved by correcting the docs: a `@switch` arm
+is a rebuild unit by design, so a shader driven every frame belongs outside it. Left open from these:
+updating a shader's uniforms in place inside a `@switch` arm (no rebuild), and UI-78's second half
+(the list still holds the array it was made with, shared with a dropdown; only `setItems` copies).
+
 ## Start here
 
 **The nine P1s.**
@@ -252,43 +260,43 @@ session scratchpad, not the repo).
   conditional element; also root `scale`/`rotation`/`filter` (a root `filter: flash(amount: $hit)`
   with a hover apply) and root `pos`. Compiled before `cdb83e5`. *Fix:* `fieldName != null &&` before
   the regex; a fixture with a root apply over a `$param`.
-- [ ] `CG-49` **P2** **Codegen still runs a hidden element's update when the same setter or batch hides
+- [x] `CG-49` **P2** **Codegen still runs a hidden element's update when the same setter or batch hides
   it** — `cdb83e5`, traced. Setters run `_updateExpressions` before `_applyVisibility`
   (ProgrammableCodeGen.hx:1086-1095), `endUpdate` too (:1179-1181); the builder applies the
   conditional chains first, then sweeps expressions skipping detached objects (MultiAnimBuilder.hx:2289).
   `@($idx < 3) bitmap(...): layout(row, $idx)` then `setIdx(5)` (or a batch `{on: false, idx: 5}`)
   evaluates `layout(row, 5)` and throws — the case the CHANGELOG calls fixed; the new test sets `on`
   and `idx` in two calls. *Fix:* visibility first, then the gated updates.
-- [ ] `CG-50` **P2** **Codegen defers a `dynamicRef($tpl)` template swap while the site is hidden; the
+- [x] `CG-50` **P2** **Codegen defers a `dynamicRef($tpl)` template swap while the site is hidden; the
   builder swaps at once** — `cdb83e5`, traced. The swap is an `_eN` update (ProgrammableCodeGen.hx:
   5411-5415), so the new gate (:706-711) skips it; the builder swaps regardless (MultiAnimBuilder.hx:
   2418-2425). After `show=false; setTpl("b")`, codegen's `getDynamicRef("panel")` is still template a
   (`unknown_param` for b's parameters). *Fix:* leave the swap ungated, as `_fwd` forwarding is.
-- [ ] `CG-51` **P2** **Codegen: a spliced repeat inside another breaks while the outer one is hidden**
+- [x] `CG-51` **P2** **Codegen: a spliced repeat inside another breaks while the outer one is hidden**
   — `cdb83e5`, traced (the configuration compiles). The marker branch of the visibility pass
   (ProgrammableCodeGen.hx:753-767) lacks the `_si >= 0` guard of the element branch: setting the inner
   condition while the outer is hidden inserts the inner items at index 0, out of order for good; an
   inner `step($n)` rebuilt while the outer is hidden finds no items (`items()` is empty with no parent,
   MultiAnimBuilder.hx:372, :432) and `addItem` drops the new ones. The builder rebuilds the outer
   repeat. *Fix:* guard on the sentinel's parent; rebuild into the outer repeat's held list.
-- [ ] `UI-96` **P2** **`resync` moves a binding to the new `dynamicRef` child without its state** —
+- [x] `UI-96` **P2** **`resync` moves a binding to the new `dynamicRef` child without its state** —
   `97caa2a`, traced. UIRichInteractiveHelper.hx:106-112 changes `existing.target` but sets nothing on
   it: after `setDisabled("sb", true)` and a template swap, the new template draws `status=normal` and
   looks enabled while the helper keeps `Disabled` (hover and pressed lost alike). *Fix:*
   `target.setParameter(stateParam, …)` with the current state after rebinding.
-- [ ] `CG-52` **P2** **Codegen: an unnamed ground bitmap in a runtime-built repeat draws a white
+- [x] `CG-52` **P2** **Codegen: an unnamed ground bitmap in a runtime-built repeat draws a white
   rectangle** — `4adf44e`, traced (compiles), extends CG-35. The BITMAP branch of
   `generateRuntimeChildExprs` (ProgrammableCodeGen.hx:3843-3899) makes the `solidTile(0xFFFFFFFF)`
   and never sets the ground filter, as the builder does (MultiAnimBuilder.hx:6829-6831).
   `repeatable($i, step($n, dx: 20)) { bitmap(generated(shader(water, 16, 16))) }`. *Fix:* the
   `groundFilterIn` call in that branch.
-- [ ] `BLD-38` **P2** **A shader `$param` in a `@switch` arm rebuilds the whole arm on every change**
+- [x] `BLD-38` **P2** **A shader `$param` in a `@switch` arm rebuilds the whole arm on every change**
   — `4adf44e`, CONFIRMED in the builder (MultiAnimBuilder.hx:7276-7311), *plausible* in codegen
   (whose arms the builder builds). `flash(amount: $hit)` driven per frame tears down the arm (its
   stateanims, particles) and makes the filter again; manim-reference "Shaders, Set in place" says only
   an apply's filter and a `group(…)` are made again. *Fix:* track a filter-only change in arms, or
   correct the docs.
-- [ ] `CG-53` **P2** **Parameters named `stale` or `applying` break codegen** — `cdb83e5`/`97caa2a`,
+- [x] `CG-53` **P2** **Parameters named `stale` or `applying` break codegen** — `cdb83e5`/`97caa2a`,
   CONFIRMED (compile probes): `Duplicate class field declaration … _stale` / `_applying`. Extends CG-39.
   *Fix:* internals named so no parameter can produce them (`__stale`), or reserve the names.
 - [ ] `BLD-39` **P3** **A spliced repeat's own properties and `#name` are dropped** — `cdb83e5`,
@@ -536,43 +544,43 @@ The contract table these were found with is Appendix A of the proposal.
   (src/screens/OkCancelDialog.hx:59-64), and `UIKeyPress` is sent on down and up
   (UIDefaultController.hx:318-320). "Esc → Quit?" closes as Cancel on the Esc key-up. *Fix:* act on
   `release == false` only, and ignore a key that was down when the dialog opened.
-- [ ] `UI-77` **P2** **Composite widgets leak their children's events to the screen** — CONFIRMED. A
+- [x] `UI-77` **P2** **Composite widgets leak their children's events to the screen** — CONFIRMED. A
   dropdown selection pushes `UIChangeItem` twice (the dropdown's, and the inner list's with the list
   as source, UIMultiAnimScrollableList.hx:484-487, UIMultiAnimDropdown.hx:81, :162-170), so `change`
   plays twice and the list's copy ignores the dropdown's `sound.change`; a list's dragged scrollbar
   pushes `UIChangeValue` per drag step (UIMultiAnimScrollbar.hx:231-238 via the list :335-340); a
   radio click sends `UIChangeItem` and the child's `UIToggle` (UIMultiAnimRadioButtons.hx:59-63).
   *Fix:* children of a widget push to their parent, not the screen.
-- [ ] `UI-78` **P2** **`setItems` with the list's own array empties the list** — CONFIRMED. The list
+- [x] `UI-78` **P2** **`setItems` with the list's own array empties the list** — CONFIRMED. The list
   keeps the caller's array (`this.items = items`, UIMultiAnimScrollableList.hx:79) and `setItems`
   does `items.resize(0)` before copying `newItems` (:132-134): `items.push(x); list.setItems(items)`
   ends empty, and the dropdown sharing the array is mutated. *Fix:* copy in the constructor and copy
   `newItems` before clearing.
-- [ ] `UI-79` **P2** **Items scrolled out of a list's view can be hovered and clicked** — CONFIRMED.
+- [x] `UI-79` **P2** **Items scrolled out of a list's view can be hovered and clicked** — CONFIRMED.
   `findInteractiveIndex` tests each item's unclipped bounds (UIMultiAnimScrollableList.hx:271-281,
   :361) while the list's `containsPoint` is the whole panel with its header (MAObject.hx:53-58): a
   click on the header selects an item hidden under the mask. *Fix:* reject points outside the mask.
-- [ ] `UI-80` **P2** **A text input's events are lost until the mouse has touched it** — CONFIRMED.
+- [x] `UI-80` **P2** **A text input's events are lost until the mouse has touched it** — CONFIRMED.
   `controllable` is captured only inside `onEvent` (UIMultiAnimTextInput.hx:39, :167-170, :186-188),
   so after focus by Tab (UITabGroup.hx:132) or `focus()`, every `UIFocusChange`, `UITextChange` and
   `UITextSubmit` is dropped. No test covers the events. *Fix:* give the input its `Controllable` when
   it is added.
-- [ ] `UI-81` **P2** **Disabling an open dropdown leaves its panel open for good** — CONFIRMED.
+- [x] `UI-81` **P2** **Disabling an open dropdown leaves its panel open for good** — CONFIRMED.
   `set_disabled` does not close it; the panel keeps `Overlay` priority and eats clicks while
   `onEvent` returns early (UIMultiAnimDropdown.hx:107-113, :176-182, :253). *Fix:* `startClose()` and
   reset the priority on disable.
-- [ ] `UI-82` **P2** 🤖 **A list's and a dropdown's other settings are dropped silently** —
+- [x] `UI-82` **P2** 🤖 **A list's and a dropdown's other settings are dropped silently** —
   CONFIRMED. `split.main` is never used and `buildPanel` passes only `width`, `height`,
   `topClearance`, ignoring `panelBuilder.extraParams` (UIScreen.hx:986-1005, :1037-1063;
   UIMultiAnimScrollableList.hx:168-170). The docs say they reach the panel (docs/manim.md:3506,
   :3641, :895); every other widget throws "does not match any parameter". *Fix:* forward them, or
   throw as the others do.
-- [ ] `UI-83` **P2** **A prefixed setting beside its bare form: the winner depends on map order** —
+- [x] `UI-83` **P2** **A prefixed setting beside its bare form: the winner depends on map order** —
   CONFIRMED. The bare multi-forward `font`/`fontColor` overwrites the prefix map unchecked
   (UIScreen.hx:561-594): with `item.font => A` and `font => B` the item gets whichever key the
   `StringMap` yields last, which differs between HashLink and JS. *Fix:* the prefixed key always
   wins.
-- [ ] `UI-84` **P2** **Button click semantics are loose** — CONFIRMED. `OnRelease` fires `UIClick`
+- [x] `UI-84` **P2** **Button click semantics are loose** — CONFIRMED. `OnRelease` fires `UIClick`
   with no press on the button first and for any mouse button (UIMultiAnimButton.hx:98-102); checkbox
   and tab act on a push of any button (UIMultiAnimCheckbox.hx:76, UIMultiAnimTabs.hx:96). Same family
   as UI-44. *Fix:* a left-press flag set on `OnPush(0)`.

@@ -44,6 +44,9 @@ class UIMultiAnimTextInput implements UIElement implements UIElementDisablable i
 	public var maxLength:Int;
 	public var filter:Null<TextInputFilter> = null;
 	public var tabGroup:Null<UITabGroup> = null;
+	/** Where the input says its changes, focus and submit before a mouse event has given it the
+	 *  controller (focused by Tab, or by `focus()`): the screen it was added to sets it. */
+	public var screenEventSink:Null<(UIScreenEvent, UIElement) -> Void> = null;
 
 	public dynamic function onChange() {}
 
@@ -167,6 +170,8 @@ class UIMultiAnimTextInput implements UIElement implements UIElementDisablable i
 	function pushScreenEvent(event:UIScreenEvent) {
 		if (controllable != null)
 			controllable.pushEvent(event, this);
+		else if (screenEventSink != null)
+			screenEventSink(event, this);
 	}
 
 	// --- UIElement ---

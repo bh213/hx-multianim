@@ -109,6 +109,9 @@ class UIRichInteractiveHelper {
 								if (owner != existing.target) {
 									existing.target = owner;
 									existing.stateParam = paramName;
+									// A new result is built at its own default: it takes the state the binding holds
+									if (existing.currentState != Normal)
+										owner.setParameter(paramName, stateName(existing.currentState));
 								}
 							}
 						}
@@ -130,6 +133,15 @@ class UIRichInteractiveHelper {
 		// 3. Add bindings for new ids only — existing bindings keep their currentState
 		for (entry in toAdd)
 			bind(entry.id, source, entry.paramName, prefix, ownerOf(source, entry.obj));
+	}
+
+	static function stateName(state:InteractiveState):String {
+		return switch state {
+			case Normal: "normal";
+			case Hover: "hover";
+			case Pressed: "pressed";
+			case Disabled: "disabled";
+		};
 	}
 
 	/** Internal accessor for screen auto-wiring resync — uses the reserved metadata key. */

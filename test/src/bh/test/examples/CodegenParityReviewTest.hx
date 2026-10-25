@@ -539,6 +539,81 @@ class CodegenParityReviewTest extends BuilderTestBase {
 			checkHiddenLayout((k, v) -> inst.setParameter(k, v), cast inst, 'codegen ${Type.getClassName(Type.getClass(inst))}');
 	}
 
+	/** One change hides the element and would move it past the layout's end: the move is never looked up. */
+	function checkHiddenBySameChange(setParameter:(String, Dynamic) -> Void, root:h2d.Object, label:String):Void {
+		Assert.equals("300,200", bitmapPositions(root), '$label: on point 1');
+		Assert.isNull(errorOf(() -> setParameter("idx", 5)), '$label: the change that hides it is not evaluated on it');
+		Assert.equals("", bitmapPositions(root), '$label: hidden');
+		setParameter("idx", 0);
+		Assert.equals("100,200", bitmapPositions(root), '$label: shown on point 0');
+	}
+
+	@Test
+	public function testElementHiddenByTheSameChange_Builder_IsNotEvaluated():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "cpLayoutHiddenBySameParam", null, Incremental);
+		checkHiddenBySameChange((k, v) -> result.setParameter(k, v), result.object, "builder");
+	}
+
+	@Test
+	public function testElementHiddenByTheSameChange_Codegen_IsNotEvaluated():Void {
+		final inst:Dynamic = createMp().cpLayoutHiddenBySameParam.create();
+		checkHiddenBySameChange((k, v) -> inst.setParameter(k, v), cast inst, "codegen");
+		// A batch that hides it and moves it past the end: the same
+		final batched:Dynamic = createMp().cpLayoutHidden.create();
+		batched.beginUpdate();
+		batched.setParameter("on", false);
+		batched.setParameter("idx", 5);
+		Assert.isNull(errorOf(() -> batched.endUpdate()), "codegen batch: the element it hides is not evaluated");
+		Assert.equals("", bitmapPositions(cast batched), "codegen batch: hidden");
+	}
+
+	// ==================== A template swap while the dynamicRef is hidden ====================
+
+	@Test
+	public function testTemplateSwapWhileHidden_Builder_IsDoneAtOnce():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "cpSwapHidden", null, Incremental);
+		result.setParameter("show", false);
+		result.setParameter("tpl", "cpHiddenSwapB");
+		Assert.isTrue(result.getDynamicRef("panel").hasParameter("b"), "builder: getDynamicRef is the new template while hidden");
+	}
+
+	@Test
+	public function testTemplateSwapWhileHidden_Codegen_IsDoneAtOnce():Void {
+		final inst:Dynamic = createMp().cpSwapHidden.create();
+		inst.setParameter("show", false);
+		inst.setParameter("tpl", "cpHiddenSwapB");
+		final ref:bh.multianim.MultiAnimBuilder.BuilderResult = inst.getDynamicRef("panel");
+		Assert.isTrue(ref.hasParameter("b"), "codegen: getDynamicRef is the new template while hidden, as in the builder");
+		inst.setParameter("show", true);
+		Assert.equals("5", widths(cast inst), "codegen: shown, the new template is drawn");
+	}
+
+	// ==================== Spliced repeats inside a hidden spliced repeat ====================
+
+	static function nestedFlowLayout(root:h2d.Object):String {
+		return 'w10:${xsOfWidth(root, 10)} w6:${xsOfWidth(root, 6)} w7:${xsOfWidth(root, 7)}';
+	}
+
+	@Test
+	public function testNestedSplicesChangedWhileTheOuterIsHidden_Codegen_AsTheBuilder():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "cpFlowNested", null, Incremental);
+		final inst:Dynamic = createMp().cpFlowNested.create();
+		Assert.equals(nestedFlowLayout(result.object), nestedFlowLayout(cast inst), "as built");
+		function step(k:String, v:Dynamic, label:String):Void {
+			result.setParameter(k, v);
+			inst.setParameter(k, v);
+			Assert.equals(nestedFlowLayout(result.object), nestedFlowLayout(cast inst), 'codegen as the builder: $label');
+		}
+		step("a", false, "the outer repeat hidden");
+		Assert.equals("w10: w6: w7:0", nestedFlowLayout(cast inst), "codegen: hidden, only the element after it shows");
+		step("b", true, "an inner conditional repeat shown while the outer is hidden");
+		Assert.equals("w10: w6: w7:0", nestedFlowLayout(cast inst), "codegen: still nothing of the outer repeat shows");
+		step("n", 3, "an inner count changed while the outer is hidden");
+		step("a", true, "the outer repeat shown again");
+		Assert.equals(4, xsOfWidth(cast inst, 10).split(",").length, "codegen: two of the conditional inner's per outer item");
+		Assert.equals(6, xsOfWidth(cast inst, 6).split(",").length, "codegen: three of the counted inner's per outer item");
+	}
+
 	// ==================== A @final in a @switch arm not shown at build ====================
 
 	@Test

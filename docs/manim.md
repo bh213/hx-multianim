@@ -3222,7 +3222,7 @@ Components are typically created either:
 | `text` | control | string | method param | Button text override |
 | *any other* | pass-through | — | — | Forwarded to `#button` programmable (e.g. `width`, `height`, `font`, `fontColor`) |
 
-**Events:** `UIClick`; `UIHover(over:Bool)` as the pointer comes over the button and as it leaves (a disabled button says nothing), so a sound or a tooltip needs no code of its own.
+**Events:** `UIClick` for a left press and release on the button (a release over it after a press elsewhere, or another mouse button, is no click); `UIHover(over:Bool)` as the pointer comes over the button and as it leaves (a disabled button says nothing), so a sound or a tooltip needs no code of its own.
 
 ```haxe
 // Direct
@@ -3268,7 +3268,7 @@ placeholder(generated(cross(300, 40, white)), builderParameter("myBtn")) {
 | `initialValue` | behavioral | bool | `false` | Initial checked state |
 | *any other* | pass-through | — | — | Forwarded to checkbox programmable |
 
-**Events:** `UIToggle(checked:Bool)`
+**Events:** `UIToggle(checked:Bool)`, on a left press (a radio group's checkboxes say none: the group says `UIChangeItem`)
 
 ```haxe
 var cb = UIStandardMultiCheckbox.create(builder, "checkbox", true);
@@ -3525,13 +3525,13 @@ reach the scrollbar programmable as extra parameters; the list's bare `font`/`fo
 | `doubleClickThreshold` | behavioral | float | `0.3` | Double-click detection window (seconds) |
 | `wheelScrollMultiplier` | behavioral | float | `10` | Mouse wheel scroll sensitivity |
 | `clickMode` | behavioral | string | `"double"` | `"single"` for single-click action, `"double"` for double-click action |
-| `font` | multi-forward | string | item default | Font name — forwarded to item builder |
-| `fontColor` | multi-forward | int/color | item default | Text color — forwarded to item builder |
+| `font` | multi-forward | string | item default | Font name — forwarded to item builder (`item.font`, when given, wins) |
+| `fontColor` | multi-forward | int/color | item default | Text color — forwarded to item builder (`item.fontColor`, when given, wins) |
 | `item.*` | prefixed pass-through | — | — | Forwarded to item sub-builder (e.g. `item.fontColor`) |
 | `scrollbar.*` | prefixed pass-through | — | — | Forwarded to scrollbar sub-builder |
-| *any other* | pass-through | — | — | Forwarded to panel (main) programmable |
+| *any other* | pass-through | — | — | Forwarded to panel (main) programmable, which must declare it |
 
-**Events:** `UIChangeItem(index, items)`, `UIClickItem(index, items)` (single-click mode), `UIDoubleClickItem(index, items)` (double-click mode)
+**Events:** `UIChangeItem(index, items)`, `UIClickItem(index, items)` (single-click mode), `UIDoubleClickItem(index, items)` (double-click mode). Only an item inside the list's view is hovered or chosen. A dropdown's list says none of these to the screen (`pushesScreenEvents = false`): the dropdown says the choice.
 
 **Callbacks:** `onItemChanged`, `onItemClicked` (single-click mode), `onItemDoubleClicked` (double-click mode)
 
@@ -3603,7 +3603,7 @@ track beyond the thumb pages by `panelHeight`.
 | `arrowStep` | behavioral | int | from `.manim` or `20` | Arrow and wheel step |
 | *any other* | pass-through | — | — | Forwarded to the scrollbar programmable |
 
-**Events:** `UIChangeValue(position:Int)` after a drag, a page or an arrow step; `onChange(position)` callback likewise. `position =` from code moves the thumb and tells nobody.
+**Events:** `UIChangeValue(position:Int)` after a drag, a page or an arrow step; `onChange(position)` callback likewise. `position =` from code moves the thumb and tells nobody. A list's own scrollbar says no `UIChangeValue` to the screen (`pushesScreenEvents = false`): it scrolls the list.
 
 **API:** `position`, `maxPosition()`, `setRange(panelLength, scrollableLength)` (the position kept where it still fits), `scrollBy(delta)`, `isDragging`, `disabled`, `result` (the built programmable).
 

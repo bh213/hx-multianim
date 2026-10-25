@@ -30,6 +30,13 @@ version: 1.0
 }
 
 // Every one of the engine's shaders, drawn at a fixed time (test166_Shaders): a picture each, the grounds from nothing
+// Grounds in a repeat counted by a param: built at run time in codegen, each with its shader.
+#shaderGroundRepeat programmable(n:uint=2) {
+  repeatable($i, step($n, dx: 20)) {
+    bitmap(generated(shader(water, 16, 16))): 0, 0
+  }
+}
+
 #shaders programmable() {
 	text(dd, "crt", #cccccc): 10, 10
 	bitmap(generated(colorwithtext(180, 120, #4488ff, "Shader", #ffee88, dd))) {

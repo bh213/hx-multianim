@@ -702,7 +702,7 @@ class ProgrammableCodeGen {
 		// An element out of its tree (a hidden conditional's, or under one) does not evaluate its
 		// expressions: an update of one is skipped and marked stale, and replayed when it is shown
 		// again (builder parity: tracked expressions of a detached object). Only with conditionals,
-		// and for element fields (`_eN`) — not root properties or dynamicRef forwarding.
+		// and for element fields (`_eN`) — not root properties, dynamicRef forwarding or template swaps.
 		final elementFieldRe = ~/^_e[0-9]+$/;
 		final gatedUpdates:Array<Int> = [];
 		if (visibilityEntries.length > 0)
@@ -714,7 +714,7 @@ class ProgrammableCodeGen {
 			}
 		final hasGated = gatedUpdates.length > 0;
 		final replayBeforeShow:Expr->Expr->Expr = (fieldRef, parentRef) -> hasGated
-			? macro if (this._stale != null && bh.multianim.LiveProgrammable.LiveProgrammableTools.isAttachedTo($parentRef, this))
+			? macro if (this.__stale != null && bh.multianim.LiveProgrammable.LiveProgrammableTools.isAttachedTo($parentRef, this))
 				this._replayStaleUnder($fieldRef)
 			: macro {};
 
@@ -727,6 +727,10 @@ class ProgrammableCodeGen {
 		}
 
 		final visExprs:Array<Expr> = [];
+		// What a change hides at once (no transition), run before the expression updates: an element
+		// the change hides is out of its tree when its own update for that change comes, so the gate
+		// skips it (builder parity: the builder applies its conditional chains before the expressions)
+		final hideExprs:Array<Expr> = [];
 		for (entry in visibilityEntries) {
 			final fieldRef = macro $p{["this", entry.fieldName]};
 			final sentinelRef = entry.sentinelField != null ? macro $p{["this", entry.sentinelField]} : null;
@@ -761,12 +765,20 @@ class ProgrammableCodeGen {
 					final _newVis = ${entry.condition};
 					final _inGraph = $fieldRef.parent != null;
 					if (_newVis && !_inGraph) {
-						$parentRef.addChildAt($fieldRef, $parentRef.getChildIndex($sentinelRef) + 1);
-						$markerRef.release();
+						// Not while its sentinel is held by a hidden spliced repeat: that brings it back
+						final _si = $parentRef.getChildIndex($sentinelRef);
+						if (_si >= 0) {
+							$parentRef.addChildAt($fieldRef, _si + 1);
+							$markerRef.release();
+						}
 					} else if (!_newVis && _inGraph) {
 						$markerRef.hold();
 						$parentRef.removeChild($fieldRef);
 					}
+				});
+				hideExprs.push(macro if (!${entry.condition} && $fieldRef.parent != null) {
+					$markerRef.hold();
+					$parentRef.removeChild($fieldRef);
 				});
 			} else if (sentinelRef != null) {
 				// Scene graph add/remove via sentinel
@@ -818,6 +830,7 @@ class ProgrammableCodeGen {
 						} else if (!_newVis && _inGraph)
 							$parentRef.removeChild($fieldRef);
 					});
+					hideExprs.push(macro if (!${entry.condition} && $fieldRef.parent != null) $parentRef.removeChild($fieldRef));
 				}
 			} else {
 				// Fallback: visibility toggle (no sentinel — shouldn't happen in practice)
@@ -911,7 +924,7 @@ class ProgrammableCodeGen {
 		// Whatever came back without a show of its own (a spliced repeat's items, a hidden element's
 		// child) replays what went stale meanwhile
 		if (hasGated)
-			visExprs.push(macro if (this._stale != null) this._replayStaleUnder(this));
+			visExprs.push(macro if (this.__stale != null) this._replayStaleUnder(this));
 		if (visExprs.length == 0)
 			visExprs.push(macro {});
 		// _applyVisibility takes the optional changed-param name when transitions, switches,
@@ -921,6 +934,9 @@ class ProgrammableCodeGen {
 		if (hasTransitions || hasSwitches || repeatForceUsesChangedParam || applyValueDependent)
 			visArgs.push({name: "_changedParam", type: macro :String, opt: true, value: null});
 		instanceFields.push(makeMethod("_applyVisibility", visExprs, visArgs, macro :Void, [APrivate], pos));
+		final hasHidesPass = hasGated && hideExprs.length > 0;
+		if (hasHidesPass)
+			instanceFields.push(makeMethod("_applyHides", hideExprs, [], macro :Void, [APrivate], pos));
 
 		// 5. _updateExpressions(?changed) — per-entry gating on the entry's paramRefs:
 		// an unrelated setParameter must not re-fire callbacks, restart stateanims, or
@@ -929,7 +945,7 @@ class ProgrammableCodeGen {
 		// full pass) runs everything. Entries with no recorded refs run unconditionally
 		// (conservative — they gate internally or are cheap).
 		final exprUpdateExprs:Array<Expr> = [];
-		final replayExprs:Array<Expr> = [macro if (this._stale == null) return, macro var _changedParam:String = null];
+		final replayExprs:Array<Expr> = [macro if (this.__stale == null) return, macro var _changedParam:String = null];
 		final gatedCount = gatedUpdates.length;
 		for (ui in 0...expressionUpdates.length) {
 			final update = expressionUpdates[ui];
@@ -940,13 +956,13 @@ class ProgrammableCodeGen {
 				final original = body;
 				body = macro if (bh.multianim.LiveProgrammable.LiveProgrammableTools.isAttachedTo($elementRef, this)) {
 					$original;
-					if (this._stale != null) this._stale[$v{k}] = false;
+					if (this.__stale != null) this.__stale[$v{k}] = false;
 				} else {
-					if (this._stale == null) this._stale = [for (_ in 0...$v{gatedCount}) false];
-					this._stale[$v{k}] = true;
+					if (this.__stale == null) this.__stale = [for (_ in 0...$v{gatedCount}) false];
+					this.__stale[$v{k}] = true;
 				};
-				replayExprs.push(macro if (this._stale[$v{k}] && bh.multianim.LiveProgrammable.LiveProgrammableTools.isAttachedTo($elementRef, _target)) {
-					this._stale[$v{k}] = false;
+				replayExprs.push(macro if (this.__stale[$v{k}] && bh.multianim.LiveProgrammable.LiveProgrammableTools.isAttachedTo($elementRef, _target)) {
+					this.__stale[$v{k}] = false;
 					$original;
 				});
 			}
@@ -960,7 +976,8 @@ class ProgrammableCodeGen {
 			}
 		}
 		if (hasGated) {
-			instanceFields.push(makeField("_stale", FVar(macro :Null<Array<Bool>>, macro null), [APrivate], pos));
+			// Two underscores: a parameter's backing field is `_<name>`, so a parameter `stale` cannot take it
+			instanceFields.push(makeField("__stale", FVar(macro :Null<Array<Bool>>, macro null), [APrivate], pos));
 			// The stale updates of the elements under `_target` (attached all the way up to it)
 			instanceFields.push(makeMethod("_replayStaleUnder", replayExprs, [{name: "_target", type: macro :h2d.Object}], macro :Void,
 				[APrivate], pos));
@@ -1086,8 +1103,12 @@ class ProgrammableCodeGen {
 					break;
 				}
 			}
-			if (refsParam)
+			if (refsParam) {
+				// What this change hides goes first: its update is then skipped as for any hidden element
+				if (hasHidesPass)
+					applyExprs.push(macro this._applyHides());
 				applyExprs.push(macro this._updateExpressions($v{name}));
+			}
 
 			final hasSwitchEntries = switchUpdateEntries.length > 0;
 			if ((hasTransitions && transParamNames.exists(name)) || hasSwitchEntries || repeatForceUsesChangedParam
@@ -1107,22 +1128,22 @@ class ProgrammableCodeGen {
 			// `IncrementalUpdateContext.applyUpdates()` fires them at the end of its cycle (so
 			// `UIScreen.addInteractives` resyncs after a `@switch` arm flip). The pass may forward
 			// into dynamicRef children, and each child's rebuild runs this instance's listeners
-			// (onChildRebuilt): held back while the pass runs (_applying), they run once after it.
+			// (onChildRebuilt): held back while the pass runs (__applying), they run once after it.
 			final applyBlock:Expr = {expr: EBlock(applyExprs), pos: pos};
 			setterExprs.push(macro {
 				if (this._batchMode) {
 					if (this._batchChanged.indexOf($v{name}) < 0)
 						this._batchChanged.push($v{name});
 				} else {
-					final _wasApplying = this._applying;
-					this._applying = true;
+					final _wasApplying = this.__applying;
+					this.__applying = true;
 					try $applyBlock catch (e:Dynamic) {
-						this._applying = _wasApplying;
+						this.__applying = _wasApplying;
 						if (this._failedParams == null) this._failedParams = [];
 						if (this._failedParams.indexOf($v{name}) < 0) this._failedParams.push($v{name});
 						throw e;
 					}
-					this._applying = _wasApplying;
+					this.__applying = _wasApplying;
 					if (this._failedParams != null) this._failedParams.remove($v{name});
 					this._fireRebuildListeners();
 				}
@@ -1143,8 +1164,9 @@ class ProgrammableCodeGen {
 		// Params whose last apply threw (the setters' same-value guard lets them through)
 		instanceFields.push(makeField("_failedParams", FVar(macro :Null<Array<String>>, macro null), [APrivate], pos));
 		instanceFields.push(makeField("_batchChanged", FVar(macro :Array<String>, macro []), [APrivate], pos));
-		// True while a setter's or endUpdate's pass runs: the rebuild listeners wait for its end
-		instanceFields.push(makeField("_applying", FVar(macro :Bool, macro false), [APrivate], pos));
+		// True while a setter's or endUpdate's pass runs: the rebuild listeners wait for its end. Two
+		// underscores: a parameter's backing field is `_<name>`, so a parameter `applying` cannot take it
+		instanceFields.push(makeField("__applying", FVar(macro :Bool, macro false), [APrivate], pos));
 
 		instanceFields.push(makeMethod("beginUpdate", [
 			macro if (this._batchMode) throw "beginUpdate: already in batch; nesting is not supported",
@@ -1172,18 +1194,20 @@ class ProgrammableCodeGen {
 			macro for (_bp in this._batchChanged) this._applyVisibility(_bp)
 		else
 			macro this._applyVisibility();
+		final batchHides:Expr = hasHidesPass ? macro this._applyHides() : macro {};
 		instanceFields.push(makeMethod("endUpdate", [
 			macro if (!this._batchMode) throw "endUpdate: no matching beginUpdate",
 			macro this._batchMode = false,
 			macro if (this._batchChanged.length > 0) {
-				final _wasApplying = this._applying;
-				this._applying = true;
+				final _wasApplying = this.__applying;
+				this.__applying = true;
 				try {
+					$batchHides;
 					for (_bp in this._batchChanged)
 						this._updateExpressions(_bp);
 					$batchVisPass;
 				} catch (e:Dynamic) {
-					this._applying = _wasApplying;
+					this.__applying = _wasApplying;
 					// The batch's values stay set: the same values set again apply again, as after
 					// a setter that threw (builder parity: applyUpdates marks the batch's params)
 					if (this._failedParams == null) this._failedParams = [];
@@ -1192,7 +1216,7 @@ class ProgrammableCodeGen {
 					this._batchChanged.resize(0);
 					throw e;
 				}
-				this._applying = _wasApplying;
+				this.__applying = _wasApplying;
 				if (this._failedParams != null)
 					for (_bp in this._batchChanged)
 						this._failedParams.remove(_bp);
@@ -1224,12 +1248,12 @@ class ProgrammableCodeGen {
 		], [{name: "fn", type: macro :() -> Void}], macro :Void, [APublic], pos));
 
 		// Fired at end of every setter, and by a dynamicRef child's own rebuild (onChildRebuilt) —
-		// not while this instance's own pass runs (_applying), which fires once at its end.
+		// not while this instance's own pass runs (__applying), which fires once at its end.
 		// Snapshot then iterate so listeners can mutate the array during dispatch (e.g.
 		// screen.removeInteractives from inside a listener).
 		instanceFields.push(makeMethod("_fireRebuildListeners", [
 			macro {
-				if (this._applying || this._rebuildListeners.length == 0) return;
+				if (this.__applying || this._rebuildListeners.length == 0) return;
 				final _snap = this._rebuildListeners.copy();
 				for (_fn in _snap) _fn();
 			},
@@ -3270,6 +3294,13 @@ class ProgrammableCodeGen {
 		// Rebuild method: clears container and recreates children when any scalar changed,
 		// or when a conditional-gate param forces past the scalar guard.
 		final rebuildBody:Array<Expr> = [];
+		if (splice) {
+			// Held, with its items, by an enclosing spliced repeat that is hidden: nothing of it can
+			// be reached now. The trackers stay as they are, so the pass that shows the enclosing
+			// repeat (rebuilds run after the visibility entries) builds it at the new count.
+			final heldMarkerRef = macro (cast $p{["this", containerField]} : bh.multianim.MultiAnimBuilder.FlowSpliceMarker);
+			rebuildBody.push(macro if ($heldMarkerRef.parent == null && $heldMarkerRef.held.length == 0) return);
+		}
 		rebuildBody.push(macro if (_rt_count < 0) _rt_count = 0);
 		rebuildBody.push(macro if (!_rt_force
 			&& _rt_count == $p{["this", countTrackingField]}
@@ -3877,6 +3908,14 @@ class ProgrammableCodeGen {
 				stmts.push(macro final _rt_tile = $bitmapExpr);
 				stmts.push(macro final _rt_bmp = new h2d.Bitmap(_rt_tile.sub(0, 0, _rt_tile.width, _rt_tile.height, $dxExpr, $dyExpr)));
 				stmts.push(macro $containerRef.addChild(_rt_bmp));
+				// A ground drawn by a shader: the bitmap is given it as its filter, as generateBitmapCreate does
+				switch tileSource {
+					case TSGenerated(ShaderGround(name, _, _, args)):
+						final argsArr = customFilterArgsExpr(args, pos);
+						stmts.push(macro _rt_bmp.filter = bh.base.FilterManager.groundFilterIn(null, $v{name}, $argsArr,
+							(n:String) -> this._pb.paletteColors(n)));
+					default:
+				}
 				if (child.pos != null) {
 					switch (child.pos) {
 						case OFFSET(x, y):
@@ -5410,9 +5449,10 @@ class ProgrammableCodeGen {
 			}
 		});
 
-		// Register as expression update triggered by the template param
+		// Register as expression update triggered by the template param. Not the element's own field
+		// name: a swap is done while the site is hidden too (builder parity), never gated as stale
 		expressionUpdates.push({
-			fieldName: fieldName,
+			fieldName: fieldName + "_swap",
 			updateExpr: macro $b{rebuildMapExprs},
 			paramRefs: [paramName],
 		});

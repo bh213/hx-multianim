@@ -395,6 +395,86 @@ class UIScrollbarWidgetTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testDraggingAListsScrollbarSaysNoChangeOfItsOwnToTheScreen():Void {
+		final list = createDragList();
+		final mock = new MockControllable();
+		UITestHarness.simulatePush(list, mock, new Point(115, 10));
+		move(list, mock, 115, 60);
+		release(list, mock, 115, 60);
+		@:privateAccess Assert.equals(100., list.mask.scrollY, "precondition: the drag scrolled the list");
+		Assert.isFalse(Lambda.exists(mock.recordedEvents, e -> e.event.match(UIChangeValue(_))),
+			"the list's own scrollbar is part of the list: it says no UIChangeValue to the screen");
+	}
+
+	static final PADDED_LIST_MANIM = "
+		#padded-panel programmable(width:uint=120, height:uint=200, topClearance:uint=0, pad:uint=1) {
+			bitmap(generated(color($width, $height, #333333))): 0, 0
+			#marker bitmap(generated(color($pad, 3, #ff00ff))): 0, -10
+			placeholder(generated(color($width, $height, #000000)), builderParameter(\"mask\")): 0, 0
+			#scrollbar point: $width - 10, 0
+		}
+
+		#list-item programmable(images:[none,tile]=none, status:[hover,pressed,normal]=normal, selected:[true,false]=false, disabled:[true,false]=false, tile:tile, itemWidth:uint=120, index:uint=0, title:string=title, font:string=testfont, fontColor:int=0xFFFFFFFF) {
+			bitmap(generated(color($itemWidth, 20, #555555))): 0, 0
+			text($font, $title, $fontColor): 4, 2
+			interactive($itemWidth, 20, $index);
+			settings{height:float=>20}
+		}
+
+		#scrollbar programmable(panelHeight:uint=100, scrollableHeight:uint=200, scrollPosition:uint=0) {
+			bitmap(generated(color(4, $panelHeight * $panelHeight / $scrollableHeight, #888888))): 0, $scrollPosition * $panelHeight / $scrollableHeight
+		}
+	";
+
+	@Test
+	public function testAListsOtherSettingsReachItsPanel():Void {
+		ensureTestFont();
+		final items:Array<UIElementListItem> = [for (i in 0...3) {name: 'Item ${i + 1}'}];
+		final builder = BuilderTestBase.builderFromSource(PADDED_LIST_MANIM);
+		final screen = new bh.test.UITestHarness.UITestScreen();
+		final settings:bh.multianim.MultiAnimParser.ResolvedSettings = ["pad" => RSVInt(9), "font" => RSVString("testfont")];
+		final list = screen.testAddScrollableList(builder, "padded-panel", "list-item", "scrollbar", items, settings, 120, 200);
+		final marker:h2d.Bitmap = cast @:privateAccess list.panelResults.names.get("marker")[0].getBuiltHeapsObject().toh2dObject();
+		Assert.equals(9, Std.int(marker.tile.width), "a setting the list does not use itself goes to its panel programmable");
+
+		final unknown:bh.multianim.MultiAnimParser.ResolvedSettings = ["shade" => RSVInt(3)];
+		var said:Null<String> = null;
+		try {
+			screen.testAddScrollableList(builder, "padded-panel", "list-item", "scrollbar", items, unknown, 120, 200);
+		} catch (e:Dynamic) {
+			said = Std.string(e);
+		}
+		Assert.notNull(said, "a setting the panel does not declare is an error, as for every other widget");
+		if (said != null)
+			Assert.stringContains("shade", said);
+	}
+
+	@Test
+	public function testAPrefixedSettingWinsOverTheBareOneWhateverTheirOrder():Void {
+		final screen = new bh.test.UITestHarness.UITestScreen();
+		// A multi-forwarded key whose map meets `item.<key>` before `<key>`: the order a StringMap
+		// iterates in is its own, so the test looks for such a name (font/fontColor are only two)
+		var key:Null<String> = null;
+		var settings:bh.multianim.MultiAnimParser.ResolvedSettings = null;
+		for (i in 0...200) {
+			final candidate = 'k$i';
+			final m:bh.multianim.MultiAnimParser.ResolvedSettings = ['item.$candidate' => RSVString("itemValue"), candidate => RSVString("bareValue")];
+			final order = [for (k in m.keys()) k];
+			if (order[0] == 'item.$candidate') {
+				key = candidate;
+				settings = m;
+				break;
+			}
+		}
+		Assert.notNull(key, "precondition: a key the map meets after its prefixed form");
+		if (key == null)
+			return;
+		final split = screen.testSplitSettings(settings, [], [], ["item", "scrollbar"], [key], "scrollableList");
+		Assert.equals("itemValue", split.prefixed.get("item").get(key), 'item.$key is the item\'s: the bare $key met after it does not overwrite it');
+		Assert.equals("bareValue", split.prefixed.get("scrollbar").get(key), "the bare one still reaches every other prefix");
+	}
+
+	@Test
 	public function testTheOldListContractStillWorks():Void {
 		ensureTestFont();
 		final items:Array<UIElementListItem> = [for (i in 0...20) {name: 'Item ${i + 1}'}];

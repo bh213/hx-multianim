@@ -62,6 +62,10 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 	@:isVar public var currentHoverIndex(default, set):Int = -1;
 	@:isVar public var currentPressedIndex(default, set):Int = -1;
 
+	/** False when a widget made of this list (a dropdown) says its changes itself: the list then pushes
+	 *  no event of its own to the screen, its hooks (`onItemChanged`, …) still run. */
+	public var pushesScreenEvents:Bool = true;
+
 	var hoverMode:Bool = false;
 	var panelResults:BuilderResult;
 	var lastClick = 0.;
@@ -128,9 +132,11 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 
 		final savedScrollY = this.mask.scrollY;
 
-		// Clear and repopulate (items is final, can't reassign)
+		// Clear and repopulate (items is final, can't reassign). The new items are read first: they may
+		// be this very array (`setItems(list.items)`, or the caller's array the list was made with)
+		final incoming = newItems.copy();
 		this.items.resize(0);
-		for (item in newItems)
+		for (item in incoming)
 			this.items.push(item);
 
 		// Handle AutoSize mode
@@ -166,7 +172,14 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 	}
 
 	function buildPanel() {
-		var builtPanel = this.panelBuilder.builder.buildWithParameters(this.panelBuilder.name, ["width" => width, "height" => height, "topClearance" => topClearance],
+		final params:Map<String, Dynamic> = ["width" => width, "height" => height, "topClearance" => topClearance];
+		// The list's other settings are the panel programmable's (a design that does not declare one is
+		// told so, as every widget's is)
+		final extra = this.panelBuilder.extraParams;
+		if (extra != null)
+			for (key => value in extra)
+				params.set(key, value);
+		var builtPanel = this.panelBuilder.builder.buildWithParameters(this.panelBuilder.name, params,
 			{placeholderObjects: ["mask" => PVObject(mask)]});
 		root.removeChildren();
 		root.addChild(builtPanel.object);
@@ -211,6 +224,8 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 			// the position-only #scrollbar of older files only shows where the list is.
 			if (buildResult.hasParameter("status") && buildResult.names.get("thumb") != null) {
 				final widget = UIMultiAnimScrollbar.fromResult(buildResult, height, scrollable, 0, Vertical);
+				// Part of the list: its position is the list's scroll, not a value the screen is told
+				widget.pushesScreenEvents = false;
 				widget.onChange = (position) -> {
 					this.mask.scrollY = position;
 				};
@@ -273,6 +288,9 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 	}
 
 	function findInteractiveIndex(point):Null<MAObject> {
+		// Only what shows: an item scrolled out of the view lies under the panel's header or border
+		if (!mask.getBounds().contains(point))
+			return null;
 		for (object in interactives) {
 			if (object.getBounds().contains(point))
 				return object;
@@ -368,7 +386,8 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 							this.currentItemIndex = newIndex;
 							triggerItemChanged(newIndex, wrapper);
 							onItemDoubleClicked(newIndex, items, wrapper);
-							wrapper.control.pushEvent(UIDoubleClickItem(newIndex, items), this);
+							if (pushesScreenEvents)
+								wrapper.control.pushEvent(UIDoubleClickItem(newIndex, items), this);
 						}
 						hoverMode = false;
 						this.currentPressedIndex = newIndex;
@@ -385,7 +404,8 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 					triggerItemChanged(newIndex, wrapper);
 					if (clickMode == SingleClick) {
 						onItemClicked(newIndex, items, wrapper);
-						wrapper.control.pushEvent(UIClickItem(newIndex, items), this);
+						if (pushesScreenEvents)
+							wrapper.control.pushEvent(UIClickItem(newIndex, items), this);
 					}
 				}
 				currentPressedIndex = -1;
@@ -483,7 +503,8 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 
 	function triggerItemChanged(newIndex:Int, wrapper:UIElementEventWrapper) {
 		onItemChanged(newIndex, items, wrapper);
-		wrapper.control.pushEvent(UIChangeItem(newIndex, items), this);
+		if (pushesScreenEvents)
+			wrapper.control.pushEvent(UIChangeItem(newIndex, items), this);
 	}
 
 	public dynamic function onItemChanged(newIndex:Int, items:Array<UIElementListItem>, wrapper:UIElementEventWrapper) {}

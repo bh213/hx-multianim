@@ -893,6 +893,15 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/164-codegenParityReview/codegenParityReview.manim", "cpLayoutHiddenNested")
 	public var cpLayoutHiddenNested;
 
+	@:manim("test/examples/164-codegenParityReview/codegenParityReview.manim", "cpLayoutHiddenBySameParam")
+	public var cpLayoutHiddenBySameParam;
+
+	@:manim("test/examples/164-codegenParityReview/codegenParityReview.manim", "cpSwapHidden")
+	public var cpSwapHidden;
+
+	@:manim("test/examples/164-codegenParityReview/codegenParityReview.manim", "cpFlowNested")
+	public var cpFlowNested;
+
 	@:manim("test/examples/163-refsSlotsReview/refsSlotsReview.manim", "rsExclRef")
 	public var rsExclRef;
 
@@ -925,6 +934,9 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/166-shaders/shaders.manim", "shaderApply")
 	public var shaderApply;
+
+	@:manim("test/examples/166-shaders/shaders.manim", "shaderGroundRepeat")
+	public var shaderGroundRepeat;
 
 	@:manim("test/examples/167-exportDocs/exportDocs.manim", "exportDocs")
 	public var exportDocs;

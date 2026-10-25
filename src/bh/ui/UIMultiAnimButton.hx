@@ -16,6 +16,8 @@ class UIStandardMultiAnimButton implements UIElement implements UIElementDisabla
 		return result.rootSettings;
 	}
 	var buttonText:String;
+	// A left press began on the button and has not been released yet
+	var pressedOn = false;
 
 	public var disabled(default, set):Bool = false;
 
@@ -65,6 +67,7 @@ class UIStandardMultiAnimButton implements UIElement implements UIElementDisabla
 	public function set_disabled(value:Bool):Bool {
 		if (this.disabled != value) {
 			this.disabled = value;
+			pressedOn = false;
 			result.beginUpdate();
 			result.setParameter("status", value ? "disabled" : "normal");
 			if (result.hasParameter("disabled"))
@@ -96,11 +99,23 @@ class UIStandardMultiAnimButton implements UIElement implements UIElementDisabla
 			return;
 		switch wrapper.event {
 			case OnPush(button):
-				result.setParameter("status", "pressed");
+				if (button == 0) {
+					pressedOn = true;
+					result.setParameter("status", "pressed");
+				}
 			case OnRelease(button):
-				triggerClicked(wrapper.control);
-				result.setParameter("status", "hover");
-			case OnReleaseOutside(_):
+				// A click is a left press and release on the button: not a release after a press
+				// elsewhere, nor another mouse button
+				if (button == 0) {
+					final wasPressed = pressedOn;
+					pressedOn = false;
+					if (wasPressed)
+						triggerClicked(wrapper.control);
+					result.setParameter("status", "hover");
+				}
+			case OnReleaseOutside(button):
+				if (button == 0)
+					pressedOn = false;
 				result.setParameter("status", "normal");
 			case OnPushOutside(_):
 			case OnEnter:

@@ -150,7 +150,7 @@ silhouette, water, sky, stars): `filter: crt(curve: 0.2, lineSize: 4)`, args by 
 defaults for the rest; a colour by name too (`vignette(color: black)`); an enum `$param` to a
 word/palette parameter is its value's name. A `$param` sets the uniform in place
 (`EngineShaderFilter.setParams`), never makes the filter again (but an `apply`'s filter and one in a
-`group` are made again). A ground: `bitmap(generated(shader(water, 320, 180, speed: 0.4)))` — only a
+`group` are made again, and a `@switch` arm is built again whole). A ground: `bitmap(generated(shader(water, 320, 180, speed: 0.4)))` — only a
 bitmap's own tile (not in `center()`/`pivot()`, a param value, a tilegroup), no `filter:` on it or an
 `apply` in it (parse errors; wrap in `layers()` for one). Over the
 whole stage: `ScreenManager.setStageShader(filter, fade)`. Time: `ShaderClock` (advanced by

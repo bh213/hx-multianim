@@ -79,6 +79,8 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 		this.panelObject.visible = false;
 		updatable.setObject(new PositionLinkObject(panelObject));
 		this.panel.onItemChanged = onPanelItemChanged;
+		// The dropdown says the choice (UIChangeItem): its list's own events are not the screen's
+		this.panel.pushesScreenEvents = false;
 		this.currentItemIndex = initialIndex;
 	}
 
@@ -108,6 +110,9 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 		if (this.disabled != value) {
 			this.disabled = value;
 			result.setParameter("status", value ? "disabled" : standardUIElementStatusToString(status));
+			// A disabled dropdown hears no click: an open panel would stay open, over what is under it
+			if (value && isOpen())
+				startClose();
 		}
 		return value;
 	}

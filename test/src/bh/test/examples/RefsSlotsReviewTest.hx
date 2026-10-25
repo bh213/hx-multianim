@@ -673,6 +673,31 @@ class RefsSlotsReviewTest extends BuilderTestBase {
 		Assert.equals("hover", after.getParameterValues().get("status"), "a hover drives the child that is shown");
 	}
 
+	@Test
+	public function testResyncAfterATemplateSwapGivesTheNewDynamicRefTheBindingsState():Void {
+		final screen = new UITestScreen();
+		final result = BuilderTestBase.buildFromSource("
+			#keepBtnA programmable(status:[normal,hover,pressed,disabled]=normal) {
+				interactive(40, 20, \"kb\", bind => \"status\"): 0, 0
+			}
+			#keepBtnB programmable(status:[normal,hover,pressed,disabled]=normal) {
+				interactive(60, 20, \"kb\", bind => \"status\"): 0, 0
+			}
+			#keepHost programmable(tmpl:[keepBtnA, keepBtnB]=keepBtnA) {
+				#kb dynamicRef($tmpl): 0, 0
+			}
+		", "keepHost", null, Incremental);
+		final helper = new UIRichInteractiveHelper(screen);
+		helper.register(result);
+		helper.setDisabled("kb", true);
+		Assert.equals("disabled", result.getDynamicRef("kb").getParameterValues().get("status"), "precondition: drawn disabled");
+
+		result.setParameter("tmpl", "keepBtnB");
+		helper.resync(result);
+		Assert.equals("disabled", result.getDynamicRef("kb").getParameterValues().get("status"),
+			"the new template is drawn as the helper holds the binding: disabled");
+	}
+
 	// ==================== placeholder objects reach ref targets ====================
 
 	/** Builder guard: the builder passes its BuilderParameters into the ref build. */

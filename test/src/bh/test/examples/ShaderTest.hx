@@ -163,6 +163,21 @@ class ShaderTest extends utest.Test {
 	}
 
 	@Test
+	public function testAGroundInARepeatCountedByAParamHasItsShaderInGeneratedCode():Void {
+		final mp = new bh.test.MultiProgrammable(bh.test.TestResourceLoader.createLoader(false));
+		final made:Dynamic = mp.shaderGroundRepeat.create();
+		var bitmaps = bh.test.BuilderTestBase.findVisibleBitmapDescendants(cast made);
+		Assert.equals(2, bitmaps.length);
+		for (b in bitmaps)
+			Assert.isTrue(b.filter is EngineShaderFilter, "codegen: a ground in a repeat built at run time is drawn by its shader, not a white tile");
+		made.setN(3);
+		bitmaps = bh.test.BuilderTestBase.findVisibleBitmapDescendants(cast made);
+		Assert.equals(3, bitmaps.length);
+		for (b in bitmaps)
+			Assert.isTrue(b.filter is EngineShaderFilter, "codegen: and after the repeat is built again");
+	}
+
+	@Test
 	public function testAGroundDrawnFromNothing():Void {
 		final result = buildFromSource("
 			#test programmable(speed:float=0.5) {

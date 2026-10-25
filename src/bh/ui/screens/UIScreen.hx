@@ -547,7 +547,8 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	 * - Control and behavioral settings are skipped (caller handles them explicitly).
 	 * - Dotted keys (e.g. "item.fontColor") are routed to the prefixed map.
 	 * - Unprefixed keys that are not in multiForward go to the main map.
-	 * - Keys listed in multiForward go to ALL registered prefix maps AND main.
+	 * - Keys listed in multiForward go to ALL registered prefix maps AND main; a prefix that has
+	 *   its own "prefix.key" keeps that one.
 	 */
 	function splitSettings(settings:ResolvedSettings, controlSettings:Array<String>, behavioralSettings:Array<String>,
 			registeredPrefixes:Array<String>, multiForwardSettings:Array<String>,
@@ -585,6 +586,9 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 					main = new Map<String, Dynamic>();
 				main.set(key, value);
 				for (prefix in registeredPrefixes) {
+					// A prefixed setting for the same key wins, whichever of the two the map gives first
+					if (settings.exists('$prefix.$key'))
+						continue;
 					var prefixMap = prefixed.get(prefix);
 					if (prefixMap == null) {
 						prefixMap = new Map<String, Dynamic>();
@@ -641,6 +645,21 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 			break;
 		}
 		return any ? prefixed : null;
+	}
+
+	/** What a list's or a dropdown's unprefixed settings give its panel programmable: all but the
+	 *  multi-forwarded ones (`font`, `fontColor`), which are its items' and its button's. */
+	static function panelSettings(main:Null<Map<String, Dynamic>>, multiForward:Array<String>):Null<Map<String, Dynamic>> {
+		if (main == null)
+			return null;
+		var out:Null<Map<String, Dynamic>> = null;
+		for (key => value in main)
+			if (!multiForward.contains(key)) {
+				if (out == null)
+					out = new Map();
+				out.set(key, value);
+			}
+		return out;
 	}
 
 	function addSlider(providedBuilder, settings:ResolvedSettings, initialValue:Float = 0) {
@@ -998,6 +1017,9 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		final scrollbarPrefixed = explicitlyPrefixed(settings, split.prefixed.get("scrollbar"), "scrollbar", ["font", "fontColor"]);
 		if (scrollbarPrefixed != null)
 			scrollbarBuilder = scrollbarBuilder.withExtraParams(scrollbarPrefixed);
+		final panelExtra = panelSettings(split.main, ["font", "fontColor"]);
+		if (panelExtra != null)
+			panelBuilder = panelBuilder.withExtraParams(panelExtra);
 
 		final finalWidth = getIntSettings(settings, "width", width);
 		final finalHeight = getIntSettings(settings, "height", height);
@@ -1053,6 +1075,9 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		final scrollbarPrefixed = explicitlyPrefixed(settings, split.prefixed.get("scrollbar"), "scrollbar", ["font", "fontColor"]);
 		if (scrollbarPrefixed != null)
 			scrollbarBuilder = scrollbarBuilder.withExtraParams(scrollbarPrefixed);
+		final panelExtra = panelSettings(split.main, ["font", "fontColor"]);
+		if (panelExtra != null)
+			panelBuilder = panelBuilder.withExtraParams(panelExtra);
 
 		final autoOpen = getBoolSettings(settings, "autoOpen", true);
 		final autoCloseOnLeave = getBoolSettings(settings, "autoCloseOnLeave", true);
@@ -1371,6 +1396,12 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	}
 
 	public function addElement(element:UIElement, layer:Null<LayersEnum>) {
+		// A text input says what the keyboard does with no mouse event to give it the controller
+		if (Std.isOfType(element, UIMultiAnimTextInput)) {
+			final input:UIMultiAnimTextInput = cast element;
+			if (input.screenEventSink == null)
+				input.screenEventSink = (event, source) -> getController().onScreenEvent(event, source);
+		}
 		if (contentTarget != null) {
 			// Route to content target (tabs, etc.) instead of main element list
 			contentTarget.registerElement(element);

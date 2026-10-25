@@ -248,3 +248,35 @@ layouts {
     bitmap(generated(color(10, 10, #FF0000))): layout(cpRow, $idx)
   }
 }
+
+// Hidden by the same change that would move it past the layout's end: the move is never looked up.
+#cpLayoutHiddenBySameParam programmable(idx:int=1) {
+  @(idx < 3) bitmap(generated(color(10, 10, #FF0000))): layout(cpRow, $idx)
+}
+
+// A template swap while the dynamicRef's arm is hidden is done at once, as the builder does.
+#cpHiddenSwapA programmable() {
+  bitmap(generated(color(4, 4, #FF0000))): 0, 0
+}
+#cpHiddenSwapB programmable(b:uint=5) {
+  bitmap(generated(color($b, 4, #00FF00))): 0, 0
+}
+#cpSwapHidden programmable(show:bool=true, tpl:[cpHiddenSwapA, cpHiddenSwapB]=cpHiddenSwapA) {
+  @(show=>true) #panel dynamicRef($tpl): 0, 0
+}
+
+// Spliced repeats inside a hidden spliced repeat: what changes in them while the outer one is
+// hidden shows when it is shown again, in order (a conditional inner repeat, a counted one).
+#cpFlowNested programmable(a:bool=true, b:bool=false, n:uint=2) {
+  flow(layout: horizontal, horizontalSpacing: 2) {
+    @(a=>true) repeatable($i, step(2, dx: 0)) {
+      @(b=>true) repeatable($j, step(2, dx: 0)) {
+        bitmap(generated(color(10, 4, #00FF00))): 0, 0
+      }
+      repeatable($k, step($n, dx: 0)) {
+        bitmap(generated(color(6, 4, #0000FF))): 0, 0
+      }
+    }
+    bitmap(generated(color(7, 4, #FF0000))): 0, 0
+  }
+}
