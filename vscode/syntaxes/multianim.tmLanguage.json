@@ -110,6 +110,10 @@
 		"comments": {
 			"patterns": [
 				{
+					"name": "comment.line.documentation.multianim",
+					"match": "///(?!/).*$"
+				},
+				{
 					"name": "comment.line.double-slash.multianim",
 					"match": "//.*$"
 				},
@@ -279,7 +283,7 @@
 				},
 				{
 					"name": "keyword.control.multianim",
-					"match": "\\b(version|import|debug|settings|construct|loop|bit|event|inlinecolor|greaterthanorequal|lessthanorequal)\\b"
+					"match": "\\b(version|import|export|debug|settings|construct|loop|bit|event|inlinecolor|greaterthanorequal|lessthanorequal)\\b"
 				},
 				{
 					"name": "keyword.other.multianim",

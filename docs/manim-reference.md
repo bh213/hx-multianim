@@ -10,6 +10,8 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 |-----------|-------------|
 | `version: 1.0` | Required file header declaring format version |
 | `import "file" as "name"` | Import external .manim file for cross-file references (a parse with no loader keeps the names in `MultiAnimResult.importPaths`) |
+| `#name export kind …` | Marks a root block of any kind as exported: `#knight export programmable(…)`. A list for tools (`MultiAnimResult.exports`, `MultiAnimResultTools.exportedNames`); an `import` still reaches every block. See [Exports and Doc Comments](#exports-and-doc-comments-multianimresulttools) |
+| `/// text` | Doc comment, kept on the root block, parameter or enum choice it documents (`MultiAnimResultTools.docOf`); any other `///` is a plain comment. See [Exports and Doc Comments](#exports-and-doc-comments-multianimresulttools) |
 | `#name programmable(params) { ... }` | Define a parameterized component (the main building block) |
 | `#name data { ... }` | Define static typed data block with records and fields |
 | `#name curves { ... }` | Define named interpolation curves |
@@ -35,7 +37,7 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `text(font, text, color, align, maxWidth, options)` | Simple text with font, color, and formatting options |
 | `richText(font, text, color, align, maxWidth, options)` | Rich text with `[markup]`, styles, images — always `h2d.HtmlText` |
 | `ninepatch(sheet, tile, w, h [, stretch\|tile] [, index: n] [, fps: n])` | 9-patch scalable image for resizable panels: repeated by default, `stretch` for art drawn to stretch, `settings { ninepatch => stretch }` as a programmable's default; sheet and tile are string expressions (`"button_" + $style`); `index:` a frame of an indexed name, `fps:` the frames played in a loop (`AnimatedScaleGrid`) |
-| `#name cursor { name: tileSource, hot: x, y … }` | Bitmap cursors from atlas cells, registered by name when the file loads (root only) — see Cursors |
+| `#name cursor { name: tileSource, hot: x, y … }` | Bitmap cursors from atlas cells, registered by name when the file, or a file that imports it, loads (root only) — see Cursors |
 | `pixels(...)` | Pixel-level drawing primitives |
 | `graphics(...)` | Vector graphics shapes |
 | `stateanim("file", state, selector)` | State machine animation from .anim file |
@@ -453,6 +455,8 @@ Works with `@()`, `@if()`, `@any()`, `@all()`, `@else`, `@else(cond)`, `@default
 | `griddirection` | Grid direction flags (0-7) |
 | `array` | Array type |
 
+A parameter, and each choice of an enum parameter, may carry a `///` doc comment: the lines above it, and one trailing it on its line (`hp:uint = 3, /// hit points`, `walk /// 4 frames at 8 fps`). See [Exports and Doc Comments](#exports-and-doc-comments-multianimresulttools).
+
 ---
 
 ## Expressions
@@ -768,6 +772,8 @@ filter: group(perlinNoise(42.0, 12.0, 0.8), outline(1, #000000))
 
 Two conventions coexist. **CSS `#` forms** assume opacity (3/6 hex digits bake `0xFF` alpha). **Heaps `0x` forms** are the internal AARRGGBB representation and are preserved **verbatim** — the top byte IS alpha. If you write `0xFF0000`, that's transparent red (alpha = 0), not opaque red.
 
+Every integer literal is a 32-bit number, the same on every target: `0x` and up to 8 hex digits is its bits (`0xFFFF0000` is -65536 on JS as on HashLink), a decimal is -2147483648 to 2147483647, and anything longer or larger is a parse error.
+
 | Format | Example | Stored as | Notes |
 |--------|---------|-----------|-------|
 | `#RGB` | `#f00` | `0xFFFF0000` | CSS shorthand, expanded to `#RRGGBB` then baked opaque |
@@ -940,7 +946,7 @@ Root node, needs a `#name`. One track at a time: `audio.playMusic("music.title",
 | a screen's programmable `settings { }` | `music => "block.track"` or `none` | The screen's music, crossfaded to as it comes up (the first programmable added to the screen that says it) |
 | a screen's programmable `settings { }` | `ambience => "block.sound"` or `none` | The screen's ambience, a looping sound held beside the music: started as the screen comes up, stopped as a screen naming another or `none` comes up; a screen naming the same one keeps it, one that says nothing keeps what plays (`screen.screenAmbience`) |
 | an `.anim` file | `sounds { event: "block.sound" }` | The sound each event plays, by the state machine |
-| an `.anim` file | `sounds { hold animation: "block.sound" }` | A sound held while that animation plays: started as it starts, stopped as another starts or the sprite leaves the scene (`animSM.heldSound` to drive it) |
+| an `.anim` file | `sounds { hold animation: "block.sound" }` | A sound held while that animation plays in the scene: started as it starts (or as the sprite comes into the scene), stopped as another starts or the sprite leaves the scene (`animSM.heldSound` to drive it) |
 
 Without a `#ui sounds { }` block the widgets are silent; one that defines `hover`, `click`, `toggle`, `change`, `open`, `close` plays them for every widget, and `click` for every click of an `interactive()` the screen registered (`addInteractives`: a screen's own, a panel's, a card hand's cards; their hover is silent) unless its metadata says `sound.click => none`. DevBridge: `audio_state`, `audio_log`, `audio_set`, the `audio` event.
 
@@ -1817,6 +1823,64 @@ final needs:ManimNeeds = ManimNeedsTools.needsOf(result);
 | `uiSounds:Array<String>` | The keys of the `#ui` sounds bank the file's widgets and interactives play by default, having no `sound.<key>` of their own. The parse does not know which widget the host makes of a programmable, so it goes by the parameters each widget passes: an `interactive()` plays `click` (not with `events:` that leave clicks out); a programmable with `status` and `buttonText` (a button) `hover` and `click`; with `status` and `checked` (a checkbox, or a tab or radio button, whose tabs and radio group send a change) `toggle` and `change`; with `status` and `panel` (a dropdown) `open`, `close` and `change`; with `status`, `value` and `size` (a slider), with `scrollPosition`, `scrollableHeight` and `panelHeight` (a scrollbar), or with `status`, `title` and `selected` (a list's item) `change`; any other (a text input, a card, a grid cell) none. The runtime plays what the widget sends (`UIScreenBase.playWidgetSound`), so this is at most what a widget of it could play |
 
 Arrays are sorted and without repeats. A `.anim` file's counterpart is `ManimNeedsTools.animNeedsOf(parsed.loaded())` (`AnimNeeds`: its `sheet:` with every frame name its playlists and layers write, `${state}` expanded over the file's states; its `file:` images; the `bank.sound` names of its `sounds { }` block, the held ones too); see `docs/anim-reference.md`. Nothing here is validated against what exists: that is the builder's, with a loader.
+
+---
+
+## Exports and Doc Comments (`MultiAnimResultTools`)
+
+Two things a file (a pack) writes for whoever reads it, kept by the parse and acted on by nothing: which root blocks it gives (`export`), and what each block, parameter and choice is for (`///`).
+
+```manim
+/// A knight that walks and stands.
+/// Drawn from two boxes.
+#knight export programmable(
+    /// What the knight is doing
+    state:[
+        idle,  /// stands still
+        walk   /// 4 frames at 8 fps
+    ] = idle,
+    hp:uint = 3, /// hit points, at most 9
+    w:uint = 10
+) {
+    ...
+}
+
+/// A helper the pack keeps to itself: not exported, placed and imported as before
+#helper programmable(n:uint = 1) { ... }
+```
+
+### `export`
+
+| | |
+|---|---|
+| Where | Between a root block's `#name` (and its `(updatable)`, if any) and its kind: `#name export programmable(…)`, `#name export data {…}`, and so for `palette`, `curves`, `paths`, `animatedPath`, `particles`, `layouts`, `atlas2`, `autotile`, `tileset`, `tilemap`, `cursor`, `sounds`, `mix`, `music`: any root block. Any case (`Export`), as every keyword |
+| Kept | `node.exported = true` on the block (absent on every other node); its name in `MultiAnimResult.exports`, in the order written |
+| Does | Nothing: every block builds, is placed and is imported as before, exported or not (a pack reader is what may hold to it). A file with no `export` parses as it did |
+| No name taken | `export` was never a kind, so `#export programmable()` is still a block named `export` (`#export export programmable()` exports it), and an element, parameter, choice or data field may be called `export` |
+| Errors | `export` on an element inside a block (`#b export bitmap(…)`, `export bitmap(…)`), and `export` without a `#name` before it (`export curves {…}`, `export #b …`) |
+
+### `///` doc comments
+
+| | |
+|---|---|
+| A doc comment | A line comment of exactly three slashes. `//` and `////…` (a ruled line) are plain comments, and so is `///` in a block comment, a string or a `${…}` |
+| What it documents | A root block: the `///` lines directly above its `#name` (or above an unnamed root definition: `curves {}`, a root `@final`). A parameter (of a programmable or a parameterized slot) and a choice of an enum parameter: the `///` lines directly above it, and one `///` trailing it on the line where it ends, right after it or after the comma that follows it |
+| Directly above | Each line right above the next and the last right above the thing: a blank line or any other line (a `//` comment too) between breaks the run, so a file's header comment is no block's |
+| Its text | `///` and one space after it are taken off, and trailing whitespace (a CRLF file's `\r`); several lines join with `\n`, the lines above before a trailing one; blank `///` lines inside are kept, at either end dropped |
+| Documenting nothing | A `///` anywhere else (above `version:` or an `import`, in a block's body, after a programmable's `)`, in an expression) is a comment like any other. A trailing doc is one line: a `///` line under it is the next thing's |
+| Kept | `node.doc` (a root block), `Definition.doc` (a parameter), `Definition.choiceDocs` (choice → doc, only the choices that have one); each absent when there is none |
+
+### Reading them
+
+```haxe
+final result = MacroManimParser.parseFile(text, "pack.manim", null);   // no loader needed
+MultiAnimResultTools.exportedNames(result);                    // ["knight"] (a copy; result.exports is the same)
+MultiAnimResultTools.docOf(result, "knight");                  // "A knight that walks and stands.\nDrawn from two boxes."
+MultiAnimResultTools.docOf(result, "knight", "hp");            // "hit points, at most 9"
+MultiAnimResultTools.docOf(result, "knight", "state", "walk"); // "4 frames at 8 fps"
+```
+
+`docOf` is null when there is no doc, or no such block, parameter (of a programmable) or choice. A builder has the same: `builder.exportedNames()`, `builder.docOf(block, ?param, ?choice)`, and `builder.getParameterDefinitions(name)` gives the definitions with their `doc` and `choiceDocs`. The LSP shows a block's, a parameter's and a choice's doc on hover, marks exported blocks `export` in the outline, and completes and explains `export`.
 
 ---
 

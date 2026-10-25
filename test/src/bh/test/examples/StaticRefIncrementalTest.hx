@@ -347,6 +347,19 @@ class StaticRefIncrementalTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testCodegen_ImportedProgrammableOfTheWrappersNameIsNoCycle():Void {
+		Assert.equals("6x5", sizes(build("sriSameName").object), "the builder places the imported sriSameName");
+		var drawn = "";
+		try {
+			final inst:Dynamic = createMp().sriSameName.create();
+			drawn = sizes(inst);
+		} catch (e:Dynamic) {
+			drawn = Std.string(e);
+		}
+		Assert.equals("6x5", drawn, "codegen: #sriSameName placing the import's sriSameName is not a circular reference");
+	}
+
+	@Test
 	public function testCodegen_ExternalStaticRefFollows():Void {
 		final inst:Dynamic = createMp().sriExternal.create();
 		Assert.equals("5x3", sizes(inst));

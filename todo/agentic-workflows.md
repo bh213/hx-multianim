@@ -351,7 +351,9 @@ than inventing a new one.
 - Neither `///` nor `/** */` appears in any of the 333 real `.manim` files, so claiming them breaks
   nothing.
 
-- [ ] `MAN-1` **Doc comments.**
+- [ ] `MAN-1` **Doc comments.** *Partly done 2026-10-25:* `///` is kept on root blocks, parameters
+  and enum choices (`Node.doc`, `Definition.doc`/`choiceDocs`, `MultiAnimResultTools.docOf`, LSP
+  hover; `ExportDocCommentTest`). Left: `/** … */`, the `//` fallback below, `.anim` docs.
   - `///` (and `/** … */`) attach to the next node, programmable or parameter.
   - The lexer accumulates doc text onto the next token. `createNode` (MacroManimParser.hx:2871)
     fills a new `Node.doc`, and `parseDefine` fills `Definition.doc` (MultiAnimParser.hx:266, today
@@ -362,7 +364,8 @@ than inventing a new one.
     `Std.string(type)`, so payload changes rename nodes.
   - Doc edits stay hot-reload-safe: `SignatureChecker` compares only parameter names and types.
   - **M**
-- [ ] `MAN-2` **Inline parameter docs.** `hp:0..999=100 "current hull points"`. A trailing string
+- [ ] `MAN-2` **Inline parameter docs.** *Covered 2026-10-25 by a trailing `///`*
+  (`hp:uint = 3, /// hit points`); the string form below was not added. `hp:0..999=100 "current hull points"`. A trailing string
   after the default is unambiguous, because `,` or `)` must follow (MacroManimParser.hx:1857).
   Parameter meaning is what agents most often guess wrong: `lease`, `sel`, `sub` on
   `combat.manim:112`'s `#nodeCell`. **S**
@@ -451,7 +454,9 @@ than inventing a new one.
   - Overlaps ERR-1/2/5 (make ERR-5, silently ignored particle keys like `speeed: 50`, a
     priority). **M**
 - [ ] `MAN-10` **Document the comment/doc syntax** in `docs/manim-reference.md` (`.manim` comment
-  syntax is currently undocumented anywhere). Add `///` to the VS Code grammar. **S**
+  syntax is currently undocumented anywhere). Add `///` to the VS Code grammar. **S** *Partly done
+  2026-10-25:* `///` is documented ("Exports and Doc Comments") and in the grammar; plain `//` and
+  `/* */` are only mentioned there, with no comments section of their own.
 - [ ] `MAN-11` *(lower priority)* **Named shape reuse.** A point-list `@final` or named polygon, so
   the 12-number hex vertex list repeated ~10× in `combat.manim:113-127` is one edit. **M**
 

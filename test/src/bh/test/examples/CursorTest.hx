@@ -34,7 +34,7 @@ class CursorTest extends BuilderTestBase {
 	}
 
 	function teardownCursors():Void {
-		for (name in ["sword", "hand", "solid", "tmp", "resHand", "resArrow"])
+		for (name in ["sword", "hand", "solid", "tmp", "resHand", "resArrow", "importHand"])
 			CursorManager.unregisterCursor(name);
 	}
 
@@ -213,6 +213,23 @@ class CursorTest extends BuilderTestBase {
 			final result = builder.buildWithParameters("cursorUser", []);
 			final wrapper = new UIInteractiveWrapper(result.interactives[0], null);
 			Assert.equals(customOf(CursorManager.getCursor("resHand")), customOf(wrapper.getCursor()));
+		} catch (e:Dynamic) {
+			teardownCursors();
+			sm.dispose();
+			throw e;
+		}
+		teardownCursors();
+		sm.dispose();
+	}
+
+	@Test
+	public function testAnImportedFilesCursorsAndSoundsAreTakenAsItsImporterLoads():Void {
+		final sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
+		sm.audio.backend = new bh.audio.LogBackend();
+		try {
+			sm.buildFromResourceName("import-registers.manim", false);
+			Assert.notNull(customOf(CursorManager.getCursor("importHand")), "the imported file's cursor block is registered");
+			Assert.isTrue(sm.audio.bankNames().contains("packfx"), "the imported file's sounds block is a bank of the screen's audio");
 		} catch (e:Dynamic) {
 			teardownCursors();
 			sm.dispose();

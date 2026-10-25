@@ -5755,6 +5755,16 @@ class ParserErrorTest extends utest.Test {
 		'), "the FloatingTextHelper .manim usage in the rules file must parse");
 	}
 
+	// ===== An integer literal is 32 bits on every target =====
+
+	@Test
+	public function testAnIntegerLiteralPastThirtyTwoBitsIsAnError():Void {
+		final error = parseExpectingError("#p programmable(n:int=99999999999) {\n\tbitmap(generated(color(1, 1, #ffffff))): 0, 0\n}");
+		Assert.notNull(error, "an integer default past 32 bits must be refused, not clamped (HashLink) or kept whole (JS)");
+		if (error != null)
+			Assert.stringContains("99999999999", error);
+	}
+
 	// ===== A $ref target names a programmable by a string or enum parameter only =====
 
 	@Test

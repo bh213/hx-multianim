@@ -225,9 +225,16 @@ class UIDefaultController implements UIController {
 
 	function getEventElements(pos:Point):Array<UIElement> {
 		_hits.resize(0);
-		if (controllable.captureEvents.target != null) {
-			_hits.push(controllable.captureEvents.target);
-			return _hits;
+		final captured = controllable.captureEvents.target;
+		if (captured != null) {
+			// A widget disabled while it held the mouse ignores every event, so it never hears the
+			// release that would end its capture: the capture ends with it
+			if (Std.isOfType(captured, UIElementDisablable) && cast(captured, UIElementDisablable).disabled)
+				controllable.captureEvents.target = null;
+			else {
+				_hits.push(captured);
+				return _hits;
+			}
 		}
 		_hitsPos = pos;
 		integration.forEachElement(SETReceiveEvents, _hitsCallback);

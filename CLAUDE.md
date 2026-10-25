@@ -140,7 +140,7 @@ animation animationName {
 - `@final` named constants: `@final X = 42`, usable as `$X` in coordinates
 - Compact shorthand: `animation name { ... }` (name as keyword after `animation`)
 - `anim` one-liner: `anim name(fps:N, loop:yes): "sheetName"` for simple single-sheet animations
-- `flipX: yes`/`flipY: yes` — flip all frames horizontally/vertically *in place*. Sprite stays in the same untrimmed screen footprint regardless of where the pivot sits within it. Trim offsets and extrapoints auto-mirror. Per-animation or file-level default. Works in `animation {}` blocks and `anim` shorthand
+- `flipX: yes`/`flipY: yes` — flip all frames horizontally/vertically *in place*. Sprite stays in the same untrimmed screen footprint regardless of where the pivot sits within it. Trim offsets, extrapoints and point events auto-mirror. Per-animation or file-level default. Works in `animation {}` blocks and `anim` shorthand
 - File-level defaults: `fps:`, `loop:`, `center:`, `flipX:`, `flipY:` can be set once at file level
 - Metadata types: int, float, string, color (`#RRGGBB`), list of words (`tags: [beast, wolf]`)
 - `sounds { fire: "fx.shot" }` (before animations) — the sound each event plays, by the state machine through the loader's audio after `onAnimationEvent` and the `addEventListener` listeners (`parser.sounds`, `animSM.sounds`/`animSM.audio`)

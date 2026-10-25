@@ -11,6 +11,16 @@ class ContextAnalyzerTest {
 		testParticlesBody();
 		testAfterDollar();
 		testAfterAt();
+		testParamsWithDocCommentsAndEnums();
+	}
+
+	static function testParamsWithDocCommentsAndEnums():Void {
+		// `///` docs (with commas) and an enum's choices are no parameters of their own
+		final text = "version: 1.0\n#k export programmable(\n\t/// what it does, idle or walking\n\tstate:[idle, /// stands, still\n\t\twalk] = idle, /// trails, with commas\n\tlabel:string = \"a, b\",\n\thp:int = 0\n) {\n\tbitmap(generated(color($";
+		final lines = text.split("\n");
+		final ctx = ContextAnalyzer.analyze(text, lines.length - 1, lines[lines.length - 1].length);
+		LspTestRunner.assertEqual(ctx.paramNames.join(","), "state,label,hp", "Params of an exported programmable with doc comments, an enum and a string with commas");
+		LspTestRunner.assertEqual(ctx.paramTypes.get("state"), "[idle, \n\t\twalk]", "The enum's whole type, its doc comment left out");
 	}
 
 	static function testTopLevel():Void {

@@ -64,7 +64,9 @@ class ManimAnalyzer {
 			final result = MacroManimParser.parseFile(text, uriToName(uri), null);
 
 			for (name => node in result.nodes) {
-				final range = findNameInText(text, name);
+				// By its #name first: the `///` doc above a block often says its name too
+				final defined = findNameInText(text, '#$name');
+				final range = defined.end.character > 0 ? defined : findNameInText(text, name);
 				final symbol:LspSymbolInformation = switch (node.type) {
 					case PROGRAMMABLE(_, parameters, _):
 						final paramList = [for (pname => def in parameters) '$pname:${defTypeName(def.type)}'];
@@ -85,6 +87,11 @@ class ManimAnalyzer {
 					default:
 						makeSymbol(name, SymbolKind.Variable, range);
 				};
+				// `#name export …`: the outline says so
+				if (node.exported == true) {
+					final detail:Null<String> = Reflect.field(symbol, "detail");
+					Reflect.setField(symbol, "detail", detail == null ? "export" : 'export $detail');
+				}
 				symbols.push(symbol);
 			}
 		} catch (_:Dynamic) {
@@ -108,7 +115,7 @@ class ManimAnalyzer {
 	public static function getHover(text:String, uri:String, line:Int, character:Int):Null<LspHover> {
 		final word = getWordAtPosition(text, line, character);
 		if (word == null || word.length == 0) return null;
-		return HoverProvider.getHover(word, text, uri);
+		return HoverProvider.getHover(word, text, uri, line);
 	}
 
 	/**

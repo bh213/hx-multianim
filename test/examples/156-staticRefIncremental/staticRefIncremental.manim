@@ -111,3 +111,9 @@ import "test/examples/156-staticRefIncremental/sriImported.manim" as "ext"
 #sriExternal programmable(c:uint=5) {
   staticRef(external(ext), $sriExtLeaf, w=>$c): 0, 0
 }
+
+// A wrapper named as the imported programmable it places (an index file re-offering a pack's
+// export): a name in two files is two programmables, not a circular reference.
+#sriSameName programmable(c:uint=6) {
+  staticRef(external(ext), sriSameName, w=>$c): 0, 0
+}

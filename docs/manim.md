@@ -1420,6 +1420,31 @@ External name can be used to reference programmables from external multianim.
 
 ---
 
+## Exports and Doc Comments
+
+A file can say which of its root blocks it gives others, and what each block, parameter and enum choice is for. Both are kept by the parse for tools (a pack reader, the studio, the LSP) and change nothing in a build or an import.
+
+```manim
+/// A knight that walks and stands.
+#knight export programmable(
+    /// What the knight is doing
+    state:[
+        idle,  /// stands still
+        walk   /// 4 frames at 8 fps
+    ] = idle,
+    hp:uint = 3 /// hit points
+) {
+    ...
+}
+```
+
+- `export` goes between a root block's `#name` and its kind, for any kind of root block. `MultiAnimResultTools.exportedNames(result)` lists the exported names in the order written; every block is still built and imported alike.
+- `///` (exactly three slashes) lines directly above a root block, a parameter or an enum choice are its doc; a parameter or a choice may also have one trailing it on its line. Lines join with newlines. `MultiAnimResultTools.docOf(result, block, ?param, ?choice)` reads them. A `///` that documents none of these is a plain comment.
+
+See `docs/manim-reference.md`, Exports and Doc Comments, for every rule.
+
+---
+
 ## Layouts
 
 Layouts are root-level elements for positioning elements on screen.
@@ -1489,7 +1514,8 @@ One entry a line (or `;`-separated): a name, a tile source (`sheet(…)`, `file(
 error.
 
 `ScreenManager.buildFromResource` registers every cursor of every `cursor { }` block of the file
-with `CursorManager` (`builder.registerCursors()`, again on each reload), so a registered name
+and of the files it imports with `CursorManager` (`builder.registerCursors()`, again on each
+reload; its `sounds`, `music` and `mix` blocks are taken the same way), so a registered name
 then works wherever an OS cursor name does: an interactive's `cursor => "sword"`, `cursor.hover`,
 `cursor.disabled`, `CursorManager.getCursor("sword")`, `setOverrideCursor`. `builder.buildCursors(
 "cursors")` gives the block's cursors by name without registering them.
@@ -1570,7 +1596,7 @@ for every play of the name): the voice is free at once, the stop layers play on
 factor over the rolled values: an engine by its revs, a thruster by its throttle. A bank taken
 again (a hot reload) cuts its plays, stop layers and all, so a hum never outlives the block that
 made it. Without code: an `.anim`'s `sounds { hold thrust: "fx.engine" }` holds a sound while an
-animation plays, and a screen's `settings { ambience => "amb.hum" }` holds one while the screen is
+animation plays in the scene, and a screen's `settings { ambience => "amb.hum" }` holds one while the screen is
 up (below).
 
 `ScreenManager.buildFromResource` takes every `sounds` block of a file as a bank of

@@ -98,11 +98,12 @@ set as the machine is made by `createAnimSM`; with no audio nothing plays. `pars
 map; `animSM.sounds` and `animSM.audio` may be set from code. A sound no bank has is an error when
 the event fires.
 
-`hold <animation>: "block.sound"` holds a sound while that animation plays: `play(name)` starts it
-as the animation starts and stops it (over its fade out, its `on: stop` layers playing) as another
-animation starts; the same animation played again keeps it. The machine leaving the scene
-(`remove()`) stops it, and put back in the scene on that animation it holds it again, so a held hum
-never outlives its sprite. `animSM.heldSound` is the play, a `SoundInstance`, to drive
+`hold <animation>: "block.sound"` holds a sound while that animation plays in the scene: `play(name)`
+starts it as the animation starts and stops it (over its fade out, its `on: stop` layers playing) as
+another animation starts; the same animation played again keeps it. A machine not in the scene holds
+nothing until it is added (a `stateanim` is played as it is built, before it is placed). The machine
+leaving the scene (`remove()`) stops it, and put back in the scene on that animation it holds it
+again, so a held hum never outlives its sprite. `animSM.heldSound` is the play, a `SoundInstance`, to drive
 (`setPitch(rate)`, `setVolume(gain, ?fade)`); `parser.holds` / `animSM.holds` the map. The
 animation named must be one of the file's, and an animation is held once (parse errors).
 
@@ -181,8 +182,8 @@ animation name @(direction=>l) {
 | `playlist` | Frame sequence (required, at least one) |
 | `extrapoints` | Named coordinate points |
 | `filters` | Typed filter declarations |
-| `flipX` | `yes`/`no` — horizontally flip all frames in place. Sprite keeps the same untrimmed screen footprint; trim offsets and extrapoints auto-mirror. Inherits file-level default. All frames must share the same untrimmed size (parse-time error otherwise) |
-| `flipY` | `yes`/`no` — vertically flip all frames in place. Sprite keeps the same untrimmed screen footprint; trim offsets and extrapoints auto-mirror. Inherits file-level default. All frames must share the same untrimmed size (parse-time error otherwise) |
+| `flipX` | `yes`/`no` — horizontally flip all frames in place. Sprite keeps the same untrimmed screen footprint; trim offsets, extrapoints and point events (`event name x, y`, a `random` event's centre) auto-mirror. Inherits file-level default. All frames must share the same untrimmed size (parse-time error otherwise) |
+| `flipY` | `yes`/`no` — vertically flip all frames in place. Sprite keeps the same untrimmed screen footprint; trim offsets, extrapoints and point events auto-mirror. Inherits file-level default. All frames must share the same untrimmed size (parse-time error otherwise) |
 
 ### Compact Shorthand
 

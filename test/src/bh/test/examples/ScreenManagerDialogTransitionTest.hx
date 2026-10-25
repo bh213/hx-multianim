@@ -36,6 +36,18 @@ class ScreenManagerDialogTransitionTest extends utest.Test {
 	}
 
 	@Test
+	public function testAnOkCancelDialogAnswersAKeyGoingDownNotItsRelease():Void {
+		final sm = newManager();
+		final dialog = new screens.OkCancelDialog(sm, null, null, null, "OK", "Cancel", "Sure?");
+		// A dialog opened on Enter or Escape going down hears that key's release first
+		dialog.onScreenEvent(UIKeyPress(hxd.Key.ENTER, true), null);
+		dialog.onScreenEvent(UIKeyPress(hxd.Key.ESCAPE, true), null);
+		Assert.isNull(dialog.getController().exitResponse, "a key's release answers nothing");
+		dialog.onScreenEvent(UIKeyPress(hxd.Key.ENTER, false), null);
+		Assert.equals(true, dialog.getController().exitResponse, "Enter going down is OK");
+	}
+
+	@Test
 	public function testDialogToDialog_UILeavingFiresWhileAttached():Void {
 		var sm = newManager();
 

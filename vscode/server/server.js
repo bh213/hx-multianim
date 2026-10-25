@@ -1688,6 +1688,9 @@ var bh_multianim__$MacroManimParser_ExprType = $hxEnums["bh.multianim._MacroMani
 };
 bh_multianim__$MacroManimParser_ExprType.__constructs__ = [bh_multianim__$MacroManimParser_ExprType.EInt,bh_multianim__$MacroManimParser_ExprType.EFloat,bh_multianim__$MacroManimParser_ExprType.EString,bh_multianim__$MacroManimParser_ExprType.EAny];
 var bh_multianim__$MacroManimParser_MacroLexer = function(src,sourceName) {
+	this.lastTokenEndLine = 0;
+	this.tokenCount = 0;
+	this.docComments = [];
 	this.pendingTokens = [];
 	this.src = src;
 	this.pos = 0;
@@ -1698,6 +1701,13 @@ var bh_multianim__$MacroManimParser_MacroLexer = function(src,sourceName) {
 	this.sourceName = sourceName;
 };
 bh_multianim__$MacroManimParser_MacroLexer.__name__ = true;
+bh_multianim__$MacroManimParser_MacroLexer.docText = function(raw) {
+	var s = StringTools.rtrim(raw);
+	if(StringTools.startsWith(s," ") || StringTools.startsWith(s,"\t")) {
+		s = HxOverrides.substr(s,1,null);
+	}
+	return s;
+};
 bh_multianim__$MacroManimParser_MacroLexer.isInterpolationKeyword = function(s) {
 	var lower = s.toLowerCase();
 	var _g = 0;
@@ -1713,6 +1723,12 @@ bh_multianim__$MacroManimParser_MacroLexer.isInterpolationKeyword = function(s) 
 };
 bh_multianim__$MacroManimParser_MacroLexer.prototype = {
 	nextToken: function() {
+		var t = this.scanToken();
+		this.tokenCount++;
+		this.lastTokenEndLine = this.line;
+		return t;
+	}
+	,scanToken: function() {
 		if(this.pendingTokens.length > 0) {
 			return this.pendingTokens.shift();
 		}
@@ -1733,8 +1749,13 @@ bh_multianim__$MacroManimParser_MacroLexer.prototype = {
 			if(c == 47 && this.pos + 1 < this.len) {
 				var c2 = HxOverrides.cca(this.src,this.pos + 1);
 				if(c2 == 47) {
+					var isDoc = this.pos + 2 < this.len && HxOverrides.cca(this.src,this.pos + 2) == 47 && !(this.pos + 3 < this.len && HxOverrides.cca(this.src,this.pos + 3) == 47);
+					var commentStart = this.pos;
 					this.pos += 2;
 					while(this.pos < this.len && HxOverrides.cca(this.src,this.pos) != 10) this.pos++;
+					if(isDoc) {
+						this.docComments.push({ text : bh_multianim__$MacroManimParser_MacroLexer.docText(this.src.substring(commentStart + 3,this.pos)), line : startLine, tokenIndex : this.tokenCount, trailing : this.lastTokenEndLine == startLine});
+					}
 					continue;
 				}
 				if(c2 == 42) {
@@ -2148,7 +2169,7 @@ bh_multianim__$MacroManimParser_MacroLexer.prototype = {
 	}
 	,__class__: bh_multianim__$MacroManimParser_MacroLexer
 };
-var bh_multianim_MacroManimParser = function(tokens,sourceName,resourceLoader) {
+var bh_multianim_MacroManimParser = function(tokens,sourceName,resourceLoader,docComments) {
 	this.dataRefs = [];
 	this.groundTileAllowed = false;
 	this.tokens = tokens;
@@ -2164,8 +2185,34 @@ var bh_multianim_MacroManimParser = function(tokens,sourceName,resourceLoader) {
 	this.activeFinals = null;
 	this.activeFinalNames = null;
 	this.customFilterRefs = [];
+	this.exports = [];
+	this.docsAt = new haxe_ds_IntMap();
+	if(docComments != null) {
+		var _g = 0;
+		while(_g < docComments.length) {
+			var d = docComments[_g];
+			++_g;
+			var list = this.docsAt.h[d.tokenIndex];
+			if(list == null) {
+				this.docsAt.h[d.tokenIndex] = [d];
+			} else {
+				list.push(d);
+			}
+		}
+	}
 };
 bh_multianim_MacroManimParser.__name__ = true;
+bh_multianim_MacroManimParser.joinDocLines = function(lines) {
+	var from = 0;
+	var to = lines.length;
+	while(from < to && StringTools.trim(lines[from]) == "") ++from;
+	while(to > from && StringTools.trim(lines[to - 1]) == "") --to;
+	if(from < to) {
+		return lines.slice(from,to).join("\n");
+	} else {
+		return null;
+	}
+};
 bh_multianim_MacroManimParser.isKeyword = function(s,kw) {
 	return s.toLowerCase() == kw.toLowerCase();
 };
@@ -2275,7 +2322,7 @@ bh_multianim_MacroManimParser.tryStringToColor = function(s) {
 		return color;
 	}
 	if(StringTools.startsWith(s,"0x")) {
-		return Std.parseInt(s);
+		return bh_multianim_ParseUtils.int32OrNull(s);
 	}
 	if(StringTools.startsWith(s,"#")) {
 		var colorStr = s.substring(1);
@@ -2299,7 +2346,7 @@ bh_multianim_MacroManimParser.tryStringToColor = function(s) {
 		}
 		return -16777216 | colorVal;
 	}
-	return Std.parseInt(s);
+	return bh_multianim_ParseUtils.int32OrNull(s);
 };
 bh_multianim_MacroManimParser.isShaderGround = function(ts) {
 	if(ts._hx_index == 3) {
@@ -2559,7 +2606,7 @@ bh_multianim_MacroManimParser.parseFile = function(content,sourceName,resourceLo
 			break;
 		}
 	}
-	var parser = new bh_multianim_MacroManimParser(tokens,sourceName,resourceLoader);
+	var parser = new bh_multianim_MacroManimParser(tokens,sourceName,resourceLoader,lexer.docComments);
 	return parser.parse();
 };
 bh_multianim_MacroManimParser.prototype = {
@@ -2713,14 +2760,82 @@ bh_multianim_MacroManimParser.prototype = {
 	,generateUniqueName: function(id,name,typeName) {
 		return "" + name + "_" + typeName + "_" + id;
 	}
-	,stringToInt: function(s) {
-		var s1 = s.split("_").join("");
-		var tmp = Std.parseInt(s1);
-		if(tmp != null) {
-			return tmp;
-		} else {
-			throw haxe_Exception.thrown("expected integer, got \"" + s1 + "\"");
+	,leadingDoc: function(index) {
+		var list = this.docsAt.h[index];
+		if(list == null) {
+			return null;
 		}
+		var expected = this.tokens[index].line - 1;
+		var lines = [];
+		var i = list.length - 1;
+		while(i >= 0) {
+			var d = list[i];
+			if(d.trailing || d.line != expected) {
+				break;
+			}
+			lines.unshift(d.text);
+			--expected;
+			--i;
+		}
+		return bh_multianim_MacroManimParser.joinDocLines(lines);
+	}
+	,trailingDoc: function(lastIndex) {
+		var line = this.tokens[lastIndex].line;
+		var next = lastIndex + 1;
+		var doc = this.trailingDocBefore(next,line);
+		if(doc != null) {
+			return doc;
+		}
+		if(next < this.tokens.length && Type.enumEq(this.tokens[next].type,bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
+			return this.trailingDocBefore(next + 1,line);
+		}
+		return null;
+	}
+	,trailingDocBefore: function(index,line) {
+		var list = this.docsAt.h[index];
+		if(list == null) {
+			return null;
+		}
+		var _g = 0;
+		while(_g < list.length) {
+			var d = list[_g];
+			++_g;
+			if(d.trailing && d.line == line) {
+				return bh_multianim_MacroManimParser.joinDocLines([d.text]);
+			}
+		}
+		return null;
+	}
+	,itemDoc: function(first,last) {
+		var leading = this.leadingDoc(first);
+		var trailing = this.trailingDoc(last);
+		if(leading == null) {
+			return trailing;
+		} else if(trailing == null) {
+			return leading;
+		} else {
+			return leading + "\n" + trailing;
+		}
+	}
+	,markRootBlock: function(node,name,firstIndex,exported) {
+		if(exported) {
+			node.exported = true;
+			this.exports.push(name);
+		}
+		var doc = this.leadingDoc(firstIndex);
+		if(doc != null) {
+			node.doc = doc;
+		}
+	}
+	,stringToInt: function(s) {
+		return this.int32(s.split("_").join(""));
+	}
+	,int32: function(s) {
+		var value = bh_multianim_ParseUtils.int32OrNull(s);
+		if(value != null) {
+			return value;
+		}
+		return this.error(Std.parseInt(s) == null ? "expected integer, got \"" + s + "\"" : "integer " + s + " does not fit in 32 bits (-2147483648 to 2147483647, or 0x and up to 8 hex digits)");
 	}
 	,stringToFloat: function(s) {
 		var cleaned = s.split("_").join("");
@@ -4111,7 +4226,12 @@ bh_multianim_MacroManimParser.prototype = {
 			return { defs : defines, order : order};
 		}
 		while(true) {
+			var first = this.tpos;
 			var def = this.parseDefine();
+			var doc = this.itemDoc(first,this.tpos - 1);
+			if(doc != null) {
+				def.doc = doc;
+			}
 			if(Object.prototype.hasOwnProperty.call(defines.h,def.name)) {
 				this.error("parameter " + def.name + " already defined");
 			}
@@ -4145,6 +4265,7 @@ bh_multianim_MacroManimParser.prototype = {
 		case 3:
 			this.advance();
 			var enumNames = [];
+			var choiceAt = [];
 			var lastWasComma = true;
 			_hx_loop1: while(true) {
 				var _g1 = this.tokens[this.tpos].type;
@@ -4161,6 +4282,7 @@ bh_multianim_MacroManimParser.prototype = {
 					break;
 				case 29:
 					var s = _g1.s;
+					choiceAt.push(this.tpos);
 					this.advance();
 					if(enumNames.indexOf(s) >= 0) {
 						this.error("enum value \"" + s + "\" already defined");
@@ -4170,6 +4292,7 @@ bh_multianim_MacroManimParser.prototype = {
 					break;
 				case 30:
 					var s1 = _g1.s;
+					choiceAt.push(this.tpos);
 					this.advance();
 					if(enumNames.indexOf(s1) >= 0) {
 						this.error("enum value \"" + s1 + "\" already defined");
@@ -4179,6 +4302,7 @@ bh_multianim_MacroManimParser.prototype = {
 					break;
 				case 32:
 					var s2 = _g1.s;
+					choiceAt.push(this.tpos);
 					this.advance();
 					if(enumNames.indexOf(s2) >= 0) {
 						this.error("enum value \"" + s2 + "\" already defined");
@@ -4188,6 +4312,7 @@ bh_multianim_MacroManimParser.prototype = {
 					break;
 				case 35:
 					var s3 = _g1.s;
+					choiceAt.push(this.tpos);
 					this.advance();
 					if(enumNames.indexOf(s3) >= 0) {
 						this.error("enum value \"" + s3 + "\" already defined");
@@ -4200,6 +4325,21 @@ bh_multianim_MacroManimParser.prototype = {
 				}
 			}
 			def.type = bh_multianim_DefinitionType.PPTEnum(enumNames);
+			var _g1 = 0;
+			var _g2 = enumNames.length;
+			while(_g1 < _g2) {
+				var i = _g1++;
+				var doc = this.itemDoc(choiceAt[i],choiceAt[i]);
+				if(doc == null) {
+					continue;
+				}
+				var choiceDocs = def.choiceDocs;
+				if(choiceDocs == null) {
+					choiceDocs = new haxe_ds_StringMap();
+					def.choiceDocs = choiceDocs;
+				}
+				choiceDocs.h[enumNames[i]] = doc;
+			}
 			break;
 		case 20:
 			var from = this.parseInteger();
@@ -4374,24 +4514,10 @@ bh_multianim_MacroManimParser.prototype = {
 	,dynamicValueToIndex: function(name,type,value) {
 		switch(type._hx_index) {
 		case 0:case 1:
-			var tmp = Std.parseInt(value);
-			var tmp1;
-			if(tmp != null) {
-				tmp1 = tmp;
-			} else {
-				throw haxe_Exception.thrown("expected integer, got \"" + value + "\"");
-			}
-			return bh_multianim_ResolvedIndexParameters.Value(tmp1);
+			return bh_multianim_ResolvedIndexParameters.Value(this.int32(value));
 		case 2:
 			var bits = type.bits;
-			var tmp = Std.parseInt(value);
-			var tmp1;
-			if(tmp != null) {
-				tmp1 = tmp;
-			} else {
-				throw haxe_Exception.thrown("expected integer, got \"" + value + "\"");
-			}
-			return bh_multianim_ResolvedIndexParameters.Flag(tmp1);
+			return bh_multianim_ResolvedIndexParameters.Flag(this.int32(value));
 		case 3:
 			var values = type.values;
 			if(values.indexOf(value) == -1) {
@@ -4401,14 +4527,7 @@ bh_multianim_MacroManimParser.prototype = {
 		case 4:
 			var from = type.from;
 			var to = type.to;
-			var tmp = Std.parseInt(value);
-			var tmp1;
-			if(tmp != null) {
-				tmp1 = tmp;
-			} else {
-				throw haxe_Exception.thrown("expected integer, got \"" + value + "\"");
-			}
-			return bh_multianim_ResolvedIndexParameters.Value(tmp1);
+			return bh_multianim_ResolvedIndexParameters.Value(this.int32(value));
 		case 6:
 			var f = parseFloat(value);
 			if(isNaN(f)) {
@@ -4427,14 +4546,7 @@ bh_multianim_MacroManimParser.prototype = {
 			}
 			break;
 		case 5:case 8:
-			var tmp = Std.parseInt(value);
-			var tmp1;
-			if(tmp != null) {
-				tmp1 = tmp;
-			} else {
-				throw haxe_Exception.thrown("expected integer, got \"" + value + "\"");
-			}
-			return bh_multianim_ResolvedIndexParameters.Value(tmp1);
+			return bh_multianim_ResolvedIndexParameters.Value(this.int32(value));
 		case 9:
 			return bh_multianim_ResolvedIndexParameters.StringValue(value);
 		case 10:
@@ -4442,14 +4554,7 @@ bh_multianim_MacroManimParser.prototype = {
 			if(c != null) {
 				return bh_multianim_ResolvedIndexParameters.Value(c);
 			} else {
-				var tmp = Std.parseInt(value);
-				var tmp1;
-				if(tmp != null) {
-					tmp1 = tmp;
-				} else {
-					throw haxe_Exception.thrown("expected integer, got \"" + value + "\"");
-				}
-				return bh_multianim_ResolvedIndexParameters.Value(tmp1);
+				return bh_multianim_ResolvedIndexParameters.Value(this.int32(value));
 			}
 			break;
 		case 11:
@@ -4786,14 +4891,7 @@ bh_multianim_MacroManimParser.prototype = {
 			if(c != null) {
 				return bh_multianim_ConditionalValues.CoValue(c);
 			} else {
-				var tmp = Std.parseInt(val);
-				var tmp1;
-				if(tmp != null) {
-					tmp1 = tmp;
-				} else {
-					throw haxe_Exception.thrown("expected integer, got \"" + val + "\"");
-				}
-				return bh_multianim_ConditionalValues.CoValue(tmp1);
+				return bh_multianim_ConditionalValues.CoValue(this.int32(val));
 			}
 			break;
 		default:
@@ -7792,7 +7890,8 @@ bh_multianim_MacroManimParser.prototype = {
 																																												}
 																																												return null;
 																																											} else {
-																																												node = this.error("expected valid node type, got " + Std.string(this.tokens[this.tpos].type));
+																																												var s = _g1;
+																																												node = bh_multianim_MacroManimParser.isKeyword(s,"export") ? this.error(parent == null ? "export goes right after a root block's #name, before its kind: #name export programmable(...)" : "only a root block can be exported — export goes between a root block's #name and its kind: #name export programmable(...)") : this.error("expected valid node type, got " + Std.string(this.tokens[this.tpos].type));
 																																											}
 																																										}
 																																									}
@@ -9521,6 +9620,7 @@ bh_multianim_MacroManimParser.prototype = {
 																this.imports.h[importName] = loadedFile;
 															}
 														} else {
+															var firstIndex = this.tpos;
 															var newNode = this.parseNode(bh_multianim_UpdatableNameType.UNTObject(null),node,defs);
 															if(newNode != null) {
 																if(node == null) {
@@ -9548,6 +9648,7 @@ bh_multianim_MacroManimParser.prototype = {
 																		break;
 																	}
 																	this.addNode(n2,newNode);
+																	this.markRootBlock(newNode,n2,firstIndex,false);
 																} else {
 																	node.children.push(newNode);
 																}
@@ -9566,6 +9667,7 @@ bh_multianim_MacroManimParser.prototype = {
 				break;
 			case 33:
 				var name = _g.s;
+				var nameIndex = this.tpos;
 				this.advance();
 				this.currentName = name;
 				var nameType = bh_multianim_UpdatableNameType.UNTObject(name);
@@ -9660,44 +9762,59 @@ bh_multianim_MacroManimParser.prototype = {
 					break;
 				default:
 				}
+				var exported = false;
+				var _g21 = this.tokens[this.tpos].type;
+				if(_g21._hx_index == 32) {
+					var s12 = _g21.s;
+					if(bh_multianim_MacroManimParser.isKeyword(s12,"export")) {
+						if(node != null) {
+							this.error("#" + name + ": only a root block can be exported — export goes between a root block's #name and its kind: #name export programmable(...)");
+						}
+						this.advance();
+						exported = true;
+					}
+				}
 				var newNode1 = this.parseNode(nameType,node,defs);
 				this.currentName = null;
 				if(newNode1 != null) {
 					if(node == null) {
 						this.addNode(name,newNode1);
+						this.markRootBlock(newNode1,name,nameIndex,exported);
 					} else {
 						node.children.push(newNode1);
 					}
 				}
 				break;
 			default:
+				var firstIndex1 = this.tpos;
 				var newNode2 = this.parseNode(bh_multianim_UpdatableNameType.UNTObject(null),node,defs);
 				if(newNode2 != null) {
 					if(node == null) {
 						var n7;
-						var _g21 = newNode2.updatableName;
-						switch(_g21._hx_index) {
+						var _g22 = newNode2.updatableName;
+						switch(_g22._hx_index) {
 						case 0:
-							var n8 = _g21.name;
+							var n8 = _g22.name;
 							n7 = n8;
 							break;
 						case 1:
-							var n9 = _g21.name;
+							var n9 = _g22.name;
 							n7 = n9;
 							break;
 						case 2:
-							var _g22 = _g21.indexVar;
-							var n10 = _g21.name;
+							var _g23 = _g22.indexVar;
+							var n10 = _g22.name;
 							n7 = n10;
 							break;
 						case 3:
-							var _g23 = _g21.indexVarX;
-							var _g24 = _g21.indexVarY;
-							var n11 = _g21.name;
+							var _g24 = _g22.indexVarX;
+							var _g25 = _g22.indexVarY;
+							var n11 = _g22.name;
 							n7 = n11;
 							break;
 						}
 						this.addNode(n7,newNode2);
+						this.markRootBlock(newNode2,n7,firstIndex1,false);
 					} else {
 						node.children.push(newNode2);
 					}
@@ -9959,7 +10076,7 @@ bh_multianim_MacroManimParser.prototype = {
 		if(this.tokens[this.tpos].type._hx_index != 0) {
 			this.error("unexpected content after main body: " + Std.string(this.tokens[this.tpos].type));
 		}
-		return { nodes : this.nodes, imports : this.imports, customFilterRefs : this.customFilterRefs, importPaths : this.importPaths};
+		return { nodes : this.nodes, imports : this.imports, customFilterRefs : this.customFilterRefs, importPaths : this.importPaths, exports : this.exports};
 	}
 	,parseGraphicsElements: function() {
 		var elements = [];
@@ -15668,6 +15785,42 @@ bh_multianim_NodeFlowPropertiesTools.create = function(hAlign,vAlign,offsetX,off
 	}
 	return { hAlign : hAlign, vAlign : vAlign, offsetX : offsetX, offsetY : offsetY, isAbsolute : isAbsolute};
 };
+var bh_multianim_MultiAnimResultTools = function() { };
+bh_multianim_MultiAnimResultTools.__name__ = true;
+bh_multianim_MultiAnimResultTools.exportedNames = function(result) {
+	return result.exports.slice();
+};
+bh_multianim_MultiAnimResultTools.docOf = function(result,block,param,choice) {
+	var node = result.nodes.h[block];
+	if(node == null) {
+		return null;
+	}
+	if(param == null) {
+		return node.doc;
+	}
+	var def;
+	var _g = node.type;
+	if(_g._hx_index == 9) {
+		var _g1 = _g.isTileGroup;
+		var _g1 = _g.paramOrder;
+		var defs = _g.parameters;
+		def = defs.h[param];
+	} else {
+		def = null;
+	}
+	if(def == null) {
+		return null;
+	}
+	if(choice == null) {
+		return def.doc;
+	}
+	var choiceDocs = def.choiceDocs;
+	if(choiceDocs == null) {
+		return null;
+	} else {
+		return choiceDocs.h[choice];
+	}
+};
 function bh_multianim_MultiAnimParser_getNameString(updatableNameType) {
 	switch(updatableNameType._hx_index) {
 	case 0:
@@ -15690,12 +15843,32 @@ function bh_multianim_MultiAnimParser_getNameString(updatableNameType) {
 var bh_multianim_ParseUtils = function() { };
 bh_multianim_ParseUtils.__name__ = true;
 bh_multianim_ParseUtils.toInt = function(s) {
-	var tmp = Std.parseInt(s);
-	if(tmp != null) {
-		return tmp;
-	} else {
-		throw haxe_Exception.thrown("expected integer, got \"" + s + "\"");
+	var value = bh_multianim_ParseUtils.int32OrNull(s);
+	if(value != null) {
+		return value;
 	}
+	throw haxe_Exception.thrown(Std.parseInt(s) == null ? "expected integer, got \"" + s + "\"" : "integer " + s + " does not fit in 32 bits");
+};
+bh_multianim_ParseUtils.int32OrNull = function(s) {
+	var value = Std.parseInt(s);
+	if(value == null) {
+		return null;
+	}
+	var first = s.charAt(0);
+	var body = first == "-" || first == "+" ? HxOverrides.substr(s,1,null) : s;
+	if(body.length > 1 && body.charAt(0) == "0" && (body.charAt(1) == "x" || body.charAt(1) == "X")) {
+		var digits = HxOverrides.substr(body,2,null);
+		while(digits.length > 1 && digits.charAt(0) == "0") digits = HxOverrides.substr(digits,1,null);
+		if(digits.length > 8) {
+			return null;
+		}
+		return value | 0;
+	}
+	var asFloat = parseFloat(s);
+	if(asFloat > 2147483647.0 || asFloat < -2147483648.0) {
+		return null;
+	}
+	return value;
 };
 var bh_multianim_ShaderCatalog = function() { };
 bh_multianim_ShaderCatalog.__name__ = true;
@@ -16639,14 +16812,7 @@ bh_stateanim__$AnimParser_AnimLexerHC.prototype = {
 						continue;
 					}
 					if(nc == 117 && this.pos + 5 < this.len) {
-						var s = "0x" + HxOverrides.substr(this.src,this.pos + 2,4);
-						var code;
-						var tmp = Std.parseInt(s);
-						if(tmp != null) {
-							code = tmp;
-						} else {
-							throw haxe_Exception.thrown("expected integer, got \"" + s + "\"");
-						}
+						var code = bh_multianim_ParseUtils.toInt("0x" + HxOverrides.substr(this.src,this.pos + 2,4));
 						buf_b += Std.string(String.fromCodePoint(code));
 						this.pos += 6;
 						this.col += 6;
@@ -16721,74 +16887,17 @@ bh_stateanim__$AnimParser_AnimLexerHC.prototype = {
 			}
 			var hexStr = this.src.substring(hexStart,this.pos);
 			if(hexStr.length == 3) {
-				var s = "0x" + hexStr.charAt(0) + hexStr.charAt(0);
-				var r;
-				var tmp = Std.parseInt(s);
-				if(tmp != null) {
-					r = tmp;
-				} else {
-					throw haxe_Exception.thrown("expected integer, got \"" + s + "\"");
-				}
-				var s = "0x" + hexStr.charAt(1) + hexStr.charAt(1);
-				var g;
-				var tmp = Std.parseInt(s);
-				if(tmp != null) {
-					g = tmp;
-				} else {
-					throw haxe_Exception.thrown("expected integer, got \"" + s + "\"");
-				}
-				var s = "0x" + hexStr.charAt(2) + hexStr.charAt(2);
-				var b;
-				var tmp = Std.parseInt(s);
-				if(tmp != null) {
-					b = tmp;
-				} else {
-					throw haxe_Exception.thrown("expected integer, got \"" + s + "\"");
-				}
+				var r = bh_multianim_ParseUtils.toInt("0x" + hexStr.charAt(0) + hexStr.charAt(0));
+				var g = bh_multianim_ParseUtils.toInt("0x" + hexStr.charAt(1) + hexStr.charAt(1));
+				var b = bh_multianim_ParseUtils.toInt("0x" + hexStr.charAt(2) + hexStr.charAt(2));
 				return new bh_stateanim__$AnimParser_AnimToken(bh_stateanim_APToken.APColor(-16777216 | r << 16 | g << 8 | b),startLine,startCol);
 			} else if(hexStr.length == 6) {
-				var s = "0x" + hexStr;
-				var tmp;
-				var tmp1 = Std.parseInt(s);
-				if(tmp1 != null) {
-					tmp = tmp1;
-				} else {
-					throw haxe_Exception.thrown("expected integer, got \"" + s + "\"");
-				}
-				return new bh_stateanim__$AnimParser_AnimToken(bh_stateanim_APToken.APColor(-16777216 | tmp),startLine,startCol);
+				return new bh_stateanim__$AnimParser_AnimToken(bh_stateanim_APToken.APColor(-16777216 | bh_multianim_ParseUtils.toInt("0x" + hexStr)),startLine,startCol);
 			} else if(hexStr.length == 8) {
-				var s = "0x" + hexStr.substring(0,2);
-				var rr;
-				var tmp = Std.parseInt(s);
-				if(tmp != null) {
-					rr = tmp;
-				} else {
-					throw haxe_Exception.thrown("expected integer, got \"" + s + "\"");
-				}
-				var s = "0x" + hexStr.substring(2,4);
-				var gg;
-				var tmp = Std.parseInt(s);
-				if(tmp != null) {
-					gg = tmp;
-				} else {
-					throw haxe_Exception.thrown("expected integer, got \"" + s + "\"");
-				}
-				var s = "0x" + hexStr.substring(4,6);
-				var bb;
-				var tmp = Std.parseInt(s);
-				if(tmp != null) {
-					bb = tmp;
-				} else {
-					throw haxe_Exception.thrown("expected integer, got \"" + s + "\"");
-				}
-				var s = "0x" + hexStr.substring(6,8);
-				var aa;
-				var tmp = Std.parseInt(s);
-				if(tmp != null) {
-					aa = tmp;
-				} else {
-					throw haxe_Exception.thrown("expected integer, got \"" + s + "\"");
-				}
+				var rr = bh_multianim_ParseUtils.toInt("0x" + hexStr.substring(0,2));
+				var gg = bh_multianim_ParseUtils.toInt("0x" + hexStr.substring(2,4));
+				var bb = bh_multianim_ParseUtils.toInt("0x" + hexStr.substring(4,6));
+				var aa = bh_multianim_ParseUtils.toInt("0x" + hexStr.substring(6,8));
 				return new bh_stateanim__$AnimParser_AnimToken(bh_stateanim_APToken.APColor(aa << 24 | rr << 16 | gg << 8 | bb),startLine,startCol);
 			} else {
 				return new bh_stateanim__$AnimParser_AnimToken(bh_stateanim_APToken.APIdentifier("#" + hexStr,null,bh_stateanim_APIdentifierType.AITString),startLine,startCol);
@@ -18106,6 +18215,7 @@ manim_lsp_CompletionProvider.topLevelCompletions = function() {
 	var items = [];
 	items.push(manim_lsp_CompletionProvider.snippet("import","import \"$1\" as \"$2\"","Import external .manim file"));
 	items.push(manim_lsp_CompletionProvider.kw("version:","File version header"));
+	items.push(manim_lsp_CompletionProvider.kw(bh_multianim_ManimKeywordInfo.exportKeyword,bh_multianim_ManimKeywordInfo.exportDescription));
 	var _g = 0;
 	var _g1 = bh_multianim_ManimKeywordInfo.allElementCtors;
 	while(_g < _g1.length) {
@@ -18604,9 +18714,31 @@ manim_lsp_ContextAnalyzer.extractParams = function(text,startIdx,paramNames,para
 	}
 	++i;
 	var depth = 1;
+	var brackets = 0;
 	var current = "";
 	while(i < text.length && depth > 0) {
 		var c = HxOverrides.cca(text,i);
+		if(c == 47 && i + 1 < text.length && HxOverrides.cca(text,i + 1) == 47) {
+			while(i < text.length && HxOverrides.cca(text,i) != 10) ++i;
+			continue;
+		}
+		if(c == 47 && i + 1 < text.length && HxOverrides.cca(text,i + 1) == 42) {
+			var end = text.indexOf("*/",i + 2);
+			i = end < 0 ? text.length : end + 2;
+			continue;
+		}
+		if(c == 34) {
+			var j = i + 1;
+			while(j < text.length && HxOverrides.cca(text,j) != 34) {
+				if(HxOverrides.cca(text,j) == 92) {
+					++j;
+				}
+				++j;
+			}
+			current += text.substring(i,j + 1);
+			i = j + 1;
+			continue;
+		}
 		if(c == 40) {
 			++depth;
 		} else if(c == 41) {
@@ -18614,8 +18746,12 @@ manim_lsp_ContextAnalyzer.extractParams = function(text,startIdx,paramNames,para
 			if(depth == 0) {
 				break;
 			}
+		} else if(c == 91) {
+			++brackets;
+		} else if(c == 93 && brackets > 0) {
+			--brackets;
 		}
-		if(c == 44 && depth == 1) {
+		if(c == 44 && depth == 1 && brackets == 0) {
 			manim_lsp_ContextAnalyzer.parseParam(StringTools.trim(current),paramNames,paramTypes);
 			current = "";
 		} else {
@@ -18723,8 +18859,15 @@ manim_lsp_DocumentManager.prototype = {
 };
 var manim_lsp_HoverProvider = function() { };
 manim_lsp_HoverProvider.__name__ = true;
-manim_lsp_HoverProvider.getHover = function(word,text,uri) {
+manim_lsp_HoverProvider.getHover = function(word,text,uri,line) {
+	if(line == null) {
+		line = -1;
+	}
 	var cleanWord = StringTools.startsWith(word,"$") || StringTools.startsWith(word,"#") || StringTools.startsWith(word,"@") ? HxOverrides.substr(word,1,null) : word;
+	var documented = manim_lsp_HoverProvider.documentedHover(word,cleanWord,text,line);
+	if(documented != null) {
+		return { contents : { kind : "markdown", value : documented}};
+	}
 	var tmp = manim_lsp_HoverProvider.lookupKeyword(word);
 	var doc = tmp != null ? tmp : manim_lsp_HoverProvider.lookupKeyword(cleanWord);
 	if(doc != null) {
@@ -18743,6 +18886,190 @@ manim_lsp_HoverProvider.getHover = function(word,text,uri) {
 		}
 	}
 	return null;
+};
+manim_lsp_HoverProvider.documentedHover = function(word,name,text,line) {
+	var result;
+	try {
+		result = bh_multianim_MacroManimParser.parseFile(text,"hover",null);
+	} catch( _g ) {
+		result = null;
+	}
+	if(result == null) {
+		return null;
+	}
+	var isRef = StringTools.startsWith(word,"$");
+	if(!isRef) {
+		var node = result.nodes.h[name];
+		if(node != null && (node.doc != null || node.exported == true)) {
+			return manim_lsp_HoverProvider.blockHover(name,node);
+		}
+	}
+	if(line < 0) {
+		return null;
+	}
+	var blockName = manim_lsp_HoverProvider.enclosingRootBlock(text,line);
+	var block = blockName == null ? null : result.nodes.h[blockName];
+	if(block == null) {
+		return null;
+	}
+	var defs;
+	var _g = block.type;
+	if(_g._hx_index == 9) {
+		var _g1 = _g.isTileGroup;
+		var _g1 = _g.paramOrder;
+		var defs1 = _g.parameters;
+		defs = defs1;
+	} else {
+		defs = null;
+	}
+	if(defs == null) {
+		return null;
+	}
+	var def = defs.h[name];
+	if(def != null && (def.doc != null || def.choiceDocs != null)) {
+		return manim_lsp_HoverProvider.paramHover(def);
+	}
+	if(isRef) {
+		return null;
+	}
+	var h = defs.h;
+	var d_h = h;
+	var d_keys = Object.keys(h);
+	var d_length = d_keys.length;
+	var d_current = 0;
+	while(d_current < d_length) {
+		var d = d_h[d_keys[d_current++]];
+		var tmp = d.choiceDocs;
+		var choiceDoc = tmp != null ? tmp.h[name] : null;
+		if(choiceDoc != null) {
+			return "**" + name + "** — choice of `$" + d.name + "`\n\n" + choiceDoc;
+		}
+	}
+	return null;
+};
+manim_lsp_HoverProvider.blockHover = function(name,node) {
+	var e = node.type;
+	var tmp = bh_multianim_ManimKeywordInfo.elementName($hxEnums[e.__enum__].__constructs__[e._hx_index]._hx_name);
+	var kind = tmp != null ? tmp : "block";
+	var parts = ["**#" + name + "** — " + (node.exported == true ? "exported " + kind : kind)];
+	if(node.doc != null) {
+		parts.push(node.doc);
+	}
+	var _g = node.type;
+	if(_g._hx_index == 9) {
+		var _g1 = _g.isTileGroup;
+		var defs = _g.parameters;
+		var order = _g.paramOrder;
+		var _g = [];
+		var _g1 = 0;
+		while(_g1 < order.length) {
+			var p = order[_g1];
+			++_g1;
+			var d = defs.h[p];
+			if(d != null && d.doc != null) {
+				_g.push("- `" + p + ":" + bh_multianim_ManimKeywordInfo.paramTypeName(d.type) + "` — " + manim_lsp_HoverProvider.oneLine(d.doc));
+			}
+		}
+		var documented = _g;
+		if(documented.length > 0) {
+			parts.push(documented.join("\n"));
+		}
+	}
+	return parts.join("\n\n");
+};
+manim_lsp_HoverProvider.paramHover = function(def) {
+	var parts = ["**Parameter** `$" + def.name + "`: `" + bh_multianim_ManimKeywordInfo.paramTypeName(def.type) + "`"];
+	if(def.doc != null) {
+		parts.push(def.doc);
+	}
+	var choiceDocs = def.choiceDocs;
+	if(choiceDocs != null) {
+		var _g = def.type;
+		if(_g._hx_index == 3) {
+			var values = _g.values;
+			var _g = [];
+			var _g1 = 0;
+			while(_g1 < values.length) {
+				var v = values[_g1];
+				++_g1;
+				if(Object.prototype.hasOwnProperty.call(choiceDocs.h,v)) {
+					_g.push("- `" + v + "` — " + manim_lsp_HoverProvider.oneLine(choiceDocs.h[v]));
+				}
+			}
+			parts.push(_g.join("\n"));
+		}
+	}
+	return parts.join("\n\n");
+};
+manim_lsp_HoverProvider.oneLine = function(doc) {
+	return doc.split("\n").join(" ");
+};
+manim_lsp_HoverProvider.enclosingRootBlock = function(text,line) {
+	var current = null;
+	var depth = 0;
+	var lineNo = 0;
+	var i = 0;
+	var n = text.length;
+	while(i < n && lineNo <= line) {
+		var c = HxOverrides.cca(text,i);
+		if(c == 10) {
+			++lineNo;
+			++i;
+			continue;
+		}
+		if(c == 47 && i + 1 < n && HxOverrides.cca(text,i + 1) == 47) {
+			while(i < n && HxOverrides.cca(text,i) != 10) ++i;
+			continue;
+		}
+		if(c == 47 && i + 1 < n && HxOverrides.cca(text,i + 1) == 42) {
+			i += 2;
+			while(i + 1 < n && !(HxOverrides.cca(text,i) == 42 && HxOverrides.cca(text,i + 1) == 47)) {
+				if(HxOverrides.cca(text,i) == 10) {
+					++lineNo;
+				}
+				++i;
+			}
+			i += 2;
+			continue;
+		}
+		if(c == 34 || c == 39) {
+			++i;
+			while(i < n && HxOverrides.cca(text,i) != c) {
+				if(HxOverrides.cca(text,i) == 92) {
+					++i;
+				} else if(HxOverrides.cca(text,i) == 10) {
+					++lineNo;
+				}
+				++i;
+			}
+			++i;
+			continue;
+		}
+		if(c == 123 || c == 40 || c == 91) {
+			++depth;
+		} else if(c == 125 || c == 41 || c == 93) {
+			if(depth > 0) {
+				--depth;
+			}
+		} else if(c == 35 && depth == 0) {
+			var j = i + 1;
+			while(j < n && manim_lsp_HoverProvider.isNameChar(HxOverrides.cca(text,j))) ++j;
+			if(j > i + 1) {
+				current = text.substring(i + 1,j);
+			}
+			i = j;
+			continue;
+		}
+		++i;
+	}
+	return current;
+};
+manim_lsp_HoverProvider.isNameChar = function(c) {
+	if(!(c >= 97 && c <= 122 || c >= 65 && c <= 90 || c >= 48 && c <= 57 || c == 95)) {
+		return c == 45;
+	} else {
+		return true;
+	}
 };
 manim_lsp_HoverProvider.findParamInfo = function(paramName,text) {
 	var pattern = new EReg("\\b" + paramName + "\\s*:\\s*(\\w+|\\[[^\\]]*\\]|\\d+\\.\\.\\d+)","");
@@ -18817,6 +19144,8 @@ manim_lsp_HoverProvider.lookupKeyword = function(word) {
 		return "**@else** — Matches when preceding @() didn't match\n\nBlock form: `@else { ... }` or `@else(cond) { ... }`";
 	case "enum":
 		return "**enum** — Named enum type in data block\n\n```manim\n#name enum(val1, val2, ...)\n```";
+	case "export":
+		return "**export** — " + bh_multianim_ManimKeywordInfo.exportDescription + "\n\n```manim\n/// The knight, walking or standing\n#knight export programmable(state:[idle, walk]=idle) {\n  ...\n}\n```";
 	case "@final":case "final":
 		return "**@final** — Immutable named constant: `@final NAME = 42`";
 	case "grid":
@@ -18977,7 +19306,8 @@ manim_lsp_ManimAnalyzer.getSymbols = function(text,uri) {
 			var _g_value = _g_h[key];
 			var name = _g_key;
 			var node = _g_value;
-			var range = manim_lsp_ManimAnalyzer.findNameInText(text,name);
+			var defined = manim_lsp_ManimAnalyzer.findNameInText(text,"#" + name);
+			var range = defined.end.character > 0 ? defined : manim_lsp_ManimAnalyzer.findNameInText(text,name);
 			var symbol;
 			var _g = node.type;
 			switch(_g._hx_index) {
@@ -19031,6 +19361,10 @@ manim_lsp_ManimAnalyzer.getSymbols = function(text,uri) {
 			default:
 				symbol = manim_lsp_ManimAnalyzer.makeSymbol(name,13,range);
 			}
+			if(node.exported == true) {
+				var detail1 = Reflect.field(symbol,"detail");
+				symbol["detail"] = detail1 == null ? "export" : "export " + detail1;
+			}
 			symbols.push(symbol);
 		}
 	} catch( _g ) {
@@ -19046,7 +19380,7 @@ manim_lsp_ManimAnalyzer.getHover = function(text,uri,line,character) {
 	if(word == null || word.length == 0) {
 		return null;
 	}
-	return manim_lsp_HoverProvider.getHover(word,text,uri);
+	return manim_lsp_HoverProvider.getHover(word,text,uri,line);
 };
 manim_lsp_ManimAnalyzer.getDefinition = function(text,uri,line,character) {
 	var word = manim_lsp_ManimAnalyzer.getWordAtPosition(text,line,character);
@@ -19900,6 +20234,9 @@ bh_multianim_ManimKeywordInfo.elementSnippets = (function($this) {
 }(this));
 bh_multianim_ManimKeywordInfo.topLevelElements = ["PROGRAMMABLE","DATA","CURVES","PATHS","ANIMATED_PATH","ATLAS2","PALETTE","FINAL_VAR","RELATIVE_LAYOUTS","TILESET","TILEMAP","CURSORS","SOUNDS","MIX","MUSIC"];
 bh_multianim_ManimKeywordInfo.childElements = ["BITMAP","TEXT","RICHTEXT","NINEPATCH","FLOW","LAYERS","MASK","TILEGROUP","INTERACTIVE","SLOT","SLOT_CONTENT","SPACER","POINT","APPLY","GRAPHICS","PIXELS","PARTICLES","REPEAT","REPEAT2D","STATIC_REF","DYNAMIC_REF","PLACEHOLDER","STATEANIM","STATEANIM_CONSTRUCT","AUTOTILE","FINAL_VAR","SWITCH","TILEMAP_REF","TILEMAP_FILL"];
+bh_multianim_ManimKeywordInfo.exportKeyword = "export";
+bh_multianim_ManimKeywordInfo.exportDescription = "Marks a root block as exported: #name export programmable(...), any kind of root block. The file's exported names are MultiAnimResult.exports (in the order written); an import still reaches every block";
+bh_multianim_ManimKeywordInfo.docCommentDescription = "Doc comment: the /// lines directly above a root block, a parameter or an enum choice, or one trailing a parameter or a choice on its line, are kept as its doc (MultiAnimResultTools.docOf); several lines join with newlines. Any other /// is a plain comment";
 bh_multianim_ManimKeywordInfo.allElementCtors = ["FLOW","SPACER","BITMAP","POINT","STATEANIM","STATEANIM_CONSTRUCT","PIXELS","TEXT","RICHTEXT","PROGRAMMABLE","TILEGROUP","RELATIVE_LAYOUTS","PATHS","ANIMATED_PATH","CURVES","PARTICLES","APPLY","LAYERS","MASK","REPEAT","REPEAT2D","STATIC_REF","PLACEHOLDER","DYNAMIC_REF","SLOT","SLOT_CONTENT","INTERACTIVE","GRAPHICS","DATA","AUTOTILE","ATLAS2","PALETTE","FINAL_VAR","NINEPATCH","SWITCH","TILESET","TILEMAP","TILEMAP_REF","TILEMAP_FILL","CURSORS","SOUNDS","MIX","MUSIC"];
 bh_multianim_ManimKeywordInfo.simpleParamTypes = [bh_multianim_DefinitionType.PPTInt,bh_multianim_DefinitionType.PPTUnsignedInt,bh_multianim_DefinitionType.PPTFloat,bh_multianim_DefinitionType.PPTBool,bh_multianim_DefinitionType.PPTString,bh_multianim_DefinitionType.PPTColor,bh_multianim_DefinitionType.PPTTile,bh_multianim_DefinitionType.PPTArray,bh_multianim_DefinitionType.PPTHexDirection,bh_multianim_DefinitionType.PPTGridDirection];
 bh_multianim_ManimKeywordInfo.completableFilters = [bh_multianim_FilterType.FilterOutline(null,null),bh_multianim_FilterType.FilterGlow(null,null,null,null,null,false,false),bh_multianim_FilterType.FilterBlur(null,null,null,null),bh_multianim_FilterType.FilterSaturate(null),bh_multianim_FilterType.FilterBrightness(null),bh_multianim_FilterType.FilterGrayscale(null),bh_multianim_FilterType.FilterHue(null),bh_multianim_FilterType.FilterDropShadow(null,null,null,null,null,null,null,false),bh_multianim_FilterType.FilterPixelOutline(null,false),bh_multianim_FilterType.FilterPaletteReplace("",null,null),bh_multianim_FilterType.FilterColorListReplace(null,null),bh_multianim_FilterType.FilterGroup(null),bh_multianim_FilterType.FilterNone];

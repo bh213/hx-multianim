@@ -9951,6 +9951,39 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.equals(22, Std.int(bitmaps[0].tile.width));
 	}
 
+	// ==================== A ref's arguments are worked out where the ref is written ====================
+
+	@Test
+	public function testARefsArgumentsResolveInTheBuildThatWritesThem():Void {
+		final builder = builderFromSource("
+			#target programmable(w:uint=1) {
+				bitmap(generated(color($w, 3, #ffffff))): 0, 0
+			}
+			#byStatic programmable() {
+				staticRef(target, w => callback(\"width\")): 0, 0
+			}
+			#byDynamic programmable() {
+				dynamicRef(target, w => callback(\"width\")): 0, 0
+			}
+		");
+		final params:bh.multianim.MultiAnimBuilder.BuilderParameters = {
+			callback: request -> switch request {
+				case Name("width"): bh.multianim.MultiAnimBuilder.CallbackResult.CBRInteger(7);
+				default: bh.multianim.MultiAnimBuilder.CallbackResult.CBRNoResult;
+			}
+		};
+		for (host in ["byStatic", "byDynamic"]) {
+			var width = -1;
+			try {
+				final bitmaps = findVisibleBitmapDescendants(builder.buildWithParameters(host, [], params).object);
+				width = bitmaps.length == 1 ? Std.int(bitmaps[0].tile.width) : -2;
+			} catch (e:Dynamic) {
+				Assert.fail('$host: the argument\'s callback is the host build\'s, got ${Std.string(e)}');
+			}
+			Assert.equals(7, width, '$host: w => callback("width") is the host\'s callback answer');
+		}
+	}
+
 	// ==================== Circular programmable references (staticRef / dynamicRef) ====================
 
 	// staticRef/dynamicRef resolve by calling builder.buildWithParameters recursively. Without a

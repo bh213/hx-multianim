@@ -1,0 +1,16 @@
+version: 1.0
+
+// Written with `export` and `///` doc comments, built by the builder and by codegen
+// (ExportDocCommentTest). It places the pack's exported knight and its private helper: export
+// changes nothing an import reaches.
+
+import "test/examples/167-exportDocs/exportDocsPack.manim" as "pack"
+
+/// Shows a knight of the pack and the pack's helper under it.
+#exportDocs export programmable(
+	/// which knight state to show
+	state:[idle, walk] = idle /// passed on to the knight
+) {
+	staticRef(external(pack), $knight, state=>$state): 0, 0
+	staticRef(external(pack), $helper, n=>2): 0, 30
+}

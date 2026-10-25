@@ -2137,7 +2137,8 @@ class IncrementalUpdateContext {
 			paramMap.set(key, cast value);
 		}
 
-		var result = builder.inScope(binding.scope, () -> targetBuilder.buildWithParameters(newName, paramMap, builderParams, builder.indexedParams, true));
+		var result = builder.inScope(binding.scope,
+			() -> targetBuilder.buildWithParameters(newName, paramMap, builderParams, builder.indexedParams, true, builder));
 		if (result?.object == null)
 			throw BuilderError.of('could not build dynamicRef "$newName"');
 		// The new template animates with this context's manager, set maybe after the build
@@ -5751,7 +5752,7 @@ class MultiAnimBuilder {
 				final reference = resolveRefName(progRefRV);
 				final target = importedBuilder(externalReference, node);
 				checkRefTarget(node, "staticRef", target, progRefRV, reference);
-				final freshResult = target.buildWithParameters(reference, parameters, capturedBP, live);
+				final freshResult = target.buildWithParameters(reference, parameters, capturedBP, live, false, this);
 				final fresh = freshResult?.object;
 				if (fresh == null)
 					throw builderErrorAt(node, 'could not build staticRef ${reference}');
@@ -6020,8 +6021,8 @@ class MultiAnimBuilder {
 			gridCoordinateSystem:Null<GridCoordinateSystem>, hexCoordinateSystem:Null<HexCoordinateSystem>):FPoint {
 		final selector:Map<String, String> = [for (k => v in selectorRefs) k => resolveAsString(v)];
 		final animSM = resourceLoader.createAnimSM(filename, selector);
-		animSM.play(animName);
-		final pt = animSM.getExtraPoint(pointName);
+		// Read, not played: playing would fire its opening events and hold its sounds
+		final pt = animSM.getExtraPointForAnim(pointName, animName);
 		if (pt != null)
 			return new FPoint(pt.x, pt.y);
 		if (fallback != null)
@@ -7056,7 +7057,7 @@ class MultiAnimBuilder {
 				var builder = importedBuilder(externalReference, node);
 				checkRefTarget(node, "staticRef", builder, progRefRV, reference);
 
-				var result = builder.buildWithParameters(reference, parameters, builderParams, indexedParams);
+				var result = builder.buildWithParameters(reference, parameters, builderParams, indexedParams, false, this);
 				var object = result?.object;
 				if (object == null)
 					throw builderErrorAt(node, 'could not build staticRef ${reference}');
@@ -7090,7 +7091,7 @@ class MultiAnimBuilder {
 				checkRefTarget(node, "dynamicRef", builder, progRefRV, reference);
 
 				// Build with incremental: true so the dynamicRef supports setParameter
-				var result = builder.buildWithParameters(reference, parameters, builderParams, indexedParams, true);
+				var result = builder.buildWithParameters(reference, parameters, builderParams, indexedParams, true, this);
 				var object = result?.object;
 				if (object == null)
 					throw builderErrorAt(node, 'could not build dynamicRef ${reference}');
@@ -10180,6 +10181,63 @@ class MultiAnimBuilder {
 		};
 	}
 
+	/** A value written as an expression, resolved as the value a parameter of `type` takes. */
+	function resolveAsParameterType(ref:ReferenceableValue, type:Null<DefinitionType>, node:Node):Dynamic {
+		return switch type {
+			case null: throw builderErrorAt(node, 'type is null');
+			case PPTHexDirection: resolveAsInteger(ref);
+			case PPTGridDirection: resolveAsInteger(ref);
+			case PPTFlags(_): resolveAsInteger(ref);
+			case PPTEnum(_): resolveAsString(ref);
+			case PPTRange(_, _): resolveAsInteger(ref);
+			case PPTInt: resolveAsInteger(ref);
+			case PPTFloat: resolveAsNumber(ref);
+			// PPTBool must go through resolveAsBool — `staticRef(…, enabled=>true)` parses the
+			// literal as RVString("true"), and resolveAsInteger would then try Std.parseInt("true")
+			// and throw. resolveAsBool handles the string→bool conversion via tryStringToBool,
+			// then dynamicValueToIndex stringifies the bool back to "true"/"false" and maps it
+			// to Value(1)/Value(0).
+			case PPTBool: resolveAsBool(ref);
+			case PPTUnsignedInt: resolveAsInteger(ref);
+			case PPTString: resolveAsString(ref);
+			case PPTColor: resolveAsColorInteger(ref);
+			case PPTArray: resolveAsArray(ref);
+			case PPTTile: resolveAsString(ref);
+		}
+	}
+
+	/** A ref's arguments as values, worked out in this builder — the one whose file writes the ref,
+	 *  with its parameters, callbacks, coordinate systems and palettes — by the parameter types of
+	 *  `target`'s programmable `name`. The target, often another file's builder, replaces its own
+	 *  state before it builds, so it cannot work them out itself. A name the target has not is left
+	 *  for the target to refuse. */
+	function resolveRefArguments(target:MultiAnimBuilder, name:String, parameters:Map<String, Dynamic>,
+			?refBuilderParams:BuilderParameters):Map<String, Dynamic> {
+		final targetNode = target.multiParserResult.nodes.get(name);
+		if (parameters == null || targetNode == null)
+			return parameters;
+		final definitions = target.getProgrammableParameterDefinitions(targetNode);
+		final saved = this.builderParams;
+		if (refBuilderParams != null)
+			this.builderParams = refBuilderParams;
+		final resolved:Map<String, Dynamic> = [];
+		try {
+			for (key => value in parameters) {
+				final def = definitions.get(key);
+				if (def != null && Std.isOfType(value, ReferenceableValue)) {
+					final ref:ReferenceableValue = value;
+					resolved.set(key, MultiAnimParser.dynamicValueToIndex(key, def.type, resolveAsParameterType(ref, def.type, targetNode), s -> throw s));
+				} else
+					resolved.set(key, value);
+			}
+		} catch (e:Dynamic) {
+			this.builderParams = saved;
+			throw e;
+		}
+		this.builderParams = saved;
+		return resolved;
+	}
+
 	function updateIndexedParamsFromDynamicMap(node: Node, input:Map<String, Dynamic>, definitions:ParametersDefinitions,
 			?extraInput:Map<String, ResolvedIndexParameters>, resolveExtraInput:Bool = false):Void {
 		inline function getDefsType(key:String, value:Dynamic) {
@@ -10192,27 +10250,7 @@ class MultiAnimBuilder {
 		}
 
 		function resolveReferenceableValue(ref:ReferenceableValue, type):Dynamic {
-			return switch type {
-				case null: throw builderErrorAt(node, 'type is null');
-				case PPTHexDirection: resolveAsInteger(ref);
-				case PPTGridDirection: resolveAsInteger(ref);
-				case PPTFlags(_): resolveAsInteger(ref);
-				case PPTEnum(_): resolveAsString(ref);
-				case PPTRange(_, _): resolveAsInteger(ref);
-				case PPTInt: resolveAsInteger(ref);
-				case PPTFloat: resolveAsNumber(ref);
-				// PPTBool must go through resolveAsBool — `staticRef(…, enabled=>true)` parses the
-				// literal as RVString("true"), and resolveAsInteger would then try Std.parseInt("true")
-				// and throw. resolveAsBool handles the string→bool conversion via tryStringToBool,
-				// then dynamicValueToIndex stringifies the bool back to "true"/"false" and maps it
-				// to Value(1)/Value(0).
-				case PPTBool: resolveAsBool(ref);
-				case PPTUnsignedInt: resolveAsInteger(ref);
-				case PPTString: resolveAsString(ref);
-				case PPTColor: resolveAsColorInteger(ref);
-				case PPTArray: resolveAsArray(ref);
-				case PPTTile: resolveAsString(ref);
-			}
+			return resolveAsParameterType(ref, type, node);
 		}
 
 		final retVal:Map<String, ResolvedIndexParameters> = [];
@@ -10282,8 +10320,10 @@ class MultiAnimBuilder {
 		return result;
 	}
 
+	/** `argsFrom`: the builder whose file writes the staticRef/dynamicRef being built, which works
+	 *  out `inputParameters` written as expressions before this builder's state is replaced. */
 	public function buildWithParameters(name:String, inputParameters:Map<String, Dynamic>, ?builderParams:BuilderParameters,
-			?inheritedParameters:Map<String, ResolvedIndexParameters>, incremental:Bool = false):BuilderResult {
+			?inheritedParameters:Map<String, ResolvedIndexParameters>, incremental:Bool = false, ?argsFrom:MultiAnimBuilder):BuilderResult {
 		// Circular reference guard: staticRef/dynamicRef resolve by recursing back into
 		// buildWithParameters, so a chain that re-enters a name already on the stack
 		// (A→A, A→B→A, …) would otherwise recurse until the native stack overflows.
@@ -10291,6 +10331,8 @@ class MultiAnimBuilder {
 			if (inFlight == name)
 				throw builderError('circular programmable reference: $name', "circular_reference");
 		}
+		if (argsFrom != null)
+			inputParameters = argsFrom.resolveRefArguments(this, name, inputParameters, builderParams);
 		buildingRefs.push(name);
 
 		pushBuilderState();
@@ -11000,6 +11042,19 @@ class MultiAnimBuilder {
 		}
 	}
 
+	/** The root blocks the file marks `export` (`#knight export programmable(…)`), in the order
+	 *  written; empty when it marks none (`MultiAnimResultTools.exportedNames`). Only a list:
+	 *  every block builds and imports alike, exported or not. */
+	public function exportedNames():Array<String> {
+		return MultiAnimParser.MultiAnimResultTools.exportedNames(multiParserResult);
+	}
+
+	/** A root block's `///` doc, or its parameter's (`param`), or that enum parameter's choice's
+	 *  (`choice`); null when it has none (`MultiAnimResultTools.docOf`). */
+	public function docOf(block:String, ?param:String, ?choice:String):Null<String> {
+		return MultiAnimParser.MultiAnimResultTools.docOf(multiParserResult, block, param, choice);
+	}
+
 	/** The names of every `music { }` block in the file. */
 	public function musicBlockNames():Array<String> {
 		final names:Array<String> = [];
@@ -11036,9 +11091,16 @@ class MultiAnimBuilder {
 		return names;
 	}
 
+	/** The builders of the files this one imports (`import "file" as "name"`), loaded with it;
+	 *  empty when it was parsed with no loader. */
+	public function importedBuilders():Array<MultiAnimBuilder> {
+		return [for (_ => imported in multiParserResult.imports) (imported : MultiAnimBuilder)];
+	}
+
 	/** Registers every cursor of every `cursor { }` block in the file with `CursorManager`, under
 	 *  its name, so `cursor => "name"` on an interactive and `CursorManager.getCursor(name)` find
-	 *  it. `ScreenManager.buildFromResource` does this when a file loads (and again on reload). */
+	 *  it. `ScreenManager.buildFromResource` does this when a file loads (and again on reload), for
+	 *  the files it imports too. */
 	public function registerCursors():Int {
 		var count = 0;
 		for (name in cursorBlockNames()) {

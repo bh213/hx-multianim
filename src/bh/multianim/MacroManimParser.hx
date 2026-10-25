@@ -76,6 +76,17 @@ private class Token {
 	}
 }
 
+/** A `///` comment as the lexer found it: its text (the `///` and one space or tab after it taken
+ *  off, trailing whitespace too), its line, the index of the token after it, and whether a token
+ *  ended on its line before it (a trailing doc: `walk /// 4 frames`). */
+@:nullSafety
+private typedef DocComment = {
+	var text:String;
+	var line:Int;
+	var tokenIndex:Int;
+	var trailing:Bool;
+}
+
 // Expression type discriminator for shared expression-parsing helpers
 @:nullSafety
 private enum ExprType {
@@ -96,6 +107,11 @@ private class MacroLexer {
 	var lineStart:Int;
 	var sourceName:String;
 	var pendingTokens:Array<Token> = [];
+	/** Every `///` comment in the source, in order: the parser attaches each to the root block,
+	 *  parameter or enum choice it documents, and drops the rest. */
+	public final docComments:Array<DocComment> = [];
+	var tokenCount = 0; // tokens returned so far: the index of the next one
+	var lastTokenEndLine = 0; // the line the last token returned ends on (0 before the first)
 
 	public function new(src:String, sourceName:String) {
 		this.src = src;
@@ -108,6 +124,21 @@ private class MacroLexer {
 	}
 
 	public function nextToken():Token {
+		final t = scanToken();
+		tokenCount++;
+		lastTokenEndLine = line;
+		return t;
+	}
+
+	/** A `///` comment's text: the space or tab after `///` and trailing whitespace (a CRLF
+	 *  file's `\r`) taken off. */
+	static function docText(raw:String):String {
+		var s = raw.rtrim();
+		if (s.startsWith(" ") || s.startsWith("\t")) s = s.substr(1);
+		return s;
+	}
+
+	function scanToken():Token {
 		if (pendingTokens.length > 0) return pendingTokens.shift();
 		while (pos < len) {
 			final startLine = line;
@@ -131,10 +162,21 @@ private class MacroLexer {
 			if (c == '/'.code && pos + 1 < len) {
 				final c2 = src.charCodeAt(pos + 1);
 				if (c2 == '/'.code) {
-					// Line comment
+					// Line comment. Exactly three slashes make a doc comment, kept for the
+					// parser (`////…` is a plain comment, as a ruled line of slashes is).
+					final isDoc = pos + 2 < len && src.charCodeAt(pos + 2) == '/'.code
+						&& !(pos + 3 < len && src.charCodeAt(pos + 3) == '/'.code);
+					final commentStart = pos;
 					pos += 2;
 					while (pos < len && src.charCodeAt(pos) != '\n'.code)
 						pos++;
+					if (isDoc)
+						docComments.push({
+							text: docText(src.substring(commentStart + 3, pos)),
+							line: startLine,
+							tokenIndex: tokenCount,
+							trailing: lastTokenEndLine == startLine
+						});
 					continue;
 				}
 				if (c2 == '*'.code) {
@@ -479,12 +521,14 @@ class MacroManimParser {
 	var namedElements:Null<Array<String>>; // names registered via #name element(...)
 	var customFilterRefs:Array<CustomFilterRef>; // accumulated custom filter references for post-parse validation
 	var groundTileAllowed:Bool = false; // generated(shader(…)) is read only as a bitmap's own tile (its shader is the bitmap's filter)
+	var docsAt:Map<Int, Array<DocComment>>; // `///` comments by the index of the token after them
+	var exports:Array<String>; // the root blocks marked `export`, in the order written
 
 	static final defaultLayoutNodeName = "#defaultLayout";
 	static final defaultPathNodeName = "#defaultPaths";
 	static final defaultCurveNodeName = "#defaultCurves";
 
-	function new(tokens:Array<Token>, sourceName:String, ?resourceLoader:Dynamic) {
+	function new(tokens:Array<Token>, sourceName:String, ?resourceLoader:Dynamic, ?docComments:Array<DocComment>) {
 		this.tokens = tokens;
 		this.tpos = 0;
 		this.sourceName = sourceName;
@@ -498,6 +542,13 @@ class MacroManimParser {
 		this.activeFinals = null;
 		this.activeFinalNames = null;
 		this.customFilterRefs = [];
+		this.exports = [];
+		this.docsAt = new Map();
+		if (docComments != null)
+			for (d in docComments) {
+				final list = docsAt.get(d.tokenIndex);
+				if (list == null) docsAt.set(d.tokenIndex, [d]) else list.push(d);
+			}
 	}
 
 	static final implicitRefs = ["ctx", "grid", "hex"];
@@ -619,6 +670,80 @@ class MacroManimParser {
 		return '${name}_${typeName}_${id}';
 	}
 
+	// ---- Doc comments (`///`) ----
+	//
+	// A `///` comment documents a root block, a parameter, or a choice of an enum parameter:
+	// the `///` lines directly above it (each on the line right above the next, the last on the
+	// line right above it: a blank line or any other line between breaks the run) or, for a
+	// parameter or a choice, one `///` trailing it on the line where it ends (right after it, or
+	// after the comma that follows it). Leading lines come first, a trailing one last, joined with
+	// "\n"; blank `///` lines at either end are dropped. A `///` that documents none of these is
+	// a comment like any other, as is one inside an expression, a string or a block comment.
+
+	/** The `///` lines directly above the token at `index`, joined; null when there are none. */
+	function leadingDoc(index:Int):Null<String> {
+		final list = docsAt.get(index);
+		if (list == null) return null;
+		var expected = tokens[index].line - 1;
+		final lines:Array<String> = [];
+		var i = list.length - 1;
+		while (i >= 0) {
+			final d = list[i];
+			if (d.trailing || d.line != expected) break;
+			lines.unshift(d.text);
+			expected--;
+			i--;
+		}
+		return joinDocLines(lines);
+	}
+
+	/** The `///` trailing the item that ends with the token at `lastIndex`, on that token's line:
+	 *  right after it, or after the comma that follows it; null when there is none. */
+	function trailingDoc(lastIndex:Int):Null<String> {
+		final line = tokens[lastIndex].line;
+		final next = lastIndex + 1;
+		final doc = trailingDocBefore(next, line);
+		if (doc != null) return doc;
+		if (next < tokens.length && Type.enumEq(tokens[next].type, TComma))
+			return trailingDocBefore(next + 1, line);
+		return null;
+	}
+
+	function trailingDocBefore(index:Int, line:Int):Null<String> {
+		final list = docsAt.get(index);
+		if (list == null) return null;
+		for (d in list)
+			if (d.trailing && d.line == line) return joinDocLines([d.text]);
+		return null;
+	}
+
+	/** The doc of an item whose first token is at `first` and last at `last`: its leading lines,
+	 *  then its trailing one. */
+	function itemDoc(first:Int, last:Int):Null<String> {
+		final leading = leadingDoc(first);
+		final trailing = trailingDoc(last);
+		return leading == null ? trailing : trailing == null ? leading : leading + "\n" + trailing;
+	}
+
+	static function joinDocLines(lines:Array<String>):Null<String> {
+		var from = 0;
+		var to = lines.length;
+		while (from < to && lines[from].trim() == "") from++;
+		while (to > from && lines[to - 1].trim() == "") to--;
+		return from < to ? lines.slice(from, to).join("\n") : null;
+	}
+
+	/** A root block's own: `export` (its name in `exports`, in the order written) and its doc,
+	 *  the `///` lines above its first token. */
+	function markRootBlock(node:Node, name:String, firstIndex:Int, exported:Bool):Void {
+		if (exported) {
+			node.exported = true;
+			exports.push(name);
+		}
+		final doc = leadingDoc(firstIndex);
+		if (doc != null) node.doc = doc;
+	}
+
 	// ---- Keyword lookup ----
 
 	static function isKeyword(s:String, kw:String):Bool {
@@ -629,7 +754,15 @@ class MacroManimParser {
 
 	function stringToInt(s:String):Int {
 		// Handle underscore separators
-		return s.split("_").join("").toInt();
+		return int32(s.split("_").join(""));
+	}
+
+	/** An integer literal as the same 32-bit Int on every target; past 32 bits an error here, at its
+	 *  place, rather than a clamped (HashLink) or whole (JS) number. */
+	function int32(s:String):Int {
+		final value = ParseUtils.int32OrNull(s);
+		if (value != null) return value;
+		return error(Std.parseInt(s) == null ? 'expected integer, got "$s"' : 'integer $s does not fit in 32 bits (-2147483648 to 2147483647, or 0x and up to 8 hex digits)');
 	}
 
 	function stringToFloat(s:String):Float {
@@ -1222,7 +1355,8 @@ class MacroManimParser {
 		if (s.startsWith("0x")) {
 			// `0x` literals are Heaps AARRGGBB — preserved exactly. `0xFF0000` is
 			// transparent red (top byte = 0); use `#FF0000` or `0xFFFF0000` for opaque.
-			return Std.parseInt(s);
+			// As its 32 bits on every target (JS would read 0xFFFF0000 as 4294901760).
+			return ParseUtils.int32OrNull(s);
 		}
 		if (s.startsWith("#")) {
 			final colorStr = s.substring(1);
@@ -1247,7 +1381,7 @@ class MacroManimParser {
 			// #RRGGBB → 0xFFRRGGBB (bake alpha)
 			return 0xFF000000 | colorVal;
 		}
-		return Std.parseInt(s);
+		return ParseUtils.int32OrNull(s);
 	}
 
 	// ===================== Coordinate Parsing =====================
@@ -1809,7 +1943,10 @@ class MacroManimParser {
 		var order:Array<String> = [];
 		if (match(TClosed)) return {defs: defines, order: order};
 		while (true) {
+			final first = tpos;
 			final def = parseDefine();
+			final doc = itemDoc(first, tpos - 1);
+			if (doc != null) def.doc = doc;
 			if (defines.exists(def.name)) error('parameter ${def.name} already defined');
 			defines.set(def.name, def);
 			order.push(def.name);
@@ -1877,6 +2014,7 @@ class MacroManimParser {
 			case TBracketOpen:
 				advance();
 				var enumNames:Array<String> = [];
+				final choiceAt:Array<Int> = []; // the token of each choice, for its `///` doc
 				var lastWasComma = true; // start true to allow first value
 				while (true) {
 					switch (peek()) {
@@ -1888,16 +2026,19 @@ class MacroManimParser {
 							advance();
 							lastWasComma = true;
 						case TIdentifier(s):
+							choiceAt.push(tpos);
 							advance();
 							if (enumNames.indexOf(s) >= 0) error('enum value "$s" already defined');
 							enumNames.push(s);
 							lastWasComma = false;
 						case TQuotedString(s):
+							choiceAt.push(tpos);
 							advance();
 							if (enumNames.indexOf(s) >= 0) error('enum value "$s" already defined');
 							enumNames.push(s);
 							lastWasComma = false;
 						case TInteger(s) | TFloat(s):
+							choiceAt.push(tpos);
 							advance();
 							if (enumNames.indexOf(s) >= 0) error('enum value "$s" already defined');
 							enumNames.push(s);
@@ -1907,6 +2048,16 @@ class MacroManimParser {
 					}
 				}
 				def.type = PPTEnum(enumNames);
+				for (i in 0...enumNames.length) {
+					final doc = itemDoc(choiceAt[i], choiceAt[i]);
+					if (doc == null) continue;
+					var choiceDocs = def.choiceDocs;
+					if (choiceDocs == null) {
+						choiceDocs = new Map();
+						def.choiceDocs = choiceDocs;
+					}
+					choiceDocs.set(enumNames[i], doc);
+				}
 			case TInteger(_) | TMinus:
 				// Range: from..to
 				final from = parseInteger();
@@ -1971,9 +2122,9 @@ class MacroManimParser {
 				if (!values.contains(value)) error('enum "$name" does not contain value "$value"');
 				Index(values.indexOf(value), value);
 			case PPTRange(from, to):
-				Value(value.toInt());
+				Value(int32(value));
 			case PPTInt | PPTUnsignedInt:
-				Value(value.toInt());
+				Value(int32(value));
 			case PPTFloat:
 				final f = Std.parseFloat(value);
 				if (Math.isNaN(f)) error('expected float for default');
@@ -1987,11 +2138,11 @@ class MacroManimParser {
 			case PPTString: StringValue(value);
 			case PPTColor:
 				final c = tryStringToColor(value);
-				if (c != null) Value(c) else Value(value.toInt());
+				if (c != null) Value(c) else Value(int32(value));
 			case PPTHexDirection | PPTGridDirection:
-				Value(value.toInt());
+				Value(int32(value));
 			case PPTFlags(bits):
-				Flag(value.toInt());
+				Flag(int32(value));
 			case PPTArray:
 				error('array default requires bracket syntax: [val1, val2, ...]');
 			case PPTTile:
@@ -2239,7 +2390,7 @@ class MacroManimParser {
 					error('non-numeric conditional value "$val" for a flags parameter — flags parameters only match numeric values or bit[N] tests');
 			case PPTColor:
 				final c = tryStringToColor(val);
-				if (c != null) CoValue(c) else CoValue(val.toInt());
+				if (c != null) CoValue(c) else CoValue(int32(val));
 			case PPTString:
 				// String params always compare as strings. Without this, an
 				// integer-parseable value (e.g. `@(version => 2)`) fell into the
@@ -4305,6 +4456,12 @@ class MacroManimParser {
 				parseNodes(wrapper, currentDefs);
 				return wrapper;
 
+			case TIdentifier(s) if (isKeyword(s, "export")):
+				// Not a kind: the export marker, met where parseNodes does not take it
+				error(parent == null
+					? "export goes right after a root block's #name, before its kind: #name export programmable(...)"
+					: "only a root block can be exported — export goes between a root block's #name and its kind: #name export programmable(...)");
+
 			default:
 				error('expected valid node type, got ${peek()}');
 		}
@@ -5635,6 +5792,7 @@ class MacroManimParser {
 						imports.set(importName, loadedFile);
 					}
 				case TName(name):
+					final nameIndex = tpos;
 					advance();
 					currentName = name;
 					// Check for (updatable) or [$var] modifier
@@ -5693,14 +5851,29 @@ class MacroManimParser {
 							}
 						default:
 					}
+					// `#name export kind…`: the root block is marked exported. Never a kind before,
+					// so no name changes meaning: `#export programmable()` is still a block named
+					// export, and an element may still be named #export.
+					var exported = false;
+					switch (peek()) {
+						case TIdentifier(s) if (isKeyword(s, "export")):
+							if (node != null)
+								error('#$name: only a root block can be exported — export goes between a root block\'s #name and its kind: #name export programmable(...)');
+							advance();
+							exported = true;
+						default:
+					}
 					final newNode = parseNode(nameType, node, defs);
 					currentName = null;
 					if (newNode != null) {
-						if (node == null) addNode(name, newNode);
-						else node.children.push(newNode);
+						if (node == null) {
+							addNode(name, newNode);
+							markRootBlock(newNode, name, nameIndex, exported);
+						} else node.children.push(newNode);
 					}
 				default:
 					// Unnamed node
+					final firstIndex = tpos;
 					final newNode = parseNode(UNTObject(null), node, defs);
 					if (newNode != null) {
 						if (node == null) {
@@ -5711,6 +5884,7 @@ class MacroManimParser {
 								case UNTIndexed2D(n, _, _): n;
 							}
 							addNode(n, newNode);
+							markRootBlock(newNode, n, firstIndex, false);
 						} else {
 							node.children.push(newNode);
 						}
@@ -5919,7 +6093,13 @@ class MacroManimParser {
 				error('unexpected content after main body: ${peek()}');
 		}
 
-		return {nodes: nodes, imports: imports, customFilterRefs: customFilterRefs, importPaths: importPaths};
+		return {
+			nodes: nodes,
+			imports: imports,
+			customFilterRefs: customFilterRefs,
+			importPaths: importPaths,
+			exports: exports
+		};
 	}
 
 	// ===================== Graphics =====================
@@ -9008,7 +9188,7 @@ class MacroManimParser {
 		}
 
 		// Parse
-		final parser = new MacroManimParser(tokens, sourceName, resourceLoader);
+		final parser = new MacroManimParser(tokens, sourceName, resourceLoader, lexer.docComments);
 		return parser.parse();
 	}
 }

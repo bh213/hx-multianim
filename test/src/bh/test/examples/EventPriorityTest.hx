@@ -89,6 +89,50 @@ private class MockInteractiveNoPriority implements UIElement implements Standard
 }
 
 /**
+ * Mock widget that holds the mouse from a push to its release (as a slider, scrollbar or list
+ * does while dragged) and, disabled, ignores every event, as those widgets do.
+ */
+private class MockCapturingWidget implements UIElement implements StandardUIElementEvents implements UIElementDisablable {
+	public var disabled(default, set):Bool = false;
+	public var receivedEvents:Array<UIElementEvents> = [];
+
+	final x:Float;
+	final y:Float;
+	final w:Float;
+	final h:Float;
+
+	public function new(x:Float, y:Float, w:Float, h:Float) {
+		this.x = x;
+		this.y = y;
+		this.w = w;
+		this.h = h;
+	}
+
+	function set_disabled(value:Bool):Bool {
+		return disabled = value;
+	}
+
+	public function getObject():h2d.Object return new h2d.Object();
+
+	public function containsPoint(pos:Point):Bool {
+		return pos.x >= x && pos.x <= x + w && pos.y >= y && pos.y <= y + h;
+	}
+
+	public function clear():Void {}
+
+	public function onEvent(wrapper:UIElementEventWrapper):Void {
+		if (disabled)
+			return;
+		receivedEvents.push(wrapper.event);
+		switch wrapper.event {
+			case OnPush(_): wrapper.control.captureEvents.startCapture();
+			case OnRelease(_): wrapper.control.captureEvents.stopCapture();
+			default:
+		}
+	}
+}
+
+/**
  * Mock UIControllerScreenIntegration for testing UIDefaultController in isolation.
  */
 private class MockIntegration implements UIControllerScreenIntegration {
@@ -358,6 +402,23 @@ class EventPriorityTest extends utest.Test {
 		// Both should receive OnRelease
 		switch top.receivedEvents[0] { case OnRelease(_): Assert.pass(); default: Assert.fail("Expected OnRelease"); }
 		switch bottom.receivedEvents[0] { case OnRelease(_): Assert.pass(); default: Assert.fail("Expected OnRelease"); }
+	}
+
+	// ==================== Capture ====================
+
+	@Test
+	public function testAWidgetDisabledWhileItHoldsTheMouseLetsItGo():Void {
+		final slider = new MockCapturingWidget(0, 0, 50, 50);
+		final other = new MockInteractive("other", 60, 0, 50, 50);
+		integration.elements = [slider, other];
+
+		controller.handleClick(new Point(10, 10), 0, false, eventWrapper());
+		Assert.equals(1, slider.receivedEvents.length, "the push starts the drag");
+		slider.disabled = true;
+		controller.handleClick(new Point(70, 10), 0, false, eventWrapper());
+
+		Assert.equals(1, other.receivedEvents.length,
+			"a widget disabled mid-drag never hears its release, so the controller must not keep the mouse for it");
 	}
 
 	// ==================== Wheel Events ====================

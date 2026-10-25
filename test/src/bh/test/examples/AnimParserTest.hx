@@ -2732,6 +2732,43 @@ flipX: yes
 		Assert.stringContains("flipX", error);
 	}
 
+	static final ANIM_FLIPPED_POINT_EVENT = '
+sheet: crew2
+allowedExtraPoints: [fire]
+center: 32, 48
+fps: 4
+animation shoot {
+    flipX: yes
+    playlist {
+        event muzzle 10, -8
+        sheet: marine_l_idle
+    }
+    extrapoints {
+        fire: 10, -8
+    }
+}
+';
+
+	@Test
+	public function testAFlippedAnimationsPointEventIsMirroredAsItsExtraPoint() {
+		var loader:bh.base.ResourceLoader = bh.test.TestResourceLoader.createLoader(false);
+		var parsed = AnimParser.parseFile(byte.ByteData.ofString(ANIM_FLIPPED_POINT_EVENT), "test-input", loader);
+		var sm = parsed.createAnimSM([]);
+		var fired:Null<h2d.col.IPoint> = null;
+		sm.onAnimationEvent = e -> switch e {
+			case PointEvent("muzzle", p): fired = p;
+			default:
+		};
+		sm.play("shoot");
+		final fire = sm.getExtraPoint("fire");
+		Assert.notNull(fired, "the opening point event fired");
+		Assert.notNull(fire);
+		if (fired != null && fire != null) {
+			Assert.equals(fire.x, fired.x, "flipX mirrors an event's point as it mirrors the extra point written the same");
+			Assert.equals(fire.y, fired.y);
+		}
+	}
+
 	// ===== Reachability: fully-shadowed animations/playlists must be rejected =====
 	// The validation pass marks visited animations/extra points but compares
 	// `visited == false` on a null-default optional field (`null == false` is false),

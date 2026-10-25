@@ -40,6 +40,7 @@ class CompletionProvider {
 		final items:Array<LspCompletionItem> = [];
 		items.push(snippet("import", "import \"$1\" as \"$2\"", "Import external .manim file"));
 		items.push(kw("version:", "File version header"));
+		items.push(kw(ManimKeywordInfo.exportKeyword, ManimKeywordInfo.exportDescription));
 
 		for (ctor in ManimKeywordInfo.allElementCtors) {
 			if (ManimKeywordInfo.isTopLevel(ctor)) {

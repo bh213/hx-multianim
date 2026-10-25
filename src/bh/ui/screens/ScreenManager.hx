@@ -98,6 +98,8 @@ class ScreenManager {
 	final configuredScreens:Map<String, UIScreen> = [];
 	final failedScreens:Map<String, String> = [];
 	var builders:Map<hxd.res.Resource, MultiAnimBuilder> = [];
+	/** The imported files whose cursor and audio blocks are taken (`takeFileBlocks`). */
+	final importsTaken:Array<MultiAnimBuilder> = [];
 	// The files this manager watches for hot reload (dispose stops watching them)
 	final watchedResources:Array<hxd.res.Resource> = [];
 	public var tweens(default, null):TweenManager = new TweenManager();
@@ -560,12 +562,7 @@ class ScreenManager {
 			throw 'failed to load multianim ${resource.name}';
 		// Auto-inject TweenManager for transition support in incremental builds
 		built.tweenManager = tweens;
-		// The file's `#name cursor { }` blocks: registered by name, so its interactives' `cursor =>`
-		// metadata and `CursorManager.getCursor(name)` find them (again on every reload).
-		built.registerCursors();
-		// The file's `#name sounds { }` blocks: banks of `audio`, its sounds `name.sound` from here on
-		// (a block of the same name loaded again, as on a reload, replaces the bank).
-		audio.addBanks(built);
+		takeFileBlocks(built);
 		#if MULTIANIM_TRACE
 		trace('Built ${resource.entry.name} with reload $enableReload');
 		#end
@@ -577,6 +574,29 @@ class ScreenManager {
 		} catch (_) {}
 		#end
 		return built;
+	}
+
+	/** The `#name cursor { }` blocks of a loaded file and of the files it imports (theirs too, each
+	 *  once) registered by name, so interactives' `cursor =>` metadata and `CursorManager.getCursor`
+	 *  find them; their `sounds`, `music` and `mix` blocks taken by `audio` (a block of a name
+	 *  already there, as on a reload, replaces it). An import's go first, so the importing file's
+	 *  own win a name both have; an import already taken is not taken again, so reloading the file
+	 *  that imports it leaves its sounds playing. Returns how many audio blocks were taken. */
+	function takeFileBlocks(built:MultiAnimBuilder):Int {
+		final seen:Array<MultiAnimBuilder> = [];
+		function take(b:MultiAnimBuilder, isImport:Bool):Int {
+			if (seen.contains(b) || (isImport && importsTaken.contains(b)))
+				return 0;
+			seen.push(b);
+			if (isImport)
+				importsTaken.push(b);
+			var taken = 0;
+			for (imported in b.importedBuilders())
+				taken += take(imported, true);
+			b.registerCursors();
+			return taken + audio.addBanks(b);
+		}
+		return take(built, false);
 	}
 
 	public function reload(?resource:hxd.res.Resource = null, throwOnError:Bool = true):{
@@ -645,6 +665,8 @@ class ScreenManager {
 		var reloadedScreenNames = [];
 
 		loader.clearCache();
+		// The cache's builders are gone: an import is a new builder from here on, taken again
+		importsTaken.resize(0);
 
 		for (name => screen in configuredScreens) {
 			screen.clear();
@@ -1821,8 +1843,7 @@ class ScreenManager {
 		// change would: a `dialog` snapshot the reload added goes on under an open dialog.
 		builders.set(fileEntry.resource, newBuilder);
 		loader.replaceMultiAnim(path, newBuilder);
-		newBuilder.registerCursors();
-		if (audio.addBanks(newBuilder) > 0)
+		if (takeFileBlocks(newBuilder) > 0)
 			applyScreenAudio(mode);
 
 		// 7. Update content hash

@@ -6,3 +6,9 @@ version: 1.0
 #sriExtLeaf programmable(w:uint=11) {
   bitmap(generated(color($w, 3, #ffaa00))): 0, 0
 }
+
+// Named as the importing file's wrapper that places it (sriSameName there): two programmables in
+// two files, not one programmable placing itself.
+#sriSameName programmable(w:uint=6) {
+  bitmap(generated(color($w, 5, #00aaff))): 0, 0
+}

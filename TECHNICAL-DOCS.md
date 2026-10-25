@@ -29,6 +29,8 @@ The library has three main layers:
 - `MultiAnimParser` — facade retained for API compatibility; delegates to `MacroManimParser`
 - `AnimParser` — separate hand-written parser for `.anim` state animation files
 
+**Doc comments and exports:** the lexer drops comments, except that it lists each `///` (its text, line, the index of the token after it, whether a token ended on its line before it) beside the token stream; the parser attaches them where a root block, a parameter or an enum choice is parsed (`leadingDoc`/`trailingDoc`) and ignores the rest, so no token rule changes. `#name export kind` is read in `parseNodes` before the kind. Both are kept on the parse (`Node.doc`/`exported`, `Definition.doc`/`choiceDocs`, `MultiAnimResult.exports`) and read through `MultiAnimResultTools`; nothing in the builder or codegen acts on them.
+
 **Error types:**
 - `InvalidSyntax` (extends `ParserError`) — Semantic errors (e.g., unknown variable, duplicate name)
 - `MultiAnimUnexpected` — Syntax errors (unexpected token)

@@ -56,7 +56,8 @@ class OkCancelDialog extends UIScreenBase {
 
 	public function onScreenEvent(event:UIScreenEvent, source:UIElement) {
 		switch event {
-			case UIKeyPress(keyCode, release):
+			// The key going down: a dialog opened on Enter or Escape hears that key's release first
+			case UIKeyPress(keyCode, false):
 				if (keyCode == hxd.Key.ENTER) {
 					closeWith(true);
 				} else if (keyCode == hxd.Key.ESCAPE) {

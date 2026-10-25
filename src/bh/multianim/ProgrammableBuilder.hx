@@ -209,10 +209,12 @@ class ProgrammableBuilder {
 	}
 
 	/** Build a sub-programmable via the builder (for STATIC_REF nodes). `fromProgrammable` is the
-	 *  programmable the instance builds: a ref back to it is circular, as in the builder. */
+	 *  programmable the instance builds: a ref back to it is circular, as in the builder. Only in
+	 *  its own file: another file's programmable of that name is another programmable. */
 	public function buildStaticRef(name:String, parameters:Map<String, Dynamic>, ?externalRef:String, ?fromProgrammable:String):BuilderResult {
 		final target = getBuilder().importedBuilder(externalRef);
-		return target.buildingFrom(fromProgrammable, () -> target.buildWithParameters(name, parameters, refBuilderParams()));
+		return target.buildingFrom(externalRef == null ? fromProgrammable : null,
+			() -> target.buildWithParameters(name, parameters, refBuilderParams()));
 	}
 
 	/** Build a dynamic ref via the builder (for DYNAMIC_REF nodes, always incremental).
@@ -221,7 +223,8 @@ class ProgrammableBuilder {
 	public function buildDynamicRef(name:String, parameters:Map<String, Dynamic>, ?externalRef:String, ?onChildRebuilt:Void -> Void,
 			?fromProgrammable:String):BuilderResult {
 		final target = getBuilder().importedBuilder(externalRef);
-		final result = target.buildingFrom(fromProgrammable, () -> target.buildWithParameters(name, parameters, refBuilderParams(), null, true));
+		final result = target.buildingFrom(externalRef == null ? fromProgrammable : null,
+			() -> target.buildWithParameters(name, parameters, refBuilderParams(), null, true));
 		if (onChildRebuilt != null && result != null && result.isIncremental)
 			result.addRebuildListener(onChildRebuilt);
 		#if MULTIANIM_DEV

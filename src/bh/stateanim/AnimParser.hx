@@ -2852,16 +2852,30 @@ class AnimParser implements AnimParserResult {
 				}
 				final cx:Float = center != null ? center.x : 0;
 				final cy:Float = center != null ? center.y : 0;
+				// (#13) Mirror around untrimmed screen center, matching Option B tile flip
+				inline function mirrored(p:h2d.col.IPoint):h2d.col.IPoint {
+					if (!_flipX && !_flipY)
+						return p;
+					final m = p.clone();
+					if (_flipX) m.x = Math.round(origW - 2 * cx - p.x);
+					if (_flipY) m.y = Math.round(origH - 2 * cy - p.y);
+					return m;
+				}
 				for (pointName in allowedExtraPoints) {
 					var pt = findExtraPoint(pointName, stateSelector, anim, definedStates);
-					if (pt != null) {
-						var p = pt.toPoint();
-						// (#13) Mirror around untrimmed screen center, matching Option B tile flip
-						if (_flipX) p.x = Math.round(origW - 2 * cx - p.x);
-						if (_flipY) p.y = Math.round(origH - 2 * cy - p.y);
-						extraPoints.set(pointName, p);
-					}
+					if (pt != null)
+						extraPoints.set(pointName, mirrored(pt.toPoint()));
 				}
+				// An event's point is a point of the art, as an extra point is: it flips with it
+				if (_flipX || _flipY)
+					states = [
+						for (s in states)
+							switch s {
+								case Event(PointEvent(eventName, p)): Event(PointEvent(eventName, mirrored(p)));
+								case Event(RandomPointEvent(eventName, p, radius)): Event(RandomPointEvent(eventName, mirrored(p), radius));
+								default: s;
+							}
+					];
 				final loopCount:Int = anim.loop ?? 0;
 				cacheArray.push({name: name, states: states, loopCount: loopCount, extraPoints: extraPoints, filters: anim.filters,
 					layers: layerFramesOf(anim, states, stateSelector)});

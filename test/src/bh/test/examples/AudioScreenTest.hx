@@ -210,6 +210,48 @@ class AudioScreenTest extends utest.Test {
 	}
 
 	@Test
+	public function testAHeldSoundWaitsForTheSpriteToBeInTheScene():Void {
+		final log = new LogBackend();
+		final audio = new Audio(log);
+		audio.randomFunc = () -> 0.0;
+		audio.addBank("eng", BuilderTestBase.builderFromSource('#eng sounds { hum { file: "sound/hum.wav", loop: yes } }').buildSounds("eng"));
+		final sm = new AnimationSM(new Map(), true);
+		sm.holds = ["thrust" => "eng.hum"];
+		sm.audio = audio;
+		sm.addAnimationState("thrust", [Frame(createFrame(0.1))], 0, new Map());
+
+		sm.play("thrust");
+		Assert.equals(0, log.plays("eng.hum").length, "a sprite out of the scene holds nothing: no removal would ever stop it");
+		final stage = bh.test.VisualTestBase.appInstance.s2d;
+		stage.addChild(sm);
+		Assert.equals(1, log.plays("eng.hum").length, "held as the sprite comes into the scene");
+		sm.remove();
+		Assert.equals(1, log.stops("eng.hum").length);
+	}
+
+	@Test
+	public function testAnExtraPointOfAnAnimFilePlaysNoneOfItsSounds():Void {
+		final log = new LogBackend();
+		final audio = new Audio(log);
+		audio.randomFunc = () -> 0.0;
+		audio.addBank("fx", BuilderTestBase.builderFromSource('#fx sounds { shot { file: "sound/shot.wav" } }').buildSounds("fx"));
+		audio.addBank("eng", BuilderTestBase.builderFromSource('#eng sounds { hum { file: "sound/hum.wav", loop: yes } }').buildSounds("eng"));
+		final loader = bh.test.TestResourceLoader.createLoader();
+		loader.audio = audio;
+		// An animation that opens on a sound event and holds a looping sound
+		final anim = 'sheet: crew2\nallowedExtraPoints: [muzzle]\ncenter: 32, 48\nfps: 4\n'
+			+ 'sounds {\n\tfire: "fx.shot"\n\thold idle: "eng.hum"\n}\n'
+			+ 'animation idle {\n\tloop: yes\n\tplaylist {\n\t\tevent fire\n\t\tsheet: marine_l_idle\n\t}\n\textrapoints { muzzle: 7, -9 }\n}\n';
+		loader.loadAnimSMImpl = filename -> bh.stateanim.AnimParser.parseString(anim, filename, loader);
+		final source = "version: 1.0\n#marker programmable() {\n\tbitmap(generated(color(2, 2, #ffffff))): extraPoint(\"held.anim\", \"idle\", \"muzzle\")\n}\n";
+		final builder = bh.multianim.MultiAnimBuilder.load(byte.ByteData.ofString(source), loader, "extra-point-sounds");
+
+		final result = builder.buildWithParameters("marker", []);
+		Assert.notNull(result.object);
+		Assert.equals(0, log.plays().length, "reading where a point is plays nothing: no event sound, no held loop nobody can stop");
+	}
+
+	@Test
 	public function testTheAnimFilesHoldIsParsed():Void {
 		final src = 'sheet: "crew2"\nfps: 10\nsounds {\n\tfire: "fx.shot"\n\thold idle: "eng.hum"\n}\nanimation idle { playlist { sheet: "idle" frames: 0..1 } }\n';
 		final parsed = bh.stateanim.AnimParser.parseString(src, "hold-test.anim", null);

@@ -267,7 +267,13 @@ enum DefinitionType {
 typedef Definition = {
 	name:String,
 	type:DefinitionType,
-	defaultValue:Null<ResolvedIndexParameters>
+	defaultValue:Null<ResolvedIndexParameters>,
+	/** The parameter's `///` doc comment (the lines above it, then one trailing it), lines joined
+	 *  with "\n"; absent when it has none. */
+	?doc:String,
+	/** An enum parameter's choices' `///` docs (`walk /// 4 frames at 8 fps`), by choice; only
+	 *  the choices that have one, absent when none has. */
+	?choiceDocs:Map<String, String>
 }
 
 @:nullSafety
@@ -1458,6 +1464,12 @@ typedef Node = {
 	 *  result depends solely on the parsed tree, not on context state. See the call site for the
 	 *  invariant that must hold if this function is ever made context-aware. */
 	cachedRelevantParamRefs:Null<Array<String>>,
+	/** A root block written `#name export kind…`: true; absent on every other node. Read by
+	 *  tools (`MultiAnimResultTools.exportedNames`); an import reaches every block alike. */
+	?exported:Bool,
+	/** A root block's `///` doc comment, the lines directly above it joined with "\n"; absent
+	 *  when it has none (and on every node that is not a root block). */
+	?doc:String,
 	#if MULTIANIM_DEV
 	parserPos:String
 	#end
@@ -1471,6 +1483,38 @@ typedef MultiAnimResult = {
 	var customFilterRefs:Array<CustomFilterRef>;
 	/** Alias to path of every `import "file" as "alias"`, with or without a loader (`ManimNeedsTools.needsOf`). */
 	var importPaths:Map<String, String>;
+	/** The names of the root blocks marked `export` (`#knight export programmable(…)`), in the
+	 *  order written; empty when the file marks none. Read it with `MultiAnimResultTools.exportedNames`. */
+	var exports:Array<String>;
+}
+
+/** A parse's exports and `///` doc comments, read with no builder and no loader (a pack reader,
+ *  the studio, a CLI, the LSP). The builder has the same as `exportedNames()` and `docOf()`. */
+@:nullSafety
+class MultiAnimResultTools {
+	/** The names of the root blocks the file marks `export`, in the order written; empty when it
+	 *  marks none. Only a list: an `import` reaches every block of a file, exported or not. */
+	public static function exportedNames(result:MultiAnimResult):Array<String> {
+		return result.exports.copy();
+	}
+
+	/** A `///` doc comment: the root block `block`'s, or (with `param`) the doc of that
+	 *  programmable's parameter, or (with `choice` too) of that choice of the enum parameter.
+	 *  Several `///` lines are joined with "\n". Null when it has none, or there is no such
+	 *  block, parameter or choice. */
+	public static function docOf(result:MultiAnimResult, block:String, ?param:String, ?choice:String):Null<String> {
+		final node = result.nodes.get(block);
+		if (node == null) return null;
+		if (param == null) return node.doc;
+		final def:Null<Definition> = switch node.type {
+			case PROGRAMMABLE(_, defs, _): defs.get(param);
+			default: null;
+		};
+		if (def == null) return null;
+		if (choice == null) return def.doc;
+		final choiceDocs = def.choiceDocs;
+		return choiceDocs == null ? null : choiceDocs.get(choice);
+	}
 }
 
 #if (!macro && !noheaps)

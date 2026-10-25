@@ -257,17 +257,41 @@ class ContextAnalyzer {
 		i++; // skip (
 
 		var depth = 1;
+		var brackets = 0; // inside an enum's [...], whose commas part its choices, not parameters
 		var current = "";
 
 		while (i < text.length && depth > 0) {
 			final c = text.charCodeAt(i);
+			// A comment (a `///` doc of a parameter or a choice too) is no part of a parameter
+			if (c == "/".code && i + 1 < text.length && text.charCodeAt(i + 1) == "/".code) {
+				while (i < text.length && text.charCodeAt(i) != "\n".code)
+					i++;
+				continue;
+			}
+			if (c == "/".code && i + 1 < text.length && text.charCodeAt(i + 1) == "*".code) {
+				final end = text.indexOf("*/", i + 2);
+				i = end < 0 ? text.length : end + 2;
+				continue;
+			}
+			// A string's commas and brackets are its own
+			if (c == "\"".code) {
+				var j = i + 1;
+				while (j < text.length && text.charCodeAt(j) != "\"".code) {
+					if (text.charCodeAt(j) == "\\".code) j++;
+					j++;
+				}
+				current += text.substring(i, j + 1);
+				i = j + 1;
+				continue;
+			}
 			if (c == "(".code) depth++;
 			else if (c == ")".code) {
 				depth--;
 				if (depth == 0) break;
-			}
+			} else if (c == "[".code) brackets++;
+			else if (c == "]".code && brackets > 0) brackets--;
 
-			if (c == ",".code && depth == 1) {
+			if (c == ",".code && depth == 1 && brackets == 0) {
 				parseParam(current.trim(), paramNames, paramTypes);
 				current = "";
 			} else {

@@ -117,6 +117,16 @@ class ManimKeywordInfo {
 		"AUTOTILE", "FINAL_VAR", "SWITCH", "TILEMAP_REF", "TILEMAP_FILL",
 	];
 
+	// ---- Root block marker and doc comments (not NodeType variants) ----
+
+	/** `#name export kind…`: marks a root block as the file's export. */
+	public static final exportKeyword = "export";
+
+	public static final exportDescription = "Marks a root block as exported: #name export programmable(...), any kind of root block. The file's exported names are MultiAnimResult.exports (in the order written); an import still reaches every block";
+
+	/** `///`: a doc comment, kept by the parser on what it documents. */
+	public static final docCommentDescription = "Doc comment: the /// lines directly above a root block, a parameter or an enum choice, or one trailing a parameter or a choice on its line, are kept as its doc (MultiAnimResultTools.docOf); several lines join with newlines. Any other /// is a plain comment";
+
 	public static function elementName(ctor:String):Null<String> {
 		return elementNames.get(ctor);
 	}

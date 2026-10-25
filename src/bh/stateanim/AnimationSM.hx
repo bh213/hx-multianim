@@ -701,11 +701,12 @@ class AnimationSM extends h2d.Object {
 	public var heldSound(default, null):Null<bh.audio.Audio.SoundInstance> = null;
 	var heldFor:Null<String> = null;
 
-	/** The hold the animation playing asks for: the same one is kept, any other let go and this one taken. */
+	/** The hold the animation playing asks for: the same one is kept, any other let go and this one
+	 *  taken. Only in the scene: out of it nothing would ever let the sound go (`onAdd` takes it). */
 	function updateHold():Void {
 		final playing = current;
 		final map = holds;
-		final name:Null<String> = playing != null && map != null ? map.get(playing.name) : null;
+		final name:Null<String> = playing != null && map != null && allocated ? map.get(playing.name) : null;
 		final held = heldSound;
 		if (name != null && name == heldFor && held != null && held.isAlive())
 			return;

@@ -1,0 +1,10 @@
+version: 1.0
+
+// A conditional apply at the programmable's root, over a root property that uses a parameter, beside
+// a conditional element. The root property's resave has no element field; the gate that skips hidden
+// elements' updates matched every update's field name and failed the macro on the missing one.
+#rootApply programmable(a:float=1, dim:bool=false, on:bool=true) {
+  alpha: $a
+  @(dim=>true) apply { alpha: 0.4 }
+  @(on=>true) bitmap(generated(color(4, 4, #ffffff))): 0, 0
+}

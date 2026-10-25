@@ -722,6 +722,9 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/156-staticRefIncremental/staticRefIncremental.manim", "sriExternal")
 	public var sriExternal;
 
+	@:manim("test/examples/156-staticRefIncremental/staticRefIncremental.manim", "sriSameName")
+	public var sriSameName;
+
 	@:manim("test/examples/157-ninePatchModes/ninePatchModes.manim", "ninePatchModes")
 	public var ninePatchModes;
 
@@ -922,4 +925,10 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/166-shaders/shaders.manim", "shaderApply")
 	public var shaderApply;
+
+	@:manim("test/examples/167-exportDocs/exportDocs.manim", "exportDocs")
+	public var exportDocs;
+
+	@:manim("test/examples/167-exportDocs/exportDocsPack.manim", "knight")
+	public var exportDocsKnight;
 }

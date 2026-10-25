@@ -706,9 +706,12 @@ class ProgrammableCodeGen {
 		final elementFieldRe = ~/^_e[0-9]+$/;
 		final gatedUpdates:Array<Int> = [];
 		if (visibilityEntries.length > 0)
-			for (i in 0...expressionUpdates.length)
-				if (elementFieldRe.match(expressionUpdates[i].fieldName))
+			for (i in 0...expressionUpdates.length) {
+				// A root property's resave under a root `apply` has no field: it is never gated
+				final fieldName = expressionUpdates[i].fieldName;
+				if (fieldName != null && elementFieldRe.match(fieldName))
 					gatedUpdates.push(i);
+			}
 		final hasGated = gatedUpdates.length > 0;
 		final replayBeforeShow:Expr->Expr->Expr = (fieldRef, parentRef) -> hasGated
 			? macro if (this._stale != null && bh.multianim.LiveProgrammable.LiveProgrammableTools.isAttachedTo($parentRef, this))
@@ -6535,23 +6538,23 @@ class ProgrammableCodeGen {
 					final valExpr = rvToExpr(v);
 					selExprs.push(macro _selMap.set($keyExpr, Std.string($valExpr)));
 				}
+				// Read, not played: playing would fire its opening events and hold its sounds
 				selExprs.push(macro final _animSM = this._pb.resourceLoader.createAnimSM($v{filename}, _selMap));
-				selExprs.push(macro _animSM.play($v{animName}));
 				{
 					x: {
 						final block = selExprs.copy();
 						if (fbX != null)
-							block.push(macro { final _ep = _animSM.getExtraPoint($v{pointName}); if (_ep != null) (_ep.x : Float) else $fbX; })
+							block.push(macro { final _ep = _animSM.getExtraPointForAnim($v{pointName}, $v{animName}); if (_ep != null) (_ep.x : Float) else $fbX; })
 						else
-							block.push(macro { final _ep = _animSM.getExtraPoint($v{pointName}); if (_ep == null) throw $v{'extraPoint: point "$pointName" not found'}; (_ep.x : Float); });
+							block.push(macro { final _ep = _animSM.getExtraPointForAnim($v{pointName}, $v{animName}); if (_ep == null) throw $v{'extraPoint: point "$pointName" not found'}; (_ep.x : Float); });
 						macro $b{block};
 					},
 					y: {
 						final block = selExprs.copy();
 						if (fbY != null)
-							block.push(macro { final _ep = _animSM.getExtraPoint($v{pointName}); if (_ep != null) (_ep.y : Float) else $fbY; })
+							block.push(macro { final _ep = _animSM.getExtraPointForAnim($v{pointName}, $v{animName}); if (_ep != null) (_ep.y : Float) else $fbY; })
 						else
-							block.push(macro { final _ep = _animSM.getExtraPoint($v{pointName}); if (_ep == null) throw $v{'extraPoint: point "$pointName" not found'}; (_ep.y : Float); });
+							block.push(macro { final _ep = _animSM.getExtraPointForAnim($v{pointName}, $v{animName}); if (_ep == null) throw $v{'extraPoint: point "$pointName" not found'}; (_ep.y : Float); });
 						macro $b{block};
 					}
 				};
@@ -9403,16 +9406,16 @@ class ProgrammableCodeGen {
 					final valExpr = rvToExpr(v);
 					selExprs.push(macro _selMap.set($keyExpr, Std.string($valExpr)));
 				}
+				// Read, not played: playing would fire its opening events and hold its sounds
 				selExprs.push(macro final _animSM = this._pb.resourceLoader.createAnimSM($v{filename}, _selMap));
-				selExprs.push(macro _animSM.play($v{animName}));
 				if (fallbackExpr != null)
 					selExprs.push(macro {
-						final _ep = _animSM.getExtraPoint($v{pointName});
+						final _ep = _animSM.getExtraPointForAnim($v{pointName}, $v{animName});
 						if (_ep != null) $fieldRef.setPosition(_ep.x, _ep.y) else $fallbackExpr;
 					})
 				else
 					selExprs.push(macro {
-						final _ep = _animSM.getExtraPoint($v{pointName});
+						final _ep = _animSM.getExtraPointForAnim($v{pointName}, $v{animName});
 						if (_ep == null) throw $v{'extraPoint: point "$pointName" not found'};
 						$fieldRef.setPosition(_ep.x, _ep.y);
 					});
