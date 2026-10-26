@@ -15785,6 +15785,418 @@ bh_multianim_NodeFlowPropertiesTools.create = function(hAlign,vAlign,offsetX,off
 	}
 	return { hAlign : hAlign, vAlign : vAlign, offsetX : offsetX, offsetY : offsetY, isAbsolute : isAbsolute};
 };
+var bh_multianim_NodeValueTools = function() { };
+bh_multianim_NodeValueTools.__name__ = true;
+bh_multianim_NodeValueTools.textValues = function(t,value,tile) {
+	value(t.fontName);
+	value(t.text);
+	value(t.color);
+	var _g = t.textAlignWidth;
+	switch(_g._hx_index) {
+	case 1:
+		var v = _g.value;
+		value(v);
+		break;
+	case 0:case 2:
+		break;
+	}
+	var styles = t.styles;
+	if(styles != null) {
+		var _g = 0;
+		while(_g < styles.length) {
+			var s = styles[_g];
+			++_g;
+			if(s.color != null) {
+				value(s.color);
+			}
+			if(s.fontName != null) {
+				value(s.fontName);
+			}
+		}
+	}
+	var images = t.images;
+	if(images != null) {
+		var _g = 0;
+		while(_g < images.length) {
+			var i = images[_g];
+			++_g;
+			tile(i.tileSource);
+		}
+	}
+	var fonts = t.autoFitFonts;
+	if(fonts != null) {
+		var _g = 0;
+		while(_g < fonts.length) {
+			var f = fonts[_g];
+			++_g;
+			value(f);
+		}
+	}
+	var _g = t.autoFitMode;
+	if(_g != null) {
+		if(_g._hx_index == 1) {
+			var w = _g.w;
+			var h = _g.h;
+			value(w);
+			value(h);
+		}
+	}
+};
+bh_multianim_NodeValueTools.particlesValues = function(p,value,tile) {
+	var v = p.count;
+	if(v != null) {
+		value(v);
+	}
+	var v = p.emitDelay;
+	if(v != null) {
+		value(v);
+	}
+	var v = p.emitSync;
+	if(v != null) {
+		value(v);
+	}
+	var v = p.maxLife;
+	if(v != null) {
+		value(v);
+	}
+	var v = p.lifeRandom;
+	if(v != null) {
+		value(v);
+	}
+	var v = p.size;
+	if(v != null) {
+		value(v);
+	}
+	var v = p.sizeRandom;
+	if(v != null) {
+		value(v);
+	}
+	var v = p.speed;
+	if(v != null) {
+		value(v);
+	}
+	var v = p.speedRandom;
+	if(v != null) {
+		value(v);
+	}
+	var v = p.speedIncrease;
+	if(v != null) {
+		value(v);
+	}
+	var v = p.gravity;
+	if(v != null) {
+		value(v);
+	}
+	var v = p.gravityAngle;
+	if(v != null) {
+		value(v);
+	}
+	var v = p.fadeIn;
+	if(v != null) {
+		value(v);
+	}
+	var v = p.fadeOut;
+	if(v != null) {
+		value(v);
+	}
+	var v = p.fadePower;
+	if(v != null) {
+		value(v);
+	}
+	var v = p.rotationInitial;
+	if(v != null) {
+		value(v);
+	}
+	var v = p.rotationSpeed;
+	if(v != null) {
+		value(v);
+	}
+	var v = p.rotationSpeedRandom;
+	if(v != null) {
+		value(v);
+	}
+	var v = p.forwardAngle;
+	if(v != null) {
+		value(v);
+	}
+	var v = p.boundsMinX;
+	if(v != null) {
+		value(v);
+	}
+	var v = p.boundsMaxX;
+	if(v != null) {
+		value(v);
+	}
+	var v = p.boundsMinY;
+	if(v != null) {
+		value(v);
+	}
+	var v = p.boundsMaxY;
+	if(v != null) {
+		value(v);
+	}
+	var v = p.animationRepeat;
+	if(v != null) {
+		value(v);
+	}
+	if(p.tiles != null) {
+		var _g = 0;
+		var _g1 = p.tiles;
+		while(_g < _g1.length) {
+			var t = _g1[_g];
+			++_g;
+			tile(t);
+		}
+	}
+	var _g = p.emit;
+	switch(_g._hx_index) {
+	case 0:
+		var d = _g.emitDistance;
+		var dr = _g.emitDistanceRandom;
+		value(d);
+		value(dr);
+		break;
+	case 1:
+		var d = _g.emitDistance;
+		var dr = _g.emitDistanceRandom;
+		var a = _g.emitConeAngle;
+		var ar = _g.emitConeAngleRandom;
+		value(d);
+		value(dr);
+		value(a);
+		value(ar);
+		break;
+	case 2:
+		var _g1 = _g.center;
+		var w = _g.width;
+		var h = _g.height;
+		var a = _g.emitConeAngle;
+		var ar = _g.emitConeAngleRandom;
+		value(w);
+		value(h);
+		value(a);
+		value(ar);
+		break;
+	case 3:
+		var r = _g.radius;
+		var rr = _g.radiusRandom;
+		var a = _g.emitConeAngle;
+		var ar = _g.emitConeAngleRandom;
+		value(r);
+		value(rr);
+		value(a);
+		value(ar);
+		break;
+	case 4:
+		var _g1 = _g.pathName;
+		break;
+	case 5:
+		var _g1 = _g.pathName;
+		break;
+	}
+	var stops = p.colorStops;
+	if(stops != null) {
+		var _g = 0;
+		while(_g < stops.length) {
+			var s = stops[_g];
+			++_g;
+			value(s.rate);
+			value(s.color);
+		}
+	}
+	var fields = p.forceFields;
+	if(fields != null) {
+		var _g = 0;
+		while(_g < fields.length) {
+			var f = fields[_g];
+			++_g;
+			switch(f._hx_index) {
+			case 0:
+				var x = f.x;
+				var y = f.y;
+				var s = f.strength;
+				var r = f.radius;
+				value(x);
+				value(y);
+				value(s);
+				value(r);
+				break;
+			case 1:
+				var x1 = f.x;
+				var y1 = f.y;
+				var s1 = f.strength;
+				var r1 = f.radius;
+				value(x1);
+				value(y1);
+				value(s1);
+				value(r1);
+				break;
+			case 2:
+				var x2 = f.x;
+				var y2 = f.y;
+				var s2 = f.strength;
+				var r2 = f.radius;
+				value(x2);
+				value(y2);
+				value(s2);
+				value(r2);
+				break;
+			case 3:
+				var vx = f.vx;
+				var vy = f.vy;
+				value(vx);
+				value(vy);
+				break;
+			case 4:
+				var s3 = f.strength;
+				var sc = f.scale;
+				var sp = f.speed;
+				value(s3);
+				value(sc);
+				value(sp);
+				break;
+			case 5:
+				var _g1 = f.pathName;
+				var a = f.attractStrength;
+				var f1 = f.flowStrength;
+				var r3 = f.radius;
+				value(a);
+				value(f1);
+				value(r3);
+				break;
+			}
+		}
+	}
+	var _g = p.boundsMode;
+	if(_g != null) {
+		if(_g._hx_index == 2) {
+			var damping = _g.damping;
+			value(damping);
+		}
+	}
+	var lines = p.boundsLines;
+	if(lines != null) {
+		var _g = 0;
+		while(_g < lines.length) {
+			var l = lines[_g];
+			++_g;
+			value(l.x1);
+			value(l.y1);
+			value(l.x2);
+			value(l.y2);
+		}
+	}
+	var subs = p.subEmitters;
+	if(subs != null) {
+		var _g = 0;
+		while(_g < subs.length) {
+			var s = subs[_g];
+			++_g;
+			var _g1 = s.trigger;
+			switch(_g1._hx_index) {
+			case 0:case 1:case 2:
+				break;
+			case 3:
+				var interval = _g1.interval;
+				value(interval);
+				break;
+			}
+			value(s.probability);
+			var v = s.inheritVelocity;
+			if(v != null) {
+				value(v);
+			}
+			var v1 = s.offsetX;
+			if(v1 != null) {
+				value(v1);
+			}
+			var v2 = s.offsetY;
+			if(v2 != null) {
+				value(v2);
+			}
+			var v3 = s.burstCount;
+			if(v3 != null) {
+				value(v3);
+			}
+		}
+	}
+	var states = p.animStates;
+	if(states != null) {
+		var _g = 0;
+		while(_g < states.length) {
+			var s = states[_g];
+			++_g;
+			value(s.atRate);
+		}
+	}
+	var shutdown = p.shutdown;
+	if(shutdown != null) {
+		var v = shutdown.duration;
+		if(v != null) {
+			value(v);
+		}
+	}
+};
+bh_multianim_NodeValueTools.repeatValues = function(r,value,name) {
+	switch(r._hx_index) {
+	case 0:
+		var dx = r.dx;
+		var dy = r.dy;
+		var count = r.repeatCount;
+		value(count);
+		if(dx != null) {
+			value(dx);
+		}
+		if(dy != null) {
+			value(dy);
+		}
+		break;
+	case 1:
+		var _g = r.layoutName;
+		break;
+	case 2:
+		var _g = r.valueVariableName;
+		var arrayName = r.arrayName;
+		name(arrayName);
+		break;
+	case 3:
+		var start = r.start;
+		var end = r.end;
+		var step = r.step;
+		value(start);
+		value(end);
+		value(step);
+		break;
+	case 4:
+		var _g = r.bitmapVarName;
+		var _g = r.animFilename;
+		var animationName = r.animationName;
+		var selector = r.selector;
+		value(animationName);
+		if(selector != null) {
+			var h = selector.h;
+			var _g_h = h;
+			var _g_keys = Object.keys(h);
+			var _g_length = _g_keys.length;
+			var _g_current = 0;
+			while(_g_current < _g_length) {
+				var key = _g_keys[_g_current++];
+				var _g_key = key;
+				var _g_value = _g_h[key];
+				var _ = _g_key;
+				var v = _g_value;
+				value(v);
+			}
+		}
+		break;
+	case 5:
+		var _g = r.bitmapVarName;
+		var _g = r.tilenameVarName;
+		var _g = r.sheetName;
+		var _g = r.tileFilter;
+		break;
+	}
+};
 var bh_multianim_MultiAnimResultTools = function() { };
 bh_multianim_MultiAnimResultTools.__name__ = true;
 bh_multianim_MultiAnimResultTools.exportedNames = function(result) {

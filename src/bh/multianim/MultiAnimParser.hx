@@ -1434,6 +1434,174 @@ class NodeFlowPropertiesTools {
 	}
 }
 
+/** The values written in a text's, a particles block's or a repeat iterator's payload, handed to
+ *  `value` (a tile source to `tile`, an array iterator's array name to `name`): what a param-ref
+ *  collector reads of them. One walk for the builder's `collectNodeParamRefs` and codegen's
+ *  `collectArmParamRefs`, which each read the values with their own collector. */
+class NodeValueTools {
+	public static function textValues(t:TextDef, value:(ReferenceableValue) -> Void, tile:(TileSource) -> Void):Void {
+		value(t.fontName);
+		value(t.text);
+		value(t.color);
+		switch t.textAlignWidth {
+			case TAWValue(v): value(v);
+			case TAWAuto | TAWGrid:
+		}
+		final styles = t.styles;
+		if (styles != null)
+			for (s in styles) {
+				if (s.color != null) value(s.color);
+				if (s.fontName != null) value(s.fontName);
+			}
+		final images = t.images;
+		if (images != null)
+			for (i in images)
+				tile(i.tileSource);
+		final fonts = t.autoFitFonts;
+		if (fonts != null)
+			for (f in fonts)
+				value(f);
+		switch t.autoFitMode {
+			case AFBox(w, h):
+				value(w);
+				value(h);
+			default:
+		}
+	}
+
+	public static function particlesValues(p:ParticlesDef, value:(ReferenceableValue) -> Void, tile:(TileSource) -> Void):Void {
+		inline function opt(v:Null<ReferenceableValue>) if (v != null) value(v);
+		opt(p.count);
+		opt(p.emitDelay);
+		opt(p.emitSync);
+		opt(p.maxLife);
+		opt(p.lifeRandom);
+		opt(p.size);
+		opt(p.sizeRandom);
+		opt(p.speed);
+		opt(p.speedRandom);
+		opt(p.speedIncrease);
+		opt(p.gravity);
+		opt(p.gravityAngle);
+		opt(p.fadeIn);
+		opt(p.fadeOut);
+		opt(p.fadePower);
+		opt(p.rotationInitial);
+		opt(p.rotationSpeed);
+		opt(p.rotationSpeedRandom);
+		opt(p.forwardAngle);
+		opt(p.boundsMinX);
+		opt(p.boundsMaxX);
+		opt(p.boundsMinY);
+		opt(p.boundsMaxY);
+		opt(p.animationRepeat);
+		if (p.tiles != null)
+			for (t in p.tiles)
+				tile(t);
+		switch p.emit {
+			case Point(d, dr):
+				value(d);
+				value(dr);
+			case Cone(d, dr, a, ar):
+				value(d);
+				value(dr);
+				value(a);
+				value(ar);
+			case Box(w, h, a, ar, _):
+				value(w);
+				value(h);
+				value(a);
+				value(ar);
+			case Circle(r, rr, a, ar):
+				value(r);
+				value(rr);
+				value(a);
+				value(ar);
+			case ManimPath(_) | ManimPathTangent(_):
+		}
+		final stops = p.colorStops;
+		if (stops != null)
+			for (s in stops) {
+				value(s.rate);
+				value(s.color);
+			}
+		final fields = p.forceFields;
+		if (fields != null)
+			for (f in fields)
+				switch f {
+					case FFAttractor(x, y, s, r) | FFRepulsor(x, y, s, r) | FFVortex(x, y, s, r):
+						value(x);
+						value(y);
+						value(s);
+						value(r);
+					case FFWind(vx, vy):
+						value(vx);
+						value(vy);
+					case FFTurbulence(s, sc, sp):
+						value(s);
+						value(sc);
+						value(sp);
+					case FFPathGuide(_, a, f, r):
+						value(a);
+						value(f);
+						value(r);
+				}
+		switch p.boundsMode {
+			case BMBounce(damping): value(damping);
+			default:
+		}
+		final lines = p.boundsLines;
+		if (lines != null)
+			for (l in lines) {
+				value(l.x1);
+				value(l.y1);
+				value(l.x2);
+				value(l.y2);
+			}
+		final subs = p.subEmitters;
+		if (subs != null)
+			for (s in subs) {
+				switch s.trigger {
+					case SETOnInterval(interval): value(interval);
+					case SETOnBirth | SETOnDeath | SETOnCollision:
+				}
+				value(s.probability);
+				opt(s.inheritVelocity);
+				opt(s.offsetX);
+				opt(s.offsetY);
+				opt(s.burstCount);
+			}
+		final states = p.animStates;
+		if (states != null)
+			for (s in states)
+				value(s.atRate);
+		final shutdown = p.shutdown;
+		if (shutdown != null)
+			opt(shutdown.duration);
+	}
+
+	public static function repeatValues(r:RepeatType, value:(ReferenceableValue) -> Void, name:(String) -> Void):Void {
+		switch r {
+			case StepIterator(dx, dy, count):
+				value(count);
+				if (dx != null) value(dx);
+				if (dy != null) value(dy);
+			case RangeIterator(start, end, step):
+				value(start);
+				value(end);
+				value(step);
+			case ArrayIterator(_, arrayName):
+				name(arrayName);
+			case StateAnimIterator(_, _, animationName, selector):
+				value(animationName);
+				if (selector != null)
+					for (_ => v in selector)
+						value(v);
+			case LayoutIterator(_) | TilesIterator(_, _, _, _):
+		}
+	}
+}
+
 @:nullSafety
 typedef Node = {
 	parent:Null<Node>,

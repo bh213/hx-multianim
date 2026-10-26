@@ -37,6 +37,7 @@ and UI-77..84 fixed, each with a test that failed first (`CodegenParityReviewTes
 active arm's shaders use sets them in place (builder and codegen), the arm built again for anything
 else and for any arm with elements whose params its change is not matched against. UI-78's second
 half too: the list copies the array it is made with, and a dropdown reads its list's array.
+BLD-40, found with BLD-38, is fixed: an arm's change is matched against every value of its elements.
 
 ## Start here
 
@@ -304,8 +305,10 @@ session scratchpad, not the repo).
   repeat in a flow, so its `alpha`, `scale`, `filter` and `#name` (applied later, :8100, :8156) are
   lost; before they went on the wrapper. Codegen never applied them. *Fix:* reject them at parse for a
   spliced repeat, or give them to each item.
-- [ ] `BLD-40` **P2** **A `@switch` arm misses a change of a param used only where its collectors do not
+- [x] `BLD-40` **P2** **A `@switch` arm misses a change of a param used only where its collectors do not
   look** — found with BLD-38's fix, traced in the builder (codegen's `collectArmParamRefs` not checked).
+  *Fixed:* both collectors are exhaustive over NodeType now (codegen missed all but the nested
+  condition); an autotile index in a tile source was missed everywhere, fixed with it.
   The arm's refs come from `collectNodeParamRefs`, `collectSwitchArmExtraParamRefs` and
   `collectChildConditionalParamRefs`, which leave out `flow` sizes, `mask`/`spacer` sizes, `particles`,
   a text's font, styles and `autoFit`, a `TAWValue` width, `@flow.offset`, repeats other than

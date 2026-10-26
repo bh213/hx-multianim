@@ -590,6 +590,112 @@ class CodegenParityReviewTest extends BuilderTestBase {
 
 	// ==================== Spliced repeats inside a hidden spliced repeat ====================
 
+	// ==================== A @switch arm follows every param its elements use ====================
+
+	static function firstOf<T>(o:h2d.Object, cl:Class<T>):Null<T> {
+		if (Std.isOfType(o, cl))
+			return cast o;
+		for (i in 0...o.numChildren) {
+			final found = firstOf(o.getChildAt(i), cl);
+			if (found != null)
+				return found;
+		}
+		return null;
+	}
+
+	/** Each param below is used in the arm by one element only, where the arm's change was not
+	 *  matched before: the arm is built again for it, and the element shows the new value. */
+	function checkArmFollows(setParameter:(String, Dynamic) -> Void, root:h2d.Object, label:String):Void {
+		setParameter("mw", 25);
+		Assert.equals(25, firstOf(root, h2d.Mask).width, '$label: a mask follows its width');
+		setParameter("fw", 44);
+		Assert.equals(44, firstOf(root, h2d.Flow).maxWidth, '$label: a flow follows its maxWidth');
+		final x0 = Std.parseInt(xsOfWidth(root, 6));
+		setParameter("sw", 14);
+		Assert.equals(Std.string(x0 + 4), xsOfWidth(root, 6), '$label: a spacer follows its width');
+		setParameter("ox", 3);
+		Assert.equals(Std.string(x0 + 7), xsOfWidth(root, 6), '$label: a @flow.offset follows');
+		final font = firstOf(root, h2d.Text).font;
+		setParameter("font", "m3x6");
+		Assert.notEquals(font, firstOf(root, h2d.Text).font, '$label: a text follows its font');
+		Assert.equals("", xsOfWidth(root, 5), '$label: precondition, the narrow one shows');
+		setParameter("tw", 70);
+		Assert.equals("0", xsOfWidth(root, 5), '$label: a condition inside a nested @switch follows');
+	}
+
+	@Test
+	public function testArmFollowsEveryParamItsElementsUse_Builder():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "cpArmFollows", null, Incremental);
+		checkArmFollows((k, v) -> result.setParameter(k, v), result.object, "builder");
+	}
+
+	@Test
+	public function testArmFollowsEveryParamItsElementsUse_Codegen():Void {
+		final inst:Dynamic = createMp().cpArmFollows.create();
+		checkArmFollows((k, v) -> inst.setParameter(k, v), cast inst, "codegen");
+	}
+
+	function checkAutotileIndex(setParameter:(String, Dynamic) -> Void, root:h2d.Object, label:String):Void {
+		final before = BuilderTestBase.findVisibleBitmapDescendants(root)[0].tile;
+		setParameter("i", 5);
+		Assert.notEquals(before, BuilderTestBase.findVisibleBitmapDescendants(root)[0].tile, '$label: the tile of the index set');
+	}
+
+	@Test
+	public function testAutotileTileByParam_Builder_FollowsTheParam():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "cpAutotileIdx", null, Incremental);
+		checkAutotileIndex((k, v) -> result.setParameter(k, v), result.object, "builder");
+	}
+
+	@Test
+	public function testAutotileTileByParam_Codegen_FollowsTheParam():Void {
+		final inst:Dynamic = createMp().cpAutotileIdx.create();
+		checkAutotileIndex((k, v) -> inst.setParameter(k, v), cast inst, "codegen");
+	}
+
+	@Test
+	public function testArmRefsReachEveryValueItsElementsUse():Void {
+		// What an arm's change is matched against: every param a value of its elements uses
+		final builder = BuilderTestBase.builderFromSource("
+			#t autotile { format: cross tileSize: 4 demo: #fff, #000 }
+			#test programmable(mode:[a, b]=a, pc:uint=4, pd:uint=0, ps:uint=10, ptw:uint=2, pwx:int=0, phw:uint=20, setw:uint=5,
+					rx:uint=2, ry:uint=2, ai:uint=0, tmw:uint=40, n:uint=1, lim:uint=3) {
+				@switch(mode) {
+					a {
+						particles {
+							count: $pc
+							emit: cone(dist: $pd, distRand: 0, angle: 0, angleSpread: 10)
+							maxLife: 1.0
+							speed: $ps
+							tiles: generated(color($ptw, 2, #FFFFFF))
+							forceFields: [wind($pwx, 0)]
+						}
+						placeholder(generated(cross($phw, 20, #FF0000)), builderParameter(\"x\")) { settings { w:int => $setw } }
+						repeatable2d($x, $y, step($rx, dx: 4), step($ry, dy: 4)) { bitmap(generated(color(2, 2, #FFFFFF))): 0, 0 }
+						bitmap(generated(autotile(\"t\", $ai))): 0, 0
+						text(dd, \"x\", #FFFFFF, left, $tmw): 0, 0
+						@switch(n) {
+							<= $lim: bitmap(generated(color(2, 2, #FFFFFF))): 0, 0;
+							default: bitmap(generated(color(3, 2, #FFFFFF))): 0, 0;
+						}
+					}
+					default: bitmap(generated(color(4, 4, #FF00FF))): 0, 0;
+				}
+			}
+		");
+		final node = @:privateAccess builder.multiParserResult.nodes.get("test");
+		var arm:Null<bh.multianim.MultiAnimParser.SwitchArm> = null;
+		for (child in node.children)
+			switch child.type {
+				case SWITCH(_, arms): arm = arms[0];
+				default:
+			}
+		final refs:Array<String> = [];
+		@:privateAccess bh.multianim.MultiAnimBuilder.collectSubtreeParamRefs(arm.children, refs);
+		for (p in ["pc", "pd", "ps", "ptw", "pwx", "phw", "setw", "rx", "ry", "ai", "tmw", "n", "lim"])
+			Assert.isTrue(refs.indexOf(p) >= 0, 'the arm\'s change is matched against $$$p');
+	}
+
 	static function nestedFlowLayout(root:h2d.Object):String {
 		return 'w10:${xsOfWidth(root, 10)} w6:${xsOfWidth(root, 6)} w7:${xsOfWidth(root, 7)}';
 	}

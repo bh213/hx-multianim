@@ -280,3 +280,34 @@ layouts {
     bitmap(generated(color(7, 4, #FF0000))): 0, 0
   }
 }
+
+// A @switch arm follows a param used only by a mask's or a flow's size, a spacer, a @flow.offset, a
+// text's font or a nested @switch's condition: the arm is built again (CodegenParityReviewTest)
+#cpArmFollows programmable(mode:[a, b]=a, mw:uint=20, fw:uint=40, sw:uint=10, ox:int=0, font:[dd, m3x6]=dd, inner:[x, y]=x, tw:uint=50) {
+  @switch(mode) {
+    a {
+      mask($mw, 8) {
+        bitmap(generated(color(30, 8, #FF0000))): 0, 0
+      }
+      flow(maxWidth: $fw, layout: horizontal) {
+        spacer($sw, 4);
+        @flow.offset($ox, 0) bitmap(generated(color(6, 4, #00FF00)));
+      }
+      text($font, "x", #FFFFFF): 0, 20
+      @switch(inner) {
+        x {
+          @(tw >= 60) bitmap(generated(color(5, 4, #FFFFFF))): 0, 40
+          @else bitmap(generated(color(3, 4, #888888))): 0, 40
+        }
+        default: bitmap(generated(color(9, 4, #0000FF))): 0, 40;
+      }
+    }
+    default: bitmap(generated(color(4, 4, #FF00FF))): 0, 0;
+  }
+}
+
+// An autotile tile picked by a param follows it (CodegenParityReviewTest)
+#cpTerrain autotile { format: cross tileSize: 4 demo: #fff, #000 }
+#cpAutotileIdx programmable(i:uint=0) {
+  bitmap(generated(autotile("cpTerrain", $i))): 0, 0
+}

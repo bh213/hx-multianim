@@ -8859,7 +8859,11 @@ class ProgrammableCodeGen {
 					case ShaderGround(_, w, h, args):
 						collectParamRefsImpl(w, refs); collectParamRefsImpl(h, refs);
 						for (a in args) collectParamRefsImpl(a.value, refs);
-					default:
+					case AutotileRef(autotileName, index):
+						collectParamRefsImpl(autotileName, refs); collectParamRefsImpl(index, refs);
+					case AutotileRegionSheet(autotileName, scale, font, fontColor):
+						collectParamRefsImpl(autotileName, refs); collectParamRefsImpl(scale, refs);
+						collectParamRefsImpl(font, refs); collectParamRefsImpl(fontColor, refs);
 				}
 			case TSReference(ref):
 				if (paramDefs != null && paramDefs.exists(ref) && !loopVarSubstitutions.exists(ref) && !refs.contains(ref))
@@ -9903,14 +9907,12 @@ class ProgrammableCodeGen {
 		}
 	}
 
-	/** Recursively collect every param ref reachable from an arm subtree — used at codegen
-	 *  time to gate the per-switch rebuild block in _applyVisibility. Walks: conditional
-	 *  keys & values, RVs in node payloads (BITMAP/TEXT/NINEPATCH/GRAPHICS/PIXELS/REPEAT/
-	 *  INTERACTIVE/DYNAMIC_REF/STATIC_REF/STATEANIM[_CONSTRUCT]/TILEMAP_FILL), pos/scale/rotation/alpha/
-	 *  tint/filter, and recurses into node.children. Mirrors the runtime
-	 *  MultiAnimBuilder.collectChildConditionalParamRefs + collectNodeParamRefs +
-	 *  collectSwitchArmExtraParamRefs union. Over-collection is safe (just causes a few
-	 *  no-op rebuilds); under-collection is the bug we're avoiding. */
+	/** Every param ref reachable from an arm subtree — used at codegen time to gate the per-switch
+	 *  rebuild block in _applyVisibility: its conditions, every node's payload whatever kind it is, and
+	 *  its position, scale, rotation, alpha, tint, filter, `@flow.*` offset and settings; a nested
+	 *  `@switch`'s key, patterns and arms. Exhaustive over NodeType. Mirrors the runtime
+	 *  MultiAnimBuilder.collectSubtreeParamRefs. Over-collection is safe (just causes a few no-op
+	 *  rebuilds); under-collection leaves what uses the param stale. */
 	static function collectArmParamRefs(nodes:Array<Node>, refs:Array<String>):Void {
 		if (nodes == null) return;
 		inline function addAll(arr:Array<String>):Void {
@@ -9920,6 +9922,9 @@ class ProgrammableCodeGen {
 			if (paramDefs != null && paramDefs.exists(r) && !loopVarSubstitutions.exists(r) && refs.indexOf(r) < 0)
 				refs.push(r);
 		}
+		final value = (rv:Null<ReferenceableValue>) -> if (rv != null) collectParamRefsImpl(rv, refs);
+		final tile = (ts:TileSource) -> addAll(collectTileSourceParamRefs(ts));
+		final name = (n:String) -> addRef(n);
 		for (node in nodes) {
 			// Conditional keys + value RVs
 			switch (node.conditionals) {
@@ -9937,94 +9942,144 @@ class ProgrammableCodeGen {
 				case ConditionalDefault | NoConditional:
 			}
 
-			// Type-specific payload RVs
-			switch (node.type) {
+			// Type-specific payload RVs. A value, so the compiler holds the switch to every NodeType
+			final kindRead:Bool = switch (node.type) {
+				case FLOW(maxW, maxH, minW, minH, lineH, colW, _, padTop, padBottom, padLeft, padRight, hSpacing, vSpacing, _, _, bgSheet, bgTile, _, _, _, _, _, _, _):
+					for (v in [maxW, maxH, minW, minH, lineH, colW, padTop, padBottom, padLeft, padRight, hSpacing, vSpacing, bgSheet, bgTile])
+						value(v);
+					true;
+				case SPACER(w, h):
+					value(w);
+					value(h);
+					true;
+				case MASK(w, h):
+					value(w);
+					value(h);
+					true;
 				case TEXT(td) | RICHTEXT(td):
-					if (td != null) {
-						collectParamRefsImpl(td.text, refs);
-						collectParamRefsImpl(td.color, refs);
-					}
+					if (td != null)
+						NodeValueTools.textValues(td, value, tile);
+					true;
 				case BITMAP(tileSource, _, _):
-					addAll(collectTileSourceParamRefs(tileSource));
+					tile(tileSource);
+					true;
 				case NINEPATCH(sheet, tilename, w, h, _, index, fps):
-					collectParamRefsImpl(sheet, refs);
-					collectParamRefsImpl(tilename, refs);
-					collectParamRefsImpl(w, refs);
-					collectParamRefsImpl(h, refs);
-					if (index != null) collectParamRefsImpl(index, refs);
-					if (fps != null) collectParamRefsImpl(fps, refs);
+					value(sheet);
+					value(tilename);
+					value(w);
+					value(h);
+					value(index);
+					value(fps);
+					true;
 				case GRAPHICS(elements):
 					for (item in elements) {
 						collectCoordinateParamRefs(item.pos, refs);
 						collectGraphicsElementParamRefs(item.element, refs);
 					}
+					true;
 				case PIXELS(shapes):
 					collectPixelShapesParamRefs(shapes, refs);
+					true;
+				case PARTICLES(particles):
+					NodeValueTools.particlesValues(particles, value, tile);
+					true;
 				case REPEAT(_, repeatType):
-					switch (repeatType) {
-						case StepIterator(dirX, dirY, repeats):
-							collectParamRefsImpl(repeats, refs);
-							if (dirX != null) collectParamRefsImpl(dirX, refs);
-							if (dirY != null) collectParamRefsImpl(dirY, refs);
-						case RangeIterator(start, end, step):
-							collectParamRefsImpl(start, refs);
-							collectParamRefsImpl(end, refs);
-							collectParamRefsImpl(step, refs);
-						default:
-					}
+					NodeValueTools.repeatValues(repeatType, value, name);
+					true;
+				case REPEAT2D(_, _, repeatTypeX, repeatTypeY):
+					NodeValueTools.repeatValues(repeatTypeX, value, name);
+					NodeValueTools.repeatValues(repeatTypeY, value, name);
+					true;
 				case INTERACTIVE(width, height, id, _, metadata):
-					collectParamRefsImpl(width, refs);
-					collectParamRefsImpl(height, refs);
-					collectParamRefsImpl(id, refs);
+					value(width);
+					value(height);
+					value(id);
 					if (metadata != null) {
 						for (entry in metadata) {
-							collectParamRefsImpl(entry.key, refs);
-							collectParamRefsImpl(entry.value, refs);
+							value(entry.key);
+							value(entry.value);
 						}
 					}
+					true;
 				case DYNAMIC_REF(_, programmableRef, parameters) | STATIC_REF(_, programmableRef, parameters):
-					collectParamRefsImpl(programmableRef, refs);
-					if (parameters != null) for (_ => v in parameters) collectParamRefsImpl(v, refs);
+					value(programmableRef);
+					if (parameters != null) for (_ => v in parameters) value(v);
+					true;
+				case PLACEHOLDER(type, source):
+					switch (type) {
+						case PHTileSource(ts): tile(ts);
+						case PHError | PHNothing:
+					}
+					switch (source) {
+						case PRSCallback(n) | PRSBuilderParameterSource(n):
+							value(n);
+						case PRSCallbackWithIndex(n, index):
+							value(n);
+							value(index);
+					}
+					true;
 				case TILEMAP_FILL(_, _, terrain, cols, rows):
-					collectParamRefsImpl(terrain, refs);
-					collectParamRefsImpl(cols, refs);
-					collectParamRefsImpl(rows, refs);
-				case FINAL_VAR(_, value):
+					value(terrain);
+					value(cols);
+					value(rows);
+					true;
+				case FINAL_VAR(_, v):
 					// An arm's @final is not in finalVarExprs (the arm is built at runtime): what uses
 					// it uses the params of its value (builder parity)
-					collectParamRefsImpl(value, refs);
+					value(v);
+					true;
 				case STATEANIM(_, initialState, selector):
-					collectParamRefsImpl(initialState, refs);
-					if (selector != null) for (_ => v in selector) collectParamRefsImpl(v, refs);
+					value(initialState);
+					if (selector != null) for (_ => v in selector) value(v);
+					true;
 				case STATEANIM_CONSTRUCT(initialState, construct, _):
-					collectParamRefsImpl(initialState, refs);
+					value(initialState);
 					if (construct != null) {
-						for (_ => value in construct) {
-							switch (value) {
+						for (_ => c in construct) {
+							switch (c) {
 								case IndexedSheet(_, animName, fps, _, _):
-									collectParamRefsImpl(animName, refs);
-									collectParamRefsImpl(fps, refs);
+									value(animName);
+									value(fps);
 							}
 						}
 					}
+					true;
 				case SWITCH(switchParamName, switchArms):
 					// Nested @switch — arm children live in the enum payload, not node.children.
-					// Add the inner switch's controlling param and recurse so an outer arm's
-					// gate also fires when the inner switch's params change.
+					// Its key, its arms' patterns and its arms' own params, so an outer arm's gate
+					// also fires when what the inner switch shows changes.
 					addRef(switchParamName);
 					if (switchArms != null)
-						for (innerArm in switchArms)
+						for (innerArm in switchArms) {
+							if (innerArm.pattern != null)
+								collectConditionalValueParamRefs(innerArm.pattern, refs);
 							collectArmParamRefs(innerArm.children, refs);
-				default:
+						}
+					true;
+				case POINT | LAYERS | APPLY | TILEGROUP | SLOT(_, _) | SLOT_CONTENT | TILEMAP_REF(_, _):
+					// Nothing written in the payload (an apply's values are its node's, a slot's params its own)
+					true;
+				case PROGRAMMABLE(_, _, _) | RELATIVE_LAYOUTS(_) | PATHS(_) | ANIMATED_PATH(_) | CURVES(_) | PALETTE(_) | CURSORS(_) | SOUNDS(_)
+					| MIX(_) | MUSIC(_) | AUTOTILE(_) | TILESET(_) | TILEMAP(_) | ATLAS2(_) | DATA(_):
+					// Root blocks: never built as an element of a programmable
+					true;
 			}
 
 			// Standard properties
 			if (node.pos != null) collectCoordinateParamRefs(node.pos, refs);
-			if (node.scale != null) collectParamRefsImpl(node.scale, refs);
-			if (node.rotation != null) collectParamRefsImpl(node.rotation, refs);
-			if (node.alpha != null) collectParamRefsImpl(node.alpha, refs);
-			if (node.tint != null) collectParamRefsImpl(node.tint, refs);
+			value(node.scale);
+			value(node.rotation);
+			value(node.alpha);
+			value(node.tint);
 			if (node.filter != null) collectFilterParamRefsImpl(node.filter, refs);
+			final flowProps = node.flowProperties;
+			if (flowProps != null) {
+				value(flowProps.offsetX);
+				value(flowProps.offsetY);
+			}
+			if (node.settings != null)
+				for (s in node.settings)
+					value(s.value);
 
 			// Recurse into children — captures @switch nested in arm content too
 			if (node.children != null)

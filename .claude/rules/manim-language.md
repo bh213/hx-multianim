@@ -151,8 +151,7 @@ defaults for the rest; a colour by name too (`vignette(color: black)`); an enum 
 word/palette parameter is its value's name. A `$param` sets the uniform in place
 (`EngineShaderFilter.setParams`), never makes the filter again (but an `apply`'s filter and one in a
 `group` are made again; in a `@switch` arm a param only the arm's shaders use is set in place, any
-other change, or an arm with elements whose params the arm's collectors miss (`armRefsAllKnown`),
-builds the arm again). A ground: `bitmap(generated(shader(water, 320, 180, speed: 0.4)))` — only a
+other change builds the arm again). A ground: `bitmap(generated(shader(water, 320, 180, speed: 0.4)))` — only a
 bitmap's own tile (not in `center()`/`pivot()`, a param value, a tilegroup), no `filter:` on it or an
 `apply` in it (parse errors; wrap in `layers()` for one). Over the
 whole stage: `ScreenManager.setStageShader(filter, fade)`. Time: `ShaderClock` (advanced by
