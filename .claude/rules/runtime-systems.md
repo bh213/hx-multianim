@@ -522,6 +522,7 @@ Small Haxe helpers on top of Heaps.
 
 - `solidTile(color:Int, w:Int, h:Int):h2d.Tile` — pixel-perfect solid-color tile, strict-D semantics (top byte of `color` = alpha). Top-byte=0 is treated as opaque to keep bare `0xRRGGBB` callers (e.g. `TileHelper.generatedRectColor(16, 16, 0x00FFFF)`) rendering as before. For fully transparent, use `h2d.Tile.fromColor` directly. Backed by a shared 1×1 GPU texture stretched to `(w, h)`.
 - `solidBitmap(color:Int, w:Int, h:Int, ?parent:h2d.Object):h2d.Bitmap` — thin `h2d.Bitmap` wrapper around `solidTile`. Same alpha handling.
+- `strokeRoundedRect(g, x, y, w, h, radius)` — a rounded rectangle's outline in `g`'s line style, from `roundedRectOutline` (Heaps' corners, no point twice in a row). Heaps' `drawRoundedRect` repeats each side's end point, and WebGL then draws only the corners of an outline; `graphics(roundrect(…))` outlines use this in the builder and codegen.
 - `safeDetach(obj)` — detach from parent without triggering Heaps' `onRemove()` cascade (which destroys `h2d.Graphics` content). Use when reparenting live scene objects.
 - `traceH2dObjectTreeString(obj)` / `getH2dObjectTreeString(obj)` — debug dump of an h2d subtree.
 

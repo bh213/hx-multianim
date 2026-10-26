@@ -38,6 +38,13 @@ class UIMultiAnimTextInput implements UIElement implements UIElementDisablable i
 	var lastPlaceholderState:Bool = true;
 	var controllable:Null<Controllable> = null;
 	var enterPending:Bool = false;
+	/**
+	 * A push asks for focus; update() gives it. Focused at once, from the controller's handler of the
+	 * window's event, the field was blurred again a frame later when Heaps' SceneEvents handled the
+	 * same push, which did not land on the h2d.TextInput itself (its interactive is only as wide as
+	 * `inputWidth` or its text), so a field never took typing.
+	 */
+	var focusPending:Bool = false;
 
 	public var disabled(default, set):Bool = false;
 	public var placeholder:String;
@@ -202,7 +209,7 @@ class UIMultiAnimTextInput implements UIElement implements UIElementDisablable i
 					result.setParameter("status", "normal");
 			case OnPush(_):
 				if (!focused)
-					textInput.focus();
+					focusPending = true;
 			case OnRelease(_):
 			case OnReleaseOutside(_):
 			case OnPushOutside(_):
@@ -251,6 +258,11 @@ class UIMultiAnimTextInput implements UIElement implements UIElementDisablable i
 	// --- UIElementUpdatable ---
 
 	public function update(dt:Float) {
+		if (focusPending) {
+			focusPending = false;
+			if (!disabled && !focused)
+				textInput.focus();
+		}
 		if (enterPending) {
 			enterPending = false;
 			if (tabGroup != null)

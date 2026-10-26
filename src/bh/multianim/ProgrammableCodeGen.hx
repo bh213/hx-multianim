@@ -5726,7 +5726,7 @@ class ProgrammableCodeGen {
 							var c:Int = $cExpr;
 							if (c >>> 24 == 0) c |= 0xFF000000;
 							_g.lineStyle($lwExpr, c);
-							_g.drawRoundedRect($posXExpr, $posYExpr, $wExpr, $hExpr, $radExpr);
+							bh.base.HeapsUtils.strokeRoundedRect(_g, $posXExpr, $posYExpr, $wExpr, $hExpr, $radExpr);
 							_g.lineStyle();
 						});
 				}

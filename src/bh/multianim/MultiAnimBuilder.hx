@@ -6377,7 +6377,7 @@ class MultiAnimBuilder {
 							g.endFill();
 						case GSLineWidth(lw):
 							g.lineStyle(resolveAsNumber(lw), resolvedColor);
-							g.drawRoundedRect(elementPos.x, elementPos.y, resolveAsNumber(width), resolveAsNumber(height), rad);
+							bh.base.HeapsUtils.strokeRoundedRect(g, elementPos.x, elementPos.y, resolveAsNumber(width), resolveAsNumber(height), rad);
 							g.lineStyle();
 					}
 				case GELine(color, lineWidth, start, end):

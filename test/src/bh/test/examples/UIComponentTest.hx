@@ -979,6 +979,22 @@ class UIComponentTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testTextInputTakesFocusOnTheUpdateAfterAPush():Void {
+		ensureTestFont();
+		final builder = BuilderTestBase.builderFromSource(TEXTINPUT_MANIM);
+		final input = UIMultiAnimTextInput.create(builder, "textInput", {font: "testfont"});
+		final stage = bh.test.VisualTestBase.appInstance.s2d;
+		stage.addChild(input.getObject());
+		final mock = new MockControllable();
+		input.onEvent(UITestHarness.createEventWrapper(OnPush(0), mock, new h2d.col.Point(5, 5)));
+		Assert.isFalse(input.hasFocus(), "not from the push itself: Heaps' own events for that push would blur it again");
+		input.update(0);
+		Assert.isTrue(input.hasFocus(), "focused by the update after the push");
+		input.blur();
+		input.getObject().remove();
+	}
+
+	@Test
 	public function testTextInputDisabledState():Void {
 		ensureTestFont();
 		var builder = BuilderTestBase.builderFromSource(TEXTINPUT_MANIM);
