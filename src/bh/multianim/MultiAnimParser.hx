@@ -1813,6 +1813,10 @@ class MultiAnimParser {
 				else
 					throw err('array default not supported in this context');
 			case PPTTile:
+				// A tile another programmable holds, given on as it is (a ref's argument, a forward)
+				if (Std.isOfType(value, ResolvedIndexParameters))
+					(value : ResolvedIndexParameters);
+				else
 				#if !macro
 				if (Std.isOfType(value, h2d.Tile))
 					TileSourceValue(TSTile(value));

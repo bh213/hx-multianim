@@ -46,6 +46,20 @@ private enum MacroSlotKey {
 	Indexed2D(name:String, indexX:Int, indexY:Int);
 }
 
+/** A conditional element the visibility pass shows and hides. `deferred`: the method that builds it
+ *  on its first show (`_mk_<field>`), when its arm was hidden at create — its field is null until then. */
+private typedef VisibilityEntry = {
+	fieldName:String,
+	condition:Expr,
+	paramRefs:Array<String>,
+	sentinelField:String,
+	parentField:String,
+	layer:Int,
+	restoreFlowPropsExpr:Null<Expr>,
+	?spliceMarker:Bool,
+	?deferred:String,
+}
+
 /**
  * Compile-time macro that generates typed factory + instance classes for programmable UI components from .manim definitions.
  *
@@ -72,7 +86,10 @@ private enum MacroSlotKey {
 class ProgrammableCodeGen {
 	static var elementCounter:Int = 0;
 	static var expressionUpdates:Array<{fieldName:String, updateExpr:Expr, paramRefs:Array<String>}> = [];
-	static var visibilityEntries:Array<{fieldName:String, condition:Expr, paramRefs:Array<String>, sentinelField:String, parentField:String, layer:Int, restoreFlowPropsExpr:Null<Expr>, ?spliceMarker:Bool}> = [];
+	static var visibilityEntries:Array<VisibilityEntry> = [];
+	// The instance constructor's expressions: an element built there (not in a @switch arm's or a
+	// runtime loop's code) may be deferred to its first show
+	static var rootCtorExprs:Null<Array<Expr>> = null;
 	// Fields of the flows built so far: a conditional or param-dependent repeat in one is spliced
 	// into it (FlowSpliceMarker), as by the builder
 	static var flowFieldNames:Map<String, Bool> = new Map();
@@ -685,8 +702,10 @@ class ProgrammableCodeGen {
 		}
 
 		// Process children — parentField=null means add directly to this (the h2d.Object root)
+		rootCtorExprs = constructorExprs;
 		if (rootNode.children != null)
 			processChildren(rootNode.children, rootParentField, instanceFields, constructorExprs, null, pos);
+		rootCtorExprs = null;
 
 		// 3b. Multi-element named: create ProgrammableUpdatable fields + init
 		for (name => elementFieldsList in namedElements) {
@@ -757,6 +776,8 @@ class ProgrammableCodeGen {
 				transParamExpr = macro if (_changedParam == $v{tpLit} || (this._visBatch != null && this._visBatch.indexOf($v{tpLit}) >= 0)) $v{tpLit} else $transParamExpr;
 				tpi--;
 			}
+			final visFrom = visExprs.length;
+			final hideFrom = hideExprs.length;
 			if (sentinelRef != null && entry.spliceMarker == true) {
 				// A repeat spliced into a flow: the marker leaves and comes back with its items, at
 				// once (builder parity: no one object to animate)
@@ -846,6 +867,28 @@ class ProgrammableCodeGen {
 				} else {
 					visExprs.push(macro $fieldRef.visible = ${entry.condition});
 				}
+			}
+			// An element not made yet — one built on its first show, or under one — is skipped; one built
+			// on its first show is made when its arm matches with its sentinel in place, right after it
+			// (taken out again for a transition to bring it in)
+			final deferred = entry.deferred;
+			for (i in visFrom...visExprs.length) {
+				final body = visExprs[i];
+				visExprs[i] = if (deferred != null && sentinelRef != null) {
+					final makeIt = usesTransition ? macro {
+						$p{["this", deferred]}();
+						$parentRef.removeChild($fieldRef);
+					} : macro $p{["this", deferred]}();
+					macro {
+						if ($fieldRef == null && $sentinelRef != null && $sentinelRef.parent != null && ${entry.condition})
+							$makeIt;
+						if ($fieldRef != null) $body;
+					};
+				} else macro if ($fieldRef != null) $body;
+			}
+			for (i in hideFrom...hideExprs.length) {
+				final body = hideExprs[i];
+				hideExprs[i] = macro if ($fieldRef != null) $body;
 			}
 		}
 		// Repeat rebuild: call rebuild method when count param changes
@@ -2175,6 +2218,43 @@ class ProgrammableCodeGen {
 		}
 	}
 
+	/** What an element's code may have registered beyond its own field, visibility and updates: when
+	 *  any of it changed while the element was made, it is not deferred (what registered it reads
+	 *  the field at create or from outside the visibility pass). */
+	static function deferralGuard():String {
+		var named = 0;
+		for (l in namedElements) named += l.length;
+		var indexed = 0;
+		for (l in indexedNamedElements) indexed += l.length;
+		for (l in indexed2DNamedElements) indexed += l.length;
+		return [
+			named, indexed, slotEntries.length, switchUpdateEntries.length, switchSinkFields.length, repeatSinkFields.length,
+			Lambda.count(dynamicRefFields), dynamicNameRefFields.length, literalDynamicRefSiteFields.length,
+			staticRefRebuildFields.length, Lambda.count(indexedDynamicRefFields), hexLayoutFieldCount, repeatRebuildEntries.length,
+			applyEntries.length, tileGroupCounter, particlesCounter, Lambda.count(generatedStyleSetters),
+			Lambda.count(generatedImageSetters), needsLayoutAlign ? 1 : 0, hasBuilderParameterPlaceholders ? 1 : 0
+		].join(",");
+	}
+
+	/** A subtree whose kinds keep no state outside their fields: one that may be built on its first show. */
+	static function deferrableSubtree(node:Node):Bool {
+		final kindOk = switch node.type {
+			case BITMAP(_, _, _) | TEXT(_) | RICHTEXT(_) | NINEPATCH(_, _, _, _, _, _, _) | GRAPHICS(_) | PIXELS(_) | POINT | LAYERS
+				| MASK(_, _) | FLOW(_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _) | SPACER(_, _)
+				| STATEANIM(_, _, _) | STATEANIM_CONSTRUCT(_, _, _) | STATIC_REF(_, _, _) | PLACEHOLDER(_, _) | INTERACTIVE(_, _, _, _, _)
+				| FINAL_VAR(_, _):
+				true;
+			default: false;
+		}
+		if (!kindOk)
+			return false;
+		if (node.children != null)
+			for (c in node.children)
+				if (!deferrableSubtree(c))
+					return false;
+		return true;
+	}
+
 	static function processNode(node:Node, parentField:String, fields:Array<Field>, ctorExprs:Array<Expr>, siblings:Array<{node:Node, fieldName:String}>, pos:Position):Void {
 		currentProcessingNode = node;
 		// Handle REPEAT/REPEAT2D specially — they unroll or pool children
@@ -2210,6 +2290,12 @@ class ProgrammableCodeGen {
 		}
 
 		final fieldName = "_e" + (elementCounter++);
+		// A conditional element made in the constructor may be built on its first show instead
+		// (builder parity: a hidden arm is not built, so its frames, fonts and refs are not looked up)
+		final deferStart = ctorExprs.length;
+		final mayDefer = ctorExprs == rootCtorExprs && !node.conditionals.match(NoConditional) && runtimeLoopVars.keys().hasNext() == false
+			&& currentRepeatSinkField == null && deferrableSubtree(node);
+		final guardBefore = mayDefer ? deferralGuard() : null;
 		final createResult = generateCreateExpr(node, fieldName, pos);
 		if (createResult == null)
 			return;
@@ -2367,7 +2453,9 @@ class ProgrammableCodeGen {
 		}
 
 		// Create sentinel before adding conditional element to parent
+		final sentinelStart = ctorExprs.length;
 		final sentinelName = createSentinelIfConditional(node, parentField, fields, ctorExprs, pos);
+		final sentinelEnd = ctorExprs.length;
 
 		// Add to parent (parentField == null means add to this directly)
 		final parentRef = parentField != null ? (macro $p{["this", parentField]}) : (macro this);
@@ -2561,10 +2649,12 @@ class ProgrammableCodeGen {
 
 		// Visibility
 		final visCond = generateVisibilityCondition(node, siblings, fieldName, pos);
-		if (visCond != null) {
-			visibilityEntries.push({fieldName: fieldName, condition: visCond, paramRefs: extractConditionalParamRefs(node, siblings),
-				sentinelField: sentinelName, parentField: parentField, layer: node.layer, restoreFlowPropsExpr: flowRestoreExpr});
-		}
+		final visEntry:Null<VisibilityEntry> = visCond == null ? null : ({
+			fieldName: fieldName, condition: visCond, paramRefs: extractConditionalParamRefs(node, siblings),
+			sentinelField: sentinelName, parentField: parentField, layer: node.layer, restoreFlowPropsExpr: flowRestoreExpr
+		} : VisibilityEntry);
+		if (visEntry != null)
+			visibilityEntries.push(visEntry);
 
 		siblings.push({node: node, fieldName: fieldName});
 
@@ -2577,6 +2667,44 @@ class ProgrammableCodeGen {
 				processChildren(node.children, createResult.childrenParentField != null ? createResult.childrenParentField : fieldName, fields, ctorExprs,
 					[], pos);
 		}
+
+		// Built on its first show: everything made for it but its sentinel goes into `_mk_<field>`, which
+		// puts it right after the sentinel; the constructor calls it when the arm matches at create
+		if (mayDefer && visEntry != null && sentinelName != null && deferralGuard() == guardBefore) {
+			final sentinelRef = macro $p{["this", sentinelName]};
+			final made:Array<Expr> = ctorExprs.slice(deferStart, sentinelStart);
+			made.push(addAfterSentinelExpr(parentRef, fieldRef, sentinelRef, node.layer));
+			for (e in ctorExprs.slice(sentinelEnd + 1)) made.push(e);
+			final sentinelExprs = ctorExprs.slice(sentinelStart, sentinelEnd);
+			ctorExprs.resize(deferStart);
+			for (e in sentinelExprs) ctorExprs.push(e);
+			final makeName = "_mk" + fieldName;
+			// One that fails to build (a frame its sheet has not) is not left half made: the next show tries again
+			final madeBlock = macro $b{made};
+			fields.push(makeMethod(makeName, [
+				macro try $madeBlock catch (_e:Dynamic) {
+					if ($fieldRef != null) {
+						$fieldRef.remove();
+						$fieldRef = null;
+					}
+					throw _e;
+				}
+			], [], macro :Void, [APrivate], pos));
+			ctorExprs.push(macro if ($visCond) $p{["this", makeName]}());
+			visEntry.deferred = makeName;
+		}
+	}
+
+	/** Puts `fieldRef` right after its sentinel, as the visibility pass shows an element (the sentinel's
+	 *  index in its parent, or in its layer). */
+	static function addAfterSentinelExpr(parentRef:Expr, fieldRef:Expr, sentinelRef:Expr, layer:Int):Expr {
+		return if (layer != -1) {
+			final layerVal = layer;
+			macro {
+				final _lp = cast($parentRef, h2d.Layers);
+				_lp.add($fieldRef, $v{layerVal}, _lp.getChildIndexInLayer($sentinelRef) + 1);
+			};
+		} else macro $parentRef.addChildAt($fieldRef, $parentRef.getChildIndex($sentinelRef) + 1);
 	}
 
 	/** Register a literal-target dynamicRef lookup key, mirroring the builder's collision
@@ -5156,12 +5284,16 @@ class ProgrammableCodeGen {
 		// Build parameter map at runtime: new Map<String,Dynamic>()
 		final mapBuildExprs:Array<Expr> = [macro final _refParams = new Map<String, Dynamic>()];
 		final keys:Array<String> = [];
+		// the target when it is named literally (a parameter naming it is known at runtime only)
+		final literalTarget:Null<String> = switch refNameExpr.expr {
+			case EConst(CString(s, _)): s;
+			default: null;
+		};
 		if (parameters != null) {
 			for (key => val in parameters) {
 				final keyExpr:Expr = macro $v{key};
-				// Forward enum refs by NAME (not raw Int index) so buildStaticRef ->
-				// dynamicValueToIndex accepts them — same as the dynamicRef sites.
-				final valExpr = dynamicRefForwardValueExpr(val);
+				// By the target's parameter types, as the dynamicRef sites
+				final valExpr = dynamicRefForwardValueExpr(val, refNameExpr, key, externalReference, literalTarget);
 				mapBuildExprs.push(macro _refParams.set($keyExpr, $valExpr));
 				keys.push(key);
 			}
@@ -5298,7 +5430,7 @@ class ProgrammableCodeGen {
 		if (parameters != null) {
 			for (key => val in parameters) {
 				final keyExpr:Expr = macro $v{key};
-				final valExpr = dynamicRefForwardValueExpr(val, programmableRef, key);
+				final valExpr = dynamicRefForwardValueExpr(val, refNameExpr, key, externalReference, programmableRef);
 				mapBuildExprs.push(macro _refParams.set($keyExpr, $valExpr));
 			}
 		}
@@ -5338,7 +5470,7 @@ class ProgrammableCodeGen {
 			final fwdUpdateExprs:Array<Expr> = [macro final _refParams = new Map<String, Dynamic>()];
 			for (key => val in parameters) {
 				final keyExpr:Expr = macro $v{key};
-				final valExpr = dynamicRefForwardValueExpr(val, programmableRef, key);
+				final valExpr = dynamicRefForwardValueExpr(val, refNameExpr, key, externalReference, programmableRef);
 				fwdUpdateExprs.push(macro _refParams.set($keyExpr, $valExpr));
 			}
 			fwdUpdateExprs.push(macro {
@@ -5416,7 +5548,7 @@ class ProgrammableCodeGen {
 		if (parameters != null) {
 			for (key => val in parameters) {
 				final keyExpr:Expr = macro $v{key};
-				final valExpr = dynamicRefForwardValueExpr(val);
+				final valExpr = dynamicRefForwardValueExpr(val, resolveNameExpr, key, externalReference);
 				mapBuildExprs.push(macro _refParams.set($keyExpr, $valExpr));
 			}
 		}
@@ -5438,7 +5570,7 @@ class ProgrammableCodeGen {
 		if (parameters != null) {
 			for (key => val in parameters) {
 				final keyExpr:Expr = macro $v{key};
-				final valExpr = dynamicRefForwardValueExpr(val);
+				final valExpr = dynamicRefForwardValueExpr(val, resolveNameExpr, key, externalReference);
 				rebuildMapExprs.push(macro _refParams.set($keyExpr, $valExpr));
 			}
 		}
@@ -5475,7 +5607,8 @@ class ProgrammableCodeGen {
 				if (parameters != null) {
 					for (key => val in parameters) {
 						final keyExpr:Expr = macro $v{key};
-						final valExpr = dynamicRefForwardValueExpr(val);
+						// to the template showing now
+						final valExpr = dynamicRefForwardValueExpr(val, macro $p{["this", nameField]}, key, externalReference);
 						fwdUpdateExprs.push(macro _refParams.set($keyExpr, $valExpr));
 					}
 				}
@@ -6261,20 +6394,19 @@ class ProgrammableCodeGen {
 				Context.error('ProgrammableCodeGen: extraPoint reference: element "$ref" not found in named elements', Context.currentPos());
 				return macro 0;
 			}
-			final elemRef = macro $p{["this", elementFields[0]]};
-			final pointNameExpr = argExprs[0];
+			final epExpr = extraPointOfExpr(elementFields, argExprs[0]);
 			final hasFallback = argExprs.length >= 3;
 			final fbExpr = if (hasFallback) (component == "x" ? argExprs[1] : argExprs[2]) else null;
 			if (hasFallback) {
 				if (component == "x")
-					return macro { final _ep = (cast $elemRef : bh.stateanim.AnimationSM).getExtraPoint($pointNameExpr); if (_ep != null) (_ep.x : Float) else $fbExpr; };
+					return macro { final _ep = $epExpr; if (_ep != null) (_ep.x : Float) else $fbExpr; };
 				else
-					return macro { final _ep = (cast $elemRef : bh.stateanim.AnimationSM).getExtraPoint($pointNameExpr); if (_ep != null) (_ep.y : Float) else $fbExpr; };
+					return macro { final _ep = $epExpr; if (_ep != null) (_ep.y : Float) else $fbExpr; };
 			} else {
 				if (component == "x")
-					return macro { final _ep = (cast $elemRef : bh.stateanim.AnimationSM).getExtraPoint($pointNameExpr); if (_ep == null) throw "extraPoint not found"; (_ep.x : Float); };
+					return macro { final _ep = $epExpr; if (_ep == null) throw "extraPoint not found"; (_ep.x : Float); };
 				else
-					return macro { final _ep = (cast $elemRef : bh.stateanim.AnimationSM).getExtraPoint($pointNameExpr); if (_ep == null) throw "extraPoint not found"; (_ep.y : Float); };
+					return macro { final _ep = $epExpr; if (_ep == null) throw "extraPoint not found"; (_ep.y : Float); };
 			}
 		}
 
@@ -6558,19 +6690,19 @@ class ProgrammableCodeGen {
 					Context.error('ProgrammableCodeGen: extraPoint reference: element "$elementName" not found in named elements', pos);
 					{x: macro 0.0, y: macro 0.0};
 				} else {
-					final elemRef = macro $p{["this", elementFields[0]]};
+					final epExpr = extraPointOfExpr(elementFields, macro $v{pointName});
 					final fallbackXY = fallback != null ? coordsToXYExprs(fallback, pos, node) : null;
 					final fbX = fallbackXY != null ? fallbackXY.x : null;
 					final fbY = fallbackXY != null ? fallbackXY.y : null;
 					{
 						x: if (fbX != null)
-							macro { final _ep = (cast $elemRef : bh.stateanim.AnimationSM).getExtraPoint($v{pointName}); if (_ep != null) (_ep.x : Float) else $fbX; }
+							macro { final _ep = $epExpr; if (_ep != null) (_ep.x : Float) else $fbX; }
 						else
-							macro { final _ep = (cast $elemRef : bh.stateanim.AnimationSM).getExtraPoint($v{pointName}); if (_ep == null) throw $v{'extraPoint: point "$pointName" not found'}; (_ep.x : Float); },
+							macro { final _ep = $epExpr; if (_ep == null) throw $v{'extraPoint: point "$pointName" not found'}; (_ep.x : Float); },
 						y: if (fbY != null)
-							macro { final _ep = (cast $elemRef : bh.stateanim.AnimationSM).getExtraPoint($v{pointName}); if (_ep != null) (_ep.y : Float) else $fbY; }
+							macro { final _ep = $epExpr; if (_ep != null) (_ep.y : Float) else $fbY; }
 						else
-							macro { final _ep = (cast $elemRef : bh.stateanim.AnimationSM).getExtraPoint($v{pointName}); if (_ep == null) throw $v{'extraPoint: point "$pointName" not found'}; (_ep.y : Float); }
+							macro { final _ep = $epExpr; if (_ep == null) throw $v{'extraPoint: point "$pointName" not found'}; (_ep.y : Float); }
 					};
 				}
 			case EXTRA_POINT_ANIM(filename, animName, pointName, selectorRefs, fallback):
@@ -8402,44 +8534,57 @@ class ProgrammableCodeGen {
 
 	// ==================== Expression Translation ====================
 
-	// Forwarded dynamicRef value expr. Resolved by the TARGET param's declared type when
-	// the target programmable is known at macro time (builder parity: the runtime's
-	// resolveReferenceableValue dispatches on the target's DefinitionType — e.g.
-	// `label => $a + $b` into a string param CONCATENATES "1"+"2", it doesn't add).
-	// Fallback by source shape: an enum-typed parent reference forwards the enum NAME
-	// string — the child's PPTEnum setParameter accepts names, while the raw Int index
-	// (the enum field's storage) is rejected by dynamicValueToIndex. Every other value
-	// keeps its raw representation so non-string forwards avoid a string round-trip on
-	// the forwarding hot path.
-	static function dynamicRefForwardValueExpr(val:ReferenceableValue, ?targetProgrammable:String, ?forwardParamName:String):Expr {
-		if (targetProgrammable != null && forwardParamName != null && allParsedNodes != null) {
+	/** A named stateanim's point where it is drawn, of the fields its name has (one per `@()` arm):
+	 *  ProgrammableBuilder.extraPointOf, as the builder's resolveExtraPointRef. */
+	static function extraPointOfExpr(elementFields:Array<String>, pointNameExpr:Expr):Expr {
+		final fields:Array<Expr> = [for (f in elementFields) macro (cast $p{["this", f]} : h2d.Object)];
+		if (elementFields.length < 2)
+			return macro bh.multianim.ProgrammableBuilder.extraPointOf([$a{fields}], $pointNameExpr);
+		// The one whose arm matches: before the visibility pass every arm's element is still in place
+		var chosen:Expr = macro null;
+		var i = elementFields.length - 1;
+		while (i >= 0) {
+			final f = elementFields[i];
+			final entry = Lambda.find(visibilityEntries, e -> e.fieldName == f);
+			final fieldExpr = fields[i];
+			chosen = entry != null ? macro(${entry.condition} ? $fieldExpr : $chosen) : fieldExpr;
+			i--;
+		}
+		return macro {
+			final _drawn:Null<h2d.Object> = $chosen;
+			bh.multianim.ProgrammableBuilder.extraPointOf(_drawn != null ? [_drawn] : [$a{fields}], $pointNameExpr);
+		};
+	}
+
+	// A ref's argument expr, lowered by the TARGET param's declared type (builder parity: the
+	// runtime's resolveRefArguments dispatches on the target's DefinitionType — e.g.
+	// `label => $a + $b` into a string param CONCATENATES "1"+"2", it doesn't add). A string or
+	// enum target takes text (an enum by its value's NAME, which the child's setParameter
+	// accepts); every other value keeps its raw representation so non-string forwards avoid a
+	// string round-trip on the forwarding hot path. The target is known at macro time when it is
+	// this file's programmable named literally; another file's (`external(...)`), or one a
+	// parameter names, is asked at runtime (`refArgumentIsText`) — the host's own programmable
+	// of the same name is another programmable.
+	static function dynamicRefForwardValueExpr(val:ReferenceableValue, targetNameExpr:Expr, forwardParamName:String,
+			externalReference:Null<String>, ?targetProgrammable:String):Expr {
+		if (externalReference == null && targetProgrammable != null && allParsedNodes != null) {
 			final targetNode = allParsedNodes.get(targetProgrammable);
 			if (targetNode != null) {
 				switch (targetNode.type) {
 					case PROGRAMMABLE(_, tparams, _) if (tparams != null):
 						final tdef = tparams.get(forwardParamName);
-						if (tdef != null) {
-							switch (tdef.type) {
-								case PPTString | PPTEnum(_): return rvToExpr(val, true);
-								default:
-							}
+						return switch tdef?.type {
+							case PPTString | PPTEnum(_): rvToExpr(val, true);
+							default: rvToExpr(val, false);
 						}
 					default:
 				}
 			}
 		}
-		switch (val) {
-			case RVReference(ref):
-				final def = paramDefs.get(ref);
-				if (def != null) {
-					switch (def.type) {
-						case PPTEnum(_): return rvToExpr(val, true);
-						default:
-					}
-				}
-			default:
-		}
-		return rvToExpr(val, false);
+		final textExpr = rvToExpr(val, true);
+		final rawExpr = rvToExpr(val, false);
+		final extExpr:Expr = externalReference != null ? macro $v{externalReference} : macro null;
+		return macro(this._pb.refArgumentIsText($targetNameExpr, $v{forwardParamName}, $extExpr) ? ($textExpr : Dynamic) : ($rawExpr : Dynamic));
 	}
 
 	/**
@@ -9434,16 +9579,16 @@ class ProgrammableCodeGen {
 					Context.error('ProgrammableCodeGen: extraPoint reference: element "$elementName" not found in named elements', pos);
 					null;
 				} else {
-					final elemRef = macro $p{["this", elementFields[0]]};
+					final epExpr = extraPointOfExpr(elementFields, macro $v{pointName});
 					final fallbackExpr = fallback != null ? generatePositionExpr(fallback, fieldName, pos, node) : null;
 					if (fallbackExpr != null)
 						macro {
-							final _ep = (cast $elemRef : bh.stateanim.AnimationSM).getExtraPoint($v{pointName});
+							final _ep = $epExpr;
 							if (_ep != null) $fieldRef.setPosition(_ep.x, _ep.y) else $fallbackExpr;
 						}
 					else
 						macro {
-							final _ep = (cast $elemRef : bh.stateanim.AnimationSM).getExtraPoint($v{pointName});
+							final _ep = $epExpr;
 							if (_ep == null) throw $v{'extraPoint: point "$pointName" not found'};
 							$fieldRef.setPosition(_ep.x, _ep.y);
 						};

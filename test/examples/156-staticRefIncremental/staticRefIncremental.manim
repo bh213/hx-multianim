@@ -117,3 +117,15 @@ import "test/examples/156-staticRefIncremental/sriImported.manim" as "ext"
 #sriSameName programmable(c:uint=6) {
   staticRef(external(ext), sriSameName, w=>$c): 0, 0
 }
+
+// The importer's own #sriExtLabel takes an int: it lends no type to the imported one. Its @final
+// T stands for an enum and is given as the enum's value (StaticRefIncrementalTest)
+#sriExtLabel programmable(label:int=0) {
+  bitmap(generated(color(2, 2, #ffffff))): 0, 0
+}
+
+#sriArgTypes programmable(i:uint=5, mode:[dim, bright]=bright) {
+  @final T = $mode
+  dynamicRef(external(ext), sriExtLabel, label => $i + 1, tone => $T): 0, 0
+  staticRef(external(ext), sriExtLabel, label => $i + 1, tone => $T): 0, 30
+}

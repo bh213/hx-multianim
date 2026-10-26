@@ -2196,18 +2196,9 @@ class IncrementalUpdateContext {
 				final refs:Array<String> = [];
 				MultiAnimBuilder.collectParamRefs(value, refs);
 				if (refs.length > 0) {
-					final capturedValue = value;
-					final paramType = childDefs.get(childParam)?.type;
-					final resolveFn:Void->Dynamic = switch paramType {
-						case PPTString: () -> builder.resolveAsString(capturedValue);
-						case PPTColor: () -> builder.resolveAsColorInteger(capturedValue);
-						case PPTFloat: () -> builder.resolveAsNumber(capturedValue);
-						// Enums forward by NAME: resolveAsInteger throws on an enum-valued
-						// reference (stored as Index(...)), and setParameter's enum path
-						// accepts the string name, not the index.
-						case PPTEnum(_): () -> builder.resolveAsString(capturedValue);
-						default: () -> builder.resolveAsInteger(capturedValue);
-					};
+					// By the child's parameter type, as at the build: an enum by its name, a bool, a tile,
+					// flags and an array as what they are
+					final resolveFn = builder.forwardResolveFn(value, childDefs.get(childParam)?.type, childNode);
 					final scope = binding.scope;
 					final scopedFn:Void->Dynamic = scope == null ? resolveFn : () -> builder.inScope(scope, resolveFn);
 					trackDynamicRef(result.incrementalContext, childParam, scopedFn, refs, result.object);
@@ -3790,13 +3781,16 @@ class MultiAnimBuilder {
 		switch v {
 			case RVArray(array):
 				return [for (v in array) resolveAsString(v)];
-			case RVArrayReference(refArr):
+			case RVArrayReference(refArr) | RVReference(refArr):
+				// `$items` written as an argument is a plain reference to the array parameter
 				final arrayVal = indexedParams.get(refArr);
 				switch arrayVal {
 					case ArrayString(strArray): return strArray;
 					case ExpressionAlias(expr): return resolveAsArray(expr);
 					default: throw builderError('array reference ${refArr} is not an array but ${arrayVal}');
 				}
+			case RVParenthesis(e):
+				return resolveAsArray(e);
 			case RVTernary(condition, ifTrue, ifFalse):
 				return if (resolveAsBool(condition)) resolveAsArray(ifTrue) else resolveAsArray(ifFalse);
 			default:
@@ -4104,6 +4098,7 @@ class MultiAnimBuilder {
 				switch val {
 					case Value(val): return val;
 					case ValueF(val): return Std.int(val);
+					case Flag(val): return val;
 					case StringValue(s): stringToInt(s);
 					case ExpressionAlias(expr): resolveAsInteger(expr);
 					case null: throw builderError('reference ${ref} is null');
@@ -6176,17 +6171,36 @@ class MultiAnimBuilder {
 		if (named == null || named.length == 0)
 			throw builderError('extraPoint reference $$${elementName}.extraPoint("$pointName"): element "$elementName" not found. '
 				+ 'Ensure it is defined before this element');
-		final animSM = switch named[0].object {
+		// Of a name in several @() arms, the one drawn (in the scene graph); the first when none is yet
+		var entry = named[0];
+		for (n in named)
+			if (toh2dObject(n.object).parent != null) {
+				entry = n;
+				break;
+			}
+		final animSM = switch entry.object {
 			case StateAnim(a): a;
 			default: throw builderError('extraPoint reference $$${elementName}.extraPoint("$pointName"): "$elementName" is not a stateanim element');
 		}
 		final pt = animSM.getExtraPoint(pointName);
 		if (pt != null)
-			return new FPoint(pt.x, pt.y);
+			return extraPointWhereDrawn(animSM, pt.x, pt.y);
 		if (fallback != null)
 			return calculatePosition(fallback, gridCoordinateSystem, hexCoordinateSystem);
 		throw builderError('extraPoint $$${elementName}.extraPoint("$pointName"): point "$pointName" not found in current animation '
 			+ '"${animSM.current != null ? animSM.current.name : "(none)"}"');
+	}
+
+	/** An element's point (`x`, `y` in its own space) where the element draws it: placed, scaled and
+	 *  turned as it is, in the space it is placed in. Codegen: ProgrammableBuilder.extraPointOf. */
+	public static function extraPointWhereDrawn(element:h2d.Object, x:Float, y:Float):FPoint {
+		if (element.rotation == 0)
+			return new FPoint(element.x + element.scaleX * x, element.y + element.scaleY * y);
+		final cos = Math.cos(element.rotation);
+		final sin = Math.sin(element.rotation);
+		final sx = element.scaleX * x;
+		final sy = element.scaleY * y;
+		return new FPoint(element.x + sx * cos - sy * sin, element.y + sx * sin + sy * cos);
 	}
 
 	function resolveExtraPointAnim(filename:String, animName:String, pointName:String,
@@ -7333,18 +7347,9 @@ class MultiAnimBuilder {
 						final refs:Array<String> = [];
 						collectParamRefs(value, refs);
 						if (refs.length > 0) {
-							final capturedValue = value;
-							final paramType = childDefs.get(childParam)?.type;
-							final resolveFn:Void->Dynamic = switch paramType {
-								case PPTString: () -> resolveAsString(capturedValue);
-								case PPTColor: () -> resolveAsColorInteger(capturedValue);
-								case PPTFloat: () -> resolveAsNumber(capturedValue);
-								// Enums forward by NAME: resolveAsInteger throws on an enum-valued
-								// reference (stored as Index(...)), and setParameter's enum path
-								// accepts the string name, not the index.
-								case PPTEnum(_): () -> resolveAsString(capturedValue);
-								default: () -> resolveAsInteger(capturedValue);
-							};
+							// By the child's parameter type, as at the build: an enum by its name, a bool, a tile,
+							// flags and an array as what they are
+							final resolveFn = forwardResolveFn(value, childDefs.get(childParam)?.type, node);
 							final scope = refScope;
 							final scopedFn:Void->Dynamic = scope == null ? resolveFn : () -> inScope(scope, resolveFn);
 							forwardingCtx.trackDynamicRef(result.incrementalContext, childParam, scopedFn, refs, result.object);
@@ -7515,13 +7520,13 @@ class MultiAnimBuilder {
 						case IndexedSheet(sheet, animName, fps, loop, center):
 							final loadedSheet = getOrLoadSheet(sheet);
 							final anim = loadedSheet.getAnim(resolveAsString(animName));
-							if (center) {
-								for (i in 0...anim.length) {
-									anim[i] = anim[i].cloneWithNewTile(anim[i].tile.center());
-								}
-							}
-
-							var animStates = [for (a in anim) Frame(a.cloneWithDuration(1.0 / resolveAsNumber(fps)))];
+							// `center`: the middle of each untrimmed frame at the origin (codegen:
+							// ProgrammableBuilder.buildStateAnimConstruct); a trimmed frame keeps its place
+							final frameDuration = 1.0 / resolveAsNumber(fps);
+							var animStates = [
+								for (a in anim)
+									Frame((center ? a.placedAbout(a.width >> 1, a.height >> 1) : a.placedAbout(0, 0)).cloneWithDuration(frameDuration))
+							];
 							var loopCount = loop ? -1 : 0; // -1 = forever, 0 = no loop
 
 							animSM.addAnimationState(key, animStates, loopCount, new Map());
@@ -7604,6 +7609,9 @@ class MultiAnimBuilder {
 						collectParamRefs(start, countRefs);
 						collectParamRefs(end, countRefs);
 						collectParamRefs(step, countRefs);
+					case ArrayIterator(_, arrayName):
+						// an array parameter: its items are the count
+						countRefs.push(arrayName);
 					default:
 				}
 				final repeatParamRefs:Array<String> = [];
@@ -9888,6 +9896,8 @@ class MultiAnimBuilder {
 			autotile: (autotileName, grid, where, x0, y0) -> tsBuilder.buildAutotile(autotileName, grid, where, x0, y0),
 			autotileFormat: autotileName -> tsBuilder.autotileFormat(autotileName),
 			frames: (sheet, cell) -> tsBuilder.atlasTiles(sheet, cell),
+			// a layer's own sheet is the map's, written in this file
+			layerFrames: (sheet, cell) -> atlasTiles(sheet, cell),
 			metadata: metadata -> tsBuilder.resolveMetadata(metadata),
 		};
 		checkTilemap(name, node, def, ts, tiles);
@@ -9896,9 +9906,13 @@ class MultiAnimBuilder {
 
 	/** What the parse cannot know, since the tileset may be in another file: every name the map uses is there, and every rise has its cliff. */
 	function checkTilemap(name:String, node:Null<Node>, def:TilemapDef, ts:TilesetDef, tiles:bh.base.TileMap.TileMapTiles):Void {
-		function has(sheet:String, cell:String):Bool {
-			final frames = try tiles.frames(sheet, cell) catch (e:Dynamic)
+		// `layersOwn`: a layer's own sheet, found from the map's file
+		function framesIn(sheet:String, cell:String, layersOwn = false):Null<Array<h2d.Tile>> {
+			return try (layersOwn && tiles.layerFrames != null ? tiles.layerFrames(sheet, cell) : tiles.frames(sheet, cell)) catch (e:Dynamic)
 				throw builderErrorAt(node, 'tilemap $name: sheet $sheet cannot be loaded: ${Std.string(e)}', "tilemap_sheet");
+		}
+		function has(sheet:String, cell:String, layersOwn = false):Bool {
+			final frames = framesIn(sheet, cell, layersOwn);
 			return frames != null && frames.length > 0;
 		}
 		// Every autotile the tileset names is in its file (missing_ref otherwise), before any is drawn
@@ -9931,15 +9945,16 @@ class MultiAnimBuilder {
 		}
 		for (l in def.layers) {
 			final sheet = l.sheet != null ? l.sheet : ts.atlas;
+			final layersOwn = l.sheet != null;
 			for (c => cell in l.legend) {
-				if (!has(sheet, cell))
+				if (!has(sheet, cell, layersOwn))
 					throw builderErrorAt(node, 'tilemap $name: layer ${l.name}: "$c" is $cell, which sheet $sheet has not', "tilemap_missing_cell");
 				// an object of several cells is as big as its size says, in every frame
 				final sized = Lambda.find(ts.cells, x -> x.name == cell && x.width != null);
 				if (sized != null) {
 					final w = (sized.width ?? 1) * ts.tileSize;
 					final h = (sized.height ?? 1) * ts.tileSize;
-					final frames = tiles.frames(sheet, cell);
+					final frames = framesIn(sheet, cell, layersOwn);
 					if (frames != null)
 						for (f in frames)
 							if (Std.int(f.width) != w || Std.int(f.height) != h)
@@ -10389,8 +10404,61 @@ class MultiAnimBuilder {
 			case PPTString: resolveAsString(ref);
 			case PPTColor: resolveAsColorInteger(ref);
 			case PPTArray: resolveAsArray(ref);
-			case PPTTile: resolveAsString(ref);
+			case PPTTile: resolveAsTileArgument(ref);
 		}
+	}
+
+	/** A tile given to a ref: the tile a `$tile` parameter holds, as it is; anything else names a file. */
+	function resolveAsTileArgument(ref:ReferenceableValue):Dynamic {
+		return switch ref {
+			case RVReference(name):
+				switch indexedParams.get(name) {
+					case TileSourceValue(_): indexedParams.get(name);
+					case ExpressionAlias(expr): resolveAsTileArgument(expr);
+					default: resolveAsString(ref);
+				}
+			case RVTernary(condition, ifTrue, ifFalse):
+				resolveAsBool(condition) ? resolveAsTileArgument(ifTrue) : resolveAsTileArgument(ifFalse);
+			case RVParenthesis(e): resolveAsTileArgument(e);
+			default: resolveAsString(ref);
+		}
+	}
+
+	/** How a forwarded argument is worked out on each change: as the type of the target's parameter it
+	 *  goes to, as at the build (resolveAsParameterType); a name the target has not, as an integer, for
+	 *  the target to refuse. */
+	function forwardResolveFn(value:ReferenceableValue, paramType:Null<DefinitionType>, node:Node):Void->Dynamic {
+		return paramType == null ? () -> resolveAsInteger(value) : () -> resolveAsParameterType(value, paramType, node);
+	}
+
+	/** Whether the parameter `key` of this file's programmable `name` is a string or an enum. */
+	public function parameterTakesText(name:String, key:String):Bool {
+		final node = multiParserResult.nodes.get(name);
+		if (node == null)
+			return false;
+		return switch getProgrammableParameterDefinitions(node).get(key)?.type {
+			case PPTString | PPTEnum(_): true;
+			default: false;
+		}
+	}
+
+	/** A ref's arguments against this builder's programmable `name`, which the ref places: one it has
+	 *  not, or a parameter of it with no default that is not given (a tile apart: it has no default),
+	 *  is an error, made by `reportFrom` (the builder writing the ref, at the ref) when there is one. */
+	public function checkRefArguments(name:String, parameters:Null<Map<String, Dynamic>>, ?reportFrom:MultiAnimBuilder):Void {
+		final node = multiParserResult.nodes.get(name);
+		if (node == null)
+			return;
+		final definitions = getProgrammableParameterDefinitions(node);
+		inline function fail(message:String):Void
+			throw reportFrom != null ? reportFrom.builderError(message, "ref_argument") : BuilderError.of(message, "ref_argument");
+		if (parameters != null)
+			for (key in parameters.keys())
+				if (!definitions.exists(key))
+					fail('$name has no parameter "$key" (its parameters: ${[for (k in definitions.keys()) k].join(", ")})');
+		for (key => def in definitions)
+			if (def.defaultValue == null && !def.type.match(PPTTile) && (parameters == null || !parameters.exists(key)))
+				fail('$name\'s parameter "$key" has no default and is not given');
 	}
 
 	/** A ref's arguments as values, worked out in this builder — the one whose file writes the ref,
@@ -10518,8 +10586,10 @@ class MultiAnimBuilder {
 			if (inFlight == name)
 				throw builderError('circular programmable reference: $name', "circular_reference");
 		}
-		if (argsFrom != null)
+		if (argsFrom != null) {
+			checkRefArguments(name, inputParameters, argsFrom);
 			inputParameters = argsFrom.resolveRefArguments(this, name, inputParameters, builderParams);
+		}
 		buildingRefs.push(name);
 
 		pushBuilderState();

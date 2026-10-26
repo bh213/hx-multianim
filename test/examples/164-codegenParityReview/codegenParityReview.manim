@@ -311,3 +311,25 @@ layouts {
 #cpAutotileIdx programmable(i:uint=0) {
   bitmap(generated(autotile("cpTerrain", $i))): 0, 0
 }
+
+// A hidden arm is built on its first show, in codegen as in the builder: its frame, not in the
+// sheet, is never looked up while the arm is hidden (CodegenParityReviewTest)
+#cpLazyArm programmable(show:bool=false, cell:string="no_such_cell") {
+  @(show=>true) bitmap(sheet("demo", $cell)): 0, 0
+  @(show=>true) point {
+    pos: 20, 0
+    bitmap(sheet("demo", $cell)): 0, 0
+  }
+  bitmap(generated(color(4, 4, #ffffff))): 0, 10
+}
+
+// An extra point is where the drawn element puts it: placed, scaled and turned (CodegenParityReviewTest)
+#cpExtraPoint programmable(dir:[l, r]=r) {
+  @(dir=>l) #player stateanim("marine.anim", "idle", direction=>"l"): 100, 200
+  @else #player stateanim("marine.anim", "idle", direction=>"r") {
+    pos: 100, 200
+    scale: 2
+    rotate: 90
+  }
+  bitmap(generated(color(5, 5, #FF0000))): $player.extraPoint("targeting")
+}

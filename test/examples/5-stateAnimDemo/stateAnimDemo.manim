@@ -25,8 +25,8 @@ version: 1.0
   @final ML_Y = 470
   #marL stateanim("marine.anim", "idle", "direction"=>"l"): $ML_X, $ML_Y
   // Red triangle at targeting extra point via named element ref
-  polygon(#FF0000, filled, -4,-4, 4,-4, 0,4): $marL.extraPoint("targeting").offset($ML_X, $ML_Y)
-  text(m3x6, '${$marL.extraPoint("targeting").x + $ML_X},${$marL.extraPoint("targeting").y + $ML_Y}', #FF0000): 149, 440
+  polygon(#FF0000, filled, -4,-4, 4,-4, 0,4): $marL.extraPoint("targeting")
+  text(m3x6, '${$marL.extraPoint("targeting").x},${$marL.extraPoint("targeting").y}', #FF0000): 149, 440
 
   // Row 2: direction=r with extra point marker (Mode 2: extraPoint from file)
   @final MR_X = 450
@@ -34,19 +34,19 @@ version: 1.0
   #marR stateanim("marine.anim", "idle", "direction"=>"r"): $MR_X, $MR_Y
   // Green triangle at targeting extra point via direct .anim file reference
   polygon(#00FF00, filled, -4,-4, 4,-4, 0,4): extraPoint("marine.anim", "idle", "targeting", "direction"=>"r").offset($MR_X, $MR_Y)
-  text(m3x6, '${$marR.extraPoint("targeting").x + $MR_X},${$marR.extraPoint("targeting").y + $MR_Y}', #00FF00): 455, 440
+  text(m3x6, '${$marR.extraPoint("targeting").x},${$marR.extraPoint("targeting").y}', #00FF00): 455, 440
 
   // Row 3: fire animation extra points
   @final MF_Y = 620
   #marFireUp stateanim("marine.anim", "fire-up", "direction"=>"r"): $ML_X, $MF_Y
   // Blue triangle at fire extra point via named ref
-  polygon(#0000FF, filled, -4,-4, 4,-4, 0,4): $marFireUp.extraPoint("fire").offset($ML_X, $MF_Y)
-  text(m3x6, '${$marFireUp.extraPoint("fire").x + $ML_X},${$marFireUp.extraPoint("fire").y + $MF_Y}', #0000FF): 155, 583
+  polygon(#0000FF, filled, -4,-4, 4,-4, 0,4): $marFireUp.extraPoint("fire")
+  text(m3x6, '${$marFireUp.extraPoint("fire").x},${$marFireUp.extraPoint("fire").y}', #0000FF): 155, 583
 
   #marFireLeft stateanim("marine.anim", "fire-left", "direction"=>"l"): $MR_X, $MF_Y
   // Cyan triangle at fire extra point via direct anim ref
   polygon(#00FFFF, filled, -4,-4, 4,-4, 0,4): extraPoint("marine.anim", "fire-left", "fire", "direction"=>"l").offset($MR_X, $MF_Y)
-  text(m3x6, '${$marFireLeft.extraPoint("fire").x + $MR_X},${$marFireLeft.extraPoint("fire").y + $MF_Y}', #00FFFF): 440, 594
+  text(m3x6, '${$marFireLeft.extraPoint("fire").x},${$marFireLeft.extraPoint("fire").y}', #00FFFF): 440, 594
 
   // Fallback test - nonexistent extra point with fallback
   @final FB_X = 99999

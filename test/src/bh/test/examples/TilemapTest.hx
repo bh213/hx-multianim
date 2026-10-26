@@ -1689,6 +1689,22 @@ class TilemapTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testALayersOwnSheetIsReadFromTheMapsFile() {
+		// The tileset is the import's; the layer's sheet, props, is an atlas of the map's own file
+		final builder = builderFromSource('import "test/examples/155-tilemap/tilemap.manim" as "tiles"\n'
+			+ '#props atlas2("$TILESET_PNG") { skull: 16, 8, 8, 8 }\n'
+			+ '#m tilemap { tileset: external(tiles), plains size: 2, 1 legend { ".": grass } terrain: [".."] '
+			+ 'layer things { sheet: "props" legend { "s": skull } rows: ["s "] } }');
+		var error:Null<String> = null;
+		try {
+			builder.buildTilemap("m").redraw();
+		} catch (e:Dynamic) {
+			error = Std.string(e);
+		}
+		Assert.isNull(error, "the layer's sheet is found in the file that writes the map, not in the tileset's");
+	}
+
+	@Test
 	public function testAReloadMakesAFillAgainFromItsTileset() {
 		// no rows to read: a hot reload of its file makes a fill again, of its terrain and size, from the
 		// tileset as it is now (a codegen instance and game code keep their fills: nothing builds them again)

@@ -116,6 +116,15 @@ Reflect.field = function(o,field) {
 		return null;
 	}
 };
+Reflect.compare = function(a,b) {
+	if(a == b) {
+		return 0;
+	} else if(a > b) {
+		return 1;
+	} else {
+		return -1;
+	}
+};
 var Std = function() { };
 Std.__name__ = true;
 Std.string = function(s) {
@@ -2171,6 +2180,7 @@ bh_multianim__$MacroManimParser_MacroLexer.prototype = {
 };
 var bh_multianim_MacroManimParser = function(tokens,sourceName,resourceLoader,docComments) {
 	this.dataRefs = [];
+	this.externalAliases = [];
 	this.groundTileAllowed = false;
 	this.tokens = tokens;
 	this.tpos = 0;
@@ -2596,6 +2606,20 @@ bh_multianim_MacroManimParser.dataMetaOf = function(meta,name) {
 	}
 	return null;
 };
+bh_multianim_MacroManimParser.dataTypeWord = function(type) {
+	switch(type._hx_index) {
+	case 0:
+		return "int";
+	case 1:
+		return "float";
+	case 2:
+		return "string";
+	case 3:
+		return "bool";
+	default:
+		return Std.string(type);
+	}
+};
 bh_multianim_MacroManimParser.parseFile = function(content,sourceName,resourceLoader) {
 	var lexer = new bh_multianim__$MacroManimParser_MacroLexer(content,sourceName);
 	var tokens = [];
@@ -2815,6 +2839,44 @@ bh_multianim_MacroManimParser.prototype = {
 			return leading;
 		} else {
 			return leading + "\n" + trailing;
+		}
+	}
+	,externalAlias: function() {
+		var at = this.tokens[this.tpos];
+		var alias = this.expectIdentifierOrString();
+		this.externalAliases.push({ alias : alias, line : at.line, col : at.col});
+		return alias;
+	}
+	,checkExternalAliases: function() {
+		var _g = 0;
+		var _g1 = this.externalAliases;
+		while(_g < _g1.length) {
+			var e = _g1[_g];
+			++_g;
+			if(!Object.prototype.hasOwnProperty.call(this.importPaths.h,e.alias)) {
+				var _g2 = [];
+				var h = this.importPaths.h;
+				var k_h = h;
+				var k_keys = Object.keys(h);
+				var k_length = k_keys.length;
+				var k_current = 0;
+				while(k_current < k_length) {
+					var k = k_keys[k_current++];
+					_g2.push(k);
+				}
+				var known = _g2;
+				known.sort(Reflect.compare);
+				this.errorAtLine(e.line,e.col,"external(" + e.alias + "): the file imports no \"" + e.alias + "\" (import \"file.manim\" as \"" + e.alias + "\")" + (known.length > 0 ? "; it imports " + known.join(", ") : ""));
+			}
+		}
+	}
+	,elementWord: function(index) {
+		var _g = this.tokens[index].type;
+		if(_g._hx_index == 32) {
+			var s = _g.s;
+			return s;
+		} else {
+			return "element";
 		}
 	}
 	,markRootBlock: function(node,name,firstIndex,exported) {
@@ -3452,7 +3514,7 @@ bh_multianim_MacroManimParser.prototype = {
 					if(bh_multianim_MacroManimParser.isKeyword(s2,"external")) {
 						this.advance();
 						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
-						externalReference = this.expectIdentifierOrString();
+						externalReference = this.externalAlias();
 						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
 						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 					}
@@ -4455,6 +4517,8 @@ bh_multianim_MacroManimParser.prototype = {
 			break;
 		default:
 			var s = null;
+			var fraction = false;
+			var hex = false;
 			var _g = this.tokens[this.tpos].type;
 			switch(_g._hx_index) {
 			case 20:
@@ -4470,6 +4534,7 @@ bh_multianim_MacroManimParser.prototype = {
 					var n = _g1.s;
 					this.advance();
 					s = "-" + n.split("_").join("");
+					fraction = true;
 					break;
 				default:
 					this.error("expected number after minus");
@@ -4484,11 +4549,13 @@ bh_multianim_MacroManimParser.prototype = {
 				var n = _g.s;
 				this.advance();
 				s = n.split("_").join("");
+				fraction = true;
 				break;
 			case 31:
 				var str = _g.s;
 				this.advance();
 				s = "0x" + str.split("_").join("");
+				hex = true;
 				break;
 			case 32:
 				var str = _g.s;
@@ -4508,6 +4575,34 @@ bh_multianim_MacroManimParser.prototype = {
 			}
 			var tmp = s;
 			var _s = tmp != null ? tmp : "";
+			var _g = param.type;
+			switch(_g._hx_index) {
+			case 0:case 1:case 5:case 8:
+				if(fraction) {
+					this.error("parameter \"" + param.name + "\" takes an integer: its default " + _s + " is not one");
+				}
+				break;
+			case 2:
+				var _g1 = _g.bits;
+				if(fraction) {
+					this.error("parameter \"" + param.name + "\" takes an integer: its default " + _s + " is not one");
+				}
+				break;
+			case 4:
+				var _g1 = _g.from;
+				var _g1 = _g.to;
+				if(fraction) {
+					this.error("parameter \"" + param.name + "\" takes an integer: its default " + _s + " is not one");
+				}
+				break;
+			case 6:
+				if(hex) {
+					param.defaultValue = bh_multianim_ResolvedIndexParameters.ValueF(this.int32(_s));
+					return;
+				}
+				break;
+			default:
+			}
 			param.defaultValue = this.dynamicValueToIndex(param.name,param.type,_s);
 		}
 	}
@@ -4587,6 +4682,76 @@ bh_multianim_MacroManimParser.prototype = {
 			}
 		}
 		return arr;
+	}
+	,numericOperand: function(paramName,defs,what,rv) {
+		var def = defs.h[paramName];
+		var names;
+		if(def == null) {
+			names = null;
+		} else {
+			var _g = def.type;
+			switch(_g._hx_index) {
+			case 2:
+				var _g1 = _g.bits;
+				names = null;
+				break;
+			case 3:
+				var values = _g.values;
+				names = values;
+				break;
+			case 4:
+				var _g1 = _g.from;
+				var _g1 = _g.to;
+				names = null;
+				break;
+			case 0:case 1:case 5:case 6:case 8:case 10:
+				names = null;
+				break;
+			default:
+				names = this.error("" + what + " needs a numeric or enum parameter: \"" + paramName + "\" is " + bh_multianim_MacroManimParser.definitionTypeName(def.type));
+			}
+		}
+		if(rv == null) {
+			return null;
+		}
+		if(rv == null) {
+			return rv;
+		} else if(rv._hx_index == 1) {
+			var _g = rv.s;
+			var s = _g;
+			if(names != null && names.indexOf(s) != -1) {
+				return bh_multianim_ReferenceableValue.RVInteger(names.indexOf(s));
+			} else {
+				var s = _g;
+				if(names != null) {
+					return this.error("" + what + " of \"" + paramName + "\": \"" + s + "\" is not one of its values (" + names.join(", ") + "), a number or a $" + "reference");
+				} else {
+					var s = _g;
+					return this.error("" + what + " of \"" + paramName + "\": \"" + s + "\" is not a number or a $" + "reference");
+				}
+			}
+		} else {
+			return rv;
+		}
+	}
+	,checkBitTest: function(paramName,defs) {
+		var def = defs.h[paramName];
+		if(def != null) {
+			var _g = def.type;
+			switch(_g._hx_index) {
+			case 0:case 1:case 5:case 8:
+				break;
+			case 2:
+				var _g1 = _g.bits;
+				break;
+			case 4:
+				var _g1 = _g.from;
+				var _g1 = _g.to;
+				break;
+			default:
+				this.error("bit[] tests an integer parameter: \"" + paramName + "\" is " + bh_multianim_MacroManimParser.definitionTypeName(def.type));
+			}
+		}
 	}
 	,validateConditionalEnumValues: function(paramName,defs,values) {
 		var def = defs.h[paramName];
@@ -4681,18 +4846,19 @@ bh_multianim_MacroManimParser.prototype = {
 						var s1 = _g2;
 						if(bh_multianim_MacroManimParser.isKeyword(s1,"greaterthanorequal")) {
 							this.advance();
-							var val1 = this.parseAnything();
+							var val1 = this.numericOperand(paramName,defs,">=",this.parseAnything());
 							result.h[paramName] = bh_multianim_ConditionalValues.CoRange(val1,null,false,false);
 						} else {
 							var s2 = _g2;
 							if(bh_multianim_MacroManimParser.isKeyword(s2,"lessthanorequal")) {
 								this.advance();
-								var val2 = this.parseAnything();
+								var val2 = this.numericOperand(paramName,defs,"<=",this.parseAnything());
 								result.h[paramName] = bh_multianim_ConditionalValues.CoRange(null,val2,false,false);
 							} else {
 								var s3 = _g2;
 								if(bh_multianim_MacroManimParser.isKeyword(s3,"bit")) {
 									this.advance();
+									this.checkBitTest(paramName,defs);
 									this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TBracketOpen);
 									var bitIndex = this.parseInteger();
 									this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TBracketClosed);
@@ -4701,15 +4867,16 @@ bh_multianim_MacroManimParser.prototype = {
 									var s4 = _g2;
 									if(bh_multianim_MacroManimParser.isKeyword(s4,"between")) {
 										this.advance();
-										var from = this.parseAnything();
+										var from = this.numericOperand(paramName,defs,"a range",this.parseAnything());
 										this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TDoubleDot);
-										var to = this.parseAnything();
+										var to = this.numericOperand(paramName,defs,"a range",this.parseAnything());
 										result.h[paramName] = bh_multianim_ConditionalValues.CoRange(from,to,false,false);
 									} else {
 										var val3 = this.parseAnything();
 										if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TDoubleDot)) {
-											var to1 = this.parseAnything();
-											result.h[paramName] = bh_multianim_ConditionalValues.CoRange(val3,to1,false,false);
+											var to1 = this.numericOperand(paramName,defs,"a range",this.parseAnything());
+											var value1 = bh_multianim_ConditionalValues.CoRange(this.numericOperand(paramName,defs,"a range",val3),to1,false,false);
+											result.h[paramName] = value1;
 										} else {
 											var valStr = this.rvToCondString(val3);
 											this.validateConditionalEnumValues(paramName,defs,[valStr]);
@@ -4729,8 +4896,9 @@ bh_multianim_MacroManimParser.prototype = {
 					} else {
 						var val4 = this.parseAnything();
 						if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TDoubleDot)) {
-							var to2 = this.parseAnything();
-							result.h[paramName] = bh_multianim_ConditionalValues.CoRange(val4,to2,false,false);
+							var to2 = this.numericOperand(paramName,defs,"a range",this.parseAnything());
+							var value2 = bh_multianim_ConditionalValues.CoRange(this.numericOperand(paramName,defs,"a range",val4),to2,false,false);
+							result.h[paramName] = value2;
 						} else {
 							var valStr1 = this.rvToCondString(val4);
 							this.validateConditionalEnumValues(paramName,defs,[valStr1]);
@@ -4748,22 +4916,22 @@ bh_multianim_MacroManimParser.prototype = {
 				break;
 			case 22:
 				this.advance();
-				var val5 = this.parseAnything();
+				var val5 = this.numericOperand(paramName,defs,"<",this.parseAnything());
 				result.h[paramName] = bh_multianim_ConditionalValues.CoRange(null,val5,false,true);
 				break;
 			case 23:
 				this.advance();
-				var val6 = this.parseAnything();
+				var val6 = this.numericOperand(paramName,defs,">",this.parseAnything());
 				result.h[paramName] = bh_multianim_ConditionalValues.CoRange(val6,null,true,false);
 				break;
 			case 24:
 				this.advance();
-				var val7 = this.parseAnything();
+				var val7 = this.numericOperand(paramName,defs,"<=",this.parseAnything());
 				result.h[paramName] = bh_multianim_ConditionalValues.CoRange(null,val7,false,false);
 				break;
 			case 25:
 				this.advance();
-				var val8 = this.parseAnything();
+				var val8 = this.numericOperand(paramName,defs,">=",this.parseAnything());
 				result.h[paramName] = bh_multianim_ConditionalValues.CoRange(val8,null,false,false);
 				break;
 			case 26:
@@ -4777,8 +4945,8 @@ bh_multianim_MacroManimParser.prototype = {
 						}
 						enums1.push(this.parseConditionalValue());
 					}
-					var value1 = bh_multianim_ConditionalValues.CoNot(this.makeBracketMultiValue(paramName,defs,enums1));
-					result.h[paramName] = value1;
+					var value3 = bh_multianim_ConditionalValues.CoNot(this.makeBracketMultiValue(paramName,defs,enums1));
+					result.h[paramName] = value3;
 				} else {
 					var val9 = this.parseConditionalValue();
 					this.validateConditionalEnumValues(paramName,defs,[val9]);
@@ -7142,7 +7310,7 @@ bh_multianim_MacroManimParser.prototype = {
 																					if(bh_multianim_MacroManimParser.isKeyword(s2,"external")) {
 																						this.advance();
 																						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
-																						extRef = this.expectIdentifierOrString();
+																						extRef = this.externalAlias();
 																						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
 																						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 																					}
@@ -7167,7 +7335,7 @@ bh_multianim_MacroManimParser.prototype = {
 																						if(bh_multianim_MacroManimParser.isKeyword(s2,"external")) {
 																							this.advance();
 																							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
-																							extRef = this.expectIdentifierOrString();
+																							extRef = this.externalAlias();
 																							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
 																							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 																						}
@@ -7679,7 +7847,7 @@ bh_multianim_MacroManimParser.prototype = {
 																																									if(bh_multianim_MacroManimParser.isKeyword(s2,"external")) {
 																																										this.advance();
 																																										this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
-																																										extRef = this.expectIdentifierOrString();
+																																										extRef = this.externalAlias();
 																																										this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
 																																										this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 																																									}
@@ -9606,11 +9774,18 @@ bh_multianim_MacroManimParser.prototype = {
 													} else {
 														var s10 = _g1;
 														if(bh_multianim_MacroManimParser.isKeyword(s10,"import")) {
+															if(node != null) {
+																this.error("import goes at the top level of a file, not in a body");
+															}
 															this.advance();
 															var file = this.expectIdentifierOrString();
 															this.expectKeyword("as");
+															var aliasAt = this.tokens[this.tpos];
 															var importName = this.expectIdentifierOrString();
 															this.eatSemicolon();
+															if(Object.prototype.hasOwnProperty.call(this.importPaths.h,importName)) {
+																this.errorAtLine(aliasAt.line,aliasAt.col,"import alias \"" + importName + "\" is already taken by import \"" + this.importPaths.h[importName] + "\": give each import its own alias");
+															}
 															this.importPaths.h[importName] = file;
 															if(this.resourceLoader != null) {
 																var loadedFile = this.resourceLoader.loadMultiAnim(file);
@@ -9622,6 +9797,9 @@ bh_multianim_MacroManimParser.prototype = {
 														} else {
 															var firstIndex = this.tpos;
 															var newNode = this.parseNode(bh_multianim_UpdatableNameType.UNTObject(null),node,defs);
+															if(node == null) {
+																this.currentName = null;
+															}
 															if(newNode != null) {
 																if(node == null) {
 																	var n2;
@@ -9646,6 +9824,10 @@ bh_multianim_MacroManimParser.prototype = {
 																		var n6 = _g4.name;
 																		n2 = n6;
 																		break;
+																	}
+																	if(n2 == null) {
+																		var at = this.tokens[firstIndex];
+																		this.errorAtLine(at.line,at.col,"a root element needs a #name (#name " + this.elementWord(firstIndex) + "…), or goes inside a programmable");
 																	}
 																	this.addNode(n2,newNode);
 																	this.markRootBlock(newNode,n2,firstIndex,false);
@@ -9788,6 +9970,9 @@ bh_multianim_MacroManimParser.prototype = {
 			default:
 				var firstIndex1 = this.tpos;
 				var newNode2 = this.parseNode(bh_multianim_UpdatableNameType.UNTObject(null),node,defs);
+				if(node == null) {
+					this.currentName = null;
+				}
 				if(newNode2 != null) {
 					if(node == null) {
 						var n7;
@@ -9812,6 +9997,10 @@ bh_multianim_MacroManimParser.prototype = {
 							var n11 = _g22.name;
 							n7 = n11;
 							break;
+						}
+						if(n7 == null) {
+							var at1 = this.tokens[firstIndex1];
+							this.errorAtLine(at1.line,at1.col,"a root element needs a #name (#name " + this.elementWord(firstIndex1) + "…), or goes inside a programmable");
 						}
 						this.addNode(n7,newNode2);
 						this.markRootBlock(newNode2,n7,firstIndex1,false);
@@ -10076,6 +10265,7 @@ bh_multianim_MacroManimParser.prototype = {
 		if(this.tokens[this.tpos].type._hx_index != 0) {
 			this.error("unexpected content after main body: " + Std.string(this.tokens[this.tpos].type));
 		}
+		this.checkExternalAliases();
 		return { nodes : this.nodes, imports : this.imports, customFilterRefs : this.customFilterRefs, importPaths : this.importPaths, exports : this.exports};
 	}
 	,parseGraphicsElements: function() {
@@ -13106,7 +13296,7 @@ bh_multianim_MacroManimParser.prototype = {
 			if(bh_multianim_MacroManimParser.isKeyword(s,"external")) {
 				this.advance();
 				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
-				extRef = this.expectIdentifierOrString();
+				extRef = this.externalAlias();
 				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
 				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 			}
@@ -13184,7 +13374,7 @@ bh_multianim_MacroManimParser.prototype = {
 						if(bh_multianim_MacroManimParser.isKeyword(s2,"external")) {
 							this.advance();
 							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
-							def.tilesetImport = this.expectIdentifierOrString();
+							def.tilesetImport = this.externalAlias();
 							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
 							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 						}
@@ -14143,6 +14333,10 @@ bh_multianim_MacroManimParser.prototype = {
 						this.advance();
 						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TBracketClosed);
 						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TBracketOpen);
+						var scalar = Object.prototype.hasOwnProperty.call(records.h,s) ? null : this.scalarDataType(s);
+						if(scalar != null) {
+							return { name : fieldName, type : bh_multianim_DataValueType.DVTArray(scalar), value : bh_multianim_DataValue.DVArray(this.parseDataArrayElements(scalar,enums,records))};
+						}
 						var rowMeta = [];
 						var elements = this.parseDataArrayElements(bh_multianim_DataValueType.DVTRecord(s),enums,records,rowMeta);
 						var field = { name : fieldName, type : bh_multianim_DataValueType.DVTArray(bh_multianim_DataValueType.DVTRecord(s)), value : bh_multianim_DataValue.DVArray(elements)};
@@ -14177,9 +14371,10 @@ bh_multianim_MacroManimParser.prototype = {
 			return { name : fieldName, type : this.inferDataValueType(value), value : value};
 		}
 		if(this.tokens[this.tpos].type._hx_index == 3) {
+			var at = this.tokens[this.tpos];
 			this.advance();
 			var elements = this.parseDataArrayInferred(records);
-			var elemType = elements.length > 0 ? this.inferDataValueType(elements[0]) : bh_multianim_DataValueType.DVTInt;
+			var elemType = this.inferredArrayType(fieldName,elements,at);
 			return { name : fieldName, type : bh_multianim_DataValueType.DVTArray(elemType), value : bh_multianim_DataValue.DVArray(elements)};
 		} else {
 			return this.error("expected value in data field \"" + fieldName + "\"");
@@ -14630,6 +14825,52 @@ bh_multianim_MacroManimParser.prototype = {
 			}
 		}
 		return result;
+	}
+	,scalarDataType: function(word) {
+		if(bh_multianim_MacroManimParser.isKeyword(word,"int")) {
+			return bh_multianim_DataValueType.DVTInt;
+		} else if(bh_multianim_MacroManimParser.isKeyword(word,"float")) {
+			return bh_multianim_DataValueType.DVTFloat;
+		} else if(bh_multianim_MacroManimParser.isKeyword(word,"string")) {
+			return bh_multianim_DataValueType.DVTString;
+		} else if(bh_multianim_MacroManimParser.isKeyword(word,"bool")) {
+			return bh_multianim_DataValueType.DVTBool;
+		} else {
+			return null;
+		}
+	}
+	,inferredArrayType: function(fieldName,elements,at) {
+		if(elements.length == 0) {
+			this.errorAtLine(at.line,at.col,"data field \"" + fieldName + "\": an empty array needs its type: int[] [], float[] [], string[] [] or bool[] []");
+		}
+		var type = this.inferDataValueType(elements[0]);
+		var _g = 0;
+		while(_g < elements.length) {
+			var e = elements[_g];
+			++_g;
+			var t = this.inferDataValueType(e);
+			if(Type.enumEq(t,type)) {
+				continue;
+			}
+			if(t == bh_multianim_DataValueType.DVTInt && type == bh_multianim_DataValueType.DVTFloat || t == bh_multianim_DataValueType.DVTFloat && type == bh_multianim_DataValueType.DVTInt) {
+				type = bh_multianim_DataValueType.DVTFloat;
+				continue;
+			}
+			this.errorAtLine(at.line,at.col,"data field \"" + fieldName + "\": a mixed array of " + bh_multianim_MacroManimParser.dataTypeWord(type) + " and " + bh_multianim_MacroManimParser.dataTypeWord(t));
+		}
+		if(type == bh_multianim_DataValueType.DVTFloat) {
+			var _g = 0;
+			var _g1 = elements.length;
+			while(_g < _g1) {
+				var i = _g++;
+				var _g2 = elements[i];
+				if(_g2._hx_index == 0) {
+					var v = _g2.v;
+					elements[i] = bh_multianim_DataValue.DVFloat(v);
+				}
+			}
+		}
+		return type;
 	}
 	,inferDataValueType: function(value) {
 		switch(value._hx_index) {
@@ -17676,10 +17917,13 @@ var bh_stateanim_AnimPlaylistFrames = $hxEnums["bh.stateanim.AnimPlaylistFrames"
 	,SheetFrameAnim: ($_=function(name,durationMilliseconds,offset) { return {_hx_index:0,name:name,durationMilliseconds:durationMilliseconds,offset:offset,__enum__:"bh.stateanim.AnimPlaylistFrames",toString:$estr}; },$_._hx_name="SheetFrameAnim",$_.__params__ = ["name","durationMilliseconds","offset"],$_)
 	,SheetFrameAnimWithIndex: ($_=function(name,from,to,durationMilliseconds,offset) { return {_hx_index:1,name:name,from:from,to:to,durationMilliseconds:durationMilliseconds,offset:offset,__enum__:"bh.stateanim.AnimPlaylistFrames",toString:$estr}; },$_._hx_name="SheetFrameAnimWithIndex",$_.__params__ = ["name","from","to","durationMilliseconds","offset"],$_)
 	,FileSingleFrame: ($_=function(filename,durationMilliseconds,offset) { return {_hx_index:2,filename:filename,durationMilliseconds:durationMilliseconds,offset:offset,__enum__:"bh.stateanim.AnimPlaylistFrames",toString:$estr}; },$_._hx_name="FileSingleFrame",$_.__params__ = ["filename","durationMilliseconds","offset"],$_)
-	,PlaylistEventData: ($_=function(name,meta) { return {_hx_index:3,name:name,meta:meta,__enum__:"bh.stateanim.AnimPlaylistFrames",toString:$estr}; },$_._hx_name="PlaylistEventData",$_.__params__ = ["name","meta"],$_)
-	,PlaylistFilter: ($_=function(filter) { return {_hx_index:4,filter:filter,__enum__:"bh.stateanim.AnimPlaylistFrames",toString:$estr}; },$_._hx_name="PlaylistFilter",$_.__params__ = ["filter"],$_)
+	,PlaylistTrigger: ($_=function(name) { return {_hx_index:3,name:name,__enum__:"bh.stateanim.AnimPlaylistFrames",toString:$estr}; },$_._hx_name="PlaylistTrigger",$_.__params__ = ["name"],$_)
+	,PlaylistPointEvent: ($_=function(name,point) { return {_hx_index:4,name:name,point:point,__enum__:"bh.stateanim.AnimPlaylistFrames",toString:$estr}; },$_._hx_name="PlaylistPointEvent",$_.__params__ = ["name","point"],$_)
+	,PlaylistRandomPointEvent: ($_=function(name,point,radius) { return {_hx_index:5,name:name,point:point,radius:radius,__enum__:"bh.stateanim.AnimPlaylistFrames",toString:$estr}; },$_._hx_name="PlaylistRandomPointEvent",$_.__params__ = ["name","point","radius"],$_)
+	,PlaylistEventData: ($_=function(name,meta) { return {_hx_index:6,name:name,meta:meta,__enum__:"bh.stateanim.AnimPlaylistFrames",toString:$estr}; },$_._hx_name="PlaylistEventData",$_.__params__ = ["name","meta"],$_)
+	,PlaylistFilter: ($_=function(filter) { return {_hx_index:7,filter:filter,__enum__:"bh.stateanim.AnimPlaylistFrames",toString:$estr}; },$_._hx_name="PlaylistFilter",$_.__params__ = ["filter"],$_)
 };
-bh_stateanim_AnimPlaylistFrames.__constructs__ = [bh_stateanim_AnimPlaylistFrames.SheetFrameAnim,bh_stateanim_AnimPlaylistFrames.SheetFrameAnimWithIndex,bh_stateanim_AnimPlaylistFrames.FileSingleFrame,bh_stateanim_AnimPlaylistFrames.PlaylistEventData,bh_stateanim_AnimPlaylistFrames.PlaylistFilter];
+bh_stateanim_AnimPlaylistFrames.__constructs__ = [bh_stateanim_AnimPlaylistFrames.SheetFrameAnim,bh_stateanim_AnimPlaylistFrames.SheetFrameAnimWithIndex,bh_stateanim_AnimPlaylistFrames.FileSingleFrame,bh_stateanim_AnimPlaylistFrames.PlaylistTrigger,bh_stateanim_AnimPlaylistFrames.PlaylistPointEvent,bh_stateanim_AnimPlaylistFrames.PlaylistRandomPointEvent,bh_stateanim_AnimPlaylistFrames.PlaylistEventData,bh_stateanim_AnimPlaylistFrames.PlaylistFilter];
 var bh_stateanim_AnimFilterType = $hxEnums["bh.stateanim.AnimFilterType"] = { __ename__:true,__constructs__:null
 	,AFTint: ($_=function(color) { return {_hx_index:0,color:color,__enum__:"bh.stateanim.AnimFilterType",toString:$estr}; },$_._hx_name="AFTint",$_.__params__ = ["color"],$_)
 	,AFBrightness: ($_=function(v) { return {_hx_index:1,v:v,__enum__:"bh.stateanim.AnimFilterType",toString:$estr}; },$_._hx_name="AFBrightness",$_.__params__ = ["v"],$_)
@@ -17717,6 +17961,2630 @@ bh_stateanim_InvalidSyntax.prototype = $extend(bh_base_ParseError.prototype,{
 	}
 	,__class__: bh_stateanim_InvalidSyntax
 });
+var bh_stateanim_AnimFileParser = function(tokens,sourceName,withSpans) {
+	this.spans = [];
+	this.pendingAnnotations = [];
+	this.layerNames = [];
+	this.annotations = [];
+	this.defaultFlipY = false;
+	this.defaultFlipX = false;
+	this.defaultLoop = null;
+	this.defaultFps = null;
+	this.constants = new haxe_ds_StringMap();
+	this.soundsDefined = false;
+	this.holds = new haxe_ds_StringMap();
+	this.sounds = new haxe_ds_StringMap();
+	this.metadata = null;
+	this.metadataMap = new haxe_ds_StringMap();
+	this.center = null;
+	this.sheetName = null;
+	this.definedStatesIndexes = [];
+	this.definedStates = new haxe_ds_StringMap();
+	this.allowedExtraPoints = [];
+	this.animationNames = [];
+	this.animations = [];
+	this.tokens = tokens;
+	this.tpos = 0;
+	this.withSpans = withSpans;
+	this.sourceName = sourceName;
+};
+bh_stateanim_AnimFileParser.__name__ = true;
+bh_stateanim_AnimFileParser.parseLoaded = function(content,sourceName,withSpans) {
+	if(withSpans == null) {
+		withSpans = false;
+	}
+	var p = new bh_stateanim_AnimFileParser(bh_stateanim_AnimFileParser.tokenize(content,sourceName),sourceName,withSpans);
+	p.parseChecked();
+	return p.loaded();
+};
+bh_stateanim_AnimFileParser.tokenize = function(content,sourceName) {
+	var lexer = new bh_stateanim__$AnimParser_AnimLexerHC(content,sourceName);
+	var tokens = [];
+	while(true) {
+		var t = lexer.nextToken();
+		tokens.push(t);
+		if(Type.enumEq(t.type,bh_stateanim_APToken.APEof)) {
+			break;
+		}
+	}
+	return tokens;
+};
+bh_stateanim_AnimFileParser.validateState = function(definedStates,name,value) {
+	var vals = definedStates.h[name];
+	if(vals == null) {
+		throw haxe_Exception.thrown("state " + name + " not defined");
+	}
+	if(vals.indexOf(value) != -1 == false) {
+		throw haxe_Exception.thrown("state " + name + " does not allow value:" + value);
+	}
+};
+bh_stateanim_AnimFileParser.validateStateSelector = function(definedStates,selector) {
+	if(bh_base_MapTools.count(definedStates) != bh_base_MapTools.count(selector)) {
+		throw haxe_Exception.thrown("invalid selector " + (selector == null ? "null" : haxe_ds_StringMap.stringify(selector.h)) + " for defined states " + (definedStates == null ? "null" : haxe_ds_StringMap.stringify(definedStates.h)));
+	}
+	var h = definedStates.h;
+	var _g_h = h;
+	var _g_keys = Object.keys(h);
+	var _g_length = _g_keys.length;
+	var _g_current = 0;
+	while(_g_current < _g_length) {
+		var key = _g_keys[_g_current++];
+		var _g_key = key;
+		var _g_value = _g_h[key];
+		var key1 = _g_key;
+		var value = _g_value;
+		var sv = selector.h[key1];
+		if(sv == null) {
+			throw haxe_Exception.thrown("key not defined: " + key1);
+		}
+		if(value.indexOf(sv) != -1 == false) {
+			throw haxe_Exception.thrown("unknown state value " + Std.string(value) + " not defined for key: " + key1 + ": " + (definedStates == null ? "null" : haxe_ds_StringMap.stringify(definedStates.h)));
+		}
+	}
+	var h = selector.h;
+	var _g_h = h;
+	var _g_keys = Object.keys(h);
+	var _g_length = _g_keys.length;
+	var _g_current = 0;
+	while(_g_current < _g_length) {
+		var key = _g_keys[_g_current++];
+		var _g_key = key;
+		var _g_value = _g_h[key];
+		var key1 = _g_key;
+		var value = _g_value;
+		var vals = definedStates.h[key1];
+		if(vals == null) {
+			throw haxe_Exception.thrown("unknown state key: " + key1);
+		}
+		if(vals.indexOf(value) != -1 == false) {
+			throw haxe_Exception.thrown("unknown state value " + value + " not defined for key: " + key1 + ": " + (definedStates == null ? "null" : haxe_ds_StringMap.stringify(definedStates.h)));
+		}
+	}
+};
+bh_stateanim_AnimFileParser.matchConditionalValue = function(condValue,runtimeValue) {
+	return bh_stateanim_AnimConditionalMatcher.matchConditionalValue(condValue,runtimeValue);
+};
+bh_stateanim_AnimFileParser.countStateMatch = function(match,selector) {
+	return bh_stateanim_AnimConditionalMatcher.countStateMatch(match,selector);
+};
+bh_stateanim_AnimFileParser.findPlaylist = function(stateSelector,animation,definedStates) {
+	bh_stateanim_AnimFileParser.validateStateSelector(definedStates,stateSelector);
+	return bh_stateanim_AnimFileParser.findBestStateMatch(animation.playlist,stateSelector,"playlist: " + animation.name);
+};
+bh_stateanim_AnimFileParser.findExtraPoint = function(extraPointName,stateSelector,animation,definedStates) {
+	bh_stateanim_AnimFileParser.validateStateSelector(definedStates,stateSelector);
+	var allExtraPoints = animation.extraPoint.h[extraPointName];
+	if(allExtraPoints == null) {
+		return null;
+	}
+	return bh_stateanim_AnimFileParser.findBestStateMatch(allExtraPoints,stateSelector,"extraPoint: " + extraPointName);
+};
+bh_stateanim_AnimFileParser.findAnimation = function(name,stateSelector,definedStates,animations) {
+	bh_stateanim_AnimFileParser.validateStateSelector(definedStates,stateSelector);
+	return bh_stateanim_AnimFileParser.findAnimationInternal(name,stateSelector,animations);
+};
+bh_stateanim_AnimFileParser.findAnimationInternal = function(name,stateSelector,animations) {
+	var _g = [];
+	var _g1 = 0;
+	var _g2 = animations;
+	while(_g1 < _g2.length) {
+		var v = _g2[_g1];
+		++_g1;
+		if(v.name == name) {
+			_g.push(v);
+		}
+	}
+	return bh_stateanim_AnimFileParser.findBestStateMatch(_g,stateSelector,"animation: " + name);
+};
+bh_stateanim_AnimFileParser.findBestStateMatch = function(items,stateSelector,ambiguityContext) {
+	var bestScore = -1;
+	var best2Score = -1;
+	var best = null;
+	var best2 = null;
+	var _g = 0;
+	while(_g < items.length) {
+		var item = items[_g];
+		++_g;
+		var count = bh_stateanim_AnimConditionalMatcher.countStateMatch(item.states,stateSelector);
+		if(count > bestScore) {
+			best2Score = bestScore;
+			best2 = best;
+			best = item;
+			bestScore = count;
+		} else if(bestScore == count) {
+			best2 = best;
+			best = item;
+			best2Score = bestScore;
+		}
+	}
+	if(best != null && best2 != null && best2Score == bestScore) {
+		throw haxe_Exception.thrown("ambiguous " + ambiguityContext + ": " + (best.states == null ? "null" : haxe_ds_StringMap.stringify(best.states.h)) + " vs " + (best2.states == null ? "null" : haxe_ds_StringMap.stringify(best2.states.h)) + " selector: " + (stateSelector == null ? "null" : haxe_ds_StringMap.stringify(stateSelector.h)));
+	}
+	return best;
+};
+bh_stateanim_AnimFileParser.createAllStates = function(statesDefinitions) {
+	var totalStates = 1;
+	var stateValuesCount = [];
+	var stateKeys = [];
+	var stateValues = [];
+	var retVal = [];
+	var h = statesDefinitions.h;
+	var _g_h = h;
+	var _g_keys = Object.keys(h);
+	var _g_length = _g_keys.length;
+	var _g_current = 0;
+	while(_g_current < _g_length) {
+		var key = _g_keys[_g_current++];
+		var _g_key = key;
+		var _g_value = _g_h[key];
+		var key1 = _g_key;
+		var value = _g_value;
+		totalStates *= value.length;
+		stateValuesCount.push(value.length);
+		stateKeys.push(key1);
+		stateValues.push(value);
+	}
+	var _g = 0;
+	var _g1 = totalStates;
+	while(_g < _g1) {
+		var i = _g++;
+		var x = new haxe_ds_StringMap();
+		var ci = i;
+		var _g2 = 0;
+		var _g3 = stateKeys.length;
+		while(_g2 < _g3) {
+			var ki = _g2++;
+			var vi = ci % stateValuesCount[ki];
+			ci = ci / stateValuesCount[ki] | 0;
+			x.h[stateKeys[ki]] = stateValues[ki][vi];
+		}
+		retVal.push(x);
+	}
+	return retVal;
+};
+bh_stateanim_AnimFileParser.prototype = {
+	peek: function() {
+		return this.tokens[this.tpos].type;
+	}
+	,peekAt: function(offset) {
+		var idx = this.tpos + offset;
+		if(idx < this.tokens.length) {
+			return this.tokens[idx].type;
+		} else {
+			return bh_stateanim_APToken.APEof;
+		}
+	}
+	,advance: function() {
+		var t = this.tokens[this.tpos];
+		if(this.tpos < this.tokens.length - 1) {
+			this.tpos++;
+		}
+		return t;
+	}
+	,expect: function(type) {
+		if(!Type.enumEq(this.tokens[this.tpos].type,type)) {
+			this.syntaxError("expected " + Std.string(type) + ", got " + Std.string(this.tokens[this.tpos].type));
+		}
+		this.advance();
+	}
+	,match: function(type) {
+		if(Type.enumEq(this.tokens[this.tpos].type,type)) {
+			this.advance();
+			return true;
+		}
+		return false;
+	}
+	,curPos: function() {
+		var t = this.tokens[this.tpos];
+		return new bh_base_ParsePosition(this.sourceName,t.line,t.col);
+	}
+	,syntaxError: function(error,pos) {
+		var p = pos != null ? pos : this.curPos();
+		var err = new bh_stateanim_InvalidSyntax(error,p);
+		throw haxe_Exception.thrown(err);
+	}
+	,unexpectedError: function(message) {
+		var tmp = message;
+		var err = new bh_stateanim_AnimUnexpected(this.tokens[this.tpos].type,this.curPos(),tmp != null ? tmp : "unexpected");
+		throw haxe_Exception.thrown(err);
+	}
+	,parseChecked: function() {
+		try {
+			this.parse();
+		} catch( _g ) {
+			var e = haxe_Exception.caught(_g).unwrap();
+			throw haxe_Exception.thrown(e);
+		}
+	}
+	,parse: function() {
+		var _gthis = this;
+		var animationParsingStarted = false;
+		_hx_loop1: while(true) {
+			var _g = this.tokens[this.tpos].type;
+			switch(_g._hx_index) {
+			case 7:
+				var _g1 = _g.s;
+				var _g2 = _g.keyword;
+				var _g3 = _g.identType;
+				if(_g2 == null) {
+					this.attachAnnotations(this.annotations,"");
+				} else {
+					switch(_g2._hx_index) {
+					case 8:case 17:
+						if(_g3._hx_index != 0) {
+							this.attachAnnotations(this.annotations,"");
+						}
+						break;
+					default:
+						this.attachAnnotations(this.annotations,"");
+					}
+				}
+				break;
+			case 13:
+				break;
+			default:
+				this.attachAnnotations(this.annotations,"");
+			}
+			var _g4 = this.tokens[this.tpos].type;
+			switch(_g4._hx_index) {
+			case 0:
+				break _hx_loop1;
+			case 7:
+				var _g5 = _g4.s;
+				var _g6 = _g4.keyword;
+				var _g7 = _g4.identType;
+				if(_g6 == null) {
+					this.unexpectedError();
+				} else {
+					switch(_g6._hx_index) {
+					case 0:
+						if(_g7._hx_index == 0) {
+							this.advance();
+							this.expect(bh_stateanim_APToken.APColon);
+							var from = this.tpos;
+							var value = this.expectIdentifier();
+							this.markSpan("sheet",from);
+							var value1 = value;
+							if(animationParsingStarted) {
+								this.syntaxError("sheet must be defined before animations");
+							}
+							if(this.sheetName != null) {
+								this.syntaxError("sheet already defined");
+							}
+							this.sheetName = value1;
+						} else {
+							this.unexpectedError();
+						}
+						break;
+					case 2:
+						if(_g7._hx_index == 0) {
+							this.advance();
+							this.expect(bh_stateanim_APToken.APColon);
+							if(animationParsingStarted) {
+								this.syntaxError("states must be defined before animations");
+							}
+							if(bh_base_MapTools.count(this.definedStates) > 0) {
+								this.syntaxError("states already defined");
+							}
+							var from1 = this.tpos;
+							var value2 = this.parseAllStates();
+							this.markSpan("states",from1);
+							this.definedStates = value2;
+						} else {
+							this.unexpectedError();
+						}
+						break;
+					case 3:
+						if(_g7._hx_index == 0) {
+							this.advance();
+							this.expect(bh_stateanim_APToken.APColon);
+							if(animationParsingStarted) {
+								this.syntaxError("allowedExtraPoints must be defined before animations");
+							}
+							if(this.allowedExtraPoints.length > 0) {
+								this.syntaxError("allowedExtraPoints already defined");
+							}
+							var from2 = this.tpos;
+							_gthis.expect(bh_stateanim_APToken.APBracketOpen);
+							var value3 = _gthis.parseListUntilBracket();
+							this.markSpan("allowedExtraPoints",from2);
+							this.allowedExtraPoints = value3;
+						} else {
+							this.unexpectedError();
+						}
+						break;
+					case 6:
+						if(_g7._hx_index == 0) {
+							this.advance();
+							this.expect(bh_stateanim_APToken.APColon);
+							if(this.center != null) {
+								this.syntaxError("center already defined");
+							}
+							var from3 = this.tpos;
+							var value4 = this.parseCoordinates();
+							this.markSpan("center",from3);
+							this.center = value4;
+						} else {
+							this.unexpectedError();
+						}
+						break;
+					case 7:
+						if(_g7._hx_index == 0) {
+							this.advance();
+							this.expect(bh_stateanim_APToken.APColon);
+							if(animationParsingStarted) {
+								this.syntaxError("file-level loop default must be before animations");
+							}
+							var from4 = this.tpos;
+							var value5 = this.parseLoopValue();
+							this.markSpan("loop",from4);
+							this.defaultLoop = value5;
+						} else {
+							this.unexpectedError();
+						}
+						break;
+					case 8:
+						if(_g7._hx_index == 0) {
+							var blockToken = this.tpos;
+							var index = this.animations.length;
+							var path = "animations." + index;
+							this.advance();
+							animationParsingStarted = true;
+							var headerName = null;
+							var _g8 = this.tokens[this.tpos].type;
+							var _g9 = this.peekAt(1);
+							if(_g8._hx_index == 7) {
+								var _g10 = _g8.s;
+								var _g11 = _g8.keyword;
+								if(_g8.identType._hx_index == 0) {
+									switch(_g9._hx_index) {
+									case 9:case 13:
+										var s = _g10;
+										this.advance();
+										headerName = s;
+										this.markSpan("" + path + ".name",this.tpos - 1);
+										break;
+									default:
+									}
+								}
+							}
+							var animationStates = this.parseStates();
+							var h = animationStates.h;
+							var _g_h = h;
+							var _g_keys = Object.keys(h);
+							var _g_length = _g_keys.length;
+							var _g_current = 0;
+							while(_g_current < _g_length) {
+								var key = _g_keys[_g_current++];
+								var _g_key = key;
+								var _g_value = _g_h[key];
+								var key1 = _g_key;
+								var value6 = _g_value;
+								this.parserValidateConditionalState(this.definedStates,key1,value6);
+							}
+							this.expect(bh_stateanim_APToken.APCurlyOpen);
+							var startOfAnim = this.curPos();
+							var parsedAnim = this.parseAnimation(this.definedStates,animationStates,this.allowedExtraPoints,path,headerName);
+							var tmp = parsedAnim.fps;
+							var animFps = tmp != null ? tmp : this.defaultFps;
+							if(animFps == null) {
+								this.syntaxError("fps expected (set fps in animation body or as file-level default)",startOfAnim);
+							}
+							var tmp1 = parsedAnim.loop;
+							var tmp2 = parsedAnim.flipX;
+							var tmp3 = parsedAnim.flipY;
+							var anim = { states : animationStates, name : parsedAnim.name, loop : tmp1 != null ? tmp1 : this.defaultLoop, fps : animFps, extraPoint : parsedAnim.extraPoints, playlist : parsedAnim.playlist, filters : parsedAnim.filters, flipX : tmp2 != null ? tmp2 : this.defaultFlipX, flipY : tmp3 != null ? tmp3 : this.defaultFlipY, annotations : [], layers : parsedAnim.layers.length > 0 ? parsedAnim.layers : null, timeline : parsedAnim.timeline};
+							this.animations.push(anim);
+							this.markSpan(path,blockToken);
+							this.attachAnnotations(anim.annotations,"" + path + ".");
+						} else {
+							this.unexpectedError();
+						}
+						break;
+					case 10:
+						if(_g7._hx_index == 0) {
+							this.advance();
+							this.expect(bh_stateanim_APToken.APColon);
+							if(animationParsingStarted) {
+								this.syntaxError("file-level fps default must be before animations");
+							}
+							if(this.defaultFps != null) {
+								this.syntaxError("default fps already set");
+							}
+							var from5 = this.tpos;
+							var value7 = this.parseIntNumber();
+							this.markSpan("fps",from5);
+							var parsedDefaultFps = value7;
+							if(parsedDefaultFps <= 0) {
+								this.syntaxError("default fps must be greater than 0");
+							}
+							this.defaultFps = parsedDefaultFps;
+						} else {
+							this.unexpectedError();
+						}
+						break;
+					case 15:
+						if(_g7._hx_index == 0) {
+							var blockToken1 = this.tpos;
+							this.advance();
+							this.expect(bh_stateanim_APToken.APCurlyOpen);
+							if(animationParsingStarted) {
+								this.syntaxError("metadata must be defined before animations");
+							}
+							if(bh_base_MapTools.count(this.metadataMap) > 0) {
+								this.syntaxError("metadata already defined");
+							}
+							this.parseMetadata();
+							this.markSpan("metadata",blockToken1);
+						} else {
+							this.unexpectedError();
+						}
+						break;
+					case 16:
+						if(_g7._hx_index == 0) {
+							var blockToken2 = this.tpos;
+							this.advance();
+							this.expect(bh_stateanim_APToken.APCurlyOpen);
+							if(animationParsingStarted) {
+								this.syntaxError("sounds must be defined before animations");
+							}
+							if(this.soundsDefined) {
+								this.syntaxError("sounds already defined");
+							}
+							this.soundsDefined = true;
+							this.parseSounds();
+							this.markSpan("sounds",blockToken2);
+						} else {
+							this.unexpectedError();
+						}
+						break;
+					case 17:
+						if(_g7._hx_index == 0) {
+							var blockToken3 = this.tpos;
+							var index1 = this.animations.length;
+							this.advance();
+							animationParsingStarted = true;
+							this.parseAnimShorthand("animations." + index1);
+							this.markSpan("animations." + index1,blockToken3);
+							this.attachAnnotations(this.animations[index1].annotations,"animations." + index1 + ".");
+						} else {
+							this.unexpectedError();
+						}
+						break;
+					case 24:
+						if(_g7._hx_index == 0) {
+							this.advance();
+							this.expect(bh_stateanim_APToken.APColon);
+							if(animationParsingStarted) {
+								this.syntaxError("file-level flipX default must be before animations");
+							}
+							var from6 = this.tpos;
+							var value8 = this.parseBoolValue();
+							this.markSpan("flipX",from6);
+							this.defaultFlipX = value8;
+						} else {
+							this.unexpectedError();
+						}
+						break;
+					case 25:
+						if(_g7._hx_index == 0) {
+							this.advance();
+							this.expect(bh_stateanim_APToken.APColon);
+							if(animationParsingStarted) {
+								this.syntaxError("file-level flipY default must be before animations");
+							}
+							var from7 = this.tpos;
+							var value9 = this.parseBoolValue();
+							this.markSpan("flipY",from7);
+							this.defaultFlipY = value9;
+						} else {
+							this.unexpectedError();
+						}
+						break;
+					case 27:
+						if(_g7._hx_index == 0) {
+							this.advance();
+							this.expect(bh_stateanim_APToken.APColon);
+							if(animationParsingStarted) {
+								this.syntaxError("layers must be declared before animations");
+							}
+							if(this.layerNames.length > 0) {
+								this.syntaxError("layers already declared");
+							}
+							var from8 = this.tpos;
+							var value10 = this.parseLayerNames();
+							this.markSpan("layers",from8);
+							this.layerNames = value10;
+						} else {
+							this.unexpectedError();
+						}
+						break;
+					default:
+						this.unexpectedError();
+					}
+				}
+				break;
+			case 13:
+				var atToken = this.tpos;
+				this.advance();
+				var _g12 = this.tokens[this.tpos].type;
+				if(_g12._hx_index == 7) {
+					var _g13 = _g12.s;
+					var _g14 = _g12.keyword;
+					var _g15 = _g12.identType;
+					if(_g14 == null) {
+						if(_g15._hx_index == 0) {
+							var annotation = this.parseAnnotation(atToken);
+							this.pendingAnnotations.push({ annotation : annotation, start : this.tokens[atToken].start, end : this.tokens[this.tpos - 1].end});
+						} else {
+							this.unexpectedError("expected 'final' or an annotation name after @");
+						}
+					} else {
+						switch(_g14._hx_index) {
+						case 18:
+							this.attachAnnotations(this.annotations,"");
+							this.advance();
+							if(animationParsingStarted) {
+								this.syntaxError("@final must be declared before animations");
+							}
+							var constName = this.expectIdentifier();
+							this.expect(bh_stateanim_APToken.APEquals);
+							var constVal = this.parseConstantExpr();
+							if(Object.prototype.hasOwnProperty.call(this.constants.h,constName)) {
+								this.syntaxError("@final \"" + constName + "\" already defined");
+							}
+							this.constants.h[constName] = constVal;
+							break;
+						case 19:case 20:
+							this.unexpectedError("@else and @default belong to a condition, not the top level");
+							break;
+						default:
+							if(_g15._hx_index == 0) {
+								var annotation1 = this.parseAnnotation(atToken);
+								this.pendingAnnotations.push({ annotation : annotation1, start : this.tokens[atToken].start, end : this.tokens[this.tpos - 1].end});
+							} else {
+								this.unexpectedError("expected 'final' or an annotation name after @");
+							}
+						}
+					}
+				} else {
+					this.unexpectedError("expected 'final' or an annotation name after @");
+				}
+				break;
+			default:
+				this.unexpectedError();
+			}
+		}
+		var h = this.holds.h;
+		var _g_h = h;
+		var _g_keys = Object.keys(h);
+		var _g_length = _g_keys.length;
+		var _g_current = 0;
+		while(_g_current < _g_length) {
+			var key = _g_keys[_g_current++];
+			var _g_key = key;
+			var _g_value = _g_h[key];
+			var anim = _g_key;
+			var _ = _g_value;
+			if(this.animationNames.indexOf(anim) == -1) {
+				this.syntaxError("sounds: hold " + anim + ": no animation " + anim + " (" + this.animationNames.join(", ") + ")");
+			}
+		}
+		var allStates = bh_stateanim_AnimFileParser.createAllStates(this.definedStates);
+		var _g = 0;
+		while(_g < allStates.length) {
+			var state = allStates[_g];
+			++_g;
+			var _g1 = 0;
+			var _g2 = this.animationNames;
+			while(_g1 < _g2.length) {
+				var name = _g2[_g1];
+				++_g1;
+				var anim;
+				try {
+					anim = bh_stateanim_AnimFileParser.findAnimationInternal(name,state,this.animations);
+				} catch( _g3 ) {
+					var _g4 = haxe_Exception.caught(_g3).unwrap();
+					if(typeof(_g4) == "string") {
+						var e = _g4;
+						anim = this.syntaxError(e);
+					} else {
+						throw _g3;
+					}
+				}
+				if(anim == null) {
+					continue;
+				}
+				anim.visited = true;
+				var _g5 = 0;
+				var _g6 = this.allowedExtraPoints;
+				while(_g5 < _g6.length) {
+					var ePoint = _g6[_g5];
+					++_g5;
+					var p;
+					try {
+						p = bh_stateanim_AnimFileParser.findExtraPoint(ePoint,state,anim,this.definedStates);
+					} catch( _g7 ) {
+						var _g8 = haxe_Exception.caught(_g7).unwrap();
+						if(typeof(_g8) == "string") {
+							var e1 = _g8;
+							p = this.syntaxError(e1);
+						} else {
+							throw _g7;
+						}
+					}
+					if(p != null) {
+						p.visited = true;
+					}
+				}
+				var playlist;
+				try {
+					playlist = bh_stateanim_AnimFileParser.findPlaylist(state,anim,this.definedStates);
+				} catch( _g9 ) {
+					var _g10 = haxe_Exception.caught(_g9).unwrap();
+					if(typeof(_g10) == "string") {
+						var e2 = _g10;
+						playlist = this.syntaxError(e2);
+					} else {
+						throw _g9;
+					}
+				}
+				if(playlist == null) {
+					this.syntaxError(anim.timeline != null ? "the timeline of " + anim.name + ", layer " + anim.timeline + ", has no block for " + (state == null ? "null" : haxe_ds_StringMap.stringify(state.h)) : "no playlist for " + (state == null ? "null" : haxe_ds_StringMap.stringify(state.h)) + ", id " + anim.name);
+				} else {
+					playlist.visited = true;
+				}
+				var animLayers = anim.layers;
+				if(animLayers != null) {
+					var _g11 = 0;
+					var _g12 = this.layerNames;
+					while(_g11 < _g12.length) {
+						var layerName = _g12[_g11];
+						++_g11;
+						if(layerName == anim.timeline) {
+							continue;
+						}
+						var _g13 = [];
+						var _g14 = 0;
+						var _g15 = animLayers;
+						while(_g14 < _g15.length) {
+							var v = _g15[_g14];
+							++_g14;
+							if(v.name == layerName) {
+								_g13.push(v);
+							}
+						}
+						var blocks = _g13;
+						if(blocks.length == 0) {
+							continue;
+						}
+						var block;
+						try {
+							block = bh_stateanim_AnimFileParser.findBestStateMatch(blocks,state,"layer " + layerName + " of " + anim.name);
+						} catch( _g16 ) {
+							var _g17 = haxe_Exception.caught(_g16).unwrap();
+							if(typeof(_g17) == "string") {
+								var e3 = _g17;
+								block = this.syntaxError(e3);
+							} else {
+								throw _g16;
+							}
+						}
+						if(block != null) {
+							block.visited = true;
+						}
+					}
+				}
+			}
+		}
+		var _g = 0;
+		var _g1 = this.animations;
+		while(_g < _g1.length) {
+			var anim = _g1[_g];
+			++_g;
+			if(anim.visited != true) {
+				this.syntaxError("animation " + anim.name + " not reachable");
+			}
+			var h = anim.extraPoint.h;
+			var _g_h = h;
+			var _g_keys = Object.keys(h);
+			var _g_length = _g_keys.length;
+			var _g_current = 0;
+			while(_g_current < _g_length) {
+				var key = _g_keys[_g_current++];
+				var _g_key = key;
+				var _g_value = _g_h[key];
+				var ek = _g_key;
+				var ev = _g_value;
+				var _g2 = 0;
+				while(_g2 < ev.length) {
+					var ePoint = ev[_g2];
+					++_g2;
+					if(ePoint.visited != true) {
+						this.syntaxError("Extra point " + ek + " in anim " + anim.name + " not reachable " + (ePoint.states == null ? "null" : haxe_ds_StringMap.stringify(ePoint.states.h)));
+					}
+				}
+			}
+			var _g3 = 0;
+			var _g4 = anim.playlist;
+			while(_g3 < _g4.length) {
+				var pl = _g4[_g3];
+				++_g3;
+				if(pl.visited != true) {
+					this.syntaxError("Playlist in anim " + anim.name + " not reachable " + (pl.states == null ? "null" : haxe_ds_StringMap.stringify(pl.states.h)));
+				}
+			}
+			var animLayers = anim.layers;
+			if(animLayers != null) {
+				var _g5 = 0;
+				while(_g5 < animLayers.length) {
+					var l = animLayers[_g5];
+					++_g5;
+					if(l.name != anim.timeline && l.visited != true) {
+						this.syntaxError("Layer " + l.name + " in anim " + anim.name + " not reachable " + (l.states == null ? "null" : haxe_ds_StringMap.stringify(l.states.h)));
+					}
+				}
+			}
+		}
+		var _g = 0;
+		var _g1 = this.animations;
+		while(_g < _g1.length) {
+			var anim = _g1[_g];
+			++_g;
+			this.validateComparisonConditionals(anim.states,"animation " + anim.name);
+			var _g2 = 0;
+			var _g3 = anim.playlist;
+			while(_g2 < _g3.length) {
+				var pl = _g3[_g2];
+				++_g2;
+				this.validateComparisonConditionals(pl.states,"playlist in animation " + anim.name);
+			}
+			var h = anim.extraPoint.h;
+			var _g_h = h;
+			var _g_keys = Object.keys(h);
+			var _g_length = _g_keys.length;
+			var _g_current = 0;
+			while(_g_current < _g_length) {
+				var key = _g_keys[_g_current++];
+				var _g_key = key;
+				var _g_value = _g_h[key];
+				var ek = _g_key;
+				var ev = _g_value;
+				var _g4 = 0;
+				while(_g4 < ev.length) {
+					var ePoint = ev[_g4];
+					++_g4;
+					this.validateComparisonConditionals(ePoint.states,"extra point " + ek + " in animation " + anim.name);
+				}
+			}
+			if(anim.filters != null) {
+				var _g5 = 0;
+				var _g6 = anim.filters;
+				while(_g5 < _g6.length) {
+					var f = _g6[_g5];
+					++_g5;
+					this.validateComparisonConditionals(f.states,"filter in animation " + anim.name);
+				}
+			}
+		}
+		this.metadata = bh_base_MapTools.count(this.metadataMap) > 0 ? new bh_stateanim_AnimMetadata(this.metadataMap) : null;
+	}
+	,loaded: function() {
+		return { sheet : this.sheetName, states : this.definedStates, stateOrder : this.definedStatesIndexes, layers : this.layerNames, allowedExtraPoints : this.allowedExtraPoints, center : this.center, metadata : this.metadata, metadataEntries : this.metadataMap, animations : this.animations, defaults : { fps : this.defaultFps, loop : this.defaultLoop, flipX : this.defaultFlipX, flipY : this.defaultFlipY}, annotations : this.annotations, spans : this.spans, sounds : this.sounds, holds : this.holds};
+	}
+	,markSpan: function(path,fromToken) {
+		if(!this.withSpans) {
+			return;
+		}
+		var first = this.tokens[fromToken];
+		var last = this.tokens[this.tpos > fromToken ? this.tpos - 1 : fromToken];
+		this.spans.push({ path : path, start : first.start, end : last.end, line : first.line, col : first.col});
+	}
+	,spanned: function(path,parse) {
+		var from = this.tpos;
+		var value = parse();
+		this.markSpan(path,from);
+		return value;
+	}
+	,attachAnnotations: function(to,pathPrefix) {
+		if(to == null || this.pendingAnnotations.length == 0) {
+			return;
+		}
+		var _g = 0;
+		var _g1 = this.pendingAnnotations;
+		while(_g < _g1.length) {
+			var pending = _g1[_g];
+			++_g;
+			var name = pending.annotation.name;
+			var n = 0;
+			var _g2 = 0;
+			while(_g2 < to.length) {
+				var a = to[_g2];
+				++_g2;
+				if(a.name == name) {
+					++n;
+				}
+			}
+			to.push(pending.annotation);
+			if(this.withSpans) {
+				this.spans.push({ path : "" + pathPrefix + "@" + name + "#" + n, start : pending.start, end : pending.end, line : pending.annotation.line, col : pending.annotation.col});
+			}
+		}
+		this.pendingAnnotations = [];
+	}
+	,parseAnnotation: function(atToken) {
+		var name = this.expectIdentifier();
+		var args = [];
+		var named = new haxe_ds_StringMap();
+		if(this.match(bh_stateanim_APToken.APOpen)) {
+			var first = true;
+			while(!this.match(bh_stateanim_APToken.APClosed)) {
+				if(!first) {
+					this.expect(bh_stateanim_APToken.APComma);
+				}
+				first = false;
+				var _g = this.tokens[this.tpos].type;
+				var _g1 = this.peekAt(1);
+				if(_g._hx_index == 7) {
+					var _g2 = _g.keyword;
+					if(_g.identType._hx_index == 0) {
+						if(_g1._hx_index == 4) {
+							var key = _g.s;
+							this.advance();
+							this.advance();
+							if(Object.prototype.hasOwnProperty.call(named.h,key)) {
+								this.syntaxError("annotation @" + name + ": \"" + key + "\" is given twice");
+							}
+							var value = this.parseAnnotationValue(name);
+							named.h[key] = value;
+						} else {
+							args.push(this.parseAnnotationValue(name));
+						}
+					} else {
+						args.push(this.parseAnnotationValue(name));
+					}
+				} else {
+					args.push(this.parseAnnotationValue(name));
+				}
+			}
+		}
+		var at = this.tokens[atToken];
+		return { name : name, args : args, named : named, line : at.line, col : at.col};
+	}
+	,parseAnnotationValue: function(annotationName) {
+		var _g = this.tokens[this.tpos].type;
+		switch(_g._hx_index) {
+		case 6:
+			var s = _g.s;
+			this.advance();
+			if(s.indexOf(".") != -1) {
+				return bh_stateanim_MetadataValue.MVFloat(parseFloat(s));
+			} else {
+				return bh_stateanim_MetadataValue.MVInt(bh_multianim_ParseUtils.toInt(s));
+			}
+			break;
+		case 7:
+			var _g1 = _g.s;
+			var _g2 = _g.keyword;
+			switch(_g.identType._hx_index) {
+			case 0:case 2:
+				var s = _g1;
+				this.advance();
+				return bh_stateanim_MetadataValue.MVString(s);
+			default:
+				return this.unexpectedError("annotation @" + annotationName + ": expected a number, a string, a word, a colour or a [list]");
+			}
+			break;
+		case 11:
+			this.advance();
+			return bh_stateanim_MetadataValue.MVList(this.parseWordList());
+		case 20:
+			var c = _g.i;
+			this.advance();
+			return bh_stateanim_MetadataValue.MVColor(c);
+		default:
+			return this.unexpectedError("annotation @" + annotationName + ": expected a number, a string, a word, a colour or a [list]");
+		}
+	}
+	,parseWordList: function() {
+		var words = [];
+		if(this.match(bh_stateanim_APToken.APBracketClosed)) {
+			return words;
+		}
+		while(true) {
+			words.push(this.expectIdentifier());
+			if(this.match(bh_stateanim_APToken.APComma)) {
+				continue;
+			}
+			this.expect(bh_stateanim_APToken.APBracketClosed);
+			return words;
+		}
+	}
+	,expectIdentifier: function() {
+		var _g = this.tokens[this.tpos].type;
+		switch(_g._hx_index) {
+		case 6:
+			var s = _g.s;
+			this.advance();
+			return s;
+		case 7:
+			var _g1 = _g.s;
+			var _g2 = _g.keyword;
+			switch(_g.identType._hx_index) {
+			case 0:case 2:
+				var s = _g1;
+				this.advance();
+				return s;
+			default:
+				return this.syntaxError("expected identifier, got " + Std.string(this.tokens[this.tpos].type));
+			}
+			break;
+		default:
+			return this.syntaxError("expected identifier, got " + Std.string(this.tokens[this.tpos].type));
+		}
+	}
+	,parseIntNumber: function() {
+		var _g = this.tokens[this.tpos].type;
+		if(_g._hx_index == 6) {
+			var s = _g.s;
+			this.advance();
+			var tmp = Std.parseInt(s);
+			if(tmp != null) {
+				return tmp;
+			} else {
+				return this.syntaxError("expected integer, got \"" + s + "\"");
+			}
+		} else {
+			return this.unexpectedError("expected integer number");
+		}
+	}
+	,parseConstantExpr: function() {
+		var isNeg = this.match(bh_stateanim_APToken.APMinus);
+		var _g = this.tokens[this.tpos].type;
+		switch(_g._hx_index) {
+		case 6:
+			var s = _g.s;
+			this.advance();
+			var f = parseFloat(s);
+			if(isNeg) {
+				return -f;
+			} else {
+				return f;
+			}
+			break;
+		case 7:
+			var _g1 = _g.keyword;
+			if(_g.identType._hx_index == 0) {
+				var s = _g.s;
+				if(s.charAt(0) == "$") {
+					this.advance();
+					var refName = s.substring(1);
+					var cv = this.constants.h[refName];
+					if(cv == null) {
+						var tmp = "constant \"" + refName + "\" not defined. Defined constants: ";
+						var _g = [];
+						var h = this.constants.h;
+						var k_h = h;
+						var k_keys = Object.keys(h);
+						var k_length = k_keys.length;
+						var k_current = 0;
+						while(k_current < k_length) {
+							var k = k_keys[k_current++];
+							_g.push(k);
+						}
+						this.syntaxError(tmp + Std.string(_g));
+					}
+					if(isNeg) {
+						return -cv;
+					} else {
+						return cv;
+					}
+				} else {
+					return this.unexpectedError("expected number or $constant");
+				}
+			} else {
+				return this.unexpectedError("expected number or $constant");
+			}
+			break;
+		default:
+			return this.unexpectedError("expected number or $constant");
+		}
+	}
+	,parseIntCoord: function() {
+		return this.parseConstantExpr() | 0;
+	}
+	,parseCoordinates: function() {
+		var x = this.parseIntCoord();
+		this.expect(bh_stateanim_APToken.APComma);
+		var y = this.parseIntCoord();
+		return new bh_base_Point(x,y);
+	}
+	,parseLoopValue: function() {
+		var _g = this.tokens[this.tpos].type;
+		switch(_g._hx_index) {
+		case 6:
+			var number = _g.s;
+			this.advance();
+			var cnt = Std.parseInt(number);
+			if(cnt == null || cnt <= 0) {
+				this.syntaxError("loop counter must be greater than 0");
+			}
+			return cnt;
+		case 7:
+			var _g1 = _g.keyword;
+			var _g1 = _g.identType;
+			switch(_g.s) {
+			case "false":case "no":
+				this.advance();
+				return null;
+			case "true":case "yes":
+				this.advance();
+				return -1;
+			default:
+				return this.unexpectedError("expected loop value (yes/no/true/false/number)");
+			}
+			break;
+		default:
+			return this.unexpectedError("expected loop value (yes/no/true/false/number)");
+		}
+	}
+	,parseBoolValue: function() {
+		var _g = this.tokens[this.tpos].type;
+		if(_g._hx_index == 7) {
+			var _g1 = _g.keyword;
+			var _g1 = _g.identType;
+			switch(_g.s) {
+			case "false":case "no":
+				this.advance();
+				return false;
+			case "true":case "yes":
+				this.advance();
+				return true;
+			default:
+				return this.unexpectedError("expected yes/no/true/false");
+			}
+		} else {
+			return this.unexpectedError("expected yes/no/true/false");
+		}
+	}
+	,parseAllStates: function() {
+		var states = new haxe_ds_StringMap();
+		var _g = this.tokens[this.tpos].type;
+		if(_g._hx_index == 7) {
+			var _g1 = _g.keyword;
+			var _g1 = _g.identType;
+			var stateName = _g.s;
+			this.advance();
+			this.expect(bh_stateanim_APToken.APOpen);
+			var list = this.parseList();
+			if(Object.prototype.hasOwnProperty.call(states.h,stateName)) {
+				this.syntaxError("State " + stateName + " already defined");
+			}
+			states.h[stateName] = list;
+			this.definedStatesIndexes.push(stateName);
+			while(this.match(bh_stateanim_APToken.APComma)) {
+				var _g = this.tokens[this.tpos].type;
+				if(_g._hx_index == 7) {
+					var _g1 = _g.keyword;
+					var _g2 = _g.identType;
+					var sn = _g.s;
+					this.advance();
+					this.expect(bh_stateanim_APToken.APOpen);
+					var l = this.parseList();
+					if(Object.prototype.hasOwnProperty.call(states.h,sn)) {
+						this.syntaxError("State " + sn + " already defined");
+					}
+					states.h[sn] = l;
+					this.definedStatesIndexes.push(sn);
+				} else {
+					break;
+				}
+			}
+		} else {
+			this.unexpectedError("expected state definition");
+		}
+		return states;
+	}
+	,validateComparisonConditionals: function(selector,context) {
+		if(selector == null) {
+			return;
+		}
+		var h = selector.h;
+		var _g_h = h;
+		var _g_keys = Object.keys(h);
+		var _g_length = _g_keys.length;
+		var _g_current = 0;
+		while(_g_current < _g_length) {
+			var key = _g_keys[_g_current++];
+			var _g_key = key;
+			var _g_value = _g_h[key];
+			var stateName = _g_key;
+			var cond = _g_value;
+			this.validateComparisonConditionalValue(stateName,cond,context);
+		}
+	}
+	,validateComparisonConditionalValue: function(stateName,cond,context) {
+		switch(cond._hx_index) {
+		case 2:
+			var inner = cond.inner;
+			this.validateComparisonConditionalValue(stateName,inner,context);
+			break;
+		case 3:
+			var _g = cond.op;
+			var v = cond.value;
+			var f = parseFloat(v);
+			if(isNaN(f)) {
+				this.syntaxError("" + context + ": comparison operand \"" + v + "\" for state \"" + stateName + "\" is not numeric — the condition can never match");
+			}
+			this.requireNumericStateValue(stateName,context);
+			break;
+		case 4:
+			var min = cond.min;
+			var max = cond.max;
+			var tmp;
+			var f = parseFloat(min);
+			if(!isNaN(f)) {
+				var f = parseFloat(max);
+				tmp = isNaN(f);
+			} else {
+				tmp = true;
+			}
+			if(tmp) {
+				this.syntaxError("" + context + ": range bounds \"" + min + "\"..\"" + max + "\" for state \"" + stateName + "\" are not numeric — the condition can never match");
+			}
+			this.requireNumericStateValue(stateName,context);
+			break;
+		default:
+		}
+	}
+	,requireNumericStateValue: function(stateName,context) {
+		var values = this.definedStates.h[stateName];
+		if(values == null) {
+			return;
+		}
+		var _g = 0;
+		while(_g < values.length) {
+			var v = values[_g];
+			++_g;
+			var f = parseFloat(v);
+			if(!isNaN(f)) {
+				return;
+			}
+		}
+		this.syntaxError("" + context + ": state \"" + stateName + "\" has no numeric declared values (" + values.join(", ") + ") — a comparison/range condition on it can never match");
+	}
+	,parseStates: function() {
+		var states = new haxe_ds_StringMap();
+		while(true) if(this.tokens[this.tpos].type._hx_index == 13) {
+			this.advance();
+			var _g = this.tokens[this.tpos].type;
+			switch(_g._hx_index) {
+			case 1:
+				this.advance();
+				this.parseConditionalState(states);
+				break;
+			case 7:
+				var _g1 = _g.s;
+				var _g2 = _g.keyword;
+				var _g3 = _g.identType;
+				if(_g2 == null) {
+					return this.unexpectedError("expected (, else, or default after @");
+				} else {
+					switch(_g2._hx_index) {
+					case 19:
+						this.advance();
+						var h = states.h;
+						var inlStringMapKeyIterator_h = h;
+						var inlStringMapKeyIterator_keys = Object.keys(h);
+						var inlStringMapKeyIterator_length = inlStringMapKeyIterator_keys.length;
+						var inlStringMapKeyIterator_current = 0;
+						if(inlStringMapKeyIterator_current < inlStringMapKeyIterator_length) {
+							this.syntaxError("@else cannot follow @(...) in the same header — stack @(...) conditions for AND, or use @else on its own");
+						}
+						if(this.match(bh_stateanim_APToken.APOpen)) {
+							var elseStates = new haxe_ds_StringMap();
+							this.parseConditionalState(elseStates);
+							return elseStates;
+						}
+						return new haxe_ds_StringMap();
+					case 20:
+						this.advance();
+						var h1 = states.h;
+						var inlStringMapKeyIterator_h1 = h1;
+						var inlStringMapKeyIterator_keys1 = Object.keys(h1);
+						var inlStringMapKeyIterator_length1 = inlStringMapKeyIterator_keys1.length;
+						var inlStringMapKeyIterator_current1 = 0;
+						if(inlStringMapKeyIterator_current1 < inlStringMapKeyIterator_length1) {
+							this.syntaxError("@default cannot follow @(...) in the same header — remove the condition or the @default");
+						}
+						return new haxe_ds_StringMap();
+					default:
+						return this.unexpectedError("expected (, else, or default after @");
+					}
+				}
+				break;
+			default:
+				return this.unexpectedError("expected (, else, or default after @");
+			}
+		} else {
+			return states;
+		}
+	}
+	,parseConditionalState: function(states) {
+		var stateName = this.expectIdentifier();
+		var condValue;
+		switch(this.tokens[this.tpos].type._hx_index) {
+		case 14:
+			this.advance();
+			var _g = this.tokens[this.tpos].type;
+			switch(_g._hx_index) {
+			case 6:
+				var v = _g.s;
+				this.advance();
+				if(this.match(bh_stateanim_APToken.APDoubleDot)) {
+					var val2 = this.expectIdentifier();
+					condValue = bh_stateanim_AnimConditionalValue.ACVRange(v,val2);
+				} else {
+					condValue = bh_stateanim_AnimConditionalValue.ACVSingle(v);
+				}
+				break;
+			case 7:
+				var _g1 = _g.s;
+				var _g2 = _g.keyword;
+				switch(_g.identType._hx_index) {
+				case 0:case 2:
+					var v = _g1;
+					this.advance();
+					if(this.match(bh_stateanim_APToken.APDoubleDot)) {
+						var val2 = this.expectIdentifier();
+						condValue = bh_stateanim_AnimConditionalValue.ACVRange(v,val2);
+					} else {
+						condValue = bh_stateanim_AnimConditionalValue.ACVSingle(v);
+					}
+					break;
+				default:
+					condValue = this.syntaxError("Expected value, [values], or range after =>");
+				}
+				break;
+			case 11:
+				this.advance();
+				condValue = bh_stateanim_AnimConditionalValue.ACVMulti(this.parseConditionalValueList());
+				break;
+			default:
+				condValue = this.syntaxError("Expected value, [values], or range after =>");
+			}
+			break;
+		case 15:
+			this.advance();
+			var innerVal;
+			var _g = this.tokens[this.tpos].type;
+			switch(_g._hx_index) {
+			case 6:
+				var value = _g.s;
+				this.advance();
+				innerVal = bh_stateanim_AnimConditionalValue.ACVSingle(value);
+				break;
+			case 7:
+				var _g1 = _g.s;
+				var _g2 = _g.keyword;
+				switch(_g.identType._hx_index) {
+				case 0:case 2:
+					var value = _g1;
+					this.advance();
+					innerVal = bh_stateanim_AnimConditionalValue.ACVSingle(value);
+					break;
+				default:
+					innerVal = this.syntaxError("Expected value or [values] after !=");
+				}
+				break;
+			case 11:
+				this.advance();
+				innerVal = bh_stateanim_AnimConditionalValue.ACVMulti(this.parseConditionalValueList());
+				break;
+			default:
+				innerVal = this.syntaxError("Expected value or [values] after !=");
+			}
+			condValue = bh_stateanim_AnimConditionalValue.ACVNot(innerVal);
+			break;
+		case 16:
+			this.advance();
+			condValue = bh_stateanim_AnimConditionalValue.ACVCompare(bh_stateanim_AnimCompareOp.ACmpGt,this.expectSignedIdentifier());
+			break;
+		case 17:
+			this.advance();
+			condValue = bh_stateanim_AnimConditionalValue.ACVCompare(bh_stateanim_AnimCompareOp.ACmpLt,this.expectSignedIdentifier());
+			break;
+		case 18:
+			this.advance();
+			condValue = bh_stateanim_AnimConditionalValue.ACVCompare(bh_stateanim_AnimCompareOp.ACmpGte,this.expectSignedIdentifier());
+			break;
+		case 19:
+			this.advance();
+			condValue = bh_stateanim_AnimConditionalValue.ACVCompare(bh_stateanim_AnimCompareOp.ACmpLte,this.expectSignedIdentifier());
+			break;
+		default:
+			condValue = this.syntaxError("Expected =>, !=, >=, <=, >, or < in conditional");
+		}
+		this.expect(bh_stateanim_APToken.APClosed);
+		if(Object.prototype.hasOwnProperty.call(states.h,stateName)) {
+			this.syntaxError("duplicate state \"" + stateName + "\" in conditional");
+		}
+		states.h[stateName] = condValue;
+	}
+	,expectSignedIdentifier: function() {
+		var negative = this.match(bh_stateanim_APToken.APMinus);
+		var s = this.expectIdentifier();
+		if(negative) {
+			return "-" + s;
+		} else {
+			return s;
+		}
+	}
+	,parseConditionalValueList: function() {
+		var values = [];
+		while(true) {
+			values.push(this.expectIdentifier());
+			if(this.match(bh_stateanim_APToken.APComma)) {
+				continue;
+			}
+			this.expect(bh_stateanim_APToken.APBracketClosed);
+			return values;
+		}
+	}
+	,parseList: function() {
+		var list = [];
+		while(true) {
+			list.push(this.expectIdentifier());
+			if(this.match(bh_stateanim_APToken.APComma)) {
+				continue;
+			}
+			this.expect(bh_stateanim_APToken.APClosed);
+			return list;
+		}
+	}
+	,parseListUntilBracket: function() {
+		var list = [];
+		while(true) {
+			var ident = this.expectIdentifier();
+			if(list.indexOf(ident) != -1) {
+				this.syntaxError("extra point " + ident + " already defined");
+			}
+			list.push(ident);
+			if(this.match(bh_stateanim_APToken.APComma)) {
+				continue;
+			}
+			this.expect(bh_stateanim_APToken.APBracketClosed);
+			return list;
+		}
+	}
+	,parseSounds: function() {
+		var _gthis = this;
+		var soundName = function(what) {
+			var _g = _gthis.tokens[_gthis.tpos].type;
+			if(_g._hx_index == 7) {
+				var _g1 = _g.s;
+				var _g2 = _g.keyword;
+				switch(_g.identType._hx_index) {
+				case 0:case 2:
+					var s = _g1;
+					_gthis.advance();
+					return s;
+				default:
+					return _gthis.syntaxError("sounds: " + what + ": expected the sound's name in quotes (\"block.sound\")");
+				}
+			} else {
+				return _gthis.syntaxError("sounds: " + what + ": expected the sound's name in quotes (\"block.sound\")");
+			}
+		};
+		while(!this.match(bh_stateanim_APToken.APCurlyClosed)) {
+			var key = this.expectIdentifier();
+			if(key == "hold" && this.tokens[this.tpos].type._hx_index != 4) {
+				var anim = this.expectIdentifier();
+				this.expect(bh_stateanim_APToken.APColon);
+				var value = soundName("hold " + anim);
+				if(Object.prototype.hasOwnProperty.call(this.holds.h,anim)) {
+					this.syntaxError("sounds: hold " + anim + " is given twice");
+				}
+				this.holds.h[anim] = value;
+				continue;
+			}
+			this.expect(bh_stateanim_APToken.APColon);
+			var value1 = soundName(key);
+			if(Object.prototype.hasOwnProperty.call(this.sounds.h,key)) {
+				this.syntaxError("sounds: " + key + " is given twice");
+			}
+			this.sounds.h[key] = value1;
+		}
+	}
+	,parseMetadata: function() {
+		while(!this.match(bh_stateanim_APToken.APCurlyClosed)) {
+			var states = this.parseStates();
+			var key = this.expectIdentifier();
+			this.expect(bh_stateanim_APToken.APColon);
+			var existing = this.metadataMap.h[key];
+			var path = existing != null ? existing.length : 0;
+			var from = this.tpos;
+			var value = this.parseMetadataEntryValue();
+			this.markSpan("metadata." + key + "#" + path,from);
+			var entry = { states : states, value : value};
+			if(existing != null) {
+				existing.push(entry);
+			} else {
+				var v = [entry];
+				this.metadataMap.h[key] = v;
+			}
+		}
+	}
+	,parseMetadataEntryValue: function() {
+		var _g = this.tokens[this.tpos].type;
+		switch(_g._hx_index) {
+		case 6:
+			var numStr = _g.s;
+			this.advance();
+			if(numStr.indexOf(".") != -1) {
+				return bh_stateanim_MetadataValue.MVFloat(parseFloat(numStr));
+			} else {
+				return bh_stateanim_MetadataValue.MVInt(bh_multianim_ParseUtils.toInt(numStr));
+			}
+			break;
+		case 7:
+			var _g1 = _g.keyword;
+			if(_g.identType._hx_index == 2) {
+				var strVal = _g.s;
+				this.advance();
+				return bh_stateanim_MetadataValue.MVString(strVal);
+			} else {
+				return this.unexpectedError("Expected number, string, color or [list] value in metadata");
+			}
+			break;
+		case 11:
+			this.advance();
+			return bh_stateanim_MetadataValue.MVList(this.parseWordList());
+		case 20:
+			var c = _g.i;
+			this.advance();
+			return bh_stateanim_MetadataValue.MVColor(c);
+		default:
+			return this.unexpectedError("Expected number, string, color or [list] value in metadata");
+		}
+	}
+	,parseLayerNames: function() {
+		var names = [];
+		while(true) {
+			var layerName = this.expectIdentifier();
+			if(names.indexOf(layerName) != -1) {
+				this.syntaxError("layer " + layerName + " is declared twice");
+			}
+			names.push(layerName);
+			if(!this.match(bh_stateanim_APToken.APComma)) {
+				return names;
+			}
+		}
+	}
+	,parseAnimation: function(statesDefinitions,animationStates,allowedExtraPointsList,path,headerName) {
+		var extraPoints = new haxe_ds_StringMap();
+		var filters = [];
+		var flipX = null;
+		var flipY = null;
+		var ret = { loop : null, name : headerName, fps : null, extraPoints : extraPoints, playlist : [], filters : filters, flipX : flipX, flipY : flipY, layers : [], timeline : null};
+		_hx_loop1: while(true) {
+			var _g = this.tokens[this.tpos].type;
+			switch(_g._hx_index) {
+			case 7:
+				var _g1 = _g.s;
+				var _g2 = _g.keyword;
+				var _g3 = _g.identType;
+				if(_g2 == null) {
+					this.unexpectedError();
+				} else {
+					switch(_g2._hx_index) {
+					case 4:
+						if(_g3._hx_index == 0) {
+							var blockToken = this.tpos;
+							this.advance();
+							this.expect(bh_stateanim_APToken.APCurlyOpen);
+							if(bh_base_MapTools.count(extraPoints) > 0) {
+								this.syntaxError("extraPoints already defined");
+							}
+							this.parseExtraPoints(statesDefinitions,animationStates,extraPoints,allowedExtraPointsList,"" + path + ".extrapoints");
+							if(bh_base_MapTools.count(extraPoints) == 0) {
+								this.syntaxError("extraPoints must not be empty");
+							}
+							this.markSpan("" + path + ".extrapoints",blockToken);
+						} else {
+							this.unexpectedError();
+						}
+						break;
+					case 5:
+						if(_g3._hx_index == 0) {
+							var blockToken1 = this.tpos;
+							var playlistPath = "" + path + ".playlist#" + ret.playlist.length;
+							this.advance();
+							var playlistStates = this.parseStates();
+							var h = playlistStates.h;
+							var _g_h = h;
+							var _g_keys = Object.keys(h);
+							var _g_length = _g_keys.length;
+							var _g_current = 0;
+							while(_g_current < _g_length) {
+								var key = _g_keys[_g_current++];
+								var _g_key = key;
+								var _g_value = _g_h[key];
+								var key1 = _g_key;
+								var value = _g_value;
+								this.parserValidateConditionalState(statesDefinitions,key1,value);
+							}
+							this.checkForUnreachableState(animationStates,playlistStates);
+							this.expect(bh_stateanim_APToken.APCurlyOpen);
+							var playlist = { anims : [], states : playlistStates};
+							this.parseFrames(playlist.anims,playlistPath);
+							ret.playlist.push(playlist);
+							this.markSpan(playlistPath,blockToken1);
+						} else {
+							this.unexpectedError();
+						}
+						break;
+					case 7:
+						if(_g3._hx_index == 0) {
+							this.advance();
+							this.expect(bh_stateanim_APToken.APColon);
+							var from = this.tpos;
+							var value1 = this.parseLoopValue();
+							this.markSpan("" + path + ".loop",from);
+							ret.loop = value1;
+						} else {
+							this.unexpectedError();
+						}
+						break;
+					case 9:
+						if(_g3._hx_index == 0) {
+							this.advance();
+							this.expect(bh_stateanim_APToken.APColon);
+							var from1 = this.tpos;
+							var value2 = this.expectIdentifier();
+							this.markSpan("" + path + ".name",from1);
+							var bodyName = value2;
+							if(ret.name != null && ret.name != bodyName) {
+								this.syntaxError("animation name \"" + ret.name + "\" (in header) conflicts with name: \"" + bodyName + "\" (in body)");
+							}
+							ret.name = bodyName;
+							if(this.animationNames.indexOf(ret.name) == -1) {
+								this.animationNames.push(ret.name);
+							}
+						} else {
+							this.unexpectedError();
+						}
+						break;
+					case 10:
+						if(_g3._hx_index == 0) {
+							this.advance();
+							this.expect(bh_stateanim_APToken.APColon);
+							if(ret.fps != null) {
+								this.syntaxError("fps already set");
+							}
+							var from2 = this.tpos;
+							var value3 = this.parseIntNumber();
+							this.markSpan("" + path + ".fps",from2);
+							var parsedFps = value3;
+							if(parsedFps <= 0) {
+								this.syntaxError("fps must be greater than 0");
+							}
+							ret.fps = parsedFps;
+						} else {
+							this.unexpectedError();
+						}
+						break;
+					case 21:
+						if(_g3._hx_index == 0) {
+							var blockToken2 = this.tpos;
+							this.advance();
+							this.expect(bh_stateanim_APToken.APCurlyOpen);
+							ret.filters = this.parseFilterBlock(statesDefinitions,animationStates);
+							this.markSpan("" + path + ".filters",blockToken2);
+						} else {
+							this.unexpectedError();
+						}
+						break;
+					case 24:
+						if(_g3._hx_index == 0) {
+							this.advance();
+							this.expect(bh_stateanim_APToken.APColon);
+							if(ret.flipX != null) {
+								this.syntaxError("flipX already set");
+							}
+							var from3 = this.tpos;
+							var value4 = this.parseBoolValue();
+							this.markSpan("" + path + ".flipX",from3);
+							ret.flipX = value4;
+						} else {
+							this.unexpectedError();
+						}
+						break;
+					case 25:
+						if(_g3._hx_index == 0) {
+							this.advance();
+							this.expect(bh_stateanim_APToken.APColon);
+							if(ret.flipY != null) {
+								this.syntaxError("flipY already set");
+							}
+							var from4 = this.tpos;
+							var value5 = this.parseBoolValue();
+							this.markSpan("" + path + ".flipY",from4);
+							ret.flipY = value5;
+						} else {
+							this.unexpectedError();
+						}
+						break;
+					case 28:
+						if(_g3._hx_index == 0) {
+							var blockToken3 = this.tpos;
+							this.advance();
+							var layerName = this.expectIdentifier();
+							if(this.layerNames.length == 0) {
+								this.syntaxError("layer " + layerName + ": the file declares no layers (layers: shadow, body, …)");
+							}
+							if(this.layerNames.indexOf(layerName) == -1) {
+								this.syntaxError("layer " + layerName + " is not one of the layers (" + this.layerNames.join(", ") + ")");
+							}
+							var layerStates = this.parseStates();
+							var h1 = layerStates.h;
+							var _g_h1 = h1;
+							var _g_keys1 = Object.keys(h1);
+							var _g_length1 = _g_keys1.length;
+							var _g_current1 = 0;
+							while(_g_current1 < _g_length1) {
+								var key2 = _g_keys1[_g_current1++];
+								var _g_key1 = key2;
+								var _g_value1 = _g_h1[key2];
+								var key3 = _g_key1;
+								var value6 = _g_value1;
+								this.parserValidateConditionalState(statesDefinitions,key3,value6);
+							}
+							this.checkForUnreachableState(animationStates,layerStates);
+							this.expect(bh_stateanim_APToken.APCurlyOpen);
+							var written = 0;
+							var _g4 = 0;
+							var _g5 = ret.layers;
+							while(_g4 < _g5.length) {
+								var l = _g5[_g4];
+								++_g4;
+								if(l.name == layerName) {
+									++written;
+								}
+							}
+							var layerPath = "" + path + ".layer." + layerName + "#" + written;
+							var layer = { name : layerName, states : layerStates, anims : []};
+							this.parseFrames(layer.anims,layerPath,layer);
+							ret.layers.push(layer);
+							this.markSpan(layerPath,blockToken3);
+						} else {
+							this.unexpectedError();
+						}
+						break;
+					case 29:
+						if(_g3._hx_index == 0) {
+							this.advance();
+							this.expect(bh_stateanim_APToken.APColon);
+							if(ret.timeline != null) {
+								this.syntaxError("timeline already set");
+							}
+							var from5 = this.tpos;
+							var value7 = this.expectIdentifier();
+							this.markSpan("" + path + ".timeline",from5);
+							var timelineName = value7;
+							if(this.layerNames.indexOf(timelineName) == -1) {
+								this.syntaxError("timeline " + timelineName + " is not one of the layers (" + this.layerNames.join(", ") + ")");
+							}
+							ret.timeline = timelineName;
+						} else {
+							this.unexpectedError();
+						}
+						break;
+					default:
+						this.unexpectedError();
+					}
+				}
+				break;
+			case 8:
+				this.advance();
+				break _hx_loop1;
+			default:
+				this.unexpectedError();
+			}
+		}
+		if(ret.name == null) {
+			this.syntaxError("animation name not set (use 'animation name { }' or 'name:' inside body)");
+		}
+		if(this.animationNames.indexOf(ret.name) == -1) {
+			this.animationNames.push(ret.name);
+		}
+		if(ret.layers.length > 0) {
+			this.resolveLayers(ret.name,ret);
+		} else if(ret.timeline != null) {
+			this.syntaxError("animation " + ret.name + ": timeline: needs layer blocks");
+		} else if(this.layerNames.length > 0) {
+			this.syntaxError("animation " + ret.name + ": the file has layers, so its frames are written in layer blocks, not a playlist");
+		}
+		if(ret.playlist.length == 0) {
+			this.syntaxError("animation requires playlist (or, in a file with layers, layer blocks)");
+		}
+		return ret;
+	}
+	,resolveLayers: function(animName,ret) {
+		if(ret.playlist.length > 0) {
+			this.syntaxError("animation " + animName + ": a playlist or layer blocks, not both");
+		}
+		var timeline = ret.timeline;
+		if(timeline == null) {
+			var _g = 0;
+			var _g1 = this.layerNames;
+			while(_g < _g1.length) {
+				var n = [_g1[_g]];
+				++_g;
+				if(timeline == null && Lambda.exists(ret.layers,(function(n) {
+					return function(l) {
+						return l.name == n[0];
+					};
+				})(n))) {
+					timeline = n[0];
+				}
+			}
+			ret.timeline = timeline;
+		} else if(!Lambda.exists(ret.layers,function(l) {
+			return l.name == timeline;
+		})) {
+			this.syntaxError("animation " + animName + ": the timeline, " + timeline + ", has no layer block");
+		}
+		var _g = 0;
+		var _g1 = ret.layers;
+		while(_g < _g1.length) {
+			var l = _g1[_g];
+			++_g;
+			if(l.name == timeline) {
+				ret.playlist.push({ anims : l.anims, states : l.states});
+				continue;
+			}
+			var _g2 = 0;
+			var _g3 = l.anims;
+			while(_g2 < _g3.length) {
+				var entry = _g3[_g2];
+				++_g2;
+				switch(entry._hx_index) {
+				case 0:
+					var _g4 = entry.name;
+					var _g5 = entry.offset;
+					var d = entry.durationMilliseconds;
+					if(d != null) {
+						this.syntaxError("animation " + animName + ", layer " + l.name + ": only the timeline (" + timeline + ") sets durations");
+					}
+					break;
+				case 1:
+					var _g6 = entry.name;
+					var _g7 = entry.from;
+					var _g8 = entry.to;
+					var _g9 = entry.offset;
+					var d1 = entry.durationMilliseconds;
+					if(d1 != null) {
+						this.syntaxError("animation " + animName + ", layer " + l.name + ": only the timeline (" + timeline + ") sets durations");
+					}
+					break;
+				case 2:
+					var _g10 = entry.filename;
+					var _g11 = entry.offset;
+					var d2 = entry.durationMilliseconds;
+					if(d2 != null) {
+						this.syntaxError("animation " + animName + ", layer " + l.name + ": only the timeline (" + timeline + ") sets durations");
+					}
+					break;
+				default:
+					this.syntaxError("animation " + animName + ", layer " + l.name + ": only the timeline (" + timeline + ") has events and filters");
+				}
+			}
+		}
+	}
+	,parseAnimShorthand: function(path) {
+		var from = this.tpos;
+		var value = this.expectIdentifier();
+		this.markSpan("" + path + ".name",from);
+		var name = value;
+		var overrideFps = null;
+		var overrideLoop = null;
+		var overrideFlipX = null;
+		var overrideFlipY = null;
+		if(this.match(bh_stateanim_APToken.APOpen)) {
+			var first = true;
+			while(!this.match(bh_stateanim_APToken.APClosed)) {
+				if(!first) {
+					this.expect(bh_stateanim_APToken.APComma);
+				}
+				first = false;
+				var _g = this.tokens[this.tpos].type;
+				if(_g._hx_index == 7) {
+					var _g1 = _g.s;
+					var _g2 = _g.keyword;
+					var _g3 = _g.identType;
+					if(_g2 == null) {
+						this.unexpectedError("expected fps, loop, flipX, or flipY modifier in anim shorthand");
+					} else {
+						switch(_g2._hx_index) {
+						case 7:
+							this.advance();
+							this.expect(bh_stateanim_APToken.APColon);
+							var from = this.tpos;
+							var value = this.parseLoopValue();
+							this.markSpan("" + path + ".loop",from);
+							overrideLoop = value;
+							break;
+						case 10:
+							this.advance();
+							this.expect(bh_stateanim_APToken.APColon);
+							var from1 = this.tpos;
+							var value1 = this.parseIntNumber();
+							this.markSpan("" + path + ".fps",from1);
+							var fps = value1;
+							if(fps <= 0) {
+								this.syntaxError("fps must be greater than 0");
+							}
+							overrideFps = fps;
+							break;
+						case 24:
+							this.advance();
+							this.expect(bh_stateanim_APToken.APColon);
+							var from2 = this.tpos;
+							var value2 = this.parseBoolValue();
+							this.markSpan("" + path + ".flipX",from2);
+							overrideFlipX = value2;
+							break;
+						case 25:
+							this.advance();
+							this.expect(bh_stateanim_APToken.APColon);
+							var from3 = this.tpos;
+							var value3 = this.parseBoolValue();
+							this.markSpan("" + path + ".flipY",from3);
+							overrideFlipY = value3;
+							break;
+						default:
+							this.unexpectedError("expected fps, loop, flipX, or flipY modifier in anim shorthand");
+						}
+					}
+				} else {
+					this.unexpectedError("expected fps, loop, flipX, or flipY modifier in anim shorthand");
+				}
+			}
+		}
+		this.expect(bh_stateanim_APToken.APColon);
+		var from = this.tpos;
+		var value = this.expectIdentifier();
+		this.markSpan("" + path + ".playlist#0.0.sheet",from);
+		var sheetStr = value;
+		this.markSpan("" + path + ".playlist#0.0",this.tpos - 1);
+		var sheetPos = this.curPos();
+		this.validateSheetName(sheetStr,sheetPos);
+		if(this.layerNames.length > 0) {
+			this.syntaxError("anim " + name + ": the file has layers, so its animations are written with layer blocks",sheetPos);
+		}
+		var tmp = overrideFps;
+		var animFps = tmp != null ? tmp : this.defaultFps;
+		if(animFps == null) {
+			this.syntaxError("anim shorthand \"" + name + "\" requires fps (set in modifiers or file-level default)");
+		}
+		var tmp = overrideLoop;
+		var animLoop = tmp != null ? tmp : this.defaultLoop;
+		var playlist = { anims : [bh_stateanim_AnimPlaylistFrames.SheetFrameAnim(sheetStr,null)], states : new haxe_ds_StringMap()};
+		var anim = new haxe_ds_StringMap();
+		var tmp = overrideFlipX;
+		var anim1 = tmp != null ? tmp : this.defaultFlipX;
+		var tmp = overrideFlipY;
+		var anim2 = tmp != null ? tmp : this.defaultFlipY;
+		var anim3 = { states : anim, name : name, loop : animLoop, fps : animFps, extraPoint : new haxe_ds_StringMap(), playlist : [playlist], flipX : anim1, flipY : anim2, annotations : []};
+		if(this.animationNames.indexOf(name) == -1) {
+			this.animationNames.push(name);
+		}
+		this.animations.push(anim3);
+	}
+	,parseExtraPoints: function(statesDefinitions,animationStates,extraPoints,allowedExtraPointsList,path) {
+		while(!this.match(bh_stateanim_APToken.APCurlyClosed)) {
+			var states = this.parseStates();
+			var pointName = this.expectIdentifier();
+			this.expect(bh_stateanim_APToken.APColon);
+			var written = extraPoints.h[pointName];
+			var path1 = written != null ? written.length : 0;
+			var from = this.tpos;
+			var value = this.parseCoordinates();
+			this.markSpan("" + path + "." + pointName + "#" + path1,from);
+			var c = value;
+			if(allowedExtraPointsList.indexOf(pointName) != -1 == false) {
+				this.syntaxError("extraPoint " + pointName + " not declared in allowedExtraPoints");
+			}
+			var h = states.h;
+			var _g_h = h;
+			var _g_keys = Object.keys(h);
+			var _g_length = _g_keys.length;
+			var _g_current = 0;
+			while(_g_current < _g_length) {
+				var key = _g_keys[_g_current++];
+				var _g_key = key;
+				var _g_value = _g_h[key];
+				var key1 = _g_key;
+				var value1 = _g_value;
+				this.parserValidateConditionalState(statesDefinitions,key1,value1);
+			}
+			this.checkForUnreachableState(animationStates,states);
+			var p = { states : states, point : c};
+			var existing = extraPoints.h[pointName];
+			if(existing != null) {
+				existing.push(p);
+			} else {
+				extraPoints.h[pointName] = [p];
+			}
+		}
+	}
+	,parseFrames: function(anims,path,layer) {
+		while(true) {
+			var entryToken = this.tpos;
+			var entryPath = "" + path + "." + anims.length;
+			var _g = this.tokens[this.tpos].type;
+			switch(_g._hx_index) {
+			case 7:
+				var _g1 = _g.s;
+				var _g2 = _g.keyword;
+				var _g3 = _g.identType;
+				if(_g2 == null) {
+					this.unexpectedError();
+				} else {
+					switch(_g2._hx_index) {
+					case 0:
+						if(_g3._hx_index == 0) {
+							this.advance();
+							this.expect(bh_stateanim_APToken.APColon);
+							var from = this.tpos;
+							var value = this.expectIdentifier();
+							this.markSpan("" + entryPath + ".sheet",from);
+							var frameName = value;
+							var sheetPos = this.curPos();
+							this.validateSheetName(frameName,sheetPos);
+							var modifiers = this.parseFrameModifiers(entryPath,true);
+							if(modifiers.from == null && modifiers.to == null) {
+								anims.push(bh_stateanim_AnimPlaylistFrames.SheetFrameAnim(frameName,modifiers.duration,modifiers.offset));
+							} else {
+								anims.push(bh_stateanim_AnimPlaylistFrames.SheetFrameAnimWithIndex(frameName,modifiers.from,modifiers.to,modifiers.duration,modifiers.offset));
+							}
+						} else {
+							this.unexpectedError();
+						}
+						break;
+					case 1:
+						if(_g3._hx_index == 0) {
+							this.advance();
+							this.expect(bh_stateanim_APToken.APColon);
+							var _g4 = this.tokens[this.tpos].type;
+							if(_g4._hx_index == 7) {
+								var _g5 = _g4.keyword;
+								if(_g4.identType._hx_index == 2) {
+									var frameFilename = _g4.s;
+									this.advance();
+									this.markSpan("" + entryPath + ".file",this.tpos - 1);
+									var modifiers1 = this.parseFrameModifiers(entryPath,false);
+									anims.push(bh_stateanim_AnimPlaylistFrames.FileSingleFrame(frameFilename,modifiers1.duration,modifiers1.offset));
+								} else {
+									this.unexpectedError("expected filename");
+								}
+							} else {
+								this.unexpectedError("expected filename");
+							}
+						} else {
+							this.unexpectedError();
+						}
+						break;
+					case 11:
+						if(_g3._hx_index == 0) {
+							this.advance();
+							var eventName = this.expectIdentifier();
+							var _g6 = this.tokens[this.tpos].type;
+							switch(_g6._hx_index) {
+							case 5:
+								this.advance();
+								anims.push(bh_stateanim_AnimPlaylistFrames.PlaylistTrigger(eventName));
+								break;
+							case 6:
+								var _g7 = _g6.s;
+								var from1 = this.tpos;
+								var value1 = this.parseCoordinates();
+								this.markSpan("" + entryPath + ".at",from1);
+								var p = value1;
+								if(this.tokens[this.tpos].type == bh_stateanim_APToken.APCurlyOpen) {
+									this.syntaxError("event \"" + eventName + "\": a point spec cannot be combined with a metadata block — use either \"event name x,y\" or \"event name { meta }\"");
+								}
+								anims.push(bh_stateanim_AnimPlaylistFrames.PlaylistPointEvent(eventName,p));
+								break;
+							case 7:
+								var _g8 = _g6.s;
+								var _g9 = _g6.keyword;
+								if(_g9 == null) {
+									anims.push(bh_stateanim_AnimPlaylistFrames.PlaylistTrigger(eventName));
+								} else if(_g9._hx_index == 13) {
+									if(_g6.identType._hx_index == 0) {
+										this.advance();
+										var from2 = this.tpos;
+										var value2 = this.parseCoordinates();
+										this.markSpan("" + entryPath + ".at",from2);
+										var p1 = value2;
+										this.expect(bh_stateanim_APToken.APComma);
+										var _g10 = this.tokens[this.tpos].type;
+										if(_g10._hx_index == 6) {
+											var randomRadius = _g10.s;
+											this.advance();
+											var r = parseFloat(randomRadius);
+											if(this.tokens[this.tpos].type == bh_stateanim_APToken.APCurlyOpen) {
+												this.syntaxError("event \"" + eventName + "\": a random spec cannot be combined with a metadata block — use either \"event name random x,y,r\" or \"event name { meta }\"");
+											}
+											anims.push(bh_stateanim_AnimPlaylistFrames.PlaylistRandomPointEvent(eventName,p1,r));
+										} else {
+											this.unexpectedError("expected radius");
+										}
+									} else {
+										anims.push(bh_stateanim_AnimPlaylistFrames.PlaylistTrigger(eventName));
+									}
+								} else {
+									anims.push(bh_stateanim_AnimPlaylistFrames.PlaylistTrigger(eventName));
+								}
+								break;
+							case 9:
+								this.advance();
+								var meta = this.parseEventMeta();
+								anims.push(bh_stateanim_AnimPlaylistFrames.PlaylistEventData(eventName,meta));
+								break;
+							default:
+								anims.push(bh_stateanim_AnimPlaylistFrames.PlaylistTrigger(eventName));
+							}
+						} else {
+							this.unexpectedError();
+						}
+						break;
+					case 22:
+						if(_g3._hx_index == 0) {
+							this.advance();
+							var filter = this.parseFilterEntry();
+							anims.push(bh_stateanim_AnimPlaylistFrames.PlaylistFilter(filter));
+						} else {
+							this.unexpectedError();
+						}
+						break;
+					case 30:
+						if(_g3._hx_index == 0) {
+							if(layer != null) {
+								this.advance();
+								this.expect(bh_stateanim_APToken.APColon);
+								if(layer.blend != null) {
+									this.syntaxError("blend already set");
+								}
+								var from3 = this.tpos;
+								var value3 = this.expectIdentifier();
+								this.markSpan("" + path + ".blend",from3);
+								var blend = value3;
+								if(bh_multianim_MacroBlendModes.fromName(blend) == null) {
+									this.syntaxError("blend: expected one of " + bh_multianim_MacroBlendModes.NAMES.join(", ") + ", got " + blend);
+								}
+								layer.blend = blend;
+								continue;
+							} else {
+								this.unexpectedError();
+							}
+						} else {
+							this.unexpectedError();
+						}
+						break;
+					default:
+						this.unexpectedError();
+					}
+				}
+				break;
+			case 8:
+				this.advance();
+				return;
+			default:
+				this.unexpectedError();
+			}
+			this.markSpan(entryPath,entryToken);
+		}
+	}
+	,parseFrameModifiers: function(entryPath,allowFrames) {
+		var from = null;
+		var to = null;
+		var duration = null;
+		var offset = null;
+		var sawFrames = false;
+		while(true) {
+			this.match(bh_stateanim_APToken.APComma);
+			var _g = this.tokens[this.tpos].type;
+			if(_g._hx_index == 7) {
+				var _g1 = _g.s;
+				var _g2 = _g.keyword;
+				var _g3 = _g.identType;
+				if(_g2 == null) {
+					return { from : from, to : to, duration : duration, offset : offset};
+				} else {
+					switch(_g2._hx_index) {
+					case 12:
+						if(_g3._hx_index == 0) {
+							this.advance();
+							this.expect(bh_stateanim_APToken.APColon);
+							if(duration != null) {
+								this.syntaxError("duration already set");
+							}
+							var from1 = this.tpos;
+							var value = this.parseDurationValue();
+							this.markSpan("" + entryPath + ".duration",from1);
+							duration = value;
+						} else {
+							return { from : from, to : to, duration : duration, offset : offset};
+						}
+						break;
+					case 14:
+						if(_g3._hx_index == 0) {
+							if(allowFrames) {
+								this.advance();
+								this.expect(bh_stateanim_APToken.APColon);
+								if(sawFrames) {
+									this.syntaxError("frames already set");
+								}
+								sawFrames = true;
+								var from2 = this.tpos;
+								var value1 = this.parseFrameRange();
+								this.markSpan("" + entryPath + ".frames",from2);
+								var range = value1;
+								from = range.from;
+								to = range.to;
+							} else {
+								return { from : from, to : to, duration : duration, offset : offset};
+							}
+						} else {
+							return { from : from, to : to, duration : duration, offset : offset};
+						}
+						break;
+					case 26:
+						if(_g3._hx_index == 0) {
+							this.advance();
+							this.expect(bh_stateanim_APToken.APColon);
+							if(offset != null) {
+								this.syntaxError("offset already set");
+							}
+							var from3 = this.tpos;
+							var value2 = this.parseCoordinates();
+							this.markSpan("" + entryPath + ".offset",from3);
+							offset = value2;
+						} else {
+							return { from : from, to : to, duration : duration, offset : offset};
+						}
+						break;
+					default:
+						return { from : from, to : to, duration : duration, offset : offset};
+					}
+				}
+			} else {
+				return { from : from, to : to, duration : duration, offset : offset};
+			}
+		}
+	}
+	,parseFrameRange: function() {
+		var _g = this.tokens[this.tpos].type;
+		if(_g._hx_index == 6) {
+			var startIndex = _g.s;
+			this.advance();
+			var tmp = Std.parseInt(startIndex);
+			var startN = tmp != null ? tmp : 0;
+			this.expect(bh_stateanim_APToken.APDoubleDot);
+			var _g = this.tokens[this.tpos].type;
+			if(_g._hx_index == 6) {
+				var endIndex = _g.s;
+				this.advance();
+				var tmp = Std.parseInt(endIndex);
+				var endN = tmp != null ? tmp : 0;
+				if(startN < 0) {
+					this.syntaxError("frame index must be non-negative, was " + startN);
+				}
+				if(endN < 0) {
+					this.syntaxError("frame index must be non-negative, was " + endN);
+				}
+				return { from : startN, to : endN};
+			} else {
+				return this.unexpectedError("expected end index");
+			}
+		} else {
+			return this.unexpectedError("expected start index");
+		}
+	}
+	,parseEventMeta: function() {
+		var meta = new haxe_ds_StringMap();
+		while(!this.match(bh_stateanim_APToken.APCurlyClosed)) {
+			var key = this.expectIdentifier();
+			var typeHint = null;
+			if(this.match(bh_stateanim_APToken.APColon)) {
+				typeHint = this.expectIdentifier();
+			}
+			this.expect(bh_stateanim_APToken.APArrow);
+			var val;
+			var _g = this.tokens[this.tpos].type;
+			switch(_g._hx_index) {
+			case 6:
+				var s = _g.s;
+				this.advance();
+				if(typeHint == "float" || s.indexOf(".") != -1) {
+					val = bh_stateanim_MetadataValue.MVFloat(parseFloat(s));
+				} else {
+					val = bh_stateanim_MetadataValue.MVInt(bh_multianim_ParseUtils.toInt(s));
+				}
+				break;
+			case 7:
+				var _g1 = _g.s;
+				var _g2 = _g.keyword;
+				if(_g.identType._hx_index == 2) {
+					var s1 = _g1;
+					this.advance();
+					val = bh_stateanim_MetadataValue.MVString(s1);
+				} else {
+					switch(_g1) {
+					case "false":case "true":
+						var b = this.expectIdentifier();
+						val = bh_stateanim_MetadataValue.MVInt(b == "true" ? 1 : 0);
+						break;
+					default:
+						val = this.unexpectedError("expected metadata value");
+					}
+				}
+				break;
+			case 20:
+				var c = _g.i;
+				this.advance();
+				val = bh_stateanim_MetadataValue.MVColor(c);
+				break;
+			default:
+				val = this.unexpectedError("expected metadata value");
+			}
+			meta.h[key] = val;
+			this.match(bh_stateanim_APToken.APComma);
+		}
+		return meta;
+	}
+	,parseFilterBlock: function(statesDefinitions,animationStates) {
+		var filters = [];
+		var currentGroup = 0;
+		var nextGroupId = 1;
+		while(!this.match(bh_stateanim_APToken.APCurlyClosed)) {
+			var isElseOrDefault = false;
+			var isExplicitCondition = false;
+			if(Type.enumEq(this.tokens[this.tpos].type,bh_stateanim_APToken.APAt)) {
+				var _g = this.peekAt(1);
+				switch(_g._hx_index) {
+				case 1:
+					isExplicitCondition = true;
+					break;
+				case 7:
+					var _g1 = _g.s;
+					var _g2 = _g.keyword;
+					var _g3 = _g.identType;
+					if(_g2 != null) {
+						switch(_g2._hx_index) {
+						case 19:case 20:
+							isElseOrDefault = true;
+							break;
+						default:
+						}
+					}
+					break;
+				default:
+				}
+			}
+			var states = this.parseStates();
+			var h = states.h;
+			var _g_h = h;
+			var _g_keys = Object.keys(h);
+			var _g_length = _g_keys.length;
+			var _g_current = 0;
+			while(_g_current < _g_length) {
+				var key = _g_keys[_g_current++];
+				var _g_key = key;
+				var _g_value = _g_h[key];
+				var key1 = _g_key;
+				var value = _g_value;
+				this.parserValidateConditionalState(statesDefinitions,key1,value);
+			}
+			this.checkForUnreachableState(animationStates,states);
+			var filter = this.parseFilterEntry();
+			var group;
+			if(isElseOrDefault) {
+				if(currentGroup == 0) {
+					++nextGroupId;
+					currentGroup = nextGroupId - 1;
+				}
+				group = currentGroup;
+			} else if(isExplicitCondition) {
+				++nextGroupId;
+				currentGroup = nextGroupId - 1;
+				group = currentGroup;
+			} else {
+				currentGroup = 0;
+				group = 0;
+			}
+			filters.push({ states : states, filter : filter, group : group});
+		}
+		return filters;
+	}
+	,parseFilterEntry: function() {
+		var filterName = this.expectIdentifier();
+		switch(filterName) {
+		case "brightness":
+			this.expect(bh_stateanim_APToken.APColon);
+			return bh_stateanim_AnimFilterType.AFBrightness(this.expectFloat());
+		case "grayscale":
+			this.expect(bh_stateanim_APToken.APColon);
+			return bh_stateanim_AnimFilterType.AFGrayscale(this.expectFloat());
+		case "hue":
+			this.expect(bh_stateanim_APToken.APColon);
+			return bh_stateanim_AnimFilterType.AFHue(this.expectFloat());
+		case "none":
+			return bh_stateanim_AnimFilterType.AFNone;
+		case "outline":
+			this.expect(bh_stateanim_APToken.APColon);
+			var size = this.expectFloat();
+			this.expect(bh_stateanim_APToken.APComma);
+			var color = this.expectColor();
+			return bh_stateanim_AnimFilterType.AFOutline(size,color);
+		case "pixelOutline":
+			this.expect(bh_stateanim_APToken.APColon);
+			return bh_stateanim_AnimFilterType.AFPixelOutline(this.expectColor());
+		case "replaceColor":
+			this.expect(bh_stateanim_APToken.APColon);
+			var sourceColors = this.parseFilterColorList();
+			this.expect(bh_stateanim_APToken.APArrow);
+			var replacementColors = this.parseFilterColorList();
+			if(sourceColors.length != replacementColors.length) {
+				this.syntaxError("replaceColor: source and replacement color lists must have same length (" + sourceColors.length + " vs " + replacementColors.length + ")");
+			}
+			return bh_stateanim_AnimFilterType.AFReplaceColor(sourceColors,replacementColors);
+		case "saturate":
+			this.expect(bh_stateanim_APToken.APColon);
+			return bh_stateanim_AnimFilterType.AFSaturate(this.expectFloat());
+		case "tint":
+			this.expect(bh_stateanim_APToken.APColon);
+			return bh_stateanim_AnimFilterType.AFTint(this.expectColor());
+		default:
+			return this.syntaxError("unknown filter type: " + filterName);
+		}
+	}
+	,expectColor: function() {
+		var _g = this.tokens[this.tpos].type;
+		if(_g._hx_index == 20) {
+			var c = _g.i;
+			this.advance();
+			return c;
+		} else {
+			return this.unexpectedError("expected color (#RRGGBB)");
+		}
+	}
+	,expectFloat: function() {
+		var negative = this.match(bh_stateanim_APToken.APMinus);
+		var _g = this.tokens[this.tpos].type;
+		if(_g._hx_index == 6) {
+			var n = _g.s;
+			this.advance();
+			var v = parseFloat(n);
+			if(negative) {
+				return -v;
+			} else {
+				return v;
+			}
+		} else {
+			return this.unexpectedError("expected number");
+		}
+	}
+	,parseFilterColorList: function() {
+		this.expect(bh_stateanim_APToken.APBracketOpen);
+		var colors = [];
+		while(!this.match(bh_stateanim_APToken.APBracketClosed)) {
+			if(colors.length > 0) {
+				this.expect(bh_stateanim_APToken.APComma);
+			}
+			colors.push(this.expectColor());
+		}
+		if(colors.length == 0) {
+			this.syntaxError("color list must not be empty");
+		}
+		return colors;
+	}
+	,parseDurationValue: function() {
+		var _g = this.tokens[this.tpos].type;
+		switch(_g._hx_index) {
+		case 6:
+			var duration = _g.s;
+			this.advance();
+			var _g1 = this.tokens[this.tpos].type;
+			if(_g1._hx_index == 7) {
+				var _g2 = _g1.keyword;
+				if(_g1.s == "ms") {
+					if(_g1.identType._hx_index == 0) {
+						this.advance();
+						var tmp = Std.parseInt(duration);
+						var d = tmp != null ? tmp : 0;
+						if(d <= 0) {
+							return this.syntaxError("duration must be greater than 0");
+						}
+						return d;
+					} else {
+						var tmp = Std.parseInt(duration);
+						var d = tmp != null ? tmp : 0;
+						if(d <= 0) {
+							return this.syntaxError("duration must be greater than 0");
+						}
+						return d;
+					}
+				} else {
+					var tmp = Std.parseInt(duration);
+					var d = tmp != null ? tmp : 0;
+					if(d <= 0) {
+						return this.syntaxError("duration must be greater than 0");
+					}
+					return d;
+				}
+			} else {
+				var tmp = Std.parseInt(duration);
+				var d = tmp != null ? tmp : 0;
+				if(d <= 0) {
+					return this.syntaxError("duration must be greater than 0");
+				}
+				return d;
+			}
+			break;
+		case 7:
+			var _g1 = _g.keyword;
+			if(_g.identType._hx_index == 0) {
+				var durationStr = _g.s;
+				this.advance();
+				if(StringTools.endsWith(durationStr,"ms")) {
+					var tmp = Std.parseInt(durationStr.substring(0,durationStr.length - 2));
+					var d = tmp != null ? tmp : 0;
+					if(d <= 0) {
+						this.syntaxError("duration must be greater than 0");
+					}
+					return d;
+				} else {
+					return this.syntaxError("expected <int>ms got " + durationStr);
+				}
+			} else {
+				return null;
+			}
+			break;
+		default:
+			return null;
+		}
+	}
+	,validateSheetName: function(name,pos) {
+		var j = 0;
+		while(j < name.length) if(name.charAt(j) == "$" && j + 1 < name.length && name.charAt(j + 1) == "{") {
+			var end = name.indexOf("}",j + 2);
+			if(end == -1) {
+				this.syntaxError("Unclosed $" + "{...} in sheet name \"" + name + "\"",pos);
+			}
+			var stateName = name.substring(j + 2,end);
+			if(!Object.prototype.hasOwnProperty.call(this.definedStates.h,stateName)) {
+				var tmp = "Unknown state \"" + stateName + "\" in sheet name \"" + name + "\". Defined states: [";
+				var _g = [];
+				var h = this.definedStates.h;
+				var k_h = h;
+				var k_keys = Object.keys(h);
+				var k_length = k_keys.length;
+				var k_current = 0;
+				while(k_current < k_length) {
+					var k = k_keys[k_current++];
+					_g.push(k);
+				}
+				this.syntaxError(tmp + _g.join(", ") + "]",pos);
+			}
+			j = end + 1;
+		} else {
+			++j;
+		}
+	}
+	,parserValidateState: function(animStates,name,value) {
+		try {
+			bh_stateanim_AnimFileParser.validateState(animStates,name,value);
+		} catch( _g ) {
+			var e = haxe_Exception.caught(_g);
+			this.syntaxError(e.get_message());
+		}
+	}
+	,parserValidateConditionalState: function(animStates,name,value) {
+		switch(value._hx_index) {
+		case 0:
+			var v = value.value;
+			this.parserValidateState(animStates,name,v);
+			break;
+		case 1:
+			var values = value.values;
+			var _g = 0;
+			while(_g < values.length) {
+				var v = values[_g];
+				++_g;
+				this.parserValidateState(animStates,name,v);
+			}
+			break;
+		case 2:
+			var inner = value.inner;
+			this.parserValidateConditionalState(animStates,name,inner);
+			break;
+		case 3:
+			var _g = value.op;
+			var _g = value.value;
+			if(!Object.prototype.hasOwnProperty.call(animStates.h,name)) {
+				this.syntaxError("state \"" + name + "\" not defined");
+			}
+			break;
+		case 4:
+			var _g = value.min;
+			var _g = value.max;
+			if(!Object.prototype.hasOwnProperty.call(animStates.h,name)) {
+				this.syntaxError("state \"" + name + "\" not defined");
+			}
+			break;
+		}
+	}
+	,checkForUnreachableState: function(parentState,childState) {
+		if(bh_base_MapTools.count(childState) == 0) {
+			return true;
+		}
+		var h = childState.h;
+		var _g_h = h;
+		var _g_keys = Object.keys(h);
+		var _g_length = _g_keys.length;
+		var _g_current = 0;
+		while(_g_current < _g_length) {
+			var key = _g_keys[_g_current++];
+			var _g_key = key;
+			var _g_value = _g_h[key];
+			var key1 = _g_key;
+			var childValue = _g_value;
+			if(!Object.prototype.hasOwnProperty.call(parentState.h,key1)) {
+				continue;
+			}
+			var parentValue = parentState.h[key1];
+			if(parentValue != null) {
+				if(parentValue._hx_index == 0) {
+					if(childValue._hx_index == 0) {
+						var cv = childValue.value;
+						var pv = parentValue.value;
+						if(pv != cv) {
+							this.syntaxError("unreachable state " + (childState == null ? "null" : haxe_ds_StringMap.stringify(childState.h)) + ", limited by " + (parentState == null ? "null" : haxe_ds_StringMap.stringify(parentState.h)));
+						} else {
+							this.syntaxError("useless state limit " + (childState == null ? "null" : haxe_ds_StringMap.stringify(childState.h)) + ", limited by " + (parentState == null ? "null" : haxe_ds_StringMap.stringify(parentState.h)));
+						}
+					}
+				}
+			}
+		}
+		return true;
+	}
+	,__class__: bh_stateanim_AnimFileParser
+};
 var bh_stateanim_AnimParserLsp = function(src,sourceName) {
 	this.constants = [];
 	this.hasMetadata = false;
@@ -17971,6 +20839,9 @@ haxe_Exception.prototype = $extend(Error.prototype,{
 	unwrap: function() {
 		return this.__nativeException;
 	}
+	,get_message: function() {
+		return this.message;
+	}
 	,get_native: function() {
 		return this.__nativeException;
 	}
@@ -18016,6 +20887,23 @@ haxe_ds_IntMap.prototype = {
 	,keyValueIterator: function() {
 		return new haxe_iterators_MapKeyValueIterator(this);
 	}
+	,toString: function() {
+		var s_b = "";
+		s_b += "[";
+		var it = this.keys();
+		var i = it;
+		while(i.hasNext()) {
+			var i1 = i.next();
+			s_b += i1 == null ? "null" : "" + i1;
+			s_b += " => ";
+			s_b += Std.string(Std.string(this.h[i1]));
+			if(it.hasNext()) {
+				s_b += ", ";
+			}
+		}
+		s_b += "]";
+		return s_b;
+	}
 	,__class__: haxe_ds_IntMap
 };
 var haxe_ds_StringMap = function() {
@@ -18023,6 +20911,15 @@ var haxe_ds_StringMap = function() {
 };
 haxe_ds_StringMap.__name__ = true;
 haxe_ds_StringMap.__interfaces__ = [haxe_IMap];
+haxe_ds_StringMap.stringify = function(h) {
+	var s = "[";
+	var first = true;
+	for (var key in h) {
+		if (first) first = false; else s += ',';
+		s += key + ' => ' + Std.string(h[key]);
+	}
+	return s + "]";
+};
 haxe_ds_StringMap.prototype = {
 	exists: function(key) {
 		return Object.prototype.hasOwnProperty.call(this.h,key);
@@ -18038,6 +20935,9 @@ haxe_ds_StringMap.prototype = {
 	}
 	,keyValueIterator: function() {
 		return new haxe_ds__$StringMap_StringMapKeyValueIterator(this.h);
+	}
+	,toString: function() {
+		return haxe_ds_StringMap.stringify(this.h);
 	}
 	,__class__: haxe_ds_StringMap
 };

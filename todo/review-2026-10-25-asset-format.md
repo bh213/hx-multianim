@@ -39,6 +39,17 @@ else and for any arm with elements whose params its change is not matched agains
 half too: the list copies the array it is made with, and a dropdown reads its list's array.
 BLD-40, found with BLD-38, is fixed: an arm's change is matched against every value of its elements.
 
+**Status, third batch:** parser and imports (PRS-27..30, IMP-3..5), refs across files (BLD-35..37,
+CG-42, CG-43) and `.anim` (ANM-15..19) are fixed, each with a test that failed first
+(`ParserErrorTest`, `BuilderUnitTest`, `CodegenParityReviewTest`, `StaticRefIncrementalTest`,
+`TilemapTest`, `AnimParserTest`, `ManimNeedsTest`, the LSP suite's `AnimAnalyzerTest`; CHANGELOG names
+them). Decisions: PRS-29 lets an enum be compared by its values' indices (fixture 116 relies on it),
+an operand naming one of its values standing for that index; ANM-18 composes the element's transform
+(tests 5 and 101 drop the offsets they added by hand); ANM-19 splits the parse out as
+`AnimFileParser`, `PlaylistEvent` becoming three plain events; BLD-37 makes a parameter left out at a
+ref an error (fixture 18 gives its enum a `none` instead); CG-43 defers the arms whose kinds keep
+nothing outside their fields, the rest are built at create as before.
+
 ## Start here
 
 **The nine P1s.**
@@ -92,18 +103,18 @@ CG-46 — errors that point at the wrong cause or files the tools accept and the
   reads `.anim` through `hxd.Res` (test/src/bh/test/TestResourceLoader.hx:34-39), so no test sees it.
   *Fix:* read through `loadHXDResourceImpl(filename).entry.getBytes()` as `loadMultiAnimImpl` does;
   keep a file-system fallback only if a game depends on cwd paths (say so in the CHANGELOG).
-- [ ] `IMP-3` **P2** 🤖 **A second `import` of an alias silently replaces the first** — CONFIRMED.
+- [x] `IMP-3` **P2** 🤖 **A second `import` of an alias silently replaces the first** — CONFIRMED.
   `importPaths.set(importName, file)` and `imports.set(importName, loadedFile)` with no check
   (MacroManimParser.hx:5631-5635). `import "a.manim" as "kit"` then `import "b.manim" as "kit"`
   makes every `external("kit")` reach `b.manim`; a block only `a.manim` has fails at build as
   "no …", far from the cause. *Fix:* `error('duplicate import alias "kit"')`, as `addNode` does for
   `#name`.
-- [ ] `IMP-4` **P3** **`import` is accepted inside any body** — CONFIRMED. The `import` case sits in
+- [x] `IMP-4` **P3** **`import` is accepted inside any body** — CONFIRMED. The `import` case sits in
   `parseNodes` (MacroManimParser.hx:5476, case at :5624) with no `node == null` check, and
   `parseNodes` parses programmable, slot and `@switch` arm bodies too (:4354, :5816). An `import`
   inside `@(state=>a) { … }` is as global as one at the top, which reads as conditional. *Fix:*
   `if (node != null) error("import goes at the top level of a file")`.
-- [ ] `IMP-5` **P2** 🤖 **`external(alias)` is not checked against the file's imports at parse** —
+- [x] `IMP-5` **P2** 🤖 **`external(alias)` is not checked against the file's imports at parse** —
   CONFIRMED. The `staticRef`/`dynamicRef` cases take any identifier (MacroManimParser.hx:3790-3796,
   :3812-3818; also the tilemap and palette `external` sites :1133, :4159, :7872, :7928); the check is
   `importedBuilder` at build (MultiAnimBuilder.hx:9685-9694). A typo fails only when that element is
@@ -195,7 +206,7 @@ CG-46 — errors that point at the wrong cause or files the tools accept and the
   own palette of that name). DynamicRef forwarding (:7163-7176) resolves in the host, so the value
   changes meaning after the first `setParameter`. Codegen resolves every argument in the host. *Fix:*
   resolve arguments in the caller and pass `ResolvedIndexParameters`.
-- [ ] `BLD-35` **P2** **`tile`/`flags` cannot be passed to a ref, and forwarding breaks for array,
+- [x] `BLD-35` **P2** **`tile`/`flags` cannot be passed to a ref, and forwarding breaks for array,
   tile, flags and bool ternaries** — CONFIRMED. PPTTile goes to `resolveAsString`, which has no
   `TileSourceValue` arm (MultiAnimBuilder.hx:10214, :4410-4417); PPTFlags to `resolveAsInteger`, no
   `Flag` arm (:10199, :4081-4088); the forward switches (:7163-7173, :2199-2209) send every other type
@@ -204,7 +215,7 @@ CG-46 — errors that point at the wrong cause or files the tools accept and the
   false` throws `expected integer, got "true"` on the first update. Codegen passes raw values and works.
   *Fix:* route by the target's type as
   `resolveReferenceableValue` does; pass tile, flags and arrays as they are.
-- [ ] `CG-42` **P2** **Codegen lowers a ref's arguments by the host file's parameter types** —
+- [x] `CG-42` **P2** **Codegen lowers a ref's arguments by the host file's parameter types** —
   CONFIRMED, extends CG-23. `ProgrammableCodeGen.hx:8365-8381` looks the target up in
   `allParsedNodes`, the host's parse only; static and dynamic-name sites (:5116, :5371) pass no target.
   `dynamicRef(external(pack), knight, label => $i + 1)` with a string `label` gives `"6"` in codegen
@@ -212,17 +223,17 @@ CG-46 — errors that point at the wrong cause or files the tools accept and the
   `@final T = $enumParam` forwards the enum's index and the builder throws `enum … does not contain
   value "1"`. *Fix:* for an external target emit string-shaped values and let the runtime convert by
   the target's type; at least skip the host lookup when `externalReference != null`.
-- [ ] `CG-43` **P2** **Codegen builds every `@()` arm at `create()`; the builder only the shown one**
+- [x] `CG-43` **P2** **Codegen builds every `@()` arm at `create()`; the builder only the shown one**
   — CONFIRMED (the CHANGELOG for `cdb83e5` says so). The builder skips or defers hidden arms
   (MultiAnimBuilder.hx:6646, :6693). So codegen loads every arm's sheets, files and imports: a pack
   trimmed to "what these values need" works in the builder and fails in codegen on a hidden arm's
   missing frame. *Fix:* defer hidden arms in codegen, or document that codegen needs the union.
-- [ ] `BLD-36` **P3** **A host map's layer `sheet:` is looked up in the imported tileset's builder**
+- [x] `BLD-36` **P3** **A host map's layer `sheet:` is looked up in the imported tileset's builder**
   — CONFIRMED. `frames` → `tsBuilder.atlasTiles` (MultiAnimBuilder.hx:9696-9704, and
   `checkTilemap`): a host-file inline `atlas2` used as a layer sheet is not found, or the import's
   inline atlas of that name is used; `needsOf` counts the sheet as the host's. *Fix:* resolve layer
   sheets in the map's own builder.
-- [ ] `BLD-37` **P3** 🤖 **A missing required argument is reported at its first use, not at the ref**
+- [x] `BLD-37` **P3** 🤖 **A missing required argument is reported at its first use, not at the ref**
   — CONFIRMED. Only defaults are filled (MultiAnimBuilder.hx:10263-10265): leaving out `n:int` in
   `staticRef(external(p), knight)` surfaces as `reference n does not exist` inside the pack, or not at
   all when `$n` sits in a hidden arm; a wrong key reads `Setting "x" does not match … "#<uniqueNodeName>"`.
@@ -368,24 +379,24 @@ files are in the session scratchpad, not the repo.
   documented opaque form (`#FF0000` is -65536 everywhere). `n:int=99999999999` is 2147483647 on HL,
   an unpositioned "expected integer" on eval, 99999999999 on JS. *Fix:* wrap every parsed integer to
   Int32 and reject an overflowing literal with its position.
-- [ ] `PRS-27` **P2** 🤖 **An unnamed root element crashes with no position; the LSP takes it** —
+- [x] `PRS-27` **P2** 🤖 **An unnamed root element crashes with no position; the LSP takes it** —
   CONFIRMED. `version: 1.0` then `bitmap(generated(color(1,1,#f00))): 0,0` reaches
   `addNode(null, …)` (MacroManimParser.hx:5702-5714, :5885-5887): HL "Null access .bytes", eval "Null
   Access", JS stores it under "null" and the LSP shows nothing. `currentName` leaks after an unnamed
   `paths`/`curves` (:4076, :4099), so a nameless `sounds`/`data`/`cursor` after one passes the
   "requires a #name" check with errors naming "paths". *Fix:* error on a root element with no name;
   reset `currentName` after each root node.
-- [ ] `PRS-28` **P2** **Numeric parameter defaults are misread silently** — CONFIRMED. `n:int=1.5` → 1,
+- [x] `PRS-28` **P2** **Numeric parameter defaults are misread silently** — CONFIRMED. `n:int=1.5` → 1,
   `u:uint=2.9` → 2, `f:float=0x10` → 0.0 (MacroManimParser.hx:1945-1958, :1975-1980). *Fix:* branch on
   the token kind; reject a float for int types; read a hex token as a number for floats.
-- [ ] `PRS-29` **P2** **Comparison and bit-test operands are not type-checked at parse** — CONFIRMED
+- [x] `PRS-29` **P2** **Comparison and bit-test operands are not type-checked at parse** — CONFIRMED
   for the parse and the builder. `@(status >= hover)` on an enum, `@(n >= abc)`, `@(n => a..b)` on an
   int, `@(s => bit[1])` on a string or float all parse (:2066-2081, :2135-2153); the builder throws at
   build ("expected number, got hover", MultiAnimBuilder.hx:4145-4147; "invalid param types",
   :4844-4851); codegen emits `_m >= "hover"` / `_s & 2` (ProgrammableCodeGen.hx:8490, :8316), which
   should not compile (*plausible*). `@switch` rejects `>=` on the same enum (:5744-5770). *Fix:*
   numeric operands only (or enum names by index), `bit[]` on int-backed params only.
-- [ ] `PRS-30` **P2** **A data block's array is typed from its first element** — CONFIRMED.
+- [x] `PRS-30` **P2** **A data block's array is typed from its first element** — CONFIRMED.
   `xs: [1, "a", true]` → `DVTArray(DVTInt)` holding a string and a bool; `[1, 2.5]` → int[]; `[]` →
   int[] (:8621-8627, :8931-8951). `DataSchema` and `@:data` read the wrong type. *Fix:* int + float →
   float, reject mixed arrays, require a type for an empty one.
@@ -463,23 +474,23 @@ files are in the session scratchpad, not the repo.
   and never shown holds its sound forever. *Fix:* `extraPoint("file.anim", …)` reads the point from
   the parse with no machine; holds and event sounds start only while allocated (`onAdd` already
   starts holds).
-- [ ] `ANM-15` **P2** **Without `center:`, atlas trim offsets are dropped** — CONFIRMED. `AFtoFrame`
+- [x] `ANM-15` **P2** **Without `center:`, atlas trim offsets are dropped** — CONFIRMED. `AFtoFrame`
   applies `offsetx`/`offsety` only inside `if (_center != null)` (AnimParser.hx:2593-2599); Atlas2
   tiles are cut with dx = dy = 0 (Atlas2.hx:216). Trimmed frames jitter, and
   `AnimationClip.getBoundsRec` (:186-187) subtracts the offset and reports a box where nothing is
   drawn. `stateanim construct(…, center)` jitters the same way (`tile.center()` on the trimmed tile,
   MultiAnimBuilder.hx:7331, ProgrammableBuilder.hx:321). *Fix:* a missing centre is (0, 0).
-- [ ] `ANM-16` **P2** **Layers flip each about its own canvas** — CONFIRMED in code. `layerFramesOf`
+- [x] `ANM-16` **P2** **Layers flip each about its own canvas** — CONFIRMED in code. `layerFramesOf`
   calls `createStates` per layer (AnimParser.hx:2920), so `maybeFlipClone` mirrors each layer by its
   own frame size (:2609), and the same-size check runs per layer only (:2671-2690); points mirror by
   the timeline's size (:2837-2852). A 48-wide glow over a 32-wide body ends 16 px off when flipped.
   *Fix:* one mirror axis per animation (the timeline's footprint), or a load error naming the layer.
-- [ ] `ANM-17` **P2** **`animNeedsOf` lists frames the file never loads** — CONFIRMED. It expands
+- [x] `ANM-17` **P2** **`animNeedsOf` lists frames the file never loads** — CONFIRMED. It expands
   `${state}` over every value and ignores the block's condition (ManimNeeds.hx:184-205), and
   `ManimNeedsTest.hx:608` pins that: `layer hat @(hat != none) { sheet: "hat_${hat}" }` needs
   `hat_none`. A host checking a pack reports missing frames that are not missing. *Fix:* walk the
   states × the matching animation/playlist/layer, as the parse's reachability pass does.
-- [ ] `ANM-18` **P2** **`$ref.extraPoint(…)` is in the sprite's own space** — CONFIRMED.
+- [x] `ANM-18` **P2** **`$ref.extraPoint(…)` is in the sprite's own space** — CONFIRMED.
   MultiAnimBuilder.hx:6009-6011; ProgrammableCodeGen.hx:6221-6228, :6518-6524, :9388-9395. The
   `stateanim` element's position, `@scale` and rotation are not applied, so the doc example
   (docs/manim-reference.md:532-537, element at 100,100) places the marker at the raw point; test 101
@@ -487,7 +498,7 @@ files are in the session scratchpad, not the repo.
   value. The lookup takes `names[0]` (builder) / `elementFields[0]` (codegen), so with `#body` in
   exclusive facing arms it reads the first arm, not the drawn one (*plausible*). *Fix:* compose with
   the element's transform (or document it and add a parent-space form); look up the drawn arm.
-- [ ] `ANM-19` **P2** **No Heaps-free reading of an `.anim`; state order lost** — CONFIRMED. The
+- [x] `ANM-19` **P2** **No Heaps-free reading of an `.anim`; state order lost** — CONFIRMED. The
   parser and `AnimParserResult` sit inside `#if (!macro && !noheaps)` (AnimParser.hx:883-956), and
   point events exist only with Heaps (:770-772), so nothing in a `-D noheaps` build can make the
   `LoadedAnimation` that `animNeedsOf` takes (CLAUDE.md says ManimNeeds is "for the LSP").

@@ -3105,4 +3105,86 @@ animation idle { fps: 4 playlist { file: "c.png" frames: 0..1 } }
 		final again = firstTile(anim('sheet: "marine_l_dead"', "no"));
 		Assert.equals(plain.dx, again.dx, "a nudge never moves the atlas's shared tile");
 	}
+
+	static function framesOf(source:String, animName:String):Array<bh.stateanim.AnimationFrame> {
+		final loader:bh.base.ResourceLoader = bh.test.TestResourceLoader.createLoader(false);
+		final sm = AnimParser.parseFile(byte.ByteData.ofString(source), "test-input", loader).createAnimSM([]);
+		final frames:Array<bh.stateanim.AnimationFrame> = [];
+		for (state in sm.animationStates.get(animName).states)
+			switch state {
+				case Frame(f): frames.push(f);
+				default:
+			}
+		return frames;
+	}
+
+	@Test
+	public function testTrimmedFramesKeepTheirPlaceWithoutACenter() {
+		// Arrow_dir0 is trimmed (45x22 of 128x128, offset 20, 53): without center: its frames sit as
+		// with a center of 0, 0, not at the trimmed rectangle's corner
+		final none = framesOf('sheet: crew2\nanimation a { fps: 4 playlist { sheet: "Arrow_dir0" } }\n', "a");
+		final zero = framesOf('sheet: crew2\ncenter: 0, 0\nanimation a { fps: 4 playlist { sheet: "Arrow_dir0" } }\n', "a");
+		Assert.isTrue(zero[0].tile.dx != 0, "precondition: the trim moves the frame");
+		for (i in 0...zero.length) {
+			Assert.equals(zero[i].tile.dx, none[i].tile.dx, 'frame $i: its trim applied with no center');
+			Assert.equals(zero[i].tile.dy, none[i].tile.dy);
+		}
+	}
+
+	@Test
+	public function testAConstructsCenterIsTheUntrimmedFramesMiddle() {
+		final built = bh.test.BuilderTestBase.buildFromSource('
+			#t programmable() {
+				#a stateAnim construct("s", externallyDriven, "s" => sheet "crew2", Arrow_dir0, 10, center): 0, 0
+			}
+		', "t");
+		final sm:bh.stateanim.AnimationSM = cast built.getNamedDrawn("a");
+		final expected = framesOf('sheet: crew2\ncenter: 64, 64\nanimation a { fps: 4 playlist { sheet: "Arrow_dir0" } }\n', "a");
+		var i = 0;
+		for (state in sm.animationStates.get("s").states)
+			switch state {
+				case Frame(f):
+					Assert.equals(expected[i].tile.dx, f.tile.dx, 'frame $i: centred on the 128x128 frame, not on its trimmed rectangle');
+					Assert.equals(expected[i].tile.dy, f.tile.dy);
+					i++;
+				default:
+			}
+		Assert.isTrue(i > 0);
+	}
+
+	@Test
+	public function testLayersFlipAboutOneAxis() {
+		// The body is a 64x64 marine, the glow a 128x128 arrow: flipped, both mirror about the
+		// timeline's footprint, so flipped dx + width + unflipped dx is the same for both
+		function layered(flip:String):bh.stateanim.AnimationSM {
+			final loader:bh.base.ResourceLoader = bh.test.TestResourceLoader.createLoader(false);
+			final source = 'sheet: crew2\nlayers: body, glow\ncenter: 32, 48\nfps: 4\n'
+				+ 'animation walk { flipX: $flip\n layer body { sheet: "marine_l_idle" }\n layer glow { sheet: "Arrow_dir0" frames: 0..3 }\n}\n';
+			return AnimParser.parseFile(byte.ByteData.ofString(source), "test-input", loader).createAnimSM([]);
+		}
+		final plain = layered("no").animationStates.get("walk");
+		final flipped = layered("yes").animationStates.get("walk");
+		function firstFrame(states:Array<AnimationFrameState>):bh.stateanim.AnimationFrame {
+			for (s in states)
+				switch s {
+					case Frame(f): return f;
+					default:
+				}
+			return null;
+		}
+		final body = firstFrame(plain.states), bodyFlipped = firstFrame(flipped.states);
+		final glow = plain.layers.frames[1][0], glowFlipped = flipped.layers.frames[1][0];
+		final bodyAxis = bodyFlipped.tile.dx + bodyFlipped.tile.width + body.tile.dx;
+		final glowAxis = glowFlipped.tile.dx + glowFlipped.tile.width + glow.tile.dx;
+		Assert.floatEquals(bodyAxis, glowAxis, "the glow mirrors about the body's axis, not about its own frame");
+	}
+
+	@Test
+	public function testAnAnimFilesStatesKeepTheirOrder() {
+		final loader:bh.base.ResourceLoader = bh.test.TestResourceLoader.createLoader(false);
+		final parsed = AnimParser.parseFile(byte.ByteData.ofString('sheet: crew2\nstates: weapon(gun, sword), facing(l, r), mood(calm, angry)\n'
+			+ 'animation idle { fps: 4 playlist { sheet: "marine_$${facing}_idle" } }\n'), "test-input", loader);
+		final loaded:Dynamic = parsed.loaded();
+		Assert.same(["weapon", "facing", "mood"], loaded.stateOrder, "the states in the order written");
+	}
 }

@@ -531,6 +531,8 @@ typedef AnimSpan = {
 typedef LoadedAnimation = {
 	var sheet:Null<String>;
 	var states:Map<String, Array<String>>;
+	/** The states' names in the order `states:` writes them (`states` is a map, in no order). **/
+	var stateOrder:Array<String>;
 	/** `layers:`, bottom first; empty for a file without layers. **/
 	var layers:Array<String>;
 	var allowedExtraPoints:Array<String>;
@@ -767,9 +769,10 @@ enum AnimPlaylistFrames {
 	SheetFrameAnim(name:String, durationMilliseconds:Null<Int>, ?offset:Point);
 	SheetFrameAnimWithIndex(name:String, from:Null<Int>, to:Null<Int>, durationMilliseconds:Null<Int>, ?offset:Point);
 	FileSingleFrame(filename:String, durationMilliseconds:Null<Int>, ?offset:Point);
-	#if (!macro && !noheaps)
-	PlaylistEvent(playlistEvent:AnimationPlaylistEvent);
-	#end
+	// `event name` (a trigger), `event name x, y`, `event name random x, y, radius`
+	PlaylistTrigger(name:String);
+	PlaylistPointEvent(name:String, point:Point);
+	PlaylistRandomPointEvent(name:String, point:Point, radius:Float);
 	PlaylistEventData(name:String, meta:Map<String, MetadataValue>); // (#9) event with typed metadata
 	PlaylistFilter(filter:AnimFilterType); // (#12) per-frame filter change
 }
@@ -899,9 +902,14 @@ interface AnimParserResult {
 
 // ===================== Parser =====================
 
-#if (!macro && !noheaps)
+/**
+	An .anim file read and checked, with no Heaps: what it says (`loaded()`, `parseLoaded`) and which
+	of its animations, playlists, layers and points a set of states picks (the static finders), for a
+	tool, the LSP or `ManimNeeds`. `AnimParser` adds what plays it: frames from the loader's sheets
+	and state machines.
+**/
 @:nullSafety
-class AnimParser implements AnimParserResult {
+class AnimFileParser {
 	var tokens:Array<AnimToken>;
 	var tpos:Int;
 	var sourceName:String;
@@ -933,11 +941,6 @@ class AnimParser implements AnimParserResult {
 	// Where each value is written: kept only when the parse is asked for it (`withSpans`), as only tools read it
 	final withSpans:Bool;
 	var spans:Array<AnimSpan> = [];
-	// Cache holds immutable parse data only — filters are stored as their
-	// DEFINITIONS and resolved per AnimationSM in load(); extraPoints are copied
-	// per SM there too. Never hand a cached mutable instance to an SM.
-	var cache:Map<String, Array<{name:String, states:Array<AnimationFrameState>, loopCount:Int, extraPoints:Map<String, h2d.col.IPoint>, filters:Null<Array<AnimFilterEntry>>, layers:Null<AnimationLayerFrames>}>> = [];
-	final resourceLoader:bh.base.ResourceLoader;
 
 	// ===================== Token Access =====================
 
@@ -994,24 +997,35 @@ class AnimParser implements AnimParserResult {
 
 	// ===================== Entry Points =====================
 
-	/** `withSpans`: keep where each value is written, for a tool that changes one in place (`loaded().spans`). **/
-	public static function parseFile(input:byte.ByteData, sourceName:String, resourceLoader, withSpans = false):AnimParserResult {
-		return parseString(input.readString(0, input.length), sourceName, resourceLoader, withSpans);
+	/** What an .anim file says, read with no Heaps (`loaded()`); throws as `AnimParser.parseString` does. `withSpans`: keep where each value is written. **/
+	public static function parseLoaded(content:String, sourceName:String, withSpans = false):LoadedAnimation {
+		final p = new AnimFileParser(tokenize(content, sourceName), sourceName, withSpans);
+		p.parseChecked();
+		return p.loaded();
 	}
 
-	/** `withSpans`: keep where each value is written, for a tool that changes one in place (`loaded().spans`). **/
-	public static function parseString(content:String, sourceName:String, resourceLoader, withSpans = false):AnimParserResult {
+	static function tokenize(content:String, sourceName:String):Array<AnimToken> {
+		final lexer = new AnimLexerHC(content, sourceName);
+		var tokens:Array<AnimToken> = [];
+		while (true) {
+			final t = lexer.nextToken();
+			tokens.push(t);
+			if (Type.enumEq(t.type, APEof)) break;
+		}
+		return tokens;
+	}
+
+	function new(tokens:Array<AnimToken>, sourceName:String, withSpans:Bool) {
+		this.tokens = tokens;
+		this.tpos = 0;
+		this.withSpans = withSpans;
+		this.sourceName = sourceName;
+	}
+
+	/** `parse()`, its error rethrown as it is. **/
+	function parseChecked():Void {
 		try {
-			final lexer = new AnimLexerHC(content, sourceName);
-			var tokens:Array<AnimToken> = [];
-			while (true) {
-				final t = lexer.nextToken();
-				tokens.push(t);
-				if (Type.enumEq(t.type, APEof)) break;
-			}
-			var p = new AnimParser(tokens, sourceName, resourceLoader, withSpans);
-			p.parse();
-			return p;
+			parse();
 		} catch (e:Dynamic) {
 			// catch (e:Dynamic) on purpose: a typed `catch (e)` wraps thrown
 			// values in haxe.ValueException on rethrow, which breaks
@@ -1022,14 +1036,6 @@ class AnimParser implements AnimParserResult {
 			#end
 			throw e;
 		}
-	}
-
-	function new(tokens:Array<AnimToken>, sourceName:String, resourceLoader, withSpans:Bool) {
-		this.tokens = tokens;
-		this.tpos = 0;
-		this.withSpans = withSpans;
-		this.sourceName = sourceName;
-		this.resourceLoader = resourceLoader;
 	}
 
 	// ===================== Main Parse =====================
@@ -1202,9 +1208,6 @@ class AnimParser implements AnimParserResult {
 		for (anim => _ in holds)
 			if (!animationNames.contains(anim))
 				syntaxError('sounds: hold $anim: no animation $anim (${animationNames.join(", ")})');
-		for (key => value in definedStates) {
-			definedStatesIndexes.push(key);
-		}
 		final allStates = createAllStates(definedStates);
 		#if MULTIANIM_DEV
 		if (allStates.length > 50) {
@@ -1291,6 +1294,7 @@ class AnimParser implements AnimParserResult {
 		return {
 			sheet: sheetName,
 			states: definedStates,
+			stateOrder: definedStatesIndexes,
 			layers: layerNames,
 			allowedExtraPoints: allowedExtraPoints,
 			center: center,
@@ -1495,6 +1499,7 @@ class AnimParser implements AnimParserResult {
 				var list = parseList();
 				if (states.exists(stateName)) syntaxError('State ${stateName} already defined');
 				states.set(stateName, list);
+				definedStatesIndexes.push(stateName);
 				while (match(APComma)) {
 					switch (peek()) {
 						case APIdentifier(sn, _, _):
@@ -1503,6 +1508,7 @@ class AnimParser implements AnimParserResult {
 							var l = parseList();
 							if (states.exists(sn)) syntaxError('State ${sn} already defined');
 							states.set(sn, l);
+							definedStatesIndexes.push(sn);
 						default:
 							break;
 					}
@@ -2067,7 +2073,7 @@ class AnimParser implements AnimParserResult {
 										// drop the random spec.
 										syntaxError('event "$eventName": a random spec cannot be combined with a metadata block — use either "event name random x,y,r" or "event name { meta }"');
 									}
-									anims.push(PlaylistEvent(RandomPointEvent(eventName, new h2d.col.IPoint(p.x, p.y), r)));
+									anims.push(PlaylistRandomPointEvent(eventName, p, r));
 								default:
 									unexpectedError("expected radius");
 							}
@@ -2078,17 +2084,17 @@ class AnimParser implements AnimParserResult {
 								// metadata — accepting this used to silently drop the point.
 								syntaxError('event "$eventName": a point spec cannot be combined with a metadata block — use either "event name x,y" or "event name { meta }"');
 							}
-							anims.push(PlaylistEvent(PointEvent(eventName, new h2d.col.IPoint(p.x, p.y))));
+							anims.push(PlaylistPointEvent(eventName, p));
 						case APSemiColon: // explicit statement terminator
 							advance();
-							anims.push(PlaylistEvent(Trigger(eventName)));
+							anims.push(PlaylistTrigger(eventName));
 						case APCurlyOpen: // (#9) metadata on bare trigger event
 							advance();
 							final meta = parseEventMeta();
 							anims.push(PlaylistEventData(eventName, meta));
 						default:
 							// Bare trigger: self-terminated by next keyword, } or EOF
-							anims.push(PlaylistEvent(Trigger(eventName)));
+							anims.push(PlaylistTrigger(eventName));
 					}
 				case APIdentifier(_, APSheet, AITString):
 					advance();
@@ -2483,7 +2489,8 @@ class AnimParser implements AnimParserResult {
 		return findBestStateMatch(animations.filter(a -> a.name == name), stateSelector, 'animation: $name');
 	}
 
-	private static function findBestStateMatch<T:{var states:AnimConditionalSelector;}>(items:Array<T>, stateSelector:AnimationStateSelector,
+	/** Of `items`, the one whose states match the selector best; throws on a tie. **/
+	public static function findBestStateMatch<T:{var states:AnimConditionalSelector;}>(items:Array<T>, stateSelector:AnimationStateSelector,
 			ambiguityContext:String):Null<T> {
 		var bestScore = -1;
 		var best2Score = -1;
@@ -2507,9 +2514,8 @@ class AnimParser implements AnimParserResult {
 		return best;
 	}
 
-	// ===================== Runtime Methods =====================
-
-	function createAllStates(statesDefinitions:Map<String, Array<String>>):Array<AnimationStateSelector> {
+	/** Every combination of the states' values, one selector each. **/
+	public static function createAllStates(statesDefinitions:Map<String, Array<String>>):Array<AnimationStateSelector> {
 		var totalStates = 1;
 		var stateValuesCount:Array<Int> = [];
 		var stateKeys:Array<String> = [];
@@ -2533,8 +2539,48 @@ class AnimParser implements AnimParserResult {
 		}
 		return retVal;
 	}
+}
 
-	function createStates(anims:Array<AnimPlaylistFrames>, anim:AnimationState, stateSelector:AnimationStateSelector):Array<AnimationFrameState> {
+#if (!macro && !noheaps)
+/** An .anim file (`AnimFileParser`) with what plays it: its frames from the loader's sheets, and state machines. **/
+@:nullSafety
+class AnimParser extends AnimFileParser implements AnimParserResult {
+	// Cache holds immutable parse data only — filters are stored as their
+	// DEFINITIONS and resolved per AnimationSM in load(); extraPoints are copied
+	// per SM there too. Never hand a cached mutable instance to an SM.
+	var cache:Map<String, Array<{name:String, states:Array<AnimationFrameState>, loopCount:Int, extraPoints:Map<String, h2d.col.IPoint>, filters:Null<Array<AnimFilterEntry>>, layers:Null<AnimationLayerFrames>}>> = [];
+	final resourceLoader:bh.base.ResourceLoader;
+
+	/** `withSpans`: keep where each value is written, for a tool that changes one in place (`loaded().spans`). **/
+	public static function parseFile(input:byte.ByteData, sourceName:String, resourceLoader, withSpans = false):AnimParserResult {
+		return parseString(input.readString(0, input.length), sourceName, resourceLoader, withSpans);
+	}
+
+	/** `withSpans`: keep where each value is written, for a tool that changes one in place (`loaded().spans`). **/
+	public static function parseString(content:String, sourceName:String, resourceLoader, withSpans = false):AnimParserResult {
+		final p = new AnimParser(AnimFileParser.tokenize(content, sourceName), sourceName, resourceLoader, withSpans);
+		p.parseChecked();
+		return p;
+	}
+
+	function new(tokens:Array<AnimToken>, sourceName:String, resourceLoader, withSpans:Bool) {
+		super(tokens, sourceName, withSpans);
+		this.resourceLoader = resourceLoader;
+	}
+
+	public static inline function matchConditionalValue(condValue:AnimConditionalValue, runtimeValue:String):Bool {
+		return AnimConditionalMatcher.matchConditionalValue(condValue, runtimeValue);
+	}
+
+	public static inline function countStateMatch(match:AnimConditionalSelector, selector:AnimationStateSelector):Int {
+		return AnimConditionalMatcher.countStateMatch(match, selector);
+	}
+
+	// ===================== Runtime Methods =====================
+
+	/** `footprint`: a layer's frames flip about the timeline's axis, this untrimmed size, whatever their own. **/
+	function createStates(anims:Array<AnimPlaylistFrames>, anim:AnimationState, stateSelector:AnimationStateSelector,
+			?footprint:{w:Float, h:Float}):Array<AnimationFrameState> {
 		final _center = center;
 		final _sheetName = sheetName;
 		if (_sheetName == null) throw 'sheet not set';
@@ -2559,6 +2605,10 @@ class AnimParser implements AnimParserResult {
 		// regardless of where the pivot sits within the untrimmed area.
 		function maybeFlipClone(tile:h2d.Tile, origW:Float, origH:Float):h2d.Tile {
 			if (!_flipX && !_flipY) return tile;
+			if (footprint != null) {
+				origW = footprint.w;
+				origH = footprint.h;
+			}
 			var cloned = tile.clone();
 			final cx:Float = _center != null ? _center.x : 0;
 			final cy:Float = _center != null ? _center.y : 0;
@@ -2590,13 +2640,9 @@ class AnimParser implements AnimParserResult {
 		}
 
 		function AFtoFrame(f:AnimationFrame, duration:Float, offset:Null<Point>):AnimationFrameState {
-			if (_center != null) {
-				// Clone tile to avoid mutating the shared cached sheet tile
-				var tile = f.tile.clone();
-				tile.dx = f.offsetx - _center.x;
-				tile.dy = (f.height - tile.height) - f.offsety - _center.y;
-				f = f.cloneWithNewTile(tile);
-			}
+			// A trimmed frame keeps its place in its untrimmed frame, about the center or, with none,
+			// its top-left corner
+			f = _center != null ? f.placedAbout(_center.x, _center.y) : f.placedAbout(0, 0);
 			if (offset != null) {
 				// A nudge, before any flip, so it mirrors with the art; a clone, as above
 				final tile = f.tile.clone();
@@ -2641,8 +2687,12 @@ class AnimParser implements AnimParserResult {
 					final _od = overrideDuration;
 					var d = _od == null ? duration : _od / 1000.0;
 					retVal.push(tileToFrame(resourceLoader.loadTile(filename), d, offset));
-				case PlaylistEvent(playlistEvent):
-					retVal.push(Event(playlistEvent));
+				case PlaylistTrigger(name):
+					retVal.push(Event(Trigger(name)));
+				case PlaylistPointEvent(name, p):
+					retVal.push(Event(PointEvent(name, new h2d.col.IPoint(p.x, p.y))));
+				case PlaylistRandomPointEvent(name, p, radius):
+					retVal.push(Event(RandomPointEvent(name, new h2d.col.IPoint(p.x, p.y), radius)));
 				case PlaylistEventData(name, meta): // (#9) convert MetadataValue map to String map for AnimationSM
 					var strMeta:Map<String, String> = [];
 					for (k => v in meta) {
@@ -2667,8 +2717,9 @@ class AnimParser implements AnimParserResult {
 		// (#13) When flipping in place, all frames must share the same untrimmed
 		// footprint — extrapoints are per-animation (not per-frame) and mirror
 		// around a single origW/origH, so mixed sizes would desync the points
-		// from the visuals as the animation plays.
-		if (_flipX || _flipY) {
+		// from the visuals as the animation plays. A layer's frames flip about the timeline's
+		// footprint instead, whatever their own sizes.
+		if ((_flipX || _flipY) && footprint == null) {
 			var firstW:Int = -1;
 			var firstH:Int = -1;
 			for (s in retVal) {
@@ -2823,9 +2874,9 @@ class AnimParser implements AnimParserResult {
 		if (!cache.exists(hex)) {
 			var cacheArray = [];
 			for (name in animationNames) {
-				final anim = findAnimation(name, stateSelector, definedStates, animations);
+				final anim = AnimFileParser.findAnimation(name, stateSelector, definedStates, animations);
 				if (anim == null) continue; // defined for other states only: not in this machine
-				final playlist = findPlaylist(stateSelector, anim, definedStates);
+				final playlist = AnimFileParser.findPlaylist(stateSelector, anim, definedStates);
 				if (playlist == null) throw 'null playlist for anim ${name}';
 				var states = createStates(playlist.anims, anim, stateSelector);
 				final extraPoints = new Map<String, h2d.col.IPoint>();
@@ -2862,7 +2913,7 @@ class AnimParser implements AnimParserResult {
 					return m;
 				}
 				for (pointName in allowedExtraPoints) {
-					var pt = findExtraPoint(pointName, stateSelector, anim, definedStates);
+					var pt = AnimFileParser.findExtraPoint(pointName, stateSelector, anim, definedStates);
 					if (pt != null)
 						extraPoints.set(pointName, mirrored(pt.toPoint()));
 				}
@@ -2907,9 +2958,13 @@ class AnimParser implements AnimParserResult {
 		if (animLayers == null || layerNames.length == 0)
 			return null;
 		var timelineFrames = 0;
+		// Every layer flips about the timeline's axis: its untrimmed size
+		var footprint:Null<{w:Float, h:Float}> = null;
 		for (s in timelineStates)
 			switch s {
-				case Frame(_): timelineFrames++;
+				case Frame(f):
+					if (footprint == null) footprint = {w: f.width, h: f.height};
+					timelineFrames++;
 				default:
 			}
 		final frames:Array<Null<Array<AnimationFrame>>> = [];
@@ -2918,7 +2973,7 @@ class AnimParser implements AnimParserResult {
 		for (li in 0...layerNames.length) {
 			final layerName = layerNames[li];
 			final blocks = animLayers.filter(l -> l.name == layerName);
-			final block = blocks.length == 0 ? null : findBestStateMatch(blocks, stateSelector, 'layer $layerName of ${anim.name}');
+			final block = blocks.length == 0 ? null : AnimFileParser.findBestStateMatch(blocks, stateSelector, 'layer $layerName of ${anim.name}');
 			final blendName = block != null ? block.blend : null;
 			blends.push(blendName != null ? blendModeOf(blendName) : null);
 			if (layerName == anim.timeline) {
@@ -2931,7 +2986,7 @@ class AnimParser implements AnimParserResult {
 				continue;
 			}
 			final layerFrames:Array<AnimationFrame> = [];
-			for (s in createStates(block.anims, anim, stateSelector))
+			for (s in createStates(block.anims, anim, stateSelector, footprint))
 				switch s {
 					case Frame(f): layerFrames.push(f);
 					default:

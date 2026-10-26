@@ -36,6 +36,16 @@ class ManimAnalyzerTest {
 		LspTestRunner.assertEqual(colour, -65536, "0xFFFF0000 is opaque red, the same Int on JS as on HashLink");
 		final diags = ManimAnalyzer.getDiagnostics("version: 1.0\n#p programmable(n:int=99999999999) {\n\tbitmap(generated(color(1, 1, #ffffff))): 0, 0\n}", "big.manim");
 		LspTestRunner.assertGreater(diags.length, 0, "an integer past 32 bits is an error, not another number per target");
+		// A hex number given to a float is its number on JS too (parseFloat reads "0x10" as 0 there)
+		final floats = bh.multianim.MacroManimParser.parseFile("version: 1.0\n#p programmable(f:float=0x10) {\n\tbitmap(generated(color(1, 1, #ffffff))): 0, 0\n}", "floats.manim", null);
+		final f:Null<Float> = switch floats.nodes.get("p").type {
+			case PROGRAMMABLE(_, defs, _): switch defs.get("f").defaultValue {
+					case ValueF(v): v;
+					default: null;
+				}
+			default: null;
+		};
+		LspTestRunner.assertEqual(f, 16.0, "f:float=0x10 is 16 on JS as on HashLink");
 	}
 
 	static final DOCUMENTED = "version: 1.0\n"

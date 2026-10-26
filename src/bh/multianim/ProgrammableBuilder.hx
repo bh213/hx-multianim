@@ -208,11 +208,33 @@ class ProgrammableBuilder {
 		return getBuilder().getLayouts().getPoint(layoutName, index);
 	}
 
+	/** A named stateanim's point where it draws it (`MultiAnimBuilder.extraPointWhereDrawn`): of the
+	 *  name's elements (one per `@()` arm), the one in the scene graph, the first when none is; null
+	 *  when its animation has no such point. */
+	public static function extraPointOf(elements:Array<h2d.Object>, pointName:String):Null<bh.base.FPoint> {
+		var element:Null<h2d.Object> = null;
+		for (e in elements)
+			if (e != null && (element == null || (element.parent == null && e.parent != null)))
+				element = e;
+		if (element == null)
+			return null;
+		final pt = (cast element : bh.stateanim.AnimationSM).getExtraPoint(pointName);
+		return pt == null ? null : MultiAnimBuilder.extraPointWhereDrawn(element, pt.x, pt.y);
+	}
+
+	/** Whether the parameter `key` of programmable `name` (in the import `externalRef`, else this
+	 *  file) takes its argument as text, a string or an enum: what a ref's argument is lowered to
+	 *  when its target is not known at compile time (another file's, or named by a parameter). */
+	public function refArgumentIsText(name:String, key:String, ?externalRef:String):Bool {
+		return getBuilder().importedBuilder(externalRef).parameterTakesText(name, key);
+	}
+
 	/** Build a sub-programmable via the builder (for STATIC_REF nodes). `fromProgrammable` is the
 	 *  programmable the instance builds: a ref back to it is circular, as in the builder. Only in
 	 *  its own file: another file's programmable of that name is another programmable. */
 	public function buildStaticRef(name:String, parameters:Map<String, Dynamic>, ?externalRef:String, ?fromProgrammable:String):BuilderResult {
 		final target = getBuilder().importedBuilder(externalRef);
+		target.checkRefArguments(name, parameters);
 		return target.buildingFrom(externalRef == null ? fromProgrammable : null,
 			() -> target.buildWithParameters(name, parameters, refBuilderParams()));
 	}
@@ -223,6 +245,7 @@ class ProgrammableBuilder {
 	public function buildDynamicRef(name:String, parameters:Map<String, Dynamic>, ?externalRef:String, ?onChildRebuilt:Void -> Void,
 			?fromProgrammable:String):BuilderResult {
 		final target = getBuilder().importedBuilder(externalRef);
+		target.checkRefArguments(name, parameters);
 		final result = target.buildingFrom(externalRef == null ? fromProgrammable : null,
 			() -> target.buildWithParameters(name, parameters, refBuilderParams(), null, true));
 		if (onChildRebuilt != null && result != null && result.isIncremental)
@@ -319,12 +342,11 @@ class ProgrammableBuilder {
 			final anim = loadedSheet.getAnim(entry.animName);
 			if (anim == null)
 				throw BuilderError.of('Animation "${entry.animName}" not found in sheet "${entry.sheet}"');
-			if (entry.center) {
-				for (i in 0...anim.length) {
-					anim[i] = anim[i].cloneWithNewTile(anim[i].tile.center());
-				}
-			}
-			final animStates = [for (a in anim) Frame(a.cloneWithDuration(1.0 / entry.fps))];
+			// as the builder: the untrimmed frame's middle at the origin, a trimmed frame in its place
+			final animStates = [
+				for (a in anim)
+					Frame((entry.center ? a.placedAbout(a.width >> 1, a.height >> 1) : a.placedAbout(0, 0)).cloneWithDuration(1.0 / entry.fps))
+			];
 			final loopCount = entry.loop ? -1 : 0;
 			animSM.addAnimationState(entry.key, animStates, loopCount, new Map());
 		}

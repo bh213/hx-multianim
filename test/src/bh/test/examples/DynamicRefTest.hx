@@ -1195,17 +1195,13 @@ class DynamicRefTest extends BuilderTestBase {
 		// the child's batchMode stayed true and the next child.beginUpdate() tripped
 		// nested_begin_update.
 		//
-		// Repro: parent uint param forwards to a child bool param. The binding's resolveFn
-		// is resolveAsInteger (PPTBool routes to the default branch in the binding switch,
-		// MultiAnimBuilder.hx:1328-1332), so resolution succeeds and produces an Int. The
-		// child's setParameter("c2", 42) then falls to the slow path because the PPTBool
-		// fast path requires Bool, and dynamicValueToIndex rejects "42" as a bool string.
-		// Initial build uses resolveAsBool(Value(1)) → true → accepted, so build succeeds.
+		// Repro: the parent's string forwards to a child int. The build forwards "1", which the
+		// child takes; setParameter("p2", "not a number") cannot be made an int, mid-batch.
 		final result = buildFromSource("
-			#child programmable(c2:bool=true) {
+			#child programmable(c2:int=0) {
 				bitmap(generated(color(10, 10, #ff0000))): 0, 0
 			}
-			#parent programmable(p2:uint=1) {
+			#parent programmable(p2:string=\"1\") {
 				dynamicRef($child, c2=>$p2): 0, 0
 			}
 		", "parent", null, Incremental);
@@ -1216,18 +1212,18 @@ class DynamicRefTest extends BuilderTestBase {
 
 		var parentErr:String = null;
 		try {
-			result.setParameter("p2", 42);
+			result.setParameter("p2", "not a number");
 		} catch (e:Dynamic) {
 			parentErr = Std.string(e);
 		}
-		Assert.notNull(parentErr, "expected forwarded setParameter to throw on bool coercion");
+		Assert.notNull(parentErr, "expected forwarded setParameter to throw on a value the child cannot take");
 
 		// The child must still accept fresh updates. Pre-fix this throws nested_begin_update
 		// because the forwarding loop never reached endUpdate.
 		var childErr:String = null;
 		try {
 			child.beginUpdate();
-			child.setParameter("c2", true);
+			child.setParameter("c2", 2);
 			child.endUpdate();
 		} catch (e:Dynamic) {
 			childErr = Std.string(e);
@@ -1250,10 +1246,10 @@ class DynamicRefTest extends BuilderTestBase {
 		//      expressions and re-fires dynamicRef forwarding for the stale param
 		//      that "changed" in the failed call.
 		final result = buildFromSource("
-			#child programmable(c2:bool=true) {
+			#child programmable(c2:int=0) {
 				bitmap(generated(color(10, 10, #ff0000))): 0, 0
 			}
-			#parent programmable(p2:uint=1) {
+			#parent programmable(p2:string=\"1\") {
 				dynamicRef($child, c2=>$p2): 0, 0
 			}
 		", "parent", null, Incremental);
@@ -1262,8 +1258,8 @@ class DynamicRefTest extends BuilderTestBase {
 		@:privateAccess final stackBefore = builder.stateStack.length;
 
 		try {
-			result.setParameter("p2", 42);
-			Assert.fail("expected forwarded setParameter to throw on bool coercion");
+			result.setParameter("p2", "not a number");
+			Assert.fail("expected forwarded setParameter to throw on a value the child cannot take");
 		} catch (e:Dynamic) {
 			// expected
 		}

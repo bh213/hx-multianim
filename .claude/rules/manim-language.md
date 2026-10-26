@@ -33,7 +33,7 @@
 | `#name music {...}` | Tracks, one at a time: `bus:`, `track title { file: "…", loop: yes }` → `audio.playMusic("music.title")`; a screen's `settings { music => "music.title" }` is crossfaded to on every mode change |
 | `placeholder(size, source)` | Dynamic placeholder |
 | `staticRef($ref)` | Static embed of another programmable |
-| `dynamicRef($ref, params)` | Dynamic embed with runtime `setParameter()` support. Unnamed sibling sites that refer to the same programmable collide on the map key; `BuilderResult.getDynamicRef("X")` throws on ambiguity. Prefix with `#name` / `#name[$i]` to disambiguate |
+| `dynamicRef($ref, params)` | Dynamic embed with runtime `setParameter()` support. Unnamed sibling sites that refer to the same programmable collide on the map key; `BuilderResult.getDynamicRef("X")` throws on ambiguity. Prefix with `#name` / `#name[$i]` to disambiguate. A ref (`staticRef` too) gives every target parameter without a default (a `tile` apart) and none the target has not (`ref_argument` otherwise); each argument goes by the target parameter's type (tile, flags, array, bool included), in codegen too for an imported target |
 | `#name dynamicRef($ref, params)` / `#name[$i] dynamicRef($ref, params)` | Named dynamic embed — `getDynamicRef("name")` / map key `"name idx"` per iteration. Two explicit `#name` collisions throw at build time, except in mutually exclusive arms of one `@()`/`@else`/`@default` chain (also for slots and indexed names; the shown arm's registration answers — `ConditionalArms.exclusive`) |
 | `dynamicRef($paramName, params)` | Dynamic embed where `$paramName` is a parameter naming the target programmable. Full rebuild on template change. `#foo dynamicRef($template)` stays keyed as `"foo"` across template swaps. Only a `string`/enum parameter names one: `dynamicRef($x)`/`staticRef($x)` with `x` of another type is a parse error (a programmable named like such a parameter is placed by its bare name, `dynamicRef(panel)`); a missing target is reported at the site (`missing_ref`) |
 | `#name slot` / `#name[$i] slot` | Swappable container (indexed variant for repeatables) |
@@ -135,7 +135,7 @@ Works on discrete param types — `enum`, `int`, `uint`, `range`, `string` (quot
 - Offset suffix: `.offset(x, y)` on any coordinate expression adds a pixel offset (e.g., `layout(name).offset(5, 10)`, `$grid.pos(1, 2).offset(3, 4)`)
 - Context: `$ctx.width`, `$ctx.height`, `$ctx.random(min, max)`, `$ctx.font("name").lineHeight`, `$ctx.font("name").baseLine`
 - Layout: `layout(layoutName [, index])` — legacy two-arg `layout("group", "name")` is rejected at parse time; the group identifier was removed
-- Extra point (from named stateanim): `$ref.extraPoint("pointName")`, `$ref.extraPoint("pointName", fallback: x, y)`
+- Extra point (from named stateanim): `$ref.extraPoint("pointName")`, `$ref.extraPoint("pointName", fallback: x, y)` — where the element draws it (its position, scale and rotation applied; of several `@()` arms, the drawn one), so never add the element's position again
 - Extra point (from .anim file): `extraPoint("file.anim", "animName", "pointName", "key"=>"value"...)`, with optional `fallback: x, y`
 
 ## Filters

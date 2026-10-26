@@ -13,6 +13,7 @@ import bh.multianim.MultiAnimParser.FilterType;
 import bh.multianim.MultiAnimParser.PixelOutlineModeDef;
 import bh.multianim.MultiAnimParser.Node;
 import bh.multianim.MultiAnimParser.ResolvedIndexParameters;
+import bh.multianim.MultiAnimParser.DataValue;
 import bh.test.BuilderTestBase;
 
 /**
@@ -5811,5 +5812,123 @@ class ParserErrorTest extends utest.Test {
 				@(a=>true) #shown dynamicRef(a): 0, 20
 			}
 		"), "string and enum parameters, and a bare programmable name, still parse");
+	}
+
+	// ===== Root elements, parameter defaults, conditions, data arrays, imports =====
+
+	/** A parse with no loader, as the LSP and tools do: imports are listed, never loaded. The error, or null. */
+	static function parseWithoutLoader(source:String):Null<Dynamic> {
+		try {
+			MultiAnimParser.parseFile(byte.ByteData.ofString('version: 1.0\n$source'), "test-input", null);
+			return null;
+		} catch (e:Dynamic) {
+			return e;
+		}
+	}
+
+	static function lineOf(error:Dynamic):Int {
+		return Std.isOfType(error, bh.base.ParseError) ? (error : bh.base.ParseError).pos.line : -1;
+	}
+
+	static function definitionOf(result:MultiAnimResult, programmable:String, param:String):Null<bh.multianim.MultiAnimParser.Definition> {
+		return switch result.nodes.get(programmable).type {
+			case PROGRAMMABLE(_, params, _): params.get(param);
+			default: null;
+		}
+	}
+
+	static function dataFieldOf(result:MultiAnimResult, block:String, field:String):Null<bh.multianim.MultiAnimParser.DataFieldDef> {
+		return switch result.nodes.get(block).type {
+			case DATA(def): Lambda.find(def.fields, f -> f.name == field);
+			default: null;
+		}
+	}
+
+	@Test
+	public function testARootElementWithNoNameIsAnErrorAtIt() {
+		final err = parseWithoutLoader("\n\nbitmap(generated(color(1, 1, #f00))): 0, 0");
+		Assert.notNull(err, "an unnamed root element does not parse");
+		Assert.stringContains("#name", Std.string(err));
+		Assert.equals(4, lineOf(err), "the error is at the element");
+		// The name an unnamed paths block takes is not carried to the next root block
+		final leak = parseWithoutLoader("paths { #p path { lineTo(1, 0) } }\nsounds { hit { file: \"a.wav\" } }");
+		Assert.stringContains("sounds requires a #name", Std.string(leak));
+	}
+
+	@Test
+	public function testANumericDefaultIsReadAsItsType() {
+		final body = "{ bitmap(generated(color(1, 1, #f00))): 0, 0 }";
+		Assert.stringContains("integer", parseExpectingError('#t programmable(n:int=1.5) $body'), "a float is no int default");
+		Assert.stringContains("integer", parseExpectingError('#t programmable(u:uint=2.9) $body'), "nor a uint one");
+		final result = parseExpectingResult('#t programmable(f:float=0x10, g:float=2, h:float=-1.5, n:int=-3, c:uint=0x10) $body');
+		Assert.notNull(result);
+		Assert.same(ValueF(16.0), definitionOf(result, "t", "f").defaultValue, "a hex float default is its number");
+		Assert.same(ValueF(2.0), definitionOf(result, "t", "g").defaultValue);
+		Assert.same(ValueF(-1.5), definitionOf(result, "t", "h").defaultValue);
+		Assert.same(Value(-3), definitionOf(result, "t", "n").defaultValue);
+		Assert.same(Value(16), definitionOf(result, "t", "c").defaultValue);
+	}
+
+	@Test
+	public function testAComparisonOrBitTestIsCheckedAgainstItsParameter() {
+		final body = "bitmap(generated(color(1, 1, #f00))): 0, 0";
+		// An enum compares by its value's index: one of its names stands for its index, any other word is refused
+		final byName = parseExpectingResult('#t programmable(status:[normal, hover]=normal) { @(status >= hover) $body }');
+		Assert.notNull(byName);
+		final cond = switch byName.nodes.get("t").children[0].conditionals {
+			case Conditional(values, _): values.get("status");
+			default: null;
+		};
+		Assert.equals("CoRange(RVInteger(1),null,false,false)", Std.string(cond), "hover is index 1");
+		Assert.stringContains("sideways", parseExpectingError('#t programmable(status:[normal, hover]=normal) { @(status >= sideways) $body }'),
+			"a word the enum has not is refused");
+		Assert.stringContains("numeric", parseExpectingError('#t programmable(s:string="x") { @(s >= 3) $body }'), "no ordering of a string");
+		Assert.stringContains("abc", parseExpectingError('#t programmable(n:int=1) { @(n >= abc) $body }'), "a word is no number");
+		Assert.stringContains("a", parseExpectingError('#t programmable(n:int=1) { @(n => a..b) $body }'), "nor a range of words");
+		Assert.stringContains("bit", parseExpectingError('#t programmable(s:string="x") { @(s => bit[1]) $body }'), "no bit test on a string");
+		Assert.stringContains("bit", parseExpectingError('#t programmable(f:float=1.0) { @(f => bit[1]) $body }'), "nor on a float");
+		Assert.isTrue(parseExpectingSuccess("#t programmable(n:int=1, f:float=0.5, m:flags(4)=0, lim:int=2) {
+			@(n >= 3) " + body + "
+			@(f < 0.5) " + body + "
+			@(m => bit[2]) " + body + "
+			@(n => bit[0]) " + body + "
+			@(n => 1..$lim) " + body + "
+			@(n >= $lim) " + body + "
+			repeatable($i, step(3, dx: 1)) { @($i >= 1) " + body + " }
+		}"), "numbers, ranges and $references on numeric parameters and loop variables, bit tests on integers, still parse");
+	}
+
+	@Test
+	public function testADataArrayIsTypedByAllItsElements() {
+		final result = parseExpectingResult("#d data {\n xs: [1, 2.5]\n ys: int[] []\n zs: string[] [\"a\", \"b\"]\n }");
+		Assert.notNull(result);
+		final xs = dataFieldOf(result, "d", "xs");
+		Assert.equals("DVTArray(DVTFloat)", Std.string(xs.type), "an int beside a float makes a float array");
+		Assert.isTrue(xs.value.match(DVArray([DVFloat(_), DVFloat(_)])), "its int read as a float");
+		Assert.equals("DVTArray(DVTInt)", Std.string(dataFieldOf(result, "d", "ys").type), "an empty array typed as written");
+		Assert.equals("DVTArray(DVTString)", Std.string(dataFieldOf(result, "d", "zs").type));
+		Assert.stringContains("mixed", parseExpectingError("#d data {\n xs: [1, \"a\", true]\n }"));
+		Assert.stringContains("empty", parseExpectingError("#d data {\n xs: []\n }"));
+	}
+
+	@Test
+	public function testAnImportAliasIsTakenOnceAtTheTopLevel() {
+		final body = "#t programmable() { bitmap(generated(color(1, 1, #f00))): 0, 0 }";
+		final twice = parseWithoutLoader('import "a.manim" as "kit"\nimport "b.manim" as "kit"\n$body');
+		Assert.notNull(twice, "an alias given twice does not parse");
+		Assert.stringContains("kit", Std.string(twice));
+		final inBody = parseWithoutLoader("#t programmable(m:[a, b]=a) {\n @(m=>a) {\n import \"a.manim\" as \"kit\"\n }\n }");
+		Assert.notNull(inBody, "an import in a body does not parse");
+		Assert.stringContains("top level", Std.string(inBody));
+	}
+
+	@Test
+	public function testAnExternalAliasIsCheckedAgainstTheImports() {
+		final typo = parseWithoutLoader('import "a.manim" as "kit"\n#t programmable() {\n staticRef(external(kti), card): 0, 0\n}');
+		Assert.notNull(typo, "an alias the file does not import does not parse");
+		Assert.stringContains("kti", Std.string(typo));
+		Assert.equals(4, lineOf(typo), "the error is at the alias");
+		Assert.isNull(parseWithoutLoader('#t programmable() {\n dynamicRef(external(kit), card): 0, 0\n}\nimport "a.manim" as "kit"'),
+			"an alias imported further down the file is fine");
 	}
 }

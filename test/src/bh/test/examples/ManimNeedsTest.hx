@@ -605,9 +605,26 @@ animation walk {
 	layer hat @(hat != none) { sheet: "hat_$${hat}" }
 }
 ');
-		Assert.same(["hat_cap", "hat_none", "walk"], n.sheets.get("wolf"));
+		// hat_none is never loaded: the hat layer draws nothing for hat none
+		Assert.same(["hat_cap", "walk"], n.sheets.get("wolf"));
 		Assert.same([], n.sounds);
 		Assert.same([], n.files);
+	}
+
+	@Test
+	public function testAnAnimFileNeedsOnlyTheFramesItsStatesLoad() {
+		// run is not defined for the snake; idle facing l plays idle_left, not idle_l
+		final n = animNeeds('
+sheet: "crew"
+states: dir(l, r), kind(hero, snake)
+fps: 10
+animation run @(kind != snake) { playlist { sheet: "run_$${dir}_$${kind}" } }
+animation idle {
+	playlist @(dir => l) { sheet: "idle_left" }
+	playlist @default { sheet: "idle_$${dir}" }
+}
+');
+		Assert.same(["idle_left", "idle_r", "run_l_hero", "run_r_hero"], n.sheets.get("crew"));
 	}
 
 	@Test

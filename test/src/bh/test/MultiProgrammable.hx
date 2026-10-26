@@ -725,6 +725,9 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/156-staticRefIncremental/staticRefIncremental.manim", "sriSameName")
 	public var sriSameName;
 
+	@:manim("test/examples/156-staticRefIncremental/staticRefIncremental.manim", "sriArgTypes")
+	public var sriArgTypes;
+
 	@:manim("test/examples/157-ninePatchModes/ninePatchModes.manim", "ninePatchModes")
 	public var ninePatchModes;
 
@@ -904,6 +907,12 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/164-codegenParityReview/codegenParityReview.manim", "cpArmFollows")
 	public var cpArmFollows;
+
+	@:manim("test/examples/164-codegenParityReview/codegenParityReview.manim", "cpLazyArm")
+	public var cpLazyArm;
+
+	@:manim("test/examples/164-codegenParityReview/codegenParityReview.manim", "cpExtraPoint")
+	public var cpExtraPoint;
 
 	@:manim("test/examples/164-codegenParityReview/codegenParityReview.manim", "cpAutotileIdx")
 	public var cpAutotileIdx;

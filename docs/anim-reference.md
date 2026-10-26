@@ -12,7 +12,7 @@ Free-form layout — newlines are whitespace. Comments: `//` line, `/* */` block
 |-------------|--------|-------------|
 | `sheet` | `sheet: sheetName` | Sprite sheet name (loads `sheetName.atlas2`). Required. Before animations |
 | `states` | `states: name(v1, v2), name2(a, b)` | State variables and allowed values. Before animations |
-| `center` | `center: x, y` | Default center point for all animations |
+| `center` | `center: x, y` | Default center point for all animations: the point of each untrimmed frame drawn at the origin. With none, its top-left is; a trimmed frame keeps its place in its untrimmed frame either way |
 | `fps` | `fps: N` | Default frames per second. Before animations |
 | `loop` | `loop: yes \| no \| N` | Default loop behavior. Before animations |
 | `flipX` | `flipX: yes \| no` | Default horizontal flip. Before animations |
@@ -178,7 +178,7 @@ animation name @(direction=>l) {
 | `name` | Name in header (`animation idle {`) or body (`name: idle`). If both, must match |
 | `fps` | Frames per second (inherits file-level default if omitted) |
 | `loop` | `yes`/`true` = forever, `no`/`false` = none, `N` = loop N times (inherits default) |
-| `center` | Per-animation center point override |
+| `center` | Per-animation center point override. A trimmed frame keeps its place in its untrimmed frame about it; with no `center` anywhere, about the untrimmed frame's top-left |
 | `playlist` | Frame sequence (required, at least one) |
 | `extrapoints` | Named coordinate points |
 | `filters` | Typed filter declarations |
@@ -228,7 +228,7 @@ animation's **timeline**: one clock, so they cannot drift apart.
 | The timeline | `timeline: name` in the animation, or else the first of `layers:` that has a block in it. Its frames, durations, events and `filter` lines are the animation's; its blocks must cover every combination of states |
 | Other layers | `sheet:` and `file:` lines only, with `frames:` and `offset:`; `duration:`, `event` and `filter` are errors. Each must have as many frames as the timeline for every combination of states (checked when the state machine is made, naming the layer and the states). A layer no block matches draws nothing |
 | `blend: add` | In a layer block: the names `.manim`'s `blendMode:` takes, without regard to case: `none`, `alpha` (the default), `add`, `alphaAdd`, `softAdd`, `multiply`, `alphaMultiply`, `erase`, `screen`, `sub`, `max`, `min` |
-| The whole | `center`, `flipX`/`flipY`, the animation's `filters { }` (on all layers together) and `extrapoints` belong to the animation |
+| The whole | `center`, `flipX`/`flipY`, the animation's `filters { }` (on all layers together) and `extrapoints` belong to the animation. A flip mirrors every layer about the timeline's untrimmed frame, so a layer drawn on a bigger frame (a glow) stays on the body |
 
 In code, `sm.layer("hat")` is a layer's clip (to hide, tint, read); `sm.clip` is the timeline's.
 `sm.setState("hat", "cap")` changes the hat while walking, and `sm.detachLayer("shadow", mapShadows)`
@@ -429,7 +429,8 @@ scene.addChild(animSM);
 
 ### What the file says, for tools (`loaded()`)
 
-`LoadedAnimation` is the file as written, not as played: `sheet`, `states`, `allowedExtraPoints`,
+`LoadedAnimation` is the file as written, not as played: `sheet`, `states`, `stateOrder` (the states'
+names in the order `states:` writes them; `states` is a map, in no order), `allowedExtraPoints`,
 `center`, `metadata` (the API above) and `metadataEntries` (every entry by key, with its states),
 `animations` (each `AnimationState` as parsed, with its `annotations`), `defaults` (the file-level
 `fps`, `loop`, `flipX`, `flipY`), the file's `annotations`, `sounds` (the `sounds { }` block, an
@@ -437,13 +438,24 @@ event's name to the full name of the sound it plays), `holds` (its `hold` lines,
 to the sound held while it plays), and `spans`. The arrays and maps are the parser's own: read them,
 never change them.
 
+**With no Heaps** — the parse is `AnimFileParser` (`bh.stateanim.AnimParser.AnimFileParser`), which
+`AnimParser` extends with the frames, the cache and the state machines: it compiles in every build,
+`-D noheaps` and the LSP included. `AnimFileParser.parseLoaded(text, name, ?withSpans)` is a file's
+`LoadedAnimation` with no loader, and its static finders (`findAnimation`, `findAnimationInternal`,
+`findPlaylist`, `findExtraPoint`, `findBestStateMatch`, `createAllStates`) say what a set of states
+picks, as the machine picks it. A playlist's events are `PlaylistTrigger(name)`,
+`PlaylistPointEvent(name, point)` and `PlaylistRandomPointEvent(name, point, radius)` (a
+`bh.base.Point`), and `PlaylistEventData(name, meta)`.
+
 **What the file needs** (`bh.multianim.ManimNeeds`): `ManimNeedsTools.animNeedsOf(parsed.loaded())`
-is an `AnimNeeds` — `sheets` (the file's `sheet:` with every frame name its playlists and layers
-write, `${state}` expanded over the file's `states:` values, so `"walk_${dir}"` over `dir(l, r)`
-is `walk_l`, `walk_r`; an indexed name once), `files` (the images its `file:` lines name) and
-`sounds` (the `bank.sound` names of its `sounds { }` block, the held ones too), each sorted and without repeats. From
-the parse alone: `AnimParser.parseString(text, name, null)` needs no loader, no app and no window,
-on HashLink and on JS alike. A `.manim` file's counterpart is `ManimNeedsTools.needsOf`
+is an `AnimNeeds` — `sheets` (the file's `sheet:` with every frame name some combination of its
+states loads: for each, the animation, playlist and layer blocks the machine picks, `${state}`
+expanded with its values, so `"walk_${dir}"` over `dir(l, r)` is `walk_l`, `walk_r`, and a
+`layer hat @(hat != none)` lists nothing for `none`; an indexed name once), `files` (the images its
+`file:` lines name) and `sounds` (the `bank.sound` names of its `sounds { }` block, the held ones
+too), each sorted and without repeats. From the parse alone: `AnimFileParser.parseLoaded(text, name)`
+(or `AnimParser.parseString(text, name, null).loaded()`) needs no loader, no app and no window, on
+HashLink and on JS alike. A `.manim` file's counterpart is `ManimNeedsTools.needsOf`
 (`docs/manim-reference.md`, "What a File Needs").
 
 `spans` are kept only when the parse asks for them, `AnimParser.parseString(text, name, loader, true)`

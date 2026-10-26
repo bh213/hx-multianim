@@ -33,6 +33,12 @@ typedef TileMapTiles = {
 	/** The frames of a name in a sheet, or null when the sheet has no such name. **/
 	var frames:(sheet:String, name:String) -> Null<Array<h2d.Tile>>;
 
+	/**
+		The frames of a name in a layer's own sheet (`sheet:` in the layer), found from the file that
+		writes the map, where the tileset's atlas is found from the tileset's; `frames` when not given.
+	**/
+	var ?layerFrames:(sheet:String, name:String) -> Null<Array<h2d.Tile>>;
+
 	/** A terrain's, a rise's or a cell's metadata, resolved as settings are; null when it has none. **/
 	var metadata:(parsed:Map<String, ParsedSettingValue>) -> ResolvedSettings;
 }
@@ -379,7 +385,7 @@ class TileMap extends h2d.Object {
 		layerEntries = [];
 		layerEntryOf = [];
 		for (l in this.def.layers) {
-			final sheet = l.sheet != null ? l.sheet : tileset.atlas;
+			final ownSheet = l.sheet;
 			final entries:Array<LayerEntry> = [];
 			final of:Map<String, Int> = [];
 			for (ch => name in l.legend) {
@@ -387,7 +393,7 @@ class TileMap extends h2d.Object {
 				of.set(ch, entries.length);
 				entries.push({
 					name: name,
-					frames: framesOf(sheet, name),
+					frames: ownSheet != null ? framesOf(ownSheet, name, true) : framesOf(tileset.atlas, name),
 					draw: cell != null && cell.draw != null ? cell.draw : (l.draw != null ? l.draw : "under"),
 					anchorX: cell != null && cell.anchorX != null ? cell.anchorX : 0,
 					anchorY: cell != null && cell.anchorY != null ? cell.anchorY : 0,
@@ -1855,9 +1861,9 @@ class TileMap extends h2d.Object {
 		return frames;
 	}
 
-	/** The frames of a name, which the builder checked were there. **/
-	function framesOf(sheet:String, name:String):Array<h2d.Tile> {
-		final frames = tiles.frames(sheet, name);
+	/** The frames of a name, which the builder checked were there; `layersOwn` for a layer's own sheet. **/
+	function framesOf(sheet:String, name:String, layersOwn = false):Array<h2d.Tile> {
+		final frames = layersOwn && tiles.layerFrames != null ? tiles.layerFrames(sheet, name) : tiles.frames(sheet, name);
 		if (frames == null || frames.length == 0)
 			throw BuilderError.of('tilemap $mapName: sheet $sheet has no cell $name', "tilemap_missing_cell");
 		return frames;

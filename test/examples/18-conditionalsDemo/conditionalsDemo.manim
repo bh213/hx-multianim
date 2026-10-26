@@ -63,9 +63,9 @@ version: 1.0
 
 // =============================================================================
 // Demo 6: @all - must match ALL provided parameters
-// If not all params in condition are provided, NO match (shows red X)
+// If not all params in condition match, NO match (shows red X)
 // =============================================================================
-#strictDemo programmable(a:[X, Y], b:[P, Q]) {
+#strictDemo programmable(a:[X, Y, none], b:[P, Q, none]) {
   pos: 0, 0
   // Default: red background with X (no match)
   bitmap(generated(color(50, 30, #600)));
@@ -148,9 +148,9 @@ version: 1.0
     staticRef($strictDemo, a=>X, b=>Q):60,12;
     staticRef($strictDemo, a=>Y, b=>P):120,12;
     staticRef($strictDemo, a=>Y, b=>Q):180,12;
-    // Partial params - no match, shows red X
-    staticRef($strictDemo, a=>X):250,12;
-    staticRef($strictDemo, b=>P):310,12;
+    // Partial matches - no match, shows red X
+    staticRef($strictDemo, a=>X, b=>none):250,12;
+    staticRef($strictDemo, a=>none, b=>P):310,12;
   }
 
   // --- Right side: Syntax reference ---

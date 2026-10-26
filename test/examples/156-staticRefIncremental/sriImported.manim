@@ -12,3 +12,10 @@ version: 1.0
 #sriSameName programmable(w:uint=6) {
   bitmap(generated(color($w, 5, #00aaff))): 0, 0
 }
+
+// A string and an enum parameter given by the importer: an argument is read as the type of this
+// file's parameter it is given to, in both backends (StaticRefIncrementalTest)
+#sriExtLabel programmable(label:string="", tone:[dim, bright]=dim) {
+  text(dd, $label, #ffffff): 0, 0
+  @(tone=>bright) bitmap(generated(color(6, 6, #ffffff))): 0, 10
+}

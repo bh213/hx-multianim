@@ -9,7 +9,7 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | Construct | Description |
 |-----------|-------------|
 | `version: 1.0` | Required file header declaring format version |
-| `import "file" as "name"` | Import external .manim file for cross-file references (a parse with no loader keeps the names in `MultiAnimResult.importPaths`) |
+| `import "file" as "name"` | Import external .manim file for cross-file references (a parse with no loader keeps the names in `MultiAnimResult.importPaths`). At the top level only, each alias once; every `external(name)` must name one (parse errors) |
 | `#name export kind …` | Marks a root block of any kind as exported: `#knight export programmable(…)`. A list for tools (`MultiAnimResult.exports`, `MultiAnimResultTools.exportedNames`); an `import` still reaches every block. See [Exports and Doc Comments](#exports-and-doc-comments-multianimresulttools) |
 | `/// text` | Doc comment, kept on the root block, parameter or enum choice it documents (`MultiAnimResultTools.docOf`); any other `///` is a plain comment. See [Exports and Doc Comments](#exports-and-doc-comments-multianimresulttools) |
 | `#name programmable(params) { ... }` | Define a parameterized component (the main building block) |
@@ -24,6 +24,8 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `#name tileset { ... }` | What tile maps are drawn with: terrains, rises between levels, named cells, metadata |
 | `#name tilemap { ... }` | A tile map: legend, terrain and level rows, layers of cells, decor, marks |
 | `@final name = expr` | Declare immutable named constant. One that uses parameters (`@final w = $x * 2`) is live: `setParameter("x", …)` updates what uses `$w`, in both backends |
+
+Every root element has a `#name` (an unnamed `curves`/`paths` block names itself): a bare `bitmap(…)` at the top level is a parse error, at the element — it goes inside a programmable.
 
 ---
 
@@ -41,7 +43,7 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `pixels(...)` | Pixel-level drawing primitives |
 | `graphics(...)` | Vector graphics shapes |
 | `stateanim("file", state, selector)` | State machine animation from .anim file |
-| `stateanim construct(initial, states)` | Inline state machine animation definition |
+| `stateanim construct(initial, states)` | Inline state machine animation definition. A state's `center` puts each untrimmed frame's middle at the origin; without it, the frame's top-left; a trimmed frame keeps its place in its untrimmed frame |
 | `stateanim construct(initial, externallyDriven, states)` | Inline state animation driven externally (not by internal timer) |
 | `particles { ... }` | Particle effect system |
 
@@ -67,12 +69,14 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 |---------|-------------|
 | `placeholder(type, source)` | Dynamic content slot resolved at build time |
 | `staticRef($ref, params)` | Static embed of another programmable. `$ref` may name the target literally or via a string/enum parameter (`staticRef($which)`) — the parameter value resolves the target programmable at build time in both builder and codegen. Built once, as a whole (no `setParameter()` of its own); inside an incremental build or a codegen instance, one whose target or arguments use the enclosing parameters is built again when one of them changes (codegen: only when the target or an argument's value changed); loop variables and `@final`s are fixed, so one using only those is never rebuilt. `staticRef(...) { children }` adds the children inside it (into the target's root when that has a root `pos:`); with children it is not rebuilt — changing such a parameter throws `untracked_param` |
-| `staticRef(external("importName"), $ref, params)` | Static embed from imported .manim file |
+| `staticRef(external("importName"), $ref, params)` | Static embed from imported .manim file. `importName` must be an alias the file imports (`import "file.manim" as "importName"`, at the top level, each alias once): parse error otherwise |
 | `dynamicRef($ref, params)` | Dynamic embed with runtime `setParameter()` support |
 | `#name dynamicRef($ref, params)` | Named dynamic embed — `BuilderResult.getDynamicRef("name")` returns this specific site |
 | `#name[$i] dynamicRef($ref, params)` | Indexed dynamic embed inside a `repeatable` — keys each iteration under `"name idx"` (e.g. `"name 0"`, `"name 1"`) |
 | `dynamicRef(external("importName"), $ref, params)` | Dynamic embed from imported .manim file |
 | `dynamicRef($paramName, params)` | Dynamic embed where `$paramName` is a parameter naming the target programmable. Full rebuild on template change. Only a `string` or enum parameter names one: `dynamicRef($x)` / `staticRef($x)` with `x` a parameter of another type (`bool`, a number, `color`, `tile`, …) is a parse error. A programmable named like such a parameter (`panel:bool` beside `#panel`) is placed by its bare name, `dynamicRef(panel, …)`. A target that is not there is reported at the site: `dynamicRef($template): $template is "nope", and there is no programmable "nope"` (`BuilderError`, code `missing_ref`) |
+
+**Arguments** — a ref gives every parameter of its target that has no default (a `tile` apart, which has none and may be left out) and none the target has not: `staticRef(card)` to `#card programmable(n:int)` is a `BuilderError` at the ref, `card's parameter "n" has no default and is not given`, and `n => 1, x => 2` is `card has no parameter "x" (its parameters: n)` (code `ref_argument`, builder and codegen alike). Each argument is worked out by the target parameter's type, at the build and on every forwarded change: a string or an enum (by its value's name) as text, a number, a color, a bool (`on => ?($n > 2) true : false`), flags, an array (`items => $items`) and a tile (`icon => $icon`, the tile the parameter holds) as what they are. Codegen reads the type at compile time for a target of the file named literally, and asks the target's file at runtime for an imported one or one a parameter names.
 
 **Builder API:**
 - `result.getDynamicRef("name")` — returns the `BuilderResult` for the named site; throws if the name is unknown or multiple unnamed sites collide on the key
@@ -82,7 +86,7 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 
 **Disambiguating sibling dynamicRef sites** — `dynamicRefs` is a map keyed by the site's name. Unnamed sites fall back to the referenced programmable name, so two unnamed `dynamicRef($X)` siblings (e.g. `@(cond) dynamicRef($X)` + `@else dynamicRef($X)`, or N iterations of `repeatable { dynamicRef($X) }`) collide on key `"X"`. In that case `getDynamicRef("X")` throws with a hint to add `#name` — the last-writer-wins result is arbitrary with respect to which sibling is attached to the scene graph. Prefix each site with a distinct `#name`, or use `#name[$i]` inside a `repeatable` to key by iteration. Two explicit `#name` sites sharing the same name throw at build time — unless they sit in mutually exclusive arms of one `@()`/`@else`/`@default` chain (`@(mode=>a) #panel dynamicRef($A)` + `@else #panel dynamicRef($B)`, themselves or through an ancestor): only one of them is ever shown, and `getDynamicRef("panel")` answers with the shown arm's result. The same holds for `#name slot` (`getSlot` returns the shown arm's handle) and indexed names. Two separate `@()` are not exclusive, since both may hold. `@:manim` codegen instances enforce the same contract: `getDynamicRef` on a collided unnamed key throws at lookup, and a duplicate explicit `#name` outside exclusive arms is a compile-time error. The explicit `#name` is also the stable key for the dynamic-name form — `#panel dynamicRef($tpl)` stays addressable as `"panel"` across template swaps in both builder and codegen, and may be shared by exclusive arms like a literal target (`@(mode=>a) #panel dynamicRef($tpl)` + `@else #panel dynamicRef($tpl)`; the shown arm answers, after a swap too).
 
-**Under a conditional** — `@(state=>scores) #scores dynamicRef($panel)` is built on the first show, with the site's arguments. Hidden and shown again by its parent's parameter, it is detached and reattached: `getDynamicRef("scores")` is the same result, a value given it through `setParameter` while shown is still there, and its forwarded site arguments keep following the parent. A site whose own position or properties reference a parent parameter is rebuilt when that parameter changes, like any tracked expression. A show does not rebuild what did not change while the arm was hidden: slot content, values set on a `dynamicRef` and a `stateanim`'s frame are still there. An arm that starts hidden is built incrementally on its first show, its elements then tracked one by one as in an arm shown at build time. A `dynamicRef` inside a constant-count `repeatable` tracks its conditionals as one outside does, so `getDynamicRefByIndex("line", i).setParameter(…)` shows and hides them.
+**Under a conditional** — `@(state=>scores) #scores dynamicRef($panel)` is built on the first show, with the site's arguments. Hidden and shown again by its parent's parameter, it is detached and reattached: `getDynamicRef("scores")` is the same result, a value given it through `setParameter` while shown is still there, and its forwarded site arguments keep following the parent. A site whose own position or properties reference a parent parameter is rebuilt when that parameter changes, like any tracked expression. A show does not rebuild what did not change while the arm was hidden: slot content, values set on a `dynamicRef` and a `stateanim`'s frame are still there. An arm that starts hidden is built incrementally on its first show, its elements then tracked one by one as in an arm shown at build time. A `@:manim` instance builds a hidden arm on its first show too (a frame, font or ref only it names is not looked up at `create()`; a build that throws is tried again on the next show), unless the arm holds a named element, a slot, a `dynamicRef`, a repeat, a `@switch`, an `apply`, particles, a tile group, rich text styles or a hex layout of its own, which are built at create. A `dynamicRef` inside a constant-count `repeatable` tracks its conditionals as one outside does, so `getDynamicRefByIndex("line", i).setParameter(…)` shows and hides them.
 
 **Circular references** — a `staticRef`/`dynamicRef` chain that re-enters a programmable already being resolved (`A → A`, `A → B → A`, …) is rejected with `BuilderError code="circular_reference"` instead of recursing to a native stack overflow, in the builder and in codegen alike. The message names the offending programmable. The guard is by name, not by depth, so bounded self-recursion (`#tree programmable(d:int=3) { @(d > 0) staticRef($tree, d => $d - 1) }`) is rejected too. The guard is maintained across nested builds even if an inner `startBuild` throws, so callers that catch a build error and retry are not falsely rejected.
 | `#name slot` | Swappable content container |
@@ -321,7 +325,8 @@ Parse-time error when used outside a flow ancestor.
 | `@(param > value)` | Strictly greater than |
 | `@(param < value)` | Strictly less than |
 | `@(param => start..end)` | Range match (inclusive) |
-| `@(param => bit[N])` | Bit test: bit N is set. On a `flags`, `int` or `uint` parameter or a loop variable (`@($i => bit[0])`), in both backends. A `flags` parameter also takes the comparisons and ranges above |
+| | The comparisons and ranges need a numeric parameter (`int`, `uint`, range, `float`, `flags`, `color`, a direction) or an enum, whose value compares by its index (`@(status >= hover)`, `@(status >= 1)`); each operand is a number, a `$reference` or, for an enum, one of its values. Anything else is a parse error |
+| `@(param => bit[N])` | Bit test: bit N is set. On a `flags`, `int` or `uint` parameter (a range, a direction) or a loop variable (`@($i => bit[0])`), in both backends; on any other type a parse error. A `flags` parameter also takes the comparisons and ranges above |
 | `@(param => *)` | Wildcard — match any value |
 | `@else` | Matches when preceding sibling `@()` did not match |
 | `@else(conditions)` | Else-if with additional conditions |
@@ -455,6 +460,8 @@ Works with `@()`, `@if()`, `@any()`, `@all()`, `@else`, `@else(cond)`, `@default
 | `griddirection` | Grid direction flags (0-7) |
 | `array` | Array type |
 
+An integer type's default is an integer (`n:int=1.5` is a parse error); a `float`'s may be written in hex (`0x10` is 16). A ref must give every parameter without a default (see Dynamic Content, Arguments).
+
 A parameter, and each choice of an enum parameter, may carry a `///` doc comment: the lines above it, and one trailing it on its line (`hp:uint = 3, /// hit points`, `walk /// 4 frames at 8 fps`). See [Exports and Doc Comments](#exports-and-doc-comments-multianimresulttools).
 
 ---
@@ -541,17 +548,21 @@ bitmap(...): $player.extraPoint("bulletSpawn", fallback: 50, 50)
 bitmap(...): $player.extraPoint("bulletSpawn").offset(10, 0)
 ```
 
+The point is where the element draws it: in the space the element is placed in, moved by its position and scaled and turned as it is (`bulletSpawn` at 3, -8 of a player at 100, 100 is 103, 92) — so do not add the element's position again. Of a name in several `@()` arms, the arm drawn is used.
+
 **Directly from a .anim file:**
 ```manim
 bitmap(...): extraPoint("player.anim", "fire-up", "fire", direction=>"r")
 bitmap(...): extraPoint("player.anim", "idle", "fire", direction=>"l", fallback: 0, 0)
 ```
 
+The file form has no element: its point is the animation's own, at the origin.
+
 When a point is not found: throws if no `fallback:` specified, uses fallback coordinates otherwise. Fallback accepts any coordinate type (literal, layout, grid, etc.).
 
 **`.x`/`.y` extraction in expressions:**
 ```manim
-text(font, '${$player.extraPoint("fire").x + $OFFSET_X}', #FF0000): 0, 0
+text(font, '${$player.extraPoint("fire").x - $PLAYER_X}', #FF0000): 0, 0   // the point beside the player's own position
 text(font, '${$ref.extraPoint("name", 99, 88).y}', #00FF00): 0, 0
 ```
 Use `$ref.extraPoint("name").x` / `.y` to extract a single coordinate component for use in text interpolation and arithmetic expressions. Fallback via positional args: `$ref.extraPoint("name", fallbackX, fallbackY).x`.
@@ -1025,7 +1036,8 @@ Tile entry properties: `x, y, w, h`, plus optional `offset: ox, oy`, `orig: ow, 
 | `#name record(field: type, ...)` | Define record schema |
 | `fieldName: enumName value` | Enum value |
 | `fieldName: recordName { ... }` | Record instance |
-| `fieldName: type[] [values]` | Typed array |
+| `fieldName: type[] [values]` | Typed array (`int[] []`, `float[]`, `string[]`, `bool[]` or a record's); the only way to write an empty one |
+| `fieldName: [values]` | Untyped array, typed by all its elements: ints among floats are floats, any other mix (or an empty one) is a parse error |
 | Optional fields with `?` prefix | Field not required |
 | `#name record(key id, ...)` | A row type: an array of it is a table, its rows found by id |
 | `field: ref record` | The id of a row of a keyed record (in any one of its tables), checked when the block is read |

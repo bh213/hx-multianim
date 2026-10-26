@@ -6722,7 +6722,7 @@ class BuilderUnitTest extends BuilderTestBase {
 	@Test
 	public function testExtraPointRef():Void {
 		// marine.anim idle animation with direction=>l has targeting: -1, -12
-		// The stateanim is at 100, 200, and the bitmap should be at the extra point coords
+		// The stateanim is at 100, 200: the bitmap is at the point where the stateanim draws it
 		final result = buildFromSource("
 			#test programmable() {
 				#player stateanim(\"marine.anim\", \"idle\", direction=>\"l\"): 100, 200
@@ -6732,9 +6732,9 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.notNull(result, "Build should succeed");
 		final bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(1, bitmaps.length);
-		// Extra point targeting for direction=l is (-1, -12)
-		Assert.equals(-1, Std.int(bitmaps[0].x));
-		Assert.equals(-12, Std.int(bitmaps[0].y));
+		// Extra point targeting for direction=l is (-1, -12), at 100, 200
+		Assert.equals(99, Std.int(bitmaps[0].x));
+		Assert.equals(188, Std.int(bitmaps[0].y));
 	}
 
 	@Test
@@ -6814,9 +6814,9 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.notNull(result, "Build should succeed");
 		final bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(1, bitmaps.length);
-		// targeting: -1, -12 + offset(10, 5) = 9, -7
-		Assert.equals(9, Std.int(bitmaps[0].x));
-		Assert.equals(-7, Std.int(bitmaps[0].y));
+		// targeting: -1, -12 at 100, 200 + offset(10, 5) = 109, 193
+		Assert.equals(109, Std.int(bitmaps[0].x));
+		Assert.equals(193, Std.int(bitmaps[0].y));
 	}
 
 	@Test
@@ -6835,12 +6835,93 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.equals(-12, Std.int(bitmaps[0].y));
 	}
 
+	@Test
+	public function testAnExtraPointIsWhereTheDrawnElementPutsIt():Void {
+		// marine.anim idle: targeting -1, -12 facing l, 5, -12 facing r. The drawn #player is the r one,
+		// at 100, 200, twice the size, turned a quarter: (5, -12) * 2 = (10, -24), turned 90 degrees
+		// (x' = -y, y' = x) = (24, 10), at 100, 200 = (124, 210)
+		final result = buildFromSource("
+			#test programmable(dir:[l, r]=r) {
+				@(dir=>l) #player stateanim(\"marine.anim\", \"idle\", direction=>\"l\"): 100, 200
+				@else #player stateanim(\"marine.anim\", \"idle\", direction=>\"r\") {
+					pos: 100, 200
+					scale: 2
+					rotate: 90
+				}
+				bitmap(generated(color(5, 5, #FF0000))): $player.extraPoint(\"targeting\")
+			}
+		", "test");
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(124, Math.round(bitmaps[0].x), "the point is where the element draws it: placed, scaled and turned");
+		Assert.equals(210, Math.round(bitmaps[0].y));
+	}
+
+	// ==================== A ref's arguments, by its target's parameter types ====================
+
+	@Test
+	public function testARefTakesAndForwardsTilesFlagsArraysAndBools():Void {
+		final params:Map<String, Dynamic> = ["icon" => h2d.Tile.fromColor(0xFF0000, 4, 4)];
+		final result = buildFromSource("
+			#card programmable(icon:tile, mask:flags(4)=0, items:array=[a], on:bool=false) {
+				bitmap($icon): 0, 0
+				@(mask => bit[1]) bitmap(generated(color(3, 3, #ffffff))): 10, 0
+				@(on=>true) bitmap(generated(color(5, 5, #ffffff))): 20, 0
+				repeatable($v, array($val, $items)) {
+					bitmap(generated(color(7, 7, #ffffff))): 0, 0
+				}
+			}
+			#test programmable(icon:tile, mask:flags(4)=2, items:array=[x, y], n:int=1) {
+				staticRef(card, icon => $icon, mask => $mask, items => $items, on => ?($n > 2) true : false): 0, 0
+				dynamicRef(card, icon => $icon, mask => $mask, items => $items, on => ?($n > 2) true : false): 0, 40
+			}
+		", "test", params, Incremental);
+		function widths():String {
+			final ws = [for (b in findVisibleBitmapDescendants(result.object)) Std.int(b.tile.width)];
+			ws.sort((a, b) -> a - b);
+			return ws.join(",");
+		}
+		var w = widths();
+		Assert.equals("3,3,4,4,7,7,7,7", w, 'a tile, flags and an array reach both refs: $w');
+		result.setParameter("n", 3);
+		w = widths();
+		Assert.equals("3,3,4,4,5,5,7,7,7,7", w, 'a bool ternary is forwarded: $w');
+		result.setParameter("items", ["a", "b", "c"]);
+		w = widths();
+		Assert.equals("3,3,4,4,5,5,7,7,7,7,7,7", w, 'an array is forwarded: $w');
+		result.setParameter("mask", 0);
+		w = widths();
+		Assert.equals("4,4,5,5,7,7,7,7,7,7", w, 'flags are forwarded: $w');
+		result.setParameter("icon", h2d.Tile.fromColor(0x00FF00, 6, 6));
+		w = widths();
+		Assert.equals("5,5,6,6,7,7,7,7,7,7", w, 'a tile is forwarded: $w');
+	}
+
+	@Test
+	public function testARefsMissingOrUnknownArgumentIsReportedAtTheRef():Void {
+		function errorOf(source:String):String {
+			try {
+				buildFromSource(source, "test");
+				return "";
+			} catch (e:Dynamic) {
+				return Std.string(e);
+			}
+		}
+		final card = "#card programmable(show:bool=false, n:int) { @(show=>true) bitmap(generated(color($n, 2, #ffffff))): 0, 0 }\n";
+		final missing = errorOf(card + "#test programmable() { staticRef(card): 0, 0 }");
+		Assert.stringContains("card", missing, "a required argument left out is reported, even where its use is hidden");
+		Assert.stringContains("\"n\"", missing);
+		Assert.stringContains("no default", missing);
+		final unknown = errorOf(card + "#test programmable() { dynamicRef(card, n => 1, x => 2): 0, 0 }");
+		Assert.stringContains("card has no parameter \"x\"", unknown, "an unknown argument names the ref's target");
+	}
+
 	// ==================== extraPoint .x/.y extraction in expressions ====================
 
 	@Test
 	public function testExtraPointXYExtractionInText():Void {
-		// $ref.extraPoint("name").x / .y should resolve to the point's coordinates
-		// marine.anim idle direction=l targeting: -1, -12
+		// $ref.extraPoint("name").x / .y should resolve to the point's coordinates where the element draws it
+		// marine.anim idle direction=l targeting: -1, -12, the stateanim at 100, 200
 		final result = buildFromSource("
 			#test programmable() {
 				#player stateanim(\"marine.anim\", \"idle\", direction=>\"l\"): 100, 200
@@ -6850,25 +6931,25 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.notNull(result, "Build should succeed");
 		final texts = findAllTextDescendants(result.object);
 		Assert.equals(1, texts.length);
-		Assert.equals("-1,-12", texts[0].text);
+		Assert.equals("99,188", texts[0].text);
 	}
 
 	@Test
 	public function testExtraPointXYWithArithmeticInText():Void {
-		// .x + offset should compute correctly
+		// .x - the element's position is the point in the element's own space
 		final result = buildFromSource("
 			#test programmable() {
 				@final OX = 150
 				@final OY = 200
 				#player stateanim(\"marine.anim\", \"idle\", direction=>\"l\"): $OX, $OY
-				text(dd, '${$player.extraPoint(\"targeting\").x + $OX},${$player.extraPoint(\"targeting\").y + $OY}', #FF0000): 0, 0
+				text(dd, '${$player.extraPoint(\"targeting\").x - $OX},${$player.extraPoint(\"targeting\").y - $OY}', #FF0000): 0, 0
 			}
 		", "test");
 		Assert.notNull(result, "Build should succeed");
 		final texts = findAllTextDescendants(result.object);
 		Assert.equals(1, texts.length);
-		// targeting: -1, -12 + offset 150, 200 = 149, 188
-		Assert.equals("149,188", texts[0].text);
+		// targeting at 150, 200: 149, 188, less 150, 200 = -1, -12
+		Assert.equals("-1,-12", texts[0].text);
 	}
 
 	@Test

@@ -72,10 +72,11 @@ typedef ManimNeeds = {
 };
 
 /**
-	What an `.anim` file needs of its host: its `sheet:` with every frame name its playlists and layers
-	write (`${state}` expanded over the file's `states:` values; an indexed name once), the images
-	its `file:` lines name, and the full names `bank.sound` its `sounds { }` block plays.
-	From `ManimNeedsTools.animNeedsOf(AnimParser.parseString(text, name, null).loaded())`.
+	What an `.anim` file needs of its host: its `sheet:` with every frame name some combination of its
+	`states:` loads (the animation, playlist and layer blocks the machine picks for it, `${state}`
+	expanded with its values; an indexed name once), the images its `file:` lines name, and the full
+	names `bank.sound` its `sounds { }` block plays.
+	From `ManimNeedsTools.animNeedsOf(AnimFileParser.parseLoaded(text, name))`, no Heaps.
 **/
 @:nullSafety
 typedef AnimNeeds = {
@@ -182,26 +183,46 @@ class ManimNeedsTools {
 		final files:Array<String> = [];
 		final sounds:Array<String> = [];
 		final cells:Array<String> = [];
-		function frames(anims:Array<AnimPlaylistFrames>) {
+		function frames(anims:Array<AnimPlaylistFrames>, state:Map<String, String>) {
 			for (a in anims)
 				switch a {
 					case SheetFrameAnim(name, _, _) | SheetFrameAnimWithIndex(name, _, _, _, _):
-						for (expanded in expandStates(name, loaded.states))
-							if (cells.indexOf(expanded) < 0)
-								cells.push(expanded);
+						var expanded = name;
+						for (key => value in state)
+							expanded = StringTools.replace(expanded, "${" + key + "}", value);
+						if (cells.indexOf(expanded) < 0)
+							cells.push(expanded);
 					case FileSingleFrame(filename, _, _):
 						if (files.indexOf(filename) < 0)
 							files.push(filename);
 					default:
 				}
 		}
-		for (anim in loaded.animations) {
-			for (p in anim.playlist)
-				frames(p.anims);
-			if (anim.layers != null)
-				for (l in anim.layers)
-					frames(l.anims);
-		}
+		// What each combination of the states loads, as the machine picks it: the animation, its
+		// playlist, and each other layer's block that matches them (one that matches none loads nothing)
+		final names:Array<String> = [];
+		for (anim in loaded.animations)
+			if (names.indexOf(anim.name) < 0)
+				names.push(anim.name);
+		for (state in AnimFileParser.createAllStates(loaded.states))
+			for (name in names) {
+				// the parse rejected a tie, so none throws here
+				final anim = AnimFileParser.findAnimationInternal(name, state, loaded.animations);
+				if (anim == null)
+					continue;
+				final playlist = AnimFileParser.findBestStateMatch(anim.playlist, state, 'playlist: $name');
+				if (playlist != null)
+					frames(playlist.anims, state);
+				final layers = anim.layers;
+				if (layers != null)
+					for (layerName in loaded.layers) {
+						if (layerName == anim.timeline)
+							continue;
+						final block = AnimFileParser.findBestStateMatch(layers.filter(l -> l.name == layerName), state, 'layer $layerName');
+						if (block != null)
+							frames(block.anims, state);
+					}
+			}
 		cells.sort(Reflect.compare);
 		files.sort(Reflect.compare);
 		if (loaded.sheet != null && (cells.length > 0 || loaded.animations.length == 0))

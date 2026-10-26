@@ -32,7 +32,7 @@
 | `src/bh/multianim/dev/DevBridge.hx` | Dev JSON-RPC bridge for runtime inspection/manipulation (`-D MULTIANIM_DEV`): every op, game ops, the game's data, event buffers |
 | `src/bh/multianim/dev/transport/` | How the DevBridge is reached: `HttpServerTransport` (HashLink HTTP + SSE), `PageTransport` (`window.hxDevBridge`), `WebSocketTransport` (browser → relay) |
 | `src/bh/multianim/dev/HotReload.hx` | Live `.manim`/`.anim` reload (`-D MULTIANIM_DEV`) |
-| `src/bh/stateanim/AnimParser.hx` | Parser for `.anim` state animation files |
+| `src/bh/stateanim/AnimParser.hx` | Parser for `.anim` state animation files: `AnimFileParser` (the parse, `loaded()`, the static finders; no Heaps, so the LSP and `ManimNeeds` use it; `parseLoaded(text, name)`) and `AnimParser extends AnimFileParser` (frames, cache, `createAnimSM`) |
 | `src/bh/multianim/ManimKeywordInfo.hx` | Keyword metadata for LSP/tooling (exhaustive switch on parser enums) |
 | `src/bh/base/TweenManager.hx` | Tween/animation system (owned by ScreenManager) |
 | `src/bh/ui/screens/ScreenManager.hx` | Screen stack, transitions, modal overlay, TweenManager owner |

@@ -34,6 +34,48 @@ class StaticRefIncrementalTest extends BuilderTestBase {
 		return BuilderTestBase.buildFromFile(FIXTURE, name, null, Incremental);
 	}
 
+	/** The visible texts, in tree order. */
+	static function textsOf(obj:h2d.Object):String {
+		final out:Array<String> = [];
+		function walk(o:h2d.Object) {
+			if (!o.visible)
+				return;
+			if (Std.isOfType(o, h2d.Text))
+				out.push((cast o : h2d.Text).text);
+			for (i in 0...o.numChildren)
+				walk(o.getChildAt(i));
+		}
+		walk(obj);
+		return out.join(",");
+	}
+
+	/** An imported target's arguments are read as its own parameters' types: a string parameter given
+	 *  i + 1 is "5" then "1" (not 6, the importer's same-named programmable's int); an enum one given a
+	 *  @final that stands for an enum value is that value, bright. */
+	static function checkArgTypes(root:h2d.Object, label:String):Void {
+		Assert.equals("51,51", textsOf(root), '$label: read as the imported target\'s string parameter, at both refs');
+		Assert.equals(2, sizes(root).split(",").filter(s -> s == "6x6").length, '$label: the enum @final gives its value at both refs');
+	}
+
+	@Test
+	public function testAnImportedTargetsArgumentsTakeItsTypes_Builder():Void {
+		checkArgTypes(build("sriArgTypes").object, "builder");
+	}
+
+	@Test
+	public function testAnImportedTargetsArgumentsTakeItsTypes_Codegen():Void {
+		var inst:Dynamic = null;
+		var error = "";
+		try {
+			inst = createMp().sriArgTypes.create();
+		} catch (e:Dynamic) {
+			error = Std.string(e);
+		}
+		Assert.equals("", error, "codegen: built");
+		if (inst != null)
+			checkArgTypes(cast inst, "codegen");
+	}
+
 	static function bitmaps(obj:h2d.Object):Array<h2d.Bitmap> {
 		return BuilderTestBase.findVisibleBitmapDescendants(obj);
 	}

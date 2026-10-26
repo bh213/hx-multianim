@@ -635,6 +635,48 @@ class CodegenParityReviewTest extends BuilderTestBase {
 		checkArmFollows((k, v) -> inst.setParameter(k, v), cast inst, "codegen");
 	}
 
+	// ==================== A hidden arm is built on its first show ====================
+
+	function checkLazyArm(setParameter:(String, Dynamic) -> Void, root:h2d.Object, label:String):Void {
+		Assert.equals(1, BuilderTestBase.findVisibleBitmapDescendants(root).length, '$label: the hidden arms draw nothing');
+		Assert.notNull(errorOf(() -> setParameter("show", true)), '$label: shown, the arm looks its frame up then: not in the sheet');
+		setParameter("show", false);
+		setParameter("cell", "tile-center");
+		Assert.isNull(errorOf(() -> setParameter("show", true)), '$label: shown with a frame the sheet has');
+		Assert.equals(3, BuilderTestBase.findVisibleBitmapDescendants(root).length, '$label: both arms drawn');
+	}
+
+	@Test
+	public function testHiddenArmIsBuiltOnItsFirstShow_Builder():Void {
+		var result:Null<BuilderResult> = null;
+		Assert.isNull(errorOf(() -> result = BuilderTestBase.buildFromFile(FIXTURE, "cpLazyArm", null, Incremental)),
+			"builder: a hidden arm's frame is not looked up at build");
+		if (result != null)
+			checkLazyArm((k, v) -> result.setParameter(k, v), result.object, "builder");
+	}
+
+	@Test
+	public function testHiddenArmIsBuiltOnItsFirstShow_Codegen():Void {
+		var inst:Dynamic = null;
+		Assert.isNull(errorOf(() -> inst = createMp().cpLazyArm.create()), "codegen: a hidden arm's frame is not looked up at create");
+		if (inst != null)
+			checkLazyArm((k, v) -> inst.setParameter(k, v), cast inst, "codegen");
+	}
+
+	// ==================== An extra point where the drawn element puts it ====================
+
+	@Test
+	public function testExtraPointIsWhereTheDrawnElementPutsIt_Codegen():Void {
+		// (5, -12) facing r, twice the size, turned a quarter, at 100, 200: (124, 210)
+		final inst:Dynamic = createMp().cpExtraPoint.create();
+		final marker = Lambda.find(BuilderTestBase.findVisibleBitmapDescendants(cast inst), b -> Std.int(b.tile.width) == 5);
+		Assert.notNull(marker);
+		if (marker == null) return;
+		final at = offsetToRoot(marker, cast inst);
+		Assert.equals(124, Math.round(at.x), "codegen: the drawn #player's point, placed, scaled and turned");
+		Assert.equals(210, Math.round(at.y));
+	}
+
 	function checkAutotileIndex(setParameter:(String, Dynamic) -> Void, root:h2d.Object, label:String):Void {
 		final before = BuilderTestBase.findVisibleBitmapDescendants(root)[0].tile;
 		setParameter("i", 5);

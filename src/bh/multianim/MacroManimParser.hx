@@ -733,6 +733,36 @@ class MacroManimParser {
 		return from < to ? lines.slice(from, to).join("\n") : null;
 	}
 
+	/** Every `external(alias)` written, where: each must be an alias the file imports (checked at the end
+	 *  of the parse, as an import may come after its use). */
+	var externalAliases:Array<{alias:String, line:Int, col:Int}> = [];
+
+	/** The alias in `external(alias)`, kept to be checked against the file's imports. */
+	function externalAlias():String {
+		final at = peekToken();
+		final alias = expectIdentifierOrString();
+		externalAliases.push({alias: alias, line: at.line, col: at.col});
+		return alias;
+	}
+
+	function checkExternalAliases():Void {
+		for (e in externalAliases)
+			if (!importPaths.exists(e.alias)) {
+				final known = [for (k in importPaths.keys()) k];
+				known.sort(Reflect.compare);
+				errorAtLine(e.line, e.col, 'external(${e.alias}): the file imports no "${e.alias}" (import "file.manim" as "${e.alias}")'
+					+ (known.length > 0 ? '; it imports ${known.join(", ")}' : ""));
+			}
+	}
+
+	/** The word an element starts with (`bitmap`), for an error that shows how to write it. */
+	function elementWord(index:Int):String {
+		return switch tokens[index].type {
+			case TIdentifier(s): s;
+			default: "element";
+		}
+	}
+
 	/** A root block's own: `export` (its name in `exports`, in the order written) and its doc,
 	 *  the `///` lines above its first token. */
 	function markRootBlock(node:Node, name:String, firstIndex:Int, exported:Bool):Void {
@@ -1266,7 +1296,7 @@ class MacroManimParser {
 					case TIdentifier(s2) if (isKeyword(s2, "external")):
 						advance();
 						expect(TOpen);
-						externalReference = expectIdentifierOrString();
+						externalReference = externalAlias();
 						expect(TClosed);
 						expect(TComma);
 					default:
@@ -2085,6 +2115,10 @@ class MacroManimParser {
 				param.defaultValue = ArrayString(parseStringArray());
 			default:
 				var s:Null<String> = null;
+				// What the number was written as: a fraction is no integer's default, a hex number is a
+				// float's number (parseFloat reads "0x10" as 0 on JS)
+				var fraction = false;
+				var hex = false;
 				switch (peek()) {
 					case TIdentifier(str):
 						advance();
@@ -2096,22 +2130,39 @@ class MacroManimParser {
 					case THexInteger(str):
 						advance();
 						s = '0x' + str.split("_").join("");
+						hex = true;
 					case TMinus:
 						advance();
 						switch (peek()) {
-							case TInteger(n) | TFloat(n):
+							case TInteger(n):
 								advance();
 								s = '-' + n.split("_").join("");
+							case TFloat(n):
+								advance();
+								s = '-' + n.split("_").join("");
+								fraction = true;
 							default: error("expected number after minus");
 						}
-					case TInteger(n) | TFloat(n):
+					case TInteger(n):
 						advance();
 						s = n.split("_").join("");
+					case TFloat(n):
+						advance();
+						s = n.split("_").join("");
+						fraction = true;
 					default:
 						error('unexpected default value: ${peek()}');
 				}
 				if (s == null) error('unexpected default value: ${peek()}');
 				final _s:String = s ?? "";
+				switch (param.type) {
+					case PPTInt | PPTUnsignedInt | PPTRange(_, _) | PPTHexDirection | PPTGridDirection | PPTFlags(_) if (fraction):
+						error('parameter "${param.name}" takes an integer: its default $_s is not one');
+					case PPTFloat if (hex):
+						param.defaultValue = ValueF(int32(_s));
+						return;
+					default:
+				}
 				param.defaultValue = dynamicValueToIndex(param.name, param.type, _s);
 		}
 	}
@@ -2172,6 +2223,37 @@ class MacroManimParser {
 	// Multi-value [a,b] and pipe @switch arms build CoEnums from raw lexemes; without this
 	// an unknown name silently diverges — codegen matches enum index 0, builder never matches.
 	// String params accept any value; loop vars (no def) have no type to validate against.
+	/** An operand of a comparison or a range of `paramName` (`>=`, `<`, `a..b`): its parameter holds a
+	 *  number (an enum its value's index; a loop variable, untyped, may), and the operand is a number or a
+	 *  `$reference`, or for an enum one of its names, which stands for that name's index. */
+	function numericOperand(paramName:String, defs:ParametersDefinitions, what:String, rv:Null<ReferenceableValue>):Null<ReferenceableValue> {
+		final def = defs.get(paramName);
+		final names:Null<Array<String>> = def == null ? null : switch (def.type) {
+			case PPTEnum(values): values;
+			case PPTInt | PPTUnsignedInt | PPTRange(_, _) | PPTFloat | PPTFlags(_) | PPTHexDirection | PPTGridDirection | PPTColor: null;
+			default: error('$what needs a numeric or enum parameter: "$paramName" is ${definitionTypeName(def.type)}');
+		}
+		if (rv == null)
+			return null;
+		return switch (rv) {
+			case RVString(s) if (names != null && names.contains(s)): RVInteger(names.indexOf(s));
+			case RVString(s) if (names != null): error('$what of "$paramName": "$s" is not one of its values (${names.join(", ")}), a number or a $$reference');
+			case RVString(s): error('$what of "$paramName": "$s" is not a number or a $$reference');
+			default: rv;
+		}
+	}
+
+	/** `bit[n]` tests an integer: a parameter whose value is one (a loop variable, untyped, may be). */
+	function checkBitTest(paramName:String, defs:ParametersDefinitions):Void {
+		final def = defs.get(paramName);
+		if (def != null)
+			switch (def.type) {
+				case PPTInt | PPTUnsignedInt | PPTRange(_, _) | PPTFlags(_) | PPTHexDirection | PPTGridDirection:
+				default:
+					error('bit[] tests an integer parameter: "$paramName" is ${definitionTypeName(def.type)}');
+			}
+	}
+
 	function validateConditionalEnumValues(paramName:String, defs:ParametersDefinitions, values:Array<String>):Void {
 		final def = defs.get(paramName);
 		if (def == null) return;
@@ -2216,19 +2298,19 @@ class MacroManimParser {
 			switch (peek()) {
 				case TGreaterEquals:
 					advance();
-					final val = parseAnything();
+					final val = numericOperand(paramName, defs, ">=", parseAnything());
 					result.set(paramName, CoRange(val, null, false, false));
 				case TLessEquals:
 					advance();
-					final val = parseAnything();
+					final val = numericOperand(paramName, defs, "<=", parseAnything());
 					result.set(paramName, CoRange(null, val, false, false));
 				case TGreaterThan:
 					advance();
-					final val = parseAnything();
+					final val = numericOperand(paramName, defs, ">", parseAnything());
 					result.set(paramName, CoRange(val, null, true, false));
 				case TLessThan:
 					advance();
-					final val = parseAnything();
+					final val = numericOperand(paramName, defs, "<", parseAnything());
 					result.set(paramName, CoRange(null, val, false, true));
 				case TNotEquals:
 					advance();
@@ -2277,31 +2359,32 @@ class MacroManimParser {
 							switch (peek()) {
 								case TIdentifier(s) if (isKeyword(s, "greaterthanorequal")):
 									advance();
-									final val = parseAnything();
+									final val = numericOperand(paramName, defs, ">=", parseAnything());
 									result.set(paramName, CoRange(val, null, false, false));
 								case TIdentifier(s) if (isKeyword(s, "lessthanorequal")):
 									advance();
-									final val = parseAnything();
+									final val = numericOperand(paramName, defs, "<=", parseAnything());
 									result.set(paramName, CoRange(null, val, false, false));
 								case TIdentifier(s) if (isKeyword(s, "bit")):
 									advance();
+									checkBitTest(paramName, defs);
 									expect(TBracketOpen);
 									final bitIndex = parseInteger();
 									expect(TBracketClosed);
 									result.set(paramName, CoFlag(1 << bitIndex));
 								case TIdentifier(s) if (isKeyword(s, "between")):
 									advance();
-									final from = parseAnything();
+									final from = numericOperand(paramName, defs, "a range", parseAnything());
 									expect(TDoubleDot);
-									final to = parseAnything();
+									final to = numericOperand(paramName, defs, "a range", parseAnything());
 									result.set(paramName, CoRange(from, to, false, false));
 								default:
 									// Could be a range: from..to
 									final val = parseAnything();
 									// Check for range
 									if (match(TDoubleDot)) {
-										final to = parseAnything();
-										result.set(paramName, CoRange(val, to, false, false));
+										final to = numericOperand(paramName, defs, "a range", parseAnything());
+										result.set(paramName, CoRange(numericOperand(paramName, defs, "a range", val), to, false, false));
 									} else {
 										final valStr = rvToCondString(val);
 										validateConditionalEnumValues(paramName, defs, [valStr]);
@@ -3943,7 +4026,7 @@ class MacroManimParser {
 					case TIdentifier(s2) if (isKeyword(s2, "external")):
 						advance();
 						expect(TOpen);
-						extRef = expectIdentifierOrString();
+						extRef = externalAlias();
 						expect(TClosed);
 						expect(TComma);
 					default:
@@ -3965,7 +4048,7 @@ class MacroManimParser {
 					case TIdentifier(s2) if (isKeyword(s2, "external")):
 						advance();
 						expect(TOpen);
-						extRef = expectIdentifierOrString();
+						extRef = externalAlias();
 						expect(TClosed);
 						expect(TComma);
 					default:
@@ -4310,7 +4393,7 @@ class MacroManimParser {
 								case TIdentifier(s2) if (isKeyword(s2, "external")):
 									advance();
 									expect(TOpen);
-									extRef = expectIdentifierOrString();
+									extRef = externalAlias();
 									expect(TClosed);
 									expect(TComma);
 								default:
@@ -5779,11 +5862,18 @@ class MacroManimParser {
 					parseChildNode(node, defs);
 				}
 				case TIdentifier(s) if (isKeyword(s, "import")):
+					// An import reaches the whole file: written in a body (an @() arm's), it would read as
+					// belonging to it
+					if (node != null) error("import goes at the top level of a file, not in a body");
 					advance();
 					final file = expectIdentifierOrString();
 					expectKeyword("as");
+					final aliasAt = peekToken();
 					final importName = expectIdentifierOrString();
 					eatSemicolon();
+					if (importPaths.exists(importName))
+						errorAtLine(aliasAt.line, aliasAt.col,
+							'import alias "$importName" is already taken by import "${importPaths.get(importName)}": give each import its own alias');
 					// kept with or without a loader, so a tool lists what the file imports from the parse alone
 					importPaths.set(importName, file);
 					if (resourceLoader != null) {
@@ -5875,6 +5965,9 @@ class MacroManimParser {
 					// Unnamed node
 					final firstIndex = tpos;
 					final newNode = parseNode(UNTObject(null), node, defs);
+					// The name an unnamed `paths`/`curves` gives itself is that block's only
+					if (node == null)
+						currentName = null;
 					if (newNode != null) {
 						if (node == null) {
 							final n = switch (newNode.updatableName) {
@@ -5882,6 +5975,10 @@ class MacroManimParser {
 								case UNTUpdatable(n): n;
 								case UNTIndexed(n, _): n;
 								case UNTIndexed2D(n, _, _): n;
+							}
+							if (n == null) {
+								final at = tokens[firstIndex];
+								errorAtLine(at.line, at.col, 'a root element needs a #name (#name ${elementWord(firstIndex)}…), or goes inside a programmable');
 							}
 							addNode(n, newNode);
 							markRootBlock(newNode, n, firstIndex, false);
@@ -6092,6 +6189,7 @@ class MacroManimParser {
 			default:
 				error('unexpected content after main body: ${peek()}');
 		}
+		checkExternalAliases();
 
 		return {
 			nodes: nodes,
@@ -8052,7 +8150,7 @@ class MacroManimParser {
 			case TIdentifier(s) if (isKeyword(s, "external")):
 				advance();
 				expect(TOpen);
-				extRef = expectIdentifierOrString();
+				extRef = externalAlias();
 				expect(TClosed);
 				expect(TComma);
 			default:
@@ -8108,7 +8206,7 @@ class MacroManimParser {
 						case TIdentifier(s2) if (isKeyword(s2, "external")):
 							advance();
 							expect(TOpen);
-							def.tilesetImport = expectIdentifierOrString();
+							def.tilesetImport = externalAlias();
 							expect(TClosed);
 							expect(TComma);
 						default:
@@ -8775,6 +8873,10 @@ class MacroManimParser {
 						advance();
 						expect(TBracketClosed);
 						expect(TBracketOpen);
+						// int[] [ ... ] (float, string, bool): an array of that type, empty or not
+						final scalar = records.exists(s) ? null : scalarDataType(s);
+						if (scalar != null)
+							return {name: fieldName, type: DVTArray(scalar), value: DVArray(parseDataArrayElements(scalar, enums, records))};
 						final rowMeta:Array<Array<DataMeta>> = [];
 						final elements = parseDataArrayElements(DVTRecord(s), enums, records, rowMeta);
 						final field:DataFieldDef = {name: fieldName, type: DVTArray(DVTRecord(s)), value: DVArray(elements)};
@@ -8800,10 +8902,11 @@ class MacroManimParser {
 		}
 		switch (peek()) {
 			case TBracketOpen:
+				final at = peekToken();
 				advance();
-				// Array literal — infer element type from first element
+				// Array literal — its element type from all its elements
 				final elements = parseDataArrayInferred(records);
-				final elemType = if (elements.length > 0) inferDataValueType(elements[0]) else DVTInt;
+				final elemType = inferredArrayType(fieldName, elements, at);
 				return {name: fieldName, type: DVTArray(elemType), value: DVArray(elements)};
 			default:
 				return error('expected value in data field "$fieldName"');
@@ -9118,6 +9221,47 @@ class MacroManimParser {
 			else result.push(scalar);
 		}
 		return result;
+	}
+
+	/** `int`, `float`, `string` or `bool` before `[] [ … ]`: the type of a typed scalar array. */
+	function scalarDataType(word:String):Null<DataValueType> {
+		return if (isKeyword(word, "int")) DVTInt else if (isKeyword(word, "float")) DVTFloat else if (isKeyword(word, "string")) DVTString else
+			if (isKeyword(word, "bool")) DVTBool else null;
+	}
+
+	static function dataTypeWord(type:DataValueType):String {
+		return switch (type) {
+			case DVTInt: "int";
+			case DVTFloat: "float";
+			case DVTString: "string";
+			case DVTBool: "bool";
+			default: Std.string(type);
+		}
+	}
+
+	/** An untyped array's element type, from all its elements: an int among floats is a float (read as
+	 *  one); any other mix is an error, and so is an empty one, which nothing types (`int[] []` does). */
+	function inferredArrayType(fieldName:String, elements:Array<DataValue>, at:Token):DataValueType {
+		if (elements.length == 0)
+			errorAtLine(at.line, at.col, 'data field "$fieldName": an empty array needs its type: int[] [], float[] [], string[] [] or bool[] []');
+		var type = inferDataValueType(elements[0]);
+		for (e in elements) {
+			final t = inferDataValueType(e);
+			if (Type.enumEq(t, type))
+				continue;
+			if ((t == DVTInt && type == DVTFloat) || (t == DVTFloat && type == DVTInt)) {
+				type = DVTFloat;
+				continue;
+			}
+			errorAtLine(at.line, at.col, 'data field "$fieldName": a mixed array of ${dataTypeWord(type)} and ${dataTypeWord(t)}');
+		}
+		if (type == DVTFloat)
+			for (i in 0...elements.length)
+				switch (elements[i]) {
+					case DVInt(v): elements[i] = DVFloat(v);
+					default:
+				}
+		return type;
 	}
 
 	function inferDataValueType(value:DataValue):DataValueType {

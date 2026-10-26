@@ -981,7 +981,7 @@ bitmap(...): $player.extraPoint("bulletSpawn", fallback: 50, 50)
 bitmap(...): $player.extraPoint("bulletSpawn").offset(10, 0)
 ```
 
-* `$ref.extraPoint("pointName")` - position from current animation's extra point
+* `$ref.extraPoint("pointName")` - position from current animation's extra point, where the element draws it: in the space the element is placed in, moved by its position and scaled and turned as it is (a marker placed at it sits on the art; do not add the element's position again). Of a name in several `@()` arms, the arm drawn is used
 * `$ref.extraPoint("pointName", fallback: coords)` - with fallback if point not found
 
 **Directly from an .anim file** (Mode 2):
@@ -991,7 +991,7 @@ bitmap(...): extraPoint("player.anim", "fire-up", "fire", direction=>"r")
 bitmap(...): extraPoint("player.anim", "idle", "fire", direction=>"l", fallback: 0, 0)
 ```
 
-* `extraPoint("file", "animName", "pointName", selectors...)` - load anim, play animation, query point
+* `extraPoint("file", "animName", "pointName", selectors...)` - load anim, play animation, query point (no element: the animation's own point, at the origin)
 * Optional `fallback: coords` as last argument
 
 When a point is not found: throws if no `fallback:` specified, uses fallback coordinates otherwise. Fallback accepts any coordinate type. `.offset()` suffix supported on both modes. Works in both builder and codegen.
@@ -1002,7 +1002,8 @@ Extra point coordinates can be extracted as scalar values for use in text interp
 
 ```manim
 #player stateanim("player.anim", "idle", direction=>"l"): $PX, $PY
-text(font, '${$player.extraPoint("fire").x + $PX},${$player.extraPoint("fire").y + $PY}', #FF0000): 0, 0
+text(font, '${$player.extraPoint("fire").x},${$player.extraPoint("fire").y}', #FF0000): 0, 0             // where it is drawn
+text(font, '${$player.extraPoint("fire").x - $PX},${$player.extraPoint("fire").y - $PY}', #FF0000): 0, 12 // beside the player
 ```
 
 With fallback (positional args instead of `fallback:` keyword):
