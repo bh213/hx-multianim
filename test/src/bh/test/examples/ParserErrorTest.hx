@@ -5814,6 +5814,66 @@ class ParserErrorTest extends utest.Test {
 		"), "string and enum parameters, and a bare programmable name, still parse");
 	}
 
+	@Test
+	public function testARefTargetWithADollarMustBeAParameterLoopVariableOrFinal() {
+		// `$card` that is none of these used to place a programmable called card, and placed what
+		// a parameter says instead as soon as the file (or a file importing it) got one named card
+		final staticError = parseExpectingError("
+			#card programmable() {
+				bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+			#hand programmable() {
+				staticRef($card): 0, 0
+			}
+		");
+		Assert.notNull(staticError, "staticRef($card) with no card in scope should not parse");
+		Assert.stringContains("$card", staticError ?? "");
+		Assert.stringContains("staticRef(card", staticError ?? "");
+
+		final dynamicError = parseExpectingError("
+			#card programmable(n:uint=1) {
+				bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+			#hand programmable() {
+				dynamicRef($card, n=>2): 0, 0
+			}
+		");
+		Assert.notNull(dynamicError, "dynamicRef($card) with no card in scope should not parse");
+		Assert.stringContains("dynamicRef(card", dynamicError ?? "");
+
+		// A slot body sees its own parameters, not the programmable's
+		final slotError = parseExpectingError("
+			#card programmable() {
+				bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+			#hand programmable(which:string=\"card\") {
+				#s slot(on:bool=false) {
+					staticRef($which): 0, 0
+				}
+			}
+		");
+		Assert.notNull(slotError, "a slot body's $which is not the programmable's parameter");
+
+		Assert.isTrue(parseExpectingSuccess("
+			#a programmable() {
+				bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+			#b programmable() {
+				bitmap(generated(color(10, 10, #00ff00))): 0, 0
+			}
+			#host programmable(which:[a,b]=a, names:array=[a, b]) {
+				@final fixed = \"b\"
+				staticRef($which): 0, 0
+				staticRef($fixed): 0, 10
+				dynamicRef($fixed): 0, 20
+				repeatable($i, array($name, $names)) {
+					staticRef($name): 0, 30
+				}
+				staticRef(a): 0, 40
+			}
+		"), "a parameter, an @final, a loop variable and a bare name all parse");
+	}
+
 	// ===== Root elements, parameter defaults, conditions, data arrays, imports =====
 
 	/** A parse with no loader, as the LSP and tools do: imports are listed, never loaded. The error, or null. */

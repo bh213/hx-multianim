@@ -100,8 +100,9 @@ class CursorTest extends BuilderTestBase {
 
 	@Test
 	public function testRegisterCursorReplacesATileCursor():Void {
-		CursorManager.registerTileCursor("tmp", h2d.Tile.fromColor(0xFFFFFFFF, 2, 2));
-		CursorManager.registerCursor("tmp", hxd.Cursor.Move);
+		// Replaced by the file that registered it (a reload): another source is refused (RegisteredNamesTest)
+		CursorManager.registerTileCursor("tmp", h2d.Tile.fromColor(0xFFFFFFFF, 2, 2), 0, 0, "tmp.manim");
+		CursorManager.registerCursor("tmp", hxd.Cursor.Move, "tmp.manim");
 		Assert.isNull(CursorManager.getTileCursor("tmp"), "no longer a tile cursor");
 		Assert.isTrue(Type.enumEq(hxd.Cursor.Move, CursorManager.getCursor("tmp")));
 		CursorManager.unregisterCursor("tmp");

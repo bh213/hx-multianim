@@ -657,12 +657,13 @@ placeholder(name, [onNoData], [source])
 ### staticRef
 Embeds another programmable with parameters. The result is built **once**, as a whole — it is not incremental itself, has no `setParameter()` of its own and is not stored in the `BuilderResult`.
 
-Inside a programmable built incrementally (or a codegen instance), a `staticRef` whose target or arguments use the enclosing programmable's parameters (`staticRef($ship, dir=>$dir)`, `staticRef($which)`) is built again when one of them changes, so it follows the enclosing `setParameter()`; one that uses none (only literals, loop variables and `@final`s, which are fixed at build time) is never touched. A rebuild throws the old build away (its animations start over). A `staticRef` with children of its own is not rebuilt: changing such a parameter throws `untracked_param`.
+Inside a programmable built incrementally (or a codegen instance), a `staticRef` whose target or arguments use the enclosing programmable's parameters (`staticRef(ship, dir=>$dir)`, `staticRef($which)`) is built again when one of them changes, so it follows the enclosing `setParameter()`; one that uses none (only literals, loop variables and `@final`s, which are fixed at build time) is never touched. A rebuild throws the old build away (its animations start over). A `staticRef` with children of its own is not rebuilt: changing such a parameter throws `untracked_param`.
 
 ```
-staticRef($reference [, <params>])
-staticRef(external(externalName), $reference [, <params>])
-staticRef($reference [, <params>]) { <children> }
+staticRef(name [, <params>])
+staticRef(external(externalName), name [, <params>])
+staticRef(name [, <params>]) { <children> }
+staticRef($param [, <params>])
 ```
 
 Children are added inside the built reference — into its root when the referenced programmable has a root `pos:`, so they move with it.
@@ -673,8 +674,9 @@ Use for reusable visual templates that don't need runtime updates.
 Embeds another programmable with **incremental mode** enabled, allowing parameters to be updated at runtime via `setParameter()`. Conditionals and expressions are re-evaluated when parameters change.
 
 ```
-dynamicRef($reference [, <params>])
-dynamicRef(external(externalName), $reference [, <params>])
+dynamicRef(name [, <params>])
+dynamicRef(external(externalName), name [, <params>])
+dynamicRef($param [, <params>])
 ```
 
 The dynamic ref's `BuilderResult` is stored and accessible via `result.getDynamicRef("name")`:
@@ -707,7 +709,7 @@ The reference name itself can be a parameter, allowing the target programmable t
 
 When `template` is a parameter of the enclosing programmable (string or enum type), changing it triggers a **full rebuild**: the old programmable is torn down and the new one is built from scratch. Forwarded parameters (`value=>$hp`) are propagated incrementally when the template doesn't change.
 
-- **Backward compatible**: `$progName` where `progName` is not a parameter falls back to literal name (existing behavior)
+- **A `$name` must be in scope**: a parameter, a loop variable or an `@final` (whose value names the programmable). Any other `$name` is a parse error that points at the bare name: `staticRef($card)` with no `card` in scope used to place the programmable `card`, and placed what a parameter said as soon as the file, or one importing it, got a parameter `card`. A `dynamicRef($final)` whose `@final` uses a parameter swaps the template when that parameter changes, as `dynamicRef($param)` does
 - **Only a string or enum parameter names a programmable**: `dynamicRef($x)` / `staticRef($x)` with `x` a `bool`, number, `color` or `tile` parameter is a parse error. A programmable named like such a parameter (`panel:bool` beside `#panel`) is placed by its bare name: `@(panel=>true) #panel dynamicRef(panel, kind=>lobby)`
 - **A missing target is reported at the site**: `dynamicRef($template): $template is "nope", and there is no programmable "nope"` (`BuilderError`, code `missing_ref`), when the site is built or its template changes
 - **Strict validation**: forwarded parameters must exist on the target programmable (runtime error if missing, allowed if target has a default)
@@ -861,7 +863,8 @@ interactive(200, 30, "buyBtn", cursor => "pointer")
 interactive(200, 30, "dragArea", cursor.hover => "move", cursor.disabled => "default")
 ```
 
-Pre-registered names: `default`, `pointer`/`button`, `move`, `text`, `hide`/`none`. Register custom cursors via `CursorManager.registerCursor("name", cursor)`.
+Pre-registered names: `default`, `pointer`/`button`, `move`, `text`, `hide`/`none`. Register custom cursors via `CursorManager.registerCursor("name", cursor)` (a name code or a file
+has taken is an error until `unregisterCursor`; an OS cursor's may be replaced once).
 
 **UI integration:**
 * `UIInteractiveWrapper` wraps the interactive as a `UIElement` with `UIElementIdentifiable`
@@ -1516,7 +1519,10 @@ error.
 
 `ScreenManager.buildFromResource` registers every cursor of every `cursor { }` block of the file
 and of the files it imports with `CursorManager` (`builder.registerCursors()`, again on each
-reload; its `sounds`, `music` and `mix` blocks are taken the same way), so a registered name
+reload; its `sounds`, `music` and `mix` blocks are taken the same way). A cursor name is one cursor
+for the whole game: the file that registered it replaces its own on a reload, another file (an
+import, the importer, any file loaded) or code registering a taken name is an error naming both
+(`name_taken`); an OS cursor's name may be taken once. So a registered name
 then works wherever an OS cursor name does: an interactive's `cursor => "sword"`, `cursor.hover`,
 `cursor.disabled`, `CursorManager.getCursor("sword")`, `setOverrideCursor`. `builder.buildCursors(
 "cursors")` gives the block's cursors by name without registering them.
@@ -1558,7 +1564,11 @@ every sound plays on unless it names its own; `param name: [labels]` declares a 
 its variants are chosen by. A sound is `name { … }`, or `name @(param => label) { … }` for a variant
 (`[a, b]` and `!label` as any `@()` does); several variants of one name are tried in file order and
 the first whose `@()` matches plays, else the one without a `@()`, else nothing. A name written
-twice without a `@()` is an error.
+twice without a `@()` is an error. A bank's parameters are its own: two banks that both declare
+`param surface` with different labels keep theirs. `audio.set("surface", "grass")` sets every bank
+that has the label (the others keep their value; a label no bank has is an error), and
+`audio.set("fx.surface", "grass")` one bank's; `audio.get("fx.surface")` reads one, `get("surface")`
+the value the banks share (null while they differ), `parameters()` all of them by full name.
 
 A sound's keys: `file: "…"` or `files: [...]` with `pick: random` (the default), `shuffle` (every
 file once before any again) or `turn` (in order); `volume: -3db` or a range `-5db..-1db` rolled
@@ -1602,7 +1612,11 @@ up (below).
 
 `ScreenManager.buildFromResource` takes every `sounds` block of a file as a bank of
 `screenManager.audio` (`audio.addBanks(builder)`, again on each reload, a bank of the same name
-replaced), and every file is loaded then. From code: `audio.play("fx.hit")` (null when the
+replaced), and every file is loaded then. A block name is one bank for the whole game: a file
+taking its own block again (a reload) replaces it, keeping the parameter values the game set;
+another file's block of a taken name (an import's, the importer's, any file's) is an error naming
+both files, and so is `audio.addBank` from code over a taken name (`removeBank` frees it). `music`
+blocks follow the same rule. From code: `audio.play("fx.hit")` (null when the
 cooldown or `steal: none` dropped it, or no variant matched), `audio.stop("fx.swell")` (over its
 `fade: out`), `audio.stopAll()`, `audio.set("surface", "grass")`, `audio.soundNames()`. A name no
 bank has is an error. `builder.buildSounds("fx")` is the block as parsed, `soundBlockNames()` the
@@ -4135,9 +4149,9 @@ fx.setTintColor(0xFF0000);
 }
 
 #threeBoxes programmable() {
-    staticRef($colorBox, width=>100, height=>80, c1=>#FF0000): 20, 20;
-    staticRef($colorBox, width=>100, height=>80, c1=>#00FF00): 140, 20;
-    staticRef($colorBox, width=>100, height=>80, c1=>#0000FF): 260, 20;
+    staticRef(colorBox, width=>100, height=>80, c1=>#FF0000): 20, 20;
+    staticRef(colorBox, width=>100, height=>80, c1=>#00FF00): 140, 20;
+    staticRef(colorBox, width=>100, height=>80, c1=>#0000FF): 260, 20;
 }
 ```
 

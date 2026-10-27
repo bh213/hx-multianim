@@ -11,7 +11,7 @@ import bh.test.BuilderTestBase.BuildMode;
  * Bug shape: buildWithParameters(incremental=false) for the staticRef kept the enclosing build's
  * incrementalMode/incrementalContext (pushBuilderState saves them but does not reset them), so the
  * staticRef's expressions were tracked on the OUTER context and re-resolved against the outer params
- * by name: `staticRef($sail, dir=>e)` inside a programmable with its own `dir` redrew the sail with
+ * by name: `staticRef(sail, dir=>e)` inside a programmable with its own `dir` redrew the sail with
  * the outer value, while its conditionals (the hull) and renamed arguments (`w=>$size`) never
  * followed. Codegen never updated a staticRef at all. Now the nested build is isolated and a
  * staticRef whose target or arguments use the enclosing params is built again when one changes.
@@ -419,8 +419,8 @@ class StaticRefIncrementalTest extends BuilderTestBase {
 			interactive(20, 20, $id, sound.click => \"ui.click\"): 0, 0
 		}
 		#board programmable(second:string=\"b\") {
-			staticRef($key, id=>\"a\"): 0, 0
-			staticRef($key, id=>$second): 20, 0
+			staticRef(key, id=>\"a\"): 0, 0
+			staticRef(key, id=>$second): 20, 0
 		}
 	";
 

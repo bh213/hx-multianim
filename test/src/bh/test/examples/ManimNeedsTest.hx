@@ -173,8 +173,8 @@ class ManimNeedsTest extends utest.Test {
 				text($$font, $$text, #FFFFFF): 0, 0
 			}
 			#screen programmable() {
-				staticRef($$label, font => "big", text => "Title"): 0, 0
-				dynamicRef($$label, font => "small"): 0, 20
+				staticRef(label, font => "big", text => "Title"): 0, 0
+				dynamicRef(label, font => "small"): 0, 20
 				staticRef(external(std), label, font => "elsewhere"): 0, 40
 			}
 		');

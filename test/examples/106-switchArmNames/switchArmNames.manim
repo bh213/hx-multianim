@@ -47,7 +47,7 @@ version: 1.0
 #switchArmDynamicRef programmable(mode:[alpha, beta]=alpha) {
   @switch(mode) {
     alpha {
-      #embed dynamicRef($switchArmChild, value=>10): 0, 0
+      #embed dynamicRef(switchArmChild, value=>10): 0, 0
     }
     beta {
       bitmap(generated(color(8, 8, #222))): 0, 0

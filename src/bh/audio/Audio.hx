@@ -2,8 +2,15 @@ package bh.audio;
 
 import bh.audio.AudioBackend;
 import bh.base.Clock;
+import bh.base.RegisteredNames;
 import bh.multianim.MultiAnimBuilder;
 import bh.multianim.MultiAnimParser;
+
+/** One parameter of one bank: its labels, in the order written, and the value now. */
+private typedef BankParam = {
+	final values:Array<String>;
+	var value:String;
+}
 
 /** One sound of one bank, with what is kept between its plays: the cooldown, the shuffle bags, the turns. */
 private class SoundEntry {
@@ -206,10 +213,13 @@ class Audio {
 	public var clock(default, set):Null<Clock> = null;
 
 	final banks:Map<String, SoundsDef> = [];
+	/** The file each bank and each music block is from, null for code (`RegisteredNames`). */
+	final bankOwners:Map<String, Null<String>> = [];
+	final musicOwners:Map<String, Null<String>> = [];
 	/** A sound's full name to its variants, in file order. */
 	final entries:Map<String, Array<SoundEntry>> = [];
-	final params:Map<String, String> = [];
-	final paramValues:Map<String, Array<String>> = [];
+	/** Each bank's own parameters by name: their labels and the value now. */
+	final bankParams:Map<String, Map<String, BankParam>> = [];
 	final pending:Array<Pending> = [];
 
 	var mix:Null<MixDef> = null;
@@ -239,17 +249,29 @@ class Audio {
 
 	// ---- Banks ----
 
-	/** Takes a `sounds` block under its name, so its sounds are `name.sound`; a bank of that name
-	 *  already here is replaced (a reload). Every file is given to the backend to prepare. */
-	public function addBank(name:String, def:SoundsDef):Void {
-		if (banks.exists(name))
+	/** Takes a `sounds` block under its name, so its sounds are `name.sound` and its parameters
+	 *  (`param surface: [stone, grass]`) its own, each at its first label. `source` is the file the
+	 *  block is from, null for code: the same file taking it again replaces it (a reload, which keeps
+	 *  the values the game set where the block still has them); code, or another file, taking a name
+	 *  already here is an error naming both (`RegisteredNames`). Every file is given to the backend
+	 *  to prepare. */
+	public function addBank(name:String, def:SoundsDef, ?source:String):Void {
+		var kept:Null<Map<String, BankParam>> = null;
+		if (banks.exists(name)) {
+			final clash = RegisteredNames.clash("sounds block", name, bankOwners.get(name), source);
+			if (clash != null)
+				throw 'audio: $clash';
+			kept = bankParams.get(name);
 			removeBank(name);
-		banks.set(name, def);
-		for (p in def.params) {
-			paramValues.set(p.name, p.values);
-			if (!params.exists(p.name) || !p.values.contains(params.get(p.name)))
-				params.set(p.name, p.values[0]);
 		}
+		banks.set(name, def);
+		bankOwners.set(name, source);
+		final own = new Map<String, BankParam>();
+		for (p in def.params) {
+			final was = kept != null && kept.exists(p.name) ? kept.get(p.name).value : null;
+			own.set(p.name, {values: p.values, value: was != null && p.values.contains(was) ? was : p.values[0]});
+		}
+		bankParams.set(name, own);
 		ensureBus(def.bus);
 		for (s in def.sounds) {
 			final full = '$name.${s.name}';
@@ -274,11 +296,11 @@ class Audio {
 			n++;
 		}
 		for (block in builder.musicBlockNames()) {
-			addMusic(block, builder.buildMusic(block));
+			addMusic(block, builder.buildMusic(block), builder.sourceName);
 			n++;
 		}
 		for (block in builder.soundBlockNames()) {
-			addBank(block, builder.buildSounds(block));
+			addBank(block, builder.buildSounds(block), builder.sourceName);
 			n++;
 		}
 		return n;
@@ -290,6 +312,8 @@ class Audio {
 	public function removeBank(name:String):Bool {
 		if (!banks.remove(name))
 			return false;
+		bankOwners.remove(name);
+		bankParams.remove(name);
 		var cut = 0;
 		for (i in instances)
 			if (i.bank == name && !i.isDone()) {
@@ -525,8 +549,19 @@ class Audio {
 
 	// ---- Music ----
 
-	/** Takes a `music` block: its tracks are `name.track`, a track of a name already here replaced. */
-	public function addMusic(name:String, def:MusicDef):Void {
+	/** Takes a `music` block: its tracks are `name.track`. `source` as for `addBank`: the same file
+	 *  taking it again replaces the block's tracks (the one playing plays on), code or another file
+	 *  taking a name already here is an error. */
+	public function addMusic(name:String, def:MusicDef, ?source:String):Void {
+		if (musicOwners.exists(name)) {
+			final clash = RegisteredNames.clash("music block", name, musicOwners.get(name), source);
+			if (clash != null)
+				throw 'audio: $clash';
+			for (full in [for (k in tracks.keys()) k])
+				if (StringTools.startsWith(full, '$name.'))
+					tracks.remove(full);
+		}
+		musicOwners.set(name, source);
 		ensureBus(def.bus ?? MUSIC_BUS);
 		for (t in def.tracks) {
 			tracks.set('$name.${t.name}', {def: t, bus: def.bus ?? MUSIC_BUS});
@@ -642,24 +677,77 @@ class Audio {
 
 	// ---- Parameters ----
 
-	/** Sets a parameter a `sounds` block declares (`param surface: [stone, grass]`) to one of its labels. */
+	/** Sets a parameter a `sounds` block declares (`param surface: [stone, grass]`) to one of its
+	 *  labels. Each bank has its own: by its full name (`fx.surface`) one bank's is set, by the bare
+	 *  name every bank's that has the label (the others keep theirs). A label no bank has is an
+	 *  error. */
 	public function set(param:String, value:String):Void {
-		final values = paramValues.get(param);
-		if (values == null)
-			throw 'audio: no sounds block declares param "$param"';
-		if (!values.contains(value))
-			throw 'audio: param "$param" takes ${values.join(", ")}, not "$value"';
-		params.set(param, value);
+		final dot = param.indexOf(".");
+		if (dot >= 0) {
+			final bank = param.substr(0, dot);
+			final own = bankParams.get(bank);
+			if (own == null)
+				throw 'audio: no sounds block "$bank" (param "$param")';
+			final p = own.get(param.substr(dot + 1));
+			if (p == null)
+				throw 'audio: sounds block "$bank" declares no param "${param.substr(dot + 1)}"';
+			if (!p.values.contains(value))
+				throw 'audio: param "$param" takes ${p.values.join(", ")}, not "$value"';
+			p.value = value;
+			note("param", param, value);
+			return;
+		}
+		final takes:Array<String> = [];
+		var changed = 0;
+		for (bank in sortedBanks()) {
+			final p = bankParams.get(bank).get(param);
+			if (p == null)
+				continue;
+			if (p.values.contains(value)) {
+				p.value = value;
+				changed++;
+			} else
+				takes.push('${p.values.join(", ")} ($bank)');
+		}
+		if (changed == 0)
+			throw takes.length == 0 ? 'audio: no sounds block declares param "$param"' : 'audio: param "$param" takes ${takes.join("; ")}, not "$value"';
 		note("param", param, value);
 	}
 
+	/** A parameter's value now: one bank's by its full name (`fx.surface`); by the bare name the
+	 *  value every bank that has it holds, null when they differ. */
 	public function get(param:String):Null<String> {
-		return params.get(param);
+		final dot = param.indexOf(".");
+		if (dot >= 0) {
+			final own = bankParams.get(param.substr(0, dot));
+			final p = own != null ? own.get(param.substr(dot + 1)) : null;
+			return p != null ? p.value : null;
+		}
+		var value:Null<String> = null;
+		for (own in bankParams) {
+			final p = own.get(param);
+			if (p == null)
+				continue;
+			if (value != null && p.value != value)
+				return null;
+			value = p.value;
+		}
+		return value;
 	}
 
-	/** Every parameter and its value now, a copy. */
+	/** Every bank's parameters by full name (`fx.surface`) and their values now, a copy. */
 	public function parameters():Map<String, String> {
-		return params.copy();
+		final out = new Map<String, String>();
+		for (bank => own in bankParams)
+			for (name => p in own)
+				out.set('$bank.$name', p.value);
+		return out;
+	}
+
+	function sortedBanks():Array<String> {
+		final names = [for (k in bankParams.keys()) k];
+		names.sort(Reflect.compare);
+		return names;
 	}
 
 	// ---- Playing ----
@@ -870,7 +958,7 @@ class Audio {
 		}
 	}
 
-	/** The first variant whose `@(…)` matches the parameters, else the one without; null when neither. */
+	/** The first variant whose `@(…)` matches its bank's parameters, else the one without; null when neither. */
 	function pickVariant(list:Array<SoundEntry>):Null<SoundEntry> {
 		var fallback:Null<SoundEntry> = null;
 		for (e in list)
@@ -879,16 +967,17 @@ class Audio {
 					if (fallback == null)
 						fallback = e;
 				case Conditional(conditions, anyMode):
-					if (matches(conditions, anyMode))
+					if (matches(conditions, anyMode, bankParams.get(e.block)))
 						return e;
 				default:
 			}
 		return fallback;
 	}
 
-	function matches(conditions:Map<String, ConditionalValues>, anyMode:Bool):Bool {
+	function matches(conditions:Map<String, ConditionalValues>, anyMode:Bool, own:Null<Map<String, BankParam>>):Bool {
 		for (param => cv in conditions) {
-			final value = params.get(param);
+			final p = own != null ? own.get(param) : null;
+			final value = p != null ? p.value : null;
 			final ok = value != null && matchOne(cv, value);
 			if (anyMode && ok)
 				return true;

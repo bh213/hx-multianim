@@ -11,6 +11,6 @@ import "test/examples/167-exportDocs/exportDocsPack.manim" as "pack"
 	/// which knight state to show
 	state:[idle, walk] = idle /// passed on to the knight
 ) {
-	staticRef(external(pack), $knight, state=>$state): 0, 0
-	staticRef(external(pack), $helper, n=>2): 0, 30
+	staticRef(external(pack), knight, state=>$state): 0, 0
+	staticRef(external(pack), helper, n=>2): 0, 30
 }

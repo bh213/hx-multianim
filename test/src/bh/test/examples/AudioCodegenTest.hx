@@ -42,6 +42,7 @@ class AudioCodegenTest extends BuilderTestBase {
 		Assert.equals("fx.hit", AudioBlockNames.FX_HIT);
 		Assert.equals("fx.step", AudioBlockNames.FX_STEP, "a sound's variants are one name");
 		Assert.equals("surface", AudioBlockNames.PARAM_SURFACE);
+		Assert.equals("fx.surface", AudioBlockNames.PARAM_FX_SURFACE, "one bank's parameter by its full name");
 		Assert.equals("music", AudioBlockNames.BUS_MUSIC);
 		Assert.equals("sfx", AudioBlockNames.BUS_SFX);
 		Assert.equals("Music", AudioBlockNames.VCA_MUSIC);

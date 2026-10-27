@@ -20,7 +20,7 @@ import bh.test.BuilderTestBase;
  *    branch drops the explicit name and the generated dispatcher compares against
  *    the live template name (_dynref_name_X), so getDynamicRef("name") returns
  *    null and the working key changes whenever the template param changes. The
- *    literal-target variant (#name dynamicRef($literalProg)) was already aligned;
+ *    literal-target variant (#name dynamicRef(literalProg)) was already aligned;
  *    this pins the param-driven variant.
  *
  * Companion fixture:

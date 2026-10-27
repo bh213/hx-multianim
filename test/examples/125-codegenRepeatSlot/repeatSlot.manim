@@ -17,6 +17,6 @@ version: 1.0
   repeatable($i, range(0, $rows)) {
     #cell[$i] slot: 0, $i * 40
     #tag[$i] bitmap(generated(color(8, 8, #ff00ff))): 20, $i * 40
-    #embed[$i] dynamicRef($repeatSlotInner, label => "row"): 40, $i * 40
+    #embed[$i] dynamicRef(repeatSlotInner, label => "row"): 40, $i * 40
   }
 }

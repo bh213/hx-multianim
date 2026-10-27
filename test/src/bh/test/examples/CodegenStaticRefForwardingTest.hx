@@ -4,7 +4,7 @@ import utest.Assert;
 import bh.test.BuilderTestBase;
 
 /**
- * Regression — `staticRef($X, p => $outerEnum)` codegen must forward a parent enum
+ * Regression — `staticRef(X, p => $outerEnum)` codegen must forward a parent enum
  * param by NAME, matching the runtime builder.
  *
  * Bug shape: ProgrammableCodeGen.generateStaticRefCreate builds the forwarded-param

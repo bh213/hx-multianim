@@ -22,8 +22,8 @@ version: 1.0
 }
 
 #dynRefUnnamedCollision programmable() {
-  dynamicRef($dynKeyLeafA): 0, 0
-  dynamicRef($dynKeyLeafA): 0, 30
+  dynamicRef(dynKeyLeafA): 0, 0
+  dynamicRef(dynKeyLeafA): 0, 30
 }
 
 #dynRefNamedDynamicTarget programmable(tpl:string="dynKeyLeafA") {

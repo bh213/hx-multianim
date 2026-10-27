@@ -31,7 +31,7 @@ version: 1.0
     scale: 4
     bitmap(generated(color(50, 20, red)));
   }
-  @scale(4) staticRef($npStyled, style => "hover"): 760, 480
+  @scale(4) staticRef(npStyled, style => "hover"): 760, 480
 }
 
 // The sheet and the cell as string expressions: one programmable for every style of a kit.

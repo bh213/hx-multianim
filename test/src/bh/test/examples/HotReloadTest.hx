@@ -1068,7 +1068,7 @@ class HotReloadTest extends BuilderTestBase {
 				text(dd, $label, white): 0, 0
 			}
 			#test programmable() {
-				dynamicRef($bar, value=>80, label=>\"HP\"): 0, 0
+				dynamicRef(bar, value=>80, label=>\"HP\"): 0, 0
 			}
 		";
 		final oldResult = buildFromSource(source, "test", null, Incremental);

@@ -21,7 +21,7 @@ version: 1.0
   #tray slot {
     bitmap(generated(color(40, 10, #222222))): 0, 36
   }
-  #embed dynamicRef($liveChild, value=>10): 0, 50
+  #embed dynamicRef(liveChild, value=>10): 0, 50
   @switch(mode) {
     a {
       #armMark bitmap(generated(color(6, 6, #ff00ff))): 50, 0

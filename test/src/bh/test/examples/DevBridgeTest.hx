@@ -1899,7 +1899,7 @@ class DevBridgeTest extends BuilderTestBase {
 		Assert.equals("builder", fromBuilder.kind);
 		Assert.equals("codegen", fromCodegen.kind);
 		Assert.same(["mark"], (fromBuilder.namedElements : Array<String>));
-		// The instance's `#embed dynamicRef($liveChild)` is a BuilderResult the loader built
+		// The instance's `#embed dynamicRef(liveChild)` is a BuilderResult the loader built
 		// incrementally, so it is listed in its own right, as a builder entry — the same as a
 		// dynamicRef under a BuilderResult host.
 		var child:Dynamic = Lambda.find(entries, (e:Dynamic) -> e.name == "liveChild");

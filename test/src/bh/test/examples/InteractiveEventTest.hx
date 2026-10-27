@@ -509,8 +509,8 @@ class InteractiveEventTest extends BuilderTestBase {
 				interactive(20, 20, $$id, sound.click => "ui.click"): 0, 0
 			}
 			#board programmable() {
-				staticRef($$key, id=>"a"): 0, 0
-				dynamicRef($$key, id=>"b"): 20, 0
+				staticRef(key, id=>"a"): 0, 0
+				dynamicRef(key, id=>"b"): 20, 0
 			}
 		', "board", null, Incremental);
 		screen.addInteractives(result);

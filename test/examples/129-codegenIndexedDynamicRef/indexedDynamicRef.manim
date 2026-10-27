@@ -11,6 +11,6 @@ version: 1.0
 
 #indexedDynamicRef programmable() {
   repeatable($i, range(0, 3)) {
-    #seg[$i] dynamicRef($indexedDynRefLeaf, label => "row"): 0, $i * 12
+    #seg[$i] dynamicRef(indexedDynRefLeaf, label => "row"): 0, $i * 12
   }
 }

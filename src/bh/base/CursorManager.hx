@@ -25,11 +25,32 @@ class CursorManager {
 
 	}
 
-	public static function registerCursor(name:String, cursor:hxd.Cursor):Void {
+	/**
+		Registers `cursor` under `name` (any case). `source` is the file registering it, null for code:
+		the same file registering a name again replaces its cursor (a reload); code, or another file,
+		registering a name already taken is an error naming both (`RegisteredNames`), until it is
+		unregistered. An OS cursor's name (`pointer`, `move`, …) may be taken once.
+	**/
+	public static function registerCursor(name:String, cursor:hxd.Cursor, ?source:String):Void {
 		ensureInit();
-		cursorRegistry.set(name.toLowerCase(), cursor);
-		tileCursors.remove(name.toLowerCase());
+		final clash = clashOf(name, source);
+		if (clash != null)
+			throw clash;
+		final key = name.toLowerCase();
+		cursorRegistry.set(key, cursor);
+		owners.set(key, source);
+		tileCursors.remove(key);
 	}
+
+	/** The error registering `name` from `source` (null: code) would be, or null when it may: the
+	 *  name is free, an OS cursor's, or `source`'s own. */
+	public static function clashOf(name:String, ?source:String):Null<String> {
+		final key = name.toLowerCase();
+		return owners.exists(key) ? RegisteredNames.clash("cursor", name, owners.get(key), source) : null;
+	}
+
+	/** Who registered each name that is not an OS cursor's: a file's path, or null for code. */
+	private static var owners:Map<String, Null<String>> = new Map();
 
 	/**
 		A bitmap cursor from a tile (an atlas cell), registered under `name` like the OS cursors,
@@ -37,11 +58,15 @@ class CursorManager {
 		`hotX`, `hotY` is the pixel of the tile that clicks (inside the tile). The tile's pixels are
 		read once, from its texture; on HashLink the cursor is an SDL/DirectX one, in the browser a
 		CSS `url(data:…)` cursor made from the same pixels. A `.manim` file's `#name cursor { }`
-		block registers its cursors this way when the file loads.
+		block registers its cursors this way when the file loads, `source` its path (see
+		`registerCursor`).
 	**/
-	public static function registerTileCursor(name:String, tile:h2d.Tile, hotX:Int = 0, hotY:Int = 0):hxd.Cursor {
+	public static function registerTileCursor(name:String, tile:h2d.Tile, hotX:Int = 0, hotY:Int = 0, ?source:String):hxd.Cursor {
+		final clash = clashOf(name, source);
+		if (clash != null)
+			throw clash;
 		final cursor = cursorFromTile(tile, hotX, hotY);
-		registerCursor(name, cursor);
+		registerCursor(name, cursor, source);
 		tileCursors.set(name.toLowerCase(), {tile: tile, hotX: hotX, hotY: hotY});
 		return cursor;
 	}
@@ -76,6 +101,7 @@ class CursorManager {
 	public static function unregisterCursor(name:String):Bool {
 		ensureInit();
 		tileCursors.remove(name.toLowerCase());
+		owners.remove(name.toLowerCase());
 		return cursorRegistry.remove(name.toLowerCase());
 	}
 

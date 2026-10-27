@@ -1,7 +1,7 @@
 version: 1.0
 
 // Fixture: staticRef forwarding a parent ENUM param into a child enum param.
-// Parent default parentMode=a; staticRef($child, mode => $parentMode).
+// Parent default parentMode=a; staticRef(child, mode => $parentMode).
 // Codegen emits the parent enum field (an Int index) for the forwarded value;
 // buildStaticRef -> buildWithParameters -> dynamicValueToIndex stringifies the int
 // ("0") and rejects it against [a,b,c] -> throws. The builder path resolves the
@@ -14,5 +14,5 @@ version: 1.0
 }
 
 #codegenStaticRefEnumForwarding programmable(parentMode:[a,b,c]=a) {
-  staticRef($cgStaticFwdEnumChild, mode => $parentMode): 0, 0
+  staticRef(cgStaticFwdEnumChild, mode => $parentMode): 0, 0
 }

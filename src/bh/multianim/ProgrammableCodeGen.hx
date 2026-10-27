@@ -2627,20 +2627,20 @@ class ProgrammableCodeGen {
 						if (indexedKey == null)
 							registerDynamicRefKey(explicitName != null ? explicitName : resolved, resultField, explicitName != null, pos, node);
 					case RVReference(name):
-						if (paramNames.contains(name)) {
-							// Dynamic-name site: the explicit #name (when present) is the stable
-							// lookup key across template swaps — see resolveDynamicRefKey
-							// (MultiAnimBuilder.hx). Explicit-name collisions are a hard error
-							// there too, so reject them at macro time.
+						final target = fixedRefTarget(name);
+						if (target == null) {
+							// Dynamic-name site (a parameter, or a @final that uses one): the explicit
+							// #name (when present) is the stable lookup key across template swaps — see
+							// resolveDynamicRefKey (MultiAnimBuilder.hx). Explicit-name collisions are a
+							// hard error there too, so reject them at macro time.
 							if (explicitName != null && (dynamicRefFields.exists(explicitName)
 								|| (dynamicNameExplicitKeyExists(explicitName) && !dynamicNameSitesExclusive(explicitName, node))))
 								duplicateDynRefNameError(explicitName, pos);
 							dynamicNameRefFields.push({fieldName: fieldName, explicitName: explicitName, node: node});
 						} else {
-							// $progName backward compat — treat as literal
-							final resultField = explicitName != null ? "_dynref_lit_" + fieldName : "_comp_" + name;
+							final resultField = explicitName != null ? "_dynref_lit_" + fieldName : "_comp_" + target;
 							if (indexedKey == null)
-								registerDynamicRefKey(explicitName != null ? explicitName : name, resultField, explicitName != null, pos, node);
+								registerDynamicRefKey(explicitName != null ? explicitName : target, resultField, explicitName != null, pos, node);
 						}
 					default:
 				}
@@ -5206,17 +5206,21 @@ class ProgrammableCodeGen {
 				generatePlaceholderCreate(node, fieldName, type, source, pos);
 
 			case STATIC_REF(externalReference, programmableRefRV, parameters):
-				// staticRef name can be driven by a param ($which) or loop var, matching the
-				// builder's resolveRefName. A bare RVReference to a non-param is the legacy
-				// $progName-as-literal form. Resolve to a runtime name expression so codegen
-				// builds the same target the builder would (not a literal "which" programmable).
+				// staticRef name can be driven by a param ($which), a loop var or a @final, matching
+				// the builder's resolveRefName (the parser allows no other $name). Resolve to a runtime
+				// name expression so codegen builds the same target the builder would (not a
+				// programmable called "which").
 				final refNameExpr:Expr = switch programmableRefRV {
 					case RVString(s): macro $v{s};
 					case RVReference(name) if (loopVarSubstitutions.exists(name)):
 						macro $v{Std.string(loopVarSubstitutions.get(name))};
 					case RVReference(name) if (paramNames.contains(name)):
 						resolveProgrammableNameExpr(name, pos);
-					case RVReference(s): macro $v{s}; // $progName backward compat: treat as literal
+					case RVReference(name):
+						// A @final: the programmable its fixed value names, else its value as built
+						// (a param it uses rebuilds the ref, collectParamRefs expanding it)
+						final fixed = fixedRefTarget(name);
+						fixed != null ? macro $v{fixed} : rvToExpr(programmableRefRV, true);
 					default: throw 'unexpected ReferenceableValue for staticRef reference';
 				};
 				generateStaticRefCreate(node, fieldName, externalReference, programmableRefRV, refNameExpr, parameters, pos);
@@ -5232,12 +5236,14 @@ class ProgrammableCodeGen {
 						generateDynamicRefCreate(node, fieldName, externalReference,
 							Std.string(loopVarSubstitutions.get(name)), parameters, pos);
 					case RVReference(name):
-						// If the name is a parameter of this programmable, it's a dynamic name ref.
-						// Otherwise, it's a literal programmable name ($progName backward compat).
-						if (paramNames.contains(name))
-							generateDynamicNameRefCreate(node, fieldName, externalReference, name, parameters, pos);
+						// A @final with a fixed value (the parser allows no $name but a parameter, a loop
+						// variable or a @final) places the programmable it names; a parameter, or a @final
+						// that uses one, makes a dynamic name ref that follows it.
+						final fixed = fixedRefTarget(name);
+						if (fixed != null)
+							generateDynamicRefCreate(node, fieldName, externalReference, fixed, parameters, pos);
 						else
-							generateDynamicRefCreate(node, fieldName, externalReference, name, parameters, pos);
+							generateDynamicNameRefCreate(node, fieldName, externalReference, programmableRefRV, parameters, pos);
 					default:
 						throw 'unexpected ReferenceableValue for dynamicRef reference';
 				}
@@ -5531,17 +5537,38 @@ class ProgrammableCodeGen {
 		}
 	}
 
+	/** The programmable a ref's `$name` names when that is fixed here: a loop variable of a static
+	 *  unroll, or a @final whose value is a string (through other such @finals). Null for a
+	 *  parameter, or a @final that uses one. */
+	static function fixedRefTarget(name:String):Null<String> {
+		if (loopVarSubstitutions.exists(name))
+			return Std.string(loopVarSubstitutions.get(name));
+		if (paramNames.contains(name))
+			return null;
+		return switch finalVarExprs.get(name) {
+			case RVString(s): s;
+			case RVReference(other): fixedRefTarget(other);
+			default: null;
+		};
+	}
+
+	/** `dynamicRef($name)` with `$name` a parameter, or a @final that uses parameters: the template
+	 *  is built again when any of them changes to name another programmable. */
 	static function generateDynamicNameRefCreate(node:Node, fieldName:String, externalReference:Null<String>,
-			paramName:String, parameters:Map<String, ReferenceableValue>, pos:Position):CreateResult {
+			templateRV:ReferenceableValue, parameters:Map<String, ReferenceableValue>, pos:Position):CreateResult {
 		final fieldRef = macro $p{["this", fieldName]};
 		final createExprs:Array<Expr> = [];
 		final resultField = "_dynref_" + fieldName;
 		final containerField = "_dynref_container_" + fieldName;
 		final nameField = "_dynref_name_" + fieldName;
 
-		// At construction time: resolve the parameter to get the initial programmable name,
-		// build it, wrap in a container for easy rebuild
-		final resolveNameExpr:Expr = resolveProgrammableNameExpr(paramName, pos);
+		// At construction time: resolve the parameter (or @final) to get the initial programmable
+		// name, build it, wrap in a container for easy rebuild
+		final resolveNameExpr:Expr = switch templateRV {
+			case RVReference(name) if (paramNames.contains(name)): resolveProgrammableNameExpr(name, pos);
+			default: rvToExpr(templateRV, true);
+		};
+		final templateRefs = collectParamRefs(templateRV);
 
 		// Build parameter map
 		final mapBuildExprs:Array<Expr> = [macro final _refParams = new Map<String, Dynamic>()];
@@ -5587,13 +5614,14 @@ class ProgrammableCodeGen {
 			}
 		});
 
-		// Register as expression update triggered by the template param. Not the element's own field
+		// Register as expression update triggered by the template params. Not the element's own field
 		// name: a swap is done while the site is hidden too (builder parity), never gated as stale
-		expressionUpdates.push({
-			fieldName: fieldName + "_swap",
-			updateExpr: macro $b{rebuildMapExprs},
-			paramRefs: [paramName],
-		});
+		if (templateRefs.length > 0)
+			expressionUpdates.push({
+				fieldName: fieldName + "_swap",
+				updateExpr: macro $b{rebuildMapExprs},
+				paramRefs: templateRefs,
+			});
 
 		// Also register updates for forwarded parameter changes (non-template params)
 		if (parameters != null) {

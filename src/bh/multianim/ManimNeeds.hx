@@ -481,11 +481,9 @@ class ManimNeedsTools {
 
 	/** A `staticRef`/`dynamicRef` of this file: what it passes, as values its target's parameters can have. */
 	function passTo(ref:ReferenceableValue, parameters:Map<String, ReferenceableValue>) {
-		// `$name` that is no parameter here is the programmable of that name
-		final targets = switch ref {
-			case RVReference(name) if (binding(name) == null): [name];
-			default: valuesOf(ref);
-		}
+		// A `$name` is a parameter, a @final or a loop variable (the parser refuses any other): the
+		// programmables its values name, none known for a loop variable
+		final targets = valuesOf(ref);
 		if (targets == null)
 			return;
 		for (target in targets) {

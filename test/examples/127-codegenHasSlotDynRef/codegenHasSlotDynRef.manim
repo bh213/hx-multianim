@@ -16,6 +16,6 @@ version: 1.0
       bitmap(generated(color(8, 8, #777777))): 0, 12
     }
   }
-  dynamicRef($leaf, w=>10): 0, 24
-  #leafRef dynamicRef($leaf, w=>12): 0, 36
+  dynamicRef(leaf, w=>10): 0, 24
+  #leafRef dynamicRef(leaf, w=>12): 0, 36
 }

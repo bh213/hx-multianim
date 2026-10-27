@@ -79,25 +79,25 @@ version: 1.0
   text(m3x6, "@switch + repeatable", #888, left, 300):10,10;
 
   // mode=items, count=3
-  staticRef($switchRepeat, mode=>items, count=>3):10,30;
+  staticRef(switchRepeat, mode=>items, count=>3):10,30;
   text(m3x6, "items,3", #555, left, 80):10,44;
 
   // mode=items, count=5
-  staticRef($switchRepeat, mode=>items, count=>5):10,60;
+  staticRef(switchRepeat, mode=>items, count=>5):10,60;
   text(m3x6, "items,5", #555, left, 80):10,74;
 
   // mode=grid, count=3
-  staticRef($switchRepeat, mode=>grid, count=>3):10,90;
+  staticRef(switchRepeat, mode=>grid, count=>3):10,90;
   text(m3x6, "grid,3", #555, left, 80):10,104;
 
   // mode=grid, count=5
-  staticRef($switchRepeat, mode=>grid, count=>5):10,120;
+  staticRef(switchRepeat, mode=>grid, count=>5):10,120;
   text(m3x6, "grid,5", #555, left, 80):10,134;
 
   // Fixed repeatable count switch
   text(m3x6, "fixed repeat switch", #888, left, 300):10,160;
-  staticRef($switchFixedRepeat, style=>circles):10,176;
+  staticRef(switchFixedRepeat, style=>circles):10,176;
   text(m3x6, "circles(4)", #555, left, 80):10,190;
-  staticRef($switchFixedRepeat, style=>squares):10,206;
+  staticRef(switchFixedRepeat, style=>squares):10,206;
   text(m3x6, "squares(2)", #555, left, 80):10,220;
 }

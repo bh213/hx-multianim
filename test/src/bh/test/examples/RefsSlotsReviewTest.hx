@@ -139,8 +139,8 @@ class RefsSlotsReviewTest extends BuilderTestBase {
 			bitmap(generated(color(20, 4, #0f0))): 0, 0
 		}
 		#exclusiveRef programmable(mode:[a,b]=a) {
-			@(mode=>a) #panel dynamicRef($panelA): 0, 0
-			@else #panel dynamicRef($panelB): 0, 0
+			@(mode=>a) #panel dynamicRef(panelA): 0, 0
+			@else #panel dynamicRef(panelB): 0, 0
 		}
 	";
 
@@ -316,8 +316,8 @@ class RefsSlotsReviewTest extends BuilderTestBase {
 	public function testTwoShownDynamicRefsWithTheSameNameStillThrow():Void {
 		final unconditional = TWO_NAMED_LEAF + "
 			#twoNamed programmable() {
-				#x dynamicRef($leaf): 0, 0
-				#x dynamicRef($leaf): 0, 10
+				#x dynamicRef(leaf): 0, 0
+				#x dynamicRef(leaf): 0, 10
 			}
 		";
 		Assert.notNull(errorOf(() -> BuilderTestBase.buildFromSource(unconditional, "twoNamed")),
@@ -327,8 +327,8 @@ class RefsSlotsReviewTest extends BuilderTestBase {
 
 		final overlapping = TWO_NAMED_LEAF + "
 			#bothShown programmable(a:bool=true, b:bool=false) {
-				@(a=>true) #x dynamicRef($leaf): 0, 0
-				@(b=>true) #x dynamicRef($leaf): 0, 10
+				@(a=>true) #x dynamicRef(leaf): 0, 0
+				@(b=>true) #x dynamicRef(leaf): 0, 10
 			}
 		";
 		final bothParams:Map<String, Dynamic> = ["b" => true];
@@ -371,7 +371,7 @@ class RefsSlotsReviewTest extends BuilderTestBase {
 				#c[$i] slot(sel:bool=false) {
 					@(sel=>true) bitmap(generated(color(4, 4, #f00))): 0, 0
 				}
-				#r[$i] dynamicRef($row, v=>$hp): 0, 10
+				#r[$i] dynamicRef(row, v=>$hp): 0, 10
 			}
 		}
 	";
@@ -565,10 +565,10 @@ class RefsSlotsReviewTest extends BuilderTestBase {
 			interactive(20, 20, \"k\"): 0, 0
 		}
 		#mid programmable() {
-			dynamicRef($key): 0, 0
+			dynamicRef(key): 0, 0
 		}
 		#top programmable() {
-			staticRef($mid): 0, 0
+			staticRef(mid): 0, 0
 		}
 	";
 
@@ -607,7 +607,7 @@ class RefsSlotsReviewTest extends BuilderTestBase {
 				interactive(40, 20, \"b\", autoStatus => \"status\"): 0, 0
 			}
 			#btnHost programmable() {
-				#b dynamicRef($btn): 0, 0
+				#b dynamicRef(btn): 0, 0
 			}
 		", "btnHost", null, Incremental);
 		screen.addInteractives(result);
@@ -628,7 +628,7 @@ class RefsSlotsReviewTest extends BuilderTestBase {
 				interactive(40, 20, \"bb\", bind => \"status\"): 0, 0
 			}
 			#bindHost programmable() {
-				#bb dynamicRef($bindBtn): 0, 0
+				#bb dynamicRef(bindBtn): 0, 0
 			}
 		", "bindHost", null, Incremental);
 		final helper = new UIRichInteractiveHelper(screen);

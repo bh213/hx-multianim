@@ -60,6 +60,19 @@ when the items are built; a pre-resolved argument is checked by name in every bu
 bracket half was already fixed (62e4942). UI-88's missing sections are written: Text Input and
 Dialogs in `docs/manim.md`.
 
+**Status, fifth batch (decided 2026-10-27):** IMP-6, IMP-7, IMP-8 and CG-47 are done, each with a
+test that failed first. IMP-6: a `$name` ref target that is no parameter, loop variable or `@final`
+is a parse error (not the AF-4 warning); every test fixture, test string and doc example was migrated
+to the bare name (a script dropping the `$` where the parser said); the sibling repos (playground
+demos, proto-game, inc_game, game-template, hx-easy-game: 16 files, 141 sites) are not migrated yet.
+CG-47 came with it: codegen resolves a `$final` target (a `dynamicRef($final)` whose value uses a
+parameter is a codegen compile error; the builder places it as built and never follows it). IMP-8:
+one global rule, not AF-10's scoping (`RegisteredNames`): a file's own name again replaces, another
+file's or code's is an error naming both — an importer no longer overrides its import's cursor or
+bank; music blocks follow it; fonts got `unregisterFont`; the `mix` block is left as it was (one per
+game, another block replaces it). IMP-7: parameters per bank (`fx.surface`; the bare name sets every
+bank that has the label).
+
 ## Start here
 
 **The nine P1s.**
@@ -132,7 +145,7 @@ CG-46 — errors that point at the wrong cause or files the tools accept and the
   parse (LSP, `ManimNeeds`) never does, and codegen compiles it and fails at run time. *Fix:* collect
   the `external` aliases with their positions and check them against `importPaths` at the end of
   `parse()`.
-- [ ] `IMP-6` **P2** **`staticRef(external(kit), $card)` changes meaning when the importer has a
+- [x] `IMP-6` **P2** **`staticRef(external(kit), $card)` changes meaning when the importer has a
   parameter or loop variable `card`** — CONFIRMED, by design but undocumented as a hazard. A `$name`
   that is not a parameter is a literal programmable name ("backward compat",
   ProgrammableCodeGen.hx:5032-5043; the builder's `resolveRefName`, MultiAnimBuilder.hx:4227-4237,
@@ -141,14 +154,14 @@ CG-46 — errors that point at the wrong cause or files the tools accept and the
   `repeatable($card, …)`, silently places whatever that value names. *Fix:* warn on a `$name` that
   is neither a parameter nor a loop variable, document the bare form (`staticRef(external(kit),
   card)`), switch the LSP snippets; see AF-4.
-- [ ] `IMP-7` **P2** **Sound-bank parameters are one global namespace** — CONFIRMED. `Audio.addBank`
+- [x] `IMP-7` **P2** **Sound-bank parameters are one global namespace** — CONFIRMED. `Audio.addBank`
   does `paramValues.set(p.name, p.values)` and resets `params` to the new bank's first value when the
   current value is not among them (Audio.hx:248-252). Two `sounds` blocks that both declare
   `param surface: […]` with different labels: the second's list replaces the first's, so
   `audio.set("surface", "grass")` throws "takes sand, snow" though bank one declares `grass`, and
   bank one's `@(surface => grass)` sounds stop matching. *Fix:* merge the label lists per parameter
   (and error on a label two banks give different meanings, if any), or scope parameters by bank.
-- [ ] `IMP-8` **P2** **Registered names are global and inconsistent on collision** — CONFIRMED.
+- [x] `IMP-8` **P2** **Registered names are global and inconsistent on collision** — CONFIRMED.
   Fonts: `FontManager.registerFont` throws on a second font of a name, case-insensitively
   (FontManager.hx:11-22), and there is no unregister. Cursors: `CursorManager.registerCursor`
   replaces silently (CursorManager.hx:28-32). Sound banks: replaced by block name, cutting the old
@@ -262,7 +275,7 @@ CG-46 — errors that point at the wrong cause or files the tools accept and the
   `unknown_param`, `invalid_param_value`, `untracked_param`, so code-filtering catches (e.g.
   UIMultiAnimProgressBar.hx:53) cannot tell the cases apart for a codegen instance. *Fix:*
   `BuilderError.of(…, code)` in the generated setters.
-- [ ] `CG-47` **P3** **`staticRef($x)` with `x` a `@final`: the builder places what it names, codegen
+- [x] `CG-47` **P3** **`staticRef($x)` with `x` a `@final`: the builder places what it names, codegen
   a programmable called `x`** — traced, not run. The builder's `resolveRefName` takes anything in
   `indexedParams`, `@final`s included (MultiAnimBuilder.hx:4227-4237, :3724-3733); codegen checks only
   loop variables and parameters and falls back to the literal (ProgrammableCodeGen.hx:5037-5043), though

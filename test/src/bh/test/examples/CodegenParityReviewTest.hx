@@ -12,6 +12,8 @@ import bh.multianim.MultiAnimBuilder.BuilderResult;
  * - a @final computed from a param follows the param in both backends: in a bitmap, in a
  *   dynamicRef forward, and as an interactive id (whose param then cannot be set); a repeat
  *   count from a constant @final keeps the body's own params tracked;
+ * - a @final names what a staticRef or dynamicRef places, and one that uses a param (declared
+ *   in a nested block too) swaps the template when the param changes;
  * - a @final, a @switch or an unconditional apply between conditionals starts a fresh chain
  *   for a later @default, in codegen as in the builder;
  * - `bit[N]` tests int params and loop variables, and comparisons test a flags param's value,
@@ -172,6 +174,42 @@ class CodegenParityReviewTest extends BuilderTestBase {
 		Assert.equals("20x10", sizes(cast inst), "codegen: setting x makes the @final 20 at once");
 		inst.setParameter("y", 12);
 		Assert.equals("20x12", sizes(cast inst), "codegen: an unrelated param leaves the @final as it is");
+	}
+
+	@Test
+	public function testAFinalNamesWhatARefPlaces_Builder():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "cpFinalRefTarget", null, Incremental);
+		Assert.equals("9x4;3x4;9x4;3x4", sizes(result.object), "builder: fixed is cpRefWide, picked is $kind (cpRefNarrow)");
+		result.setParameter("kind", "cpRefWide");
+		Assert.equals("9x4;9x4;9x4;9x4", sizes(result.object), "builder: the staticRef and the dynamicRef of picked follow kind");
+		result.setParameter("kind", "cpRefNarrow");
+		Assert.equals("9x4;3x4;9x4;3x4", sizes(result.object), "builder: and follow it back");
+	}
+
+	@Test
+	public function testAFinalNamesWhatARefPlaces_Codegen():Void {
+		final inst:Dynamic = createMp().cpFinalRefTarget.create();
+		Assert.equals("9x4;3x4;9x4;3x4", sizes(cast inst), "codegen: fixed is cpRefWide, picked is $kind (cpRefNarrow), not programmables called fixed and picked");
+		inst.setParameter("kind", "cpRefWide");
+		Assert.equals("9x4;9x4;9x4;9x4", sizes(cast inst), "codegen: the staticRef and the dynamicRef of picked follow kind");
+		inst.setParameter("kind", "cpRefNarrow");
+		Assert.equals("9x4;3x4;9x4;3x4", sizes(cast inst), "codegen: and follow it back");
+	}
+
+	@Test
+	public function testADynamicRefFollowsAFinalOfANestedBlock_Builder():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "cpFinalRefNested", null, Incremental);
+		Assert.equals("3x4", sizes(result.object), "builder: inner is $kind (cpRefNarrow)");
+		result.setParameter("kind", "cpRefWide");
+		Assert.equals("9x4", sizes(result.object), "builder: the dynamicRef of inner follows kind, inner out of scope by then");
+	}
+
+	@Test
+	public function testADynamicRefFollowsAFinalOfANestedBlock_Codegen():Void {
+		final inst:Dynamic = createMp().cpFinalRefNested.create();
+		Assert.equals("3x4", sizes(cast inst), "codegen: inner is $kind (cpRefNarrow)");
+		inst.setParameter("kind", "cpRefWide");
+		Assert.equals("9x4", sizes(cast inst), "codegen: the dynamicRef of inner follows kind");
 	}
 
 	@Test

@@ -23,7 +23,8 @@ import bh.multianim.MultiAnimParser.MultiAnimResult;
 	```
 
 	A constant per name: `<BLOCK>_<SOUND>` and `<BLOCK>_<TRACK>` hold the full name, `BUS_<name>`,
-	`VCA_<name>`, `SNAPSHOT_<name>` and `PARAM_<name>` the bare one; upper case, anything that is
+	`VCA_<name>`, `SNAPSHOT_<name>` and `PARAM_<name>` the bare one (every bank that has the
+	parameter), `PARAM_<BLOCK>_<name>` one bank's (`fx.surface`); upper case, anything that is
 	not a letter or a digit an underscore. The file is read at compile time and the class is built
 	again when it changes.
 **/
@@ -65,8 +66,10 @@ class AudioNames {
 				case SOUNDS(def):
 					for (s in def.sounds)
 						add(blockName, s.name, '$blockName.${s.name}');
-					for (p in def.params)
+					for (p in def.params) {
 						add("PARAM", p.name, p.name);
+						add("PARAM", '${blockName}_${p.name}', '$blockName.${p.name}');
+					}
 				case MUSIC(def):
 					for (t in def.tracks)
 						add(blockName, t.name, '$blockName.${t.name}');

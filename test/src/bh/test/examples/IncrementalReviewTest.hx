@@ -334,7 +334,7 @@ class IncrementalReviewTest extends BuilderTestBase {
 				@(open=>true) bitmap(generated(color(10, 10, #f00))): 0, 0
 			}
 			#host programmable(open:bool=false) {
-				#c dynamicRef($fadeChild, open=>$open): 0, 0
+				#c dynamicRef(fadeChild, open=>$open): 0, 0
 			}
 		", "host", null, Incremental);
 		result.setTweenManager(tm);
@@ -378,7 +378,7 @@ class IncrementalReviewTest extends BuilderTestBase {
 			}
 			#host programmable() {
 				#s slot(open:bool=false) {
-					dynamicRef($fadeChild, open=>$open): 0, 0
+					dynamicRef(fadeChild, open=>$open): 0, 0
 				}
 			}
 		", "host", null, Incremental);

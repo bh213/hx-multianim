@@ -23,6 +23,12 @@ class FontManager {
 
 	
 	
+	/** Removes a font, so its name can be registered again (a second font of a taken name is an
+	 *  error); returns whether it was there. */
+	public static function unregisterFont(name:String):Bool {
+		return fontRegistry.remove(name.toLowerCase());
+	}
+
 	public static function getFontByName(name:String):h2d.Font {
 		var font = fontRegistry.get(name.toLowerCase());
 		if (font == null) {

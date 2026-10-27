@@ -124,14 +124,14 @@ class HotReloadReviewTest extends BuilderTestBase {
 	static function hostWithBar(hostWidth:Int, barBody:String = ""):String {
 		return "version: 1.0\n"
 			+ "#bar programmable(w:uint=10) {\n\tbitmap(generated(color($w, 12, #ff0000))): 0, 0\n" + barBody + "}\n"
-			+ "#host programmable() {\n\tbitmap(generated(color(" + hostWidth + ", 5, #0000ff))): 0, 0\n\tdynamicRef($bar, w=>10): 0, 20\n}\n";
+			+ "#host programmable() {\n\tbitmap(generated(color(" + hostWidth + ", 5, #0000ff))): 0, 0\n\tdynamicRef(bar, w=>10): 0, 20\n}\n";
 	}
 
 	/** A host that only places `bar` (w, h) with the given dynamicRef arguments. */
 	static function barHost(args:String):String {
 		return "version: 1.0\n"
 			+ "#bar programmable(w:uint=10, h:uint=12) {\n\tbitmap(generated(color($w, $h, #ff0000))): 0, 0\n}\n"
-			+ "#host programmable() {\n\tdynamicRef($bar, " + args + "): 0, 0\n}\n";
+			+ "#host programmable() {\n\tdynamicRef(bar, " + args + "): 0, 0\n}\n";
 	}
 
 	static function hostWH(w:Int, h:Int):String {
@@ -190,8 +190,8 @@ class HotReloadReviewTest extends BuilderTestBase {
 		function nested(hostWidth:Int):String {
 			return "version: 1.0\n"
 				+ "#leaf programmable(w:uint=10) {\n\tbitmap(generated(color($w, 12, #ff0000))): 0, 0\n}\n"
-				+ "#mid programmable() {\n\tdynamicRef($leaf, w=>10): 0, 0\n}\n"
-				+ "#host programmable() {\n\tbitmap(generated(color(" + hostWidth + ", 5, #0000ff))): 0, 0\n\tdynamicRef($mid): 0, 20\n}\n";
+				+ "#mid programmable() {\n\tdynamicRef(leaf, w=>10): 0, 0\n}\n"
+				+ "#host programmable() {\n\tbitmap(generated(color(" + hostWidth + ", 5, #0000ff))): 0, 0\n\tdynamicRef(mid): 0, 20\n}\n";
 		}
 		reloadInPlace("review-nested-tmp.manim", nested(5), nested(6), "host", (sm, result, report) -> {
 			Assert.isTrue(report.success, 'sanity: the reload succeeds: ${report.errors}');
@@ -274,7 +274,7 @@ class HotReloadReviewTest extends BuilderTestBase {
 			return "version: 1.0\n"
 				+ "#bar programmable(w:uint=10) {\n\tbitmap(generated(color($w, 12, #ff0000))): 0, 0\n\t#s slot: 0, 20\n}\n"
 				+ "#host programmable() {\n\tbitmap(generated(color(" + hostWidth + ", 5, #0000ff))): 0, 0\n"
-				+ "\trepeatable($i, step(3, dx: 100)) {\n\t\tdynamicRef($bar, w=>10): 0, 40\n\t}\n}\n";
+				+ "\trepeatable($i, step(3, dx: 100)) {\n\t\tdynamicRef(bar, w=>10): 0, 40\n\t}\n}\n";
 		}
 		final contents = [for (i in 0...3) new h2d.Object()];
 		reloadInPlace("review-repeatrefs-tmp.manim", file(5), file(6), "host", (sm, result, report) -> {
@@ -303,7 +303,7 @@ class HotReloadReviewTest extends BuilderTestBase {
 				+ "#panelA programmable(w:uint=10) {\n\tbitmap(generated(color($w, 12, #ff0000))): 0, 0\n}\n"
 				+ "#panelB programmable(v:uint=20) {\n\tbitmap(generated(color($v, 12, #00ff00))): 0, 0\n}\n"
 				+ "#host programmable(mode:[a,b]=a) {\n\tbitmap(generated(color(" + hostWidth + ", 5, #0000ff))): 0, 0\n"
-				+ "\t@(mode=>a) #panel dynamicRef($panelA): 0, 20\n\t@else #panel dynamicRef($panelB): 0, 20\n}\n";
+				+ "\t@(mode=>a) #panel dynamicRef(panelA): 0, 20\n\t@else #panel dynamicRef(panelB): 0, 20\n}\n";
 		}
 		var shown:Null<BuilderResult> = null;
 		reloadInPlace("review-exclref-tmp.manim", file(5), file(6), "host", (sm, result, report) -> {
@@ -329,7 +329,7 @@ class HotReloadReviewTest extends BuilderTestBase {
 		final barFile = "review-imported-bar-tmp.manim";
 		final hostFile = "review-imported-host-tmp.manim";
 		final host = "version: 1.0\nimport \"" + barFile + "\" as \"w\"\n"
-			+ "#host programmable(hw:uint=30) {\n\tdynamicRef(external(w), $bar, w=>$hw): 0, 0\n}\n";
+			+ "#host programmable(hw:uint=30) {\n\tdynamicRef(external(w), bar, w=>$hw): 0, 0\n}\n";
 		withTempManim(barFile, bar(12), barPath -> withTempManim(hostFile, host, _ -> {
 			final sm = newManager();
 			sm.buildFromResourceName(barFile, false);

@@ -415,12 +415,12 @@ override public function onMouseClick(pos, button, release) {
 }
 ```
 
-**Dynamic refs** — `dynamicRef($ref, params)` embeds with incremental mode for runtime parameter updates:
+**Dynamic refs** — `dynamicRef(name, params)` embeds with incremental mode for runtime parameter updates:
 - Builder: `result.getDynamicRef("name").setParameter("param", value)`
 - Existence check: `result.hasDynamicRef("name")` — never throws, returns `false` when unknown. Reports presence only; a subsequent `getDynamicRef` may still throw if multiple unnamed sibling sites collide on the same key (disambiguate with `#name` / `#name[$i]`)
 - Batch updates: `beginUpdate()` / `endUpdate()` defers re-evaluation
 - Codegen: generates runtime builder call, returns `BuilderResult`. Lookup contract matches the builder: `getDynamicRef` on a collided unnamed key throws at lookup; a duplicate explicit `#name` is a compile-time error unless the two sites are in mutually exclusive arms of one `@()`/`@else`/`@default` chain (then the shown arm's answers, in both backends)
-- **Dynamic programmable references**: `dynamicRef($paramName, params)` where `$paramName` is a string/enum parameter of the enclosing programmable (a parameter of another type is a parse error). The parameter value names the target programmable. Template change triggers full rebuild; forwarded params propagate incrementally. `getDynamicRef()` returns the current result. With an explicit `#name`, the name is the stable lookup key across template swaps (builder and codegen); only unnamed sites are looked up by the live template name
+- **Dynamic programmable references**: `dynamicRef($paramName, params)` where `$paramName` is a string/enum parameter of the enclosing programmable (a parameter of another type is a parse error, and so is a `$name` that is no parameter, loop variable or `@final`: the bare name places that programmable). The parameter value names the target programmable. Template change triggers full rebuild; forwarded params propagate incrementally. `getDynamicRef()` returns the current result. With an explicit `#name`, the name is the stable lookup key across template swaps (builder and codegen); only unnamed sites are looked up by the live template name
 
 **Flow improvements** — new optional params on `flow()`:
 - `overflow: expand|limit|scroll|hidden`, `fillWidth: true`, `fillHeight: true`, `reverse: true`

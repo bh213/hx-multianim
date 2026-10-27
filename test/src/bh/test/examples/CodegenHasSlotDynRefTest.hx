@@ -64,7 +64,7 @@ class CodegenHasSlotDynRefTest extends BuilderTestBase {
 
 	/** A `#name`-labeled dynamicRef must be keyed by its explicit name on a codegen instance,
 	 *  matching BuilderResult (which keys by the explicit #name via resolveDynamicRefKey).
-	 *  Fixture has `#leafRef dynamicRef($leaf, w=>12)`, so getDynamicRef("leafRef") must resolve
+	 *  Fixture has `#leafRef dynamicRef(leaf, w=>12)`, so getDynamicRef("leafRef") must resolve
 	 *  and hasDynamicRef("leafRef") agree — not be keyed by the target programmable name "leaf". */
 	@Test
 	public function testCodegenNamedDynamicRefKeyedByExplicitName():Void {

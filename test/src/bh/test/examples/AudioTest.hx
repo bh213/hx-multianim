@@ -46,7 +46,7 @@ class AudioTest extends utest.Test {
 		final l = log ?? new LogBackend();
 		final a = new Audio(l);
 		a.randomFunc = () -> 0.0;
-		a.addBank("fx", bank());
+		a.addBank("fx", bank(), "fx.manim");
 		return {audio: a, log: l};
 	}
 
@@ -324,6 +324,60 @@ class AudioTest extends utest.Test {
 	}
 
 	@Test
+	public function testEachBankHasItsOwnParameters():Void {
+		final a = audio();
+		a.audio.addBank("steps", BuilderTestBase.builderFromSource('
+			#steps sounds {
+				param surface: [sand, snow]
+				walk @(surface => sand) { file: "sound/walk_sand.wav" }
+				walk @(surface => snow) { file: "sound/walk_snow.wav" }
+			}
+		').buildSounds("steps"), "steps.manim");
+		Assert.equals("stone", a.audio.get("fx.surface"), "a bank taken after another keeps the first's value");
+		Assert.equals("sand", a.audio.get("steps.surface"));
+
+		a.audio.set("surface", "grass");
+		Assert.equals("grass", a.audio.get("fx.surface"), "set by the bare name, in every bank that has the label");
+		Assert.equals("sand", a.audio.get("steps.surface"), "a bank without the label keeps its value");
+		a.audio.play("fx.step");
+		a.audio.set("surface", "snow");
+		a.audio.play("steps.walk");
+		Assert.equals("grass", a.audio.get("fx.surface"));
+		Assert.same(["sound/step_grass.wav", "sound/walk_snow.wav"], [for (e in a.log.plays()) e.path]);
+		Assert.isNull(a.audio.get("surface"), "the bare name has no one value while the banks differ");
+
+		a.audio.set("steps.surface", "sand");
+		Assert.equals("sand", a.audio.get("steps.surface"), "set in one bank by its full name");
+		Assert.equals("grass", a.audio.get("fx.surface"));
+		final values = a.audio.parameters();
+		Assert.equals("grass", values.get("fx.surface"));
+		Assert.equals("sand", values.get("steps.surface"));
+
+		function said(fn:() -> Void):String {
+			try {
+				fn();
+			} catch (e:String) {
+				return e;
+			}
+			return "";
+		}
+		final mud = said(() -> a.audio.set("surface", "mud"));
+		Assert.isTrue(mud.indexOf("stone, grass") >= 0 && mud.indexOf("sand, snow") >= 0, 'a label no bank has lists every bank\'s: $mud');
+		Assert.stringContains("stone, grass", said(() -> a.audio.set("fx.surface", "sand")), "one bank's full name takes its own labels only");
+		Assert.stringContains("weather", said(() -> a.audio.set("steps.weather", "rain")));
+		Assert.stringContains("nope", said(() -> a.audio.set("nope.surface", "sand")));
+
+		a.audio.set("steps.surface", "snow");
+		a.audio.addBank("steps", BuilderTestBase.builderFromSource('
+			#steps sounds {
+				param surface: [sand, snow]
+				walk { file: "sound/walk.wav" }
+			}
+		').buildSounds("steps"), "steps.manim");
+		Assert.equals("snow", a.audio.get("steps.surface"), "a bank taken again keeps the value the game set");
+	}
+
+	@Test
 	public function testTheDefaultVariantPlaysWhenNoneMatches():Void {
 		final a = new Audio(new LogBackend());
 		a.randomFunc = () -> 0.0;
@@ -398,7 +452,7 @@ class AudioTest extends utest.Test {
 		final l = new LogBackend();
 		final a = new Audio(l);
 		a.randomFunc = () -> 0.0;
-		a.addBank("eng", BuilderTestBase.builderFromSource(HELD).buildSounds("eng"));
+		a.addBank("eng", BuilderTestBase.builderFromSource(HELD).buildSounds("eng"), "eng.manim");
 		return {audio: a, log: l};
 	}
 
@@ -544,7 +598,7 @@ class AudioTest extends utest.Test {
 		a.audio.play("eng.hum");
 		final engine = a.audio.play("eng.engine");
 		a.audio.update(0.4);
-		a.audio.addBank("eng", BuilderTestBase.builderFromSource(HELD).buildSounds("eng"));
+		a.audio.addBank("eng", BuilderTestBase.builderFromSource(HELD).buildSounds("eng"), "eng.manim");
 		Assert.equals(1, a.log.stops("eng.hum").length, "the bank's plays stop as it is taken again");
 		Assert.equals(2, a.log.stops("eng.engine").length);
 		Assert.equals(0, stopLayerPlays(a.log).length, "cut, not stopped: no stop layer");
@@ -594,7 +648,7 @@ class AudioTest extends utest.Test {
 	@Test
 	public function testABankLoadedAgainReplacesTheOld():Void {
 		final a = audio();
-		a.audio.addBank("fx", BuilderTestBase.builderFromSource('#fx sounds { coin { file: "sound/coin2.wav" } }').buildSounds("fx"));
+		a.audio.addBank("fx", BuilderTestBase.builderFromSource('#fx sounds { coin { file: "sound/coin2.wav" } }').buildSounds("fx"), "fx.manim");
 		Assert.same(["fx.coin"], a.audio.soundNames(), "the old sounds are gone");
 		a.audio.play("fx.coin");
 		Assert.equals("sound/coin2.wav", a.log.plays()[0].path);

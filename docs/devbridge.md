@@ -350,7 +350,7 @@ The game's sound (`ScreenManager.audio`, `docs/manim.md` "Sounds"): what it has,
 #### `audio_state`
 No parameters.
 
-Returns: `banks[]` and `sounds[]` (the `sounds` blocks loaded and every sound's full name), `mix` (null without a `mix` block; else `buses[]` each with `name`, `volume`, `paused`, `lowpass`, `pitch`, `voices` as the mix makes it now, `vcas` by name, `snapshots[]`, `snapshotsOn[]`), `parameters` by name, `tracks[]`, `music` (the track playing, or null), `ambience` (the sound held as the ambience, or null), `instances[]` (the plays alive or releasing: `name`, `startedAt`, `voices`, `pending`, `releasing` (stopped, its `on: stop` layers still playing), `gain`, `rate`), `time`, `backend` (the class playing: `bh.audio.HeapsBackend`, or `bh.audio.LogBackend` where nothing is heard).
+Returns: `banks[]` and `sounds[]` (the `sounds` blocks loaded and every sound's full name), `mix` (null without a `mix` block; else `buses[]` each with `name`, `volume`, `paused`, `lowpass`, `pitch`, `voices` as the mix makes it now, `vcas` by name, `snapshots[]`, `snapshotsOn[]`), `parameters` by full name (`fx.surface`: each bank has its own), `tracks[]`, `music` (the track playing, or null), `ambience` (the sound held as the ambience, or null), `instances[]` (the plays alive or releasing: `name`, `startedAt`, `voices`, `pending`, `releasing` (stopped, its `on: stop` layers still playing), `gain`, `rate`), `time`, `backend` (the class playing: `bh.audio.HeapsBackend`, or `bh.audio.LogBackend` where nothing is heard).
 
 #### `audio_log`
 What the audio did: the last 200 lines of its history (plays and drops with their reason (a stop layer's play says `on stop`), stops (`stopAll`, as `audio_set {stop: "*"}`, is one line named `*`; a bank taken again cutting its plays one named `bank.*`), snapshots on and off, VCAs, parameters, music, ambience).
@@ -368,7 +368,7 @@ Changes the sound from outside; several at once.
 |-------|------|-------------|
 | `vca`, `value` | string, float | A VCA to 0..1 |
 | `snapshot`, `on` | string, bool | A snapshot on (default) or off |
-| `param`, `value` | string, string | A `sounds` block's parameter to one of its labels |
+| `param`, `value` | string, string | A `sounds` block's parameter to one of its labels: `fx.surface` one bank's, `surface` every bank's that has the label |
 | `play` | string | A sound's full name to play |
 | `stop` | string | A sound's full name to stop, or `*` for all |
 | `music` | string | A track's full name to crossfade to, or `none` to stop the music |

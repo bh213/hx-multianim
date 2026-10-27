@@ -1,7 +1,7 @@
 version: 1.0
 
 // Fixture: literal-name dynamicRef whose forwarded param references a parent param.
-// dynamicRef($cgFwdLitChild, ...) — $cgFwdLitChild is NOT a parameter of the parent,
+// dynamicRef(cgFwdLitChild, ...) — the programmable by its name, not a parameter of the parent,
 // so codegen routes to generateDynamicRefCreate (not generateDynamicNameRefCreate).
 // Parent.setParameter("parentVal", N) must propagate into child's val.
 
@@ -10,5 +10,5 @@ version: 1.0
 }
 
 #codegenDynamicRefForwarding programmable(parentVal:uint=10) {
-  dynamicRef($cgFwdLitChild, val => $parentVal): 0, 0
+  dynamicRef(cgFwdLitChild, val => $parentVal): 0, 0
 }

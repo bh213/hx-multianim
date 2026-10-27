@@ -522,8 +522,8 @@ class BuilderUnitTest extends BuilderTestBase {
 		// array($val, $items) binds $val per iteration — it is scoped to the loop
 		// body. A sibling AFTER the repeatable that references $val must fail the
 		// build; without cleanup it silently resolves to the LAST array element,
-		// so staticRef($val) quietly embeds #three. (staticRef targets are the one
-		// reference position not validated at parse time, so this reaches the builder.)
+		// so staticRef($val) quietly embeds #three. (The parser refuses it: a ref target's
+		// $name must be a parameter, loop variable or @final in scope.)
 		final err = expectError(() -> buildFromSource("
 			#three programmable() {
 				bitmap(generated(color(10, 10, #0f0))): 0, 0
@@ -3834,7 +3834,7 @@ class BuilderUnitTest extends BuilderTestBase {
 				graphics(rect(#44cc44, filled, $val * 200 / $maxVal, 20): 0, 0): 0, 0
 			}
 			#parent programmable(hp:uint=100, maxHp:uint=100) {
-				dynamicRef($bar, val=>$hp, maxVal=>$maxHp): 0, 0
+				dynamicRef(bar, val=>$hp, maxVal=>$maxHp): 0, 0
 			}
 		", "parent", null, Incremental);
 		Assert.notNull(result);
@@ -5302,7 +5302,7 @@ class BuilderUnitTest extends BuilderTestBase {
 				bitmap(generated(color(10, 10, #f00))): 0, 0
 			}
 			#test programmable() {
-				dynamicRef($inner): 0, 0
+				dynamicRef(inner): 0, 0
 			}
 		", "test");
 		Assert.notNull(result);
@@ -5436,7 +5436,7 @@ class BuilderUnitTest extends BuilderTestBase {
 				bitmap(generated(color(10, 10, #f00))): 0, 0
 			}
 			#test programmable() {
-				#child dynamicRef($inner): 0, 0
+				#child dynamicRef(inner): 0, 0
 			}
 		", "test");
 		Assert.notNull(r1);
@@ -6657,7 +6657,7 @@ class BuilderUnitTest extends BuilderTestBase {
 				bitmap(generated(color($v + 1, 10, #ff0000))): 0, 0
 			}
 			#parent programmable(show:bool=true, val:uint=5) {
-				@(show=>true) dynamicRef($child, v=>$val): 0, 0
+				@(show=>true) dynamicRef(child, v=>$val): 0, 0
 			}
 		", "parent", null, Incremental);
 		Assert.notNull(result);
@@ -8170,8 +8170,8 @@ class BuilderUnitTest extends BuilderTestBase {
 			}
 			#test programmable(mode:[a, b]=a) {
 				@switch(mode) {
-					a: dynamicRef($leafA): 0, 0;
-					b: dynamicRef($leafB): 0, 0;
+					a: dynamicRef(leafA): 0, 0;
+					b: dynamicRef(leafB): 0, 0;
 				}
 			}
 		", "test", null, Incremental);
@@ -8502,8 +8502,8 @@ class BuilderUnitTest extends BuilderTestBase {
 			}
 			#test programmable(mode:[a, b]=a, value:uint=10) {
 				@switch(mode) {
-					a: dynamicRef($leaf, val=>$value): 0, 0;
-					b: dynamicRef($leaf, val=>$value): 0, 0;
+					a: dynamicRef(leaf, val=>$value): 0, 0;
+					b: dynamicRef(leaf, val=>$value): 0, 0;
 				}
 			}
 		", "test", null, Incremental);
@@ -8565,7 +8565,7 @@ class BuilderUnitTest extends BuilderTestBase {
 			}
 			#test programmable(count:uint=2, value:uint=10) {
 				repeatable($i, step($count, dx: 20)) {
-					dynamicRef($leaf, val=>$value): 0, 0
+					dynamicRef(leaf, val=>$value): 0, 0
 				}
 			}
 		", "test", null, Incremental);
@@ -8639,19 +8639,19 @@ class BuilderUnitTest extends BuilderTestBase {
 				@(flag => true) bitmap(generated(color($val + 1, 5, #ff0000))): 0, 0
 				@(flag => false) bitmap(generated(color($val + 1, 6, #ffffff))): 0, 0
 				text(dd, '${label}-A', #fff): 0, 10
-				dynamicRef($leaf, label=>$label): 0, 20
+				dynamicRef(leaf, label=>$label): 0, 20
 			}
 			#widgetB programmable(val:uint=10, flag:bool=true, label:string=\"b\") {
 				@(flag => true) bitmap(generated(color($val + 1, 7, #00ff00))): 0, 0
 				@(flag => false) bitmap(generated(color($val + 1, 8, #ffffff))): 0, 0
 				text(dd, '${label}-B', #fff): 0, 10
-				dynamicRef($leaf, label=>$label): 0, 20
+				dynamicRef(leaf, label=>$label): 0, 20
 			}
 			#widgetC programmable(val:uint=10, flag:bool=true, label:string=\"c\") {
 				@(flag => true) bitmap(generated(color($val + 1, 9, #0000ff))): 0, 0
 				@(flag => false) bitmap(generated(color($val + 1, 10, #ffffff))): 0, 0
 				text(dd, '${label}-C', #fff): 0, 10
-				dynamicRef($leaf, label=>$label): 0, 20
+				dynamicRef(leaf, label=>$label): 0, 20
 			}
 			#test programmable(template:string=\"widgetA\", v:uint=10, lbl:string=\"hi\") {
 				dynamicRef($template, val=>$v, label=>$lbl): 0, 0
@@ -9002,7 +9002,7 @@ class BuilderUnitTest extends BuilderTestBase {
 				bitmap(generated(color($x, 10, #f00))): 0, 0
 			}
 			#host programmable() {
-				#c dynamicRef($child): 0, 0
+				#c dynamicRef(child): 0, 0
 			}
 		", "host", null, Incremental);
 		final ctx = result.incrementalContext;
@@ -9376,7 +9376,7 @@ class BuilderUnitTest extends BuilderTestBase {
 			}
 			#test programmable(mode:[a, b]=a, charName:string=\"hero\") {
 				@switch(mode) {
-					a: dynamicRef($leaf, name => $charName): 0, 0;
+					a: dynamicRef(leaf, name => $charName): 0, 0;
 					b: bitmap(generated(color(10, 10, #0f0))): 0, 0;
 				}
 			}
@@ -9404,7 +9404,7 @@ class BuilderUnitTest extends BuilderTestBase {
 			}
 			#test programmable(mode:[a, b]=a, myLabel:string=\"hello\") {
 				@switch(mode) {
-					a: staticRef($leaf, label => $myLabel): 0, 0;
+					a: staticRef(leaf, label => $myLabel): 0, 0;
 					b: bitmap(generated(color(10, 10, #0f0))): 0, 0;
 				}
 			}
@@ -10081,7 +10081,7 @@ class BuilderUnitTest extends BuilderTestBase {
 		try {
 			buildFromSource("
 				#a programmable() {
-					staticRef($a): 0, 0
+					staticRef(a): 0, 0
 				}
 			", "a");
 		} catch (e:bh.multianim.BuilderError) {
@@ -10106,10 +10106,10 @@ class BuilderUnitTest extends BuilderTestBase {
 		try {
 			buildFromSource("
 				#a programmable() {
-					staticRef($b): 0, 0
+					staticRef(b): 0, 0
 				}
 				#b programmable() {
-					staticRef($a): 0, 0
+					staticRef(a): 0, 0
 				}
 			", "a");
 		} catch (e:bh.multianim.BuilderError) {
@@ -10132,10 +10132,10 @@ class BuilderUnitTest extends BuilderTestBase {
 		try {
 			buildFromSource("
 				#a programmable() {
-					dynamicRef($b): 0, 0
+					dynamicRef(b): 0, 0
 				}
 				#b programmable() {
-					dynamicRef($a): 0, 0
+					dynamicRef(a): 0, 0
 				}
 			", "a");
 		} catch (e:bh.multianim.BuilderError) {
@@ -10164,7 +10164,7 @@ class BuilderUnitTest extends BuilderTestBase {
 	public function testBuildWithParametersRestoresStateStackOnInnerThrow():Void {
 		final builder = builderFromSource("
 			#outer programmable() {
-				staticRef($missingTarget): 0, 0
+				staticRef(missingTarget): 0, 0
 			}
 		");
 
@@ -10194,7 +10194,7 @@ class BuilderUnitTest extends BuilderTestBase {
 		// catches and continues. The second build must succeed against an unleaked builder state.
 		final builder = builderFromSource("
 			#bad programmable() {
-				staticRef($nonExistent): 0, 0
+				staticRef(nonExistent): 0, 0
 			}
 			#good programmable() {
 				point: 10, 20
@@ -10507,11 +10507,11 @@ class BuilderUnitTest extends BuilderTestBase {
 				bitmap(generated(color($val + 1, 10, #fff))): 0, 0
 			}
 			#test programmable(a:uint=0, b:uint=0, c:uint=0, d:uint=0, e:uint=0) {
-				#r1 dynamicRef($leaf, val=>$a): 0, 0
-				#r2 dynamicRef($leaf, val=>$b): 20, 0
-				#r3 dynamicRef($leaf, val=>$c): 40, 0
-				#r4 dynamicRef($leaf, val=>$d): 60, 0
-				#r5 dynamicRef($leaf, val=>$e): 80, 0
+				#r1 dynamicRef(leaf, val=>$a): 0, 0
+				#r2 dynamicRef(leaf, val=>$b): 20, 0
+				#r3 dynamicRef(leaf, val=>$c): 40, 0
+				#r4 dynamicRef(leaf, val=>$d): 60, 0
+				#r5 dynamicRef(leaf, val=>$e): 80, 0
 			}
 		", "test", null, Incremental);
 

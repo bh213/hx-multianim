@@ -577,10 +577,11 @@ class ScreenManager {
 
 	/** The `#name cursor { }` blocks of a loaded file and of the files it imports (theirs too, each
 	 *  once) registered by name, so interactives' `cursor =>` metadata and `CursorManager.getCursor`
-	 *  find them; their `sounds`, `music` and `mix` blocks taken by `audio` (a block of a name
-	 *  already there, as on a reload, replaces it). An import's go first, so the importing file's
-	 *  own win a name both have; an import already taken is not taken again, so reloading the file
-	 *  that imports it leaves its sounds playing. Returns how many audio blocks were taken. */
+	 *  find them; their `sounds`, `music` and `mix` blocks taken by `audio`. A file taking its own
+	 *  names again (a reload) replaces them; a name another file (an import, the importer, any other
+	 *  file loaded) has is an error naming both (`RegisteredNames`). An import already taken is not
+	 *  taken again, so reloading the file that imports it leaves its sounds playing. Returns how
+	 *  many audio blocks were taken. */
 	function takeFileBlocks(built:MultiAnimBuilder):Int {
 		final seen:Array<MultiAnimBuilder> = [];
 		function take(b:MultiAnimBuilder, isImport:Bool):Int {

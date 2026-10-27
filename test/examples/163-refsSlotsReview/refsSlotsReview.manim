@@ -19,7 +19,7 @@ version: 1.0
 }
 
 #rsMenuHost programmable() {
-  #m dynamicRef($rsMenu): 0, 0
+  #m dynamicRef(rsMenu): 0, 0
 }
 
 // An interactive two refs down: staticRef -> dynamicRef -> interactive.
@@ -28,11 +28,11 @@ version: 1.0
 }
 
 #rsMid programmable() {
-  dynamicRef($rsKey): 0, 0
+  dynamicRef(rsKey): 0, 0
 }
 
 #rsTop programmable() {
-  staticRef($rsMid): 0, 0
+  staticRef(rsMid): 0, 0
 }
 
 // A builderParameter placeholder in a ref target: the object passed for "portrait" goes there.
@@ -43,18 +43,18 @@ version: 1.0
 
 #rsHolder programmable() {
   placeholder(nothing, builderParameter("top")): 0, 0
-  staticRef($rsFrame): 0, 10
+  staticRef(rsFrame): 0, 10
 }
 
 #rsDynHolder programmable() {
   placeholder(nothing, builderParameter("top")): 0, 0
-  dynamicRef($rsFrame): 0, 10
+  dynamicRef(rsFrame): 0, 10
 }
 
 // A staticRef to its own programmable is a circular reference, whatever gates it.
 #rsTree programmable(d:int=1) {
   bitmap(generated(color(4, 4, #0f0))): 0, 0
-  @(d > 0) staticRef($rsTree, d=>$d - 1): 10, 0
+  @(d > 0) staticRef(rsTree, d=>$d - 1): 10, 0
 }
 
 // One #name in mutually exclusive arms: the shown arm's dynamicRef / slot answers.
@@ -65,8 +65,8 @@ version: 1.0
   bitmap(generated(color(20, 4, #0f0))): 0, 0
 }
 #rsExclRef programmable(mode:[a,b]=a) {
-  @(mode=>a) #panel dynamicRef($rsPanelA): 0, 0
-  @else #panel dynamicRef($rsPanelB): 0, 0
+  @(mode=>a) #panel dynamicRef(rsPanelA): 0, 0
+  @else #panel dynamicRef(rsPanelB): 0, 0
 }
 #rsExclSlot programmable(mode:[a,b]=a) {
   @(mode=>a) #content slot: 0, 0

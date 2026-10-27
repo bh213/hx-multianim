@@ -558,7 +558,7 @@ class UIScrollbarWidgetTest extends BuilderTestBase {
 			}
 			#progressBar programmable(value:0..100=0) {
 				bitmap(generated(color(102, 12, #333333))): 0, 0
-				staticRef($fill, w => $value) {
+				staticRef(fill, w => $value) {
 					pos: 1, 1
 					bitmap(generated(color(2, 2, white))): 0, 0
 				}

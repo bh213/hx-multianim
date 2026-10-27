@@ -28,7 +28,7 @@ version: 1.0
 
   // Legend - content
   text(f3x5, "content:", #888888): 250, 74
-  staticRef($contentRect): 250, 86
+  staticRef(contentRect): 250, 86
   text(f3x5, "= setContent()", #cccc00): 278, 88
   text(f3x5, "replaces default at cell[2,1]", #aaaaaa): 250, 106
 }

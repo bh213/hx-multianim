@@ -23,5 +23,5 @@ version: 1.0
 
 #main point {
   pos: 0, 0
-  staticRef($bitmapDemo):0,0
+  staticRef(bitmapDemo):0,0
 }

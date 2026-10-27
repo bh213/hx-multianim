@@ -97,46 +97,46 @@ version: 1.0
   point {
     pos: 40, 60
     text(m3x6, "@(param=>value) - exact match", #888, left, 300):0,0;
-    staticRef($enumDemo, state=>idle):0,12;
-    staticRef($enumDemo, state=>active):70,12;
-    staticRef($enumDemo, state=>error):140,12;
+    staticRef(enumDemo, state=>idle):0,12;
+    staticRef(enumDemo, state=>active):70,12;
+    staticRef(enumDemo, state=>error):140,12;
   }
 
   // --- Row 2: Negation ---
   point {
     pos: 40, 120
     text(m3x6, "@(param != value) - not equal", #888, left, 300):0,0;
-    staticRef($notDemo, mode=>on):0,12;
-    staticRef($notDemo, mode=>off):70,12;
+    staticRef(notDemo, mode=>on):0,12;
+    staticRef(notDemo, mode=>off):70,12;
   }
 
   // --- Row 3: Multiple values ---
   point {
     pos: 40, 180
     text(m3x6, "@(param=>[v1,v2]) - match any", #888, left, 300):0,0;
-    staticRef($multiDemo, level=>low):0,12;
-    staticRef($multiDemo, level=>medium):90,12;
-    staticRef($multiDemo, level=>high):180,12;
-    staticRef($multiDemo, level=>critical):270,12;
+    staticRef(multiDemo, level=>low):0,12;
+    staticRef(multiDemo, level=>medium):90,12;
+    staticRef(multiDemo, level=>high):180,12;
+    staticRef(multiDemo, level=>critical):270,12;
   }
 
   // --- Row 4: @any - match ANY (OR logic) ---
   point {
     pos: 40, 240
     text(m3x6, "@any(x=>A, y=>X) - match if x=A OR y=X", #888, left, 400):0,0;
-    staticRef($anyDemo, x=>A, y=>X):0,12;
-    staticRef($anyDemo, x=>A, y=>Y):60,12;
-    staticRef($anyDemo, x=>B, y=>X):120,12;
-    staticRef($anyDemo, x=>B, y=>Y):180,12;
+    staticRef(anyDemo, x=>A, y=>X):0,12;
+    staticRef(anyDemo, x=>A, y=>Y):60,12;
+    staticRef(anyDemo, x=>B, y=>X):120,12;
+    staticRef(anyDemo, x=>B, y=>Y):180,12;
   }
 
   // --- Row 5: Range conditions (temperature) ---
   point {
     pos: 40, 300
     text(m3x6, "Range: >= <= > < and N..N", #888, left, 350):0,0;
-    staticRef($tempDemo, temp=>-20):0,12;
-    staticRef($tempDemo, temp=>50):80,12;
-    staticRef($tempDemo, temp=>120):160,12;
+    staticRef(tempDemo, temp=>-20):0,12;
+    staticRef(tempDemo, temp=>50):80,12;
+    staticRef(tempDemo, temp=>120):160,12;
   }
 
   // --- Row 6: @all ---
@@ -144,13 +144,13 @@ version: 1.0
     pos: 40, 360
     text(m3x6, "@all - must match ALL (red X = no match)", #888, left, 400):0,0;
     // Full matches - green
-    staticRef($strictDemo, a=>X, b=>P):0,12;
-    staticRef($strictDemo, a=>X, b=>Q):60,12;
-    staticRef($strictDemo, a=>Y, b=>P):120,12;
-    staticRef($strictDemo, a=>Y, b=>Q):180,12;
+    staticRef(strictDemo, a=>X, b=>P):0,12;
+    staticRef(strictDemo, a=>X, b=>Q):60,12;
+    staticRef(strictDemo, a=>Y, b=>P):120,12;
+    staticRef(strictDemo, a=>Y, b=>Q):180,12;
     // Partial matches - no match, shows red X
-    staticRef($strictDemo, a=>X, b=>none):250,12;
-    staticRef($strictDemo, a=>none, b=>P):310,12;
+    staticRef(strictDemo, a=>X, b=>none):250,12;
+    staticRef(strictDemo, a=>none, b=>P):310,12;
   }
 
   // --- Right side: Syntax reference ---

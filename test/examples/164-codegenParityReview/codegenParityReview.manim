@@ -33,7 +33,7 @@ layouts {
 }
 #cpFinalFwd programmable(x:int=5) {
   @final fw = $x * 2
-  dynamicRef($cpFinalFwdChild, v=>$fw): 0, 0
+  dynamicRef(cpFinalFwdChild, v=>$fw): 0, 0
 }
 
 // A repeat count from a constant @final never changes, so the body's own param ($ox) is
@@ -160,8 +160,8 @@ layouts {
 
 // One setParameter of the host that two dynamicRefs follow is one rebuild of the host.
 #cpFwdTwice programmable(v:int=4) {
-  #c1 dynamicRef($cpFwdChild, v => $v): 0, 0
-  #c2 dynamicRef($cpFwdChild, v => $v): 20, 0
+  #c1 dynamicRef(cpFwdChild, v => $v): 0, 0
+  #c2 dynamicRef(cpFwdChild, v => $v): 20, 0
 }
 
 // A conditional apply whose value uses $a (on the point holding the 10-wide bitmap), and a param
@@ -332,4 +332,28 @@ layouts {
     rotate: 90
   }
   bitmap(generated(color(5, 5, #FF0000))): $player.extraPoint("targeting")
+}
+
+// A @final names the programmable a ref places by its value, and one that uses a param follows it,
+// in codegen as in the builder (CodegenParityReviewTest)
+#cpRefWide programmable() {
+  bitmap(generated(color(9, 4, #FFFFFF))): 0, 0
+}
+#cpRefNarrow programmable() {
+  bitmap(generated(color(3, 4, #FFFFFF))): 0, 0
+}
+#cpFinalRefTarget programmable(kind:[cpRefWide, cpRefNarrow]=cpRefNarrow) {
+  @final fixed = "cpRefWide"
+  @final picked = $kind
+  staticRef($fixed): 0, 0
+  staticRef($picked): 0, 10
+  dynamicRef($fixed): 0, 20
+  dynamicRef($picked): 0, 30
+}
+// The same with the @final declared in a nested block, gone from scope once the block is built
+#cpFinalRefNested programmable(kind:[cpRefWide, cpRefNarrow]=cpRefNarrow) {
+  layers() {
+    @final inner = $kind
+    dynamicRef($inner): 0, 0
+  }
 }

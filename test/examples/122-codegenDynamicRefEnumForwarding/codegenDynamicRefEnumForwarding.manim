@@ -13,5 +13,5 @@ version: 1.0
 }
 
 #codegenDynamicRefEnumForwarding programmable(parentMode:[a,b,c]=a) {
-  dynamicRef($cgFwdEnumChild, mode => $parentMode): 0, 0
+  dynamicRef(cgFwdEnumChild, mode => $parentMode): 0, 0
 }

@@ -2676,7 +2676,7 @@ bh_multianim_MacroManimParser.prototype = {
 			this.error("" + kind + " loop variable $" + name + " shadows an outer $" + name + " already in scope — pick a different name");
 		}
 	}
-	,validateRefTargetParam: function(kind,progRef,currentDefs) {
+	,validateRefTargetParam: function(kind,extRef,progRef,refToken,currentDefs) {
 		var name;
 		if(progRef._hx_index == 6) {
 			var r = progRef.ref;
@@ -2686,6 +2686,11 @@ bh_multianim_MacroManimParser.prototype = {
 		}
 		var def = currentDefs != null ? currentDefs.h[name] : null;
 		if(def == null) {
+			if(this.scopeVars != null && this.scopeVars.indexOf(name) >= 0) {
+				return;
+			}
+			var bare = extRef != null ? "" + kind + "(external(" + extRef + "), " + name : "" + kind + "(" + name;
+			this.errorAtLine(refToken.line,refToken.col,"" + kind + ": $" + name + " is no parameter, loop variable or @final here, so it names no programmable. To place the programmable " + name + ", write " + bare + ", ...) without the $");
 			return;
 		}
 		var _g = def.type;
@@ -7315,8 +7320,9 @@ bh_multianim_MacroManimParser.prototype = {
 																						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 																					}
 																				}
+																				var refToken = this.tokens[this.tpos];
 																				var progRef = this.expectReferenceOrIdentifierAsRV();
-																				this.validateRefTargetParam("staticRef",progRef,currentDefs);
+																				this.validateRefTargetParam("staticRef",extRef,progRef,refToken,currentDefs);
 																				var params = new haxe_ds_StringMap();
 																				if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
 																					params = this.parseReferenceParams();
@@ -7340,8 +7346,9 @@ bh_multianim_MacroManimParser.prototype = {
 																							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 																						}
 																					}
+																					var refToken = this.tokens[this.tpos];
 																					var progRef = this.expectReferenceOrIdentifierAsRV();
-																					this.validateRefTargetParam("dynamicRef",progRef,currentDefs);
+																					this.validateRefTargetParam("dynamicRef",extRef,progRef,refToken,currentDefs);
 																					var params = new haxe_ds_StringMap();
 																					if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
 																						params = this.parseReferenceParams();

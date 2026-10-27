@@ -21,7 +21,7 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color(10, 10, #ff0000))): 0, 0
 			}
 			#test programmable() {
-				dynamicRef($inner): 0, 0
+				dynamicRef(inner): 0, 0
 			}
 		", "test");
 		Assert.notNull(result);
@@ -35,7 +35,7 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color(10, 10, #ff0000))): 0, 0
 			}
 			#test programmable() {
-				dynamicRef($inner): 0, 0
+				dynamicRef(inner): 0, 0
 			}
 		", "test");
 		var subResult = result.getDynamicRef("inner");
@@ -53,7 +53,7 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color($val, $maxVal, #ff0000))): 0, 0
 			}
 			#test programmable(hp:uint=80, maxHp:uint=100) {
-				dynamicRef($bar, val=>$hp, maxVal=>$maxHp): 0, 0
+				dynamicRef(bar, val=>$hp, maxVal=>$maxHp): 0, 0
 			}
 		", "test", null, Incremental);
 		Assert.notNull(result);
@@ -67,7 +67,7 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color($val, $maxVal, #ff0000))): 0, 0
 			}
 			#test programmable(hp:uint=100, maxHp:uint=100) {
-				dynamicRef($bar, val=>$hp, maxVal=>$maxHp): 0, 0
+				dynamicRef(bar, val=>$hp, maxVal=>$maxHp): 0, 0
 			}
 		", "test", null, Incremental);
 
@@ -95,8 +95,8 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color($val, 10, #00ff00))): 0, 0
 			}
 			#parent programmable(hp:uint=100) {
-				dynamicRef($widgetA, val=>$hp): 0, 0
-				dynamicRef($widgetB, val=>$hp): 0, 20
+				dynamicRef(widgetA, val=>$hp): 0, 0
+				dynamicRef(widgetB, val=>$hp): 0, 20
 			}
 		", "parent", null, Incremental);
 
@@ -139,7 +139,7 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color($val, 10, #ff0000))): 0, 0
 			}
 			#parent programmable(hp:uint=100) {
-				dynamicRef($widgetA, val=>$hp): 0, 0
+				dynamicRef(widgetA, val=>$hp): 0, 0
 			}
 		", "parent", null, Incremental);
 
@@ -173,7 +173,7 @@ class DynamicRefTest extends BuilderTestBase {
 				@(color => green) bitmap(generated(color(10, 10, #00ff00))): 0, 0
 			}
 			#test programmable() {
-				dynamicRef($inner): 0, 0
+				dynamicRef(inner): 0, 0
 			}
 		", "test", null, Incremental);
 		var subResult = result.getDynamicRef("inner");
@@ -203,8 +203,8 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color(10, 10, #00ff00))): 0, 0
 			}
 			#test programmable() {
-				dynamicRef($widgetA): 0, 0
-				dynamicRef($widgetB): 0, 20
+				dynamicRef(widgetA): 0, 0
+				dynamicRef(widgetB): 0, 20
 			}
 		", "test");
 		Assert.notNull(result);
@@ -223,10 +223,10 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color(5, 5, #0000ff))): 0, 0
 			}
 			#middle programmable() {
-				dynamicRef($leaf): 0, 0
+				dynamicRef(leaf): 0, 0
 			}
 			#test programmable() {
-				dynamicRef($middle): 0, 0
+				dynamicRef(middle): 0, 0
 			}
 		", "test");
 		Assert.notNull(result);
@@ -242,7 +242,7 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color(10, 10, #ff0000))): 0, 0
 			}
 			#test programmable() {
-				dynamicRef($inner): 0, 0
+				dynamicRef(inner): 0, 0
 			}
 		", "test");
 		var err:String = null;
@@ -264,7 +264,7 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color($val, $maxVal, #ff0000))): 0, 0
 			}
 			#test programmable(hp:uint=100, maxHp:uint=100) {
-				dynamicRef($bar, val=>$hp, maxVal=>$maxHp): 0, 0
+				dynamicRef(bar, val=>$hp, maxVal=>$maxHp): 0, 0
 			}
 		", "test", null, Incremental);
 
@@ -286,7 +286,7 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color($w, $h, #ff0000))): 0, 0
 			}
 			#test programmable() {
-				dynamicRef($inner, w=>20, h=>30): 0, 0
+				dynamicRef(inner, w=>20, h=>30): 0, 0
 			}
 		", "test");
 		Assert.notNull(result);
@@ -306,7 +306,7 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color(10, 10, #ff0000))): 0, 0
 			}
 			#test programmable(show:bool=true) {
-				@(show => true) dynamicRef($inner): 0, 0
+				@(show => true) dynamicRef(inner): 0, 0
 			}
 		", "test", null, Incremental);
 		Assert.notNull(result);
@@ -324,7 +324,7 @@ class DynamicRefTest extends BuilderTestBase {
 			}
 			#test programmable() {
 				repeatable($i, step(3, dy: 10)) {
-					dynamicRef($inner): 0, 0
+					dynamicRef(inner): 0, 0
 				}
 			}
 		", "test");
@@ -343,7 +343,7 @@ class DynamicRefTest extends BuilderTestBase {
 				@(mode => c) bitmap(generated(color(10, 10, #0000ff))): 0, 0
 			}
 			#test programmable(m:[a,b,c]=b) {
-				dynamicRef($inner, mode=>$m): 0, 0
+				dynamicRef(inner, mode=>$m): 0, 0
 			}
 		", "test", null, Incremental);
 		Assert.notNull(result);
@@ -365,7 +365,7 @@ class DynamicRefTest extends BuilderTestBase {
 				@(mode => c) bitmap(generated(color(33, 5, #0000ff))): 0, 0
 			}
 			#test programmable(m:[a,b,c]=a) {
-				dynamicRef($inner, mode=>$m): 0, 0
+				dynamicRef(inner, mode=>$m): 0, 0
 			}
 		", "test", null, Incremental);
 
@@ -394,7 +394,7 @@ class DynamicRefTest extends BuilderTestBase {
 				@(visible => true) bitmap(generated(color(10, 10, #ff0000))): 0, 0
 			}
 			#test programmable(show:bool=true) {
-				dynamicRef($inner, visible=>$show): 0, 0
+				dynamicRef(inner, visible=>$show): 0, 0
 			}
 		", "test", null, Incremental);
 		// Capture visible bitmaps before toggling (show=true, so inner bitmap should be visible)
@@ -417,7 +417,7 @@ class DynamicRefTest extends BuilderTestBase {
 				@(active => false) bitmap(generated(color(10, 10, #ff0000))): 0, 0
 			}
 			#test programmable(flag:bool=true) {
-				dynamicRef($inner, active=>$flag): 0, 0
+				dynamicRef(inner, active=>$flag): 0, 0
 			}
 		", "test");
 		Assert.notNull(result);
@@ -431,10 +431,10 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color(5, 5, #0000ff))): 0, 0
 			}
 			#mid programmable() {
-				dynamicRef($leaf): 0, 0
+				dynamicRef(leaf): 0, 0
 			}
 			#test programmable() {
-				dynamicRef($mid): 0, 0
+				dynamicRef(mid): 0, 0
 			}
 		", "test");
 		var midRef = result.getDynamicRef("mid");
@@ -451,10 +451,10 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color(3, 3, #ff00ff))): 0, 0
 			}
 			#mid programmable() {
-				dynamicRef($leaf): 0, 0
+				dynamicRef(leaf): 0, 0
 			}
 			#test programmable() {
-				dynamicRef($mid): 0, 0
+				dynamicRef(mid): 0, 0
 			}
 		", "test");
 		// Chain: test -> mid -> leaf
@@ -558,21 +558,36 @@ class DynamicRefTest extends BuilderTestBase {
 	}
 
 	@Test
-	public function testDynamicNameRefFallbackToLiteral():Void {
-		// When $name is NOT a parameter, it should fall back to literal programmable name
-		// (backward compatibility)
+	public function testDynamicRefByABareNamePlacesThatProgrammable():Void {
+		// A bare name is the programmable; `$myWidget` with no parameter, loop variable or @final
+		// of that name no longer falls back to it (ParserErrorTest)
 		final result = buildFromSource("
 			#myWidget programmable() {
 				bitmap(generated(color(7, 7, #0000ff))): 0, 0
 			}
 			#test programmable() {
-				dynamicRef($myWidget): 0, 0
+				dynamicRef(myWidget): 0, 0
 			}
 		", "test");
 		Assert.notNull(result);
 		var bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.isTrue(bitmaps.length > 0);
 		Assert.equals(7, Std.int(bitmaps[0].tile.width));
+
+		var refused = false;
+		try {
+			buildFromSource("
+				#myWidget programmable() {
+					bitmap(generated(color(7, 7, #0000ff))): 0, 0
+				}
+				#test programmable() {
+					dynamicRef($myWidget): 0, 0
+				}
+			", "test");
+		} catch (e:Dynamic) {
+			refused = Std.string(e).indexOf("dynamicRef(myWidget") >= 0;
+		}
+		Assert.isTrue(refused, "the $ form of a name that is no parameter is refused, pointing at the bare name");
 	}
 
 	// ==================== Dynamic Name Ref Tear-Down ====================
@@ -669,13 +684,13 @@ class DynamicRefTest extends BuilderTestBase {
 	// ==================== Sibling Collisions on Same Programmable Name (H2) ====================
 
 	// Bug H2: `internalResults.dynamicRefs` is keyed by the referenced programmable name, so two
-	// `dynamicRef($X)` siblings under @(..)/@else collapse onto one map entry (last-writer-wins).
+	// `dynamicRef(X)` siblings under @(..)/@else collapse onto one map entry (last-writer-wins).
 	// `getDynamicRef("X")` then returns whichever was BUILT last, independent of which sibling is
 	// currently VISIBLE. This silently hands the caller the wrong handle when visibility flips.
 
 	@Test
 	public function testDynamicRefColocatedSiblingsThrowOnGet():Void {
-		// Two unnamed dynamicRef($X) siblings under @(..)/@else collapse onto one map entry
+		// Two unnamed dynamicRef(X) siblings under @(..)/@else collapse onto one map entry
 		// (the referenced programmable's name "X"). Pre-fix, `getDynamicRef("X")` silently returned
 		// whichever was built last — which could be detached after a visibility flip. Post-fix,
 		// calling getDynamicRef on an ambiguous key throws with a hint to use #name.
@@ -684,8 +699,8 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color(10, 10, #ff0000))): 0, 0
 			}
 			#host programmable(a:int=0) {
-				@(a=>1) dynamicRef($X): 0, 0
-				@else   dynamicRef($X): 0, 0
+				@(a=>1) dynamicRef(X): 0, 0
+				@else   dynamicRef(X): 0, 0
 			}
 		", "host", null, Incremental);
 
@@ -713,8 +728,8 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color(10, $v, #ff0000))): 0, 0
 			}
 			#host programmable(a:int=0, v:uint=5) {
-				@(a=>1) #armOn  dynamicRef($X, v=>$v): 0, 0
-				@else   #armOff dynamicRef($X, v=>$v): 0, 0
+				@(a=>1) #armOn  dynamicRef(X, v=>$v): 0, 0
+				@else   #armOff dynamicRef(X, v=>$v): 0, 0
 			}
 		", "host", null, Incremental);
 
@@ -741,7 +756,7 @@ class DynamicRefTest extends BuilderTestBase {
 
 	@Test
 	public function testDynamicRefIndexedInRepeatableIsIndependentlyAddressable():Void {
-		// Inside a repeatable, each iteration of an unnamed dynamicRef($X) would collide. The
+		// Inside a repeatable, each iteration of an unnamed dynamicRef(X) would collide. The
 		// `#name[$i] dynamicRef(...)` form makes each iteration a distinct map entry keyed as
 		// `"name idx"` — addressable via `result.getDynamicRef("name 0")` etc.
 		final result = buildFromSource("
@@ -750,7 +765,7 @@ class DynamicRefTest extends BuilderTestBase {
 			}
 			#host programmable() {
 				repeatable($i, step(3, dx: 30)) {
-					#item[$i] dynamicRef($leaf, v=>$i + 10): 0, 0
+					#item[$i] dynamicRef(leaf, v=>$i + 10): 0, 0
 				}
 			}
 		", "host", null, Incremental);
@@ -786,8 +801,8 @@ class DynamicRefTest extends BuilderTestBase {
 					bitmap(generated(color(10, 10, #ff0000))): 0, 0
 				}
 				#host programmable() {
-					#widget dynamicRef($X): 0, 0
-					#widget dynamicRef($X): 0, 20
+					#widget dynamicRef(X): 0, 0
+					#widget dynamicRef(X): 0, 20
 				}
 			", "host", null, Incremental);
 		} catch (e:Dynamic) {
@@ -903,11 +918,11 @@ class DynamicRefTest extends BuilderTestBase {
 			#host programmable(a:[multi,single]=multi) {
 				@switch(a) {
 					multi {
-						dynamicRef($X): 0, 0
-						dynamicRef($X): 0, 20
+						dynamicRef(X): 0, 0
+						dynamicRef(X): 0, 20
 					}
 					single {
-						dynamicRef($X): 0, 0
+						dynamicRef(X): 0, 0
 					}
 				}
 			}
@@ -961,10 +976,10 @@ class DynamicRefTest extends BuilderTestBase {
 			#host programmable(mode:[normal, critical]=normal, hp:uint=100) {
 				@switch(mode) {
 					normal {
-						#tpl dynamicRef($hpBar, hp => $hp): 0, 0
+						#tpl dynamicRef(hpBar, hp => $hp): 0, 0
 					}
 					critical {
-						#tpl dynamicRef($hpBar, hp => $hp): 0, 0
+						#tpl dynamicRef(hpBar, hp => $hp): 0, 0
 					}
 				}
 			}
@@ -1009,8 +1024,8 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color(10, $v, #ff0000))): 0, 0
 			}
 			#host programmable(a:int=0, v:uint=5) {
-				@(a=>1) #armOn  dynamicRef($X, v=>$v): 0, 0
-				@else   #armOff dynamicRef($X, v=>$v): 0, 0
+				@(a=>1) #armOn  dynamicRef(X, v=>$v): 0, 0
+				@else   #armOff dynamicRef(X, v=>$v): 0, 0
 			}
 		", "host", null, Incremental);
 
@@ -1061,8 +1076,8 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color(10, $v, #ff0000))): 0, 0
 			}
 			#host programmable(a:int=0, v:uint=5) {
-				@(a=>1) #armOn  dynamicRef($X, v=>$v): 0, 0
-				@else   #armOff dynamicRef($X, v=>$v): 0, 0
+				@(a=>1) #armOn  dynamicRef(X, v=>$v): 0, 0
+				@else   #armOff dynamicRef(X, v=>$v): 0, 0
 			}
 		", "host", null, Incremental);
 
@@ -1122,7 +1137,7 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color($p1 + 1, $p2 + 1, #ff0000))): 0, 0
 			}
 			#host programmable(a:uint=0, b:uint=0) {
-				#ref dynamicRef($child, p1=>$a, p2=>$b): 0, 0
+				#ref dynamicRef(child, p1=>$a, p2=>$b): 0, 0
 			}
 		", "host", null, Incremental);
 
@@ -1157,7 +1172,7 @@ class DynamicRefTest extends BuilderTestBase {
 				@else           bitmap(generated(color(22, 22, #00ff00))): 0, 0
 			}
 			#host programmable(a:uint=1, b:uint=2) {
-				#ref dynamicRef($child, p1=>$a, p2=>$b): 0, 0
+				#ref dynamicRef(child, p1=>$a, p2=>$b): 0, 0
 			}
 		", "host", null, Incremental);
 
@@ -1202,7 +1217,7 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color(10, 10, #ff0000))): 0, 0
 			}
 			#parent programmable(p2:string=\"1\") {
-				dynamicRef($child, c2=>$p2): 0, 0
+				dynamicRef(child, c2=>$p2): 0, 0
 			}
 		", "parent", null, Incremental);
 
@@ -1250,7 +1265,7 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color(10, 10, #ff0000))): 0, 0
 			}
 			#parent programmable(p2:string=\"1\") {
-				dynamicRef($child, c2=>$p2): 0, 0
+				dynamicRef(child, c2=>$p2): 0, 0
 			}
 		", "parent", null, Incremental);
 
@@ -1297,8 +1312,8 @@ class DynamicRefTest extends BuilderTestBase {
 				interactive(20, 20, $id): 0, 0
 			}
 			#board programmable() {
-				dynamicRef($key, id=>\"a\"): 0, 0
-				#second dynamicRef($key, id=>\"b\"): 20, 0
+				dynamicRef(key, id=>\"a\"): 0, 0
+				#second dynamicRef(key, id=>\"b\"): 20, 0
 			}
 		", "board", null, Incremental);
 		Assert.equals("a,b", interactiveIds(result).join(","), "the keys placed by dynamicRef are listed by the enclosing result");
@@ -1332,7 +1347,7 @@ class DynamicRefTest extends BuilderTestBase {
 				interactive(20, 20, $id): 0, 0
 			}
 			#board programmable(open:bool=true) {
-				@(open=>true) dynamicRef($key, id=>\"a\"): 0, 0
+				@(open=>true) dynamicRef(key, id=>\"a\"): 0, 0
 			}
 		", "board", null, Incremental);
 		Assert.equals("a", interactiveIds(result).join(","), "listed while the arm is shown");
@@ -1356,7 +1371,7 @@ class DynamicRefTest extends BuilderTestBase {
 				@(s=>live) bitmap(generated(color(10, 10, #ff0000))): 0, 0
 			}
 			#host programmable(state:[playing,scores]=playing) {
-				@(state=>scores) #scores dynamicRef($panel): 0, 0
+				@(state=>scores) #scores dynamicRef(panel): 0, 0
 			}
 		", "host", null, Incremental);
 
@@ -1391,11 +1406,11 @@ class DynamicRefTest extends BuilderTestBase {
 			}
 			#panel programmable() {
 				repeatable($i, step(3, dy: 10)) {
-					#line[$i] dynamicRef($line): 0, 0
+					#line[$i] dynamicRef(line): 0, 0
 				}
 			}
 			#host programmable() {
-				#panel dynamicRef($panel): 0, 0
+				#panel dynamicRef(panel): 0, 0
 			}
 		", "host", null, Incremental);
 
@@ -1456,10 +1471,10 @@ class DynamicRefTest extends BuilderTestBase {
 
 		final byName = errorOf(() -> buildFromSource("
 			#host programmable() {
-				dynamicRef($nothing): 0, 0
+				dynamicRef(nothing): 0, 0
 			}
 		", "host", null, Incremental)) ?? "";
-		Assert.stringContains("dynamicRef($nothing): there is no programmable \"nothing\"", byName);
+		Assert.stringContains("dynamicRef(nothing): there is no programmable \"nothing\"", byName);
 
 		final staticByParameter = errorOf(() -> buildFromSource("
 			#host programmable(target:string=\"nothing\") {
@@ -1481,7 +1496,7 @@ class DynamicRefTest extends BuilderTestBase {
 				@(s=>live) bitmap(generated(color(10, 10, #ff0000))): 0, 0
 			}
 			#host programmable(state:[playing,scores]=playing, x:int=0) {
-				@(state=>scores) #scores dynamicRef($panel): $x, 0
+				@(state=>scores) #scores dynamicRef(panel): $x, 0
 			}
 		", "host", null, Incremental);
 
@@ -1533,7 +1548,7 @@ class DynamicRefTest extends BuilderTestBase {
 			}
 			#host programmable(base:uint=1) {
 				repeatable($i, step(3, dy: 20)) {
-					#r[$i] dynamicRef($row, v=>$base + $i): 0, 0
+					#r[$i] dynamicRef(row, v=>$base + $i): 0, 0
 				}
 			}
 		", "host", null, Incremental);

@@ -463,6 +463,8 @@ class FlowSpliceMarker extends h2d.Object {
 @:nullSafety
 private typedef DynamicNameBinding = {
 	paramName:String,
+	// What a change of swaps the template: paramName, and when it is a @final the params it uses
+	templateRefs:Array<String>,
 	container:h2d.Object,
 	currentName:String,
 	// Stable map key for internalResults.dynamicRefs. For `#name dynamicRef($template)` this is the
@@ -2346,7 +2348,7 @@ class IncrementalUpdateContext {
 			// Propagate to dynamic ref children — unconditionally. Forwarding into a currently-detached
 			// child is cheap (just setParameter on its incremental context; no rendering) and it keeps
 			// the child's state fresh so it surfaces with the latest values when visibility flips back
-			// (e.g. `@(a=>1) #foo dynamicRef($X) / @else #bar dynamicRef($X)`, update $X's params while
+			// (e.g. `@(a=>1) #foo dynamicRef(X) / @else #bar dynamicRef(X)`, update X's params while
 			// one arm is hidden — both must be current). Skipping detached children here was the
 			// staleness side of bug H2.
 			//
@@ -2408,8 +2410,14 @@ class IncrementalUpdateContext {
 
 			// Rebuild dynamic name refs (template parameter changed)
 			for (binding in dynamicNameBindings) {
-				if (changedParams.exists(binding.paramName)) {
-					final newName = builder.resolveAsString(RVReference(binding.paramName));
+				var templateChanged = false;
+				for (r in binding.templateRefs)
+					if (changedParams.exists(r)) {
+						templateChanged = true;
+						break;
+					}
+				if (templateChanged) {
+					final newName = builder.inScope(binding.scope, () -> builder.resolveAsString(RVReference(binding.paramName)));
 					if (newName != binding.currentName) {
 						rebuildDynamicNameRef(binding, newName);
 					}
@@ -2764,7 +2772,7 @@ class BuilderResult implements bh.multianim.LiveProgrammable {
 	public var gridCoordinateSystem:Null<GridCoordinateSystem>;
 	public var hexCoordinateSystem:Null<HexCoordinateSystem>;
 	public var slots:Array<{key:SlotKey, handle:SlotHandle}>;
-	/** Per-writer dynamicRef storage. Each unnamed `dynamicRef($X)` site appends to the array under
+	/** Per-writer dynamicRef storage. Each unnamed `dynamicRef(X)` site appends to the array under
 	 *  key X; each `#name dynamicRef(...)` site is the sole writer under its explicit key. Collision
 	 *  = `arr.length > 1` for unnamed keys — `getDynamicRef(key)` throws to force `#name`
 	 *  disambiguation. Cleanup paths (SWITCH/REPEAT arm flips, $param-driven name renames) splice
@@ -3294,7 +3302,7 @@ private typedef InternalBuilderResults = {
 	names:Map<String, Array<NamedBuildResult>>,
 	interactives:Array<MAObject>,
 	slots:Array<{key:SlotKey, handle:SlotHandle}>,
-	/** Per-writer dynamicRef storage. Each unnamed `dynamicRef($X)` site appends to the array under
+	/** Per-writer dynamicRef storage. Each unnamed `dynamicRef(X)` site appends to the array under
 	 *  key X; each `#name dynamicRef(...)` site is the sole writer under its explicit key (build
 	 *  rejects duplicate explicit names). Collision = `arr.length > 1` — `getDynamicRef(key)` then
 	 *  throws to force `#name` disambiguation. Cleanup paths (SWITCH/REPEAT arm flips) splice
@@ -4239,17 +4247,15 @@ class MultiAnimBuilder {
 	}
 
 	/** Resolve a programmable reference name from ReferenceableValue.
-	 *  RVString: literal programmable name. RVReference: check if it's a parameter
-	 *  of the current programmable — if yes, resolve its value as the name; if no,
-	 *  fall back to literal (backward compat with $progName syntax). */
+	 *  RVString: literal programmable name. RVReference: a parameter, loop variable or @final,
+	 *  whose value names it (the parser refuses any other `$name`). */
 	function resolveRefName(rv:ReferenceableValue):String {
 		return switch rv {
 			case RVString(s): s;
 			case RVReference(paramName):
-				if (indexedParams.exists(paramName))
-					resolveAsString(rv);
-				else
-					paramName; // Fallback: treat as literal programmable name
+				if (!indexedParams.exists(paramName))
+					throw builderError('$$$paramName names no programmable: no parameter, loop variable or @final here is called $paramName', "missing_ref");
+				resolveAsString(rv);
 			default:
 				throw builderError('unexpected ReferenceableValue for programmable reference: $rv');
 		}
@@ -7363,8 +7369,12 @@ class MultiAnimBuilder {
 						case RVReference(r): r;
 						default: "";
 					};
+					// A @final names the template through the params it uses: a change of any swaps it.
+					// One declared in a nested block is gone from the context by then: keep the scope
+					final isFinal = indexedParams.get(paramName)?.match(ExpressionAlias(_)) == true;
 					incrementalContext.trackDynamicName({
 						paramName: paramName,
+						templateRefs: expandFinalAliases([paramName]),
 						container: container,
 						currentName: reference,
 						stableKey: dynRefKey,
@@ -7372,7 +7382,7 @@ class MultiAnimBuilder {
 						parameters: parameters,
 						externalReference: externalReference,
 						internalResults: internalResults,
-						scope: refScope,
+						scope: refScope == null && isFinal ? indexedParams.copy() : refScope,
 					});
 				}
 
@@ -10597,7 +10607,7 @@ class MultiAnimBuilder {
 		// A build that is not incremental must not inherit an enclosing incremental build's state: a
 		// staticRef built inside one would otherwise register its tracked expressions on the outer
 		// context, where they re-resolve against the outer programmable's parameters by name
-		// (`staticRef($sail, dir=>e)` inside a programmable with its own `dir` redrew the sail with the
+		// (`staticRef(sail, dir=>e)` inside a programmable with its own `dir` redrew the sail with the
 		// outer value). pushBuilderState saved both; popBuilderState restores them.
 		if (!incremental) {
 			this.incrementalMode = false;
@@ -11400,7 +11410,8 @@ class MultiAnimBuilder {
 	/** Registers every cursor of every `cursor { }` block in the file with `CursorManager`, under
 	 *  its name, so `cursor => "name"` on an interactive and `CursorManager.getCursor(name)` find
 	 *  it. `ScreenManager.buildFromResource` does this when a file loads (and again on reload), for
-	 *  the files it imports too. */
+	 *  the files it imports too. A name another file (or code) registered is an error naming both;
+	 *  this file's own are replaced (`RegisteredNames`). */
 	public function registerCursors():Int {
 		var count = 0;
 		for (name in cursorBlockNames()) {
@@ -11411,9 +11422,12 @@ class MultiAnimBuilder {
 				case CURSORS(cursors):
 					for (def in cursors) {
 						this.currentNode = node;
+						final clash = bh.base.CursorManager.clashOf(def.name, sourceName);
+						if (clash != null)
+							throw builderErrorAt(node, clash, "name_taken");
 						final tile = loadTileSource(def.tile);
 						try {
-							bh.base.CursorManager.registerTileCursor(def.name, tile, def.hotX, def.hotY);
+							bh.base.CursorManager.registerTileCursor(def.name, tile, def.hotX, def.hotY, sourceName);
 						} catch (e:String) {
 							throw builderErrorAt(node, 'cursor "${def.name}": $e', "cursor_tile");
 						}

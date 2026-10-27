@@ -70,7 +70,7 @@ Indexed slots (`#name[$i] slot`) inside repeatables create per-iteration contain
 
 ### Dynamic Ref System
 
-Dynamic refs (`dynamicRef($ref, params)`) embed programmables with incremental mode enabled automatically. The sub-result is stored and accessible via `getDynamicRef("name")`. This enables runtime parameter updates on embedded elements without rebuilding.
+Dynamic refs (`dynamicRef(name, params)`) embed programmables with incremental mode enabled automatically. The sub-result is stored and accessible via `getDynamicRef("name")`. This enables runtime parameter updates on embedded elements without rebuilding.
 
 ### Coordinate Systems
 
@@ -108,7 +108,7 @@ Requires TweenManager (auto-injected via `ScreenManager.buildFromResource()`; al
 
 ### Import System
 
-`import "file.manim" as "name"` allows cross-file references. Imported programmables are referenced via `staticRef(external("name"), $ref)` and `dynamicRef(external("name"), $ref, params)`. Enables modular `.manim` file organization.
+`import "file.manim" as "name"` allows cross-file references. Imported programmables are referenced via `staticRef(external("name"), target)` and `dynamicRef(external("name"), target, params)`. Enables modular `.manim` file organization.
 
 ### Rich Text & Markup
 

@@ -3037,7 +3037,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		final instance = mp.dynamicRefs.create();
 		Assert.notNull(instance, "DynamicRefs instance should be created");
 		// "probe" is the #name-disambiguated handle in the fixture; the 16 unnamed
-		// dynamicRef($statusBar) siblings collide on the "statusBar" key, so lookups
+		// dynamicRef(statusBar) siblings collide on the "statusBar" key, so lookups
 		// on it must throw with a #name hint — matching BuilderResult.getDynamicRef.
 		final dynRef = instance.getDynamicRef("probe");
 		Assert.notNull(dynRef, "Should have probe dynamicRef via codegen");
@@ -5710,7 +5710,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		final mp = createMp();
 		final instance:Dynamic = mp.switchArmDynamicRef.create(); // default mode=alpha
 
-		// The active (alpha) arm declares #embed dynamicRef($switchArmChild, value=>10).
+		// The active (alpha) arm declares #embed dynamicRef(switchArmChild, value=>10).
 		// Wrap the call: when a programmable has no static dynamicRefs the dispatcher may
 		// not be generated at all, so a missing-method runtime error must surface as a clean
 		// notNull assertion failure (the right reason) rather than aborting the test.

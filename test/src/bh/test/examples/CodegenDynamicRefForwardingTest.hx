@@ -4,7 +4,7 @@ import utest.Assert;
 import bh.test.BuilderTestBase;
 
 /**
- * Regression — literal-name `dynamicRef($X, p => $outer)` codegen must propagate
+ * Regression — literal-name `dynamicRef(X, p => $outer)` codegen must propagate
  * a parent-param change into the child's forwarded param, matching the runtime
  * builder (MultiAnimBuilder.trackDynamicRef wires this unconditionally).
  *
