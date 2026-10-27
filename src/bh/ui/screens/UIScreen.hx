@@ -665,7 +665,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	function addSlider(providedBuilder, settings:ResolvedSettings, initialValue:Float = 0) {
 		final sliderBuildName = getSettings(settings, "buildName", "slider");
 		final size = getIntSettings(settings, "size", 200);
-		final split = splitSettings(settings, ["buildName", "size"], ["min", "max", "step", "direction"], [], [], "slider");
+		final split = splitSettings(settings, ["buildName", "size"], ["min", "max", "step", "direction", "initialValue"], [], [], "slider");
 		final slider = UIStandardMultiAnimSlider.create(providedBuilder, sliderBuildName, size, initialValue, split.main);
 		if (hasSettings(settings, "min"))
 			slider.min = getFloatSettings(settings, "min", 0);
@@ -680,6 +680,9 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 				case "auto": Auto;
 				case other: throw 'slider direction => "$other": expected vertical, horizontal or auto';
 			};
+		// in the slider's own range, so after min/max/step
+		if (hasSettings(settings, "initialValue"))
+			slider.setFloatValue(getFloatSettings(settings, "initialValue", initialValue));
 		return slider;
 	}
 

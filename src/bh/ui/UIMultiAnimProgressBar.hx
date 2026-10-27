@@ -9,10 +9,11 @@ import bh.ui.UIElement;
 
 /**
 	A display-only bar: its programmable takes `value` (0..100) and draws the fill; a HUD sets the
-	value every frame. The programmable is built once, incrementally, and `setIntValue` changes its
-	`value` in place (`getResult()` stays the same object); a design whose `value` the incremental
-	context cannot follow (an `untracked_param` error on the first change: an interactive id or a
-	stateanim selector in a param-dependent repeat) is rebuilt whole on every change instead.
+	value every frame. The programmable is built once, incrementally, when the bar is made, and
+	`setIntValue` changes its `value` in place (`getResult()` stays the same object); a design
+	whose `value` the incremental context cannot follow (an `untracked_param` error on the first
+	change: an interactive id or a stateanim selector in a param-dependent repeat) is rebuilt
+	whole on every change instead.
 **/
 class UIMultiAnimProgressBar implements UIElement implements UIElementNumberValue implements UIElementSyncRedraw {
 	var builder:MultiAnimBuilder;
@@ -28,12 +29,14 @@ class UIMultiAnimProgressBar implements UIElement implements UIElementNumberValu
 
 	var extraParams:Null<Map<String, Dynamic>>;
 
+	/** Built at once: a design that does not fit fails here, not at the first frame. */
 	function new(builder:MultiAnimBuilder, name:String, initialValue:Int, ?extraParams:Null<Map<String, Dynamic>>) {
 		this.root = new h2d.Object();
 		this.builder = builder;
 		this.buildName = name;
-		this.currentValue = initialValue;
+		this.currentValue = Std.int(hxd.Math.clamp(initialValue, 0, 100));
 		this.extraParams = extraParams;
+		doRedraw();
 	}
 
 	public static function create(builder:MultiAnimBuilder, name:String, initialValue:Int = 0, ?extraParams:Null<Map<String, Dynamic>>) {

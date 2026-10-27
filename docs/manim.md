@@ -3295,12 +3295,18 @@ var cb = addCheckbox(builder, false);
 - `start` — left edge of the slider track
 - `end` — right edge of the slider track
 
+The slider is built when it is made (`create`, `addSlider`): a design without `#start` and `#end`,
+or one that refuses an argument, fails there, not at the first frame. A starting value outside the
+default 0..100 (given before `min`/`max` are set) is drawn at the end it is past until the first
+update draws it in the range set.
+
 **UIScreenBase settings:**
 
 | Setting | Category | Type | Default | Description |
 |---------|----------|------|---------|-------------|
 | `buildName` | control | string | `"slider"` | Programmable name |
 | `size` | control | int | `200` | Track width |
+| `initialValue` | behavioral | float | the `initialValue` argument | Starting value, in the slider's `min`..`max` |
 | `min` | behavioral | float | `0` | Minimum value of the slider range |
 | `max` | behavioral | float | `100` | Maximum value of the slider range |
 | `step` | behavioral | float | `0` | Step size for snapping (0 = continuous) |
@@ -3326,7 +3332,7 @@ The `onChange` and `onFloatChange` callbacks follow the same rule.
 
 ```haxe
 var slider = UIStandardMultiAnimSlider.create(builder, "slider", 200, 50);
-var slider = addSlider(builder, 50);
+var slider = addSlider(builder, settings, 50);
 
 // Custom range and steps
 slider.min = 0;
@@ -3376,8 +3382,9 @@ var radio = addRadio(builder, items, true, 0); // vertical, selected index 0
 
 A display-only component for health bars, XP bars, loading indicators, etc. The `.manim` definition receives a `value` (0-100) parameter and can use conditionals to change colors at different thresholds.
 
-**Contract.** The programmable is built once, with `value` (and any pass-through settings); the
-widget passes nothing else — a bar's width and height are the design's own (declare `width`/`height`
+**Contract.** The programmable is built once, when the bar is made (so a design that refuses an
+argument fails at `create`/`addProgressBar`, and `getResult()` is there at once), with `value`
+(clamped to 0..100) and any pass-through settings; the widget passes nothing else — a bar's width and height are the design's own (declare `width`/`height`
 parameters and pass them as settings if a design is to be sized from the screen). `setIntValue`
 changes `value` in place on the built result (`getResult()` stays the same object, `incremental`
 true), so a HUD can set it every frame; a design whose `value` the incremental context cannot
@@ -3443,19 +3450,30 @@ nine-patch stretched to the value.
 
 **Required `.manim` placeholder (panel):** `mask` — clipping mask for scroll content
 
+**Required `.manim` named point (panel):** `#scrollbar` (the name the list is given,
+`scrollbarInPanelName`), where the scrollbar is placed when the items overflow. The mask and the
+point are checked when the list is made: a panel without them fails at once, not when items
+first overflow.
+
 **Required `.manim` parameters (item via `UIElementBuilder`):**
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `itemWidth` | int | Item width |
 | `index` | int | Item index |
+| `images` | enum: `none`, `tile` (+ any of your own) | Always passed: `tile` when the item has a tile, else `none` |
 | `title` | string | Item display text |
-| `tile` | tile | Item icon (if available) |
+| `tile` | tile | Item icon: passed only for an item with a tile, and then required (a design without it is refused, as any argument it has not) |
 | `status` | enum: `normal`, `hover`, `pressed`, + custom | Interaction state (initial value from `baseStatus` or `"normal"`) |
 | `selected` | enum: `true`, `false` | Selection state |
 | `disabled` | enum: `true`, `false` | Disabled state |
 
 **Required `.manim` root setting (item):** `height` — item height in pixels
+
+**Item interactives:** the list finds the item under the mouse by its interactives' ids, so every
+`interactive()` in an item has the item's index as its id (`interactive($itemWidth, 20, $index)`).
+One with another id (a `"del"` icon) is refused when the items are built; a control of its own in
+a row is a separate widget beside the list.
 
 **List item tile sources:** Each `UIElementListItem` can specify a tile via the `tileRef` field using the `TileRef` enum:
 
@@ -3650,6 +3668,9 @@ Combines a closed/open button with a `UIMultiAnimScrollableList` panel. Supports
 - `panelPoint` — updatable point where the panel is positioned
 - `selectedName` — text element showing the currently selected item name (use `$font`/`$fontColor` for customization)
 
+Both are checked when the dropdown is made (`selectedName` is written to only when the choice
+changes, so a design without it would otherwise fail on the first choice).
+
 **Optional `.manim` root setting (dropdown):** `transitionTimer` — open/close animation duration (default: 1.0 seconds)
 
 **UIScreenBase settings** (includes all Scrollable List settings, plus):
@@ -3798,6 +3819,96 @@ placeholder(generated(cross(600, 300, white)), builderParameter("myTabs")) {
     settings{tabPanel.width:int=>600, tabPanel.height:int=>200, tabPanel.contentRoot=>contentArea}
 }
 ```
+
+### Text Input
+
+**Haxe class:** `UIMultiAnimTextInput`
+
+A Heaps `h2d.TextInput` inside a `.manim` frame: the programmable draws the frame and its states,
+the widget places the text field at the frame's `#textArea` point.
+
+**Required `.manim` parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `status` | enum: `normal`, `hover`, `focused`, `disabled` | Interaction state |
+| `placeholder` | bool | Whether the placeholder text shows (the field is empty and not focused) |
+| `placeholderText` | string | Only when a `placeholder` setting is given: its text |
+| `disabled` | bool | Optional: set when declared |
+
+**Required `.manim` named point:** `textArea` — where the text field sits
+
+**UIScreenBase settings:**
+
+| Setting | Category | Type | Default | Description |
+|---------|----------|------|---------|-------------|
+| `buildName` | control | string | `"textInput"` | Programmable name |
+| `text` | control | string | the `initialText` argument | Starting text |
+| `placeholder` | control | string | `""` | Text shown while empty (passed as `placeholderText`) |
+| `font` | control | string | `""` | Font of the typed text |
+| `fontColor`, `cursorColor`, `selectionColor` | control | color | `0xFFFFFF`, `0xFFFFFF`, `0x3399FF` | Colors of the text, cursor and selection |
+| `maxLength` | behavioral | int | `0` (none) | Most characters |
+| `multiline`, `readOnly`, `disabled` | behavioral | bool | `false` | |
+| `filter` | behavioral | string | `none` | `numeric`, `alphanumeric` or `none` (`input.filter = FCustom(fn)` from code) |
+| `inputWidth` | behavioral | int | `0` | Width of the field (0: the text's own) |
+| `tabIndex` | behavioral | int | next free | Order in the screen's tab group (`enableTabNavigation()`) |
+| *any other* | pass-through | — | — | Forwarded to the programmable |
+
+**Events:** `UITextChange(text)`, `UITextSubmit(text)` (Enter), `UIFocusChange(focused)`; the
+`onChange`, `onSubmit` and `onFocusChange` callbacks. `setText`, `getText`, `focus`, `blur`,
+`hasFocus`.
+
+```haxe
+enableTabNavigation();
+final name = addTextInput(builder, settings, "Hero");
+final age = addTextInput(builder, settings);  // settings { filter => numeric, maxLength:int => 3 }
+```
+
+```manim
+#textInput programmable(status:[normal,hover,focused,disabled]=normal, placeholder:bool=true, placeholderText:string="") {
+    @(status=>focused) ninepatch("ui", "field_focus", 160, 20): 0, 0
+    @else ninepatch("ui", "field", 160, 20): 0, 0
+    @(placeholder=>true) text(m6x11, $placeholderText, #888888): 4, 4
+    #textArea point: 4, 4
+}
+```
+
+### Dialogs
+
+A dialog is a screen (`UIScreenBase`) shown over the current ones by `ScreenManager`:
+`modalDialog(dialog, caller, "name", ?data)` or `modalDialogWithTransition(dialog, caller, "name",
+?data, transition)`. It closes with `setExitCode` from its controller or
+`closeDialogWithTransition(?transition)`, and the caller hears `OnDialogResult(name, result)` once
+the dialog has closed, so the handler may open the next one.
+
+Behind it the manager draws an overlay, which the dialog's programmable can configure in its
+`settings`:
+
+```manim
+#confirmDialog programmable(message:string="Are you sure?") {
+    settings {
+        overlay.color:color => #000000,
+        overlay.alpha:float => 0.6,
+        overlay.fadeIn:float => 0.2,
+        overlay.fadeOut:float => 0.15,
+        overlay.blur:float => 2
+    }
+    ninepatch("ui", "panel", 240, 120): 0, 0
+    text(m6x11, $message, white, center, 220): 10, 20
+    placeholder(generated(cross(80, 20)), builderParameter("ok")): 30, 80
+    placeholder(generated(cross(80, 20)), builderParameter("cancel")): 130, 80
+}
+```
+
+```haxe
+// in the dialog's load(): read the overlay from the .manim
+final overlay = parseOverlaySettings(dialog.builderResults.rootSettings);
+if (overlay != null) modalOverlayConfig = overlay;
+```
+
+Opened over another dialog, the dialog under it leaves the scene and comes back when the top one
+closes. Code may set `modalOverlayConfig` itself (`{color, alpha, fadeIn, fadeOut, blur}`); the
+`.manim` settings read in `load()` win over it.
 
 ---
 

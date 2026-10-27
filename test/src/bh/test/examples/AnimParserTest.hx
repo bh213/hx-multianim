@@ -3187,4 +3187,15 @@ animation idle { fps: 4 playlist { file: "c.png" frames: 0..1 } }
 		final loaded:Dynamic = parsed.loaded();
 		Assert.same(["weapon", "facing", "mood"], loaded.stateOrder, "the states in the order written");
 	}
+
+	@Test
+	public function testTheScreenManagersLoaderReadsAnAnimFromTheResources() {
+		// marine.anim is a resource (test/res), not a file in the working directory: read as a .manim is
+		final loader = @:privateAccess bh.ui.screens.ScreenManager.createLoader();
+		final parsed = try loader.loadAnimParser("marine.anim") catch (e:Dynamic) {
+			Assert.fail('the .anim was not read from the resources: $e');
+			return;
+		}
+		Assert.notNull(parsed.createAnimSM(["direction" => "l"]));
+	}
 }

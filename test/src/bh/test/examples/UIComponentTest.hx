@@ -111,6 +111,14 @@ class UIComponentTest extends BuilderTestBase {
 		}
 	";
 
+	static final SLIDER_MANIM = "
+		#slider programmable(status:[normal,hover,pressed]=normal, size:uint=200, value:0..100=0, disabled:bool=false) {
+			bitmap(generated(color($size, 10, #444444))): 0, 0
+			#start point: 0, 5
+			#end point: $size, 5
+		}
+	";
+
 	// ============== Button Tests ==============
 
 	@Test
@@ -469,8 +477,8 @@ class UIComponentTest extends BuilderTestBase {
 
 	@Test
 	public function testSliderCreation():Void {
-		var builder = BuilderTestBase.builderFromSource(BUTTON_MANIM);
-		var slider = UIStandardMultiAnimSlider.create(builder, "button", 200, 50.0);
+		var builder = BuilderTestBase.builderFromSource(SLIDER_MANIM);
+		var slider = UIStandardMultiAnimSlider.create(builder, "slider", 200, 50.0);
 		Assert.notNull(slider);
 		Assert.notNull(slider.getObject());
 		Assert.isFalse(slider.disabled);
@@ -479,8 +487,8 @@ class UIComponentTest extends BuilderTestBase {
 
 	@Test
 	public function testSliderFloatValueRoundTrip():Void {
-		var builder = BuilderTestBase.builderFromSource(BUTTON_MANIM);
-		var slider = UIStandardMultiAnimSlider.create(builder, "button", 200, 0.0);
+		var builder = BuilderTestBase.builderFromSource(SLIDER_MANIM);
+		var slider = UIStandardMultiAnimSlider.create(builder, "slider", 200, 0.0);
 
 		slider.setFloatValue(42.5);
 		Assert.isTrue(slider.getFloatValue() == 42.5);
@@ -494,8 +502,8 @@ class UIComponentTest extends BuilderTestBase {
 
 	@Test
 	public function testSliderIntValueRoundTrip():Void {
-		var builder = BuilderTestBase.builderFromSource(BUTTON_MANIM);
-		var slider = UIStandardMultiAnimSlider.create(builder, "button", 200, 0.0);
+		var builder = BuilderTestBase.builderFromSource(SLIDER_MANIM);
+		var slider = UIStandardMultiAnimSlider.create(builder, "slider", 200, 0.0);
 
 		slider.setIntValue(75);
 		Assert.equals(75, slider.getIntValue());
@@ -506,8 +514,8 @@ class UIComponentTest extends BuilderTestBase {
 
 	@Test
 	public function testSliderClampToRange():Void {
-		var builder = BuilderTestBase.builderFromSource(BUTTON_MANIM);
-		var slider = UIStandardMultiAnimSlider.create(builder, "button", 200, 0.0);
+		var builder = BuilderTestBase.builderFromSource(SLIDER_MANIM);
+		var slider = UIStandardMultiAnimSlider.create(builder, "slider", 200, 0.0);
 
 		slider.setFloatValue(150.0);
 		Assert.isTrue(slider.getFloatValue() == 100.0);
@@ -518,8 +526,8 @@ class UIComponentTest extends BuilderTestBase {
 
 	@Test
 	public function testSliderStepSnapping():Void {
-		var builder = BuilderTestBase.builderFromSource(BUTTON_MANIM);
-		var slider = UIStandardMultiAnimSlider.create(builder, "button", 200, 0.0);
+		var builder = BuilderTestBase.builderFromSource(SLIDER_MANIM);
+		var slider = UIStandardMultiAnimSlider.create(builder, "slider", 200, 0.0);
 		slider.step = 10;
 
 		slider.setFloatValue(23.0);
@@ -531,8 +539,8 @@ class UIComponentTest extends BuilderTestBase {
 
 	@Test
 	public function testSliderContinuousNoSnap():Void {
-		var builder = BuilderTestBase.builderFromSource(BUTTON_MANIM);
-		var slider = UIStandardMultiAnimSlider.create(builder, "button", 200, 0.0);
+		var builder = BuilderTestBase.builderFromSource(SLIDER_MANIM);
+		var slider = UIStandardMultiAnimSlider.create(builder, "slider", 200, 0.0);
 		slider.step = 0;
 
 		slider.setFloatValue(23.7);
@@ -541,8 +549,8 @@ class UIComponentTest extends BuilderTestBase {
 
 	@Test
 	public function testSliderMinEqualsMax():Void {
-		var builder = BuilderTestBase.builderFromSource(BUTTON_MANIM);
-		var slider = UIStandardMultiAnimSlider.create(builder, "button", 200, 50.0);
+		var builder = BuilderTestBase.builderFromSource(SLIDER_MANIM);
+		var slider = UIStandardMultiAnimSlider.create(builder, "slider", 200, 50.0);
 		slider.min = 50;
 		slider.max = 50;
 
@@ -558,8 +566,8 @@ class UIComponentTest extends BuilderTestBase {
 
 	@Test
 	public function testSliderCustomRange():Void {
-		var builder = BuilderTestBase.builderFromSource(BUTTON_MANIM);
-		var slider = UIStandardMultiAnimSlider.create(builder, "button", 200, 10.0);
+		var builder = BuilderTestBase.builderFromSource(SLIDER_MANIM);
+		var slider = UIStandardMultiAnimSlider.create(builder, "slider", 200, 10.0);
 		slider.min = 10;
 		slider.max = 50;
 
@@ -575,8 +583,8 @@ class UIComponentTest extends BuilderTestBase {
 
 	@Test
 	public function testSliderDisabledRedraw():Void {
-		var builder = BuilderTestBase.builderFromSource(BUTTON_MANIM);
-		var slider = UIStandardMultiAnimSlider.create(builder, "button", 200, 50.0);
+		var builder = BuilderTestBase.builderFromSource(SLIDER_MANIM);
+		var slider = UIStandardMultiAnimSlider.create(builder, "slider", 200, 50.0);
 
 		Assert.isTrue(slider.requestRedraw);
 
@@ -587,8 +595,8 @@ class UIComponentTest extends BuilderTestBase {
 
 	@Test
 	public function testSliderSetValueRedraw():Void {
-		var builder = BuilderTestBase.builderFromSource(BUTTON_MANIM);
-		var slider = UIStandardMultiAnimSlider.create(builder, "button", 200, 50.0);
+		var builder = BuilderTestBase.builderFromSource(SLIDER_MANIM);
+		var slider = UIStandardMultiAnimSlider.create(builder, "slider", 200, 50.0);
 
 		slider.setFloatValue(75.0);
 		Assert.isTrue(slider.requestRedraw);
@@ -596,8 +604,8 @@ class UIComponentTest extends BuilderTestBase {
 
 	@Test
 	public function testSliderDisabledBlocksEvents():Void {
-		var builder = BuilderTestBase.builderFromSource(BUTTON_MANIM);
-		var slider = UIStandardMultiAnimSlider.create(builder, "button", 200, 50.0);
+		var builder = BuilderTestBase.builderFromSource(SLIDER_MANIM);
+		var slider = UIStandardMultiAnimSlider.create(builder, "slider", 200, 50.0);
 		slider.disabled = true;
 		var mock = new MockControllable();
 
@@ -607,8 +615,8 @@ class UIComponentTest extends BuilderTestBase {
 
 	@Test
 	public function testSliderUsesScratchPointForGlobalToLocal():Void {
-		var builder = BuilderTestBase.builderFromSource(BUTTON_MANIM);
-		var slider = UIStandardMultiAnimSlider.create(builder, "button", 200, 50.0);
+		var builder = BuilderTestBase.builderFromSource(SLIDER_MANIM);
+		var slider = UIStandardMultiAnimSlider.create(builder, "slider", 200, 50.0);
 
 		// The slider must keep a single scratch Point and reuse it inside
 		// calculatePos(). Per-event Point.clone() generated GC pressure during
@@ -617,6 +625,90 @@ class UIComponentTest extends BuilderTestBase {
 		// no scratch field; the assertion fails (null) before fix, passes after.
 		var scratch:Dynamic = Reflect.field(slider, "tmpPoint");
 		Assert.notNull(scratch);
+	}
+
+	// ============== A widget's parts are checked when it is made ==============
+
+	function listFrom(source:String, ?items:Array<UIElementListItem>):UIMultiAnimScrollableList {
+		ensureTestFont();
+		final builder = BuilderTestBase.builderFromSource(source);
+		return UIMultiAnimScrollableList.createWithSingleBuilder(builder, "list-panel", "list-item", "scrollbar", "scrollbar", 120, 200,
+			items ?? createScrollableListItems(), 0, 0);
+	}
+
+	@Test
+	public function testAListPanelWithoutAMaskPlaceholderFailsWhenMade():Void {
+		final source = StringTools.replace(SCROLLABLE_LIST_MANIM,
+			"placeholder(generated(color($width, $height, #000000)), builderParameter(\"mask\")): 0, 0", "");
+		Assert.raises(() -> listFrom(source), null, "a panel that never places the list's mask shows no items");
+	}
+
+	@Test
+	public function testAListPanelWithoutItsScrollbarPointFailsWhenMade():Void {
+		// five items fit the panel: no scrollbar is shown yet, a later setItems would need it
+		final source = StringTools.replace(SCROLLABLE_LIST_MANIM, "#scrollbar point: $width - 10, 0", "");
+		Assert.raises(() -> listFrom(source), null, "the panel has no #scrollbar point");
+	}
+
+	@Test
+	public function testADropdownWithoutSelectedNameFailsWhenMade():Void {
+		ensureTestFont();
+		final source = StringTools.replace(DROPDOWN_MANIM,
+			"#selectedName(updatable) text($font, callback(\"selectedName\"), $fontColor): 2, 4", "");
+		final builder = BuilderTestBase.builderFromSource(source);
+		Assert.raises(() -> UIStandardMultiAnimDropdown.createWithSingleBuilder(builder, createDropdownItems(), 0, "dropdown", "list-panel",
+			"list-item", "scrollbar", "scrollbar", 120, 200), null, "the dropdown has no #selectedName");
+	}
+
+	@Test
+	public function testASliderWithoutStartAndEndFailsWhenMade():Void {
+		final source = StringTools.replace(StringTools.replace(SLIDER_MANIM, "#start point: 0, 5", ""), "#end point: $size, 5", "");
+		final builder = BuilderTestBase.builderFromSource(source);
+		Assert.raises(() -> UIStandardMultiAnimSlider.create(builder, "slider", 200, 0.0), null, "a slider with no #start/#end cannot be dragged");
+	}
+
+	@Test
+	public function testASliderIsBuiltWhenMade():Void {
+		final builder = BuilderTestBase.builderFromSource(SLIDER_MANIM);
+		Assert.raises(() -> UIStandardMultiAnimSlider.create(builder, "slider", 200, 0.0, ["bogus" => 1]), null,
+			"an argument the design has not fails when the slider is made, not at its first update");
+		final slider = UIStandardMultiAnimSlider.create(builder, "slider", 200, 500.0);
+		Assert.notNull(@:privateAccess slider.currentResult, "built at once; a value past the default range is drawn at its end");
+	}
+
+	@Test
+	public function testAProgressBarIsBuiltWhenMade():Void {
+		final builder = BuilderTestBase.builderFromSource(PROGRESSBAR_MANIM);
+		final bar = UIMultiAnimProgressBar.create(builder, "progressBar", 40);
+		Assert.notNull(bar.getResult(), "built when made");
+		Assert.raises(() -> UIMultiAnimProgressBar.create(builder, "progressBar", 0, ["bogus" => 1]), null,
+			"an argument the design has not fails when the bar is made");
+	}
+
+	@Test
+	public function testAListItemsTileMustBeDeclared():Void {
+		final source = StringTools.replace(SCROLLABLE_LIST_MANIM, ", tile:tile", "");
+		Assert.raises(() -> listFrom(source, [{name: "Sword", tileRef: TRGeneratedRect(4, 4)}]), null,
+			"an item with a tile, a design with no tile parameter: refused, not dropped");
+	}
+
+	@Test
+	public function testAListItemsInteractivesMustHaveTheItemsIndexAsId():Void {
+		final source = StringTools.replace(SCROLLABLE_LIST_MANIM, "interactive($itemWidth, 20, $index);",
+			"interactive($itemWidth, 20, $index);\n\t\t\tinteractive(10, 10, \"del\"): 100, 0");
+		Assert.raises(() -> listFrom(source), null, "an interactive whose id is not the item's index fails when the items are built");
+	}
+
+	@Test
+	public function testAddSliderReadsInitialValue():Void {
+		final screen = new UITestScreen();
+		final builder = BuilderTestBase.builderFromSource(SLIDER_MANIM);
+		final settings:Map<String, SettingValue> = ["initialValue" => RSVFloat(30), "min" => RSVFloat(10), "max" => RSVFloat(50)];
+		final slider = try @:privateAccess screen.addSlider(builder, settings, 0) catch (e:Dynamic) {
+			Assert.fail('initialValue went to the design: $e');
+			return;
+		}
+		Assert.isTrue(slider.getFloatValue() == 30, "the setting is the slider's value, in its own range");
 	}
 
 	// ============== Interactive Wrapper Tests ==============

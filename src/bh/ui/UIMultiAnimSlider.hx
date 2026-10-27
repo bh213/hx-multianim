@@ -46,6 +46,8 @@ class UIStandardMultiAnimSlider implements UIElement implements UIElementDisabla
 	// without allocating per event.
 	final tmpPoint:Point = new Point();
 
+	/** Built at once, so a design that does not fit fails here, not at the first frame; the first
+	 *  update draws it again, with the `min`/`max`/`step` set after this. */
 	function new(builder:MultiAnimBuilder, name:String, size:Int, initialValue:Float, ?extraParams:Null<Map<String, Dynamic>>) {
 		this.root = new h2d.Object();
 		this.builder = builder;
@@ -53,6 +55,10 @@ class UIStandardMultiAnimSlider implements UIElement implements UIElementDisabla
 		this.currentValue = initialValue;
 		this.size = size;
 		this.extraParams = extraParams;
+		doRedraw();
+		if (!builder.hasNamedElement(name, "start") || !builder.hasNamedElement(name, "end"))
+			throw 'slider #$name has no #start and #end points: the track a push or a drag is read along';
+		this.requestRedraw = true;
 	}
 
 	public function clear() {
@@ -86,9 +92,11 @@ class UIStandardMultiAnimSlider implements UIElement implements UIElementDisabla
 		return new UIStandardMultiAnimSlider(builder, name, size, initialValue, extraParams);
 	}
 
+	/** The value as the design's `value` (0..100); one outside `min`..`max` (a starting value given
+	 *  before them) is drawn at the end it is past. */
 	function externalToInternal(value:Float):Int {
 		if (max == min) return 0;
-		return Std.int(Math.round((value - min) / (max - min) * 100));
+		return Std.int(hxd.Math.clamp(Math.round((value - min) / (max - min) * 100), 0, 100));
 	}
 
 	function snapToStep(value:Float):Float {

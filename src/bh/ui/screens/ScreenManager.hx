@@ -17,9 +17,6 @@ import bh.ui.screens.UIScreen.ModalOverlayConfig;
 import bh.multianim.MultiAnimParser.EasingType;
 import byte.ByteData;
 import haxe.io.Bytes;
-#if hl
-import sys.io.File;
-#end
 #if js
 import haxe.Http;
 #end
@@ -389,14 +386,16 @@ class ScreenManager {
 			#end
 		};
 
+		// An .anim is a resource as a .manim is: read where the .manim files and sheets are
 		loader.loadAnimSMImpl = filename -> {
 			var byteData:ByteData;
 			#if hl
-			byteData = ByteData.ofBytes(File.getBytes(filename));
+			byteData = ByteData.ofBytes(hxd.Res.load(filename).entry.getBytes());
 			#elseif js
-			// Use external JavaScript class to load file
-			var bytes = FileLoader.load(filename);
-			byteData = ByteData.ofBytes(Bytes.ofData(bytes));
+			if (hxd.Res.loader.exists(filename))
+				byteData = ByteData.ofBytes(hxd.Res.load(filename).entry.getBytes());
+			else
+				byteData = ByteData.ofBytes(Bytes.ofData(FileLoader.load(filename)));
 			#else
 			throw 'loadAnimSMImpl not implemented for this target - filename: $filename';
 			#end

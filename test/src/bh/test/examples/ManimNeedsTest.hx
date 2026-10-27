@@ -518,7 +518,7 @@ class ManimNeedsTest extends utest.Test {
 	}
 
 	@Test
-	public function testATileMapOfAnImportedTilesetListsOnlyItsOwnSheets() {
+	public function testATileMapOfAnImportedTilesetListsItsLayerCellsUnderTheImport() {
 		final n = needs('import "world.manim" as "world"
 			#map tilemap {
 				tileset: external(world), ts
@@ -539,6 +539,13 @@ class ManimNeedsTest extends utest.Test {
 		Assert.same(["icons"], keys(n.sheets), "the imported tileset\'s atlas is in the import\'s own needs");
 		Assert.same(["cross"], cells(n, "icons"));
 		Assert.equals("world.manim", n.imports.get("world"));
+		// the props layer draws from the imported tileset's atlas, which only the import names
+		final importCells:Dynamic = Reflect.field(n, "importCells");
+		Assert.notNull(importCells, "the cells this file takes from an imported tileset's atlas");
+		if (importCells != null) {
+			final byTileset:Map<String, Array<String>> = (importCells : Map<String, Map<String, Array<String>>>).get("world");
+			Assert.same(["skull"], byTileset?.get("ts"));
+		}
 	}
 
 	@Test

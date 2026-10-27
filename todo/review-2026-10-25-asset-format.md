@@ -50,6 +50,16 @@ an operand naming one of its values standing for that index; ANM-18 composes the
 ref an error (fixture 18 gives its enum a `none` instead); CG-43 defers the arms whose kinds keep
 nothing outside their fields, the rest are built at create as before.
 
+**Status, fourth batch:** the P2s that needed no decision: IMP-2, IMP-12, LSP-8, UI-86..88 are
+fixed, each with a test that failed first (`AnimParserTest`, `ManimNeedsTest`, `UIComponentTest`, the
+LSP suite's `ContextAnalyzerTest`; CHANGELOG names them). Decisions: IMP-12 adds
+`ManimNeeds.importCells` (alias, then tileset, then cells; the import's atlas is named in the import);
+the slider and the progress bar build in their constructor (a starting slider value past 0..100 is
+clamped for that build); a list item's interactive with another id than the item's index is refused
+when the items are built; a pre-resolved argument is checked by name in every build. LSP-8's
+bracket half was already fixed (62e4942). UI-88's missing sections are written: Text Input and
+Dialogs in `docs/manim.md`.
+
 ## Start here
 
 **The nine P1s.**
@@ -94,7 +104,7 @@ CG-46 — errors that point at the wrong cause or files the tools accept and the
   satisfied (and in a dev build they start working after the imported file's first hot reload).
   *Fix:* walk `multiParserResult.imports` (depth first, once per builder) in both places; test with a
   two-file fixture.
-- [ ] `IMP-2` **P2** **The default loader reads `.anim` from the working directory on HashLink,
+- [x] `IMP-2` **P2** **The default loader reads `.anim` from the working directory on HashLink,
   everything else from `hxd.Res`** — CONFIRMED. `ScreenManager.createLoader`'s `loadAnimSMImpl` is
   `File.getBytes(filename)` under `#if hl` (ScreenManager.hx:390-402); sheets, tiles, `.manim`,
   fonts and sounds go through `hxd.Res` (:341-427). So `stateanim("marine.anim")` in a `.manim` that
@@ -163,7 +173,7 @@ CG-46 — errors that point at the wrong cause or files the tools accept and the
   `builderParameter(…)` placeholder sources and `$ctx.width`/`height`/`random` are values the host
   supplies, but `needsOf` lists only `$ctx.font` (ManimNeeds.hx:536-545); a tool cannot tell that an
   export draws differently per host or fails without a callback. *Fix:* a `hostInputs` list (AF-12).
-- [ ] `IMP-12` **P2** **`needsOf` loses a map's layer cells when its tileset is imported** —
+- [x] `IMP-12` **P2** **`needsOf` loses a map's layer cells when its tileset is imported** —
   CONFIRMED. Layers with no `sheet:` are skipped when `tilesetImport != null` (ManimNeeds.hx:865-876),
   and the import's TILESET walk lists terrain and rise cells only (:846-864): `layer props { "s":
   skull }` puts `skull` in neither file's needs, though manim-reference.md:1806 says it is in "the
@@ -436,7 +446,7 @@ files are in the session scratchpad, not the repo.
   unnamed `paths {}` give "duplicate node ##defaultPaths", an internal name (near PRS-21); inside
   `${}` a bare enum word becomes a reference (`'${?($m == a) "x":"y"}'` → "unknown variable $a").
   CONFIRMED.
-- [ ] `LSP-8` **P2** **The LSP's own parameter scan is wrong** — CONFIRMED (node probe).
+- [x] `LSP-8` **P2** **The LSP's own parameter scan is wrong** — CONFIRMED (node probe).
   `ContextAnalyzer.hx:147`, :270, :330: `mode:[a,b]=a` yields a parameter `b]` (commas inside brackets
   split it); parameters of every earlier programmable and slot leak into later ones; keyword checks are
   case-sensitive while the parser is not (`Programmable(` yields no parameters; `#ap animatedpath {`
@@ -617,7 +627,7 @@ The contract table these were found with is Appendix A of the proposal.
   (MultiAnimBuilder.hx:1503-1516): a design without `hover` builds and draws nothing on hover.
   Related to DEC-4. *Fix:* pass `disabled` only when declared; fix one runtime value set per widget
   in the contract (AF-13).
-- [ ] `UI-86` **P2** 🤖 **Required parts are checked late, or never** — CONFIRMED. The list panel's
+- [x] `UI-86` **P2** 🤖 **Required parts are checked late, or never** — CONFIRMED. The list panel's
   `builderParameter("mask")` is never checked, an unknown placeholder key is ignored
   (MultiAnimBuilder.hx:7010-7014, :7042-7047), so the list is invisible; the `#scrollbar` point is
   checked only once content overflows (UIMultiAnimScrollableList.hx:204, :223-230), so a later
@@ -625,13 +635,13 @@ The contract table these were found with is Appendix A of the proposal.
   (:97-103); a slider without `#start`/`#end` is silently dead (Slider:157-160); slider and progress
   bar build at the first `update()` (Slider:100-117, ProgressBar:43-64), so their errors come from
   the frame loop. *Fix:* check parts in the constructor from the parse (`builder.hasNamedElement`).
-- [ ] `UI-87` **P2** **The list item contract has undocumented parts** — CONFIRMED. `images` is always
+- [x] `UI-87` **P2** **The list item contract has undocumented parts** — CONFIRMED. `images` is always
   passed (UIElementBuilder.hx:41-76) and so required, but undocumented (docs/manim.md:3419-3431);
   `tile` is passed pre-resolved, which skips the unknown-name check (MultiAnimBuilder.hx:10251-10252),
   so an undeclared `tile` is dropped; every interactive in an item must have the item's index as id
   (UIMultiAnimScrollableList.hx:191, :283-289), so a `"del"` icon throws at first hover. *Fix:* document
   both; check pre-resolved values by name too.
-- [ ] `UI-88` **P2** **Two statements in `manim-reference.md` are wrong** — CONFIRMED. :1611 says an
+- [x] `UI-88` **P2** **Two statements in `manim-reference.md` are wrong** — CONFIRMED. :1611 says an
   unknown parameter name is a silent no-op widgets rely on; `setParameter` throws `unknown_param`
   (MultiAnimBuilder.hx:1462-1467). :1544 lists `initialValue` for the slider; `addSlider` does not
   read it (UIScreen.hx:646-650), so it passes through and the slider throws at its first redraw. Also

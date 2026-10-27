@@ -21838,9 +21838,62 @@ manim_lsp_CursorContext.__constructs__ = [manim_lsp_CursorContext.TopLevel,manim
 var manim_lsp_ContextAnalyzer = function() { };
 manim_lsp_ContextAnalyzer.__name__ = true;
 manim_lsp_ContextAnalyzer.analyze = function(text,line,character) {
-	var lines = text.split("\n");
+	var result = manim_lsp_ContextAnalyzer.scan(text,line,character);
+	var scopes = result.scopes;
+	var from = scopes.length;
+	while(from > 0) {
+		--from;
+		var scope = scopes[from];
+		if(scope != null && scope.isSlot) {
+			break;
+		}
+	}
 	var paramNames = [];
 	var paramTypes = new haxe_ds_StringMap();
+	var _g = from;
+	var _g1 = scopes.length;
+	while(_g < _g1) {
+		var k = _g++;
+		var scope = scopes[k];
+		if(scope == null) {
+			continue;
+		}
+		var _g2 = 0;
+		var _g3 = scope.names;
+		while(_g2 < _g3.length) {
+			var name = _g3[_g2];
+			++_g2;
+			if(paramNames.indexOf(name) < 0) {
+				paramNames.push(name);
+			}
+		}
+		var h = scope.types.h;
+		var _g_h = h;
+		var _g_keys = Object.keys(h);
+		var _g_length = _g_keys.length;
+		var _g_current = 0;
+		while(_g_current < _g_length) {
+			var key = _g_keys[_g_current++];
+			var _g_key = key;
+			var _g_value = _g_h[key];
+			var name1 = _g_key;
+			var type = _g_value;
+			paramTypes.h[name1] = type;
+		}
+	}
+	return { context : result.context, paramNames : paramNames, paramTypes : paramTypes, prefix : result.prefix};
+};
+manim_lsp_ContextAnalyzer.scan = function(text,line,character) {
+	var lines = text.split("\n");
+	var paramScopes = [];
+	var pending = null;
+	var result = function(context,prefix) {
+		var scopes = paramScopes.slice();
+		if(pending != null) {
+			scopes.push(pending);
+		}
+		return { context : context, scopes : scopes, prefix : prefix};
+	};
 	var textToCursor = "";
 	var _g = 0;
 	var _g1 = lines.length;
@@ -21906,12 +21959,17 @@ manim_lsp_ContextAnalyzer.analyze = function(text,line,character) {
 		if(c == 123) {
 			contextStack.push(lastKeyword);
 			lastKeyword = "";
+			paramScopes.push(pending);
+			pending = null;
 			++i;
 			continue;
 		}
 		if(c == 125) {
 			if(contextStack.length > 0) {
 				contextStack.pop();
+			}
+			if(paramScopes.length > 0) {
+				paramScopes.pop();
 			}
 			++i;
 			continue;
@@ -21924,23 +21982,27 @@ manim_lsp_ContextAnalyzer.analyze = function(text,line,character) {
 				word += String.fromCodePoint(code);
 				++j;
 			}
-			if(word == "programmable" || word == "slot") {
-				manim_lsp_ContextAnalyzer.extractParams(textToCursor,j,paramNames,paramTypes);
+			var keyword = manim_lsp_ContextAnalyzer.contextKeyword(word);
+			if(keyword == "programmable" || keyword == "slot") {
+				var declared = { names : [], types : new haxe_ds_StringMap(), isSlot : keyword == "slot"};
+				if(manim_lsp_ContextAnalyzer.extractParams(textToCursor,j,declared.names,declared.types)) {
+					pending = declared;
+				}
 			}
-			if(manim_lsp_ContextAnalyzer.isContextKeyword(word)) {
-				lastKeyword = word;
+			if(keyword != null) {
+				lastKeyword = keyword;
 			}
 			i = j;
 			continue;
 		}
 		if(c == 36) {
 			if(i >= textToCursor.length - prefix.length - 1) {
-				return { context : manim_lsp_CursorContext.AfterDollar(prefix), paramNames : paramNames, paramTypes : paramTypes, prefix : prefix};
+				return result(manim_lsp_CursorContext.AfterDollar(prefix),prefix);
 			}
 		}
 		if(c == 64) {
 			if(i == textToCursor.length - 1) {
-				return { context : manim_lsp_CursorContext.AfterAt, paramNames : paramNames, paramTypes : paramTypes, prefix : prefix};
+				return result(manim_lsp_CursorContext.AfterAt,prefix);
 			}
 			if(i + 1 < textToCursor.length && HxOverrides.cca(textToCursor,i + 1) == 40) {
 				var depth = 0;
@@ -21959,7 +22021,7 @@ manim_lsp_ContextAnalyzer.analyze = function(text,line,character) {
 					++j1;
 				}
 				if(!closed) {
-					return { context : manim_lsp_CursorContext.AfterConditionalOpen, paramNames : paramNames, paramTypes : paramTypes, prefix : prefix};
+					return result(manim_lsp_CursorContext.AfterConditionalOpen,prefix);
 				}
 			}
 		}
@@ -21969,10 +22031,10 @@ manim_lsp_ContextAnalyzer.analyze = function(text,line,character) {
 	if(prefix.length == 0 || !StringTools.startsWith(prefix,"$")) {
 		var trimmed = StringTools.rtrim(textToCursor);
 		if(StringTools.endsWith(trimmed,"filter:") || StringTools.endsWith(trimmed,"filter :")) {
-			return { context : manim_lsp_CursorContext.FilterPosition, paramNames : paramNames, paramTypes : paramTypes, prefix : prefix};
+			return result(manim_lsp_CursorContext.FilterPosition,prefix);
 		}
 	}
-	return { context : context, paramNames : paramNames, paramTypes : paramTypes, prefix : prefix};
+	return result(context,prefix);
 };
 manim_lsp_ContextAnalyzer.determineContext = function(stack,lastKeyword,prefix) {
 	if(stack.length == 0) {
@@ -22022,7 +22084,7 @@ manim_lsp_ContextAnalyzer.extractParams = function(text,startIdx,paramNames,para
 	var i = startIdx;
 	while(i < text.length && HxOverrides.cca(text,i) == 32) ++i;
 	if(i >= text.length || HxOverrides.cca(text,i) != 40) {
-		return;
+		return false;
 	}
 	++i;
 	var depth = 1;
@@ -22074,6 +22136,13 @@ manim_lsp_ContextAnalyzer.extractParams = function(text,startIdx,paramNames,para
 	if(StringTools.trim(current).length > 0) {
 		manim_lsp_ContextAnalyzer.parseParam(StringTools.trim(current),paramNames,paramTypes);
 	}
+	++i;
+	while(i < text.length && StringTools.isSpace(text,i)) ++i;
+	if(i < text.length) {
+		return HxOverrides.cca(text,i) == 123;
+	} else {
+		return true;
+	}
 };
 manim_lsp_ContextAnalyzer.parseParam = function(param,paramNames,paramTypes) {
 	var colonIdx = param.indexOf(":");
@@ -22116,12 +22185,15 @@ manim_lsp_ContextAnalyzer.getPrefix = function(textToCursor) {
 	}
 	return HxOverrides.substr(textToCursor,i + 1,null);
 };
-manim_lsp_ContextAnalyzer.isContextKeyword = function(word) {
-	switch(word) {
-	case "animatedPath":case "curve":case "curves":case "data":case "flow":case "layers":case "mask":case "particles":case "paths":case "programmable":case "repeatable":case "repeatable2d":case "settings":case "slot":case "tilegroup":case "transition":
-		return true;
+manim_lsp_ContextAnalyzer.contextKeyword = function(word) {
+	var lower = word.toLowerCase();
+	switch(lower) {
+	case "animatedpath":
+		return "animatedPath";
+	case "curve":case "curves":case "data":case "flow":case "layers":case "mask":case "particles":case "paths":case "programmable":case "repeatable":case "repeatable2d":case "settings":case "slot":case "tilegroup":case "transition":
+		return lower;
 	default:
-		return false;
+		return null;
 	}
 };
 manim_lsp_ContextAnalyzer.isIdentStart = function(c) {

@@ -1563,7 +1563,7 @@ When `tabPanel.contentRoot` is set, tab content coordinates are relative to the 
 |---------|-------------|
 | `buildName` | Override programmable name for single-builder component |
 | `text` | Button text content |
-| `initialValue` | Starting value (checkbox, slider) |
+| `initialValue` | Starting value (checkbox; slider, in its `min`..`max`) |
 | `min`, `max`, `step` | Numeric range (slider) |
 | `direction` | `vertical`, `horizontal`, `auto` (slider: read from `#start`/`#end`); `vertical`, `horizontal` (scrollbar) |
 | `arrowStep` | Content pixels an arrow click or wheel notch scrolls (scrollbar) |
@@ -1630,7 +1630,8 @@ Builder throws `BuilderError` with `code == "untracked_param"`; codegen throws a
 
 | Code | When thrown |
 |------|-------------|
-| `"invalid_param_value"` | `setParameter(name, value)` on a declared param whose value is not `Int`/`Float`/`String`/`Bool`/`ResolvedIndexParameters`/`h2d.Tile` (covers `null`, arrays, arbitrary objects, unresolved enum values). Message names the param and rejected type. Unknown param names are still a silent no-op — UI widgets (Button/Checkbox/Slider/Tabs/TextInput) rely on `setParameter("disabled", ...)` being a no-op for templates that don't opt in |
+| `"invalid_param_value"` | `setParameter(name, value)` on a declared param whose value is not `Int`/`Float`/`String`/`Bool`/`ResolvedIndexParameters`/`h2d.Tile` (covers `null`, arrays, arbitrary objects, unresolved enum values). Message names the param and rejected type |
+| `"unknown_param"` | `setParameter(name, value)` on a name the programmable does not declare; the message lists the ones it does. Code that drives an optional parameter asks `hasParameter(name)` first; the parameters each widget passes are listed with it in `docs/manim.md` (UI Components) |
 | `"nested_begin_update"` | `beginUpdate()` called while already in batch — nested batching is not supported |
 | `"unbalanced_end_update"` | `endUpdate()` called without a matching `beginUpdate()` |
 | `"slot_disposed"` | `SlotHandle.setParameter` called on a handle whose enclosing subtree has been torn down (SWITCH arm swap, repeatable shrinkage). External code holding long-lived `SlotHandle` references across arm flips should re-fetch via `result.getSlot(name)` after each rebuild, or listen for the rebuild via `result.addRebuildListener` |
@@ -1825,11 +1826,12 @@ final needs:ManimNeeds = ManimNeedsTools.needsOf(result);
 
 | Field | What it lists |
 |-------|---------------|
-| `sheets:Map<String, Null<Array<String>>>` | An atlas by name with the cells named in it: `sheet("ui", "button")`, a nine-patch, a text image, a cursor, a stateanim construct, a tileset's atlas with its terrain, side and layer cells (what `tilemap(name)` and `tilemap(fill(…))` place needs nothing more: its tileset is listed where it is defined, an imported one in the import's own needs). `null` cells is the whole sheet: a cell that is an expression over a parameter that can be given any value or over a loop variable, a `tiles($b, $t, "sheet")` iterator, an autotile `sheet:` + `prefix:`, an inline atlas cut out of a sheet. A sheet the file defines itself (`#name atlas2`) is not a need |
+| `sheets:Map<String, Null<Array<String>>>` | An atlas by name with the cells named in it: `sheet("ui", "button")`, a nine-patch, a text image, a cursor, a stateanim construct, a tileset's atlas with its terrain, side and layer cells (what `tilemap(name)` and `tilemap(fill(…))` place needs nothing more: its tileset is listed where it is defined, an imported one in the import's own needs; a map's layer with no `sheet:` over an imported tileset is in `importCells`). `null` cells is the whole sheet: a cell that is an expression over a parameter that can be given any value or over a loop variable, a `tiles($b, $t, "sheet")` iterator, an autotile `sheet:` + `prefix:`, an inline atlas cut out of a sheet. A sheet the file defines itself (`#name atlas2`) is not a need |
 | `tiles:Array<String>` | Image files: `file("x.png")`, an autotile's or an inline atlas's `file:`, a palette image |
 | `fonts:Array<String>` | `text()`/`richText()` fonts, their styles and `autoFit` fonts, a generated tile's font, `$ctx.font("name")` wherever a value is written, a `font` setting a widget is given (`settings { font => "m6x11" }`, `item.font => "…"`) |
 | `anims:Array<String>` | `.anim` files: `stateanim("file.anim", …)`, a particle group's `animFile`, a `stateanim($b, "file.anim", …)` iterator, `extraPoint("file.anim", …)` |
 | `imports:Map<String, String>` | Alias to path of every `import "file" as "alias"` (`MultiAnimResult.importPaths`, kept with or without a loader; `imports` holds the loaded files when there is one) |
+| `importCells:Map<String, Map<String, Array<String>>>` | The cells a map's layer with no `sheet:` takes from an imported tileset's atlas (`tileset: external(world), ts` with `layer props { legend { "s": skull } … }`), by the import's alias, then the tileset's name: `["world" => ["ts" => ["skull"]]]`. The atlas is named in the imported file, so a tool that reads it lists these under that atlas |
 | `filters:Array<String>` | Custom filters by name (lower case, as parsed), registered in code with `FilterManager` |
 | `cursors:Array<String>` | Cursors an interactive names (`cursor => "sword"`, `cursor.hover`, `cursor.disabled`) that are neither `CursorManager`'s own (`pointer`, `move`, `text`, …: `ManimNeedsTools.BUILT_IN_CURSORS`) nor in the file's `#name cursor { }` blocks; lower case, as `CursorManager` keeps them |
 | `fromParameters:Bool` | A name could not be listed whole: an expression over a parameter that can be given values other than those listed (a string or number parameter), over a loop variable, or worked out in a way the parse does not follow. A cell so is its sheet whole (`null` cells); a sheet whose own name cannot be known is not listed |

@@ -69,6 +69,10 @@ typedef ManimNeeds = {
 	music:Array<String>,
 	soundFiles:Array<String>,
 	uiSounds:Array<String>,
+	/** The cells a map layer with no `sheet:` takes from an imported tileset's atlas, by the import's
+	 *  alias, then the tileset's name: the atlas is named in the imported file, so a tool that reads
+	 *  it lists them under that atlas. */
+	importCells:Map<String, Map<String, Array<String>>>,
 };
 
 /**
@@ -160,6 +164,9 @@ class ManimNeedsTools {
 		n.music.sort(Reflect.compare);
 		n.soundFiles.sort(Reflect.compare);
 		n.uiSounds.sort(Reflect.compare);
+		for (_ => byTileset in n.importCells)
+			for (_ => cells in byTileset)
+				cells.sort(Reflect.compare);
 		return {
 			sheets: n.sheets,
 			tiles: n.tiles,
@@ -174,6 +181,7 @@ class ManimNeedsTools {
 			music: n.music,
 			soundFiles: n.soundFiles,
 			uiSounds: n.uiSounds,
+			importCells: n.importCells,
 		};
 	}
 
@@ -267,6 +275,7 @@ class ManimNeedsTools {
 	final music:Array<String> = [];
 	final soundFiles:Array<String> = [];
 	final uiSounds:Array<String> = [];
+	final importCells:Map<String, Map<String, Array<String>>> = [];
 	final cursors:Array<String> = [];
 	final ownSheets:Array<String> = [];
 	final ownCursors:Array<String> = [];
@@ -884,12 +893,26 @@ class ManimNeedsTools {
 				if (!any && !sheets.exists(def.atlas))
 					sheets.set(def.atlas, []);
 			case TILEMAP(def):
-				// a layer's cells are in its own sheet, else the tileset's atlas (of this file; an
-				// import's tileset lists its atlas in the import's own needs)
+				// a layer's cells are in its own sheet, else the tileset's atlas: of this file, or of
+				// an import, whose atlas only the import names (`importCells`)
 				for (l in def.layers) {
-					var sheet = l.sheet;
-					if (sheet == null && def.tilesetImport == null)
-						sheet = atlasOfTileset(def.tileset);
+					final importAlias = def.tilesetImport;
+					if (l.sheet == null && importAlias != null) {
+						var byTileset = importCells.get(importAlias);
+						if (byTileset == null) {
+							byTileset = [];
+							importCells.set(importAlias, byTileset);
+						}
+						var cells = byTileset.get(def.tileset);
+						if (cells == null) {
+							cells = [];
+							byTileset.set(def.tileset, cells);
+						}
+						for (_ => cell in l.legend)
+							add(cells, cell);
+						continue;
+					}
+					final sheet = l.sheet ?? atlasOfTileset(def.tileset);
 					if (sheet == null)
 						continue;
 					for (_ => cell in l.legend)

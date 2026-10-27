@@ -10542,6 +10542,7 @@ class MultiAnimBuilder {
 		if (input != null)
 			for (key => value in input) {
 				if (Std.isOfType(value, ResolvedIndexParameters)) {
+					getDefsType(key, value); // worked out already, but by name like any other
 					retVal.set(key, value);
 				} else if (Std.isOfType(value, ReferenceableValue)) {
 					final ref:ReferenceableValue = value;

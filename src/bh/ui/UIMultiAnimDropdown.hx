@@ -69,6 +69,9 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 				inputParams.set(key, value);
 		}
 		this.result = this.builder.builder.buildWithParameters(builder.name, inputParams, {callback: @:nullSafety(Off) callback}, null, true);
+		// checked now: it is written to only when the choice changes
+		if (result.names.get("selectedName") == null)
+			throw 'dropdown #${builder.name} has no #selectedName: the text the chosen item\'s name is shown in';
 
 		transitionTimerBase = result.rootSettings.getFloatOrDefault("transitionTimer", 1.0);
 		root.addChild(result.object);

@@ -72,7 +72,7 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 	var lastClickIndex = -1;
 	var topClearance = 0;
 
-	function new(panelBuilder:UIElementBuilder, itemBuilder:UIElementBuilder, scrollbarBuilder:UIElementBuilder, scrollbarInPanelName:String, width:Int, height:Int, items, topClearance, initialIndex = 0, panelSizeMode:PanelSizeMode = null) {
+	function new(panelBuilder:UIElementBuilder, itemBuilder:UIElementBuilder, scrollbarBuilder:UIElementBuilder, scrollbarInPanelName:String, width:Int, height:Int, items:Array<UIElementListItem>, topClearance:Int, initialIndex = 0, panelSizeMode:PanelSizeMode = null) {
 		this.panelBuilder = panelBuilder;
 		this.itemBuilder = itemBuilder;
 		this.scrollbarBuilder = scrollbarBuilder;
@@ -181,8 +181,18 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 		if (extra != null)
 			for (key => value in extra)
 				params.set(key, value);
+		final maskWasIn = mask.parent;
 		var builtPanel = this.panelBuilder.builder.buildWithParameters(this.panelBuilder.name, params,
 			{placeholderObjects: ["mask" => PVObject(mask)]});
+		// The panel's parts, checked as it is made: with no mask placed the list shows nothing, and
+		// with no scrollbar point it fails only once its items overflow
+		if (mask.parent == null || mask.parent == maskWasIn)
+			throw 'list panel #${this.panelBuilder.name} has no placeholder(…, builderParameter("mask")): the items are drawn in it';
+		final scrollbarPoints = builtPanel.names.get(scrollbarInPanelName);
+		if (scrollbarPoints == null)
+			throw 'could not find scrollbar #${scrollbarInPanelName} in panel ${this.panelBuilder.name}';
+		if (scrollbarPoints.length > 1)
+			throw 'found multiple scrollbars #${scrollbarInPanelName} in panel ${this.panelBuilder.name}';
 		root.removeChildren();
 		root.addChild(builtPanel.object);
 		return builtPanel;
@@ -196,6 +206,15 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 		var y = 0.;
 		for (index => value in this.items) {
 			final result = itemBuilder.buildItem(index, value, width, height);
+			// The item under the mouse is found by its interactives' ids: each is the item's index
+			for (object in result.interactives) {
+				final id = switch object.multiAnimType {
+					case MAInteractive(_, _, identifier, _): identifier;
+					default: null;
+				};
+				if (id == null || Std.parseInt(id) != index)
+					throw 'list item #${itemBuilder.name} $index: an interactive in an item has the item\'s index as its id (interactive(w, h, $$index)), not "$id"';
+			}
 
 			var itemHeight = result.rootSettings.getFloatOrException("height");
 			displayItems.set(index, result);
