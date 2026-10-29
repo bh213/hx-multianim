@@ -40,5 +40,5 @@ version: 1.0
 
 #main point {
   pos: 0, 0
-  staticRef($tilesIteration):0,0
+  staticRef(tilesIteration):0,0
 }

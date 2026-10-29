@@ -1,0 +1,383 @@
+version: 1.0
+
+// Builder against codegen on the same programmables. Elements are told apart by tile width;
+// positions are read relative to the programmable root.
+
+layouts {
+  #cpRow list {
+    point: 100, 200
+    point: 300, 200
+    point: 500, 200
+  }
+}
+
+// A layout point picked by a param: the bitmap sits on point $idx and moves with it.
+#cpLayoutIdx programmable(idx:int=1) {
+  bitmap(generated(color(10, 10, #FF0000))): layout(cpRow, $idx)
+}
+
+// The same with a pixel offset on top of the layout point.
+#cpLayoutIdxOffset programmable(idx:int=1) {
+  bitmap(generated(color(10, 10, #FF0000))): layout(cpRow, $idx).offset(5, 0)
+}
+
+// A @final computed from a param follows the param: width $dbl = $x * 2, height $y.
+#cpFinalLive programmable(x:int=5, y:int=10) {
+  @final dbl = $x * 2
+  bitmap(generated(color($dbl, $y, #FF0000))): 0, 0
+}
+
+// A dynamicRef forwarding a @final computed from a param: the child is $fw = $x * 2 wide.
+#cpFinalFwdChild programmable(v:int=1) {
+  bitmap(generated(color($v, 4, #FF0000))): 0, 0
+}
+#cpFinalFwd programmable(x:int=5) {
+  @final fw = $x * 2
+  dynamicRef(cpFinalFwdChild, v=>$fw): 0, 0
+}
+
+// A repeat count from a constant @final never changes, so the body's own param ($ox) is
+// tracked as in a repeat with a literal count.
+#cpFinalCount programmable(ox:int=0) {
+  @final N = 3
+  repeatable($i, step($N, dx: 10)) {
+    bitmap(generated(color(4, 4, #FF0000))): $ox, 0
+  }
+}
+
+// An interactive id from a @final computed from a param: the id is frozen at build, so the
+// param behind it cannot be set at run time, as if the id named it directly.
+#cpFinalId programmable(x:int=5) {
+  @final idv = $x * 2
+  interactive(10, 10, $idv): 0, 0
+}
+
+// @default after a chain that a @final, a @switch or an unconditional apply breaks: the
+// break starts a fresh chain, so with b false the @default (8px) shows beside the 4px.
+#cpChainFinal programmable(a:bool=true, b:bool=false) {
+  @(a=>true) bitmap(generated(color(4, 4, #FF0000))): 0, 0
+  @final G = 8
+  @(b=>true) bitmap(generated(color(6, 6, #00FF00))): 0, 0
+  @default bitmap(generated(color($G, $G, #0000FF))): 0, 0
+}
+
+#cpChainSwitch programmable(a:bool=true, b:bool=false, m:[p,q]=p) {
+  @(a=>true) bitmap(generated(color(4, 4, #FF0000))): 0, 0
+  @switch(m) {
+    p: bitmap(generated(color(10, 10, #FFFF00)));
+    q: bitmap(generated(color(12, 12, #FF00FF)));
+  }
+  @(b=>true) bitmap(generated(color(6, 6, #00FF00))): 0, 0
+  @default bitmap(generated(color(8, 8, #0000FF))): 0, 0
+}
+
+#cpChainApply programmable(a:bool=true, b:bool=false) {
+  @(a=>true) bitmap(generated(color(4, 4, #FF0000))): 0, 0
+  apply {
+    alpha: 1.0
+  }
+  @(b=>true) bitmap(generated(color(6, 6, #00FF00))): 0, 0
+  @default bitmap(generated(color(8, 8, #0000FF))): 0, 0
+}
+
+// bit[N] on an int param: bits = 4 has bit 2 (6px) and not bit 0 (8px).
+#cpBitInt programmable(bits:int=4) {
+  @(bits => bit[2]) bitmap(generated(color(6, 6, #FF0000))): 0, 0
+  @(bits => bit[0]) bitmap(generated(color(8, 8, #00FF00))): 10, 0
+}
+
+// bit[N] on a loop variable: only the odd iterations (x = 10, 30) draw.
+#cpBitLoop programmable() {
+  repeatable($i, step(4, dx: 10)) {
+    @($i => bit[0]) bitmap(generated(color(4, 4, #FF0000))): 0, 0
+  }
+}
+
+// Comparisons on a flags param compare its value: f = 3 is >= 2 (6px), not < 2 (8px).
+#cpFlagsCmp programmable(f:flags(4)=3) {
+  @(f >= 2) bitmap(generated(color(6, 6, #FF0000))): 0, 0
+  @(f < 2) bitmap(generated(color(8, 8, #00FF00))): 10, 0
+}
+
+// A @switch arm whose pattern uses a param: hp <= $max draws 8px, otherwise 12px.
+#cpSwitchRef programmable(hp:int=5, max:int=10) {
+  @switch(hp) {
+    <= $max: bitmap(generated(color(8, 8, #FF0000)));
+    default: bitmap(generated(color(12, 12, #0000FF)));
+  }
+}
+
+// cpSwapB has no `p`: swapping to it throws, every time it is asked for.
+#cpSwapA programmable(p:uint=1) {
+  bitmap(generated(color(10, 10, #FF0000))): 0, 0
+}
+#cpSwapB programmable() {
+  bitmap(generated(color(20, 20, #00FF00))): 0, 0
+}
+#cpSwapRetry programmable(tmpl:[cpSwapA, cpSwapB]=cpSwapA, n:uint=1) {
+  #w dynamicRef($tmpl, p=>$n): 0, 0
+}
+
+// A tileGroup inside a constant-count repeat: copy $i bakes its bitmap at x = $i * 3.
+#cpTgRepeat programmable() {
+  repeatable($i, step(2, dx: 50)) {
+    tileGroup {
+      bitmap(generated(color(10, 10, red)), left, top): $i * 3, 0
+    }
+  }
+}
+
+// Particles inside a constant-count repeat: copy $i has $i + 3 particles.
+#cpParticlesRepeat programmable() {
+  repeatable($i, range(0, 2)) {
+    point {
+      pos: $i * 40, 0
+      particles {
+        count: $i + 3
+        emit: point(dist: 0, distRand: 0)
+        maxLife: 1.0
+        speed: 20
+        tiles: sheet("demo", "tile-center")
+        loop: false
+        size: 1.0
+      }
+    }
+  }
+}
+
+// A @final inside a param-dependent repeat body: iteration $i is $W = 4 + $i wide.
+#cpFinalInParamRepeat programmable(n:uint=2) {
+  repeatable($i, step($n, dx: 20)) {
+    @final W = 4 + $i
+    bitmap(generated(color($W, 4, #FF0000))): 0, 0
+  }
+}
+
+// A child two dynamicRefs place, each forwarded the host's $v: the child is $v wide.
+#cpFwdChild programmable(v:int=4) {
+  bitmap(generated(color($v, 4, #FF0000))): 0, 0
+}
+
+// One setParameter of the host that two dynamicRefs follow is one rebuild of the host.
+#cpFwdTwice programmable(v:int=4) {
+  #c1 dynamicRef(cpFwdChild, v => $v): 0, 0
+  #c2 dynamicRef(cpFwdChild, v => $v): 20, 0
+}
+
+// A conditional apply whose value uses $a (on the point holding the 10-wide bitmap), and a param
+// it does not use ($other, the 4-high bitmap's width).
+#cpApplyValueGate programmable(on:bool=true, a:float=0.5, other:int=4) {
+  point {
+    @(on=>true) apply { alpha: $a }
+    bitmap(generated(color(10, 10, #FF0000))): 0, 0
+  }
+  bitmap(generated(color($other, 4, #00FF00))): 20, 0
+}
+
+// The same with an unconditional apply.
+#cpApplyValueUncond programmable(a:float=0.5, other:int=4) {
+  point {
+    apply { alpha: $a }
+    bitmap(generated(color(10, 10, #FF0000))): 0, 0
+  }
+  bitmap(generated(color($other, 4, #00FF00))): 20, 0
+}
+
+// A @final in a @switch arm not shown at build: once shown, the arm follows the param its @final
+// uses ($x), the 2x-wide bitmap.
+#cpSwitchArmFinal programmable(mode:[a,b]=a, x:int=5) {
+  @switch(mode) {
+    a: bitmap(generated(color(4, 4, #FF0000)));
+    b {
+      @final W = $x * 2
+      bitmap(generated(color($W, 4, #00FF00))): 0, 0
+    }
+  }
+}
+
+// A repeat in a flow that is conditional, has a param count, or both: the flow lays out each item,
+// the 10-wide ones between the 5-wide and the 7-wide bitmap, 2 apart (at 7, 19, 31, ...).
+#cpFlowRepeatConst programmable(open:bool=true) {
+  flow(layout: horizontal, horizontalSpacing: 2) {
+    bitmap(generated(color(5, 4, #FF0000))): 0, 0
+    @(open=>true) repeatable($i, step(3, dx: 0)) {
+      bitmap(generated(color(10, 4, #00FF00))): 0, 0
+    }
+    bitmap(generated(color(7, 4, #0000FF))): 0, 0
+  }
+}
+#cpFlowRepeatCount programmable(n:uint=3) {
+  flow(layout: horizontal, horizontalSpacing: 2) {
+    bitmap(generated(color(5, 4, #FF0000))): 0, 0
+    repeatable($i, step($n, dx: 0)) {
+      bitmap(generated(color(10, 4, #00FF00))): 0, 0
+    }
+    bitmap(generated(color(7, 4, #0000FF))): 0, 0
+  }
+}
+#cpFlowRepeatBoth programmable(open:bool=true, n:uint=3) {
+  flow(layout: horizontal, horizontalSpacing: 2) {
+    bitmap(generated(color(5, 4, #FF0000))): 0, 0
+    @(open=>true) repeatable($i, step($n, dx: 0)) {
+      bitmap(generated(color(10, 4, #00FF00))): 0, 0
+    }
+    bitmap(generated(color(7, 4, #0000FF))): 0, 0
+  }
+}
+
+// A conditional repeat in a flow with its own @flow.halign: each 4-wide item is right-aligned
+// in the 40-wide column (x 36), the 10-wide bitmap stays left.
+#cpFlowRepeatProps programmable(show:bool=false) {
+  flow(layout: vertical, minWidth: 40) {
+    bitmap(generated(color(10, 10, #FF0000))): 0, 0
+    @(show=>true) @flow.halign(right) repeatable($i, range(0, 2)) {
+      bitmap(generated(color(4, 4, #00FF00))): 0, 0
+    }
+  }
+}
+
+// A hidden element on a layout point picked by a param: set past the layout's end while hidden it
+// is not placed (nothing throws), and shown it takes the point $idx names then.
+#cpLayoutHidden programmable(idx:int=1, on:bool=true) {
+  @(on=>true) bitmap(generated(color(10, 10, #FF0000))): layout(cpRow, $idx)
+}
+
+// The same under a hidden container.
+#cpLayoutHiddenNested programmable(idx:int=1, on:bool=true) {
+  @(on=>true) point {
+    bitmap(generated(color(10, 10, #FF0000))): layout(cpRow, $idx)
+  }
+}
+
+// Hidden by the same change that would move it past the layout's end: the move is never looked up.
+#cpLayoutHiddenBySameParam programmable(idx:int=1) {
+  @(idx < 3) bitmap(generated(color(10, 10, #FF0000))): layout(cpRow, $idx)
+}
+
+// A template swap while the dynamicRef's arm is hidden is done at once, as the builder does.
+#cpHiddenSwapA programmable() {
+  bitmap(generated(color(4, 4, #FF0000))): 0, 0
+}
+#cpHiddenSwapB programmable(b:uint=5) {
+  bitmap(generated(color($b, 4, #00FF00))): 0, 0
+}
+#cpSwapHidden programmable(show:bool=true, tpl:[cpHiddenSwapA, cpHiddenSwapB]=cpHiddenSwapA) {
+  @(show=>true) #panel dynamicRef($tpl): 0, 0
+}
+
+// Spliced repeats inside a hidden spliced repeat: what changes in them while the outer one is
+// hidden shows when it is shown again, in order (a conditional inner repeat, a counted one).
+#cpFlowNested programmable(a:bool=true, b:bool=false, n:uint=2) {
+  flow(layout: horizontal, horizontalSpacing: 2) {
+    @(a=>true) repeatable($i, step(2, dx: 0)) {
+      @(b=>true) repeatable($j, step(2, dx: 0)) {
+        bitmap(generated(color(10, 4, #00FF00))): 0, 0
+      }
+      repeatable($k, step($n, dx: 0)) {
+        bitmap(generated(color(6, 4, #0000FF))): 0, 0
+      }
+    }
+    bitmap(generated(color(7, 4, #FF0000))): 0, 0
+  }
+}
+
+// A @switch arm follows a param used only by a mask's or a flow's size, a spacer, a @flow.offset, a
+// text's font or a nested @switch's condition: the arm is built again (CodegenParityReviewTest)
+#cpArmFollows programmable(mode:[a, b]=a, mw:uint=20, fw:uint=40, sw:uint=10, ox:int=0, font:[dd, m3x6]=dd, inner:[x, y]=x, tw:uint=50) {
+  @switch(mode) {
+    a {
+      mask($mw, 8) {
+        bitmap(generated(color(30, 8, #FF0000))): 0, 0
+      }
+      flow(maxWidth: $fw, layout: horizontal) {
+        spacer($sw, 4);
+        @flow.offset($ox, 0) bitmap(generated(color(6, 4, #00FF00)));
+      }
+      text($font, "x", #FFFFFF): 0, 20
+      @switch(inner) {
+        x {
+          @(tw >= 60) bitmap(generated(color(5, 4, #FFFFFF))): 0, 40
+          @else bitmap(generated(color(3, 4, #888888))): 0, 40
+        }
+        default: bitmap(generated(color(9, 4, #0000FF))): 0, 40;
+      }
+    }
+    default: bitmap(generated(color(4, 4, #FF00FF))): 0, 0;
+  }
+}
+
+// An autotile tile picked by a param follows it (CodegenParityReviewTest)
+#cpTerrain autotile { format: cross tileSize: 4 demo: #fff, #000 }
+#cpAutotileIdx programmable(i:uint=0) {
+  bitmap(generated(autotile("cpTerrain", $i))): 0, 0
+}
+
+// A hidden arm is built on its first show, in codegen as in the builder: its frame, not in the
+// sheet, is never looked up while the arm is hidden (CodegenParityReviewTest)
+#cpLazyArm programmable(show:bool=false, cell:string="no_such_cell") {
+  @(show=>true) bitmap(sheet("demo", $cell)): 0, 0
+  @(show=>true) point {
+    pos: 20, 0
+    bitmap(sheet("demo", $cell)): 0, 0
+  }
+  bitmap(generated(color(4, 4, #ffffff))): 0, 10
+}
+
+// An extra point is where the drawn element puts it: placed, scaled and turned (CodegenParityReviewTest)
+#cpExtraPoint programmable(dir:[l, r]=r) {
+  @(dir=>l) #player stateanim("marine.anim", "idle", direction=>"l"): 100, 200
+  @else #player stateanim("marine.anim", "idle", direction=>"r") {
+    pos: 100, 200
+    scale: 2
+    rotate: 90
+  }
+  bitmap(generated(color(5, 5, #FF0000))): $player.extraPoint("targeting")
+}
+
+// A @final names the programmable a ref places by its value, and one that uses a param follows it,
+// in codegen as in the builder (CodegenParityReviewTest)
+#cpRefWide programmable() {
+  bitmap(generated(color(9, 4, #FFFFFF))): 0, 0
+}
+#cpRefNarrow programmable() {
+  bitmap(generated(color(3, 4, #FFFFFF))): 0, 0
+}
+#cpFinalRefTarget programmable(kind:[cpRefWide, cpRefNarrow]=cpRefNarrow) {
+  @final fixed = "cpRefWide"
+  @final picked = $kind
+  staticRef($fixed): 0, 0
+  staticRef($picked): 0, 10
+  dynamicRef($fixed): 0, 20
+  dynamicRef($picked): 0, 30
+}
+// The same with the @final declared in a nested block, gone from scope once the block is built
+#cpFinalRefNested programmable(kind:[cpRefWide, cpRefNarrow]=cpRefNarrow) {
+  layers() {
+    @final inner = $kind
+    dynamicRef($inner): 0, 0
+  }
+}
+// An @final no parameter reaches that is not a plain string: placed as by its name, no container
+#cpConstExprRef programmable() {
+  @final joined = "cpRef" + "Wide"
+  dynamicRef($joined): 0, 0
+}
+// The same for an @final of a loop variable (a repeat unrolled at compile time)
+#cpLoopRef0 programmable() {
+  bitmap(generated(color(3, 4, #FFFFFF))): 0, 0
+}
+#cpLoopRef1 programmable() {
+  bitmap(generated(color(9, 4, #FFFFFF))): 0, 0
+}
+#cpLoopFinalRef programmable() {
+  repeatable($i, step(2, dy: 10)) {
+    @final target = "cpLoopRef" + $i
+    dynamicRef($target): 0, 0
+  }
+}
+// The same repeat placing a programmable by its name, to measure against
+#cpLoopNamedRef programmable() {
+  repeatable($i, step(2, dy: 10)) {
+    dynamicRef(cpLoopRef0): 0, 0
+  }
+}

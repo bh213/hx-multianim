@@ -12,6 +12,9 @@ import bh.multianim.MultiAnimParser.EasingType;
 import bh.multianim.MultiAnimParser.FilterType;
 import bh.multianim.MultiAnimParser.PixelOutlineModeDef;
 import bh.multianim.MultiAnimParser.Node;
+import bh.multianim.MultiAnimParser.ResolvedIndexParameters;
+import bh.multianim.MultiAnimParser.DataValue;
+import bh.test.BuilderTestBase;
 
 /**
  * Non-visual tests that parse invalid .manim files and assert on parser errors.
@@ -2359,6 +2362,19 @@ class ParserErrorTest extends utest.Test {
 		");
 		Assert.isTrue(success, "grid.pos().offset() should parse successfully");
 	}
+
+	@Test
+	public function testOffsetOnHexCell() {
+		var success = parseExpectingSuccess("
+			#test programmable() {
+				hex: pointy(16, 16)
+				bitmap(generated(color(10, 10, #f00))): " + "$" + "hex.cube(0, 3, -3).offset(0, 0)
+				bitmap(generated(color(10, 10, #f00))): " + "$" + "hex.offset(1, 2, odd).offset(1, 1)
+			}
+		");
+		Assert.isTrue(success, "hex cell coordinates should take the .offset(x, y) suffix");
+	}
+
 
 	@Test
 	public function testOffsetInvalidSuffix() {
@@ -5079,5 +5095,900 @@ class ParserErrorTest extends utest.Test {
 			default:
 				Assert.fail('expected FilterPixelOutline(POInlineColor(...), true), got $filter');
 		}
+	}
+
+	// ===== Unknown enum value in a conditional must be rejected at parse time =====
+	// A typo'd enum member in a multi-value / pipe conditional otherwise diverges between
+	// builder (silently never matches) and codegen (matches enum index 0). Reject it instead.
+
+	@Test
+	public function testMultiValueMatchConditionalRejectsUnknownEnumValue() {
+		var error = parseExpectingError('
+			#test programmable(status:[normal,hover,pressed]=normal) {
+				@(status => [normal, hbover]) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.notNull(error, "Unknown enum value in @(p => [..]) should be rejected at parse time");
+		Assert.isTrue(error.indexOf("hbover") >= 0,
+			'Error should name the offending value "hbover", got: $error');
+	}
+
+	// ===== Parameterized slot bodies: enclosing @final constants stay in scope =====
+	// @final is an immutable named constant of the enclosing programmable body. Slot
+	// bodies are an isolated PARAMETER scope (enclosing params stay invisible — a slot
+	// rebuild only receives its own params), but constants are safe to share and the
+	// builder already merges them into the slot's param map at build time.
+
+	@Test
+	public function testSlotBodyCanReferenceEnclosingFinal() {
+		var success = parseExpectingSuccess("
+			#test programmable(x:uint=5) {
+				@final OFF = 7
+				#s slot(v:int=0) {
+					bitmap(generated(color(10, 10, #f00))): $OFF, 0
+				}
+			}
+		");
+		Assert.isTrue(success, "enclosing @final constant should be referenceable inside a parameterized slot body");
+	}
+
+	@Test
+	public function testSlotBodyStillRejectsEnclosingParam() {
+		// Guard: the param isolation is intentional (slot rebuilds only carry slot
+		// params) and must survive the @final scope change.
+		var error = parseExpectingError("
+			#test programmable(x:uint=5) {
+				#s slot(v:int=0) {
+					bitmap(generated(color(10, 10, #f00))): $x, 0
+				}
+			}
+		");
+		Assert.notNull(error, "enclosing programmable params must stay invisible inside a parameterized slot body");
+		Assert.isTrue(error.indexOf("unknown variable") >= 0,
+			'Error should mention unknown variable, got: $error');
+	}
+
+	@Test
+	public function testMultiValueNegatedConditionalRejectsUnknownEnumValue() {
+		var error = parseExpectingError('
+			#test programmable(status:[normal,hover,pressed]=normal) {
+				@(status != [normal, hbover]) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.notNull(error, "Unknown enum value in @(p != [..]) should be rejected at parse time");
+		Assert.isTrue(error.indexOf("hbover") >= 0,
+			'Error should name the offending value "hbover", got: $error');
+	}
+
+	@Test
+	public function testSwitchPipeArmRejectsUnknownEnumValue() {
+		var error = parseExpectingError('
+			#test programmable(status:[normal,hover,pressed]=normal) {
+				@switch(status) {
+					normal | hbover { bitmap(generated(color(10, 10, #f00))): 0,0 }
+					default { bitmap(generated(color(20, 20, #00f))): 0,0 }
+				}
+			}
+		');
+		Assert.notNull(error, "Unknown enum value in @switch pipe arm should be rejected at parse time");
+		Assert.isTrue(error.indexOf("hbover") >= 0,
+			'Error should name the offending value "hbover", got: $error');
+	}
+
+	// Single-value forms must reject typo'd enum members too: they otherwise route through
+	// stringToConditional → CoStringValue, which the builder silently never matches and codegen
+	// turns into an Int == String compile error (the same divergence the multi-value tests guard).
+
+	@Test
+	public function testSingleValueMatchConditionalRejectsUnknownEnumValue() {
+		var error = parseExpectingError('
+			#test programmable(status:[normal,hover,pressed]=normal) {
+				@(status => hbover) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.notNull(error, "Unknown enum value in @(p => value) should be rejected at parse time");
+		Assert.isTrue(error.indexOf("hbover") >= 0,
+			'Error should name the offending value "hbover", got: $error');
+	}
+
+	@Test
+	public function testSingleValueNegatedConditionalRejectsUnknownEnumValue() {
+		var error = parseExpectingError('
+			#test programmable(status:[normal,hover,pressed]=normal) {
+				@(status != hbover) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.notNull(error, "Unknown enum value in @(p != value) should be rejected at parse time");
+		Assert.isTrue(error.indexOf("hbover") >= 0,
+			'Error should name the offending value "hbover", got: $error');
+	}
+
+	@Test
+	public function testSwitchSingleArmRejectsUnknownEnumValue() {
+		var error = parseExpectingError('
+			#test programmable(status:[normal,hover,pressed]=normal) {
+				@switch(status) {
+					hbover: bitmap(generated(color(10, 10, #f00))): 0,0
+					default { bitmap(generated(color(20, 20, #00f))): 0,0 }
+				}
+			}
+		');
+		Assert.notNull(error, "Unknown enum value in @switch single-value arm should be rejected at parse time");
+		Assert.isTrue(error.indexOf("hbover") >= 0,
+			'Error should name the offending value "hbover", got: $error');
+	}
+
+	// Float params support comparison/range conditionals but NOT equality (=>) — float
+	// equality is unreliable and the codegen/builder backends diverge on it. Rejected at
+	// parse time, consistent with @switch already rejecting float parameters.
+	public function testFloatParamEqualityConditionalRejected() {
+		var error = parseExpectingError('
+			#test programmable(weight:float=1.0) {
+				@(weight => 1) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.notNull(error, "@(floatParam => N) equality must be rejected at parse time");
+		if (error != null)
+			Assert.isTrue(error.toLowerCase().indexOf("float") >= 0,
+				'Float equality reject message should mention float; got: $error');
+	}
+
+	public function testFloatParamNegatedEqualityConditionalRejected() {
+		var error = parseExpectingError('
+			#test programmable(weight:float=1.0) {
+				@(weight != 1) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.notNull(error, "@(floatParam != N) equality must be rejected at parse time");
+	}
+
+	public function testFloatParamComparisonConditionalStillParses() {
+		Assert.isTrue(parseExpectingSuccess('
+			#test programmable(weight:float=1.0) {
+				@(weight >= 1) bitmap(generated(color(10, 10, #f00))): 0,0
+				@(weight => 0..2) bitmap(generated(color(10, 10, #0f0))): 0,0
+			}
+		'), "@(floatParam >= N) and @(floatParam => a..b) must still parse");
+	}
+
+	// Numeric params (int / uint / range / hexDirection / gridDirection) only match numeric
+	// conditional values, and bool params only match true/false. A non-numeric / non-boolean
+	// string routed through stringToConditional → CoStringValue, which the builder silently never
+	// matched and codegen turned into an `Int == String` compile error that broke the whole @:manim
+	// build. Rejected at parse time, symmetric with the float-equality and unknown-enum guards above.
+
+	@Test
+	public function testNumericParamRejectsNonNumericConditionalValue() {
+		var error = parseExpectingError('
+			#test programmable(hp:0..100=50) {
+				@(hp => foo) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.notNull(error, "@(numericParam => nonNumericString) must be rejected at parse time, not routed to a never-matching/compile-error string conditional");
+		if (error != null)
+			Assert.isTrue(error.indexOf("foo") >= 0, 'Error should name the offending value "foo", got: $error');
+	}
+
+	@Test
+	public function testNumericParamRejectsNonNumericQuotedConditionalValue() {
+		var error = parseExpectingError('
+			#test programmable(hp:int=50) {
+				@(hp => "foo") bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.notNull(error, "@(intParam => \"foo\") quoted string must be rejected at parse time");
+	}
+
+	@Test
+	public function testNumericParamRejectsNonNumericSwitchArm() {
+		var error = parseExpectingError('
+			#test programmable(hp:int=50) {
+				@switch(hp) {
+					foo: bitmap(generated(color(10, 10, #f00))): 0,0
+					default { bitmap(generated(color(20, 20, #00f))): 0,0 }
+				}
+			}
+		');
+		Assert.notNull(error, "non-numeric @switch arm on a numeric param must be rejected at parse time");
+		if (error != null)
+			Assert.isTrue(error.indexOf("foo") >= 0, 'Error should name the offending value "foo", got: $error');
+	}
+
+	@Test
+	public function testNumericParamRejectsNonNumericBracketValue() {
+		var error = parseExpectingError('
+			#test programmable(hp:int=50) {
+				@(hp => [foo, bar]) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.notNull(error, "@(numericParam => [nonNumeric, ...]) multi-value must be rejected at parse time");
+	}
+
+	@Test
+	public function testBoolParamRejectsNonBooleanConditionalValue() {
+		var error = parseExpectingError('
+			#test programmable(on:bool=true) {
+				@(on => maybe) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.notNull(error, "@(boolParam => nonBoolean) must be rejected at parse time");
+		if (error != null)
+			Assert.isTrue(error.indexOf("maybe") >= 0, 'Error should name the offending value "maybe", got: $error');
+	}
+
+	// Controls: valid numeric / bool conditional values must still parse (guard against over-rejection).
+	@Test
+	public function testNumericParamAcceptsNumericConditionalValue() {
+		Assert.isTrue(parseExpectingSuccess('
+			#test programmable(hp:0..100=50) {
+				@(hp => 50) bitmap(generated(color(10, 10, #f00))): 0,0
+				@(hp => [10, 20]) bitmap(generated(color(10, 10, #0f0))): 0,0
+			}
+		'), "numeric conditional values (single and bracket) must still parse");
+	}
+
+	@Test
+	public function testBoolParamAcceptsBooleanConditionalValue() {
+		Assert.isTrue(parseExpectingSuccess('
+			#test programmable(on:bool=true) {
+				@(on => true) bitmap(generated(color(10, 10, #f00))): 0,0
+				@(on => false) bitmap(generated(color(10, 10, #0f0))): 0,0
+			}
+		'), "boolean conditional values (true/false) must still parse");
+	}
+
+	// ==================== Duplicate top-level names must be rejected ====================
+	// A second declaration with the same name silently overwrites the first
+	// today (map.set with no exists() check) — typos and copy-paste mistakes
+	// vanish without a diagnostic. Parameters, settings, and record fields
+	// already reject duplicates; these registries must match.
+
+	@Test
+	public function testDuplicatePathNameIsRejected() {
+		var error = parseExpectingError('
+			paths {
+				#route path { lineTo(100, 0) }
+				#route path { lineTo(0, 100) }
+			}
+			#test programmable() { bitmap(generated(color(1, 1, #000))): 0,0 }
+		');
+		Assert.notNull(error, "two paths named #route must be a parse error — the second silently overwrites the first today");
+	}
+
+	@Test
+	public function testDuplicateCurveNameIsRejected() {
+		var error = parseExpectingError('
+			curves {
+				#ease curve { easing: easeInQuad }
+				#ease curve { easing: easeOutQuad }
+			}
+			#test programmable() { bitmap(generated(color(1, 1, #000))): 0,0 }
+		');
+		Assert.notNull(error, "two curves named #ease must be a parse error — the second silently overwrites the first today");
+	}
+
+	@Test
+	public function testDuplicateLayoutNameIsRejected() {
+		var error = parseExpectingError('
+			layouts {
+				#spot list {
+					point: 10, 10
+				}
+				#spot list {
+					point: 20, 20
+				}
+			}
+			#test programmable() { bitmap(generated(color(1, 1, #000))): 0,0 }
+		');
+		Assert.notNull(error, "two layout entries named #spot must be a parse error — the second silently overwrites the first today");
+	}
+
+	// ==================== Unknown characters must not be silently skipped ====================
+
+	@Test
+	public function testManimLexerRejectsUnknownCharacters() {
+		var error = parseExpectingError('
+			#test programmable() {
+				` bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		');
+		Assert.notNull(error, "an unknown character (backtick) must produce a lexer error, not be silently skipped");
+	}
+
+	// ==================== flags conditionals: non-numeric values ====================
+
+	@Test
+	public function testFlagsParamRejectsNonNumericConditionalValue() {
+		// Same divergence class the PPTBool/PPTInt/PPTFloat guards were added
+		// for: a non-numeric flags value falls to CoStringValue — the builder
+		// silently never matches while codegen emits an Int == String compile
+		// error that breaks the whole @:manim build.
+		var error = parseExpectingError("
+			#test programmable(f:flags(4)=0) {
+				@(f => banana) bitmap(generated(color(10, 10, #f00))): 0,0
+			}
+		");
+		Assert.notNull(error, "@(flagsParam => nonNumeric) must be rejected at parse time");
+	}
+
+	// ==================== Coordinate X expression parity with Y ====================
+
+	@Test
+	public function testCoordinateXAcceptsGridPropertyExpression() {
+		// $grid.width parses as the Y coordinate but not as the X coordinate —
+		// parseXY handles the two positions asymmetrically. Both must accept the
+		// same coordinate expressions.
+		Assert.isTrue(parseExpectingSuccess("
+			#test programmable() {
+				grid: 10, 10
+				bitmap(generated(color(10, 10, #f00))): $grid.width, 5
+			}
+		"), "$grid.width must be accepted as the X coordinate (it already parses as Y)");
+	}
+
+	// ===== Parameterized slot without a {} body must not leak its param scope =====
+	// The slot case saves the enclosing scope and installs the slot's param scope, but the
+	// restore only runs in the `{` body branch. A bodyless parameterized slot (`: x,y` or `;`
+	// terminator) leaves the slot scope installed, so siblings lose the enclosing
+	// programmable's params, loop vars, and @finals.
+
+	@Test
+	public function testParameterizedSlotWithoutBodyKeepsOuterParamScope() {
+		Assert.isTrue(parseExpectingSuccess("
+			#test programmable(title:string=\"hi\") {
+				#s slot(p:[a,b]=a): 0, 0
+				text(dd, $title, #ffffff): 0, 10
+			}
+		"), "sibling after a bodyless parameterized slot (positioned form) must still see outer params");
+		Assert.isTrue(parseExpectingSuccess("
+			#test programmable(title:string=\"hi\") {
+				#s slot(p:[a,b]=a);
+				text(dd, $title, #ffffff): 0, 10
+			}
+		"), "sibling after a bodyless parameterized slot (semicolon form) must still see outer params");
+	}
+
+	// ===== Multi-line ${...} interpolation must keep lexer line numbers in sync =====
+	// The ${...} code scan advances over newlines without bumping the lexer's line counter,
+	// so every token after the string reports a stale line number.
+
+	@Test
+	public function testMultilineInterpolationKeepsLineNumbersInSync() {
+		// Source line 6 holds the bogus element; the interpolation spans lines 3-5.
+		var error = parseRawExpectingError("version: 1.0\n#t programmable(a:int=5) {\n\t@final S = '${\n$a\n}'\n\tbogus_element_xyz(1)\n}");
+		Assert.notNull(error, "bogus element should produce a parse error");
+		Assert.isTrue(error.indexOf("test-input:6:") >= 0,
+			'Error must be reported on line 6 (the bogus element), got: $error');
+	}
+
+	// ===== @ modifiers must not be silently discarded =====
+	// A conditional in front of @final / transition{} / settings{} parses fine and is then
+	// silently thrown away; #name in front of @switch is likewise dropped. All must be
+	// parse errors — the author asked for something the parser cannot honor.
+
+	@Test
+	public function testConditionalOnFinalRejected() {
+		var error = parseExpectingError('
+			#test programmable(mode:[on,off]=on) {
+				@(mode => on) @final X = 3
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		');
+		Assert.notNull(error, "@(cond) @final must be a parse error, not a silently unconditional @final");
+		if (error != null)
+			Assert.isTrue(error.indexOf("@final") >= 0, 'Error should mention @final, got: $error');
+	}
+
+	@Test
+	public function testConditionalOnTransitionBlockRejected() {
+		var error = parseExpectingError('
+			#test programmable(mode:[on,off]=on) {
+				@(mode => on) transition { mode: fade(0.1) }
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		');
+		Assert.notNull(error, "@(cond) transition {} must be a parse error, not silently unconditional");
+		if (error != null)
+			Assert.isTrue(error.indexOf("transition") >= 0, 'Error should mention transition, got: $error');
+	}
+
+	@Test
+	public function testConditionalOnSettingsBlockRejected() {
+		var error = parseExpectingError('
+			#test programmable(mode:[on,off]=on) {
+				@(mode => on) settings { width => 5 }
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		');
+		Assert.notNull(error, "@(cond) settings {} must be a parse error, not silently unconditional");
+		if (error != null)
+			Assert.isTrue(error.indexOf("settings") >= 0, 'Error should mention settings, got: $error');
+	}
+
+	@Test
+	public function testNameOnSwitchRejected() {
+		var error = parseExpectingError('
+			#test programmable(mode:[on,off]=on) {
+				#foo @switch(mode) {
+					on: bitmap(generated(color(10, 10, #f00)));
+					off: bitmap(generated(color(10, 10, #0f0)));
+				}
+			}
+		');
+		Assert.notNull(error, "#name on @switch must be a parse error, not silently dropped");
+		if (error != null)
+			Assert.isTrue(error.indexOf("@switch") >= 0, 'Error should mention @switch, got: $error');
+	}
+
+	// ===== Nested programmable must be rejected =====
+	// The programmable case installs a fresh scope (activeDefs/scopeVars/@finals/named
+	// elements) with no save/restore — nesting silently clobbers the outer programmable's
+	// scope. Other root-only blocks (palette, paths, curves, animatedPath) already guard.
+
+	@Test
+	public function testNestedProgrammableRejected() {
+		var error = parseExpectingError('
+			#outer programmable(a:int=1) {
+				#inner programmable(b:int=2) {
+					bitmap(generated(color(10, 10, #f00))): 0, 0
+				}
+			}
+		');
+		Assert.notNull(error, "programmable nested inside a programmable must be rejected");
+		if (error != null)
+			Assert.isTrue(error.indexOf("root") >= 0,
+				'Error should say programmable must be a root node, got: $error');
+	}
+
+	// ===== 2D palette declaration =====
+	// `2d` lexes as TInteger("2") + TIdentifier("d"); the palette( branch only matched a
+	// single TIdentifier("2d") token, so the documented 2D palette form could never parse
+	// and PaletteColors2D was unreachable except via palette(file:...).
+
+	@Test
+	public function test2dPaletteDeclarationParses() {
+		var result = parseExpectingResult("
+			#pal palette(2d: 4) {
+				#ff0000 #00ff00 #0000ff #ffff00
+				#ff00ff #00ffff #ffffff #000000
+			}
+		");
+		Assert.notNull(result, "palette(2d: width) { colors } must parse");
+		if (result != null)
+			Assert.notNull(result.nodes.get("pal"), "2D palette node should be registered under its #name");
+	}
+
+	// ===== @else / @default must not silently replace a condition on the same element =====
+
+	@Test
+	public function testConditionalFollowedByElseOrDefaultRejected() {
+		for (terminal in ["@else", "@default"]) {
+			var error = parseExpectingError('
+				#test programmable(mode:[on,off]=on) {
+					@(mode=>on) bitmap(generated(color(10, 10, #f00))): 0, 0
+					@(mode=>off) $terminal bitmap(generated(color(10, 10, #0f0))): 0, 10
+				}
+			');
+			Assert.notNull(error, '@(cond) $terminal must be a parse error, not an unconditional $terminal arm');
+			if (error != null)
+				Assert.stringContains("stacked conditionals", error);
+		}
+	}
+
+	// ===== An empty condition list is rejected =====
+
+	@Test
+	public function testEmptyConditionalRejected() {
+		for (form in ["@()", "@if()", "@all()", "@any()"]) {
+			var error = parseExpectingError('
+				#test programmable(mode:[on,off]=on) {
+					$form bitmap(generated(color(10, 10, #f00))): 0, 0
+				}
+			');
+			Assert.notNull(error, '$form must be a parse error (it would be always true, or for @any always false)');
+			if (error != null)
+				Assert.stringContains("empty", error);
+		}
+	}
+
+	// ===== Parameter defaults accept _ digit separators like every other number =====
+
+	@Test
+	public function testParameterDefaultsStripDigitSeparators() {
+		final defs = BuilderTestBase.builderFromSource("
+			#test programmable(n:int=1_000, neg:int=-2_000, f:float=1_000.5, c:color=0xFF_00FF00) {
+				bitmap(generated(color(10, 10, #f00))): 0, 0
+			}
+		").getParameterDefinitions("test");
+		Assert.isTrue(Type.enumEq(ResolvedIndexParameters.Value(1000), defs.get("n").defaultValue),
+			'n:int=1_000 must default to 1000, got ${defs.get("n").defaultValue}');
+		Assert.isTrue(Type.enumEq(ResolvedIndexParameters.Value(-2000), defs.get("neg").defaultValue),
+			'neg:int=-2_000 must default to -2000, got ${defs.get("neg").defaultValue}');
+		Assert.isTrue(Type.enumEq(ResolvedIndexParameters.ValueF(1000.5), defs.get("f").defaultValue),
+			'f:float=1_000.5 must default to 1000.5, got ${defs.get("f").defaultValue}');
+		Assert.isTrue(Type.enumEq(ResolvedIndexParameters.Value(0xFF00FF00), defs.get("c").defaultValue),
+			'c:color=0xFF_00FF00 must default to 0xFF00FF00, got ${defs.get("c").defaultValue}');
+	}
+
+	// ===== The documented comma-separated subEmitters form parses =====
+
+	@Test
+	public function testSubEmittersCommaSeparatedFieldsParse() {
+		var result = parseExpectingResult('
+			#test programmable() {
+				#fx particles {
+					count: 10
+					tiles: generated(color(4, 4, #ff0000))
+					subEmitters: [
+						{
+							groupId: "sparkGroup",
+							trigger: ondeath,
+							probability: 0.8,
+							inheritVelocity: 0.5,
+							offsetX: 10,
+							offsetY: 0
+						},
+						{ groupId: "smoke", trigger: onbirth, burstCount: 2 }
+					]
+				}
+			}
+		');
+		Assert.notNull(result, "the documented comma-separated subEmitters form must parse");
+		if (result == null)
+			return;
+		var subEmitters:Null<Array<bh.multianim.MultiAnimParser.ParticleSubEmitterDef>> = null;
+		for (child in result.nodes.get("test").children)
+			switch child.type {
+				case PARTICLES(def): subEmitters = def.subEmitters;
+				default:
+			}
+		Assert.notNull(subEmitters, "the particles node should carry its sub-emitters");
+		if (subEmitters != null) {
+			Assert.equals(2, subEmitters.length);
+			Assert.equals("sparkGroup", subEmitters[0].groupId);
+			Assert.notNull(subEmitters[0].offsetY, "the last comma-separated field must be parsed too");
+			Assert.equals("smoke", subEmitters[1].groupId);
+			Assert.notNull(subEmitters[1].burstCount);
+		}
+	}
+
+	// ===== A bezier with a missing ) is an error, not a dropped path segment =====
+
+	@Test
+	public function testMalformedBezierRejected() {
+		for (command in ["bezier", "bezierAbs"]) {
+			var error = parseExpectingError('
+				paths {
+					#p path {
+						$command(10, 0, 5, -5
+						lineTo(20, 0)
+					}
+				}
+			');
+			Assert.notNull(error, '$command( without ) must be a parse error, not silently dropped from the path');
+		}
+	}
+
+	// ===== The documented comma-separated curve segments parse =====
+
+	@Test
+	public function testCommaSeparatedCurveSegmentsParse() {
+		final source = "
+			curves {
+				#c curve { [0.0 .. 0.5] easeInQuad, [0.5 .. 1.0] easeOutQuad }
+			}
+		";
+		Assert.isTrue(parseExpectingSuccess(source), "comma-separated curve segments (documented form) must parse");
+		if (parseExpectingSuccess(source))
+			Assert.floatEquals(0.5, BuilderTestBase.builderFromSource(source).getCurve("c").getValue(0.5),
+				"two auto-chained segments meet at 0.5");
+	}
+
+	// ===== The card-hand setup in .claude/rules/runtime-systems.md parses =====
+	// Agents copy that snippet verbatim; keep this copy in step with it.
+
+	@Test
+	public function testCardHandSetupSnippetParses() {
+		Assert.isTrue(parseExpectingSuccess('
+			paths {
+				#cardArc path {
+					lineTo(0, -30)
+					bezier(100, 0, 50, -60)
+				}
+				#handShape path {
+					bezier(800, 0, 400, -80)
+				}
+			}
+			#drawPath animatedPath {
+				path: cardArc
+				type: time
+				duration: 0.3
+				easing: easeOutBack
+			}
+			#discardPath animatedPath {
+				path: cardArc
+				type: time
+				duration: 0.25
+				easing: easeInQuad
+			}
+			#returnPath animatedPath {
+				path: cardArc
+				type: time
+				duration: 0.2
+				easing: easeOutCubic
+			}
+			#rearrangePath animatedPath {
+				path: cardArc
+				type: time
+				duration: 0.15
+				easing: easeInOutCubic
+			}
+
+			#arrowSegment programmable(valid:bool=false) {
+				@(valid=>true) graphics(line(#44FF44, 2.0, 0, 0, 12, 0)): 0, 0
+				@else graphics(line(#FF4444, 2.0, 0, 0, 12, 0)): 0, 0
+			}
+			#arrowHead programmable(valid:bool=false) {
+				@(valid=>true) graphics(line(#44FF44, 2.0, 0, -4, 8, 0); line(#44FF44, 2.0, 0, 4, 8, 0)): 0, 0
+				@else graphics(line(#FF4444, 2.0, 0, -4, 8, 0); line(#FF4444, 2.0, 0, 4, 8, 0)): 0, 0
+			}
+
+			#card programmable(status:[normal,hover,pressed,disabled]=normal, name:string="") {
+				interactive(80, 110, "card", bind => "status", events: [hover, click, push]): 0, 0
+				@(status=>hover) apply { filter: glow(#FFFF00, 0.6, 10) }
+				@(status=>disabled) apply { filter: group(brightness(0.5), grayscale(0.8)) }
+				ninepatch(cards, cardBg, 80, 110): 0, 0
+			}
+		'), "the card-hand .manim setup in the rules file must parse");
+	}
+
+	// Mirrors the FloatingTextHelper usage pattern in the same rules file.
+	@Test
+	public function testFloatingTextSnippetParses() {
+		Assert.isTrue(parseExpectingSuccess('
+			paths { #dmgPath path { bezier(60, -25, 30, -50) } }
+			curves { #dmgAlpha curve { points: [(0, 1.0), (0.6, 0.8), (1.0, 0.0)] } }
+			#dmgAnim animatedPath {
+				path: dmgPath
+				duration: 1.0
+				0.0: alphaCurve: dmgAlpha
+			}
+		'), "the FloatingTextHelper .manim usage in the rules file must parse");
+	}
+
+	// ===== An integer literal is 32 bits on every target =====
+
+	@Test
+	public function testAnIntegerLiteralPastThirtyTwoBitsIsAnError():Void {
+		final error = parseExpectingError("#p programmable(n:int=99999999999) {\n\tbitmap(generated(color(1, 1, #ffffff))): 0, 0\n}");
+		Assert.notNull(error, "an integer default past 32 bits must be refused, not clamped (HashLink) or kept whole (JS)");
+		if (error != null)
+			Assert.stringContains("99999999999", error);
+	}
+
+	// ===== A $ref target names a programmable by a string or enum parameter only =====
+
+	@Test
+	public function testRefNamingANonStringParameterIsAParseError() {
+		// `dynamicRef($x)` / `staticRef($x)` with `x` a parameter of the enclosing programmable
+		// places the programmable that parameter's value names. A bool's value names none: under
+		// a conditional the first show threw inside setParameter, and getDynamicRef("panel") then
+		// reported the site missing every frame. Say so as the file is read, shown or not.
+		final dynamicError = parseExpectingError("
+			#panel programmable(kind:[lobby,results]=lobby) {
+				bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+			#arena programmable(panel:bool=false) {
+				@(panel=>true) #panel dynamicRef($panel, kind=>lobby): 560, 110
+			}
+		");
+		Assert.notNull(dynamicError, "dynamicRef($panel) with panel a bool parameter should not parse");
+		Assert.stringContains("\"panel\" is a bool parameter", dynamicError ?? "");
+		Assert.stringContains("dynamicRef(panel", dynamicError ?? "");
+
+		final staticError = parseExpectingError("
+			#badge programmable() {
+				bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+			#arena programmable(badge:uint=0) {
+				staticRef($badge): 0, 0
+			}
+		");
+		Assert.notNull(staticError, "staticRef($badge) with badge a uint parameter should not parse");
+		Assert.stringContains("\"badge\" is a uint parameter", staticError ?? "");
+		Assert.stringContains("staticRef(badge", staticError ?? "");
+
+		// A string or enum parameter names the programmable to place; a bare name is the programmable.
+		Assert.isTrue(parseExpectingSuccess("
+			#a programmable() {
+				bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+			#b programmable() {
+				bitmap(generated(color(10, 10, #00ff00))): 0, 0
+			}
+			#host programmable(which:[a,b]=a, target:string=\"b\", a:bool=false) {
+				dynamicRef($which): 0, 0
+				staticRef($target): 0, 10
+				@(a=>true) #shown dynamicRef(a): 0, 20
+			}
+		"), "string and enum parameters, and a bare programmable name, still parse");
+	}
+
+	@Test
+	public function testARefTargetWithADollarMustBeAParameterLoopVariableOrFinal() {
+		// `$card` that is none of these used to place a programmable called card, and placed what
+		// a parameter says instead as soon as the file (or a file importing it) got one named card
+		final staticError = parseExpectingError("
+			#card programmable() {
+				bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+			#hand programmable() {
+				staticRef($card): 0, 0
+			}
+		");
+		Assert.notNull(staticError, "staticRef($card) with no card in scope should not parse");
+		Assert.stringContains("$card", staticError ?? "");
+		Assert.stringContains("staticRef(card", staticError ?? "");
+
+		final dynamicError = parseExpectingError("
+			#card programmable(n:uint=1) {
+				bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+			#hand programmable() {
+				dynamicRef($card, n=>2): 0, 0
+			}
+		");
+		Assert.notNull(dynamicError, "dynamicRef($card) with no card in scope should not parse");
+		Assert.stringContains("dynamicRef(card", dynamicError ?? "");
+
+		// A slot body sees its own parameters, not the programmable's
+		final slotError = parseExpectingError("
+			#card programmable() {
+				bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+			#hand programmable(which:string=\"card\") {
+				#s slot(on:bool=false) {
+					staticRef($which): 0, 0
+				}
+			}
+		");
+		Assert.notNull(slotError, "a slot body's $which is not the programmable's parameter");
+
+		Assert.isTrue(parseExpectingSuccess("
+			#a programmable() {
+				bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+			#b programmable() {
+				bitmap(generated(color(10, 10, #00ff00))): 0, 0
+			}
+			#host programmable(which:[a,b]=a, names:array=[a, b]) {
+				@final fixed = \"b\"
+				staticRef($which): 0, 0
+				staticRef($fixed): 0, 10
+				dynamicRef($fixed): 0, 20
+				repeatable($i, array($name, $names)) {
+					staticRef($name): 0, 30
+				}
+				staticRef(a): 0, 40
+			}
+		"), "a parameter, an @final, a loop variable and a bare name all parse");
+	}
+
+	// ===== Root elements, parameter defaults, conditions, data arrays, imports =====
+
+	/** A parse with no loader, as the LSP and tools do: imports are listed, never loaded. The error, or null. */
+	static function parseWithoutLoader(source:String):Null<Dynamic> {
+		try {
+			MultiAnimParser.parseFile(byte.ByteData.ofString('version: 1.0\n$source'), "test-input", null);
+			return null;
+		} catch (e:Dynamic) {
+			return e;
+		}
+	}
+
+	static function lineOf(error:Dynamic):Int {
+		return Std.isOfType(error, bh.base.ParseError) ? (error : bh.base.ParseError).pos.line : -1;
+	}
+
+	static function definitionOf(result:MultiAnimResult, programmable:String, param:String):Null<bh.multianim.MultiAnimParser.Definition> {
+		return switch result.nodes.get(programmable).type {
+			case PROGRAMMABLE(_, params, _): params.get(param);
+			default: null;
+		}
+	}
+
+	static function dataFieldOf(result:MultiAnimResult, block:String, field:String):Null<bh.multianim.MultiAnimParser.DataFieldDef> {
+		return switch result.nodes.get(block).type {
+			case DATA(def): Lambda.find(def.fields, f -> f.name == field);
+			default: null;
+		}
+	}
+
+	@Test
+	public function testARootElementWithNoNameIsAnErrorAtIt() {
+		final err = parseWithoutLoader("\n\nbitmap(generated(color(1, 1, #f00))): 0, 0");
+		Assert.notNull(err, "an unnamed root element does not parse");
+		Assert.stringContains("#name", Std.string(err));
+		Assert.equals(4, lineOf(err), "the error is at the element");
+		// The name an unnamed paths block takes is not carried to the next root block
+		final leak = parseWithoutLoader("paths { #p path { lineTo(1, 0) } }\nsounds { hit { file: \"a.wav\" } }");
+		Assert.stringContains("sounds requires a #name", Std.string(leak));
+	}
+
+	@Test
+	public function testANumericDefaultIsReadAsItsType() {
+		final body = "{ bitmap(generated(color(1, 1, #f00))): 0, 0 }";
+		Assert.stringContains("integer", parseExpectingError('#t programmable(n:int=1.5) $body'), "a float is no int default");
+		Assert.stringContains("integer", parseExpectingError('#t programmable(u:uint=2.9) $body'), "nor a uint one");
+		final result = parseExpectingResult('#t programmable(f:float=0x10, g:float=2, h:float=-1.5, n:int=-3, c:uint=0x10) $body');
+		Assert.notNull(result);
+		Assert.same(ValueF(16.0), definitionOf(result, "t", "f").defaultValue, "a hex float default is its number");
+		Assert.same(ValueF(2.0), definitionOf(result, "t", "g").defaultValue);
+		Assert.same(ValueF(-1.5), definitionOf(result, "t", "h").defaultValue);
+		Assert.same(Value(-3), definitionOf(result, "t", "n").defaultValue);
+		Assert.same(Value(16), definitionOf(result, "t", "c").defaultValue);
+	}
+
+	@Test
+	public function testAComparisonOrBitTestIsCheckedAgainstItsParameter() {
+		final body = "bitmap(generated(color(1, 1, #f00))): 0, 0";
+		// An enum compares by its value's index: one of its names stands for its index, any other word is refused
+		final byName = parseExpectingResult('#t programmable(status:[normal, hover]=normal) { @(status >= hover) $body }');
+		Assert.notNull(byName);
+		final cond = switch byName.nodes.get("t").children[0].conditionals {
+			case Conditional(values, _): values.get("status");
+			default: null;
+		};
+		Assert.equals("CoRange(RVInteger(1),null,false,false)", Std.string(cond), "hover is index 1");
+		Assert.stringContains("sideways", parseExpectingError('#t programmable(status:[normal, hover]=normal) { @(status >= sideways) $body }'),
+			"a word the enum has not is refused");
+		Assert.stringContains("numeric", parseExpectingError('#t programmable(s:string="x") { @(s >= 3) $body }'), "no ordering of a string");
+		Assert.stringContains("abc", parseExpectingError('#t programmable(n:int=1) { @(n >= abc) $body }'), "a word is no number");
+		Assert.stringContains("a", parseExpectingError('#t programmable(n:int=1) { @(n => a..b) $body }'), "nor a range of words");
+		Assert.stringContains("bit", parseExpectingError('#t programmable(s:string="x") { @(s => bit[1]) $body }'), "no bit test on a string");
+		Assert.stringContains("bit", parseExpectingError('#t programmable(f:float=1.0) { @(f => bit[1]) $body }'), "nor on a float");
+		Assert.isTrue(parseExpectingSuccess("#t programmable(n:int=1, f:float=0.5, m:flags(4)=0, lim:int=2) {
+			@(n >= 3) " + body + "
+			@(f < 0.5) " + body + "
+			@(m => bit[2]) " + body + "
+			@(n => bit[0]) " + body + "
+			@(n => 1..$lim) " + body + "
+			@(n >= $lim) " + body + "
+			repeatable($i, step(3, dx: 1)) { @($i >= 1) " + body + " }
+		}"), "numbers, ranges and $references on numeric parameters and loop variables, bit tests on integers, still parse");
+	}
+
+	@Test
+	public function testADataArrayIsTypedByAllItsElements() {
+		final result = parseExpectingResult("#d data {\n xs: [1, 2.5]\n ys: int[] []\n zs: string[] [\"a\", \"b\"]\n }");
+		Assert.notNull(result);
+		final xs = dataFieldOf(result, "d", "xs");
+		Assert.equals("DVTArray(DVTFloat)", Std.string(xs.type), "an int beside a float makes a float array");
+		Assert.isTrue(xs.value.match(DVArray([DVFloat(_), DVFloat(_)])), "its int read as a float");
+		Assert.equals("DVTArray(DVTInt)", Std.string(dataFieldOf(result, "d", "ys").type), "an empty array typed as written");
+		Assert.equals("DVTArray(DVTString)", Std.string(dataFieldOf(result, "d", "zs").type));
+		Assert.stringContains("mixed", parseExpectingError("#d data {\n xs: [1, \"a\", true]\n }"));
+		Assert.stringContains("empty", parseExpectingError("#d data {\n xs: []\n }"));
+	}
+
+	@Test
+	public function testAnImportAliasIsTakenOnceAtTheTopLevel() {
+		final body = "#t programmable() { bitmap(generated(color(1, 1, #f00))): 0, 0 }";
+		final twice = parseWithoutLoader('import "a.manim" as "kit"\nimport "b.manim" as "kit"\n$body');
+		Assert.notNull(twice, "an alias given twice does not parse");
+		Assert.stringContains("kit", Std.string(twice));
+		final inBody = parseWithoutLoader("#t programmable(m:[a, b]=a) {\n @(m=>a) {\n import \"a.manim\" as \"kit\"\n }\n }");
+		Assert.notNull(inBody, "an import in a body does not parse");
+		Assert.stringContains("top level", Std.string(inBody));
+	}
+
+	@Test
+	public function testAnExternalAliasIsCheckedAgainstTheImports() {
+		final typo = parseWithoutLoader('import "a.manim" as "kit"\n#t programmable() {\n staticRef(external(kti), card): 0, 0\n}');
+		Assert.notNull(typo, "an alias the file does not import does not parse");
+		Assert.stringContains("kti", Std.string(typo));
+		Assert.equals(4, lineOf(typo), "the error is at the alias");
+		Assert.isNull(parseWithoutLoader('#t programmable() {\n dynamicRef(external(kit), card): 0, 0\n}\nimport "a.manim" as "kit"'),
+			"an alias imported further down the file is fine");
 	}
 }

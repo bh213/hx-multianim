@@ -40,15 +40,62 @@ typedef CursorContextResult = {
 	var prefix:String; // Partial word before cursor
 }
 
+/** The parameters a `programmable(…)` or `slot(…)` declares, in scope in its `{ }` body. */
+private typedef ParamScope = {
+	var names:Array<String>;
+	var types:Map<String, String>;
+	var isSlot:Bool;
+}
+
 class ContextAnalyzer {
 	/**
 	 * Analyze the text up to a cursor position and determine the editing context.
 	 * Returns context type, parameters in scope, and the partial word being typed.
 	 */
 	public static function analyze(text:String, line:Int, character:Int):CursorContextResult {
-		final lines = text.split("\n");
+		final result = scan(text, line, character);
+		final scopes = result.scopes;
+		// The innermost scopes first, up to a slot's: its body sees its own parameters only
+		var from = scopes.length;
+		while (from > 0) {
+			from--;
+			final scope = scopes[from];
+			if (scope != null && scope.isSlot)
+				break;
+		}
 		final paramNames:Array<String> = [];
 		final paramTypes = new Map<String, String>();
+		for (k in from...scopes.length) {
+			final scope = scopes[k];
+			if (scope == null)
+				continue;
+			for (name in scope.names)
+				if (paramNames.indexOf(name) < 0)
+					paramNames.push(name);
+			for (name => type in scope.types)
+				paramTypes.set(name, type);
+		}
+		return {
+			context: result.context,
+			paramNames: paramNames,
+			paramTypes: paramTypes,
+			prefix: result.prefix
+		};
+	}
+
+	/** The context at the cursor, with the parameter scopes open there (outermost first; null for a
+	 *  `{ }` that declares none; a declaration not yet closed by its body last). */
+	static function scan(text:String, line:Int, character:Int):{context:CursorContext, scopes:Array<Null<ParamScope>>, prefix:String} {
+		final lines = text.split("\n");
+		// one per open `{`; `pending` is the last declaration's, taken by the `{` of its body
+		final paramScopes:Array<Null<ParamScope>> = [];
+		var pending:Null<ParamScope> = null;
+		function result(context:CursorContext, prefix:String) {
+			final scopes = paramScopes.copy();
+			if (pending != null)
+				scopes.push(pending);
+			return {context: context, scopes: scopes, prefix: prefix};
+		}
 
 		// Build text up to cursor
 		var textToCursor = "";
@@ -124,17 +171,20 @@ class ContextAnalyzer {
 			if (c == "{".code) {
 				contextStack.push(lastKeyword);
 				lastKeyword = "";
+				paramScopes.push(pending);
+				pending = null;
 				i++;
 				continue;
 			}
 
 			if (c == "}".code) {
 				if (contextStack.length > 0) contextStack.pop();
+				if (paramScopes.length > 0) paramScopes.pop();
 				i++;
 				continue;
 			}
 
-			// Extract identifiers for keyword tracking
+			// Extract identifiers for keyword tracking (the parser reads keywords in any case)
 			if (isIdentStart(c)) {
 				var word = "";
 				var j = i;
@@ -142,16 +192,18 @@ class ContextAnalyzer {
 					word += String.fromCharCode(textToCursor.charCodeAt(j));
 					j++;
 				}
+				final keyword = contextKeyword(word);
 
-				// Track programmable parameters
-				if (word == "programmable" || word == "slot") {
-					// Try to extract params from the (...) that follows
-					extractParams(textToCursor, j, paramNames, paramTypes);
+				// The parameters a programmable or slot declares, for the body that follows
+				if (keyword == "programmable" || keyword == "slot") {
+					final declared:ParamScope = {names: [], types: new Map(), isSlot: keyword == "slot"};
+					if (extractParams(textToCursor, j, declared.names, declared.types))
+						pending = declared;
 				}
 
 				// Remember meaningful keywords
-				if (isContextKeyword(word)) {
-					lastKeyword = word;
+				if (keyword != null) {
+					lastKeyword = keyword;
 				}
 
 				i = j;
@@ -162,19 +214,14 @@ class ContextAnalyzer {
 			if (c == "$".code) {
 				// Peek ahead to see if we're at cursor end
 				if (i >= textToCursor.length - prefix.length - 1) {
-					return {
-						context: AfterDollar(prefix),
-						paramNames: paramNames,
-						paramTypes: paramTypes,
-						prefix: prefix
-					};
+					return result(AfterDollar(prefix), prefix);
 				}
 			}
 
 			// Check for @
 			if (c == "@".code) {
 				if (i == textToCursor.length - 1) {
-					return {context: AfterAt, paramNames: paramNames, paramTypes: paramTypes, prefix: prefix};
+					return result(AfterAt, prefix);
 				}
 				if (i + 1 < textToCursor.length && textToCursor.charCodeAt(i + 1) == "(".code) {
 					// Check if we're still inside the @( ... ) — find matching )
@@ -194,7 +241,7 @@ class ContextAnalyzer {
 						j++;
 					}
 					if (!closed) {
-						return {context: AfterConditionalOpen, paramNames: paramNames, paramTypes: paramTypes, prefix: prefix};
+						return result(AfterConditionalOpen, prefix);
 					}
 				}
 			}
@@ -209,11 +256,11 @@ class ContextAnalyzer {
 		if (prefix.length == 0 || !prefix.startsWith("$")) {
 			final trimmed = textToCursor.rtrim();
 			if (trimmed.endsWith("filter:") || trimmed.endsWith("filter :")) {
-				return {context: FilterPosition, paramNames: paramNames, paramTypes: paramTypes, prefix: prefix};
+				return result(FilterPosition, prefix);
 			}
 		}
 
-		return {context: context, paramNames: paramNames, paramTypes: paramTypes, prefix: prefix};
+		return result(context, prefix);
 	}
 
 	static function determineContext(stack:Array<String>, lastKeyword:String, prefix:String):CursorContext {
@@ -248,26 +295,52 @@ class ContextAnalyzer {
 		};
 	}
 
-	static function extractParams(text:String, startIdx:Int, paramNames:Array<String>, paramTypes:Map<String, String>):Void {
+	/** The parameters of the `(…)` after `programmable`/`slot` at `startIdx`. True when a `{ }` body
+	 *  follows it (or the text ends first): the scope the parameters are in. */
+	static function extractParams(text:String, startIdx:Int, paramNames:Array<String>, paramTypes:Map<String, String>):Bool {
 		// Find the opening ( after 'programmable' keyword
 		var i = startIdx;
 		while (i < text.length && text.charCodeAt(i) == " ".code)
 			i++;
-		if (i >= text.length || text.charCodeAt(i) != "(".code) return;
+		if (i >= text.length || text.charCodeAt(i) != "(".code) return false;
 		i++; // skip (
 
 		var depth = 1;
+		var brackets = 0; // inside an enum's [...], whose commas part its choices, not parameters
 		var current = "";
 
 		while (i < text.length && depth > 0) {
 			final c = text.charCodeAt(i);
+			// A comment (a `///` doc of a parameter or a choice too) is no part of a parameter
+			if (c == "/".code && i + 1 < text.length && text.charCodeAt(i + 1) == "/".code) {
+				while (i < text.length && text.charCodeAt(i) != "\n".code)
+					i++;
+				continue;
+			}
+			if (c == "/".code && i + 1 < text.length && text.charCodeAt(i + 1) == "*".code) {
+				final end = text.indexOf("*/", i + 2);
+				i = end < 0 ? text.length : end + 2;
+				continue;
+			}
+			// A string's commas and brackets are its own
+			if (c == "\"".code) {
+				var j = i + 1;
+				while (j < text.length && text.charCodeAt(j) != "\"".code) {
+					if (text.charCodeAt(j) == "\\".code) j++;
+					j++;
+				}
+				current += text.substring(i, j + 1);
+				i = j + 1;
+				continue;
+			}
 			if (c == "(".code) depth++;
 			else if (c == ")".code) {
 				depth--;
 				if (depth == 0) break;
-			}
+			} else if (c == "[".code) brackets++;
+			else if (c == "]".code && brackets > 0) brackets--;
 
-			if (c == ",".code && depth == 1) {
+			if (c == ",".code && depth == 1 && brackets == 0) {
 				parseParam(current.trim(), paramNames, paramTypes);
 				current = "";
 			} else {
@@ -278,6 +351,10 @@ class ContextAnalyzer {
 		if (current.trim().length > 0) {
 			parseParam(current.trim(), paramNames, paramTypes);
 		}
+		i++; // skip )
+		while (i < text.length && StringTools.isSpace(text, i))
+			i++;
+		return i >= text.length || text.charCodeAt(i) == "{".code;
 	}
 
 	static function parseParam(param:String, paramNames:Array<String>, paramTypes:Map<String, String>):Void {
@@ -327,13 +404,17 @@ class ContextAnalyzer {
 		return textToCursor.substr(i + 1);
 	}
 
-	static function isContextKeyword(word:String):Bool {
-		return switch (word) {
-			case "programmable" | "particles" | "curves" | "paths" | "animatedPath" | "flow" | "layers" | "mask" | "settings" | "transition" | "data" | "repeatable"
+	/** The keyword `word` is, in the spelling `determineContext` matches, whatever its case; null for
+	 *  a word that is no context keyword. */
+	static function contextKeyword(word:String):Null<String> {
+		final lower = word.toLowerCase();
+		return switch (lower) {
+			case "animatedpath": "animatedPath";
+			case "programmable" | "particles" | "curves" | "paths" | "flow" | "layers" | "mask" | "settings" | "transition" | "data" | "repeatable"
 				| "repeatable2d" | "curve" | "tilegroup" | "slot":
-				true;
+				lower;
 			default:
-				false;
+				null;
 		};
 	}
 

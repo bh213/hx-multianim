@@ -702,7 +702,8 @@ cardHand.drawCard({id: "card1", params: ["cardName" => "Fireball", "cost" => 3]}
 // Or with manual wiring (if not using addCardHand):
 // onScreenEvent -> cardHand.handleScreenEvent(event)
 // onMouseMove -> cardHand.onMouseMove(x, y)
-// onMouseClick -> cardHand.onMouseRelease(x, y)
+// onMouseClick (push) -> cardHand.onMouseClick(x, y, button)   // before the UIPush: drags start for the left button only
+// onMouseClick (release) -> cardHand.onMouseRelease(x, y, button)
 // update(dt) -> cardHand.update(dt)
 // onClear -> cardHand.dispose()
 ```
@@ -1241,15 +1242,15 @@ shake.update(dt);
     text(exo2_16, "Character", #7fdbda): 20, 10
     bitmap(generated(color(360, 1, #7fdbda33))): 20, 32
 
-    dynamicRef($resourceBar, value=>$hp, maxValue=>$maxHp,
+    dynamicRef(resourceBar, value=>$hp, maxValue=>$maxHp,
         barColor=>#ff4444, label=>"HP"): 20, 50
-    dynamicRef($resourceBar, value=>$mp, maxValue=>$maxMp,
+    dynamicRef(resourceBar, value=>$mp, maxValue=>$maxMp,
         barColor=>#4a90a4, label=>"MP"): 20, 75
 
     bitmap(generated(color(360, 1, #7fdbda33))): 20, 100
-    dynamicRef($statBar, statName=>"STR", statValue=>$strStat): 30, 115
-    dynamicRef($statBar, statName=>"DEX", statValue=>$dexStat): 30, 135
-    dynamicRef($statBar, statName=>"INT", statValue=>$intStat): 30, 155
+    dynamicRef(statBar, statName=>"STR", statValue=>$strStat): 30, 115
+    dynamicRef(statBar, statName=>"DEX", statValue=>$dexStat): 30, 135
+    dynamicRef(statBar, statName=>"INT", statValue=>$intStat): 30, 155
 
     text(exo2_16, 'Power: ${$strStat + $dexStat + $intStat}', #ffeb3b): 130, 180
 }

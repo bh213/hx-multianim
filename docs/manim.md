@@ -175,7 +175,7 @@ flow([optional params])
 * `debug`: `true` | `false`
 * `multiline`: `true` | `false` — enables multi-line content wrapping
 * `horizontalSpacing:<int>`, `verticalSpacing:<int>`
-* `background: ninepatch(sheet, tile)` — adds a 9-patch background to the flow
+* `background: ninepatch(sheet, tile [, stretch | tile])` — adds a 9-patch background to the flow, stretched unless told `tile` (or the programmable's `settings { ninepatch => tile }` says so)
 * `overflow`: `expand` | `limit` | `scroll` | `hidden` — controls child overflow behavior (default: `limit`)
 * `fillWidth`: `true` | `false` — children fill available width
 * `fillHeight`: `true` | `false` — children fill available height
@@ -230,7 +230,7 @@ ninepatch("cards", "card-base-patch9", 150,200) {
 }
 ```
 
-Supports `filter`, `scale`, `alpha`, and `blendMode`.
+Supports `filter`, `scale`, `alpha`, `rotation`, `blendMode`, `tint`, and `pos`. `pos` composes *additively* with the parent's existing placement (`parent.x += dx; parent.y += dy`) — same semantics as the builder's `addPosition`. `tint` requires a Drawable parent. Overlapping `apply` entries on the same parent compose by declaration order via a reset-and-replay pass: every entry's baseline is restored, then matched entries fire in order. The pass runs when an entry's condition flips, when the parent's own `$param` value changes, or when a parameter an entry's own values use changes (`apply { alpha: $a }` follows `$a`), and on nothing else, so what the game set on the parent stays through an unrelated `setParameter`.
 
 ### text
 Creates simple text with font, content, and color. Always creates plain `h2d.Text`.
@@ -339,6 +339,8 @@ Optimized element for constructing objects with many elements (e.g., HP bars). A
 #name programmable tileGroup(...)
 ```
 
+Content is baked once at build time, so conditionals keyed on programmable parameters are rejected (`BuilderError code="tilegroup_conditional"`) — in both the root form above and the nested `tilegroup {}` element. Conditionals keyed on `repeatable` loop variables are allowed (they iterate at build time).
+
 ### programmable
 Core element of the library. Creates an instance of all children belonging to this programmable.
 
@@ -378,9 +380,9 @@ repeatable($varname, range(from: start, until: end[, step: s]))
 ```
 
 - `from:` — start value (required for named syntax)
-- `to:` — inclusive end (`to: 5` includes 5)
+- `to:` — inclusive end (`to: 5` includes 5), in either direction
 - `until:` — exclusive end (`until: 5` excludes 5, same as positional)
-- `step:` — step increment (optional, defaults to 1)
+- `step:` — step increment (optional, defaults to 1). A negative step counts down: `range(from: 5, to: 1, step: -1)` yields 5,4,3,2,1. A literal step of 0 is a parse error; a step expression or `$param` that resolves to 0 fails the build with a `BuilderError`
 
 **Stateanim iterator:**
 Iterates over all frames of an animation from a `.anim` file. Exposes `$bitmap` (the tile source) and `$index`.
@@ -591,7 +593,34 @@ Draws 9-patch from atlas (requires `split` with 4 values in atlas).
 
 ```
 ninepatch(sheet, tilename, width, height)
+ninepatch("ui", "panel", 200, 100, stretch)        // the middle and the edges stretched
+ninepatch("ui", "panel", 200, 100, tile)           // repeated (the default, explicit)
+ninepatch("ui", "button_" + $style + "_hover", $w, $h)   // the sheet and the cell as expressions
+ninepatch("ui", "warning", 60, 30, index: 3)       // the fourth frame of an indexed name
+ninepatch("ui", "warning", 60, 30, fps: 8)         // the name's frames played in a loop
 ```
+
+**How it fills.** A `ninepatch()` repeats its middle and its edges (`h2d.ScaleGrid` with
+`tileCenter` and `tileBorders`), as it always did: a pattern or a plain fill looks the same at
+any size. Art drawn to be stretched — a gradient fill, a bevel along the edge, a glow fading
+inward — shows a seam at every repeat, and TexturePacker's `split` means stretch; say `stretch`
+for it. `settings { ninepatch => stretch }` (or `tile`) on the programmable is the default for
+every nine-patch in it, the element's own word winning. A `flow(background: ninepatch(…))`
+stretches by default (Heaps' Flow default) and takes the same word: `background: ninepatch("ui",
+"panel", tile)`. A nine-patch baked into a `tilegroup` stretches by default too, and `tile`
+repeats it there.
+
+**The sheet and the cell** are string expressions, as `bitmap(sheet(…))` takes them: a literal,
+a `$param`, or `"button_" + $style + "_hover"`, so a theme with three button styles is one
+`#button` with a `style` parameter, not three copies. `setParameter("style", …)` reloads the cell
+into the grid that is drawn, in the builder and in codegen. An error for a cell the sheet has not
+names the sheet and the cell.
+
+**Frames.** An atlas name with several frames (`index: 0..3` entries) is one nine-patch a frame:
+`index: n` draws frame `n` (a `$param` a game drives), `fps: n` plays them all in a loop from
+`sync`, nothing to call from the game loop (`bh.base.AnimatedScaleGrid`: `frames`, `fps`,
+`frameIndex`, `seek(i)`, `advance(dt)`); with both, `index:` is the frame it starts on. Every frame
+must be split alike. A tile group takes `index:` but not `fps:`.
 
 ### layers
 Enables children to use `layer` property for z-ordering.
@@ -626,12 +655,18 @@ placeholder(name, [onNoData], [source])
 * Sources: `callback("name")`, `callback("name", $i)`, `builderParameter("name")`
 
 ### staticRef
-Embeds another programmable with parameters. The result is built **once** and is static — parameters cannot be changed after building.
+Embeds another programmable with parameters. The result is built **once**, as a whole — it is not incremental itself, has no `setParameter()` of its own and is not stored in the `BuilderResult`.
+
+Inside a programmable built incrementally (or a codegen instance), a `staticRef` whose target or arguments use the enclosing programmable's parameters (`staticRef(ship, dir=>$dir)`, `staticRef($which)`) is built again when one of them changes, so it follows the enclosing `setParameter()`; one that uses none (only literals, loop variables and `@final`s, which are fixed at build time) is never touched. A rebuild throws the old build away (its animations start over). A `staticRef` with children of its own is not rebuilt: changing such a parameter throws `untracked_param`.
 
 ```
-staticRef($reference [, <params>])
-staticRef(external(externalName), $reference [, <params>])
+staticRef(name [, <params>])
+staticRef(external(externalName), name [, <params>])
+staticRef(name [, <params>]) { <children> }
+staticRef($param [, <params>])
 ```
+
+Children are added inside the built reference — into its root when the referenced programmable has a root `pos:`, so they move with it.
 
 Use for reusable visual templates that don't need runtime updates.
 
@@ -639,8 +674,9 @@ Use for reusable visual templates that don't need runtime updates.
 Embeds another programmable with **incremental mode** enabled, allowing parameters to be updated at runtime via `setParameter()`. Conditionals and expressions are re-evaluated when parameters change.
 
 ```
-dynamicRef($reference [, <params>])
-dynamicRef(external(externalName), $reference [, <params>])
+dynamicRef(name [, <params>])
+dynamicRef(external(externalName), name [, <params>])
+dynamicRef($param [, <params>])
 ```
 
 The dynamic ref's `BuilderResult` is stored and accessible via `result.getDynamicRef("name")`:
@@ -673,7 +709,9 @@ The reference name itself can be a parameter, allowing the target programmable t
 
 When `template` is a parameter of the enclosing programmable (string or enum type), changing it triggers a **full rebuild**: the old programmable is torn down and the new one is built from scratch. Forwarded parameters (`value=>$hp`) are propagated incrementally when the template doesn't change.
 
-- **Backward compatible**: `$progName` where `progName` is not a parameter falls back to literal name (existing behavior)
+- **A `$name` must be in scope**: a parameter, a loop variable or an `@final` (whose value names the programmable). Any other `$name` is a parse error that points at the bare name: `staticRef($card)` with no `card` in scope used to place the programmable `card`, and placed what a parameter said as soon as the file, or one importing it, got a parameter `card`. A `dynamicRef($final)` whose `@final` uses a parameter swaps the template when that parameter changes, as `dynamicRef($param)` does; one of a loop variable, or of an `@final` no parameter reaches, is placed as by the programmable's name (no container of its own), in the builder and in codegen
+- **Only a string or enum parameter names a programmable**: `dynamicRef($x)` / `staticRef($x)` with `x` a `bool`, number, `color` or `tile` parameter is a parse error. A programmable named like such a parameter (`panel:bool` beside `#panel`) is placed by its bare name: `@(panel=>true) #panel dynamicRef(panel, kind=>lobby)`
+- **A missing target is reported at the site**: `dynamicRef($template): $template is "nope", and there is no programmable "nope"` (`BuilderError`, code `missing_ref`), when the site is built or its template changes
 - **Strict validation**: forwarded parameters must exist on the target programmable (runtime error if missing, allowed if target has a default)
 - Works in both builder (via `IncrementalUpdateContext`) and codegen paths
 
@@ -681,7 +719,7 @@ When `template` is a parameter of the enclosing programmable (string or enum typ
 
 | | `staticRef` | `dynamicRef` |
 |---|---|---|
-| Mutable at runtime | No | Yes (`setParameter()`) |
+| Mutable at runtime | Built again when the enclosing parameters it uses change | Yes (`setParameter()`, changes in place) |
 | Stored in BuilderResult | No | Yes (`getDynamicRef()`) |
 | Overhead | Minimal | Higher (tracks changes) |
 
@@ -825,7 +863,9 @@ interactive(200, 30, "buyBtn", cursor => "pointer")
 interactive(200, 30, "dragArea", cursor.hover => "move", cursor.disabled => "default")
 ```
 
-Pre-registered names: `default`, `pointer`/`button`, `move`, `text`, `hide`/`none`. Register custom cursors via `CursorManager.registerCursor("name", cursor)`.
+Pre-registered names: `default`, `pointer`/`button`, `move`, `text`, `hide`/`none`. Register custom cursors via `CursorManager.registerCursor("name", cursor)` (a name code or a file
+has taken is an error until `unregisterCursor`; an OS cursor's may be replaced once, and
+`unregisterCursor` gives it the OS cursor back).
 
 **UI integration:**
 * `UIInteractiveWrapper` wraps the interactive as a `UIElement` with `UIElementIdentifiable`
@@ -908,8 +948,8 @@ Requires a `hex:` declaration inside the element body:
 * `$hex.cube(q, r, s)` - hex cube coordinates
 * `$hex.corner(index, scale)` - position at hex polygon corner
 * `$hex.edge(direction, scale)` - position at hex polygon edge
-* `$hex.offset(col, row, even|odd)` - hex offset coordinates
-* `$hex.doubled(col, row)` - hex doubled coordinates
+* `$hex.offset(col, row, even|odd)` - hex offset coordinates (pointy: odd-r / even-r, rows shoved; flat: odd-q / even-q, columns shoved)
+* `$hex.doubled(col, row)` - hex doubled coordinates (pointy: double-width; flat: double-height)
 * `$hex.pixel(x, y)` - snap pixel position to nearest hex center
 * `$hex.width` - hex cell width
 * `$hex.height` - hex cell height
@@ -945,7 +985,7 @@ bitmap(...): $player.extraPoint("bulletSpawn", fallback: 50, 50)
 bitmap(...): $player.extraPoint("bulletSpawn").offset(10, 0)
 ```
 
-* `$ref.extraPoint("pointName")` - position from current animation's extra point
+* `$ref.extraPoint("pointName")` - position from current animation's extra point, where the element draws it: in the space the element is placed in, moved by its position and scaled and turned as it is (a marker placed at it sits on the art; do not add the element's position again). Of a name in several `@()` arms, the arm drawn is used
 * `$ref.extraPoint("pointName", fallback: coords)` - with fallback if point not found
 
 **Directly from an .anim file** (Mode 2):
@@ -955,7 +995,7 @@ bitmap(...): extraPoint("player.anim", "fire-up", "fire", direction=>"r")
 bitmap(...): extraPoint("player.anim", "idle", "fire", direction=>"l", fallback: 0, 0)
 ```
 
-* `extraPoint("file", "animName", "pointName", selectors...)` - load anim, play animation, query point
+* `extraPoint("file", "animName", "pointName", selectors...)` - load anim, play animation, query point (no element: the animation's own point, at the origin)
 * Optional `fallback: coords` as last argument
 
 When a point is not found: throws if no `fallback:` specified, uses fallback coordinates otherwise. Fallback accepts any coordinate type. `.offset()` suffix supported on both modes. Works in both builder and codegen.
@@ -966,7 +1006,8 @@ Extra point coordinates can be extracted as scalar values for use in text interp
 
 ```manim
 #player stateanim("player.anim", "idle", direction=>"l"): $PX, $PY
-text(font, '${$player.extraPoint("fire").x + $PX},${$player.extraPoint("fire").y + $PY}', #FF0000): 0, 0
+text(font, '${$player.extraPoint("fire").x},${$player.extraPoint("fire").y}', #FF0000): 0, 0             // where it is drawn
+text(font, '${$player.extraPoint("fire").x - $PX},${$player.extraPoint("fire").y - $PY}', #FF0000): 0, 12 // beside the player
 ```
 
 With fallback (positional args instead of `fallback:` keyword):
@@ -1013,6 +1054,9 @@ Filters can be applied to any visual element. Most parameters support expression
 * `glow(color, alpha, [radius], [gain], [quality], [smoothColor], [knockout])`
 * `group(filter1, filter2, ...)`
 * Custom filters registered via `FilterManager.registerFilter(name, paramDefs, factory)` — see below
+* The engine's shaders, written the same way (`crt(curve: 0.2)`, `dissolve(amount: $t)`, a ground with
+  `generated(shader(water, w, h))`, a whole stage with `ScreenManager.setStageShader`): see Shaders in
+  `manim-reference.md`, and `bh.multianim.ShaderCatalog` for every parameter
 
 **Examples:**
 ```
@@ -1339,6 +1383,8 @@ Constants can reference other constants:
 @final offsetX = $baseX + 100
 ```
 
+A constant that uses parameters is live: in an incrementally built programmable or a codegen instance, `setParameter("x", 10)` updates everything that uses `$cx` above, as if `$x + $w / 2` were written there. It forwards through `dynamicRef` arguments like the parameters it uses, and an interactive id built from it is refused on `setParameter` (`untracked_param`), as one built from `$x` is.
+
 **Scoping:** Every `{ }` block creates a scope. Constants declared inside are cleaned up when leaving:
 ```
 #test programmable(x:uint=5) {
@@ -1379,6 +1425,31 @@ External name can be used to reference programmables from external multianim.
 
 ---
 
+## Exports and Doc Comments
+
+A file can say which of its root blocks it gives others, and what each block, parameter and enum choice is for. Both are kept by the parse for tools (a pack reader, the studio, the LSP) and change nothing in a build or an import.
+
+```manim
+/// A knight that walks and stands.
+#knight export programmable(
+    /// What the knight is doing
+    state:[
+        idle,  /// stands still
+        walk   /// 4 frames at 8 fps
+    ] = idle,
+    hp:uint = 3 /// hit points
+) {
+    ...
+}
+```
+
+- `export` goes between a root block's `#name` and its kind, for any kind of root block. `MultiAnimResultTools.exportedNames(result)` lists the exported names in the order written; every block is still built and imported alike.
+- `///` (exactly three slashes) lines directly above a root block, a parameter or an enum choice are its doc; a parameter or a choice may also have one trailing it on its line. Lines join with newlines. `MultiAnimResultTools.docOf(result, block, ?param, ?choice)` reads them. A `///` that documents none of these is a plain comment.
+
+See `docs/manim-reference.md`, Exports and Doc Comments, for every rule.
+
+---
+
 ## Layouts
 
 Layouts are root-level elements for positioning elements on screen.
@@ -1416,11 +1487,12 @@ Collections of colors accessed by index.
 
 **2D palette:**
 ```
-#main palette(2d, 4) {
+#main palette(2d: 4) {
   white 0xf12 0x332 0xfff
   red 0xf13 0x333 0xffa
 }
 ```
+The colors must fill whole rows of `width` (a partial last row is a build error). `palette(main, x, y)` reads column `x` of row `y`; `replacePalette(main, sourceRow, replacementRow)` recolours each colour of `sourceRow` to the colour in the same column of `replacementRow` (one way, not a swap).
 
 **File palette:**
 ```
@@ -1429,162 +1501,611 @@ Collections of colors accessed by index.
 
 ---
 
+## Cursors
+
+Bitmap cursors from the file's art, registered by name when the file loads:
+
+```
+#cursors cursor {
+  pointer: sheet("ui", "hand"), hot: 3, 1
+  sword:   sheet("ui", "sword"), hot: 1, 1
+  dot:     file("dot.png")
+}
+```
+
+One entry a line (or `;`-separated): a name, a tile source (`sheet(…)`, `file(…)`, `generated(…)`,
+`center(…)`; no `$param`s, the block has none), and `hot: x, y`, the pixel of the tile that clicks
+(inside the tile; `0, 0` when left out). A root node with a `#name`; a name given twice is an
+error.
+
+`ScreenManager.buildFromResource` registers every cursor of every `cursor { }` block of the file
+and of the files it imports with `CursorManager` (`builder.registerCursors()`, again on each
+reload; its `sounds`, `music` and `mix` blocks are taken the same way). A cursor name is one cursor
+for the whole game: the file that registered it replaces its own on a reload (and the cursors it
+has no more are unregistered, an OS cursor's name the OS cursor again), another file (an import,
+the importer, any file loaded) or code registering a taken name is an error naming both
+(`name_taken`); an OS cursor's name may be taken once. So a registered name
+then works wherever an OS cursor name does: an interactive's `cursor => "sword"`, `cursor.hover`,
+`cursor.disabled`, `CursorManager.getCursor("sword")`, `setOverrideCursor`. `builder.buildCursors(
+"cursors")` gives the block's cursors by name without registering them.
+
+From code, `CursorManager.registerTileCursor(name, tile, hotX, hotY)` does the same for any tile
+(an atlas cell, a generated tile): the tile is drawn to a texture of its size and read back once;
+on HashLink the cursor is an SDL/DirectX one, in the browser a CSS `url(data:…)` cursor made from
+the same pixels (`hxd.System.setCursor` does that for `Custom`). `CursorManager.getTileCursor(name)`
+says which tile a name came from, `getRegisteredCursorNames()` lists every name; the DevBridge's
+`list_cursors` lists them with their size and hot point.
+
+---
+
+## Sounds
+
+A bank of sounds, played by name from code, never by file:
+
+```
+#fx sounds {
+  bus: sfx
+  param surface: [stone, grass]
+
+  coin { file: "sound/coin.wav", bus: ui }
+  hit  { files: ["sound/hit_1.wav", "sound/hit_2.wav", "sound/hit_3.wav"], pick: shuffle,
+         volume: -5db..-1db, pitch: -5%..5%, voices: 4, steal: oldest, cooldown: 30ms }
+  step @(surface => stone) { files: ["sound/step_stone_1.wav", "sound/step_stone_2.wav"], pick: turn }
+  step @(surface => grass) { file: "sound/step_grass.wav" }
+  step { file: "sound/step_any.wav" }
+  explosion {
+    voices: 2, steal: oldest, fade: out 300ms
+    layer boom   { files: ["sound/boom_1.wav", "sound/boom_2.wav"] }
+    layer debris { file: "sound/debris.wav", delay: 40..120ms, chance: 70% }
+  }
+}
+```
+
+A root node with a `#name`; its sounds are `name.sound` (`fx.coin`). The block's `bus:` is what
+every sound plays on unless it names its own; `param name: [labels]` declares a labelled parameter
+its variants are chosen by. A sound is `name { … }`, or `name @(param => label) { … }` for a variant
+(`[a, b]` and `!label` as any `@()` does); several variants of one name are tried in file order and
+the first whose `@()` matches plays, else the one without a `@()`, else nothing. A name written
+twice without a `@()` is an error. A bank's parameters are its own: two banks that both declare
+`param surface` with different labels keep theirs. `audio.set("surface", "grass")` sets every bank
+that has the label (the others keep their value; a label no bank has is an error), and
+`audio.set("fx.surface", "grass")` one bank's; `audio.get("fx.surface")` reads one, `get("surface")`
+the value the banks share (null while they differ), `parameters()` all of them by full name.
+
+A sound's keys: `file: "…"` or `files: [...]` with `pick: random` (the default), `shuffle` (every
+file once before any again) or `turn` (in order); `volume: -3db` or a range `-5db..-1db` rolled
+per play (0 dB is the file as it is); `pitch: -5%..5%` (a shift) or `1.2` (a rate), rolled;
+`bus: name`; `voices: n`, how many plays of it at once (none by default), with `steal: oldest`
+(the default), `quietest` or `none` (the new play is dropped) for what gives way; `cooldown: 30ms`,
+the least time between two plays, a play inside it dropped; `priority: low | normal | high`, which
+plays go silent first when the engine runs out of sources (16); `fade: in 20ms out 300ms`, either
+or both. Instead of its own files a sound may have `layer name { … }` blocks, each with files,
+`pick`, `volume` and `pitch` of its own, played together, and `delay: 40..120ms` before it starts
+and `chance: 70%` that it plays at all. Times are `ms` or `s` (a bare number is ms); a range is
+`low..high`.
+
+**A held sound** plays while something lasts: an engine, a thruster, a force field, a hum. It is
+written as its three parts, each a layer:
+
+```
+  engine {
+    voices: 4, fade: out 200ms
+    layer start { file: "sound/engine_start.wav" }                        // the attack, once
+    layer hum   { file: "sound/engine_hum.wav", loop: yes, delay: 300ms } // the sustain, until stopped
+    layer stop  { file: "sound/engine_off.wav", on: stop }                // the release, as it is stopped
+  }
+  hum { file: "sound/hum.wav", loop: yes }                                // the simplest: one looping file
+```
+
+`loop: yes` on a layer, or on a sound's own files, plays it round and round until the sound is
+stopped (a take made to loop; of several `files:` one is picked and looped). `on: stop` on a layer
+plays it as the sound is stopped instead of as it starts, over the others' fade out; it never loops,
+and a sound needs at least one layer that starts. `voices:` is then how many sources hum at once
+(three ships, three engines), `steal: oldest` the one that gives way, with its stop layer. The game
+keeps the `SoundInstance` that `play` returns and calls `stop(?fade)` on it (or `audio.stop(name)`
+for every play of the name): the voice is free at once, the stop layers play on
+(`isReleasing()`); `stopAll` leaves them to end, being the sound's ending. Meanwhile
+`setPitch(rate)` and `setVolume(gain, ?fade)` drive every voice, those still to start too, as a
+factor over the rolled values: an engine by its revs, a thruster by its throttle. A bank taken
+again (a hot reload) cuts its plays, stop layers and all, so a hum never outlives the block that
+made it. Without code: an `.anim`'s `sounds { hold thrust: "fx.engine" }` holds a sound while an
+animation plays in the scene, and a screen's `settings { ambience => "amb.hum" }` holds one while the screen is
+up (below).
+
+`ScreenManager.buildFromResource` takes every `sounds` block of a file as a bank of
+`screenManager.audio` (`audio.addBanks(builder)`, again on each reload, a bank of the same name
+replaced), and every file is loaded then. A block name is one bank for the whole game: a file
+taking its own block again (a reload) replaces it, keeping the parameter values the game set;
+another file's block of a taken name (an import's, the importer's, any file's) is an error naming
+both files, and so is `audio.addBank` from code over a taken name (`removeBank` frees it). `music`
+blocks follow the same rule (`removeMusic` frees a name, stopping its track if one plays). A file
+taken again drops the blocks it has no more, so their names are free for another file. From code: `audio.play("fx.hit")` (null when the
+cooldown or `steal: none` dropped it, or no variant matched), `audio.stop("fx.swell")` (over its
+`fade: out`), `audio.stopAll()`, `audio.set("surface", "grass")`, `audio.soundNames()`. A name no
+bank has is an error. `builder.buildSounds("fx")` is the block as parsed, `soundBlockNames()` the
+blocks of a file.
+
+The service plays through a backend: `HeapsBackend` (the default, `hxd.snd`; a bus is a channel
+group) or `LogBackend` (`audio.backend = new LogBackend()`: nothing is heard and every play and
+stop is a line of `entries`, with its time, sound, layer, file, bus, volume and pitch), which is
+what a test or a headless run reads. `audio.randomFunc` is every roll, for a test that wants the
+same picks every time. See `TECHNICAL-DOCS.md` "Audio".
+
+**Typed names.** `@:build(bh.audio.AudioNames.build("res/audio.manim")) class Sfx {}` reads the
+file at compile time and gives a constant per name, so a sound misspelt in code does not compile:
+`Sfx.FX_HIT` is `"fx.hit"`, `Sfx.MUSIC_TITLE` a track's full name, `Sfx.BUS_SFX`, `Sfx.VCA_MUSIC`,
+`Sfx.SNAPSHOT_DIALOG` and `Sfx.PARAM_SURFACE` the bare names (upper case, anything not a letter or
+a digit an underscore). A `@:manim` programmable in a file with these blocks builds as it would
+without them. Hot reload takes a file's blocks again as it reloads (a bank of the same name
+replaced; a `sounds` or `music` block the file dropped is removed). The mix keeps what the game set: the
+levels of the VCAs it still has and the snapshots on that it still has, and the screens' audio is
+applied again, so a `dialog` snapshot the reload adds goes on under an open dialog.
+
+### The mix
+
+Buses, VCAs and snapshots, one block per game:
+
+```
+#main mix {
+  bus music
+  bus sfx { voices: 24 }
+  bus ui
+  vca Music:   music
+  vca Effects: sfx, ui
+  snapshot paused { sfx: pause, ui: pause, music: -6db lowpass 0.3, fade: 200ms }
+  snapshot dialog { music: -6db, fade: 100ms }
+  snapshot slow   { sfx: pitch clock }
+}
+```
+
+A root node with a `#name`. `bus name`, with `{ voices: n }` for how many of its plays are heard at
+once (the rest silent until one ends; none by default), is what a sound's `bus:` names; a sound that
+names none plays on a bus of its own. `vca Name: bus, bus` is one volume over several buses, what a
+settings slider moves: `audio.setVca("Music", 0.6)` (0 to 1), `getVca`. `snapshot name { … }` is a
+state of the mix, `audio.snapshot("dialog", true)` on and `false` off: for each bus it names,
+`pause` (its plays freeze, and resume), a level in dB (`-6db`), `lowpass 0.3` (a low-pass filter
+keeping that share of the highs, 0 to 1), `pitch clock` (pitched by the clock's scale), any of them
+together; `fade:` is how long its levels take, on and off. The snapshots on are summed: dB added,
+the lowest low-pass, paused if any says so. The engine puts `paused` on when the clock pauses
+(`screenManager.clock.paused`, which the DevBridge's pause sets) and off when it resumes; a mix
+without a `paused` snapshot pauses every bus then. The clock's `scale` pitches the `pitch clock`
+buses as it changes (never below `Audio.MIN_PITCH`). `audio.busState("sfx")` is a bus as all of it
+makes it now. The same block taken again (a hot reload) keeps the VCAs' levels and the snapshots on
+that it still has; another block replaces the mix whole.
+
+### Music
+
+```
+#music music {
+  bus: music
+  track title { file: "music/title.mp3", loop: yes }
+  track play  { file: "music/play.mp3" }
+}
+```
+
+A root node with a `#name`; its tracks are `name.track`. `bus:` is the bus they play on (`music`
+unless given); a track is `file:` and `loop:` (`yes` unless given). One track plays at a time:
+`audio.playMusic("music.title")` fades the one playing out and the new one in over
+`Audio.MUSIC_CROSSFADE` (half a second; `playMusic(name, 1.5)` for another), the track already
+playing plays on; `audio.stopMusic(?fade)`; `audio.musicPlaying`, `trackNames()`. A track over five
+seconds is streamed by Heaps.
+
+### Widgets, sprites and screens: sound with no code
+
+- **A widget's events** play the `ui` bank: `ui.hover` as the pointer comes over a button,
+  `ui.click` on a button's click, `ui.toggle` on a checkbox, `ui.change` on a slider's, dropdown's,
+  list's, radio's or tabs' change (a scrollbar's too), `ui.open` and `ui.close` as a dropdown's panel
+  opens and closes. A `#ui sounds { }` block that defines them is all it takes; one it leaves out is
+  silent. A widget says otherwise in its own `settings { sound.click => "ui.confirm" }` or
+  `sound.hover => none`; an interactive in its metadata, `interactive(40, 20, "buy", sound.click =>
+  "ui.change")`. (`UIScreenBase.playWidgetSound`, called for every event a screen dispatches;
+  `audio.playUi(key, ?own)` from code.)
+- **An interactive's click** plays `ui.click` too, with no word of its own: every `interactive()`
+  the screen registered with `addInteractives` (a screen's own, a panel's, a card hand's cards).
+  Its hover is silent (an interactive sends `UIEntering`, not `UIHover`). One that should make no
+  sound says `sound.click => none` in its metadata.
+- **A sprite's events** play what its `.anim` file's `sounds { fire: "fx.shot" }` block maps them to,
+  as the state machine fires them, through the loader's audio (`docs/anim.md` "sounds").
+- **A sprite's animation holds a sound**: `sounds { hold thrust: "fx.engine" }` in the `.anim` file
+  starts the sound as the `thrust` animation starts and stops it (its stop layers playing) as
+  another animation starts or the sprite leaves the scene; the same animation again keeps it, and
+  a sprite put back in the scene on that animation holds it again. `animSM.heldSound` is the play,
+  to drive its pitch and volume; the animation named must be one of the file's.
+- **A screen's music** is `settings { music => "music.title" }` on the first programmable added to it
+  that says it (or `screen.screenMusic = "music.title"` from code before it shows; `"none"` stops the
+  music, no word keeps what plays). The screen manager crossfades to it as the screen comes up: a
+  dialog that says nothing keeps its caller's, a master-and-single plays the single's, else the
+  master's. Under a dialog the `dialog` snapshot is on, when the mix has one.
+- **A screen's ambience** is `settings { ambience => "amb.hum" }` likewise (`screen.screenAmbience`):
+  a looping sound of a bank, held beside the music while the screen is up. The screen manager starts
+  it as the screen comes up and stops it as a screen naming another or `"none"` comes up; a screen
+  naming the same one keeps it, one that says nothing keeps what plays, a dialog keeps its caller's.
+  One ambience at a time (`audio.playAmbience`, `stopAmbience`, `ambiencePlaying`); a scene with
+  several hums at once holds them from its sprites or its own code.
+- **The DevBridge** sees and sets it: `audio_state`, `audio_log`, `audio_set`, and an `audio` event
+  for every line of `audio.history` (`docs/devbridge.md`).
+
+---
+
 ## Autotile
 
-Root-level element for procedural terrain/tileset generation. Autotiles automatically select the correct tile variant based on neighboring tiles.
+Root-level element for procedural terrain. An autotile names a tileset and an index scheme; `builder.buildAutotile(name, grid)` then picks the right tile for every cell (or grid corner) from its neighbours and returns an `h2d.TileGroup`.
 
 ### Basic Syntax
 
 ```
 #name autotile {
-    format: cross | blob47
+    format: corner | blob47 | cross
     tileSize: <int>
     <source>
-    [optional properties]
+    [mapping: [...]]
+    [region: [x, y, w, h]]          // file: source only
+    [allowPartialMapping: true]     // blob47 only
 }
 ```
 
 ### Formats
 
-| Format | Tiles | Description |
-|--------|-------|-------------|
-| `cross` | 13 | Cardinal directions + corners (N, E, S, W, C, outer corners, inner corners) |
-| `blob47` | 47 | Full 8-directional coverage with all edge/corner combinations |
+| Format | Tiles | Placement | Use when |
+|--------|-------|-----------|----------|
+| `corner` | 16 | One tile per grid **corner** (dual grid, offset by half a tile). Index = which of the 4 cells around the corner are terrain: `NW 1 + NE 2 + SW 4 + SE 8`. Index 0 is never drawn. | Your tileset is a 3x3 patch + 4 inner corners + 2 diagonals (15 tiles, the 16th is the plain background) - the most common two-terrain layout. Covers **every** grid configuration, including isolated cells, 1-wide strips and diagonal touches. |
+| `blob47` | 47 | One tile per filled cell, chosen from all 8 neighbours (a diagonal only counts when both adjacent sides are present). | Your tileset has the full 47-tile blob layout. With fewer tiles, see [Partial mapping](#partial-mapping-blob47). |
+| `cross` | 13 | One tile per filled cell: 4 edges, center, 4 outer + 4 inner corners (`0=N 1=W 2=C 3=E 4=S`, `5-8` = NW/NE/SW/SE outer, `9-12` = NE/NW/SE/SW inner). | Legacy 13-tile sets. Cannot express isolated cells, 1-wide strips or two missing diagonals (they render as the center tile). |
+
+Edge tiles are named after the side that **borders empty space**: the `N edge` tile is used for a cell with no terrain to its north. Inner corners are named after the missing diagonal.
+
+The `corner` format draws `(w + 1) x (h + 1)` tiles for a `w x h` grid, so the TileGroup extends half a tile past the grid on every side; the terrain itself still lines up with the cells. Use an even `tileSize`.
 
 ### Source Types
 
-One source type is required:
+Exactly one source is required. Every source is addressed by a **source index** `j`; `mapping:` maps autotile index -> source index (identity when absent).
 
-**Atlas with prefix:**
-```
-sheet: "sheetName", prefix: "tile_"
-```
-Loads tiles named `tile_0`, `tile_1`, etc. from atlas.
-
-**Atlas with region:**
-```
-sheet: "sheetName", region: [x, y, width, height]
-```
-Extracts tiles from a rectangular region of the atlas. **Requires `mapping:`** since region tiles are rarely in autotile index order.
-
-**Image file:**
-```
-file: "filename.png"
-```
-Loads tiles from an image file. Use with `region:` to specify tile area. **Requires `mapping:`** when using a region.
-
-**Explicit tiles:**
-```
-tiles: sheet("atlas", "tile1") sheet("atlas", "tile2") generated(color(16,16,red)) ...
-```
-List of explicit tile sources for full control.
-
-**Demo (auto-generated):**
-```
-demo: edgeColor, fillColor
-```
-Generates placeholder tiles for prototyping. Shows edge/fill colors to visualize tile variants.
-
-### Optional Properties
-
-| Property | Description |
-|----------|-------------|
-| `region: [x, y, w, h]` | For file source: extract tiles from this region only |
-| `depth: <int>` | Isometric elevation depth |
-| `mapping: [...]` | Remap tile indices (see below) |
-| `allowPartialMapping: true` | For blob47: missing tiles use fallback instead of error |
+| Source | Source index `j` |
+|--------|-----------------|
+| `file: "tileset.png"` | `j`-th tile (row-major) of `region: [x, y, w, h]`, or of the whole image without `region:`. The region must fit the image and be a whole number of tiles. |
+| `sheet: "atlasName", prefix: "tile_"` | atlas tile named `tile_<j>` (works with inline `atlas2` blocks). |
+| `sheet: "atlasName", name: "lava"` | frame `j` of the atlas tile `lava`, its frames in `index:` order from 0 (a run whose first index is 1 counts from it, as every atlas is read). How a packer writes a terrain's cells: one name, one `index` a cell. |
+| `tiles: <tile source> <tile source> ...` | `j`-th listed tile source (`sheet(...)`, `file(...)`, `generated(...)`, ...). |
+| `demo: edgeColor, fillColor` | Generated placeholder tiles, one per autotile index (all in one texture). Takes no `mapping:`. |
 
 ### Mapping
 
-Maps autotile indices to tileset indices. **Required for region-based sources** because tileset artists rarely arrange tiles in autotile index order.
+`mapping:` maps autotile indices to source indices. Keys must be valid indices for the format (checked at parse time); duplicate keys are an error.
 
-Autotile indices encode which neighbors are present:
-- **cross format**: 0-12, encoding cardinal directions and corners
-- **blob47 format**: 0-46, encoding all 8-directional neighbor combinations
-
-Two mapping formats:
-
-**Sequential:** Position in array = autotile index, value = tileset index
+**Sequential:** position in the list = autotile index
 ```
 mapping: [4, 7, 3, 6]  // autotile 0->4, 1->7, 2->3, 3->6
 ```
 
-**Explicit:** `autotileIndex:tilesetIndex` pairs (recommended for partial mapping)
+**Explicit:** `autotileIndex:sourceIndex` pairs (recommended when not every index is mapped)
 ```
 mapping: [0:4, 1:7, 5:1, 13:5]
 ```
 
+**Several tiles for one index:** `index: a | b | c` (or `a | b | c` in the sequential form). A position
+draws one of them, chosen by its position so the same map always draws the same way and repeats do
+not line up; a source given twice is drawn twice as often. The usual use is the full interior tile
+and the long edges, which most tilesets ship in several versions:
+```
+mapping: [0:4, 1:7, 5:1, 13:5, 15: 9 | 10 | 11 | 11]
+```
+`generated(autotile(name, index))` takes the first; `builder.getAutotileTile(name, index, x, y)` the one a position draws.
+
+**Turned tiles:** after a source index, `flipX`, `flipY` and one of `rot90`, `rot180`, `rot270`
+(clockwise), in any order, for a pack that ships one edge and expects the rest mirrored:
+```
+mapping: [0: 4, 1: 4 flipX, 2: 4 rot90, 3: 4 flipX rot90, 15: 9 | 9 flipX | 9 flipY]
+```
+A flip is in the tile (`getAutotileTile` gives it flipped); a rotation is drawn, and
+`getAutotileRotation(name, index, x, y)` says it, so `generated(autotile(name, index))` shows a
+rotated tile unturned.
+
+**Margin and spacing** of a `file:` source: `margin: 1` pixels from the region's edge (or the image's)
+to its first tile, `spacing: 2` between tiles, as sheets exported with gutters have. The region must
+then hold whole tiles that way: `n` tiles take `2 * margin + n * tileSize + (n - 1) * spacing`.
+`autotileRegionSheet` draws its numbered grid on the tiles as they sit.
+
+Every autotile index needs a tile, otherwise building fails with a `BuilderError` naming the index - with two exceptions: `corner` index 0 (never drawn) and `blob47` with `allowPartialMapping: true`. A mapping target outside the source (e.g. past the end of the region) is an error too.
+
+Use `generated(autotileRegionSheet(...))` (below) to see the source indices of a `file:` region.
+
 ### Partial Mapping (blob47)
 
-Full blob47 coverage requires 47 distinct tiles, but many tilesets only provide a subset (typically 13-20 tiles for basic terrain). Use `allowPartialMapping: true` to enable automatic fallback:
+Many tilesets only provide a subset of the 47 blob tiles. With `allowPartialMapping: true`, an unmapped blob47 index uses the closest mapped tile: same sides with the closest diagonal combination first (fewest mismatched diagonals), then fewer sides, then the full tile (46), then the isolated tile (0). The same applies to a `tiles:` list shorter than 47 without a mapping.
 
-```
-allowPartialMapping: true
-mapping: [
-    0:4,    // isolated tile
-    1:7,    // N neighbor only
-    // ... only map tiles that exist in your tileset
-]
-```
-
-**Fallback behavior:** When a blob47 index isn't mapped, the system finds a simpler tile that still looks correct:
-- Unmapped corner combinations fall back to edge-only tiles
-- Complex patterns fall back to simpler patterns with the same cardinal edges
-- This allows a 15-tile tileset to work with the full 47-tile system
-
-See [test/examples/32-blob47Fallback/](../test/examples/32-blob47Fallback/) for a working example with the Forgotten Plains tileset.
+Fallback can only approximate: a 15-tile patch has no tiles for isolated cells or 1-wide strips, so those render as plain center tiles. Many packs ship the missing pieces elsewhere on the sheet (single blob, strip caps, 1-wide paths, T-junctions) - point `region:` at the whole area and map them; [test/examples/30-blob47Fallback/](../test/examples/30-blob47Fallback/) maps 35 of the 47 indices from the Forgotten Plains dirt tiles this way. If your tileset is only a 3x3 patch + inner corners + diagonals, use `format: corner` instead - it needs no fallback.
 
 ### Examples
+
+**Corner set from a tileset region** (the Forgotten Plains dirt patch, see [test/examples/153-autotileCorner/](../test/examples/153-autotileCorner/)):
+```
+#dirt autotile {
+    format: corner
+    tileSize: 8
+    file: "Tileset/Minifantasy_ForgottenPlainsTiles.png"
+    region: [56, 24, 24, 40]    // 3x5 tiles: 3x3 patch, then inner corners + diagonals
+    mapping: [
+        1:8, 2:6, 3:7, 4:2, 5:5, 6:11, 7:13, 8:0,
+        9:14, 10:3, 11:12, 12:1, 13:10, 14:9, 15:4
+    ]
+}
+```
+
+**Corner set named by index in an inline atlas** (no mapping needed):
+```
+#fp atlas2("Tileset/Minifantasy_ForgottenPlainsTiles.png") {
+    dirt1: 72, 40, 8, 8     // dirt in the NW corner only
+    dirt2: 56, 40, 8, 8     // NE only
+    // ... dirt3 .. dirt15
+}
+#dirt autotile { format: corner  tileSize: 8  sheet: "fp", prefix: "dirt" }
+```
 
 **Demo autotile for prototyping:**
 ```
 #terrainDemo autotile {
     format: blob47
     tileSize: 16
-    demo: 0x66AA44, 0x886644    // green edges, brown fill
+    demo: #66AA44, #886644    // green edges, brown fill
 }
 ```
-See [test/examples/31-autotile/](../test/examples/31-autotile/) for cross and blob47 demo examples.
+See [test/examples/24-autotileCross/](../test/examples/24-autotileCross/), [25-autotileBlob47/](../test/examples/25-autotileBlob47/) and [28-autotileDemoSyntax/](../test/examples/28-autotileDemoSyntax/).
 
-**Tileset with region and partial mapping:**
+**Blob47 with partial mapping** (minimal sketch; [test/examples/30-blob47Fallback/](../test/examples/30-blob47Fallback/) has a full 35-tile mapping):
 ```
-#grassTerrain autotile {
+#dirtBlob autotile {
     format: blob47
     tileSize: 8
     file: "tileset.png"
     region: [56, 24, 24, 40]
     allowPartialMapping: true
     mapping: [
-        0:4,    // isolated tile
-        1:7,    // N neighbor
-        5:1,    // S neighbor
-        13:5,   // W neighbor
-        21:4    // all neighbors (center)
-        // unmapped tiles use fallback
+        0:4,    // isolated
+        1:7,    // dirt to the N -> S edge tile
+        5:1,    // dirt to the S -> N edge tile
+        46:4    // all neighbours -> center
+        // unmapped indices use the fallback
     ]
 }
 ```
-See [test/examples/32-blob47Fallback/](../test/examples/32-blob47Fallback/) for a complete partial mapping example.
+
+### Building terrain from code
+
+```haxe
+// grid[y][x], any non-zero value = terrain
+var grid = [
+    [0, 1, 1, 0],
+    [1, 1, 1, 1],
+    [0, 1, 1, 0]
+];
+var terrain:h2d.TileGroup = builder.buildAutotile("dirt", grid);
+scene.addChild(terrain);
+
+// Single resolved tile (after mapping / fallback):
+var tile:h2d.Tile = builder.getAutotileTile("dirt", 15);
+```
+
+Tiles are resolved once per builder and cached, so rebuilding the TileGroup on every edit is cheap. Index math (`getNeighborMask8`, `getCornerIndex`, `getBlob47Index`, `getCrossIndex`, `getBlob47FallbackChain`) is available in `bh.base.Autotile`.
 
 ### Using Autotile Tiles
 
-Reference autotile tiles in `generated()` expressions:
+Reference a resolved autotile tile in `generated()` expressions by index (0-12 cross, 0-46 blob47, 0-15 corner):
 
 ```
-// By index (0-12 for cross, 0-46 for blob47)
 bitmap(generated(autotile("terrainDemo", 0)))
-
-// By edge flags (N, E, S, W, NE, SE, SW, NW)
-bitmap(generated(autotile("terrainDemo", N|E|S|W)))
+bitmap(generated(autotile("dirt", $i)))
 ```
 
 ### Debugging with Region Sheet
 
-Visualize the tileset region with numbered grid:
+Visualize a `file:` source's region with each tile's source index overlaid:
 
 ```
-bitmap(generated(autotileRegionSheet("grassTerrain", 4, "f3x5", white)))
+bitmap(generated(autotileRegionSheet("dirt", 4, "f3x5", white)))
 ```
+
+---
+
+## Tilesets and Tile Maps
+
+A **tileset** says what maps are drawn with; a **tile map** is rows of characters, one a cell, drawn
+from one. Nothing in either is particular to an art pack: which sheet, which names, which autotile,
+which way a level's side is drawn and what a cell means to the game are all written in the file.
+
+### Tileset
+
+```manim
+#dirt autotile { format: corner tileSize: 8 sheet: "fp", name: "dirt" }
+#water autotile { format: corner tileSize: 8 sheet: "fp", name: "water" }
+#water2 autotile { format: corner tileSize: 8 sheet: "fp", name: "water2" }
+#edge1 autotile { format: corner tileSize: 8 sheet: "fp", name: "edge" }
+
+#plains tileset {
+    tileSize: 8
+    atlas: "fp"                                   // the sheet its named cells are in
+    edge: edge1                                   // the outline of every higher level
+    terrain grass { cells: "grass" metadata { cost:int => 1 } }
+    terrain dirt { autotile: dirt metadata { cost:int => 2 } }
+    terrain water { autotile: water, water2 duration: 300 metadata { swim:bool => true } }
+    rise 1 { side: "side1" left: "side1L" right: "side1R" span: 2 metadata { wall:bool => true } }
+    cell stairs { metadata { wall:bool => false, climb:bool => true } }
+    cell treetop { draw: over }
+}
+```
+
+| In a tileset | |
+|---|---|
+| `tileSize: n` | Pixels a cell |
+| `atlas: "sheet"` | The sheet (an atlas2 file or inline block) its named cells come from |
+| `edge: autotile` | The outline of a higher level, drawn along the rim of every level above 0 (not its inside, so the terrains on it show); needed when there are rises |
+| `edge <terrain>: autotile` | The outline where that terrain is on top, in place of `edge`: for a tileset whose cliff rim is drawn with the ground it holds (a rim of stone round grass, another round dirt) |
+| `terrain name { … }` | A terrain, drawn in the order written, bottom first; each is drawn under every terrain after it (its autotile covers their cells too, so what is drawn over it has something under it). A tileset of things to place only (trees, houses, furniture) has none: its maps are all `none` (`legend { " ": none }`), its cells in layers, laid over a map of another tileset's ground |
+| `transition a, b { autotile: … }` | Where terrain `b` meets terrain `a` (or `none`, the map's edge included) and nothing else, this autotile is drawn over `b`'s own there: for a tileset whose edge between those two is its own tile set (grass to water, not grass to anything). `a` is below `b`; one autotile a frame when `b` is animated |
+| `rise n { … }` | How a cell `n` levels above its neighbour is drawn (below) |
+| `rise any { … }` | The same for every number of levels that has no rise of its own: a fence behind a plateau is the same however high it is |
+| `rise n <terrain> { … }` | The same where the higher cell is of that terrain. A terrain with rises of its own toward a side uses only those there |
+| `platform name { … }` | A kind of higher level that is not the ground raised: a tree top, a roof (below) |
+| `cell name { … }` | What a named cell of a map's layers is, wherever it is placed: `draw:` (`under`, `over`, `top`, or `actors`: among them, sorted by its feet) and `metadata` |
+| `cell name { size: w, h anchor: x, y }` | An object of several cells (a tree, a house) whose frames are `w` by `h` cells: the layer's character marks its `anchor` cell (its bottom-left one unless given, counted from its top-left), it is drawn among the actors standing on its feet unless `draw:` says otherwise, and every cell it covers is it (`cellAt`, `metadataAt`; `objectAt` says where its anchor is). It must lie inside the map and cover no other cell of its layer |
+
+| In a terrain | |
+|---|---|
+| `autotile: a` | An autotile definition of the tileset's file |
+| `autotile: a, b, c` with `duration: ms` | An animated terrain: one autotile a frame |
+| `cells: "name"` | Or the frames of an atlas name, as variants: each cell takes one by its position, the same every time |
+| `metadata { … }` | What the game reads of a cell of this terrain |
+
+**Height is levels, and nothing is lifted.** A map's `levels:` give each cell a level: a digit, or
+for more than ten levels a character of a legend, `levels { legend { "A": 10, "B": 11 } rows: [ … ] }`
+(a digit is always itself). A higher level is outlined by the tileset's `edge` autotile, and beyond a higher cell,
+toward the neighbour its rise faces, its `side` is drawn over `span` cells: the cliff face, the wall,
+the front of a platform. What stands on a higher level stands on its cells, where they are drawn, so
+sorting by feet stays right.
+
+| In a rise | |
+|---|---|
+| `side: "name"` | The side's middle: `span` frames of the name, from the edge outward |
+| `side: "a", "b", "c"` | Several middles, taken in turn along the run (after its first end): a wall drawn as columns that differ |
+| `left:`, `right:`, `single:` | Optional: the side's run's first end (left, or top), its last end, and a side one cell wide |
+| `span: n` | How many cells the side covers |
+| `toward: down` | Which neighbour the side faces: `down` (the default), `up`, `left`, `right`. One rise a number and direction |
+| `metadata { … }` | What the game reads of the cells the side covers |
+
+**A platform** is a higher level with a top of its own, drawn over whatever terrain the map has
+there: the ground under a tree top is still grass. Its `edge` autotile is drawn over all of it,
+inside and rim, and its sides are its own: where it has none toward a side, none is drawn.
+
+```manim
+platform canopy {
+    edge: canopyTop                                 // its top, every cell of it
+    rise 1 { side: "face", "face2" left: "faceL" right: "faceR" span: 6 }
+}
+```
+
+A map says where a platform is in its levels: a character of the levels' legend stands for a level
+and the platform there (`"c": 1 canopy`; `"c": canopy` is one level up). `map.platformAt(cx, cy)`
+is its name, or null for the ground.
+
+### Metadata
+
+`metadata { key:type => value, key => value, … }` on a terrain, a rise or a cell, written as
+`settings { }` and an interactive's metadata are (`int`, `float`, `string`, `bool`, `color`; without
+a type it is inferred), with literals only: a tileset has no parameters. A cell's metadata is its
+terrain's, then a rise's side over it, then each layer's cell there, a later one winning, and it is
+read as settings are: `map.metadataAt(x, y)` is a `BuilderResolvedSettings`. The engine gives no key
+a meaning: the game says what `wall`, `swim` or `cost` are for.
+
+### Tile map
+
+```manim
+#meadow tilemap {
+    tileset: plains                               // or tileset: external(tiles), plains
+    size: 20, 12
+    legend { ".": grass, "d": dirt, "~": water, " ": none }
+    terrain: [
+        "....................",
+        "..dddd.......~~~~...",
+        …
+    ]
+    levels: [                                     // optional: a digit a cell; levels { legend { "A": 10, "c": 1 canopy } rows: [ … ] } for more, and for platforms
+        "00000000000000000000",
+        "00000011111100000000",
+        …
+    ]
+    layer deco { legend { "s": stairs, "t": treetop } rows: [ … ] }   // a space is no cell
+    layer shade { sheet: "shadows" draw: top legend { "x": shade } rows: [ … ] }
+    decor {                                       // any element, sorted with the actors
+        bitmap(sheet("props", "rock")): 40, 80
+    }
+    marks { spawn: 1, 1  exit: 16, 9, 3, 2 }      // a point, or x, y, w, h: in cells
+}
+
+#level programmable() {
+    tilemap(meadow): 0, 0                         // or tilemap(external(maps), meadow)
+}
+```
+
+- Rows are checked when parsed: every row the map's width, every character in its legend, the right
+  number of rows, levels as digits or characters of their legend. The builder checks the rest, since the tileset may be in another
+  file: every terrain, cell and side piece is there (`tilemap_terrain`, `tilemap_missing_cell`), and
+  every rise the map has in a direction the tileset draws sides toward has its `rise` (`tilemap_rise`).
+- A layer's cells come from its `sheet:` (the tileset's `atlas` when not given) and are drawn `under`
+  the actors (the default), `over` them, at the `top`, above everything, or as `actors`: each among
+  them, sorted by its feet; a `cell` with its own `draw:` goes there instead.
+- Drawing order: terrains, the levels' edges and sides, the `under` layers; the decor and the actors in
+  one layer sorted by their feet every frame; `over`; `top`. The order holds across the map's
+  chunks: a map drawn in chunks looks as it does drawn in one piece, at their borders too.
+
+### A fill: a map made where it is placed
+
+```manim
+#plains_patch programmable(terrain:[grass, dirt, water]=grass, cols:uint=6, rows:uint=4) {
+    tilemap(fill(plains, terrain: $terrain, cols: $cols, rows: $rows)): 0, 0
+    // or tilemap(fill(external(tiles), plains, terrain: $terrain, cols: $cols, rows: $rows))
+}
+```
+
+`tilemap(fill(…))` places a map of the tileset with no rows written: `cols` by `rows` cells of one
+terrain, in a ring of `none` one cell wide, so the terrain's edges are drawn as they are in a written
+map (every autotile format: corner, blob47, cross; a terrain of `cells` too). It is (cols + 2) by
+(rows + 2) cells, all level 0, with no layers, decor or marks, and is placed as `tilemap(name)` is: its
+cell (0, 0), the ring's corner, at the element's position, the terrain starting a cell in. `terrain` is
+a string and `cols` and `rows` integers, each a literal or an expression over the programmable's
+parameters and `@final`s, given once each in any order.
+
+When a parameter they use changes, through a `@final` too, the map is made again in place (the same
+`bh.base.TileMap`), in an incremental build and in a codegen instance alike, as a `staticRef` is built
+again: a loop variable is fixed when built, and in a `repeatable` whose count is a parameter such a
+change is refused (`untracked_param`), the body being built as a whole there. A literal `cols` or `rows` below 1
+and a missing or repeated argument are parse errors; a terrain the tileset has not (`tilemap_terrain`,
+naming its terrains), a size below 1 cell (`tilemap_size`) and a tileset that is not there
+(`missing_ref`) are `BuilderError`s that begin `tilemap(fill(…))`. From code:
+`builder.buildTilemapFill("plains", "dirt", 6, 4)` (an imported tileset's: `buildTilemapFill("plains",
+"dirt", 6, 4, "tiles")`) and `builder.refillTilemap(map, "water", 6, 4)`. A hot reload of its file
+makes a fill again, of its terrain and size, from the tileset as it is then, and a later change of its
+parameters makes it from that tileset too (a refill asked of the builder from before the reload goes to
+the one that made it last).
+
+### From code
+
+```haxe
+final map:bh.base.TileMap = builder.buildTilemap("meadow");
+map.addActor(hero);                         // sorted by its y with the decor, every frame (map.sortActors = false: not)
+map.toCell(hero.x, hero.y);                 // the cell a point is in
+map.terrainAt(cx, cy);                      // "grass", or null for none
+map.levelAt(cx, cy); map.sideAt(cx, cy);    // a cell's level; the rise of a side over it, or 0
+map.platformAt(cx, cy);                     // the platform a higher cell is of, or null: the ground
+map.cellAt("deco", cx, cy);                 // a layer's cell name, or null (an object's on every cell it covers)
+map.objectAt("deco", cx, cy);               // {name, anchorX, anchorY, x, y, width, height} of what covers the cell, or null
+map.metadataAt(cx, cy).getBoolOrDefault("wall", false);  // getIntOrDefault, getStringOrDefault, has, keys…
+map.mark("exit");                           // {name, x, y, w?, h?}
+map.setTerrain(cx, cy, "~"); map.setLevel(cx, cy, 1); map.setCell("deco", cx, cy, "s");
+```
+
+`setTerrain`, `setLevel` and `setCell` change the map's own copy of the rows, so a map can be painted
+while the game runs. The map is drawn in chunks of `chunkSize` cells a side (`TileMap.defaultChunkSize`,
+32; `setChunkSize`), each as it is first in view, so a big map costs what is seen of it, and a chunk
+far into the map costs as much as the first. Reading a cell draws nothing: `terrainAt`, `levelAt`
+and `cellAt` read the rows, and `sideAt` and `metadataAt` work out a changed chunk's sides and
+metadata by themselves, so a game that reads the whole map (pathfinding) does not draw the whole
+map. However many cells change, the chunks they are in (and, at a chunk's border, the neighbours
+an autotile's corners or a rise's sides reach) are drawn again once, as they are next in view;
+`redraw()` draws it all now, a map drawn whole already too. The view is `map.cull(x, y, w, h)`, in
+the map's pixels (a game with a camera calls it as the camera moves, since a camera is not in an
+object's place), or, with `cullToScene` on (the default) and no `cull`, the scene's size seen
+through the map's place and scale; `cullNone()` has every chunk in view, `isChunkVisible(col, row)`
+says what is drawn. A chunk is in view when the view reaches within a tile of it, or, on a map with
+objects of several cells, as far past it as the furthest of them reaches past its anchor (by its
+`size`, or its image when that is bigger): an object is drawn by the chunk its anchor is in, and so
+is drawn and shown as soon as any of it is in view; one among the actors is hidden with its chunk. `setLevel`
+raises the ground: a digit for 0–9, else a character of the levels legend that is not a platform's.
+`setCell` places and removes an object of several cells at its anchor. A cell outside the map, a
+character the legend has not, a level no character stands for, a layer the map has not, a cell
+another object covers, and an object that would reach outside the map or over another cell of its
+layer are `BuilderError`s (`tilemap_outside`, `tilemap_legend`, `tilemap_level`, `tilemap_layer`,
+`tilemap_object_covered`, `tilemap_object_outside`, `tilemap_object_overlap`); the last two are
+checked as the rows are read too. Hot reload of the file redraws every map from it in a scene and
+keeps the actors; a map not in a scene is not. The DevBridge answers `map_list` and `map_get`.
 
 ---
 
@@ -1962,8 +2483,111 @@ Records are considered identical when they have the same fields (name, type, opt
 - Enum and record names must be unique within a data block
 - Enums must be defined before records or fields that reference them
 - Commas between array elements and record fields are optional
-- Optional fields (`?name: type`) default to `null` when omitted from record values
+- Optional fields (`?name: type`) default to `null` when omitted from record values, or to their `@default`
 - Runtime builder returns enum values as strings; macro codegen returns typed Haxe `enum` values
+
+### Tables
+
+A record with a `key` field is a row type, and an array of it is a **table**: its rows are found by
+their id, and an id used twice is an error.
+
+```
+#cards data {
+    #category enum(basic, catalog, chaos)
+    #card record(key id, name: string, category: category, cost: int @range(0, 3) @unit("energy"),
+        ?starter: int @default(0) @says("copies in the starting deck"), ?requires: ref card[])
+
+    @says("every card a meeting can deal")
+    all: card[] [
+        { id: agree, name: "Agree in principle", category: basic, cost: 1, starter: 5 }
+        @by(claude) { id: nod-along, name: "Nod along", category: basic, cost: 1, requires: [agree] }
+        { id: "1-on-1", name: "One on one", category: catalog, cost: 2 }
+    ]
+}
+```
+
+- `key id` is a string field every row has (`key id: string` says the same). A record has one key at most.
+- An id is a bare word (`agree`, `nod-along`), or a quoted string for one a word cannot be (`"1-on-1"`).
+- A field named `key` is still a field: `key: string`.
+
+### Refs
+
+`ref <record>` holds the id of a row of a keyed record: `?requires: ref card[]`, `tier: ref tier`. Every
+ref is checked once the whole block is read, so a row may name one written after it; a ref to an id no
+table of that record has, or to a record with no key, is an error. A record may have more than one table,
+and a ref names a row of any of them, but of one only: an id that two tables of the record both have is an
+error for a ref to it. A record may name its own rows.
+
+A table whose record names its own rows is a **tree** (an upgrade or tech tree): `requires` above makes
+`all` one, and the DevBridge gives its edges (see below).
+
+### Annotations
+
+`@name` or `@name(value, …)` after a record field's type, before a field of the block (`@range(1, 10)
+handSize: 5`) or a pick, or before a row of a table. Arguments are numbers, strings, `true`/`false`, or
+bare words (read as strings). The parser checks the ones it knows, on a field of the block as on a field of
+a record, and keeps every other as it is, for tools to read:
+
+| Annotation | On | Checked |
+|------------|----|---------|
+| `@range(min, max)` | a number field | every value written is within it |
+| `@step(n)` | a number field | above 0 |
+| `@default(value)` | an optional field of a record | of the field's type, within its `@range`; a row that leaves the field out gets it |
+| `@unit("…")`, `@says("…")` | a field or a pick | one word or string |
+| anything else (`@by(claude)`, `@note("…")`) | a field, a pick or a row | kept |
+
+### Picks
+
+A pick says how a table is drawn from:
+
+```
+reward: pick(all, weight: weight, draws: 3)                 // each row as often as its weight; 3 different rows a draw
+loot: pick(drops, chance: chance, otherwise: nothing)      // each row at its chance, the otherwise row with the rest
+relic: pick(relics, weight: tier.weight, repeats: true)    // the weight of the tier row each relic links to
+```
+
+- `weight: <column>` or `chance: <column>`, a number column of the table's rows, or `<ref>.<column>` of the rows a ref field links to (in whichever table of their record each is).
+- `draws: n` (1 when not given) is how many rows one draw takes; `repeats: true` lets a draw hold a row twice.
+- `otherwise: <id>` (with `chance:`) is the row that takes what the other chances leave; without one, the leftover chance is nothing.
+- Checked when the block is read: the table exists and has a key, the column is a number, chances add up to 1 at most.
+
+By weight a weight of 0 or less never comes up. Without repeats, a row drawn is out of the pool for the rest
+of the draw. The seeded random `bh.multianim.data.DataRandom` is Mulberry32: the same numbers on every target,
+and the same as the usual JavaScript `mulberry32`, so the same seed draws the same rows.
+
+### Tables and picks at runtime
+
+`@:data` makes a table a `bh.multianim.data.DataTable<Row>` and a pick a `bh.multianim.data.DataPick<Row>`,
+with a class of each keyed record's ids as constants, so code that names a row the file does not have does
+not compile:
+
+```haxe
+final cards = screen.cards;                          // @:data("res/cards.manim", "cards")
+final agree = cards.all.get(CardsCardId.Agree);      // "agree"; CardsCardId.Id1On1 is "1-on-1"
+trace(agree.cost, cards.all.length, cards.all.ids());
+final offer = cards.reward.draw(new DataRandom(seed).float);   // 3 rows, the same for the same seed
+final one = cards.reward.pick();                                // Math.random when no random is given
+trace(cards.reward.odds().chances.get("agree"));                // each row's chance of being picked
+```
+
+The ids class holds the ids of every table of the record, named by their letters and digits (`"very rare!"`
+is `VeryRare`). A second `@:data` of a block of the same name in the same package (with `mergeTypes`)
+shares the class when the ids are the same, and does not compile when they are not.
+
+`getData` gives the same with `Dynamic` rows: `data.all.get("agree").category` is `"basic"`.
+
+### The game's data over the DevBridge
+
+Every `DataTable` and `DataPick` made, by `@:data` or `getData`, lists itself in
+`bh.multianim.data.DataRegistry` with its .manim file, block and line. A table the game builds in its own
+code is registered by hand, and its place is the registering call:
+
+```haxe
+DataRegistry.registerTable("AllCards", () -> [for (c in Cards.ALL) {id: c.id, name: c.name, cost: c.cost}]);
+```
+
+The DevBridge answers `data_list`, `data_get` and `data_pick` from it (see `docs/devbridge.md`), so a tool
+reads what the game has, from a .manim file or from code, and where each is.
 
 ---
 
@@ -2285,7 +2909,9 @@ With `tangent`, particle initial velocity follows the path tangent direction at 
 | `attachTo` | string | Emitter position tracks a named animated path |
 | `spawnCurve` | curve ref | Modulate emission rate over attached path's lifetime |
 
-**Runtime API:** `group.emitBurst(count)` forces N particles immediately. `group.emitFilter = (x, y) -> Bool` filters particles by world-space spawn position (return `false` to discard).
+**Runtime API:** `group.emitBurst(count)` forces N particles immediately. A group with particles of its own (`count > 0`) that has not been drawn yet starts with them first, so a burst (or a sub-emitter) before its first frame adds to its own particles rather than replacing them. `group.emitFilter = (x, y) -> Bool` filters particles by world-space spawn position (return `false` to discard).
+
+**A tint per burst or per group:** `group.emitBurstAt(x, y, vx, vy, count, 0xRRGGBB)` (and `emitBurst(count, tint)`) colours that burst's particles, and `group.tint = 0xRRGGBB` every particle born from then on (null, the default, is none; a burst's own tint wins; particles already alive keep theirs). The tint is multiplied into the group's `colorStops`, or is the colour when the group has none, so one `sparks` group written in white and greys is drawn in every brick's own colour. A sub-emitter's particles are born in their parent's tint.
 
 **`particles.worldAnchor:Null<h2d.Object>`** — designated world-space anchor for non-relative groups. When set on a `Particles` container, groups with `relative: false` bake their emit positions/velocity/scale/rotation into `worldAnchor`'s local frame (instead of full scene-space) and render through `worldAnchor`'s transform. Use case: a per-shot trail emitter parented to a moving sprite — set `worldAnchor` to the scene's world-root (the object below the camera), and trail particles will stay glued to the world points where they were emitted instead of sliding against the world during camera pan/zoom. Null (default) preserves legacy screen-space baking. No DSL surface — set in runtime code:
 ```haxe
@@ -2405,9 +3031,10 @@ group.shutdownAlphaCurve = myCurve;
 ```
 
 **Notes:**
-- No-op on non-looping groups
+- No-op on non-looping groups, except that it marks a burst-driven (`count: 0`) group done so its container can end
 - `emitBurstAt()` still works during shutdown (for manual one-shot effects)
-- Default `onEnd()` is `this.remove()` — no change needed
+- Default `onEnd()` is `this.remove()` — no change needed. It fires once, when the last particle dies
+- A container whose groups are all burst-driven (`count: 0`, fed by `emitBurst`/`emitBurstAt`) does not end when a burst dies out — it is idle until the next burst, so one container can serve every shot without overriding `onEnd`. `shutdown()` lets it end once its last particle dies
 
 ### Multiple Tiles
 
@@ -2494,16 +3121,12 @@ updatable.setObject(particles);
 * `generated(cross(width, height, color[, thickness]))` - generated cross (thickness default: 1)
 * `generated(color(width, height, color))` - solid color
 * `generated(colorWithText(width, height, color, text, textColor, font))` - solid color with text
-* `generated(autotile("name", selector))` - demo tile from autotile definition
-  - By index: `autotile("grassTerrain", 0)` - select tile by index (0-12 for cross, 0-46 for blob47)
-  - By edges: `autotile("grassTerrain", N+E+S+W)` - select tile by neighbor flags
-  - Edge flags: `N`, `E`, `S`, `W` (cardinals), `NE`, `SE`, `SW`, `NW` (corners)
-  - Requires autotile with `demo: edgeColor, fillColor` defined
-* `generated(autotileRegionSheet("name", scale, "font", fontColor))` - visualization of autotile region with numbered grid
-  - Displays the complete region of an autotile with tile indices overlaid
-  - Useful for debugging and identifying which tile index corresponds to which visual
+* `generated(autotile("name", index))` - resolved tile of an autotile definition (after mapping / fallback), any source
+  - Index range: 0-12 for cross, 0-46 for blob47, 0-15 for corner (corner 0 is transparent unless the source provides it)
+* `generated(autotileRegionSheet("name", scale, "font", fontColor))` - visualization of an autotile's image region with numbered grid
+  - Displays the region of a `file:` autotile with each tile's source index (the numbers `mapping:` targets) overlaid
   - `scale` - scale factor for tiles (font remains at original size for readability)
-  - Requires autotile with `region` defined (file source or atlas region)
+  - Requires a `file:` source (whole image when no `region:` is set)
 
 ### Tile Source Modifiers
 
@@ -2617,7 +3240,7 @@ Components are typically created either:
 | `text` | control | string | method param | Button text override |
 | *any other* | pass-through | — | — | Forwarded to `#button` programmable (e.g. `width`, `height`, `font`, `fontColor`) |
 
-**Events:** `UIClick`
+**Events:** `UIClick` for a left press and release on the button (a release over it after a press elsewhere, or another mouse button, is no click); `UIHover(over:Bool)` as the pointer comes over the button and as it leaves (a disabled button says nothing), so a sound or a tooltip needs no code of its own.
 
 ```haxe
 // Direct
@@ -2629,6 +3252,11 @@ var btn = UIStandardMultiAnimButton.create(builder, "button", "Click Me", ["widt
 // Via UIScreenBase (with macro settings injection)
 var btn = addButtonWithSingleBuilder(builder, "button", "Click Me");
 var btn = addButton(builder.createElementBuilder("button"), "Click Me", settings);
+
+// Runtime styling — drive a design-specific parameter on a live button.
+// Returns false (no-op) when the design has no such parameter; throws for
+// the widget-managed status/buttonText/disabled (use setText() / disabled).
+btn.setStyleParameter("accent", "silver");
 ```
 
 **`.manim` settings override example (in parent placeholder):**
@@ -2658,7 +3286,7 @@ placeholder(generated(cross(300, 40, white)), builderParameter("myBtn")) {
 | `initialValue` | behavioral | bool | `false` | Initial checked state |
 | *any other* | pass-through | — | — | Forwarded to checkbox programmable |
 
-**Events:** `UIToggle(checked:Bool)`
+**Events:** `UIToggle(checked:Bool)`, on a left press (a radio group's checkboxes say none: the group says `UIChangeItem`)
 
 ```haxe
 var cb = UIStandardMultiCheckbox.create(builder, "checkbox", true);
@@ -2684,20 +3312,36 @@ var cb = addCheckbox(builder, false);
 - `start` — left edge of the slider track
 - `end` — right edge of the slider track
 
+The slider is built when it is made (`create`, `addSlider`): a design without `#start` and `#end`,
+or one that refuses an argument, fails there, not at the first frame. A starting value outside the
+default 0..100 (given before `min`/`max` are set) is drawn at the end it is past until the first
+update draws it in the range set.
+
 **UIScreenBase settings:**
 
 | Setting | Category | Type | Default | Description |
 |---------|----------|------|---------|-------------|
 | `buildName` | control | string | `"slider"` | Programmable name |
 | `size` | control | int | `200` | Track width |
+| `initialValue` | behavioral | float | the `initialValue` argument | Starting value, in the slider's `min`..`max` |
 | `min` | behavioral | float | `0` | Minimum value of the slider range |
 | `max` | behavioral | float | `100` | Maximum value of the slider range |
 | `step` | behavioral | float | `0` | Step size for snapping (0 = continuous) |
+| `direction` | behavioral | string | `"auto"` | `vertical`, `horizontal`, or `auto`: read from the design's `#start`/`#end` points (vertical when they differ in y and not in x) |
 | *any other* | pass-through | — | — | Forwarded to slider programmable |
+
+**Vertical sliders:** a design whose `#start` and `#end` sit one above the other is dragged along y
+(`slider.direction`, `SliderDirection.Auto | Horizontal | Vertical`; `slider.isVertical()`), the
+value growing from `#start` to `#end` whichever way they lie.
 
 **Events:**
 - `UIChangeValue(value:Int)` — integer value (rounded)
 - `UIChangeFloatValue(value:Float)` — precise float value
+
+Both are sent only when the value changes: a push where the slider already stands, or a drag that
+moves the pointer without moving the value (along the track by less than a step, or across it), says
+nothing. A value set from code (`setFloatValue`, `setIntValue`) is where the slider stands from then on.
+The `onChange` and `onFloatChange` callbacks follow the same rule.
 
 **Custom range:** The slider maps any external `min`..`max` float range to the internal 0-100 `.manim` grid. For example, setting `min=0, max=1, step=0.1` gives a 0.0–1.0 slider with 0.1 increments, while the `.manim` grid still uses 0-100.
 
@@ -2705,7 +3349,7 @@ var cb = addCheckbox(builder, false);
 
 ```haxe
 var slider = UIStandardMultiAnimSlider.create(builder, "slider", 200, 50);
-var slider = addSlider(builder, 50);
+var slider = addSlider(builder, settings, 50);
 
 // Custom range and steps
 slider.min = 0;
@@ -2755,6 +3399,15 @@ var radio = addRadio(builder, items, true, 0); // vertical, selected index 0
 
 A display-only component for health bars, XP bars, loading indicators, etc. The `.manim` definition receives a `value` (0-100) parameter and can use conditionals to change colors at different thresholds.
 
+**Contract.** The programmable is built once, when the bar is made (so a design that refuses an
+argument fails at `create`/`addProgressBar`, and `getResult()` is there at once), with `value`
+(clamped to 0..100) and any pass-through settings; the widget passes nothing else — a bar's width and height are the design's own (declare `width`/`height`
+parameters and pass them as settings if a design is to be sized from the screen). `setIntValue`
+changes `value` in place on the built result (`getResult()` stays the same object, `incremental`
+true), so a HUD can set it every frame; a design whose `value` the incremental context cannot
+follow (an `untracked_param` on the first change, such as an interactive id made from `value`
+inside a param-dependent repeat) is rebuilt whole on every change from then on.
+
 **Required `.manim` parameters:**
 
 | Parameter | Type | Description |
@@ -2790,7 +3443,15 @@ bar.setIntValue(50); // triggers redraw
 var v:Int = bar.getIntValue();
 ```
 
-> **Note:** The progress bar uses full rebuild (not incremental mode) because `bitmap(generated(color(...)))` elements are not tracked by the incremental expression system.
+A bar from an atlas, as the playground's `std.manim` draws it: a track nine-patch and a fill
+nine-patch stretched to the value.
+
+```manim
+#progressBar programmable(value:0..100=0, width:uint=200, height:uint=12) {
+    ninepatch("ui", "Sliderbar_H_3x1", $width, $height, stretch): 0, 0
+    @(value > 0) ninepatch("ui", "scrollbar-1", $value * ($width - 4) / 100, $height - 4, stretch): 2, 2
+}
+```
 
 ### Scrollable List
 
@@ -2806,19 +3467,30 @@ var v:Int = bar.getIntValue();
 
 **Required `.manim` placeholder (panel):** `mask` — clipping mask for scroll content
 
+**Required `.manim` named point (panel):** `#scrollbar` (the name the list is given,
+`scrollbarInPanelName`), where the scrollbar is placed when the items overflow. The mask and the
+point are checked when the list is made: a panel without them fails at once, not when items
+first overflow.
+
 **Required `.manim` parameters (item via `UIElementBuilder`):**
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `itemWidth` | int | Item width |
 | `index` | int | Item index |
+| `images` | enum: `none`, `tile` (+ any of your own) | Always passed: `tile` when the item has a tile, else `none` |
 | `title` | string | Item display text |
-| `tile` | tile | Item icon (if available) |
+| `tile` | tile | Item icon: passed only for an item with a tile, and then required (a design without it is refused, as any argument it has not) |
 | `status` | enum: `normal`, `hover`, `pressed`, + custom | Interaction state (initial value from `baseStatus` or `"normal"`) |
 | `selected` | enum: `true`, `false` | Selection state |
 | `disabled` | enum: `true`, `false` | Disabled state |
 
 **Required `.manim` root setting (item):** `height` — item height in pixels
+
+**Item interactives:** the list finds the item under the mouse by its interactives' ids, so every
+`interactive()` in an item has the item's index as its id (`interactive($itemWidth, 20, $index)`).
+One with another id (a `"del"` icon) is refused when the items are built; a control of its own in
+a row is a separate widget beside the list.
 
 **List item tile sources:** Each `UIElementListItem` can specify a tile via the `tileRef` field using the `TileRef` enum:
 
@@ -2866,6 +3538,13 @@ var items:Array<UIElementListItem> = [
 
 **Optional `.manim` root setting (scrollbar):** `scrollSpeed` — pixels per second (default: 100)
 
+A scrollbar programmable with only these shows where the list is. One that also declares a
+`status` parameter and a `#thumb` element is dragged (see [Scrollbar](#scrollbar) below): the list
+makes a `UIMultiAnimScrollbar` for it (`list.scrollbarWidget`), routes the mouse over the bar to
+it, and keeps its thumb in step with wheel and key scrolling. Either kind is chosen by its
+`scrollbarBuildName` / `scrollbar.*` settings as before. The `scrollbar.*` prefixed settings
+reach the scrollbar programmable as extra parameters; the list's bare `font`/`fontColor`, forwarded to its other sub-builders, are not (write `scrollbar.font` to pass one).
+
 **UIScreenBase settings:**
 
 | Setting | Category | Type | Default | Description |
@@ -2882,13 +3561,13 @@ var items:Array<UIElementListItem> = [
 | `doubleClickThreshold` | behavioral | float | `0.3` | Double-click detection window (seconds) |
 | `wheelScrollMultiplier` | behavioral | float | `10` | Mouse wheel scroll sensitivity |
 | `clickMode` | behavioral | string | `"double"` | `"single"` for single-click action, `"double"` for double-click action |
-| `font` | multi-forward | string | item default | Font name — forwarded to item builder |
-| `fontColor` | multi-forward | int/color | item default | Text color — forwarded to item builder |
+| `font` | multi-forward | string | item default | Font name — forwarded to item builder (`item.font`, when given, wins) |
+| `fontColor` | multi-forward | int/color | item default | Text color — forwarded to item builder (`item.fontColor`, when given, wins) |
 | `item.*` | prefixed pass-through | — | — | Forwarded to item sub-builder (e.g. `item.fontColor`) |
 | `scrollbar.*` | prefixed pass-through | — | — | Forwarded to scrollbar sub-builder |
-| *any other* | pass-through | — | — | Forwarded to panel (main) programmable |
+| *any other* | pass-through | — | — | Forwarded to panel (main) programmable, which must declare it |
 
-**Events:** `UIChangeItem(index, items)`, `UIClickItem(index, items)` (single-click mode), `UIDoubleClickItem(index, items)` (double-click mode)
+**Events:** `UIChangeItem(index, items)`, `UIClickItem(index, items)` (single-click mode), `UIDoubleClickItem(index, items)` (double-click mode). Only an item inside the list's view is hovered or chosen. A dropdown's list says none of these to the screen (`pushesScreenEvents = false`): the dropdown says the choice.
 
 **Callbacks:** `onItemChanged`, `onItemClicked` (single-click mode), `onItemDoubleClicked` (double-click mode)
 
@@ -2906,7 +3585,8 @@ list.doubleClickThreshold = 0.5;
 list.wheelScrollMultiplier = 20;
 list.clickMode = SingleClick; // single-click fires UIClickItem
 
-// Replace items at runtime
+// Replace items at runtime. The list keeps its own copy of what it was made with (list.items);
+// a dropdown's items are its list's, so setItems on a dropdown's list changes what it shows
 list.setItems(newItems, 0); // replaces content, selects first item
 list.setItems(newItems, 0, true); // preserveScroll: keep current scroll position
 
@@ -2919,6 +3599,67 @@ list.disabled = true;
 ```
 
 **Performance:** The scrollbar is built with incremental mode. On scroll events (wheel, keyboard), only the `scrollPosition` parameter is updated via `setParameter()` instead of rebuilding the entire scrollbar visual. Full scrollbar rebuilds only happen when the item list changes (via `buildItems()` or `setItems()`).
+
+### Scrollbar
+
+**Haxe class:** `UIMultiAnimScrollbar`
+
+**Interfaces:** `UIElement`, `UIElementDisablable`, `StandardUIElementEvents`, `UIElementNumberValue`, `UIElementCursor`
+
+A scrollbar that is dragged: a track, a thumb with `status` normal/hover/pressed and `disabled`,
+optional arrow regions, clicked on the track to page, vertical or horizontal. On its own
+(`addScrollbar`, `UIMultiAnimScrollbar.create`) or inside a scrollable list and so a dropdown's
+panel, which use one when their scrollbar programmable fits this contract
+(`UIMultiAnimScrollbar.fits(builder, name)`).
+
+**Required `.manim` parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `status` | enum: `normal`, `hover`, `pressed` | The thumb's state (hover over the thumb, pressed while dragged) |
+| `panelHeight` | uint | The visible length along the bar, whichever way it runs (the names of the position-only contract) |
+| `scrollableHeight` | uint | The content's length |
+| `scrollPosition` | uint | Where the content is scrolled to, 0 … `scrollableHeight - panelHeight` |
+| `disabled` | bool (optional) | Passed when declared |
+| `direction` | enum: `vertical`, `horizontal` (optional) | Passed when declared, for art that draws both ways |
+
+**Required `.manim` named elements:** `#thumb` — what is dragged; its bounds on screen are hit-tested, so the art decides its size and the design places it (`$scrollPosition * …`). **Optional:** `#track` (where the thumb travels; the whole bar when absent), `#up` / `#down` (arrow regions: a click steps by `arrowStep`).
+
+**Optional `.manim` root settings:** `arrowStep` (content pixels an arrow click or a wheel notch scrolls, default 20), `scrollSpeed` (a list's keys).
+
+A drag reads the thumb's and the track's bounds on screen, so any art and any scale work: one
+pixel of drag moves the content by `(scrollable - panel) / (track - thumb)` pixels. A click on the
+track beyond the thumb pages by `panelHeight`.
+
+**UIScreenBase settings (`addScrollbar(builder, settings, panelLength, scrollableLength, position)`):**
+
+| Setting | Category | Type | Default | Description |
+|---------|----------|------|---------|-------------|
+| `buildName` | control | string | `"scrollbar"` | Programmable name |
+| `direction` | control | string | `"vertical"` | `vertical` or `horizontal` (reads y or x) |
+| `arrowStep` | behavioral | int | from `.manim` or `20` | Arrow and wheel step |
+| *any other* | pass-through | — | — | Forwarded to the scrollbar programmable |
+
+**Events:** `UIChangeValue(position:Int)` after a drag, a page or an arrow step; `onChange(position)` callback likewise. `position =` from code moves the thumb and tells nobody. A list's own scrollbar says no `UIChangeValue` to the screen (`pushesScreenEvents = false`): it scrolls the list.
+
+**API:** `position`, `maxPosition()`, `setRange(panelLength, scrollableLength)` (the position kept where it still fits), `scrollBy(delta)`, `isDragging`, `disabled`, `result` (the built programmable).
+
+```manim
+#scrollbar programmable(status:[normal,hover,pressed]=normal, disabled:bool=false,
+    panelHeight:uint=100, scrollableHeight:uint=200, scrollPosition:uint=0) {
+    #track ninepatch("ui", "scrollbar-track", 8, $panelHeight, stretch): 0, 0
+    @(status=>normal)  #thumb ninepatch("ui", "scrollbar-thumb", 8, $panelHeight * $panelHeight / $scrollableHeight, stretch): 0, $scrollPosition * $panelHeight / $scrollableHeight
+    @(status=>hover)   #thumb ninepatch("ui", "scrollbar-thumb-hover", 8, $panelHeight * $panelHeight / $scrollableHeight, stretch): 0, $scrollPosition * $panelHeight / $scrollableHeight
+    @(status=>pressed) #thumb ninepatch("ui", "scrollbar-thumb-pressed", 8, $panelHeight * $panelHeight / $scrollableHeight, stretch): 0, $scrollPosition * $panelHeight / $scrollableHeight
+    settings { scrollSpeed:float => 250, arrowStep:int => 20 }
+}
+```
+
+```haxe
+var bar = UIMultiAnimScrollbar.create(builder, "scrollbar", 300, 1200, 0, Vertical);
+bar.onChange = (position) -> content.y = -position;
+var bar = addScrollbar(builder, settings, 300, 1200);
+```
 
 ### Dropdown
 
@@ -2944,6 +3685,9 @@ Combines a closed/open button with a `UIMultiAnimScrollableList` panel. Supports
 - `panelPoint` — updatable point where the panel is positioned
 - `selectedName` — text element showing the currently selected item name (use `$font`/`$fontColor` for customization)
 
+Both are checked when the dropdown is made (`selectedName` is written to only when the choice
+changes, so a design without it would otherwise fail on the first choice).
+
 **Optional `.manim` root setting (dropdown):** `transitionTimer` — open/close animation duration (default: 1.0 seconds)
 
 **UIScreenBase settings** (includes all Scrollable List settings, plus):
@@ -2962,7 +3706,7 @@ Combines a closed/open button with a `UIMultiAnimScrollableList` panel. Supports
 | `scrollbar.*` | prefixed pass-through | — | — | Forwarded to scrollbar sub-builder |
 | *any other* | pass-through | — | — | Forwarded to panel (main) programmable |
 
-**Events:** `UIChangeItem(index, items)`
+**Events:** `UIChangeItem(index, items)`; `UIOpen` as the panel starts to open (a click, or the pointer coming with `autoOpen`) and `UIClose` as it starts to close (a click, a choice, the pointer leaving with `autoCloseOnLeave`, a click outside).
 
 ```haxe
 // Direct with separate builders
@@ -3092,6 +3836,96 @@ placeholder(generated(cross(600, 300, white)), builderParameter("myTabs")) {
     settings{tabPanel.width:int=>600, tabPanel.height:int=>200, tabPanel.contentRoot=>contentArea}
 }
 ```
+
+### Text Input
+
+**Haxe class:** `UIMultiAnimTextInput`
+
+A Heaps `h2d.TextInput` inside a `.manim` frame: the programmable draws the frame and its states,
+the widget places the text field at the frame's `#textArea` point.
+
+**Required `.manim` parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `status` | enum: `normal`, `hover`, `focused`, `disabled` | Interaction state |
+| `placeholder` | bool | Whether the placeholder text shows (the field is empty and not focused) |
+| `placeholderText` | string | Only when a `placeholder` setting is given: its text |
+| `disabled` | bool | Optional: set when declared |
+
+**Required `.manim` named point:** `textArea` — where the text field sits
+
+**UIScreenBase settings:**
+
+| Setting | Category | Type | Default | Description |
+|---------|----------|------|---------|-------------|
+| `buildName` | control | string | `"textInput"` | Programmable name |
+| `text` | control | string | the `initialText` argument | Starting text |
+| `placeholder` | control | string | `""` | Text shown while empty (passed as `placeholderText`) |
+| `font` | control | string | `""` | Font of the typed text |
+| `fontColor`, `cursorColor`, `selectionColor` | control | color | `0xFFFFFF`, `0xFFFFFF`, `0x3399FF` | Colors of the text, cursor and selection |
+| `maxLength` | behavioral | int | `0` (none) | Most characters |
+| `multiline`, `readOnly`, `disabled` | behavioral | bool | `false` | |
+| `filter` | behavioral | string | `none` | `numeric`, `alphanumeric` or `none` (`input.filter = FCustom(fn)` from code) |
+| `inputWidth` | behavioral | int | `0` | Width of the field (0: the text's own) |
+| `tabIndex` | behavioral | int | next free | Order in the screen's tab group (`enableTabNavigation()`) |
+| *any other* | pass-through | — | — | Forwarded to the programmable |
+
+**Events:** `UITextChange(text)`, `UITextSubmit(text)` (Enter), `UIFocusChange(focused)`; the
+`onChange`, `onSubmit` and `onFocusChange` callbacks. `setText`, `getText`, `focus`, `blur`,
+`hasFocus`.
+
+```haxe
+enableTabNavigation();
+final name = addTextInput(builder, settings, "Hero");
+final age = addTextInput(builder, settings);  // settings { filter => numeric, maxLength:int => 3 }
+```
+
+```manim
+#textInput programmable(status:[normal,hover,focused,disabled]=normal, placeholder:bool=true, placeholderText:string="") {
+    @(status=>focused) ninepatch("ui", "field_focus", 160, 20): 0, 0
+    @else ninepatch("ui", "field", 160, 20): 0, 0
+    @(placeholder=>true) text(m6x11, $placeholderText, #888888): 4, 4
+    #textArea point: 4, 4
+}
+```
+
+### Dialogs
+
+A dialog is a screen (`UIScreenBase`) shown over the current ones by `ScreenManager`:
+`modalDialog(dialog, caller, "name", ?data)` or `modalDialogWithTransition(dialog, caller, "name",
+?data, transition)`. It closes with `setExitCode` from its controller or
+`closeDialogWithTransition(?transition)`, and the caller hears `OnDialogResult(name, result)` once
+the dialog has closed, so the handler may open the next one.
+
+Behind it the manager draws an overlay, which the dialog's programmable can configure in its
+`settings`:
+
+```manim
+#confirmDialog programmable(message:string="Are you sure?") {
+    settings {
+        overlay.color:color => #000000,
+        overlay.alpha:float => 0.6,
+        overlay.fadeIn:float => 0.2,
+        overlay.fadeOut:float => 0.15,
+        overlay.blur:float => 2
+    }
+    ninepatch("ui", "panel", 240, 120): 0, 0
+    text(m6x11, $message, white, center, 220): 10, 20
+    placeholder(generated(cross(80, 20)), builderParameter("ok")): 30, 80
+    placeholder(generated(cross(80, 20)), builderParameter("cancel")): 130, 80
+}
+```
+
+```haxe
+// in the dialog's load(): read the overlay from the .manim
+final overlay = parseOverlaySettings(dialog.builderResults.rootSettings);
+if (overlay != null) modalOverlayConfig = overlay;
+```
+
+Opened over another dialog, the dialog under it leaves the scene and comes back when the top one
+closes. Code may set `modalOverlayConfig` itself (`{color, alpha, fadeIn, fadeOut, blur}`); the
+`.manim` settings read in `load()` win over it.
 
 ---
 
@@ -3318,13 +4152,13 @@ fx.setTintColor(0xFF0000);
 }
 
 #threeBoxes programmable() {
-    staticRef($colorBox, width=>100, height=>80, c1=>#FF0000): 20, 20;
-    staticRef($colorBox, width=>100, height=>80, c1=>#00FF00): 140, 20;
-    staticRef($colorBox, width=>100, height=>80, c1=>#0000FF): 260, 20;
+    staticRef(colorBox, width=>100, height=>80, c1=>#FF0000): 20, 20;
+    staticRef(colorBox, width=>100, height=>80, c1=>#00FF00): 140, 20;
+    staticRef(colorBox, width=>100, height=>80, c1=>#0000FF): 260, 20;
 }
 ```
 
-Static refs are resolved at runtime — the macro generates a `buildStaticRef()` call that uses the runtime builder to construct the referenced programmable's tree dynamically.
+Static refs are resolved at runtime — the macro generates a `buildStaticRef()` call that uses the runtime builder to construct the referenced programmable's tree dynamically. One whose target or arguments use the instance's parameters is wrapped in a container and built again by the setters of those parameters, when its target or an argument's value changed.
 
 #### Range and flags parameters
 

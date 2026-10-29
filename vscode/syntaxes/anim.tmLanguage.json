@@ -118,15 +118,15 @@
 			"patterns": [
 				{
 					"name": "entity.name.class.anim",
-					"match": "\\b(animation|metadata)\\b"
+					"match": "\\b(animation|metadata|sounds)\\b"
 				},
 				{
 					"name": "keyword.control.anim",
-					"match": "\\b(loop|goto|command|untilCommand)\\b"
+					"match": "\\b(loop|goto|command|untilCommand|hold)\\b"
 				},
 				{
 					"name": "keyword.other.anim",
-					"match": "\\b(sheet|states|allowedExtraPoints|center|name|fps|playlist|frames|duration|file|event|extrapoints|hit|random|trigger|anim|filters|flipX|flipY)\\b"
+					"match": "\\b(sheet|states|allowedExtraPoints|center|name|fps|playlist|frames|duration|file|event|extrapoints|hit|random|trigger|anim|filters|flipX|flipY|offset|layers|layer|timeline|blend)\\b"
 				},
 				{
 					"name": "constant.language.anim",

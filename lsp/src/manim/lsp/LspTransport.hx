@@ -65,11 +65,21 @@ class LspTransport {
 			final consumedChars:Int = js.Syntax.code("Buffer.from({0}, 'utf8').slice(0, {1}).toString('utf8').length", buffer.substr(bodyStart), contentLength);
 			buffer = buffer.substr(bodyStart + consumedChars);
 
+			var msg:Dynamic = null;
 			try {
-				final msg = Json.parse(body);
-				onMessage(msg);
+				msg = Json.parse(body);
 			} catch (e:Dynamic) {
 				logError('Failed to parse JSON-RPC message: $e');
+			}
+			if (msg != null) {
+				// Requests answer their own errors (see ManimLanguageServer.safeRequest);
+				// this backstop keeps a throwing notification handler from killing the
+				// read loop, without mislabeling it as a JSON parse failure.
+				try {
+					onMessage(msg);
+				} catch (e:Dynamic) {
+					logError('Unhandled error while processing "${msg.method}": $e');
+				}
 			}
 		}
 	}

@@ -1,6 +1,7 @@
 package bh.ui;
 
 import bh.base.CursorManager;
+import bh.multianim.BuilderError;
 import bh.multianim.MultiAnimBuilder;
 import bh.multianim.MultiAnimBuilder.MultiAnimBuilder;
 import bh.ui.UIElement;
@@ -8,9 +9,15 @@ import h2d.Object;
 import h2d.col.Point;
 
 class UIStandardMultiAnimButton implements UIElement implements UIElementDisablable implements StandardUIElementEvents implements UIElementCursor
-		implements UIElementText {
+		implements UIElementText implements UIElementRootSettings {
 	final result:BuilderResult;
+
+	public function getRootSettings():Null<bh.multianim.MultiAnimBuilder.BuilderResolvedSettings> {
+		return result.rootSettings;
+	}
 	var buttonText:String;
+	// A left press began on the button and has not been released yet
+	var pressedOn = false;
 
 	public var disabled(default, set):Bool = false;
 
@@ -37,9 +44,30 @@ class UIStandardMultiAnimButton implements UIElement implements UIElementDisabla
 		return buttonText;
 	}
 
+	/** Set a styling parameter on the underlying programmable (e.g.
+		`tintColor`). Returns false (no-op) when the build has no such
+		parameter, so it is safe to call against any button design — assert
+		on the return value when the parameter is expected to exist. The
+		widget-managed parameters `status`, `buttonText` and `disabled`
+		are rejected: writing them here desyncs the widget's own state
+		(`getText()`, the hover state machine, event gating) — use
+		`setText()` / `disabled` instead. */
+	public function setStyleParameter(name:String, value:Dynamic):Bool {
+		switch name {
+			case "status" | "buttonText" | "disabled":
+				throw BuilderError.of('setStyleParameter("$name"): parameter is widget-managed — use setText()/disabled instead', "widget_managed_param");
+			default:
+		}
+		if (!result.hasParameter(name))
+			return false;
+		result.setParameter(name, value);
+		return true;
+	}
+
 	public function set_disabled(value:Bool):Bool {
 		if (this.disabled != value) {
 			this.disabled = value;
+			pressedOn = false;
 			result.beginUpdate();
 			result.setParameter("status", value ? "disabled" : "normal");
 			if (result.hasParameter("disabled"))
@@ -71,17 +99,31 @@ class UIStandardMultiAnimButton implements UIElement implements UIElementDisabla
 			return;
 		switch wrapper.event {
 			case OnPush(button):
-				result.setParameter("status", "pressed");
+				if (button == 0) {
+					pressedOn = true;
+					result.setParameter("status", "pressed");
+				}
 			case OnRelease(button):
-				triggerClicked(wrapper.control);
-				result.setParameter("status", "hover");
-			case OnReleaseOutside(_):
+				// A click is a left press and release on the button: not a release after a press
+				// elsewhere, nor another mouse button
+				if (button == 0) {
+					final wasPressed = pressedOn;
+					pressedOn = false;
+					if (wasPressed)
+						triggerClicked(wrapper.control);
+					result.setParameter("status", "hover");
+				}
+			case OnReleaseOutside(button):
+				if (button == 0)
+					pressedOn = false;
 				result.setParameter("status", "normal");
 			case OnPushOutside(_):
 			case OnEnter:
 				result.setParameter("status", "hover");
+				wrapper.control.pushEvent(UIHover(true), this);
 			case OnLeave:
 				result.setParameter("status", "normal");
+				wrapper.control.pushEvent(UIHover(false), this);
 			case OnKey(up, key):
 			case OnWheel(dir):
 			case OnMouseMove:

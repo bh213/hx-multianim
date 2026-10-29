@@ -44,7 +44,7 @@ version: 1.0
   text(f3x5, "legend:", #888888): 310, 18
 
   // content block
-  staticRef($contentBlock): 310, 30
+  staticRef(contentBlock): 310, 30
   text(f3x5, "= setContent()", #ff4444): 344, 36
 
   // decoration

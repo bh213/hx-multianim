@@ -1,0 +1,33 @@
+version: 1.0
+
+layouts {
+  #axisPts list {
+    point: 0, 0
+    point: 40, 0
+  }
+}
+
+// 2D repeat with a layout axis: the builder supports layout/array axes; the
+// codegen must not silently render nothing.
+#r2dLayoutAxis programmable() {
+  repeatable2d($x, $y, layout("axisPts"), step(2, dy: 30)) {
+    bitmap(generated(color(6, 6, #FF0000))): 0, 0
+  }
+}
+
+// Param-dependent step offsets on the 2D runtime rebuild path (the 1D path
+// resolves _rt_dx/_rt_dy at runtime; the 2D path still bakes the macro-time
+// fallback 0).
+#r2dParamOffsets programmable(n:int=2, dx:int=20) {
+  repeatable2d($x, $y, step($n, dx: $dx), step(2, dy: 30)) {
+    bitmap(generated(color(4, 4, #FF0000))): 0, 0
+  }
+}
+
+// Param-dependent range loop values on the 2D path: values must be
+// start + i (the bitmap x mirrors the loop value).
+#r2dRangeValues programmable(start:int=5) {
+  repeatable2d($rx, $ry, range($start, 8), range(0, 2)) {
+    bitmap(generated(color(4, 4, #0000FF))): $rx, 0
+  }
+}

@@ -444,6 +444,48 @@ class InteractionControllerTest extends BuilderTestBase {
 		Assert.equals("default UI controller", h.screen.get_controller().getDebugName());
 	}
 
+	@Test
+	public function testClearRestoresDefaultControllerOnTopOfStack():Void {
+		var screen = new UITestScreen();
+		var ctrl = new UIInteractionController(screen, (_) -> {});
+		screen.pushController(ctrl);
+		Assert.equals("interaction controller", screen.get_controller().getDebugName());
+
+		screen.clear();
+
+		Assert.equals("default UI controller", screen.get_controller().getDebugName());
+	}
+
+	@Test
+	public function testClearFiresLifecycleFinishedOnPushedControllers():Void {
+		var screen = new UITestScreen();
+		var activated = false;
+		var deactivated = false;
+		var ctrl = new TestableInteractionController(screen, (_) -> {}, () -> { activated = true; }, () -> { deactivated = true; });
+
+		screen.pushController(ctrl);
+		Assert.isTrue(activated);
+		Assert.isFalse(deactivated);
+
+		screen.clear();
+
+		Assert.isTrue(deactivated);
+	}
+
+	@Test
+	public function testClearWithNestedControllersRestoresDefault():Void {
+		var screen = new UITestScreen();
+		var ctrl1 = new UIInteractionController(screen, (_) -> {});
+		var ctrl2 = new UIInteractionController(screen, (_) -> {});
+		screen.pushController(ctrl1);
+		screen.pushController(ctrl2);
+		Assert.equals("interaction controller", screen.get_controller().getDebugName());
+
+		screen.clear();
+
+		Assert.equals("default UI controller", screen.get_controller().getDebugName());
+	}
+
 	// ==================== Composable controllers ====================
 
 	@Test

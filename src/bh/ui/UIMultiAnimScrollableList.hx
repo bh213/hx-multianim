@@ -32,6 +32,9 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 
 	var scrollbar:h2d.Object = null;
 	var scrollbarResult:Null<BuilderResult> = null;
+	/** The dragged scrollbar, when the scrollbar programmable is drawn to `UIMultiAnimScrollbar`'s
+	 *  contract (a `status` parameter and a `#thumb`); null for the position-only `#scrollbar`. */
+	public var scrollbarWidget(default, null):Null<UIMultiAnimScrollbar> = null;
 
 	var interactives:Array<MAObject> = [];
 
@@ -59,13 +62,17 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 	@:isVar public var currentHoverIndex(default, set):Int = -1;
 	@:isVar public var currentPressedIndex(default, set):Int = -1;
 
+	/** False when a widget made of this list (a dropdown) says its changes itself: the list then pushes
+	 *  no event of its own to the screen, its hooks (`onItemChanged`, …) still run. */
+	public var pushesScreenEvents:Bool = true;
+
 	var hoverMode:Bool = false;
 	var panelResults:BuilderResult;
 	var lastClick = 0.;
 	var lastClickIndex = -1;
 	var topClearance = 0;
 
-	function new(panelBuilder:UIElementBuilder, itemBuilder:UIElementBuilder, scrollbarBuilder:UIElementBuilder, scrollbarInPanelName:String, width:Int, height:Int, items, topClearance, initialIndex = 0, panelSizeMode:PanelSizeMode = null) {
+	function new(panelBuilder:UIElementBuilder, itemBuilder:UIElementBuilder, scrollbarBuilder:UIElementBuilder, scrollbarInPanelName:String, width:Int, height:Int, items:Array<UIElementListItem>, topClearance:Int, initialIndex = 0, panelSizeMode:PanelSizeMode = null) {
 		this.panelBuilder = panelBuilder;
 		this.itemBuilder = itemBuilder;
 		this.scrollbarBuilder = scrollbarBuilder;
@@ -73,7 +80,9 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 		this.root = new h2d.Object();
 		this.panelSizeMode = panelSizeMode ?? FixedScroll;
 
-		this.items = items;
+		// Its own copy: the caller's array stays the caller's (setItems would clear it, a push to it
+		// would add an item the list never built)
+		this.items = items.copy();
 		this.width = width;
 		this.maxHeight = height;
 		this.topClearance = topClearance;
@@ -103,7 +112,13 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 	public function clear() {
 		this.scrollbar = null;
 		this.scrollbarResult = null;
+		this.scrollbarWidget = null;
 		this.interactives = [];
+	}
+
+	/** True while the scrollbar's thumb is being dragged (a dropdown keeps forwarding events then). */
+	public function isScrollbarDragging():Bool {
+		return scrollbarWidget != null && scrollbarWidget.isDragging;
 	}
 
 	public function getCursor():hxd.Cursor {
@@ -119,9 +134,11 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 
 		final savedScrollY = this.mask.scrollY;
 
-		// Clear and repopulate (items is final, can't reassign)
+		// Clear and repopulate (items is final, can't reassign; a dropdown reads this array). The new
+		// items are read first: they may be this very array (`setItems(list.items)`)
+		final incoming = newItems.copy();
 		this.items.resize(0);
-		for (item in newItems)
+		for (item in incoming)
 			this.items.push(item);
 
 		// Handle AutoSize mode
@@ -157,8 +174,25 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 	}
 
 	function buildPanel() {
-		var builtPanel = this.panelBuilder.builder.buildWithParameters(this.panelBuilder.name, ["width" => width, "height" => height, "topClearance" => topClearance],
+		final params:Map<String, Dynamic> = ["width" => width, "height" => height, "topClearance" => topClearance];
+		// The list's other settings are the panel programmable's (a design that does not declare one is
+		// told so, as every widget's is)
+		final extra = this.panelBuilder.extraParams;
+		if (extra != null)
+			for (key => value in extra)
+				params.set(key, value);
+		final maskWasIn = mask.parent;
+		var builtPanel = this.panelBuilder.builder.buildWithParameters(this.panelBuilder.name, params,
 			{placeholderObjects: ["mask" => PVObject(mask)]});
+		// The panel's parts, checked as it is made: with no mask placed the list shows nothing, and
+		// with no scrollbar point it fails only once its items overflow
+		if (mask.parent == null || mask.parent == maskWasIn)
+			throw 'list panel #${this.panelBuilder.name} has no placeholder(…, builderParameter("mask")): the items are drawn in it';
+		final scrollbarPoints = builtPanel.names.get(scrollbarInPanelName);
+		if (scrollbarPoints == null)
+			throw 'could not find scrollbar #${scrollbarInPanelName} in panel ${this.panelBuilder.name}';
+		if (scrollbarPoints.length > 1)
+			throw 'found multiple scrollbars #${scrollbarInPanelName} in panel ${this.panelBuilder.name}';
 		root.removeChildren();
 		root.addChild(builtPanel.object);
 		return builtPanel;
@@ -172,6 +206,15 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 		var y = 0.;
 		for (index => value in this.items) {
 			final result = itemBuilder.buildItem(index, value, width, height);
+			// The item under the mouse is found by its interactives' ids: each is the item's index
+			for (object in result.interactives) {
+				final id = switch object.multiAnimType {
+					case MAInteractive(_, _, identifier, _): identifier;
+					default: null;
+				};
+				if (id != '$index')
+					throw 'list item #${itemBuilder.name} $index: an interactive in an item has the item\'s index as its id (interactive(w, h, $$index)), not "$id"';
+			}
 
 			var itemHeight = result.rootSettings.getFloatOrException("height");
 			displayItems.set(index, result);
@@ -191,15 +234,26 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 		if (this.scrollbar != null)
 			this.scrollbar.remove();
 		this.scrollbarResult = null;
+		this.scrollbarWidget = null;
 		if (this.height < totalHeight) { // show scrollbar
-
-			final buildResult = this.scrollbarBuilder.builder.buildWithParameters(this.scrollbarBuilder.name, [
-				"panelHeight" => '${height}',
-				"scrollableHeight" => '${totalHeight}',
-				"scrollPosition" => '0'
-			], null, null, true);
+			final scrollable = Std.int(totalHeight);
+			final params = UIMultiAnimScrollbar.buildParams(this.scrollbarBuilder.builder, this.scrollbarBuilder.name, height, scrollable, 0, Vertical,
+				this.scrollbarBuilder.extraParams);
+			final buildResult = this.scrollbarBuilder.builder.buildWithParameters(this.scrollbarBuilder.name, params, null, null, true);
 			this.scrollbarResult = buildResult;
-			this.scrollbar = buildResult.object;
+			// A design with a status parameter and a #thumb is dragged (UIMultiAnimScrollbar);
+			// the position-only #scrollbar of older files only shows where the list is.
+			if (buildResult.hasParameter("status") && buildResult.names.get("thumb") != null) {
+				final widget = UIMultiAnimScrollbar.fromResult(buildResult, height, scrollable, 0, Vertical);
+				// Part of the list: its position is the list's scroll, not a value the screen is told
+				widget.pushesScreenEvents = false;
+				widget.onChange = (position) -> {
+					this.mask.scrollY = position;
+				};
+				this.scrollbarWidget = widget;
+				this.scrollbar = widget.getObject();
+			} else
+				this.scrollbar = buildResult.object;
 			this.scrollSpeed = scrollSpeedOverride ?? buildResult.rootSettings.getFloatOrDefault("scrollSpeed", 100);
 
 			var objs = this.panelResults.names.get(scrollbarInPanelName);
@@ -214,9 +268,10 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 	}
 
 	function repositionScrollbar() {
-		if (this.scrollbarResult != null) {
+		if (this.scrollbarWidget != null)
+			this.scrollbarWidget.position = Std.int(this.mask.scrollY);
+		else if (this.scrollbarResult != null)
 			this.scrollbarResult.setParameter("scrollPosition", Std.int(this.mask.scrollY));
-		}
 	}
 
 	public function scrollToIndex(idx:Int) {
@@ -254,6 +309,9 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 	}
 
 	function findInteractiveIndex(point):Null<MAObject> {
+		// Only what shows: an item scrolled out of the view lies under the panel's header or border
+		if (!mask.getBounds().contains(point))
+			return null;
 		for (object in interactives) {
 			if (object.getBounds().contains(point))
 				return object;
@@ -312,6 +370,32 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 	public function onEvent(wrapper:UIElementEventWrapper) {
 		if (this.disabled)
 			return;
+		// The dragged scrollbar takes the events over it, and every event while its thumb is held.
+		final bar = scrollbarWidget;
+		if (bar != null && (bar.isDragging || bar.containsPoint(wrapper.eventPos))) {
+			switch wrapper.event {
+				case OnPush(_) | OnRelease(_) | OnReleaseOutside(_) | OnPushOutside(_) | OnMouseMove | OnEnter | OnLeave | OnWheel(_):
+					final wasDragging = bar.isDragging;
+					bar.onEvent(wrapper);
+					if (wasDragging && !bar.isDragging) {
+						// The release that ended a drag is nobody else's click.
+						this.currentPressedIndex = -1;
+						this.hoverMode = true;
+					}
+					// The bar is drawn over the items: nothing under it is hovered or pressed.
+					if (this.currentHoverIndex != -1)
+						this.currentHoverIndex = -1;
+					if (!wrapper.event.match(OnEnter))
+						return;
+				case OnKey(_, _):
+			}
+		} else if (bar != null && !bar.isDragging) {
+			// Leaving the bar's thumb for the items: the thumb's hover ends.
+			switch wrapper.event {
+				case OnMouseMove | OnLeave: bar.onEvent(wrapper);
+				default:
+			}
+		}
 		final time = haxe.Timer.stamp();
 		var obj = findInteractiveIndex(wrapper.eventPos);
 		final newIndex = obj == null ? null : parseInteractiveId(obj);
@@ -323,13 +407,16 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 							this.currentItemIndex = newIndex;
 							triggerItemChanged(newIndex, wrapper);
 							onItemDoubleClicked(newIndex, items, wrapper);
-							wrapper.control.pushEvent(UIDoubleClickItem(newIndex, items), this);
+							if (pushesScreenEvents)
+								wrapper.control.pushEvent(UIDoubleClickItem(newIndex, items), this);
 						}
 						hoverMode = false;
 						this.currentPressedIndex = newIndex;
 					}
 				}
-				lastClickIndex = newIndex;
+				// -1 for a press on empty space: a null stored into the Int field reads as 0 on
+				// HashLink and would arm a double-click on item 0.
+				lastClickIndex = newIndex ?? -1;
 				lastClick = time;
 
 			case OnRelease(button):
@@ -338,7 +425,8 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 					triggerItemChanged(newIndex, wrapper);
 					if (clickMode == SingleClick) {
 						onItemClicked(newIndex, items, wrapper);
-						wrapper.control.pushEvent(UIClickItem(newIndex, items), this);
+						if (pushesScreenEvents)
+							wrapper.control.pushEvent(UIClickItem(newIndex, items), this);
 					}
 				}
 				currentPressedIndex = -1;
@@ -436,7 +524,8 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 
 	function triggerItemChanged(newIndex:Int, wrapper:UIElementEventWrapper) {
 		onItemChanged(newIndex, items, wrapper);
-		wrapper.control.pushEvent(UIChangeItem(newIndex, items), this);
+		if (pushesScreenEvents)
+			wrapper.control.pushEvent(UIChangeItem(newIndex, items), this);
 	}
 
 	public dynamic function onItemChanged(newIndex:Int, items:Array<UIElementListItem>, wrapper:UIElementEventWrapper) {}

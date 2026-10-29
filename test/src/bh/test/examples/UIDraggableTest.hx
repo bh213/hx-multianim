@@ -349,12 +349,9 @@ class UIDraggableTest extends BuilderTestBase {
 		drag.animApplyScale = true;
 		var completed = false;
 
-		// Need a real path with non-zero length for AnimatedPath
-		var from = new bh.base.FPoint(100, 100);
-		var to = new bh.base.FPoint(100, 100);
+		// The factory builds the zero-length from → to path it is handed
 		var factory:AnimatedPathFactory = (f, t) -> {
-			// Create a short path so AnimatedPath doesn't throw for zero length
-			var sp = new bh.paths.MultiAnimPaths.SinglePath(new bh.base.FPoint(0, 0), new bh.base.FPoint(10, 0), Line);
+			var sp = new bh.paths.MultiAnimPaths.SinglePath(f, t, Line);
 			var path = new bh.paths.MultiAnimPaths.Path([sp]);
 			return new bh.paths.AnimatedPath(path, Time(1.0));
 		};
@@ -372,7 +369,7 @@ class UIDraggableTest extends BuilderTestBase {
 		drag.animApplyAlpha = true;
 		var completed = false;
 		var factory:AnimatedPathFactory = (f, t) -> {
-			var sp = new bh.paths.MultiAnimPaths.SinglePath(new bh.base.FPoint(0, 0), new bh.base.FPoint(10, 0), Line);
+			var sp = new bh.paths.MultiAnimPaths.SinglePath(f, t, Line);
 			var path = new bh.paths.MultiAnimPaths.Path([sp]);
 			return new bh.paths.AnimatedPath(path, Time(1.0));
 		};
@@ -389,7 +386,7 @@ class UIDraggableTest extends BuilderTestBase {
 		drag.animApplyRotation = true;
 		var completed = false;
 		var factory:AnimatedPathFactory = (f, t) -> {
-			var sp = new bh.paths.MultiAnimPaths.SinglePath(new bh.base.FPoint(0, 0), new bh.base.FPoint(10, 0), Line);
+			var sp = new bh.paths.MultiAnimPaths.SinglePath(f, t, Line);
 			var path = new bh.paths.MultiAnimPaths.Path([sp]);
 			return new bh.paths.AnimatedPath(path, Time(1.0));
 		};
@@ -397,6 +394,89 @@ class UIDraggableTest extends BuilderTestBase {
 		@:privateAccess drag.startAnimation(100, 100, 100, 100, factory, () -> completed = true);
 		Assert.isFalse(completed);
 		@:privateAccess Assert.isTrue(drag.state == Animating);
+	}
+
+	// ============== Click without moving: builder path factories (Stretch(from, from)) ==============
+
+	static final ANIM_PATH_MANIM = "
+		paths {
+			#line path { lineTo(100, 0) }
+		}
+		curves {
+			#pop curve { points: [(0, 1.0), (0.5, 1.5), (1, 1.0)] }
+		}
+		#settle animatedPath {
+			path: line
+			type: time
+			duration: 0.2
+			0.0: scaleCurve: pop, alphaCurve: pop
+		}
+		#dummy programmable() { bitmap(generated(color(1, 1, #000))): 0,0 }
+	";
+
+	@Test
+	public function testClickWithoutMovingAnimatedDraggableReturnsInPlace():Void {
+		// Push and release on the spot with a return path and animApplyScale: the return
+		// animation runs from the origin to the origin — Stretch(from, from).
+		var builder = BuilderTestBase.builderFromSource(ANIM_PATH_MANIM);
+		var content = createContentObject("content");
+		var drag = new UIMultiAnimDraggable(content);
+		drag.animApplyScale = true;
+		drag.setReturnAnimPath(builder, "settle");
+		drag.getObject().setPosition(40, 40);
+
+		var threw:Null<Dynamic> = null;
+		try {
+			var ctx = startDrag(drag, new Point(40, 40));
+			simulateRelease(drag, ctx.control, new Point(40, 40));
+		} catch (e:Dynamic) {
+			threw = e;
+		}
+		Assert.isNull(threw, 'releasing an animated draggable where it was pushed must not throw, got: $threw');
+		Assert.isTrue(drag.isAnimating(), "the in-place return animation plays (scale curve)");
+
+		drag.update(0.3);
+		@:privateAccess Assert.isTrue(drag.state == Idle, "the return animation completes");
+		Assert.floatEquals(40.0, drag.getObject().x);
+		Assert.floatEquals(40.0, drag.getObject().y);
+		Assert.floatEquals(1.0, content.scaleX, null, "scale restored after the animation");
+	}
+
+	@Test
+	public function testClickWithoutMovingAnimatedDraggableSnapsInPlace():Void {
+		// Same with a snap path: released on a zone whose snap point is where the draggable is.
+		var builder = BuilderTestBase.builderFromSource(ANIM_PATH_MANIM);
+		var content = createContentObject("content");
+		var drag = new UIMultiAnimDraggable(content);
+		drag.animApplyAlpha = true;
+		drag.setSnapAnimPath(builder, "settle");
+		drag.getObject().setPosition(40, 40);
+		drag.addDropZone({
+			id: Named("here"),
+			bounds: createBoundsAt(0, 0, 100, 100),
+			snapX: 40.0,
+			snapY: 40.0,
+		});
+		var snapped = false;
+		drag.onDragEvent = (e, _, _) -> {
+			switch e {
+				case DragSnapComplete: snapped = true;
+				default:
+			}
+		};
+
+		var threw:Null<Dynamic> = null;
+		try {
+			var ctx = startDrag(drag, new Point(40, 40));
+			simulateRelease(drag, ctx.control, new Point(40, 40));
+		} catch (e:Dynamic) {
+			threw = e;
+		}
+		Assert.isNull(threw, 'dropping an animated draggable onto its own spot must not throw, got: $threw');
+
+		drag.update(0.3);
+		Assert.isTrue(snapped, "the in-place snap animation completes");
+		Assert.floatEquals(40.0, drag.getObject().x);
 	}
 
 	// ============== swapMode validation ==============

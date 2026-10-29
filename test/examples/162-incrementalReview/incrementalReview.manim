@@ -1,0 +1,45 @@
+version: 1.0
+
+// Incremental updates against their expected results, builder and codegen on the same
+// programmables: a show transition that starts from the element's current values, apply {}
+// over a param-driven parent value, a root pos that follows its param, a transition on a
+// param used as a condition's value, and @else inside a @switch arm. Elements are told
+// apart by tile width.
+
+// Slides in from the left; it must end at the current $px, set in the same batch.
+#irShowSlide programmable(open:bool=false, px:int=0) {
+  transition { open: slide(left, 0.3) }
+  @(open=>true) bitmap(generated(color(10, 10, #FF0000))): $px, 0
+}
+
+// The point's alpha follows $a; the apply puts 0.4 on top while dim is on.
+#irApplyAlpha programmable(a:float=1.0, dim:bool=false, w:uint=10) {
+  point {
+    alpha: $a
+    @(dim=>true) apply { alpha: 0.4 }
+    bitmap(generated(color($w, 10, #FF0000))): 0, 0
+  }
+}
+
+// The whole programmable sits at x = $px.
+#irRootPos programmable(px:int=0) {
+  pos: $px, 0
+  bitmap(generated(color(4, 4, #FF0000))): 0, 0
+}
+
+// Shown while hp >= max; a change of max fades it.
+#irCondValueTrans programmable(hp:int=5, max:int=10) {
+  transition { max: fade(0.2) }
+  @(hp >= $max) bitmap(generated(color(10, 10, #FF0000))): 0, 0
+}
+
+// Arm a: the 8px bitmap while flag, else the 12px one; the default arm 4px.
+#irSwitchElse programmable(mode:[a,b]=a, flag:bool=true) {
+  @switch(mode) {
+    a {
+      @(flag=>true) bitmap(generated(color(8, 8, #FF0000))): 0, 0
+      @else bitmap(generated(color(12, 12, #0000FF))): 0, 0
+    }
+    default: bitmap(generated(color(4, 4, #00FF00)));
+  }
+}

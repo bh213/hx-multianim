@@ -110,7 +110,8 @@ typedef NamedBuildResult = {
 	var settings:ResolvedSettings;
 	var gridCoordinateSystem:Null<GridCoordinateSystem>;
 	var hexCoordinateSystem:Null<HexCoordinateSystem>;
-
+	/** The node that registered it (an indexed name may recur in mutually exclusive arms). */
+	var ?siteNode:Node;
 }
 
 function getBuiltHeapsObject(NamedBuildResult:NamedBuildResult) {
@@ -266,7 +267,13 @@ enum DefinitionType {
 typedef Definition = {
 	name:String,
 	type:DefinitionType,
-	defaultValue:Null<ResolvedIndexParameters>
+	defaultValue:Null<ResolvedIndexParameters>,
+	/** The parameter's `///` doc comment (the lines above it, then one trailing it), lines joined
+	 *  with "\n"; absent when it has none. */
+	?doc:String,
+	/** An enum parameter's choices' `///` docs (`walk /// 4 frames at 8 fps`), by choice; only
+	 *  the choices that have one, absent when none has. */
+	?choiceDocs:Map<String, String>
 }
 
 @:nullSafety
@@ -700,20 +707,15 @@ enum RepeatType {
 	TilesIterator(bitmapVarName:String, tilenameVarName:Null<String>, sheetName:String, tileFilter:Null<String>);
 }
 
-// Selector for which tile to get from an autotile
-@:nullSafety
-enum AutotileTileSelector {
-	ByIndex(index:ReferenceableValue);     // Select by tile index (0-46 for blob47)
-	ByEdges(edges:Int);                    // Select by edge bitmask (N|E|S|W|NE|SE|SW|NW)
-}
-
 @:nullSafety
 enum GeneratedTileType {
 	Cross(width:ReferenceableValue, height:ReferenceableValue, color:ReferenceableValue, thickness:ReferenceableValue);
 	SolidColor(width:ReferenceableValue, height:ReferenceableValue, color:ReferenceableValue);
 	SolidColorWithText(width:ReferenceableValue, height:ReferenceableValue, color:ReferenceableValue, text:ReferenceableValue, textColor:ReferenceableValue, font:ReferenceableValue);
-	AutotileRef(autotileName:ReferenceableValue, selector:AutotileTileSelector);
+	AutotileRef(autotileName:ReferenceableValue, index:ReferenceableValue);  // Resolved tile for autotile index (0-12 cross, 0-46 blob47, 0-15 corner)
 	AutotileRegionSheet(autotileName:ReferenceableValue, scale:ReferenceableValue, font:ReferenceableValue, fontColor:ReferenceableValue);  // Shows entire region with numbered grid overlay
+	/** A ground drawn by a shader from nothing (`generated(shader(water, 320, 180, speed: 0.4))`): a plain tile of that size, the bitmap that shows it given the shader as its filter. */
+	ShaderGround(name:String, width:ReferenceableValue, height:ReferenceableValue, args:Array<CustomFilterArg>);
 }
 
 @:nullSafety
@@ -736,20 +738,199 @@ enum PaletteType {
 	PaletteImageFile(filename:ReferenceableValue);
 }
 
-// Autotile formats for terrain generation
+/** How a nine-patch fills its middle and edges: repeated (`tile`, the `ninepatch()` default)
+ *  or stretched (`stretch`, the `flow(background:)` default). `null` on a node means "not
+ *  said here", so the programmable's `settings { ninepatch => … }` or the element's default applies. */
 @:nullSafety
-enum AutotileFormat {
-	Cross;      // Cross layout + corners for elevation (with depth)
-	Blob47;     // Full 47-tile autotile with all edge/corner combinations
+enum NinePatchMode {
+	NPStretch;
+	NPTile;
+}
+
+/** One entry of a `#name cursor { … }` block: `name: tileSource, hot: x, y`. */
+@:nullSafety
+typedef CursorDef = {
+	var name:String;
+	var tile:TileSource;
+	var hotX:Int;
+	var hotY:Int;
+	var line:Int;
+}
+
+/** How one of a layer's files is picked for a play. */
+@:nullSafety
+enum SoundPick {
+	/** Any, each time. */
+	PickRandom;
+	/** Every file once before any again, in a random order. */
+	PickShuffle;
+	/** In the order written, round and round. */
+	PickTurn;
+}
+
+/** What gives way when a sound is at its `voices` limit. */
+@:nullSafety
+enum SoundSteal {
+	StealOldest;
+	StealQuietest;
+	/** The new play is dropped. */
+	StealNone;
+}
+
+/** The files of a sound, or of one of its layers: picked, rolled for volume and pitch, held back
+ *  by a delay, played by chance. A sound written with its own `file:`/`files:` is one layer named "". */
+@:nullSafety
+typedef SoundLayerDef = {
+	var name:String;
+	var files:Array<String>;
+	var pick:SoundPick;
+	/** dB, rolled between the two (both 0 when not given). */
+	var volumeMinDb:Float;
+	var volumeMaxDb:Float;
+	/** A rate, 1 unchanged, rolled between the two. */
+	var pitchMin:Float;
+	var pitchMax:Float;
+	/** Seconds before the layer starts, rolled between the two. */
+	var delayMin:Float;
+	var delayMax:Float;
+	/** 0..1, the odds the layer plays at all. */
+	var chance:Float;
+	/** Plays round and round until the sound is stopped: a hum, an engine. */
+	var loop:Bool;
+	/** Played as the sound is stopped (an engine's cut-off), not as it starts; never loops. */
+	var onStop:Bool;
+	var line:Int;
+}
+
+/** One sound of a `#name sounds { }` block: `name @(cond) { … }`. Several with the same name and a
+ *  `@(…)` each are its variants, chosen by the block's parameters; one without is the default. */
+@:nullSafety
+typedef SoundDef = {
+	var name:String;
+	/** The bus it plays on; null for the block's. */
+	var bus:Null<String>;
+	var layers:Array<SoundLayerDef>;
+	/** How many plays of this sound at once; 0 is no limit. */
+	var voices:Int;
+	var steal:SoundSteal;
+	/** Seconds that must pass between two plays; 0 is none. */
+	var cooldown:Float;
+	/** 0 low, 1 normal, 2 high: which go virtual first when the engine runs out of sources. */
+	var priority:Float;
+	/** Seconds. */
+	var fadeIn:Float;
+	var fadeOut:Float;
+	var conditional:NodeConditionalValues;
+	var line:Int;
+}
+
+/** `param surface: [stone, grass]`: a labelled parameter a sound's variant is chosen by. */
+@:nullSafety
+typedef SoundParamDef = {
+	var name:String;
+	var values:Array<String>;
+	var line:Int;
+}
+
+/** What a snapshot does to one bus while it is on. */
+@:nullSafety
+enum MixChange {
+	/** The bus's plays freeze and resume. */
+	ChangePause;
+	/** So many dB on the bus, summed over the snapshots on. */
+	ChangeVolume(db:Float);
+	/** A low-pass filter keeping this share (0..1) of the highs; the lowest of the snapshots on wins. */
+	ChangeLowPass(gainHF:Float);
+	/** The bus pitched by the clock's scale. */
+	ChangePitchClock;
+}
+
+/** `bus sfx { voices: 24 }`: a bus every sound routes through; `voices` is how many of its plays
+ *  are heard at once (0 for no limit, the rest virtual). */
+@:nullSafety
+typedef MixBusDef = {
+	var name:String;
+	var voices:Int;
+	var line:Int;
+}
+
+/** `vca Effects: sfx, ui`: one volume over several buses, what a settings slider moves. */
+@:nullSafety
+typedef MixVcaDef = {
+	var name:String;
+	var buses:Array<String>;
+	var line:Int;
 }
 
 @:nullSafety
+typedef MixSnapshotBusDef = {
+	var bus:String;
+	var changes:Array<MixChange>;
+}
+
+/** `snapshot paused { sfx: pause, music: -6db lowpass 0.3, fade: 200ms }`: a named state of the
+ *  mix, blended in and out over `fade` seconds. `paused` and `dialog` are put on by the engine. */
+@:nullSafety
+typedef MixSnapshotDef = {
+	var name:String;
+	var buses:Array<MixSnapshotBusDef>;
+	var fade:Float;
+	var line:Int;
+}
+
+/** A `#name mix { }` block: the buses, VCAs and snapshots of the game's sound. One per game. */
+@:nullSafety
+typedef MixDef = {
+	var buses:Array<MixBusDef>;
+	var vcas:Array<MixVcaDef>;
+	var snapshots:Array<MixSnapshotDef>;
+}
+
+/** `track title { file: "music/title.mp3", loop: yes }`: a piece of music, one playing at a time. */
+@:nullSafety
+typedef MusicTrackDef = {
+	var name:String;
+	var file:String;
+	var loop:Bool;
+	var line:Int;
+}
+
+/** A `#name music { }` block: tracks, each `block.track` by name, on one bus. */
+@:nullSafety
+typedef MusicDef = {
+	/** The bus the tracks play on; null for `music`. */
+	var bus:Null<String>;
+	var tracks:Array<MusicTrackDef>;
+}
+
+/** A `#name sounds { }` block: a bank of sounds, each `block.sound` by name. */
+@:nullSafety
+typedef SoundsDef = {
+	/** The bus every sound of the block plays on unless it names its own; null for the default. */
+	var bus:Null<String>;
+	var params:Array<SoundParamDef>;
+	/** The params as definitions, for the conditionals. */
+	var defs:ParametersDefinitions;
+	var sounds:Array<SoundDef>;
+}
+
+// Autotile formats for terrain generation (index math in bh.base.Autotile)
+@:nullSafety
+enum AutotileFormat {
+	Cross;      // 13 tiles, one per filled cell: edges, center, outer + inner corners
+	Blob47;     // 47 tiles, one per filled cell: every 8-neighbour edge/corner combination
+	Corner;     // 16 tiles, dual grid: one per grid corner, index = filled cells NW=1|NE=2|SW=4|SE=8
+}
+
+// Where an autotile's tiles come from. Every source is addressed by a *source index*; `mapping:`
+// maps autotile index -> source index (identity when absent).
+@:nullSafety
 enum AutotileSource {
-	ATSAtlas(sheet:ReferenceableValue, prefix:ReferenceableValue);
-	ATSAtlasRegion(sheet:ReferenceableValue, region:Array<ReferenceableValue>);
-	ATSFile(filename:ReferenceableValue);
-	ATSTiles(tiles:Array<TileSource>);  // explicit tile list for full control
-	ATSDemo(edgeColor:ReferenceableValue, fillColor:ReferenceableValue);  // auto-generated demo tiles
+	ATSAtlas(sheet:ReferenceableValue, prefix:ReferenceableValue);  // source index j -> atlas tile "<prefix><j>"
+	ATSAtlasIndexed(sheet:ReferenceableValue, name:ReferenceableValue);  // source index j -> frame j (by `index:`) of atlas tile "<name>"
+	ATSFile(filename:ReferenceableValue);  // source index j -> j-th tile (row-major) of `region:` (default: whole image)
+	ATSTiles(tiles:Array<TileSource>);  // source index j -> j-th listed tile
+	ATSDemo(edgeColor:ReferenceableValue, fillColor:ReferenceableValue);  // auto-generated demo tiles, one per autotile index
 }
 
 @:nullSafety
@@ -757,10 +938,173 @@ typedef AutotileDef = {
 	var format:AutotileFormat;
 	var source:AutotileSource;
 	var tileSize:ReferenceableValue;
-	var ?depth:Null<ReferenceableValue>;  // for isometric elevation
-	var ?mapping:Null<Map<Int, Int>>;     // custom index mapping: blob47Index -> tilesetIndex
-	var ?region:Null<Array<ReferenceableValue>>;  // optional region [x, y, w, h] for file source
-	var ?allowPartialMapping:Bool;        // blob47 only: if true, missing tiles use fallback instead of error
+	var ?mapping:Null<Map<Int, Int>>;     // autotile index -> source index (validated against the format at parse time)
+	/** Autotile index -> more source indices drawn in its place by turns (`mapping: [15: 7 | 8 | 9]` puts 8 and 9 here), chosen by position; `mapping` holds the first. **/
+	var ?alternates:Null<Map<Int, Array<Int>>>;
+	/** Autotile index -> how each of its source tiles is turned (`mapping: [2: 1 flipX, 4: 1 rot90]`), one entry per source as `mapping` then `alternates` list them: `Autotile.FLIP_X`, `FLIP_Y`, and quarter turns in `Autotile.rotationOf`. Only indices with a transform are present. **/
+	var ?transforms:Null<Map<Int, Array<Int>>>;
+	var ?region:Null<Array<ReferenceableValue>>;  // file source only: [x, y, w, h] in pixels
+	/** File source only: pixels from the region's edge to its first tile (`margin: 1`), and between tiles (`spacing: 2`). **/
+	var ?margin:Null<ReferenceableValue>;
+	var ?spacing:Null<ReferenceableValue>;
+	var ?allowPartialMapping:Bool;        // blob47 only: indices with no tile use the closest mapped tile instead of an error
+}
+
+/** A terrain of a tileset (`terrain name { … }`): an autotile, several for an animated one, or the variants of one atlas name. **/
+@:nullSafety
+typedef TilesetTerrainDef = {
+	var name:String;
+	/** Autotile definitions of the tileset's file; several are the frames of an animated terrain. **/
+	var autotiles:Array<String>;
+	/** Or an atlas name whose frames are variants, each cell taking one by its position. **/
+	var ?cells:String;
+	/** Milliseconds a frame of an animated terrain. **/
+	var ?duration:Int;
+	/** What the game reads of a cell of this terrain: `metadata { cost:int => 2, swim:bool => true }`, as settings are written. **/
+	var metadata:Map<String, ParsedSettingValue>;
+}
+
+/**
+	`transition a, b { autotile: … }`: where terrain `b` meets terrain `a` (or `none`), this autotile is
+	drawn over `b`'s own at the meeting positions, for a tileset whose edge between two terrains is
+	drawn for that pair. `a` is below `b` in the tileset; the autotiles are one a frame when `b` is animated.
+**/
+@:nullSafety
+typedef TilesetTransitionDef = {
+	var from:String;
+	var to:String;
+	var autotiles:Array<String>;
+}
+
+/**
+	`rise <n> { side: "name" span: s }`: how a cell that many levels above its neighbour `toward` it is
+	drawn. Nothing is lifted: the tileset's `edge` outlines the higher level, and the rise's `side` is
+	drawn on the `span` cells beyond it, toward that neighbour. `rise any` is for every rise that has
+	none of its own; `rise <n> <terrain>` is for a higher cell of that terrain.
+**/
+@:nullSafety
+typedef TilesetRiseDef = {
+	/** How many levels; 0 for `any`: every rise with none of its own. **/
+	var rise:Int;
+	/** The terrain of the higher cell this is for; null: every terrain that has no rises of its own in this direction. **/
+	var ?terrain:String;
+	/** The platform it is a side of (`platform name { rise … }`); null: a level of the ground. **/
+	var ?platform:String;
+	/** An atlas name, `span` frames from the edge outward: the side's middle (the first of `sides`). **/
+	var side:String;
+	/** The side's middle, one name or several taken in turn along the run: `side: "a", "b"`. **/
+	var sides:Array<String>;
+	/** The side's two ends and a side one cell wide, when the tileset draws them apart (else `side`). **/
+	var ?left:String;
+	var ?right:String;
+	var ?single:String;
+	var span:Int;
+	/** Where the side is drawn from the higher cell: down (the default), up, left or right. **/
+	var toward:String;
+	/** What the game reads of the cells a side covers: `metadata { wall:bool => true }`. **/
+	var metadata:Map<String, ParsedSettingValue>;
+}
+
+/**
+	`platform name { edge: autotile  rise <n> { … } }`: a kind of higher level that is not the ground
+	raised: a tree top, a roof. Its `edge` is drawn over all of it, inside and rim, on whatever terrain
+	is under it, and its sides are its own. A map puts it where a character of its levels legend says
+	(`levels { legend { "c": 1 canopy } rows: [ … ] }`).
+**/
+@:nullSafety
+typedef TilesetPlatformDef = {
+	var name:String;
+	/** The autotile its top is drawn with, every cell of it. **/
+	var ?edge:String;
+}
+
+/**
+	`cell name { draw: over metadata { … } }`: what a named cell of the layers is, wherever it is placed.
+	`size: w, h` makes it an object of several cells (a tree, a house) whose image is `w` by `h` cells:
+	the layer's character marks its `anchor` cell (its bottom-left one unless given), it is drawn among
+	the actors sorted by its feet unless `draw:` says otherwise, and its name and metadata are on every
+	cell it covers.
+**/
+@:nullSafety
+typedef TilesetCellDef = {
+	var name:String;
+	/** Where it is drawn, over the layer's own `draw:`: under, over, top, or actors (among them, sorted by its feet). **/
+	var ?draw:String;
+	/** In cells; 1 by 1 when not given. **/
+	var ?width:Int;
+	var ?height:Int;
+	/** The cell of the object the layer's character marks, from its top-left: (0, height - 1) when not given. **/
+	var ?anchorX:Int;
+	var ?anchorY:Int;
+	var metadata:Map<String, ParsedSettingValue>;
+}
+
+/** `#name tileset { … }`: what a tile map is drawn with. **/
+@:nullSafety
+typedef TilesetDef = {
+	var tileSize:Int;
+	/** The sheet the named cells are in (an atlas2 file or inline block). **/
+	var atlas:String;
+	/** An autotile drawn along the rim of "level >= L" for every level L above 0: a higher level's outline. **/
+	var ?edge:String;
+	/** By terrain: the outline of a higher level where that terrain is on top (`edge grass: rim`), in place of `edge`. **/
+	var edges:Map<String, String>;
+	/** Drawn in this order, bottom first; each is drawn under every terrain after it. **/
+	var terrains:Array<TilesetTerrainDef>;
+	/** Pairs of terrains drawn with their own autotile where they meet. **/
+	var transitions:Array<TilesetTransitionDef>;
+	/** By rise, the smallest first; a platform's sides are among them, with its name. **/
+	var rises:Array<TilesetRiseDef>;
+	/** The kinds of higher level that are not the ground raised. **/
+	var platforms:Array<TilesetPlatformDef>;
+	var cells:Array<TilesetCellDef>;
+}
+
+/** `layer name { legend { "s": skull } rows: [ … ] }`: cells placed as they are; a space is no cell. **/
+@:nullSafety
+typedef TilemapLayerDef = {
+	var name:String;
+	var legend:Map<String, String>;
+	var rows:Array<String>;
+	/** The sheet its cells are in; the tileset's atlas when not given. **/
+	var ?sheet:String;
+	/** `under` the actors (the default; a cell the tileset lists in `over` still goes above them), `over` them, or `top`, above everything (shadows). **/
+	var draw:String;
+}
+
+/** A mark the game reads by name, in cells: a point, or a rectangle with `w` and `h`. **/
+@:nullSafety
+typedef TilemapMarkDef = {
+	var name:String;
+	var x:Int;
+	var y:Int;
+	var ?w:Int;
+	var ?h:Int;
+}
+
+/** `#name tilemap { … }`: rows of characters, one a cell. **/
+@:nullSafety
+typedef TilemapDef = {
+	var tileset:String;
+	/** `tileset: external(name), tileset`: the tileset is in an imported file. **/
+	var ?tilesetImport:String;
+	var width:Int;
+	var height:Int;
+	/** Character -> terrain name, or `none`. **/
+	var legend:Map<String, String>;
+	var terrain:Array<String>;
+	/** One character a cell, the cell's level: a digit is itself, any other character is in `levelLegend`; empty for a flat map. **/
+	var levels:Array<String>;
+	/** `levels { legend { "A": 10 } rows: [...] }`: what a character that is not a digit stands for. **/
+	var levelLegend:Map<String, Int>;
+	/** `levels { legend { "c": 1 canopy } … }`: the platform a character of the levels legend stands for, with its level. **/
+	var levelPlatforms:Map<String, String>;
+	var layers:Array<TilemapLayerDef>;
+	var marks:Array<TilemapMarkDef>;
+	/** Where the map is defined in its file (the DevBridge's `map_list` says it). **/
+	var ?line:Int;
+	/** Made by `tilemap(fill(…))` where it is placed, not read from a `#name tilemap`: its parameters make it again, a reload never reads it. **/
+	var ?fill:Bool;
 }
 
 @:nullSafety
@@ -844,6 +1188,8 @@ enum DataValueType {
 	DVTEnum(enumName:String);
 	DVTRecord(recordName:String);
 	DVTArray(elementType:DataValueType);
+	/** The id of a row of a keyed record (`ref card`): checked against the block's tables of it. */
+	DVTRef(recordName:String);
 }
 
 @:nullSafety
@@ -855,6 +1201,8 @@ enum DataValue {
 	DVArray(elements:Array<DataValue>);
 	DVRecord(recordName:String, fields:Map<String, DataValue>);
 	DVEnumValue(enumName:String, value:String);
+	/** A row of a keyed record named by its id. */
+	DVRef(recordName:String, id:String);
 }
 
 @:nullSafety
@@ -863,10 +1211,31 @@ typedef DataEnumDef = {
 	var values:Array<String>;
 }
 
+/** An annotation: `@unit("energy")`, `@range(0, 3)`, `@by(claude)`. Its arguments are plain values;
+ *  a bare word is a string. The parser checks the ones it knows (`range`, `default`, `step`, `unit`,
+ *  `says`) and keeps every other as it is, for tools to read. */
+@:nullSafety
+typedef DataMeta = {
+	var name:String;
+	var args:Array<DataValue>;
+}
+
+@:nullSafety
+typedef DataRecordField = {
+	var name:String;
+	var type:DataValueType;
+	var optional:Bool;
+	/** The field rows of this record are found by (`key id`). */
+	var ?key:Bool;
+	var ?meta:Array<DataMeta>;
+}
+
 @:nullSafety
 typedef DataRecordDef = {
 	var name:String;
-	var fields:Array<{name:String, type:DataValueType, optional:Bool}>;
+	var fields:Array<DataRecordField>;
+	/** The name of its key field: an array of it is a table, its rows found by that field. */
+	var ?key:String;
 }
 
 @:nullSafety
@@ -874,6 +1243,31 @@ typedef DataFieldDef = {
 	var name:String;
 	var type:DataValueType;
 	var value:DataValue;
+	/** The line of the .manim file the field starts on. */
+	var ?line:Int;
+	/** Annotations written before the field. */
+	var ?meta:Array<DataMeta>;
+	/** For an array of records: each row's annotations, in the rows' order. */
+	var ?rowMeta:Array<Array<DataMeta>>;
+}
+
+/** How a table is drawn from: `reward: pick(all, weight: weight, draws: 3)`. */
+@:nullSafety
+typedef DataPickDef = {
+	var name:String;
+	/** The field holding the table it draws from. */
+	var over:String;
+	/** The column the odds are read from: the table's own, or with `through`, the linked row's. */
+	var by:String;
+	/** A `ref` field of the table's rows whose linked row holds `by` (`weight: tier.weight`). */
+	var ?through:String;
+	/** Each row at its chance (the `otherwise` row with what is left); otherwise, by weight. */
+	var chance:Bool;
+	var draws:Int;
+	var repeats:Bool;
+	var ?otherwise:String;
+	var line:Int;
+	var ?meta:Array<DataMeta>;
 }
 
 @:nullSafety
@@ -881,6 +1275,9 @@ typedef DataDef = {
 	var enums:Map<String, DataEnumDef>;
 	var records:Map<String, DataRecordDef>;
 	var fields:Array<DataFieldDef>;
+	var ?picks:Array<DataPickDef>;
+	/** The line the block's body starts on. */
+	var ?line:Int;
 }
 
 @:nullSafety
@@ -891,7 +1288,8 @@ enum NodeType {
 		horizontalSpacing:Null<ReferenceableValue>, verticalSpacing:Null<ReferenceableValue>, debug:Bool, multiline:Bool,
 		bgSheet:Null<ReferenceableValue>, bgTile:Null<ReferenceableValue>,
 		overflow:Null<MacroFlowOverflow>, fillWidth:Bool, fillHeight:Bool, reverse:Bool,
-		hAlign:Null<MacroFlowAlign>, vAlign:Null<MacroFlowAlign>
+		hAlign:Null<MacroFlowAlign>, vAlign:Null<MacroFlowAlign>,
+		bgMode:Null<NinePatchMode>
 		);
 	SPACER(width:Null<ReferenceableValue>, height:Null<ReferenceableValue>);
 	BITMAP(tileSource:TileSource, hAlign:HorizontalAlign, vAlign:VerticalAlign);
@@ -915,12 +1313,32 @@ enum NodeType {
 	REPEAT2D(varNameX:String, varNameY:String, repeatTypeX:RepeatType, repeatTypeY:RepeatType);
 	STATIC_REF(externalReference:Null<String>, programmableReference:ReferenceableValue, parameters:Map<String, ReferenceableValue>);
 	PLACEHOLDER(type:PlaceholderTypes, replacementSource:PlaceholderReplacementSource);
-	NINEPATCH(sheet:String, tilename:String, width:ReferenceableValue, height:ReferenceableValue);
+	/** `ninepatch(sheet, tile, w, h [, stretch|tile] [, index: i] [, fps: f])`: sheet and tile are
+	 *  string expressions (`$style + "_hover"`), `mode` null when the element does not say,
+	 *  `index` the frame of an indexed atlas name (0), `fps` plays the name's frames in a loop. */
+	NINEPATCH(sheet:ReferenceableValue, tilename:ReferenceableValue, width:ReferenceableValue, height:ReferenceableValue,
+		mode:Null<NinePatchMode>, index:Null<ReferenceableValue>, fps:Null<ReferenceableValue>);
 	INTERACTIVE(width:ReferenceableValue, height:ReferenceableValue, id:ReferenceableValue, debug:Bool,
 		metadata:Null<Array<{key:ReferenceableValue, type:SettingValueType, value:ReferenceableValue}>>);
 	PALETTE(paletteType:PaletteType);
+	/** `#name cursor { pointer: sheet("ui", "hand"), hot: 3, 1 }`: bitmap cursors the screen
+	 *  manager registers with `CursorManager` when the file loads. Root node only. */
+	CURSORS(cursors:Array<CursorDef>);
+	/** `#name sounds { … }`: a bank of sounds the screen manager's `audio` plays by name. */
+	SOUNDS(def:SoundsDef);
+	/** `#name mix { … }`: the buses, VCAs and snapshots of the game's sound. */
+	MIX(def:MixDef);
+	/** `#name music { … }`: tracks of music, played one at a time, by screen or from code. */
+	MUSIC(def:MusicDef);
 	GRAPHICS(elements:Array<PositionedGraphicsElement>);
 	AUTOTILE(autotileDef:AutotileDef);
+	TILESET(tilesetDef:TilesetDef);
+	TILEMAP(tilemapDef:TilemapDef);
+	TILEMAP_REF(externalReference:Null<String>, name:String);
+	/** `tilemap(fill([external(imp),] tileset, terrain: t, cols: c, rows: r))`: a map of the tileset made
+	 *  where it is placed, `cols` by `rows` cells of one terrain in a ring of `none`, so its edges are
+	 *  drawn as a written map's are. `terrain` a string, `cols` and `rows` integers, any of them `$params`. */
+	TILEMAP_FILL(externalReference:Null<String>, tileset:String, terrain:ReferenceableValue, cols:ReferenceableValue, rows:ReferenceableValue);
 	ATLAS2(atlas2Def:Atlas2Def);
 	DATA(dataDef:DataDef);
 	SLOT(parameters:Null<ParametersDefinitions>, paramOrder:Null<Array<String>>);
@@ -949,12 +1367,20 @@ enum CustomFilterArgType {
 	CFFloat;
 	CFColor;
 	CFBool;
+	/** A whole number: written as a number, taken as an `Int`. */
+	CFInt;
+	/** A word written bare (`mode: soft`): one of a parameter's `choices`, taken as a `String`. */
+	CFWord;
+	/** A palette of the file, by its name written bare (`palette: gameboy`): taken as its colours, an `Array<Int>`. */
+	CFPalette;
 }
 
 @:nullSafety
 typedef CustomFilterArg = {
 	value:ReferenceableValue,
 	type:CustomFilterArgType,
+	/** The parameter it is given to, when written by name (`crt(curve: 0.2)`); by position when none. */
+	?name:String,
 };
 
 @:nullSafety
@@ -1008,6 +1434,174 @@ class NodeFlowPropertiesTools {
 	}
 }
 
+/** The values written in a text's, a particles block's or a repeat iterator's payload, handed to
+ *  `value` (a tile source to `tile`, an array iterator's array name to `name`): what a param-ref
+ *  collector reads of them. One walk for the builder's `collectNodeParamRefs` and codegen's
+ *  `collectArmParamRefs`, which each read the values with their own collector. */
+class NodeValueTools {
+	public static function textValues(t:TextDef, value:(ReferenceableValue) -> Void, tile:(TileSource) -> Void):Void {
+		value(t.fontName);
+		value(t.text);
+		value(t.color);
+		switch t.textAlignWidth {
+			case TAWValue(v): value(v);
+			case TAWAuto | TAWGrid:
+		}
+		final styles = t.styles;
+		if (styles != null)
+			for (s in styles) {
+				if (s.color != null) value(s.color);
+				if (s.fontName != null) value(s.fontName);
+			}
+		final images = t.images;
+		if (images != null)
+			for (i in images)
+				tile(i.tileSource);
+		final fonts = t.autoFitFonts;
+		if (fonts != null)
+			for (f in fonts)
+				value(f);
+		switch t.autoFitMode {
+			case AFBox(w, h):
+				value(w);
+				value(h);
+			default:
+		}
+	}
+
+	public static function particlesValues(p:ParticlesDef, value:(ReferenceableValue) -> Void, tile:(TileSource) -> Void):Void {
+		inline function opt(v:Null<ReferenceableValue>) if (v != null) value(v);
+		opt(p.count);
+		opt(p.emitDelay);
+		opt(p.emitSync);
+		opt(p.maxLife);
+		opt(p.lifeRandom);
+		opt(p.size);
+		opt(p.sizeRandom);
+		opt(p.speed);
+		opt(p.speedRandom);
+		opt(p.speedIncrease);
+		opt(p.gravity);
+		opt(p.gravityAngle);
+		opt(p.fadeIn);
+		opt(p.fadeOut);
+		opt(p.fadePower);
+		opt(p.rotationInitial);
+		opt(p.rotationSpeed);
+		opt(p.rotationSpeedRandom);
+		opt(p.forwardAngle);
+		opt(p.boundsMinX);
+		opt(p.boundsMaxX);
+		opt(p.boundsMinY);
+		opt(p.boundsMaxY);
+		opt(p.animationRepeat);
+		if (p.tiles != null)
+			for (t in p.tiles)
+				tile(t);
+		switch p.emit {
+			case Point(d, dr):
+				value(d);
+				value(dr);
+			case Cone(d, dr, a, ar):
+				value(d);
+				value(dr);
+				value(a);
+				value(ar);
+			case Box(w, h, a, ar, _):
+				value(w);
+				value(h);
+				value(a);
+				value(ar);
+			case Circle(r, rr, a, ar):
+				value(r);
+				value(rr);
+				value(a);
+				value(ar);
+			case ManimPath(_) | ManimPathTangent(_):
+		}
+		final stops = p.colorStops;
+		if (stops != null)
+			for (s in stops) {
+				value(s.rate);
+				value(s.color);
+			}
+		final fields = p.forceFields;
+		if (fields != null)
+			for (f in fields)
+				switch f {
+					case FFAttractor(x, y, s, r) | FFRepulsor(x, y, s, r) | FFVortex(x, y, s, r):
+						value(x);
+						value(y);
+						value(s);
+						value(r);
+					case FFWind(vx, vy):
+						value(vx);
+						value(vy);
+					case FFTurbulence(s, sc, sp):
+						value(s);
+						value(sc);
+						value(sp);
+					case FFPathGuide(_, a, f, r):
+						value(a);
+						value(f);
+						value(r);
+				}
+		switch p.boundsMode {
+			case BMBounce(damping): value(damping);
+			default:
+		}
+		final lines = p.boundsLines;
+		if (lines != null)
+			for (l in lines) {
+				value(l.x1);
+				value(l.y1);
+				value(l.x2);
+				value(l.y2);
+			}
+		final subs = p.subEmitters;
+		if (subs != null)
+			for (s in subs) {
+				switch s.trigger {
+					case SETOnInterval(interval): value(interval);
+					case SETOnBirth | SETOnDeath | SETOnCollision:
+				}
+				value(s.probability);
+				opt(s.inheritVelocity);
+				opt(s.offsetX);
+				opt(s.offsetY);
+				opt(s.burstCount);
+			}
+		final states = p.animStates;
+		if (states != null)
+			for (s in states)
+				value(s.atRate);
+		final shutdown = p.shutdown;
+		if (shutdown != null)
+			opt(shutdown.duration);
+	}
+
+	public static function repeatValues(r:RepeatType, value:(ReferenceableValue) -> Void, name:(String) -> Void):Void {
+		switch r {
+			case StepIterator(dx, dy, count):
+				value(count);
+				if (dx != null) value(dx);
+				if (dy != null) value(dy);
+			case RangeIterator(start, end, step):
+				value(start);
+				value(end);
+				value(step);
+			case ArrayIterator(_, arrayName):
+				name(arrayName);
+			case StateAnimIterator(_, _, animationName, selector):
+				value(animationName);
+				if (selector != null)
+					for (_ => v in selector)
+						value(v);
+			case LayoutIterator(_) | TilesIterator(_, _, _, _):
+		}
+	}
+}
+
 @:nullSafety
 typedef Node = {
 	parent:Null<Node>,
@@ -1038,6 +1632,12 @@ typedef Node = {
 	 *  result depends solely on the parsed tree, not on context state. See the call site for the
 	 *  invariant that must hold if this function is ever made context-aware. */
 	cachedRelevantParamRefs:Null<Array<String>>,
+	/** A root block written `#name export kind…`: true; absent on every other node. Read by
+	 *  tools (`MultiAnimResultTools.exportedNames`); an import reaches every block alike. */
+	?exported:Bool,
+	/** A root block's `///` doc comment, the lines directly above it joined with "\n"; absent
+	 *  when it has none (and on every node that is not a root block). */
+	?doc:String,
 	#if MULTIANIM_DEV
 	parserPos:String
 	#end
@@ -1046,8 +1646,43 @@ typedef Node = {
 @:nullSafety
 typedef MultiAnimResult = {
 	var nodes: Map<String, Node>;
+	/** The parse of each imported file by its alias: filled by the loader; empty in a parse with none. */
 	var imports:Map<String, Dynamic>;
 	var customFilterRefs:Array<CustomFilterRef>;
+	/** Alias to path of every `import "file" as "alias"`, with or without a loader (`ManimNeedsTools.needsOf`). */
+	var importPaths:Map<String, String>;
+	/** The names of the root blocks marked `export` (`#knight export programmable(…)`), in the
+	 *  order written; empty when the file marks none. Read it with `MultiAnimResultTools.exportedNames`. */
+	var exports:Array<String>;
+}
+
+/** A parse's exports and `///` doc comments, read with no builder and no loader (a pack reader,
+ *  the studio, a CLI, the LSP). The builder has the same as `exportedNames()` and `docOf()`. */
+@:nullSafety
+class MultiAnimResultTools {
+	/** The names of the root blocks the file marks `export`, in the order written; empty when it
+	 *  marks none. Only a list: an `import` reaches every block of a file, exported or not. */
+	public static function exportedNames(result:MultiAnimResult):Array<String> {
+		return result.exports.copy();
+	}
+
+	/** A `///` doc comment: the root block `block`'s, or (with `param`) the doc of that
+	 *  programmable's parameter, or (with `choice` too) of that choice of the enum parameter.
+	 *  Several `///` lines are joined with "\n". Null when it has none, or there is no such
+	 *  block, parameter or choice. */
+	public static function docOf(result:MultiAnimResult, block:String, ?param:String, ?choice:String):Null<String> {
+		final node = result.nodes.get(block);
+		if (node == null) return null;
+		if (param == null) return node.doc;
+		final def:Null<Definition> = switch node.type {
+			case PROGRAMMABLE(_, defs, _): defs.get(param);
+			default: null;
+		};
+		if (def == null) return null;
+		if (choice == null) return def.doc;
+		final choiceDocs = def.choiceDocs;
+		return choiceDocs == null ? null : choiceDocs.get(choice);
+	}
 }
 
 #if (!macro && !noheaps)
@@ -1178,6 +1813,10 @@ class MultiAnimParser {
 				else
 					throw err('array default not supported in this context');
 			case PPTTile:
+				// A tile another programmable holds, given on as it is (a ref's argument, a forward)
+				if (Std.isOfType(value, ResolvedIndexParameters))
+					(value : ResolvedIndexParameters);
+				else
 				#if !macro
 				if (Std.isOfType(value, h2d.Tile))
 					TileSourceValue(TSTile(value));

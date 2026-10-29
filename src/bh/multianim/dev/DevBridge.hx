@@ -1,11 +1,12 @@
 package bh.multianim.dev;
 
-// MCP DevBridge — HTTP server for AI tool integration.
-// Provides inspection and manipulation of running hx-multianim applications.
+// MCP DevBridge — inspection and manipulation of running hx-multianim applications, for AI tools.
+// What it does (every op, the game's own ops, the event buffers) lives here; how it is reached
+// lives in bh.multianim.dev.transport: an HTTP server on HashLink, window.hxDevBridge and a
+// WebSocket to a relay in a browser page.
 // Only compiles when -D MULTIANIM_DEV is set.
 
 #if MULTIANIM_DEV
-import hxd.net.Socket;
 import haxe.Json;
 import bh.ui.screens.ScreenManager;
 import bh.multianim.MultiAnimBuilder;
@@ -16,6 +17,7 @@ import bh.multianim.MultiAnimParser.Definition;
 import bh.multianim.MultiAnimParser.ParametersDefinitions;
 import bh.multianim.MultiAnimParser.ResolvedIndexParameters;
 import bh.multianim.dev.HotReload;
+import bh.multianim.dev.transport.IDevBridgeTransport;
 import bh.base.TweenManager;
 
 @:access(bh.ui.screens.ScreenManager)
@@ -24,16 +26,40 @@ import bh.base.TweenManager;
 @:access(bh.base.TweenManager)
 @:access(hxd.Window)
 @:access(bh.base.CachingResourceLoader)
-class DevBridge {
+class DevBridge implements IDevBridgeHost {
 	public static var autoStart:Bool = true;
+
+	/** Every method `dispatch` answers, for discovery (`window.hxDevBridge.info()`, a relay's hello). */
+	public static final METHODS:Array<String> = [
+		"ping", "performance", "list_screens", "list_builders", "scene_graph", "screenshot", "inspect_element",
+		"set_parameter", "set_visibility", "reload", "eval_manim", "list_resources", "send_event", "send_events",
+		"pause", "step", "quit", "get_traces", "get_errors", "get_debugger_hits", "get_parameters",
+		"list_interactives", "list_slots", "get_tween_state", "get_screen_state", "find_element_at",
+		"inspect_programmable", "list_fonts", "list_atlases", "list_cursors", "coordinate_transform", "wait_for_idle",
+		"check_overlaps", "click_interactive", "click_button", "list_active_programmables", "list_game_ops",
+		"game_op", "get_game_events", "data_list", "data_get", "data_pick", "map_list", "map_get",
+		"audio_state", "audio_log", "audio_set",
+	];
 
 	final screenManager:ScreenManager;
 	final port:Int;
-	var serverSocket:Null<Socket>;
+	final bindAddress:String;
+	final token:Null<String>;
+	/** Identifies this run of the game to a relay; a page that reconnects keeps it. */
+	public final session:String;
+
+	// ---- Transports ----
+	var transports:Array<IDevBridgeTransport> = [];
+	var started:Bool = false;
+	var eventBroadcasting:Bool = false;
 
 	// ---- Startup ----
 	var startTime:Float = 0;
 	var actualPort:Int = 0;
+	#if hxnodejs
+	// On Node the transport can still move to the next port after start(); tick() follows it
+	var http:Null<bh.multianim.dev.transport.HttpServerTransport> = null;
+	#end
 
 	// ---- Pause state ----
 	var paused:Bool = false;
@@ -43,7 +69,14 @@ class DevBridge {
 	static final TRACE_BUFFER_SIZE = 200;
 	var traceBuffer:Array<String> = [];
 	var traceDropped:Int = 0;
-	var originalTrace:Dynamic = null;
+	// Typed (not Dynamic): put back as it was, the same function, not a wrapper of it
+	var originalTrace:Null<(v:Dynamic, ?infos:haxe.PosInfos) -> Void> = null;
+	// This bridge's hook while it is in the chain, and whether it captures (a stopped bridge with
+	// a later bridge's hook on top stays in the chain, passing traces on)
+	var traceHook:Null<(v:Dynamic, ?infos:haxe.PosInfos) -> Void> = null;
+	var traceCapturing:Bool = false;
+	// Bridges whose hooks are in haxe.Log.trace's chain, the latest last
+	static var traceHooks:Array<DevBridge> = [];
 
 	// ---- Error capture ----
 	var errorBuffer:Array<{message:String, stack:String, timestamp:Float}> = [];
@@ -57,26 +90,84 @@ class DevBridge {
 	// ---- Custom game ops registry (queries, commands, events) ----
 	static final GAME_EVENT_BUFFER_SIZE = 200;
 	var queryRegistry:Map<String, RegisteredOp> = new Map();
+	/** The library's own queries (the game's data): answered by game_op when the game has none of the name. */
+	var builtInQueries:Map<String, RegisteredOp> = new Map();
 	var commandRegistry:Map<String, RegisteredOp> = new Map();
 	var eventRegistry:Map<String, RegisteredEvent> = new Map();
 	var gameEventBuffer:Array<Dynamic> = [];
 	var gameEventDropped:Int = 0;
 	var nextGameEventId:Int = 1;
 
-	// ---- SSE clients ----
-	var sseClients:Array<Socket> = [];
-	var sseBroadcasting:Bool = false;
+	#if (js && !hxnodejs)
+	// ---- Browser error capture ----
+	var browserErrorListener:Null<js.html.Event -> Void>;
+	var browserRejectionListener:Null<js.html.Event -> Void>;
+	var contextLostListener:Null<js.html.Event -> Void>;
+	#end
 
-	// ---- Pending HTTP connections (still receiving headers/body) ----
-	var pendingConnections:Array<HttpConnection> = [];
-
-	public function new(screenManager:ScreenManager, port:Int = 0) {
+	public function new(screenManager:ScreenManager, port:Int = 0, ?bindAddress:String) {
 		this.screenManager = screenManager;
 		this.port = if (port != 0) port else resolvePort();
+		this.bindAddress = if (bindAddress != null) bindAddress else resolveBindAddress();
+		final configuredToken = DevBridgeConfig.get("HX_DEV_TOKEN");
+		this.token = configuredToken != null && configuredToken != "" ? configuredToken : null;
+		this.session = newSessionId();
+		registerDataOps();
+	}
+
+	/**
+		The game's data (`bh.multianim.data.DataRegistry`): every table, pick and tree it loaded from a
+		.manim data block or built in its own code and registered, each with where it is. The library's
+		own queries, apart from the game's: `game_op` answers them (so any MCP client reaches them with
+		nothing added to it), `list_game_ops` lists them under builtIn, and each is a method by its name.
+	**/
+	function registerDataOps():Void {
+		final registerQuery = (op:String, description:String, params:Dynamic, handler:Dynamic->Dynamic) ->
+			builtInQueries.set(op, {description: description, params: params, handler: handler});
+		registerQuery("data_list",
+			"Every table, pick and tree of the game's data: its kind, how many rows, and where it is (a .manim file, block and line, or the code that builds it)",
+			{}, (_:Dynamic) -> bh.multianim.data.DataRegistry.list());
+		registerQuery("data_get",
+			"One table, pick or tree in full: a table's columns (type, unit, range, enum values, what a ref names) and rows, a tree's edges, a pick's odds",
+			{name: "string"}, (params:Dynamic) -> {
+				final name:Null<String> = params.name;
+				if (name == null) throw DevBridgeError.invalidParams("Required param: name (from data_list)");
+				final found = bh.multianim.data.DataRegistry.get(name);
+				if (found == null) throw DevBridgeError.notFound('No data named "$name". Call data_list to see what the game has.');
+				return found;
+			});
+		registerQuery("data_pick",
+			"Draw from a pick with the game's own picker and a seed: the same seed draws the same rows as new DataRandom(seed) in the game",
+			{name: "string", seed: "int?", n: "int?"}, (params:Dynamic) -> {
+				final name:Null<String> = params.name;
+				if (name == null) throw DevBridgeError.invalidParams("Required param: name (a pick, from data_list)");
+				final seed:Int = params.seed != null ? Std.int(params.seed) : 1;
+				final n:Null<Int> = params.n != null ? Std.int(params.n) : null;
+				final rolled = bh.multianim.data.DataRegistry.roll(name, seed, n);
+				if (rolled == null) throw DevBridgeError.notFound('No pick named "$name". Call data_list to see the game\'s picks.');
+				return rolled;
+			});
+		registerQuery("map_list",
+			"Every tile map in a scene: its name, the .manim file and line it is read from, its size in cells and its tile size",
+			{}, (_:Dynamic) -> {
+				maps: [
+					for (m in bh.base.TileMap.showing)
+						{name: m.mapName, source: m.sourceName, line: m.def.line, width: m.width, height: m.height, tileSize: m.tileSize}
+				]
+			});
+		registerQuery("map_get",
+			"One tile map as it is now, in the shape it is written in: legend, terrain rows, levels, layers, marks",
+			{name: "string"}, (params:Dynamic) -> {
+				final name:Null<String> = params.name;
+				if (name == null) throw DevBridgeError.invalidParams("Required param: name (from map_list)");
+				for (m in bh.base.TileMap.showing)
+					if (m.mapName == name) return m.describe();
+				throw DevBridgeError.notFound('No tile map named "$name" in a scene. Call map_list to see them.');
+			});
 	}
 
 	static function resolvePort():Int {
-		var envPort = Sys.getEnv("HX_DEV_PORT");
+		var envPort = DevBridgeConfig.get("HX_DEV_PORT");
 		if (envPort != null) {
 			var parsed = Std.parseInt(envPort);
 			if (parsed != null && parsed > 0 && parsed < 65536) return parsed;
@@ -85,73 +176,191 @@ class DevBridge {
 		return 9001;
 	}
 
+	// Bind address for the HTTP server. Default is 0.0.0.0 (all interfaces) so
+	// MCP clients on other LAN machines can connect; set HX_DEV_BIND=127.0.0.1
+	// to restrict the bridge to the local machine. Without HX_DEV_TOKEN there is
+	// no authentication — anything that can reach the port can inspect/manipulate the app.
+	static function resolveBindAddress():String {
+		var envBind = DevBridgeConfig.get("HX_DEV_BIND");
+		if (envBind != null && envBind != "") return envBind;
+		return "0.0.0.0";
+	}
+
+	static function newSessionId():String {
+		final chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+		final buf = new StringBuf();
+		for (_ in 0...12)
+			buf.add(chars.charAt(Std.random(chars.length)));
+		return buf.toString();
+	}
+
 	public function start():Void {
-		if (serverSocket != null) {
+		if (started) {
 			trace('[DevBridge] Error, Already started on port $actualPort');
 			return;
 		}
 		startTime = haxe.Timer.stamp();
 		installTraceCapture();
-		serverSocket = new Socket();
 
-		var bound = false;
-		var tryPort = port;
-		for (_ in 0...10) {
-			try {
-				serverSocket.bind("0.0.0.0", tryPort, onClientConnected);
-				actualPort = tryPort;
-				bound = true;
-				trace('[DevBridge] Listening on port $tryPort');
-				break;
-			} catch (e:Dynamic) {
-				trace('[DevBridge] Port $tryPort busy, trying next...');
-				tryPort++;
-			}
-		}
-
-		if (!bound) {
-			trace('[DevBridge] Failed to bind after 10 attempts (tried ports $port-${port + 9})');
-			serverSocket = null;
+		#if (sys || hxnodejs)
+		final http = new bh.multianim.dev.transport.HttpServerTransport(port, bindAddress);
+		if (!http.start(this)) {
+			restoreTrace();
 			return;
 		}
-
-		// Write ready file if env var set
-		var readyFilePath = Sys.getEnv("HX_DEV_READY_FILE");
-		if (readyFilePath != null && readyFilePath != "") {
-			try {
-				var json = haxe.Json.stringify({
-					port: actualPort,
-					timestamp: Date.now().getTime() / 1000,
-				});
-				sys.io.File.saveContent(readyFilePath, json);
-				trace('[DevBridge] Ready file written to $readyFilePath');
-			} catch (e:Dynamic) {
-				trace('[DevBridge] Failed to write ready file: $e');
-			}
+		actualPort = http.actualPort;
+		#if hxnodejs
+		this.http = http;
+		#end
+		transports.push(http);
+		#elseif js
+		final relay = DevBridgeConfig.get("HX_DEV_RELAY");
+		final hasRelay = relay != null && relay != "";
+		if (hasRelay) {
+			final ws = new bh.multianim.dev.transport.WebSocketTransport(relay);
+			if (ws.start(this)) transports.push(ws);
 		}
+		// window.hxDevBridge: on unless a relay is named, and then on request (HX_DEV_PAGE=1).
+		final pageSetting = DevBridgeConfig.get("HX_DEV_PAGE");
+		final wantPage = pageSetting != null && pageSetting != "" ? pageSetting != "0" && pageSetting != "false" : !hasRelay;
+		if (wantPage) {
+			final page = new bh.multianim.dev.transport.PageTransport();
+			if (page.start(this)) transports.push(page);
+		}
+		if (transports.length == 0) {
+			trace('[DevBridge] No transport started (relay "$relay" rejected, page API off)');
+			restoreTrace();
+			return;
+		}
+		installBrowserErrorCapture();
+		trace('[DevBridge] Ready: ${[for (t in transports) t.describe].join(", ")}');
+		#else
+		trace('[DevBridge] No transport for this target');
+		restoreTrace();
+		return;
+		#end
+		started = true;
 		registerListeners();
 	}
 
 	public function stop():Void {
 		unregisterListeners();
-		closeSseClients();
-		if (serverSocket != null) {
-			serverSocket.close();
-			serverSocket = null;
-			trace("[DevBridge] Stopped");
-		}
+		#if (js && !hxnodejs)
+		removeBrowserErrorCapture();
+		#end
+		for (t in transports)
+			t.stop();
+		transports = [];
+		#if hxnodejs
+		http = null;
+		#end
+		started = false;
 		restoreTrace();
+	}
+
+	/** Called from ScreenManager.update: lets each transport pump what it needs to (the HTTP
+	 *  transport closes pending connections that exceeded the idle deadline). */
+	public function tick():Void {
+		#if hxnodejs
+		final h = http;
+		if (h != null)
+			actualPort = h.actualPort;
+		#end
+		for (t in transports)
+			t.tick();
+	}
+
+	// ---- IDevBridgeHost: what the transports call ----
+
+	public function getToken():Null<String> {
+		return token;
+	}
+
+	/** Who this game is: a relay's `hello` and `window.hxDevBridge.info()` carry this. */
+	public function describeInstance():Dynamic {
+		final info:Dynamic = {
+			app: resolveAppName(),
+			session: session,
+			frame: hxd.Timer.frameCount,
+			paused: paused,
+			transports: [for (t in transports) t.describe],
+			ops: METHODS.copy(),
+			gameOps: [for (op in queryRegistry.keys()) op].concat([for (op in commandRegistry.keys()) op]),
+		};
+		#if (js && !hxnodejs)
+		info.title = js.Browser.document.title;
+		info.url = js.Browser.location.href;
+		#end
+		return info;
+	}
+
+	function resolveAppName():String {
+		final configured = DevBridgeConfig.get("HX_DEV_APP");
+		if (configured != null && configured != "") return configured;
+		final app = screenManager.app;
+		return app != null ? Type.getClassName(Type.getClass(app)) : "unknown";
+	}
+
+	/** A request body `{"method": ..., "params": ...}`: parse, dispatch, reply. */
+	public function handleRequestJson(body:String):DevBridgeReply {
+		var request:Dynamic = null;
+		try {
+			request = Json.parse(body);
+		} catch (e:Dynamic) {
+			return {status: 400, body: {ok: false, error: "Invalid JSON"}};
+		}
+		if (request == null || !Std.isOfType(request.method, String))
+			return {status: 400, body: {ok: false, error: "Invalid request: expected {method, params}", code: "invalid_params"}};
+		return handleCall(request.method, request.params);
+	}
+
+	/** An already-parsed call: dispatch it and shape the reply the same way for every transport. */
+	public function handleCall(method:String, params:Dynamic):DevBridgeReply {
+		if (!Std.isOfType(method, String))
+			return {status: 400, body: {ok: false, error: "Invalid request: method must be a string", code: "invalid_params"}};
+		if (params == null) params = {};
+
+		trace('[DevBridge] << $method');
+		try {
+			var result = dispatch(method, params);
+			trace('[DevBridge] >> $method OK');
+			return {status: 200, body: {ok: true, result: result}};
+		} catch (e:haxe.Exception) {
+			var code = "internal";
+			var httpStatus = 500;
+			if (Std.isOfType(e, DevBridgeError)) {
+				var de:DevBridgeError = cast e;
+				code = de.code;
+				httpStatus = de.httpStatus;
+			}
+			trace('[DevBridge] >> $method ERROR [$code]: ${e.message}');
+			if (code == "internal") trace('[DevBridge]    Stack: ${e.stack}');
+			return {status: httpStatus, body: {ok: false, error: e.message, code: code}};
+		} catch (e:Dynamic) {
+			trace('[DevBridge] >> $method ERROR (dynamic): $e');
+			return {status: 500, body: {ok: false, error: '$e', code: "internal"}};
+		}
 	}
 
 	// ---- Trace capture ----
 
 	function installTraceCapture():Void {
+		if (traceCapturing)
+			return;
+		traceCapturing = true;
+		// Once only: a second install would record the hook itself as the "original", and the
+		// hook would call itself on every trace. A hook left in the chain (restored while another
+		// bridge's hook sat on top of it) captures again.
+		if (originalTrace != null)
+			return;
 		originalTrace = haxe.Log.trace;
 		var self = this;
-		haxe.Log.trace = (v:Dynamic, ?infos:haxe.PosInfos) -> {
+		final hook = (v:Dynamic, ?infos:haxe.PosInfos) -> {
 			// Call original trace
 			var orig = self.originalTrace;
 			if (orig != null) orig(v, infos);
+			// A bridge that stopped capturing passes traces on only
+			if (!self.traceCapturing) return;
 			// Buffer the message
 			var msg = if (infos != null)
 				'${infos.fileName}:${infos.lineNumber}: $v'
@@ -162,72 +371,105 @@ class DevBridge {
 				self.traceDropped++;
 			}
 			self.traceBuffer.push(msg);
-			// Push to SSE clients
-			self.broadcastSseEvent("trace", {message: msg, timestamp: haxe.Timer.stamp()});
+			// Push to connected clients
+			self.pushEvent("trace", {message: msg, timestamp: haxe.Timer.stamp()});
 		};
+		traceHook = hook;
+		traceHooks.push(this);
+		haxe.Log.trace = hook;
 	}
 
+	/** Stops capturing. Several bridges chain their hooks (each calls the trace it replaced): a
+	 *  bridge whose hook has another on top becomes a pass-through — taking it out would take the
+	 *  later ones out too — and the hooks at the top of the chain that no longer capture are taken
+	 *  off, so with every bridge stopped `haxe.Log.trace` is what it was before the first. */
 	function restoreTrace():Void {
-		if (originalTrace != null) {
-			Reflect.setField(haxe.Log, "trace", originalTrace);
-			originalTrace = null;
+		traceCapturing = false;
+		while (traceHooks.length > 0) {
+			final top = traceHooks[traceHooks.length - 1];
+			if (top.traceCapturing) break;
+			// Someone else hooked trace after it: leave the chain as it is
+			if (!Reflect.compareMethods(haxe.Log.trace, top.traceHook)) break;
+			final original = top.originalTrace;
+			if (original != null) haxe.Log.trace = original;
+			top.originalTrace = null;
+			top.traceHook = null;
+			traceHooks.pop();
 		}
 	}
 
-	// ---- SSE broadcast ----
+	#if (js && !hxnodejs)
+	// ---- Browser error capture ----
+	// Failures the Haxe side never sees (an uncaught exception from a callback, a failed promise, a
+	// lost WebGL context, a resource that failed to load) go into the error buffer, prefixed
+	// "[browser]" so get_errors tells them apart.
 
-	function handleSseConnect(clientSocket:Socket):Void {
-		var header = 'HTTP/1.1 200 OK\r\n'
-			+ 'Content-Type: text/event-stream\r\n'
-			+ 'Cache-Control: no-cache\r\n'
-			+ 'Connection: keep-alive\r\n'
-			+ 'Access-Control-Allow-Origin: *\r\n'
-			+ '\r\n';
-		var headerBytes = haxe.io.Bytes.ofString(header);
-		clientSocket.out.writeBytes(headerBytes, 0, headerBytes.length);
-		clientSocket.out.flush();
-		sseClients.push(clientSocket);
-		clientSocket.onError = (msg) -> {
-			sseClients.remove(clientSocket);
-			try clientSocket.close() catch (_:Dynamic) {};
+	function installBrowserErrorCapture():Void {
+		final window = js.Browser.window;
+		browserErrorListener = (event:js.html.Event) -> {
+			final e:Dynamic = event;
+			final target:Dynamic = event.target;
+			if (e.message == null && target != null && target != window) {
+				// A resource that failed to load (seen in the capture phase: img, script, link).
+				final src:Dynamic = target.src != null ? target.src : target.href;
+				reportError('[browser] failed to load ${target.tagName} $src', "");
+				return;
+			}
+			final where = e.filename != null && e.filename != "" ? ' (${e.filename}:${e.lineno}:${e.colno})' : "";
+			final err:Dynamic = e.error;
+			final stack:String = err != null && err.stack != null ? Std.string(err.stack) : "";
+			reportError('[browser] ${e.message}$where', stack);
 		};
-		trace('[DevBridge] SSE client connected (${sseClients.length} total)');
+		browserRejectionListener = (event:js.html.Event) -> {
+			final reason:Dynamic = (event : Dynamic).reason;
+			final message = reason != null && reason.message != null ? Std.string(reason.message) : Std.string(reason);
+			final stack:String = reason != null && reason.stack != null ? Std.string(reason.stack) : "";
+			reportError('[browser] unhandled promise rejection: $message', stack);
+		};
+		window.addEventListener("error", browserErrorListener, true);
+		window.addEventListener("unhandledrejection", browserRejectionListener);
+		final canvas:Null<js.html.CanvasElement> = @:privateAccess hxd.Window.getInstance().canvas;
+		if (canvas != null) {
+			contextLostListener = (_) -> reportError("[browser] WebGL context lost", "");
+			canvas.addEventListener("webglcontextlost", contextLostListener);
+		}
 	}
 
-	function broadcastSseEvent(event:String, data:Dynamic):Void {
-		if (sseBroadcasting || sseClients.length == 0) return;
-		sseBroadcasting = true;
+	function removeBrowserErrorCapture():Void {
+		final window = js.Browser.window;
+		if (browserErrorListener != null) {
+			window.removeEventListener("error", browserErrorListener, true);
+			browserErrorListener = null;
+		}
+		if (browserRejectionListener != null) {
+			window.removeEventListener("unhandledrejection", browserRejectionListener);
+			browserRejectionListener = null;
+		}
+		if (contextLostListener != null) {
+			final canvas:Null<js.html.CanvasElement> = @:privateAccess hxd.Window.getInstance().canvas;
+			if (canvas != null) canvas.removeEventListener("webglcontextlost", contextLostListener);
+			contextLostListener = null;
+		}
+	}
+	#end
+
+	// ---- Event push ----
+
+	/** Sends an event to every transport: `/sse` subscribers, a relay socket, the page's event ring.
+	 *  Guarded against re-entry, since a transport that fails traces, and a trace is an event. */
+	function pushEvent(event:String, data:Dynamic):Void {
+		if (eventBroadcasting || transports.length == 0) return;
+		eventBroadcasting = true;
 		try {
-			var json = Json.stringify(data);
-			var payload = 'event: $event\ndata: $json\n\n';
-			var bytes = haxe.io.Bytes.ofString(payload);
-			var dead:Array<Socket> = [];
-			for (client in sseClients) {
-				try {
-					client.out.writeBytes(bytes, 0, bytes.length);
-					client.out.flush();
-				} catch (e:Dynamic) {
-					dead.push(client);
-				}
-			}
-			for (d in dead) {
-				sseClients.remove(d);
-				try d.close() catch (_:Dynamic) {};
-			}
+			for (t in transports)
+				t.pushEvent(event, data);
 		} catch (e:Dynamic) {
-			trace('[DevBridge] SSE broadcast failed ($event): $e');
+			trace('[DevBridge] Event push failed ($event): $e');
 		}
-		sseBroadcasting = false;
+		eventBroadcasting = false;
 	}
 
-	function closeSseClients():Void {
-		for (client in sseClients) {
-			try client.close() catch (_:Dynamic) {};
-		}
-		sseClients = [];
-	}
-
-	// ---- SSE event sources ----
+	// ---- Event sources ----
 
 	var screenChangeListener:Null<bh.ui.screens.ScreenChangeListener> = null;
 	var reloadListener:Null<HotReload.ReloadListener> = null;
@@ -237,9 +479,12 @@ class DevBridge {
 		screenManager.addScreenChangeListener(screenChangeListener);
 		reloadListener = onReloadEvent;
 		screenManager.addReloadListener(reloadListener);
+		screenManager.audio.onHistory = onAudioHistory;
 	}
 
 	function unregisterListeners():Void {
+		if (Reflect.compareMethods(screenManager.audio.onHistory, onAudioHistory))
+			screenManager.audio.onHistory = null;
 		if (screenChangeListener != null) {
 			screenManager.removeScreenChangeListener(screenChangeListener);
 			screenChangeListener = null;
@@ -251,7 +496,7 @@ class DevBridge {
 	}
 
 	function onScreenChange(event:bh.ui.screens.ScreenChangeEvent):Void {
-		broadcastSseEvent("screen_change", {
+		pushEvent("screen_change", {
 			action: event.action,
 			mode: event.mode,
 			previousMode: event.previousMode,
@@ -265,7 +510,7 @@ class DevBridge {
 	function onReloadEvent(event:HotReload.ReloadEvent):Void {
 		switch event {
 			case ReloadStarted(file, fileType):
-				broadcastSseEvent("reload", {
+				pushEvent("reload", {
 					status: "started",
 					file: file,
 					fileType: switch fileType {
@@ -278,24 +523,24 @@ class DevBridge {
 				var payload = reloadReportToPayload(report);
 				payload.status = "succeeded";
 				payload.timestamp = haxe.Timer.stamp();
-				broadcastSseEvent("reload", payload);
+				pushEvent("reload", payload);
 			case ReloadFailed(report):
 				var payload = reloadReportToPayload(report);
 				payload.status = "failed";
 				payload.timestamp = haxe.Timer.stamp();
-				broadcastSseEvent("reload", payload);
+				pushEvent("reload", payload);
 			case ReloadNeedsRestart(report):
 				var payload = reloadReportToPayload(report);
 				payload.status = "needs_restart";
 				payload.timestamp = haxe.Timer.stamp();
-				broadcastSseEvent("reload", payload);
+				pushEvent("reload", payload);
 		}
 	}
 
 	/** Broadcast a custom debug event to all connected MCP clients.
 	 *  Use from game code for debugging: `screenManager.devBridge.broadcastCustomEvent("myEvent", {key: "value"})` */
 	public function broadcastCustomEvent(name:String, data:Dynamic):Void {
-		broadcastSseEvent("custom", {name: name, data: data, timestamp: haxe.Timer.stamp()});
+		pushEvent("custom", {name: name, data: data, timestamp: haxe.Timer.stamp()});
 	}
 
 	// ---- Custom game ops: registration API ----
@@ -339,7 +584,7 @@ class DevBridge {
 			gameEventDropped++;
 		}
 		gameEventBuffer.push(entry);
-		broadcastSseEvent("game_event", entry);
+		pushEvent("game_event", entry);
 	}
 
 	function assertOpNameFree(op:String):Void {
@@ -366,136 +611,8 @@ class DevBridge {
 			debuggerDropped++;
 		}
 		debuggerBuffer.push(entry);
-		broadcastSseEvent("debugger", entry);
+		pushEvent("debugger", entry);
 		if (pause) setPaused(true);
-	}
-
-	// ---- HTTP handling ----
-
-	function onClientConnected(clientSocket:Socket):Void {
-		var conn = new HttpConnection(clientSocket);
-		pendingConnections.push(conn);
-		clientSocket.onData = () -> {
-			try {
-				if (conn.processIncoming()) {
-					pendingConnections.remove(conn);
-					if (conn.headerOversized) {
-						sendJsonResponse(clientSocket, 431, {ok: false, error: "Request header fields too large"});
-						return;
-					}
-					if (conn.bodyOversized) {
-						sendJsonResponse(clientSocket, 413, {ok: false, error: "Payload too large"});
-						return;
-					}
-					var httpMethod = conn.getHttpMethod();
-					if (httpMethod == "OPTIONS") {
-						sendResponse(clientSocket, 204, "");
-					} else if (httpMethod == "GET" && conn.getPath() == "/sse") {
-						handleSseConnect(clientSocket);
-					} else if (httpMethod == "POST") {
-						handleRequest(conn.getBody(), clientSocket);
-					} else {
-						sendJsonResponse(clientSocket, 405, {ok: false, error: "Method not allowed. Use POST."});
-					}
-				}
-			} catch (e:Dynamic) {
-				pendingConnections.remove(conn);
-				sendJsonResponse(clientSocket, 400, {ok: false, error: 'Bad request: $e'});
-			}
-		};
-		clientSocket.onError = (msg) -> {
-			pendingConnections.remove(conn);
-		};
-	}
-
-	/** Called from ScreenManager.update — closes pending connections that
-	 *  exceeded the idle deadline so half-open clients can't park sockets. */
-	public function tick():Void {
-		if (pendingConnections.length == 0) return;
-		var now = haxe.Timer.stamp();
-		var i = pendingConnections.length;
-		while (i-- > 0) {
-			var conn = pendingConnections[i];
-			if (conn.isExpired(now)) {
-				pendingConnections.splice(i, 1);
-				try {
-					sendJsonResponse(conn.socket, 408, {ok: false, error: "Request timeout"});
-				} catch (_:Dynamic) {
-					try conn.socket.close() catch (_:Dynamic) {};
-				}
-			}
-		}
-	}
-
-	function handleRequest(body:String, clientSocket:Socket):Void {
-		var request:Dynamic = null;
-		try {
-			request = Json.parse(body);
-		} catch (e:Dynamic) {
-			sendJsonResponse(clientSocket, 400, {ok: false, error: "Invalid JSON"});
-			return;
-		}
-
-		var method:String = request.method;
-		var params:Dynamic = request.params;
-		if (params == null) params = {};
-
-		trace('[DevBridge] << $method');
-		try {
-			var result = dispatch(method, params);
-			trace('[DevBridge] >> $method OK');
-			sendJsonResponse(clientSocket, 200, {ok: true, result: result});
-		} catch (e:haxe.Exception) {
-			var code = "internal";
-			var httpStatus = 500;
-			if (Std.isOfType(e, DevBridgeError)) {
-				var de:DevBridgeError = cast e;
-				code = de.code;
-				httpStatus = de.httpStatus;
-			}
-			trace('[DevBridge] >> $method ERROR [$code]: ${e.message}');
-			if (code == "internal") trace('[DevBridge]    Stack: ${e.stack}');
-			sendJsonResponse(clientSocket, httpStatus, {ok: false, error: e.message, code: code});
-		} catch (e:Dynamic) {
-			trace('[DevBridge] >> $method ERROR (dynamic): $e');
-			sendJsonResponse(clientSocket, 500, {ok: false, error: '$e', code: "internal"});
-		}
-	}
-
-	function sendJsonResponse(clientSocket:Socket, statusCode:Int, body:Dynamic):Void {
-		sendResponse(clientSocket, statusCode, Json.stringify(body));
-	}
-
-	function sendResponse(clientSocket:Socket, statusCode:Int, body:String):Void {
-		var statusText = switch statusCode {
-			case 200: "OK";
-			case 204: "No Content";
-			case 400: "Bad Request";
-			case 405: "Method Not Allowed";
-			case 408: "Request Timeout";
-			case 413: "Payload Too Large";
-			case 431: "Request Header Fields Too Large";
-			case 500: "Internal Server Error";
-			default: "Unknown";
-		};
-
-		var bodyBytes = haxe.io.Bytes.ofString(body);
-		var header = 'HTTP/1.1 $statusCode $statusText\r\n'
-			+ 'Content-Type: application/json\r\n'
-			+ 'Access-Control-Allow-Origin: *\r\n'
-			+ 'Access-Control-Allow-Methods: POST, OPTIONS\r\n'
-			+ 'Access-Control-Allow-Headers: Content-Type\r\n'
-			+ 'Connection: close\r\n'
-			+ 'Content-Length: ${bodyBytes.length}\r\n'
-			+ '\r\n';
-
-		var headerBytes = haxe.io.Bytes.ofString(header);
-		clientSocket.out.writeBytes(headerBytes, 0, headerBytes.length);
-		if (bodyBytes.length > 0)
-			clientSocket.out.writeBytes(bodyBytes, 0, bodyBytes.length);
-
-		// Close after a short delay to allow data to flush
-		haxe.Timer.delay(() -> clientSocket.close(), 50);
 	}
 
 	// ---- Command dispatch ----
@@ -535,12 +652,17 @@ class DevBridge {
 			case "ping": handlePing(params);
 			case "list_fonts": handleListFonts(params);
 			case "list_atlases": handleListAtlases(params);
+			case "list_cursors": handleListCursors(params);
+			// the game's sound
+			case "audio_state": handleAudioState(params);
+			case "audio_log": handleAudioLog(params);
+			case "audio_set": handleAudioSet(params);
 			case "coordinate_transform": handleCoordinateTransform(params);
 			case "wait_for_idle": handleWaitForIdle(params);
 			// v4: layout validation
 			case "check_overlaps": handleCheckOverlaps(params);
 			// v5: direct actions
-			case "click_interactive": handleClickInteractive(params);
+			case "click_interactive" | "click_button": handleClickInteractive(params);
 			// v6: batch events
 			case "send_events": handleSendEvents(params);
 			// v7: active programmables listing
@@ -548,6 +670,7 @@ class DevBridge {
 			// v8: custom game ops (query/command/event)
 			case "list_game_ops": handleListGameOps(params);
 			case "game_op": handleGameOp(params);
+			case "data_list" | "data_get" | "data_pick" | "map_list" | "map_get": handleBuiltInQuery(method, params);
 			case "get_game_events": handleGetGameEvents(params);
 			default: throw DevBridgeError.unknownMethod('Unknown method: $method');
 		};
@@ -642,6 +765,15 @@ class DevBridge {
 		engine.popTarget();
 		renderTexture.dispose();
 
+		#if (js && !hxnodejs)
+		// format.png needs haxe.zip.Compress, which the browser target lacks; the browser has its own
+		// PNG encoder. The size is the render target's, so device pixel ratio does not change it.
+		return {
+			base64: encodePngInBrowser(pixels),
+			width: pixels.width,
+			height: pixels.height,
+		};
+		#else
 		pixels.convert(BGRA);
 		var rawLen = pixels.width * pixels.height * 4;
 		var rawBytes:haxe.io.Bytes;
@@ -665,7 +797,28 @@ class DevBridge {
 			width: w,
 			height: h,
 		};
+		#end
 	}
+
+	#if (js && !hxnodejs)
+	/** PNG-encodes captured pixels with a 2D canvas and returns the base64 payload. */
+	static function encodePngInBrowser(pixels:hxd.Pixels):String {
+		pixels.convert(RGBA);
+		final w = pixels.width;
+		final h = pixels.height;
+		final canvas = js.Browser.document.createCanvasElement();
+		canvas.width = w;
+		canvas.height = h;
+		final ctx = canvas.getContext2d();
+		final image = ctx.createImageData(w, h);
+		final src = new js.lib.Uint8Array(pixels.bytes.getData(), pixels.offset, w * h * 4);
+		image.data.set(cast src);
+		pixels.dispose();
+		ctx.putImageData(image, 0, 0);
+		final url = canvas.toDataURL("image/png");
+		return url.substr(url.indexOf(",") + 1);
+	}
+	#end
 
 	function handleInspectElement(params:Dynamic):Dynamic {
 		var screenName:String = params.screen;
@@ -710,13 +863,13 @@ class DevBridge {
 		if (programmable == null || paramName == null)
 			throw DevBridgeError.invalidParams("Required params: programmable, param, value");
 
-		// Search all live builder results via hot-reload registry
-		var found = findBuilderResult(programmable);
+		// A live BuilderResult or codegen instance, through the registry
+		var found = findLive(programmable);
 		if (found == null)
-			throw DevBridgeError.notFound('No live BuilderResult found for programmable: $programmable');
+			throw DevBridgeError.notFound('No live programmable found: $programmable');
 
-		found.setParameter(paramName, paramValue);
-		broadcastSseEvent("parameter_change", {
+		found.live.setParameter(paramName, paramValue);
+		pushEvent("parameter_change", {
 			programmable: programmable,
 			param: paramName,
 			value: paramValue,
@@ -747,6 +900,20 @@ class DevBridge {
 
 	function handleReload(params:Dynamic):Dynamic {
 		var file:String = params.file;
+		var content:Null<String> = params.content;
+		if (content != null) {
+			// Reload from text the caller supplies. On JS this is the only way: a page cannot
+			// read the file, so the host (the MCP server, a test) sends what is on disk.
+			if (file == null)
+				throw DevBridgeError.invalidParams("reload with content needs file: the resource path it replaces (e.g. \"ui/menu.manim\")");
+			var contentReport = screenManager.hotReloadContent(file, content);
+			if (contentReport == null)
+				throw DevBridgeError.notFound('No loaded .manim with resource path "$file". Loaded: ${screenManager.loadedManimPaths().join(", ")}');
+			return reloadReportToPayload(contentReport);
+		}
+		#if (js && !hxnodejs)
+		throw DevBridgeError.notSupported("reload needs {file, content} on JS: a browser page cannot read the file itself");
+		#else
 		var resource:Null<hxd.res.Resource> = null;
 		if (file != null) {
 			try {
@@ -754,6 +921,10 @@ class DevBridge {
 			} catch (e:Dynamic) {
 				throw DevBridgeError.notFound('Resource not found: $file');
 			}
+			// A file no screen or build loaded has nothing to reload: say so instead of "success".
+			final path = resource.entry.path;
+			if (!screenManager.loadedManimPaths().contains(path))
+				throw DevBridgeError.notFound('No loaded .manim with resource path "$path". Loaded: ${screenManager.loadedManimPaths().join(", ")}');
 		}
 
 		var report = screenManager.hotReload(resource);
@@ -770,6 +941,7 @@ class DevBridge {
 			};
 		}
 		return reloadReportToPayload(report);
+		#end
 	}
 
 	static function reloadReportToPayload(report:HotReload.ReloadReport):Dynamic {
@@ -838,9 +1010,16 @@ class DevBridge {
 		for (nodeName in nodeNames) {
 			try {
 				var result = builder.buildWithParameters(nodeName, new Map());
-				// Clean up built objects to avoid scene graph pollution
-				if (result != null && result.object != null)
-					result.object.remove();
+				if (result != null) {
+					// A validation build is thrown away: it must not stay registered as a live
+					// programmable (the root was never in the scene, so its sentinel never fires).
+					if (result.reloadHandle != null) {
+						result.reloadHandle.registry.unregister(result.reloadHandle);
+						result.reloadHandle = null;
+					}
+					if (result.object != null)
+						result.object.remove();
+				}
 			} catch (e:Dynamic) {
 				buildErrors.push(buildErrorPayload(nodeName, e));
 			}
@@ -1003,6 +1182,7 @@ class DevBridge {
 				app.engine.render(app);
 			};
 			paused = true;
+			screenManager.clock.paused = true;
 			trace("[DevBridge] Game paused");
 		} else if (!shouldPause && paused) {
 			if (savedLoopFunc != null) {
@@ -1010,6 +1190,7 @@ class DevBridge {
 				savedLoopFunc = null;
 			}
 			paused = false;
+			screenManager.clock.paused = false;
 			trace("[DevBridge] Game resumed");
 		}
 	}
@@ -1035,6 +1216,10 @@ class DevBridge {
 	}
 
 	function handleQuit(params:Dynamic):Dynamic {
+		#if (js && !hxnodejs)
+		// The host page owns the game; closing it is the host's business, never hxd.System.exit().
+		throw DevBridgeError.notSupported("quit is not supported in a browser page: the page owns the game. Close the tab instead");
+		#end
 		trace("[DevBridge] Quit requested — exiting in 100ms");
 		// Delay exit so HTTP response can be sent
 		haxe.Timer.delay(() -> {
@@ -1119,7 +1304,18 @@ class DevBridge {
 		var events:Array<Dynamic> = [];
 		for (name => spec in eventRegistry)
 			events.push({name: name, description: spec.description, payload: spec.payload});
-		return {queries: queries, commands: commands, events: events};
+		// The library's own queries, which game_op answers too: the game's data.
+		var builtIn:Array<Dynamic> = [];
+		for (op => spec in builtInQueries)
+			builtIn.push({op: op, description: spec.description, params: spec.params});
+		return {queries: queries, commands: commands, events: events, builtIn: builtIn};
+	}
+
+	/** A built-in query called by its name, as a method. **/
+	function handleBuiltInQuery(op:String, params:Dynamic):Dynamic {
+		final spec = builtInQueries.get(op);
+		if (spec == null) throw DevBridgeError.notFound('Unknown query: $op');
+		return spec.handler(params != null ? params : {});
 	}
 
 	function handleGameOp(params:Dynamic):Dynamic {
@@ -1132,6 +1328,11 @@ class DevBridge {
 		if (spec == null) {
 			spec = commandRegistry.get(op);
 			kind = "command";
+		}
+		// The library's own queries, when the game has no op of the name.
+		if (spec == null) {
+			spec = builtInQueries.get(op);
+			kind = "query";
 		}
 		if (spec == null)
 			throw DevBridgeError.notFound('Unknown game op: $op. Call list_game_ops to discover registered ops.');
@@ -1190,7 +1391,7 @@ class DevBridge {
 		// Cap buffer size
 		if (errorBuffer.length > 100) errorBuffer.shift();
 		// Push to SSE clients
-		broadcastSseEvent("error", {message: message, stack: stackStr, timestamp: timestamp});
+		pushEvent("error", {message: message, stack: stackStr, timestamp: timestamp});
 	}
 
 	// ---- v2: Deep inspection ----
@@ -1200,41 +1401,34 @@ class DevBridge {
 		if (programmable == null)
 			throw DevBridgeError.invalidParams("Required param: programmable");
 
-		var found = findBuilderResult(programmable);
+		var found = findLive(programmable);
 		if (found == null)
-			throw DevBridgeError.notFound('No live BuilderResult found for programmable: $programmable');
+			throw DevBridgeError.notFound('No live programmable found: $programmable');
 
 		var parameters:Array<Dynamic> = [];
+		var currentParams = found.live.getParameterValues();
 
-		// Get definitions from the builder
-		var handle = findHandle(programmable);
-		if (handle != null) {
-			var builder = findBuilderForHandle(handle);
-			if (builder != null) {
-				var defs = builder.getParameterDefinitions(programmable);
-				var currentParams:Null<Map<String, ResolvedIndexParameters>> = null;
-				if (found.incrementalContext != null)
-					currentParams = found.incrementalContext.snapshotParams();
-
-				for (paramName => def in defs) {
-					if (def == null) continue;
-					var entry:Dynamic = {
-						name: paramName,
-						type: defTypeToString(def.type),
-					};
-					// Add current value if available
-					if (currentParams != null) {
-						var resolved = currentParams.get(paramName);
-						if (resolved != null) {
-							entry.currentValue = StateRestorer.resolvedToDynamic(resolved);
-						}
-					}
-					parameters.push(entry);
-				}
+		// Definitions from the builder of the programmable's file; without one (a test registering
+		// under a made-up source), the current values alone.
+		var builder = findBuilderForSource(found.sourcePath);
+		if (builder != null) {
+			var defs = builder.getParameterDefinitions(programmable);
+			for (paramName => def in defs) {
+				if (def == null) continue;
+				var entry:Dynamic = {
+					name: paramName,
+					type: defTypeToString(def.type),
+				};
+				if (currentParams.exists(paramName))
+					entry.currentValue = currentParams.get(paramName);
+				parameters.push(entry);
 			}
+		} else {
+			for (paramName => value in currentParams)
+				parameters.push({name: paramName, currentValue: value});
 		}
 
-		return {programmable: programmable, parameters: parameters};
+		return {programmable: programmable, kind: liveKind(found), parameters: parameters};
 	}
 
 	function handleListInteractives(params:Dynamic):Dynamic {
@@ -1317,34 +1511,19 @@ class DevBridge {
 		if (programmable == null)
 			throw DevBridgeError.invalidParams("Required param: programmable");
 
-		var found = findBuilderResult(programmable);
+		var found = findLive(programmable);
 		if (found == null)
-			throw DevBridgeError.notFound('No live BuilderResult found for programmable: $programmable');
+			throw DevBridgeError.notFound('No live programmable found: $programmable');
 
 		var slots:Array<Dynamic> = [];
-		if (found.slots != null) {
-			for (entry in found.slots) {
-				var slotInfo:Dynamic = {
-					occupied: entry.handle.isOccupied(),
-				};
-				switch entry.key {
-					case Named(name):
-						slotInfo.name = name;
-					case Indexed(name, index):
-						slotInfo.name = name;
-						slotInfo.index = index;
-					case Indexed2D(name, indexX, indexY):
-						slotInfo.name = name;
-						slotInfo.indexX = indexX;
-						slotInfo.indexY = indexY;
-				}
-				if (entry.handle.incrementalContext != null)
-					slotInfo.hasParameters = true;
-				slots.push(slotInfo);
-			}
+		for (entry in found.live.getSlotEntries()) {
+			var slotInfo = slotInfoOf(entry);
+			if (entry.handle.incrementalContext != null)
+				slotInfo.hasParameters = true;
+			slots.push(slotInfo);
 		}
 
-		return {programmable: programmable, slots: slots};
+		return {programmable: programmable, kind: liveKind(found), slots: slots};
 	}
 
 	function handleGetTweenState(params:Dynamic):Dynamic {
@@ -1393,8 +1572,13 @@ class DevBridge {
 			});
 		}
 
+		final showing = screenManager.showing();
 		return {
 			mode: screenManager.modeToString(screenManager.mode),
+			base: showing.base != null ? resolveScreenName(showing.base) : null,
+			master: showing.master != null ? resolveScreenName(showing.master) : null,
+			dialog: showing.dialog != null ? resolveScreenName(showing.dialog) : null,
+			dialogName: showing.dialogName,
 			isTransitioning: screenManager.isTransitioning,
 			paused: paused,
 			activeTweens: screenManager.tweens.handles.length,
@@ -1436,78 +1620,28 @@ class DevBridge {
 		if (programmable == null)
 			throw DevBridgeError.invalidParams("Required param: programmable");
 
-		var found = findBuilderResult(programmable);
+		var found = findLive(programmable);
 		if (found == null)
-			throw DevBridgeError.notFound('No live BuilderResult found for programmable: $programmable');
+			throw DevBridgeError.notFound('No live programmable found: $programmable');
 
+		var root = found.live.getRoot();
 		var result:Dynamic = {
-			name: found.name,
-			objectType: Type.getClassName(Type.getClass(found.object)),
-			x: found.object.x,
-			y: found.object.y,
-			visible: found.object.visible,
+			name: found.live.getProgrammableName(),
+			kind: liveKind(found),
+			source: found.sourcePath,
+			objectType: Type.getClassName(Type.getClass(root)),
+			x: root.x,
+			y: root.y,
+			visible: root.visible,
 		};
+		describeLive(found.live, result, true);
 
-		// Parameters (current values)
-		if (found.incrementalContext != null) {
-			var snapshot = found.incrementalContext.snapshotParams();
-			var paramValues:Dynamic = {};
-			for (paramName => resolved in snapshot) {
-				var val = StateRestorer.resolvedToDynamic(resolved);
-				if (val != null)
-					Reflect.setField(paramValues, paramName, val);
-			}
-			result.currentParameters = paramValues;
-		}
-
-		// Slots
-		if (found.slots != null && found.slots.length > 0) {
-			var slotList:Array<Dynamic> = [];
-			for (entry in found.slots) {
-				var slotInfo:Dynamic = {occupied: entry.handle.isOccupied()};
-				switch entry.key {
-					case Named(name): slotInfo.name = name;
-					case Indexed(name, index):
-						slotInfo.name = name;
-						slotInfo.index = index;
-					case Indexed2D(name, ix, iy):
-						slotInfo.name = name;
-						slotInfo.indexX = ix;
-						slotInfo.indexY = iy;
-				}
-				slotList.push(slotInfo);
-			}
-			result.slots = slotList;
-		}
-
-		// Dynamic refs
-		if (found.dynamicRefs != null) {
-			var refs:Array<String> = [];
-			for (name => _ in found.dynamicRefs)
-				refs.push(name);
-			if (refs.length > 0)
-				result.dynamicRefs = refs;
-		}
-
-		// Named elements
-		if (found.names != null) {
-			var names:Array<String> = [];
-			for (name => _ in found.names)
-				names.push(name);
-			if (names.length > 0)
-				result.namedElements = names;
-		}
-
-		// Interactives
-		if (found.interactives != null && found.interactives.length > 0)
-			result.interactiveCount = found.interactives.length;
-
-		// Settings
-		if (found.rootSettings != null) {
+		// Settings — a BuilderResult keeps its root settings; a codegen instance has none to show
+		if (found.result != null && found.result.rootSettings != null) {
 			var settings:Dynamic = {};
 			var hasSettings = false;
-			for (key in found.rootSettings.keys()) {
-				Reflect.setField(settings, key, found.rootSettings.getStringOrDefault(key, ""));
+			for (key in found.result.rootSettings.keys()) {
+				Reflect.setField(settings, key, found.result.rootSettings.getStringOrDefault(key, ""));
 				hasSettings = true;
 			}
 			if (hasSettings) result.settings = settings;
@@ -1528,6 +1662,118 @@ class DevBridge {
 
 	function handleListFonts(params:Dynamic):Dynamic {
 		return {fonts: bh.base.FontManager.getRegisteredFontNames()};
+	}
+
+	// ---- The game's sound ----
+
+	/** The banks, the sounds, the mix as it stands (every bus's state, the VCAs, the snapshots on),
+	 *  the parameters, the music and the plays alive. */
+	function handleAudioState(params:Dynamic):Dynamic {
+		final audio = screenManager.audio;
+		final buses:Array<Dynamic> = [];
+		for (name in audio.busNames()) {
+			final s = audio.busState(name);
+			buses.push({name: name, volume: s.volume, paused: s.paused, lowpass: s.lowpass, pitch: s.pitch, voices: s.voices});
+		}
+		final vcas:Dynamic = {};
+		for (name in audio.vcaNames())
+			Reflect.setField(vcas, name, audio.getVca(name));
+		final parameters:Dynamic = {};
+		for (name => value in audio.parameters())
+			Reflect.setField(parameters, name, value);
+		return {
+			banks: audio.bankNames(),
+			sounds: audio.soundNames(),
+			mix: audio.hasMix() ? {buses: buses, vcas: vcas, snapshots: audio.snapshotNames(), snapshotsOn: audio.snapshotsOnNow()} : null,
+			parameters: parameters,
+			tracks: audio.trackNames(),
+			music: audio.musicPlaying,
+			ambience: audio.ambiencePlaying,
+			instances: [
+				for (i in audio.instances)
+					{name: i.name, startedAt: i.startedAt, voices: i.voices.length, pending: i.pending, releasing: i.isReleasing(), gain: i.gain, rate: i.rate}
+			],
+			time: audio.time,
+			backend: Type.getClassName(Type.getClass(audio.backend)),
+		};
+	}
+
+	/** What the audio did, the last lines of its history, after `since` (an entry id) when given. */
+	function handleAudioLog(params:Dynamic):Dynamic {
+		final audio = screenManager.audio;
+		final since:Int = params != null && params.since != null ? Std.int(params.since) : 0;
+		return {entries: audio.historySince(since), time: audio.time};
+	}
+
+	/** Changes the sound from outside: `{vca, value}`, `{snapshot, on}`, `{param, value}`, `{play}`
+	 *  (a sound's name), `{stop}` (a sound's name, or "*" for all), `{music}` (a track's name, or
+	 *  "none"), `{ambience}` (a sound's name, or "none"); several at once. */
+	function handleAudioSet(params:Dynamic):Dynamic {
+		final audio = screenManager.audio;
+		final done:Array<String> = [];
+		if (params == null)
+			throw DevBridgeError.invalidParams("audio_set: vca+value, snapshot+on, param+value, play, stop, music or ambience");
+		if (params.vca != null) {
+			if (params.value == null)
+				throw DevBridgeError.invalidParams("audio_set: a vca takes a value, 0 to 1");
+			audio.setVca(params.vca, params.value);
+			done.push('vca ${params.vca} = ${audio.getVca(params.vca)}');
+		}
+		if (params.snapshot != null) {
+			final on:Bool = params.on != null ? params.on : true;
+			audio.snapshot(params.snapshot, on);
+			done.push('snapshot ${params.snapshot} ${on ? "on" : "off"}');
+		}
+		if (params.param != null) {
+			if (params.value == null)
+				throw DevBridgeError.invalidParams("audio_set: a param takes a value, one of its labels");
+			audio.set(params.param, Std.string(params.value));
+			done.push('param ${params.param} = ${params.value}');
+		}
+		if (params.play != null) {
+			final played = audio.play(params.play);
+			done.push(played != null ? 'played ${params.play}' : 'dropped ${params.play}');
+		}
+		if (params.stop != null) {
+			final n = params.stop == "*" ? audio.stopAll() : audio.stop(params.stop);
+			done.push('stopped $n');
+		}
+		if (params.music != null) {
+			if (params.music == "none")
+				audio.stopMusic();
+			else
+				audio.playMusic(params.music);
+			done.push('music ${params.music}');
+		}
+		if (params.ambience != null) {
+			if (params.ambience == "none")
+				audio.stopAmbience();
+			else
+				audio.playAmbience(params.ambience);
+			done.push('ambience ${params.ambience}');
+		}
+		if (done.length == 0)
+			throw DevBridgeError.invalidParams("audio_set: nothing to do (vca+value, snapshot+on, param+value, play, stop, music, ambience)");
+		return {done: done};
+	}
+
+	function onAudioHistory(entry:bh.audio.Audio.AudioHistoryEntry):Void {
+		pushEvent("audio", {id: entry.id, time: entry.time, kind: entry.kind, name: entry.name, detail: entry.detail, timestamp: haxe.Timer.stamp()});
+	}
+
+	/** Every cursor name an interactive's `cursor =>` can use: the OS ones and the registered ones;
+	 *  a cursor made from a tile (`CursorManager.registerTileCursor`, a file's `cursor { }` block)
+	 *  says its size and hot point. */
+	function handleListCursors(params:Dynamic):Dynamic {
+		var cursors:Array<Dynamic> = [];
+		for (name in bh.base.CursorManager.getRegisteredCursorNames()) {
+			final tileCursor = bh.base.CursorManager.getTileCursor(name);
+			if (tileCursor != null)
+				cursors.push({name: name, kind: "tile", width: tileCursor.tile.iwidth, height: tileCursor.tile.iheight, hotX: tileCursor.hotX, hotY: tileCursor.hotY});
+			else
+				cursors.push({name: name, kind: Std.string(bh.base.CursorManager.getCursor(name)).split("(")[0].toLowerCase()});
+		}
+		return {cursors: cursors};
 	}
 
 	function handleListAtlases(params:Dynamic):Dynamic {
@@ -1903,99 +2149,53 @@ class DevBridge {
 	// ---- v7: active programmables listing ----
 
 	function handleListActiveProgrammables(params:Dynamic):Dynamic {
-		// Only programmables built with incremental:true are tracked in the registry
-		// (via ReloadSentinel auto-registration). Non-incremental builds will not appear.
-		var handles = screenManager.hotReloadRegistry.getAllHandles();
+		// Everything on the registry: every BuilderResult built with hot reload on (`reloadable`, the
+		// default, incremental or not — registered by the builder through a ReloadSentinel) and every
+		// codegen (@:manim) instance (registered by its constructor). An eval_manim build is not.
+		var entries:Array<Dynamic> = [];
 
 		var programmableName:Null<String> = params.programmable;
 		var includeSceneGraph:Bool = params.sceneGraph == true;
 		var sceneGraphDepth:Int = params.depth != null ? Std.int(params.depth) : 6;
 
-		var entries:Array<Dynamic> = [];
-		for (handle in handles) {
-			if (programmableName != null && handle.programmableName != programmableName)
+		for (entry in screenManager.hotReloadRegistry.getAllLive()) {
+			if (programmableName != null && entry.programmableName != programmableName)
 				continue;
 
-			var entry:Dynamic = {
-				name: handle.programmableName,
-				source: handle.sourcePath,
-				x: handle.result.object.x,
-				y: handle.result.object.y,
-				visible: handle.result.object.visible,
+			var root = entry.live.getRoot();
+			var info:Dynamic = {
+				name: entry.programmableName,
+				kind: liveKind(entry),
+				source: entry.sourcePath,
+				x: root.x,
+				y: root.y,
+				visible: root.visible,
 			};
-
-			// Current parameter values (from incremental context)
-			if (handle.result.incrementalContext != null) {
-				var snapshot = handle.result.incrementalContext.snapshotParams();
-				var paramValues:Dynamic = {};
-				var hasParams = false;
-				for (paramName => resolved in snapshot) {
-					var val = StateRestorer.resolvedToDynamic(resolved);
-					if (val != null) {
-						Reflect.setField(paramValues, paramName, val);
-						hasParams = true;
-					}
-				}
-				if (hasParams)
-					entry.currentParameters = paramValues;
-			}
+			describeLive(entry.live, info, false);
 
 			// Parameter definitions (types and defaults) from the builder
-			var builder = findBuilderForHandle(handle);
+			var builder = findBuilderForSource(entry.sourcePath);
 			if (builder != null) {
-				var defs = builder.getParameterDefinitions(handle.programmableName);
+				var defs = builder.getParameterDefinitions(entry.programmableName);
 				var defList:Array<Dynamic> = [];
 				for (pName => def in defs) {
 					if (def == null) continue;
 					defList.push({name: pName, type: defTypeToString(def.type)});
 				}
 				if (defList.length > 0)
-					entry.parameterDefinitions = defList;
+					info.parameterDefinitions = defList;
 			}
-
-			// Named elements summary
-			if (handle.result.names != null) {
-				var names:Array<String> = [];
-				for (name => _ in handle.result.names)
-					names.push(name);
-				if (names.length > 0)
-					entry.namedElements = names;
-			}
-
-			// Slot summary
-			if (handle.result.slots != null && handle.result.slots.length > 0) {
-				var slotList:Array<Dynamic> = [];
-				for (s in handle.result.slots) {
-					var slotInfo:Dynamic = {occupied: s.handle.isOccupied()};
-					switch s.key {
-						case Named(name): slotInfo.name = name;
-						case Indexed(name, index):
-							slotInfo.name = name;
-							slotInfo.index = index;
-						case Indexed2D(name, ix, iy):
-							slotInfo.name = name;
-							slotInfo.indexX = ix;
-							slotInfo.indexY = iy;
-					}
-					slotList.push(slotInfo);
-				}
-				entry.slots = slotList;
-			}
-
-			// Interactive count
-			if (handle.result.interactives != null && handle.result.interactives.length > 0)
-				entry.interactiveCount = handle.result.interactives.length;
 
 			// Optional: scene graph for this programmable's object tree
 			if (includeSceneGraph)
-				entry.sceneGraph = walkSceneGraph(handle.result.object, 0, sceneGraphDepth);
+				info.sceneGraph = walkSceneGraph(root, 0, sceneGraphDepth);
 
-			entries.push(entry);
+			entries.push(info);
 		}
 
 		return {
 			count: entries.length,
-			note: "Only incremental-mode programmables are tracked (built with incremental:true via screen helpers or ReloadableRegistry)",
+			note: "Every BuilderResult built with hot reload on (reloadable, the default) and every codegen @:manim instance is tracked, while its root is in the scene; eval_manim builds are not",
 			programmables: entries,
 		};
 	}
@@ -2047,26 +2247,67 @@ class DevBridge {
 		return count;
 	}
 
-	function findBuilderResult(programmableName:String):Null<BuilderResult> {
-		// Search all live builder results via hot-reload registry
-		for (handle in screenManager.hotReloadRegistry.getAllHandles()) {
-			if (handle.programmableName == programmableName)
-				return handle.result;
+	/** The live programmable of that name — a BuilderResult or a codegen instance — or null. */
+	function findLive(programmableName:String):Null<HotReload.LiveEntry> {
+		for (entry in screenManager.hotReloadRegistry.getAllLive()) {
+			if (entry.programmableName == programmableName)
+				return entry;
 		}
 		return null;
 	}
 
-	function findHandle(programmableName:String):Null<HotReload.ReloadableHandle> {
-		for (handle in screenManager.hotReloadRegistry.getAllHandles()) {
-			if (handle.programmableName == programmableName)
-				return handle;
-		}
-		return null;
+	static inline function liveKind(entry:HotReload.LiveEntry):String {
+		return entry.result != null ? "builder" : "codegen";
 	}
 
-	function findBuilderForHandle(handle:HotReload.ReloadableHandle):Null<MultiAnimBuilder> {
+	/** What a live programmable is made of, onto `into`: current parameter values, named element
+	 *  keys, slots, dynamicRef keys, interactive count. With `withEmpty`, empty collections are
+	 *  reported as empty rather than left out (inspect_programmable shows them; the listing omits). */
+	function describeLive(live:bh.multianim.LiveProgrammable, into:Dynamic, withEmpty:Bool):Void {
+		var paramValues:Dynamic = {};
+		var hasParams = false;
+		for (paramName => value in live.getParameterValues()) {
+			Reflect.setField(paramValues, paramName, value);
+			hasParams = true;
+		}
+		if (hasParams || withEmpty)
+			into.currentParameters = paramValues;
+
+		var names = live.getNamedKeys();
+		if (names.length > 0 || withEmpty)
+			into.namedElements = names;
+
+		var slotList:Array<Dynamic> = [for (entry in live.getSlotEntries()) slotInfoOf(entry)];
+		if (slotList.length > 0 || withEmpty)
+			into.slots = slotList;
+
+		var refs = live.getDynamicRefKeys();
+		if (refs.length > 0 || withEmpty)
+			into.dynamicRefs = refs;
+
+		var interactiveCount = live.getInteractives().length;
+		if (interactiveCount > 0 || withEmpty)
+			into.interactiveCount = interactiveCount;
+	}
+
+	static function slotInfoOf(entry:{key:MultiAnimBuilder.SlotKey, handle:MultiAnimBuilder.SlotHandle}):Dynamic {
+		var slotInfo:Dynamic = {occupied: entry.handle.isOccupied()};
+		switch entry.key {
+			case Named(name): slotInfo.name = name;
+			case Indexed(name, index):
+				slotInfo.name = name;
+				slotInfo.index = index;
+			case Indexed2D(name, ix, iy):
+				slotInfo.name = name;
+				slotInfo.indexX = ix;
+				slotInfo.indexY = iy;
+		}
+		return slotInfo;
+	}
+
+	function findBuilderForSource(sourcePath:String):Null<MultiAnimBuilder> {
 		for (resource => builder in screenManager.builders) {
-			if (resource.name == handle.sourcePath)
+			if (resource.name == sourcePath)
 				return builder;
 		}
 		return null;
@@ -2186,145 +2427,9 @@ private class DevBridgeError extends haxe.Exception {
 
 	public static inline function unknownMethod(message:String):DevBridgeError
 		return new DevBridgeError("unknown_method", message, 404);
-}
 
-// ---- HTTP connection state ----
-
-private class HttpConnection {
-	public static final MAX_HEADER_BYTES = 64 * 1024;
-	public static final MAX_BODY_BYTES = 16 * 1024 * 1024;
-	public static final IDLE_TIMEOUT_SEC = 30.0;
-
-	public final socket:Socket;
-	public final connectedAt:Float;
-	public var lastActivityAt:Float;
-	public var headerOversized(default, null):Bool = false;
-	public var bodyOversized(default, null):Bool = false;
-
-	var headerBytes:haxe.io.Bytes;
-	var headerLength:Int = 0;
-	var headerSearchFrom:Int = 0;
-	var headersDone:Bool = false;
-	var contentLength:Int = 0;
-	var bodyBuf:haxe.io.BytesBuffer;
-	var bodyReceived:Int = 0;
-	var httpMethod:String = "";
-	var httpPath:String = "/";
-
-	public function new(socket:Socket) {
-		this.socket = socket;
-		this.headerBytes = haxe.io.Bytes.alloc(MAX_HEADER_BYTES);
-		this.bodyBuf = new haxe.io.BytesBuffer();
-		this.connectedAt = haxe.Timer.stamp();
-		this.lastActivityAt = this.connectedAt;
-	}
-
-	public inline function isExpired(now:Float):Bool {
-		return (now - lastActivityAt) > IDLE_TIMEOUT_SEC;
-	}
-
-	/** Returns true when the request is complete OR when an error flag
-	 *  (`headerOversized` / `bodyOversized`) is set — caller must inspect
-	 *  the flags and send the appropriate error response. */
-	public function processIncoming():Bool {
-		var input = socket.input;
-		var avail = input.available;
-		if (avail <= 0) return headersDone && bodyReceived >= contentLength;
-		lastActivityAt = haxe.Timer.stamp();
-
-		if (!headersDone) {
-			var room = MAX_HEADER_BYTES - headerLength;
-			var toRead = avail < room ? avail : room;
-			if (toRead > 0) {
-				headerLength += input.readBytes(headerBytes, headerLength, toRead);
-			}
-
-			// Search only the unscanned tail (back up needle.length-1 to catch a straddling boundary).
-			// Headers are ASCII per RFC 7230, so byte offsets match string indices when decoded as UTF-8.
-			var headers = headerBytes.getString(0, headerLength);
-			var startSearch = headerSearchFrom - 3;
-			if (startSearch < 0) startSearch = 0;
-			var endIdx = headers.indexOf("\r\n\r\n", startSearch);
-			if (endIdx >= 0) {
-				headersDone = true;
-				httpMethod = parseHttpMethod(headers);
-				httpPath = parseRequestPath(headers);
-				contentLength = parseContentLength(headers);
-				if (contentLength < 0) contentLength = 0;
-				if (contentLength > MAX_BODY_BYTES) {
-					bodyOversized = true;
-					return true;
-				}
-				var bodyStartOffset = endIdx + 4;
-				var bodyStartLen = headerLength - bodyStartOffset;
-				if (bodyStartLen > 0) {
-					bodyBuf.addBytes(headerBytes, bodyStartOffset, bodyStartLen);
-					bodyReceived += bodyStartLen;
-				}
-			} else {
-				headerSearchFrom = headerLength;
-				if (headerLength >= MAX_HEADER_BYTES) {
-					headerOversized = true;
-					return true;
-				}
-				return false;
-			}
-		}
-
-		if (headersDone) {
-			var available = input.available;
-			var remaining = contentLength - bodyReceived;
-			var toRead = available < remaining ? available : remaining;
-			if (toRead > 0) {
-				var buf = haxe.io.Bytes.alloc(toRead);
-				var read = input.readBytes(buf, 0, toRead);
-				bodyBuf.addBytes(buf, 0, read);
-				bodyReceived += read;
-			}
-		}
-		return headersDone && bodyReceived >= contentLength;
-	}
-
-	public function getHttpMethod():String {
-		return httpMethod;
-	}
-
-	public function getPath():String {
-		return httpPath;
-	}
-
-	public function getBody():String {
-		return bodyBuf.getBytes().toString();
-	}
-
-	static function parseHttpMethod(headers:String):String {
-		var spaceIdx = headers.indexOf(" ");
-		if (spaceIdx < 0) return "GET";
-		return headers.substr(0, spaceIdx);
-	}
-
-	static function parseRequestPath(headers:String):String {
-		var firstSpace = headers.indexOf(" ");
-		if (firstSpace < 0) return "/";
-		var secondSpace = headers.indexOf(" ", firstSpace + 1);
-		if (secondSpace < 0) secondSpace = headers.indexOf("\r", firstSpace + 1);
-		if (secondSpace < 0) return "/";
-		var path = headers.substring(firstSpace + 1, secondSpace);
-		var queryIdx = path.indexOf("?");
-		if (queryIdx >= 0) path = path.substr(0, queryIdx);
-		return path;
-	}
-
-	static function parseContentLength(headers:String):Int {
-		var lower = headers.toLowerCase();
-		var idx = lower.indexOf("content-length:");
-		if (idx < 0) return 0;
-		var valueStart = idx + 15;
-		var lineEnd = headers.indexOf("\r\n", valueStart);
-		if (lineEnd < 0) lineEnd = headers.length;
-		var value = StringTools.trim(headers.substring(valueStart, lineEnd));
-		var parsed = Std.parseInt(value);
-		return parsed != null ? parsed : 0;
-	}
+	/** An op this target cannot do (on JS: `quit`, `reload` without `content`). */
+	public static inline function notSupported(message:String):DevBridgeError
+		return new DevBridgeError("not_supported", message, 501);
 }
 #end

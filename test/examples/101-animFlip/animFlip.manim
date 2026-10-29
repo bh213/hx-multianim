@@ -78,14 +78,14 @@ version: 1.0
 
   // Reference: original left-firing animation (scale 1 so extrapoint markers align)
   #fireRefL stateanim("marine.anim", "fire-left", direction=>"l"): 220, 600
-  polygon(#FF0000, filled, -4,-4, 4,-4, 0,4): $fireRefL.extraPoint("fire").offset(220, 600)
+  polygon(#FF0000, filled, -4,-4, 4,-4, 0,4): $fireRefL.extraPoint("fire")
 
   // Flipped: same sprite with flipX, fire point should mirror
   #fireFlipped stateanim("marineFlip.anim", "fire_flipx"): 780, 600
-  polygon(#00FF00, filled, -4,-4, 4,-4, 0,4): $fireFlipped.extraPoint("fire").offset(780, 600)
+  polygon(#00FF00, filled, -4,-4, 4,-4, 0,4): $fireFlipped.extraPoint("fire")
 }
 
 #main point {
   pos: 0, 0
-  staticRef($animFlip): 0, 0
+  staticRef(animFlip): 0, 0
 }

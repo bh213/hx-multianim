@@ -21,7 +21,7 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color(10, 10, #ff0000))): 0, 0
 			}
 			#test programmable() {
-				dynamicRef($inner): 0, 0
+				dynamicRef(inner): 0, 0
 			}
 		", "test");
 		Assert.notNull(result);
@@ -35,7 +35,7 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color(10, 10, #ff0000))): 0, 0
 			}
 			#test programmable() {
-				dynamicRef($inner): 0, 0
+				dynamicRef(inner): 0, 0
 			}
 		", "test");
 		var subResult = result.getDynamicRef("inner");
@@ -53,7 +53,7 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color($val, $maxVal, #ff0000))): 0, 0
 			}
 			#test programmable(hp:uint=80, maxHp:uint=100) {
-				dynamicRef($bar, val=>$hp, maxVal=>$maxHp): 0, 0
+				dynamicRef(bar, val=>$hp, maxVal=>$maxHp): 0, 0
 			}
 		", "test", null, Incremental);
 		Assert.notNull(result);
@@ -67,7 +67,7 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color($val, $maxVal, #ff0000))): 0, 0
 			}
 			#test programmable(hp:uint=100, maxHp:uint=100) {
-				dynamicRef($bar, val=>$hp, maxVal=>$maxHp): 0, 0
+				dynamicRef(bar, val=>$hp, maxVal=>$maxHp): 0, 0
 			}
 		", "test", null, Incremental);
 
@@ -95,8 +95,8 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color($val, 10, #00ff00))): 0, 0
 			}
 			#parent programmable(hp:uint=100) {
-				dynamicRef($widgetA, val=>$hp): 0, 0
-				dynamicRef($widgetB, val=>$hp): 0, 20
+				dynamicRef(widgetA, val=>$hp): 0, 0
+				dynamicRef(widgetB, val=>$hp): 0, 20
 			}
 		", "parent", null, Incremental);
 
@@ -128,6 +128,44 @@ class DynamicRefTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testApplyUpdatesDoesNotAllocateChangedParamsIterators():Void {
+		// applyUpdates() walks the changed-param set twice per call: once to mark relevant
+		// tracked expressions, once to collect dynamicRef forwarding bindings. Both walks
+		// must iterate a flat array, NOT changedParams.keys() — on HashLink each .keys()
+		// call heap-allocates a Map iterator object, so iterating it leaks two transient
+		// allocations on every setParameter (a UI hover/press/drag hot path).
+		final result = buildFromSource("
+			#widgetA programmable(val:uint=100) {
+				bitmap(generated(color($val, 10, #ff0000))): 0, 0
+			}
+			#parent programmable(hp:uint=100) {
+				dynamicRef(widgetA, val=>$hp): 0, 0
+			}
+		", "parent", null, Incremental);
+
+		Assert.notNull(result.incrementalContext);
+		final ctx = result.incrementalContext;
+		if (ctx == null) return;
+
+		// Warm up — first call may grow lazy structures.
+		result.setParameter("hp", 90);
+		result.setParameter("hp", 80);
+
+		final baseline = ctx.changedParamsKeysIterCount;
+
+		for (i in 0...20) {
+			result.setParameter("hp", 50 + (i % 10));
+		}
+
+		final delta = ctx.changedParamsKeysIterCount - baseline;
+		// Expected: zero. The two changed-param walks must iterate a reusable Array<String>
+		// kept in sync with changedParams, not changedParams.keys(). Pre-fix code allocates
+		// two iterators per setParameter, so 20 calls leak ~40 transient iterator objects.
+		Assert.equals(0, delta,
+			"applyUpdates iterates changedParams.keys() (allocates Map iterators) (got " + delta + " across 20 calls)");
+	}
+
+	@Test
 	public function testDynamicRefSetParameterOnSubResult():Void {
 		final result = buildFromSource("
 			#inner programmable(color:[red,green]=red) {
@@ -135,7 +173,7 @@ class DynamicRefTest extends BuilderTestBase {
 				@(color => green) bitmap(generated(color(10, 10, #00ff00))): 0, 0
 			}
 			#test programmable() {
-				dynamicRef($inner): 0, 0
+				dynamicRef(inner): 0, 0
 			}
 		", "test", null, Incremental);
 		var subResult = result.getDynamicRef("inner");
@@ -165,8 +203,8 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color(10, 10, #00ff00))): 0, 0
 			}
 			#test programmable() {
-				dynamicRef($widgetA): 0, 0
-				dynamicRef($widgetB): 0, 20
+				dynamicRef(widgetA): 0, 0
+				dynamicRef(widgetB): 0, 20
 			}
 		", "test");
 		Assert.notNull(result);
@@ -185,10 +223,10 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color(5, 5, #0000ff))): 0, 0
 			}
 			#middle programmable() {
-				dynamicRef($leaf): 0, 0
+				dynamicRef(leaf): 0, 0
 			}
 			#test programmable() {
-				dynamicRef($middle): 0, 0
+				dynamicRef(middle): 0, 0
 			}
 		", "test");
 		Assert.notNull(result);
@@ -204,7 +242,7 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color(10, 10, #ff0000))): 0, 0
 			}
 			#test programmable() {
-				dynamicRef($inner): 0, 0
+				dynamicRef(inner): 0, 0
 			}
 		", "test");
 		var err:String = null;
@@ -226,7 +264,7 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color($val, $maxVal, #ff0000))): 0, 0
 			}
 			#test programmable(hp:uint=100, maxHp:uint=100) {
-				dynamicRef($bar, val=>$hp, maxVal=>$maxHp): 0, 0
+				dynamicRef(bar, val=>$hp, maxVal=>$maxHp): 0, 0
 			}
 		", "test", null, Incremental);
 
@@ -248,7 +286,7 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color($w, $h, #ff0000))): 0, 0
 			}
 			#test programmable() {
-				dynamicRef($inner, w=>20, h=>30): 0, 0
+				dynamicRef(inner, w=>20, h=>30): 0, 0
 			}
 		", "test");
 		Assert.notNull(result);
@@ -268,7 +306,7 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color(10, 10, #ff0000))): 0, 0
 			}
 			#test programmable(show:bool=true) {
-				@(show => true) dynamicRef($inner): 0, 0
+				@(show => true) dynamicRef(inner): 0, 0
 			}
 		", "test", null, Incremental);
 		Assert.notNull(result);
@@ -286,7 +324,7 @@ class DynamicRefTest extends BuilderTestBase {
 			}
 			#test programmable() {
 				repeatable($i, step(3, dy: 10)) {
-					dynamicRef($inner): 0, 0
+					dynamicRef(inner): 0, 0
 				}
 			}
 		", "test");
@@ -305,11 +343,48 @@ class DynamicRefTest extends BuilderTestBase {
 				@(mode => c) bitmap(generated(color(10, 10, #0000ff))): 0, 0
 			}
 			#test programmable(m:[a,b,c]=b) {
-				dynamicRef($inner, mode=>$m): 0, 0
+				dynamicRef(inner, mode=>$m): 0, 0
 			}
 		", "test", null, Incremental);
 		Assert.notNull(result);
 		Assert.isTrue(result.object.numChildren > 0);
+	}
+
+	@Test
+	public function testDynamicRefForwardingEnumParamUpdatesChildOnSetParameter():Void {
+		// Forwarding a parent enum into a child's enum param must keep working after a
+		// runtime setParameter on the parent. The forwarding switch resolves the value by
+		// the CHILD param type; for an enum child the resolver must produce the enum's
+		// NAME (so setParameter's PPTEnum string path accepts it). Pre-fix, the enum case
+		// fell into the default branch (resolveAsInteger), which cannot resolve an
+		// enum-valued reference (stored as Index(...)) and threw "is not a value but Index(...)".
+		final result = buildFromSource("
+			#inner programmable(mode:[a,b,c]=a) {
+				@(mode => a) bitmap(generated(color(11, 5, #ff0000))): 0, 0
+				@(mode => b) bitmap(generated(color(22, 5, #00ff00))): 0, 0
+				@(mode => c) bitmap(generated(color(33, 5, #0000ff))): 0, 0
+			}
+			#test programmable(m:[a,b,c]=a) {
+				dynamicRef(inner, mode=>$m): 0, 0
+			}
+		", "test", null, Incremental);
+
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(11, Std.int(bitmaps[0].tile.width), "initial: m=a forwards to child mode=a (width 11)");
+
+		// Changing the parent enum must propagate the new value (by name) into the child.
+		result.setParameter("m", "b");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(22, Std.int(bitmaps[0].tile.width),
+			"after setParameter('m','b'): forwarded enum must update child to mode=b (width 22)");
+
+		result.setParameter("m", "c");
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(33, Std.int(bitmaps[0].tile.width),
+			"after setParameter('m','c'): forwarded enum must update child to mode=c (width 33)");
 	}
 
 	@Test
@@ -319,7 +394,7 @@ class DynamicRefTest extends BuilderTestBase {
 				@(visible => true) bitmap(generated(color(10, 10, #ff0000))): 0, 0
 			}
 			#test programmable(show:bool=true) {
-				dynamicRef($inner, visible=>$show): 0, 0
+				dynamicRef(inner, visible=>$show): 0, 0
 			}
 		", "test", null, Incremental);
 		// Capture visible bitmaps before toggling (show=true, so inner bitmap should be visible)
@@ -342,7 +417,7 @@ class DynamicRefTest extends BuilderTestBase {
 				@(active => false) bitmap(generated(color(10, 10, #ff0000))): 0, 0
 			}
 			#test programmable(flag:bool=true) {
-				dynamicRef($inner, active=>$flag): 0, 0
+				dynamicRef(inner, active=>$flag): 0, 0
 			}
 		", "test");
 		Assert.notNull(result);
@@ -356,10 +431,10 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color(5, 5, #0000ff))): 0, 0
 			}
 			#mid programmable() {
-				dynamicRef($leaf): 0, 0
+				dynamicRef(leaf): 0, 0
 			}
 			#test programmable() {
-				dynamicRef($mid): 0, 0
+				dynamicRef(mid): 0, 0
 			}
 		", "test");
 		var midRef = result.getDynamicRef("mid");
@@ -376,10 +451,10 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color(3, 3, #ff00ff))): 0, 0
 			}
 			#mid programmable() {
-				dynamicRef($leaf): 0, 0
+				dynamicRef(leaf): 0, 0
 			}
 			#test programmable() {
-				dynamicRef($mid): 0, 0
+				dynamicRef(mid): 0, 0
 			}
 		", "test");
 		// Chain: test -> mid -> leaf
@@ -483,21 +558,36 @@ class DynamicRefTest extends BuilderTestBase {
 	}
 
 	@Test
-	public function testDynamicNameRefFallbackToLiteral():Void {
-		// When $name is NOT a parameter, it should fall back to literal programmable name
-		// (backward compatibility)
+	public function testDynamicRefByABareNamePlacesThatProgrammable():Void {
+		// A bare name is the programmable; `$myWidget` with no parameter, loop variable or @final
+		// of that name no longer falls back to it (ParserErrorTest)
 		final result = buildFromSource("
 			#myWidget programmable() {
 				bitmap(generated(color(7, 7, #0000ff))): 0, 0
 			}
 			#test programmable() {
-				dynamicRef($myWidget): 0, 0
+				dynamicRef(myWidget): 0, 0
 			}
 		", "test");
 		Assert.notNull(result);
 		var bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.isTrue(bitmaps.length > 0);
 		Assert.equals(7, Std.int(bitmaps[0].tile.width));
+
+		var refused = false;
+		try {
+			buildFromSource("
+				#myWidget programmable() {
+					bitmap(generated(color(7, 7, #0000ff))): 0, 0
+				}
+				#test programmable() {
+					dynamicRef($myWidget): 0, 0
+				}
+			", "test");
+		} catch (e:Dynamic) {
+			refused = Std.string(e).indexOf("dynamicRef(myWidget") >= 0;
+		}
+		Assert.isTrue(refused, "the $ form of a name that is no parameter is refused, pointing at the bare name");
 	}
 
 	// ==================== Dynamic Name Ref Tear-Down ====================
@@ -594,13 +684,13 @@ class DynamicRefTest extends BuilderTestBase {
 	// ==================== Sibling Collisions on Same Programmable Name (H2) ====================
 
 	// Bug H2: `internalResults.dynamicRefs` is keyed by the referenced programmable name, so two
-	// `dynamicRef($X)` siblings under @(..)/@else collapse onto one map entry (last-writer-wins).
+	// `dynamicRef(X)` siblings under @(..)/@else collapse onto one map entry (last-writer-wins).
 	// `getDynamicRef("X")` then returns whichever was BUILT last, independent of which sibling is
 	// currently VISIBLE. This silently hands the caller the wrong handle when visibility flips.
 
 	@Test
 	public function testDynamicRefColocatedSiblingsThrowOnGet():Void {
-		// Two unnamed dynamicRef($X) siblings under @(..)/@else collapse onto one map entry
+		// Two unnamed dynamicRef(X) siblings under @(..)/@else collapse onto one map entry
 		// (the referenced programmable's name "X"). Pre-fix, `getDynamicRef("X")` silently returned
 		// whichever was built last — which could be detached after a visibility flip. Post-fix,
 		// calling getDynamicRef on an ambiguous key throws with a hint to use #name.
@@ -609,8 +699,8 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color(10, 10, #ff0000))): 0, 0
 			}
 			#host programmable(a:int=0) {
-				@(a=>1) dynamicRef($X): 0, 0
-				@else   dynamicRef($X): 0, 0
+				@(a=>1) dynamicRef(X): 0, 0
+				@else   dynamicRef(X): 0, 0
 			}
 		", "host", null, Incremental);
 
@@ -638,8 +728,8 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color(10, $v, #ff0000))): 0, 0
 			}
 			#host programmable(a:int=0, v:uint=5) {
-				@(a=>1) #armOn  dynamicRef($X, v=>$v): 0, 0
-				@else   #armOff dynamicRef($X, v=>$v): 0, 0
+				@(a=>1) #armOn  dynamicRef(X, v=>$v): 0, 0
+				@else   #armOff dynamicRef(X, v=>$v): 0, 0
 			}
 		", "host", null, Incremental);
 
@@ -666,7 +756,7 @@ class DynamicRefTest extends BuilderTestBase {
 
 	@Test
 	public function testDynamicRefIndexedInRepeatableIsIndependentlyAddressable():Void {
-		// Inside a repeatable, each iteration of an unnamed dynamicRef($X) would collide. The
+		// Inside a repeatable, each iteration of an unnamed dynamicRef(X) would collide. The
 		// `#name[$i] dynamicRef(...)` form makes each iteration a distinct map entry keyed as
 		// `"name idx"` — addressable via `result.getDynamicRef("name 0")` etc.
 		final result = buildFromSource("
@@ -675,7 +765,7 @@ class DynamicRefTest extends BuilderTestBase {
 			}
 			#host programmable() {
 				repeatable($i, step(3, dx: 30)) {
-					#item[$i] dynamicRef($leaf, v=>$i + 10): 0, 0
+					#item[$i] dynamicRef(leaf, v=>$i + 10): 0, 0
 				}
 			}
 		", "host", null, Incremental);
@@ -711,8 +801,8 @@ class DynamicRefTest extends BuilderTestBase {
 					bitmap(generated(color(10, 10, #ff0000))): 0, 0
 				}
 				#host programmable() {
-					#widget dynamicRef($X): 0, 0
-					#widget dynamicRef($X): 0, 20
+					#widget dynamicRef(X): 0, 0
+					#widget dynamicRef(X): 0, 20
 				}
 			", "host", null, Incremental);
 		} catch (e:Dynamic) {
@@ -828,11 +918,11 @@ class DynamicRefTest extends BuilderTestBase {
 			#host programmable(a:[multi,single]=multi) {
 				@switch(a) {
 					multi {
-						dynamicRef($X): 0, 0
-						dynamicRef($X): 0, 20
+						dynamicRef(X): 0, 0
+						dynamicRef(X): 0, 20
 					}
 					single {
-						dynamicRef($X): 0, 0
+						dynamicRef(X): 0, 0
 					}
 				}
 			}
@@ -886,10 +976,10 @@ class DynamicRefTest extends BuilderTestBase {
 			#host programmable(mode:[normal, critical]=normal, hp:uint=100) {
 				@switch(mode) {
 					normal {
-						#tpl dynamicRef($hpBar, hp => $hp): 0, 0
+						#tpl dynamicRef(hpBar, hp => $hp): 0, 0
 					}
 					critical {
-						#tpl dynamicRef($hpBar, hp => $hp): 0, 0
+						#tpl dynamicRef(hpBar, hp => $hp): 0, 0
 					}
 				}
 			}
@@ -934,8 +1024,8 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color(10, $v, #ff0000))): 0, 0
 			}
 			#host programmable(a:int=0, v:uint=5) {
-				@(a=>1) #armOn  dynamicRef($X, v=>$v): 0, 0
-				@else   #armOff dynamicRef($X, v=>$v): 0, 0
+				@(a=>1) #armOn  dynamicRef(X, v=>$v): 0, 0
+				@else   #armOff dynamicRef(X, v=>$v): 0, 0
 			}
 		", "host", null, Incremental);
 
@@ -969,6 +1059,71 @@ class DynamicRefTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testDynamicRefInInitiallyHiddenArmForwardsParamsAfterMaterialization():Void {
+		// A dynamicRef inside an initially-FALSE conditional arm is deferred at build time and
+		// only materialized when the conditional first flips true. Materialization must register
+		// the same param-forwarding bindings an initially-VISIBLE dynamicRef gets — otherwise
+		// later setParameter calls on the forwarded parent param silently stop propagating into
+		// the materialized child, which keeps rendering whatever value it was materialized with.
+		//
+		// Note the sibling test above does NOT catch this: it changes `v` BEFORE flipping the
+		// conditional, and materialization itself builds with the then-current values, so the
+		// child looks fresh. The bug only shows when the forwarded param changes AFTER
+		// materialization while the arm stays visible. Re-flipping the arm also masks it
+		// (re-materialization picks up fresh values again).
+		final result = buildFromSource("
+			#X programmable(v:uint=1) {
+				bitmap(generated(color(10, $v, #ff0000))): 0, 0
+			}
+			#host programmable(a:int=0, v:uint=5) {
+				@(a=>1) #armOn  dynamicRef(X, v=>$v): 0, 0
+				@else   #armOff dynamicRef(X, v=>$v): 0, 0
+			}
+		", "host", null, Incremental);
+
+		// a=0 → armOn's arm is hidden (deferred), armOff visible with forwarded v=5.
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(5, Std.int(bitmaps[0].tile.height));
+
+		// Flip to a=1 → armOn materializes. It is built with the CURRENT v=5, so this sanity
+		// check passes regardless of whether forwarding got registered.
+		result.setParameter("a", 1);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(5, Std.int(bitmaps[0].tile.height),
+			"materialized armOn must render the current v=5");
+
+		// Change the forwarded param while armOn stays visible. The materialized dynamicRef
+		// must receive the update exactly like an initially-visible one would.
+		result.setParameter("v", 12);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(12, Std.int(bitmaps[0].tile.height),
+			"materialized armOn must reflect v=12 after setParameter on the forwarded param (a stale value means forwarding was never registered at materialization)");
+
+		// The named sub-result must agree with the scene graph.
+		final armOn = result.getDynamicRef("armOn");
+		Assert.notNull(armOn);
+		if (armOn != null) {
+			final armOnBitmaps = findVisibleBitmapDescendants(armOn.object);
+			Assert.equals(1, armOnBitmaps.length);
+			Assert.equals(12, Std.int(armOnBitmaps[0].tile.height),
+				"armOn sub-result must reflect the forwarded v=12");
+		}
+
+		// Guard against the masking path: flipping away and back re-materializes with fresh
+		// values, so armOn must still render 12. (This alone would pass even without proper
+		// forwarding registration — the assertions above are the real signal.)
+		result.setParameter("a", 0);
+		result.setParameter("a", 1);
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(12, Std.int(bitmaps[0].tile.height),
+			"armOn must still render v=12 after a re-flip of the conditional");
+	}
+
+	@Test
 	public function testDynamicRefForwardingBatchesAcrossMultipleParams():Void {
 		// When a parent batches multiple parameter changes that all forward into the SAME
 		// dynamicRef child, the child should re-evaluate once for the combined update — not
@@ -982,7 +1137,7 @@ class DynamicRefTest extends BuilderTestBase {
 				bitmap(generated(color($p1 + 1, $p2 + 1, #ff0000))): 0, 0
 			}
 			#host programmable(a:uint=0, b:uint=0) {
-				#ref dynamicRef($child, p1=>$a, p2=>$b): 0, 0
+				#ref dynamicRef(child, p1=>$a, p2=>$b): 0, 0
 			}
 		", "host", null, Incremental);
 
@@ -1017,7 +1172,7 @@ class DynamicRefTest extends BuilderTestBase {
 				@else           bitmap(generated(color(22, 22, #00ff00))): 0, 0
 			}
 			#host programmable(a:uint=1, b:uint=2) {
-				#ref dynamicRef($child, p1=>$a, p2=>$b): 0, 0
+				#ref dynamicRef(child, p1=>$a, p2=>$b): 0, 0
 			}
 		", "host", null, Incremental);
 
@@ -1055,18 +1210,14 @@ class DynamicRefTest extends BuilderTestBase {
 		// the child's batchMode stayed true and the next child.beginUpdate() tripped
 		// nested_begin_update.
 		//
-		// Repro: parent uint param forwards to a child bool param. The binding's resolveFn
-		// is resolveAsInteger (PPTBool routes to the default branch in the binding switch,
-		// MultiAnimBuilder.hx:1328-1332), so resolution succeeds and produces an Int. The
-		// child's setParameter("c2", 42) then falls to the slow path because the PPTBool
-		// fast path requires Bool, and dynamicValueToIndex rejects "42" as a bool string.
-		// Initial build uses resolveAsBool(Value(1)) → true → accepted, so build succeeds.
+		// Repro: the parent's string forwards to a child int. The build forwards "1", which the
+		// child takes; setParameter("p2", "not a number") cannot be made an int, mid-batch.
 		final result = buildFromSource("
-			#child programmable(c2:bool=true) {
+			#child programmable(c2:int=0) {
 				bitmap(generated(color(10, 10, #ff0000))): 0, 0
 			}
-			#parent programmable(p2:uint=1) {
-				dynamicRef($child, c2=>$p2): 0, 0
+			#parent programmable(p2:string=\"1\") {
+				dynamicRef(child, c2=>$p2): 0, 0
 			}
 		", "parent", null, Incremental);
 
@@ -1076,18 +1227,18 @@ class DynamicRefTest extends BuilderTestBase {
 
 		var parentErr:String = null;
 		try {
-			result.setParameter("p2", 42);
+			result.setParameter("p2", "not a number");
 		} catch (e:Dynamic) {
 			parentErr = Std.string(e);
 		}
-		Assert.notNull(parentErr, "expected forwarded setParameter to throw on bool coercion");
+		Assert.notNull(parentErr, "expected forwarded setParameter to throw on a value the child cannot take");
 
 		// The child must still accept fresh updates. Pre-fix this throws nested_begin_update
 		// because the forwarding loop never reached endUpdate.
 		var childErr:String = null;
 		try {
 			child.beginUpdate();
-			child.setParameter("c2", true);
+			child.setParameter("c2", 2);
 			child.endUpdate();
 		} catch (e:Dynamic) {
 			childErr = Std.string(e);
@@ -1110,11 +1261,11 @@ class DynamicRefTest extends BuilderTestBase {
 		//      expressions and re-fires dynamicRef forwarding for the stale param
 		//      that "changed" in the failed call.
 		final result = buildFromSource("
-			#child programmable(c2:bool=true) {
+			#child programmable(c2:int=0) {
 				bitmap(generated(color(10, 10, #ff0000))): 0, 0
 			}
-			#parent programmable(p2:uint=1) {
-				dynamicRef($child, c2=>$p2): 0, 0
+			#parent programmable(p2:string=\"1\") {
+				dynamicRef(child, c2=>$p2): 0, 0
 			}
 		", "parent", null, Incremental);
 
@@ -1122,8 +1273,8 @@ class DynamicRefTest extends BuilderTestBase {
 		@:privateAccess final stackBefore = builder.stateStack.length;
 
 		try {
-			result.setParameter("p2", 42);
-			Assert.fail("expected forwarded setParameter to throw on bool coercion");
+			result.setParameter("p2", "not a number");
+			Assert.fail("expected forwarded setParameter to throw on a value the child cannot take");
 		} catch (e:Dynamic) {
 			// expected
 		}
@@ -1142,5 +1293,320 @@ class DynamicRefTest extends BuilderTestBase {
 		for (k in changedParamsAfter.keys()) staleKeys++;
 		Assert.equals(0, staleKeys,
 			'Parent IncrementalUpdateContext.changedParams must be empty after a mid-update throw; leaked keys = $staleKeys');
+	}
+
+	// ==================== The target's interactives reach the enclosing result ====================
+	// addInteractives(result) reads result.getInteractives(); a key declared in a programmable placed
+	// by dynamicRef must be listed there, as a codegen instance lists it from its scene graph.
+
+	static function interactiveIds(result:bh.multianim.MultiAnimBuilder.BuilderResult):Array<String> {
+		final out = [for (o in result.getInteractives()) switch o.multiAnimType { case MAInteractive(_, _, id, _): id; default: null; }];
+		out.sort(Reflect.compare);
+		return out;
+	}
+
+	@Test
+	public function testDynamicRefInteractivesReachTheParent():Void {
+		final result = buildFromSource("
+			#key programmable(id:string=\"k\") {
+				interactive(20, 20, $id): 0, 0
+			}
+			#board programmable() {
+				dynamicRef(key, id=>\"a\"): 0, 0
+				#second dynamicRef(key, id=>\"b\"): 20, 0
+			}
+		", "board", null, Incremental);
+		Assert.equals("a,b", interactiveIds(result).join(","), "the keys placed by dynamicRef are listed by the enclosing result");
+	}
+
+	@Test
+	public function testDynamicNameSwapUpdatesParentInteractives():Void {
+		final result = buildFromSource("
+			#widgetA programmable() {
+				interactive(50, 50, \"btnA\"): 0, 0
+			}
+			#widgetB programmable() {
+				interactive(50, 50, \"btnB\"): 0, 0
+			}
+			#test programmable(template:string=\"widgetA\") {
+				dynamicRef($template): 0, 0
+			}
+		", "test", null, Incremental);
+		Assert.equals("btnA", interactiveIds(result).join(","), "the enclosing result lists the first template's key");
+		result.setParameter("template", "widgetB");
+		Assert.equals("btnB", interactiveIds(result).join(","), "after the template swap it lists the new template's key only");
+	}
+
+
+	@Test
+	public function testDynamicRefInHiddenArmIsNotExposed():Void {
+		// The placed programmable's own result still lists its key, but the enclosing result must
+		// not while the arm that holds the dynamicRef is detached: no ghost click target.
+		final result = buildFromSource("
+			#key programmable(id:string=\"k\") {
+				interactive(20, 20, $id): 0, 0
+			}
+			#board programmable(open:bool=true) {
+				@(open=>true) dynamicRef(key, id=>\"a\"): 0, 0
+			}
+		", "board", null, Incremental);
+		Assert.equals("a", interactiveIds(result).join(","), "listed while the arm is shown");
+		result.setParameter("open", false);
+		Assert.equals("", interactiveIds(result).join(","), "not listed while the arm is hidden");
+		result.setParameter("open", true);
+		Assert.equals("a", interactiveIds(result).join(","), "listed again once the arm is shown");
+	}
+
+
+	// ==================== A dynamicRef under a conditional keeps its state across hide and show ====================
+
+	@Test
+	public function testDynamicRefUnderConditionalKeepsItsParametersAcrossHideAndShow():Void {
+		// A screen sets a panel's values through getDynamicRef(...).setParameter and sends only
+		// what changed. When the parent's state hides the panel and shows it again, the panel
+		// must come back as it was: the same BuilderResult, with the values it was given, not a
+		// fresh build with the site's defaults.
+		final result = buildFromSource("
+			#panel programmable(s:[none,live]=none) {
+				@(s=>live) bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+			#host programmable(state:[playing,scores]=playing) {
+				@(state=>scores) #scores dynamicRef(panel): 0, 0
+			}
+		", "host", null, Incremental);
+
+		result.setParameter("state", "scores");
+		final scores = result.getDynamicRef("scores");
+		scores.setParameter("s", "live");
+		Assert.equals(1, findVisibleBitmapDescendants(result.object).length, "the live line shows on the first show");
+
+		result.setParameter("state", "playing");
+		Assert.equals(0, findVisibleBitmapDescendants(result.object).length, "nothing of the panel while hidden");
+
+		result.setParameter("state", "scores");
+		final shownAgain = result.getDynamicRef("scores");
+		Assert.isTrue(scores == shownAgain, "the panel shown again is the result the screen set values on");
+		Assert.equals("live", Std.string(shownAgain.getParameterValues().get("s")),
+			"the value given through setParameter survives the hide and show");
+		Assert.equals(1, findVisibleBitmapDescendants(result.object).length,
+			"the live line shows again without the screen sending its value a second time");
+	}
+
+	// ==================== A dynamicRef inside a constant repeatable tracks its conditionals ====================
+
+	@Test
+	public function testDynamicRefInConstantRepeatableRedrawsOnSetParameter():Void {
+		// A panel of rows: a programmable that places a row programmable per iteration of a
+		// constant-count repeatable, itself placed by dynamicRef. setParameter on a row must show
+		// and hide the row's conditionals as it does for a dynamicRef outside a repeatable.
+		final result = buildFromSource("
+			#line programmable(status:[none,live]=none) {
+				bitmap(generated(color(4, 4, #000000))): 0, 0
+				@(status=>live) bitmap(generated(color(10, 10, #00ff00))): 0, 0
+			}
+			#panel programmable() {
+				repeatable($i, step(3, dy: 10)) {
+					#line[$i] dynamicRef(line): 0, 0
+				}
+			}
+			#host programmable() {
+				#panel dynamicRef(panel): 0, 0
+			}
+		", "host", null, Incremental);
+
+		Assert.equals(3, findVisibleBitmapDescendants(result.object).length, "three rows, all at their default status");
+
+		final row = result.getDynamicRef("panel").getDynamicRefByIndex("line", 1);
+		row.setParameter("status", "live");
+		Assert.equals("live", Std.string(row.getParameterValues().get("status")));
+		Assert.equals(4, findVisibleBitmapDescendants(result.object).length, "the live row draws its conditional");
+		Assert.equals(1, [for (b in findVisibleBitmapDescendants(row.object)) if (Std.int(b.tile.height) == 10) b].length,
+			"the conditional drawn is the row's own");
+
+		row.setParameter("status", "none");
+		Assert.equals(3, findVisibleBitmapDescendants(result.object).length, "the row hides its conditional again");
+	}
+
+	// ==================== A setParameter that throws, and a ref to a programmable that is not there ====================
+
+	static function errorOf(fn:Void -> Void):Null<String> {
+		try {
+			fn();
+			return null;
+		} catch (e:Dynamic) {
+			return Std.string(e);
+		}
+	}
+
+	@Test
+	public function testASetParameterThatThrowsRunsAgainWhenRetried():Void {
+		// A game sets the value its phase wants every frame. When the first show of a conditional
+		// throws, the same call on the next frame must try again and say why again — not return at
+		// once because the value it asks for is already stored, leaving the site unbuilt and only a
+		// later "DynamicRef not found" to see.
+		final result = buildFromSource("
+			#host programmable(show:bool=false, target:string=\"nothing\") {
+				@(show=>true) #site dynamicRef($target): 0, 0
+			}
+		", "host", null, Incremental);
+
+		final first = errorOf(() -> result.setParameter("show", true));
+		Assert.notNull(first, "the first show throws: no programmable is called \"nothing\"");
+		final again = errorOf(() -> result.setParameter("show", true));
+		Assert.notNull(again, "the same setParameter again runs again and throws again");
+		Assert.stringContains("nothing", again ?? "");
+	}
+
+	@Test
+	public function testARefToAMissingProgrammableNamesItsSite():Void {
+		// The error a missing target gives names the site that asked for it, and the parameter
+		// whose value named it, not only the name the nested build could not find.
+		final shown = buildFromSource("
+			#host programmable(show:bool=false, target:string=\"nothing\") {
+				@(show=>true) #site dynamicRef($target): 0, 0
+			}
+		", "host", null, Incremental);
+		final byParameter = errorOf(() -> shown.setParameter("show", true)) ?? "";
+		Assert.stringContains("dynamicRef($target): $target is \"nothing\", and there is no programmable \"nothing\"", byParameter);
+
+		final byName = errorOf(() -> buildFromSource("
+			#host programmable() {
+				dynamicRef(nothing): 0, 0
+			}
+		", "host", null, Incremental)) ?? "";
+		Assert.stringContains("dynamicRef(nothing): there is no programmable \"nothing\"", byName);
+
+		final staticByParameter = errorOf(() -> buildFromSource("
+			#host programmable(target:string=\"nothing\") {
+				staticRef($target): 0, 0
+			}
+		", "host")) ?? "";
+		Assert.stringContains("staticRef($target): $target is \"nothing\", and there is no programmable \"nothing\"", staticByParameter);
+	}
+
+	// ==================== A dynamicRef in an arm that starts hidden ====================
+
+	@Test
+	public function testDynamicRefInInitiallyHiddenArmWithParamPositionKeepsItsParametersAcrossHideAndShow():Void {
+		// As testDynamicRefUnderConditionalKeepsItsParametersAcrossHideAndShow, with the site
+		// placed at $x: a param in the site itself must not make the show (or a change of $x)
+		// rebuild the panel with the site's defaults.
+		final result = buildFromSource("
+			#panel programmable(s:[none,live]=none) {
+				@(s=>live) bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+			#host programmable(state:[playing,scores]=playing, x:int=0) {
+				@(state=>scores) #scores dynamicRef(panel): $x, 0
+			}
+		", "host", null, Incremental);
+
+		result.setParameter("state", "scores");
+		final scores = result.getDynamicRef("scores");
+		scores.setParameter("s", "live");
+		Assert.equals(1, findVisibleBitmapDescendants(result.object).length, "the live line shows on the first show");
+
+		result.setParameter("state", "playing");
+		result.setParameter("state", "scores");
+		Assert.isTrue(scores == result.getDynamicRef("scores"), "the panel shown again is the result the screen set values on");
+		Assert.equals(1, findVisibleBitmapDescendants(result.object).length, "the live line shows again");
+
+		result.setParameter("x", 30);
+		Assert.isTrue(scores == result.getDynamicRef("scores"), "moving the site keeps the panel");
+		Assert.equals(30, Std.int(scores.object.localToGlobal(new h2d.col.Point(0, 0)).x - result.object.localToGlobal(new h2d.col.Point(0, 0)).x),
+			"the panel moves to the new $x");
+		Assert.equals(1, findVisibleBitmapDescendants(result.object).length, "with its live line");
+	}
+
+	@Test
+	public function testDynamicNameRefInInitiallyHiddenArmSwapsTemplateAfterShow():Void {
+		final result = buildFromSource("
+			#widgetA programmable() {
+				bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+			#widgetB programmable() {
+				bitmap(generated(color(20, 20, #00ff00))): 0, 0
+			}
+			#host programmable(open:bool=false, template:string=\"widgetA\") {
+				@(open=>true) #panel dynamicRef($template): 0, 0
+			}
+		", "host", null, Incremental);
+		result.setParameter("open", true);
+		Assert.equals("10", [for (b in findVisibleBitmapDescendants(result.object)) Std.int(b.tile.width)].join(","), "widgetA on the first show");
+
+		result.setParameter("template", "widgetB");
+		Assert.equals("20", [for (b in findVisibleBitmapDescendants(result.object)) Std.int(b.tile.width)].join(","),
+			"a template change after the show swaps to widgetB");
+	}
+
+	// ==================== Loop variables in a dynamicRef's arguments ====================
+
+	@Test
+	public function testDynamicRefForwardingInsideRepeatResolvesTheLoopVariable():Void {
+		final result = buildFromSource("
+			#row programmable(v:uint=1) {
+				bitmap(generated(color($v, 5, #00ff00))): 0, 0
+			}
+			#host programmable(base:uint=1) {
+				repeatable($i, step(3, dy: 20)) {
+					#r[$i] dynamicRef(row, v=>$base + $i): 0, 0
+				}
+			}
+		", "host", null, Incremental);
+		Assert.equals("1,2,3", [for (i in 0...3) Std.int(findVisibleBitmapDescendants(result.getDynamicRefByIndex("r", i).object)[0].tile.width)].join(","),
+			"built with v = base + i");
+
+		final err = errorOf(() -> result.setParameter("base", 5));
+		Assert.isNull(err, 'forwarding $$base + $$i resolves $$i as it was for each iteration; got $err');
+		Assert.equals("5,6,7", [for (i in 0...3) Std.int(findVisibleBitmapDescendants(result.getDynamicRefByIndex("r", i).object)[0].tile.width)].join(","),
+			"each row gets base + its own i");
+	}
+
+	@Test
+	public function testDynamicNameRefInsideRepeatKeepsTheLoopVariableOnTemplateSwap():Void {
+		final result = buildFromSource("
+			#a programmable(idx:uint=0) {
+				bitmap(generated(color(10 + $idx, 5, #ff0000))): 0, 0
+			}
+			#b programmable(idx:uint=0) {
+				bitmap(generated(color(20 + $idx, 5, #00ff00))): 0, 0
+			}
+			#host programmable(tmpl:[a,b]=a) {
+				repeatable($i, step(2, dx: 40)) {
+					#r[$i] dynamicRef($tmpl, idx=>$i): 0, 0
+				}
+			}
+		", "host", null, Incremental);
+		Assert.equals("10,11", [for (b in findVisibleBitmapDescendants(result.object)) Std.int(b.tile.width)].join(","), "a with idx = i");
+
+		final err = errorOf(() -> result.setParameter("tmpl", "b"));
+		Assert.isNull(err, 'the swap passes idx = $$i as it was for each iteration; got $err');
+		Assert.equals("20,21", [for (b in findVisibleBitmapDescendants(result.object)) Std.int(b.tile.width)].join(","), "b with idx = i");
+	}
+
+	// ==================== A template swap that throws ====================
+
+	@Test
+	public function testFailedTemplateSwapKeepsTheOldContent():Void {
+		final result = buildFromSource("
+			#a programmable(p:uint=1) {
+				bitmap(generated(color(10, 10, #ff0000))): 0, 0
+			}
+			#b programmable() {
+				bitmap(generated(color(20, 20, #00ff00))): 0, 0
+			}
+			#test programmable(tmpl:[a,b]=a, n:uint=1) {
+				#w dynamicRef($tmpl, p=>$n): 0, 0
+			}
+		", "test", null, Incremental);
+		final widths = () -> [for (b in findVisibleBitmapDescendants(result.object)) Std.int(b.tile.width)].join(",");
+		Assert.equals("10", widths(), "a is placed");
+
+		Assert.notNull(errorOf(() -> result.setParameter("tmpl", "b")), "b has no `p`, so the swap throws");
+		Assert.equals("10", widths(), "the failed swap leaves a in place, not an empty site");
+		Assert.isTrue(result.hasDynamicRef("w"), "and the site is still there");
+
+		result.setParameter("tmpl", "a");
+		Assert.equals("10", widths(), "going back to a shows a");
+		Assert.isTrue(result.hasDynamicRef("w"), "with its site");
 	}
 }

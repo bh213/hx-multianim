@@ -4,6 +4,7 @@ import utest.Assert;
 import bh.test.BuilderTestBase;
 import bh.test.BuilderTestBase.BuildMode;
 import bh.test.BuilderTestBase.buildFromSource;
+import bh.test.BuilderTestBase.findVisibleBitmapDescendants;
 
 /**
  * Unit tests for parameterized slots:
@@ -205,6 +206,51 @@ class ParameterizedSlotTest extends BuilderTestBase {
 		slot.setContent(content);
 		Assert.isTrue(slot.isOccupied());
 		Assert.equals(content, slot.getContent());
+	}
+
+	// ==================== Finals in Slot Expressions ====================
+
+	// A slot body may declare its own `@final` constants and use them in tracked
+	// expressions alongside slot parameters. The initial build resolves the final
+	// against the live parameter map, but SlotHandle.setParameter re-resolves the
+	// tracked expressions through the slot's IncrementalUpdateContext — which must
+	// still have the slot-body final in scope. If the context's parameter snapshot
+	// is taken before the slot body's finals are evaluated, setParameter blows up
+	// with "reference OFF does not exist" even though the same expression resolved
+	// fine during the initial build.
+	@Test
+	public function testParameterizedSlotSetParameterResolvesSlotBodyFinal():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				#mySlot slot(x:int=0) {
+					@final OFF = 20
+					bitmap(generated(color(10, 10, #555555))): $x + $OFF, 0
+				}
+			}
+		", "test", null, Incremental);
+		final slot = result.getSlot("mySlot");
+		Assert.notNull(slot);
+		if (slot == null) return;
+
+		// Sanity: the initial build resolves the slot-body final (x = 0 + 20).
+		var bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		if (bitmaps.length != 1) return;
+		Assert.floatEquals(20, bitmaps[0].x);
+
+		try {
+			slot.setParameter("x", 5);
+		} catch (e:Dynamic) {
+			Assert.fail("setParameter must keep slot-body @final constants in scope when "
+				+ "re-resolving tracked expressions, but threw: " + Std.string(e));
+			return;
+		}
+
+		bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		if (bitmaps.length != 1) return;
+		Assert.floatEquals(25, bitmaps[0].x, null,
+			"bitmap x should re-resolve to slot param + slot-body final (5 + 20 = 25), got " + bitmaps[0].x);
 	}
 
 	// ==================== Indexed Slot ====================
@@ -511,5 +557,60 @@ class ParameterizedSlotTest extends BuilderTestBase {
 
 		final frame = slot.getUpdatable("frame");
 		Assert.notNull(frame, "expected #frame named element from slot decoration to be reachable via SlotHandle");
+	}
+
+	// ==================== Enclosing @final constants inside slot bodies ====================
+	// @final constants of the enclosing programmable body are usable inside a
+	// parameterized slot body (params stay isolated — constants don't). The
+	// builder must resolve them on initial build AND on setParameter rebuilds.
+
+	@Test
+	public function testSlotBodyResolvesEnclosingFinal():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				@final OFF = 7
+				#mySlot slot(v:int=0) {
+					bitmap(generated(color(10, 10, #f00))): ($OFF + $v), 0
+				}
+			}
+		", "test");
+		Assert.notNull(result);
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(7.0, bitmaps[0].x, "slot decoration position should resolve enclosing @final OFF=7");
+
+		// setParameter rebuild must keep the constant in scope
+		final slot = result.getSlot("mySlot");
+		slot.setParameter("v", 3);
+		final after = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, after.length);
+		Assert.equals(10.0, after[0].x, "after setParameter(v=3) position should be OFF(7) + v(3) = 10");
+	}
+
+	@Test
+	public function testBuildSlotContentResolvesEnclosingFinal():Void {
+		// buildSlotContent is the codegen delegation path (ProgrammableBuilder.
+		// buildParameterizedSlot) — it builds only the slot subtree, so it must
+		// evaluate the enclosing body's @final constants itself.
+		final builder = bh.test.BuilderTestBase.builderFromSource("
+			#test programmable() {
+				@final OFF = 7
+				#mySlot slot(v:int=0) {
+					bitmap(generated(color(10, 10, #f00))): ($OFF + $v), 0
+				}
+			}
+		");
+		final container = new h2d.Object();
+		final slot = builder.buildSlotContent("test", "mySlot", new Map(), container);
+		Assert.notNull(slot);
+
+		final bitmaps = findVisibleBitmapDescendants(container);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(7.0, bitmaps[0].x, "buildSlotContent should resolve enclosing @final OFF=7");
+
+		slot.setParameter("v", 3);
+		final after = findVisibleBitmapDescendants(container);
+		Assert.equals(1, after.length);
+		Assert.equals(10.0, after[0].x, "after setParameter(v=3) position should be OFF(7) + v(3) = 10");
 	}
 }

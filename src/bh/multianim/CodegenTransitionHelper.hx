@@ -22,8 +22,10 @@ class CodegenTransitionHelper {
 	// op. Called from cancelActiveTransition / cancelAllTransitions before nulling
 	// onComplete, so reverse-direction cancellation doesn't leave a mid-flight interpolated
 	// value in place — that value would otherwise be re-captured as the next transition's
-	// baseline, permanently shifting the element away from its natural state.
-	var activeTransitionTweens:Array<{obj:h2d.Object, tween:Null<Tween>, sequence:Null<TweenSequence>, target:Bool, restore:Null<Void -> Void>}> = [];
+	// baseline, permanently shifting the element away from its natural state. `gen` is the
+	// tween's generation when the transition started: the TweenManager can cancel it from
+	// outside (cancelAll / clear), and then the pooled Tween may already run another animation.
+	var activeTransitionTweens:Array<{obj:h2d.Object, tween:Null<Tween>, gen:Int, sequence:Null<TweenSequence>, target:Bool, restore:Null<Void -> Void>}> = [];
 
 	public function new(specs:Map<String, TransitionType>) {
 		this.transitionSpecs = specs;
@@ -36,10 +38,8 @@ class CodegenTransitionHelper {
 		// transition active and visibility already matches, or a transition active
 		// whose target equals newVisible (it converges on its own — replacing it
 		// would jump alpha/scale to 0 and restart). Mirrors IncrementalUpdateContext.
-		if (obj.visible == newVisible) {
-			final activeTarget = getActiveTransitionTarget(obj);
-			if (activeTarget == null || activeTarget == newVisible) return;
-		}
+		dropCancelledTransitions(obj); // before reading visibility: their restore may change it
+		if (convergesAlready(obj, obj.visible, newVisible)) return;
 
 		final spec = transitionSpecs.get(changedParam);
 		if (spec == null || tweenManager == null || spec.match(TransNone)) {
@@ -56,12 +56,10 @@ class CodegenTransitionHelper {
 	 *  Uses addChildAt/removeChild instead of visible toggling.
 	 *  parent and sentinel define the insertion point. */
 	public function setPresenceWithTransition(obj:h2d.Object, newVisible:Bool, changedParam:String, parent:h2d.Object, sentinel:h2d.Object):Void {
+		dropCancelledTransitions(obj); // before reading presence: their restore may change it
 		final inGraph = obj.parent != null;
 		// See setVisibilityWithTransition above for the direction-aware skip rationale.
-		if (newVisible == inGraph) {
-			final activeTarget = getActiveTransitionTarget(obj);
-			if (activeTarget == null || activeTarget == newVisible) return;
-		}
+		if (convergesAlready(obj, inGraph, newVisible)) return;
 
 		final spec = transitionSpecs.get(changedParam);
 		if (spec == null || tweenManager == null || spec.match(TransNone)) {
@@ -77,6 +75,27 @@ class CodegenTransitionHelper {
 		executePresenceTransition(obj, newVisible, spec, parent, sentinel);
 	}
 
+	/** Before an instant visibility change from a param with no transition: true when a
+	 *  transition already heading to `newVisible` (a fade-out started by a transition param)
+	 *  is in flight, which the caller leaves to run on. Otherwise cancels one heading the
+	 *  other way, its properties restored, and returns false: the caller toggles at once. */
+	public function inFlightToward(obj:h2d.Object, newVisible:Bool):Bool {
+		dropCancelledTransitions(obj);
+		final activeTarget = getActiveTransitionTarget(obj);
+		if (activeTarget == null) return false;
+		if (activeTarget == newVisible) return true;
+		cancelActiveTransition(obj);
+		return false;
+	}
+
+	/** A transition in flight toward `newVisible` converges on its own, whether or not the
+	 *  current state already matches (a fade-out keeps the object shown until it ends); with
+	 *  none in flight, a matching state needs nothing. */
+	function convergesAlready(obj:h2d.Object, shown:Bool, newVisible:Bool):Bool {
+		final activeTarget = getActiveTransitionTarget(obj);
+		return if (activeTarget != null) activeTarget == newVisible else shown == newVisible;
+	}
+
 	public function cancelActiveTransition(obj:h2d.Object):Void {
 		var i = 0;
 		while (i < activeTransitionTweens.length) {
@@ -87,9 +106,10 @@ class CodegenTransitionHelper {
 				// (TransFade restores only alpha; TransSlide restores {x,y,alpha}; etc.) so
 				// user mutations on properties this transition wasn't writing are preserved.
 				if (entry.restore != null) entry.restore();
-				if (entry.tween != null) {
-					entry.tween.onComplete = null;
-					entry.tween.cancel();
+				final t = entry.tween;
+				if (t != null && t.generation == entry.gen) {
+					t.onComplete = null;
+					t.cancel();
 				}
 				if (entry.sequence != null) {
 					entry.sequence.onComplete = null;
@@ -106,15 +126,34 @@ class CodegenTransitionHelper {
 		while (activeTransitionTweens.length > 0) {
 			final entry = activeTransitionTweens[0];
 			if (entry.restore != null) entry.restore();
-			if (entry.tween != null) {
-				entry.tween.onComplete = null;
-				entry.tween.cancel();
+			final t = entry.tween;
+			if (t != null && t.generation == entry.gen) {
+				t.onComplete = null;
+				t.cancel();
 			}
 			if (entry.sequence != null) {
 				entry.sequence.onComplete = null;
 				entry.sequence.cancel();
 			}
 			activeTransitionTweens.splice(0, 1);
+		}
+	}
+
+	/** Drop `obj`'s transitions that the TweenManager cancelled from outside (cancelAll, clear):
+	 *  they never complete, and their pooled Tween may already run another animation. Their
+	 *  restore still runs, so obj lands on the transition's endpoint as a completed one would. */
+	function dropCancelledTransitions(obj:h2d.Object):Void {
+		var i = 0;
+		while (i < activeTransitionTweens.length) {
+			final entry = activeTransitionTweens[i];
+			final t = entry.tween;
+			final seq = entry.sequence;
+			final live = if (t != null) t.generation == entry.gen && !t.cancelled else seq != null && !seq.cancelled;
+			if (entry.obj == obj && !live) {
+				activeTransitionTweens.splice(i, 1);
+				if (entry.restore != null) entry.restore();
+			} else
+				i++;
 		}
 	}
 
@@ -133,11 +172,12 @@ class CodegenTransitionHelper {
 	}
 
 	function trackTransitionTween(obj:h2d.Object, tween:Tween, target:Bool, restore:Null<Void -> Void>):Void {
-		activeTransitionTweens.push({obj: obj, tween: tween, sequence: null, target: target, restore: restore});
+		final gen = tween.generation;
+		activeTransitionTweens.push({obj: obj, tween: tween, gen: gen, sequence: null, target: target, restore: restore});
 		tween.onComplete = () -> {
 			var i = 0;
 			while (i < activeTransitionTweens.length) {
-				if (activeTransitionTweens[i].tween == tween) {
+				if (activeTransitionTweens[i].tween == tween && activeTransitionTweens[i].gen == gen) {
 					activeTransitionTweens.splice(i, 1);
 					break;
 				}
@@ -152,7 +192,7 @@ class CodegenTransitionHelper {
 	}
 
 	function trackTransitionSequence(obj:h2d.Object, seq:TweenSequence, target:Bool, restore:Null<Void -> Void>):Void {
-		activeTransitionTweens.push({obj: obj, tween: null, sequence: seq, target: target, restore: restore});
+		activeTransitionTweens.push({obj: obj, tween: null, gen: 0, sequence: seq, target: target, restore: restore});
 		seq.onComplete = () -> {
 			var i = 0;
 			while (i < activeTransitionTweens.length) {
@@ -289,6 +329,9 @@ class CodegenTransitionHelper {
 
 	function addToGraph(obj:h2d.Object, parent:h2d.Object, sentinel:h2d.Object):Void {
 		if (obj.parent != null) return;
+		// Its sentinel is out of the parent while a spliced repeat that holds both is hidden: the
+		// repeat brings the element back with it
+		if (sentinel.parent != parent) return;
 		final layersParent = Std.downcast(parent, h2d.Layers);
 		if (layersParent != null) {
 			final sentinelLayer = layersParent.getChildLayer(sentinel);

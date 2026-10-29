@@ -22,23 +22,28 @@ class UIInteractiveWrapper implements UIElement implements StandardUIElementEven
 	// Hit-testing is single-threaded — one static instance is enough.
 	static var _scratchPt:Null<Point> = null;
 
-	public final interactive:MAObject;
+	/** The wrapped object. A rebuild of the source can replace it (see `rebind`). */
+	public var interactive(default, null):MAObject;
 	public final prefix:Null<String>;
 	public final id:String;
-	public final metadata:BuilderResolvedSettings;
-	public final eventFlags:Int;
+	public var metadata(default, null):BuilderResolvedSettings;
+	public var eventFlags(default, null):Int;
 	public var eventPriority:Int;
 	public var disabled(default, set):Bool = false;
 	public var hovered(default, null):Bool = false;
+	/** The `BuilderResult` or codegen instance the interactive came from, when registered through
+	 *  `UIScreenBase.addInteractives`; null for a wrapper built directly. */
+	public final source:Null<bh.ui.UIInteractiveSource>;
 
-	// Per-state cursors resolved from metadata at construction time
-	final cursorDefault:hxd.Cursor;
-	final cursorHover:hxd.Cursor;
-	final cursorDisabled:hxd.Cursor;
+	// Per-state cursors resolved from metadata
+	var cursorDefault:hxd.Cursor;
+	var cursorHover:hxd.Cursor;
+	var cursorDisabled:hxd.Cursor;
 
-	public function new(interactive:MAObject, prefix:Null<String>) {
+	public function new(interactive:MAObject, prefix:Null<String>, ?source:bh.ui.UIInteractiveSource) {
 		this.interactive = interactive;
 		this.prefix = prefix;
+		this.source = source;
 		final extracted = extractInteractiveData(interactive, prefix);
 		this.id = extracted.id;
 		this.metadata = extracted.metadata;
@@ -50,6 +55,34 @@ class UIInteractiveWrapper implements UIElement implements StandardUIElementEven
 		this.cursorHover = resolveCursorName(metadata.getStringOrDefault("cursor.hover", ""), baseCursor);
 		this.cursorDisabled = resolveCursorName(metadata.getStringOrDefault("cursor.disabled", ""), CursorManager.getDefaultCursor());
 		validateCursorKeys(metadata);
+	}
+
+	/** Point this wrapper at the object a rebuild made for the same interactive id (a `@switch` arm
+	 *  or repeat rebuild recreates the object). The wrapper stays the element the screen and its
+	 *  controller know, so hover, `disabled` and a priority set in code carry over; metadata,
+	 *  event flags and cursors are read from the new object. */
+	@:allow(bh.ui.screens.UIScreenBase)
+	function rebind(obj:MAObject):Void {
+		final extracted = extractInteractiveData(obj, prefix);
+		if (extracted.id != id)
+			throw 'UIInteractiveWrapper.rebind: "${extracted.id}" is not "$id"';
+		// Everything that can refuse (an unknown cursor, a cursor key) is resolved before anything
+		// is changed: a refused rebind leaves the wrapper as it was
+		final newMetadata = extracted.metadata;
+		final baseCursor = resolveCursorName(newMetadata.getStringOrDefault("cursor", ""), CursorManager.getDefaultInteractiveCursor());
+		final hoverCursor = resolveCursorName(newMetadata.getStringOrDefault("cursor.hover", ""), baseCursor);
+		final disabledCursor = resolveCursorName(newMetadata.getStringOrDefault("cursor.disabled", ""), CursorManager.getDefaultCursor());
+		validateCursorKeys(newMetadata);
+		final oldMetadataPriority = metadata.getIntOrDefault("eventPriority", 0);
+		interactive = obj;
+		metadata = newMetadata;
+		eventFlags = extracted.eventFlags;
+		final newMetadataPriority = metadata.getIntOrDefault("eventPriority", 0);
+		if (newMetadataPriority != oldMetadataPriority)
+			eventPriority = newMetadataPriority;
+		cursorDefault = baseCursor;
+		cursorHover = hoverCursor;
+		cursorDisabled = disabledCursor;
 	}
 
 	static function resolveCursorName(name:String, fallback:hxd.Cursor):hxd.Cursor {
@@ -71,6 +104,14 @@ class UIInteractiveWrapper implements UIElement implements StandardUIElementEven
 					throw 'unknown cursor state: "$key" — valid states: cursor.hover, cursor.disabled';
 			}
 		}
+	}
+
+	/** The id a wrapper for `obj` gets under `prefix`: `'<prefix>.<identifier>'`, or the identifier alone. */
+	public static function interactiveId(obj:MAObject, prefix:Null<String>):String {
+		return switch obj.multiAnimType {
+			case MAInteractive(_, _, identifier, _): prefix != null ? '$prefix.$identifier' : identifier;
+			default: throw "UIInteractiveWrapper requires MAInteractive";
+		};
 	}
 
 	static function extractInteractiveData(obj:MAObject, prefix:Null<String>):{id:String, metadata:BuilderResolvedSettings, eventFlags:Int} {

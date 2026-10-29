@@ -1,0 +1,13 @@
+version: 1.0
+
+// .offset() around a runtime hex coordinate: the hex-layout discovery pass
+// (ensureHexLayoutIfNeeded) does not recurse into WITH_OFFSET, so the
+// _hexLayout field is never synthesized while the lowering still references
+// it -> missing-field error in the generated class.
+// This file is intentionally NOT registered in MultiProgrammable — it is
+// compiled by the isolated compile-error check until the fix lands.
+
+#hexOff programmable(q:int=1) {
+  hex: flat(20, 20)
+  bitmap(generated(color(8, 8, #FF0000))): $hex.corner($q, 1.0).offset(5, 5)
+}

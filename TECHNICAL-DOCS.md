@@ -29,6 +29,8 @@ The library has three main layers:
 - `MultiAnimParser` — facade retained for API compatibility; delegates to `MacroManimParser`
 - `AnimParser` — separate hand-written parser for `.anim` state animation files
 
+**Doc comments and exports:** the lexer drops comments, except that it lists each `///` (its text, line, the index of the token after it, whether a token ended on its line before it) beside the token stream; the parser attaches them where a root block, a parameter or an enum choice is parsed (`leadingDoc`/`trailingDoc`) and ignores the rest, so no token rule changes. `#name export kind` is read in `parseNodes` before the kind. Both are kept on the parse (`Node.doc`/`exported`, `Definition.doc`/`choiceDocs`, `MultiAnimResult.exports`) and read through `MultiAnimResultTools`; nothing in the builder or codegen acts on them.
+
 **Error types:**
 - `InvalidSyntax` (extends `ParserError`) — Semantic errors (e.g., unknown variable, duplicate name)
 - `MultiAnimUnexpected` — Syntax errors (unexpected token)
@@ -68,7 +70,7 @@ Indexed slots (`#name[$i] slot`) inside repeatables create per-iteration contain
 
 ### Dynamic Ref System
 
-Dynamic refs (`dynamicRef($ref, params)`) embed programmables with incremental mode enabled automatically. The sub-result is stored and accessible via `getDynamicRef("name")`. This enables runtime parameter updates on embedded elements without rebuilding.
+Dynamic refs (`dynamicRef(name, params)`) embed programmables with incremental mode enabled automatically. The sub-result is stored and accessible via `getDynamicRef("name")`. This enables runtime parameter updates on embedded elements without rebuilding.
 
 ### Coordinate Systems
 
@@ -106,7 +108,7 @@ Requires TweenManager (auto-injected via `ScreenManager.buildFromResource()`; al
 
 ### Import System
 
-`import "file.manim" as "name"` allows cross-file references. Imported programmables are referenced via `staticRef(external("name"), $ref)` and `dynamicRef(external("name"), $ref, params)`. Enables modular `.manim` file organization.
+`import "file.manim" as "name"` allows cross-file references. Imported programmables are referenced via `staticRef(external("name"), target)` and `dynamicRef(external("name"), target, params)`. Enables modular `.manim` file organization.
 
 ### Rich Text & Markup
 
@@ -262,6 +264,26 @@ Lightweight tween system (`src/bh/base/TweenManager.hx`) owned by `ScreenManager
 
 **Key behaviors:** `skipFirstDt = true` prevents stutter after scene graph changes. Sequence overflow passes leftover dt to the next tween. Cancelled tweens do not fire `onComplete`.
 
+### Clock
+
+`bh.base.Clock`, one per `ScreenManager` (`screenManager.clock`): `paused` and `scale` (1 at full speed, never below 0), with listeners (`addListener(clock -> …)`, `removeListener`) told of every change. A signal, not a brake: nothing in the engine stops because of it. The DevBridge's `pause` sets `paused`; a game's own pause menu and slow motion set `paused` and `scale` themselves; a service that must follow the game (a sound layer pausing with it, pitching with slow motion) listens.
+
+### Audio
+
+`bh.audio.Audio` (`src/bh/audio/`), one per `ScreenManager` (`screenManager.audio`), stepped from `ScreenManager.update(dt)`. The game plays sounds by name, `audio.play("fx.hit")`, and what a sound is comes from the `#name sounds { }` blocks of the files the screen manager loads (`buildFromResource` calls `audio.addBanks(builder)`, a bank per block, replaced on reload; `docs/manim.md` "Sounds"). The service does everything above the files: the variant by the block's parameters (`set(param, label)`; the first `@()` that matches in file order, else the default), the cooldown, the `voices` limit with `steal: oldest | quietest | none`, the layers each with its pick (random, a shuffle bag, a turn), its volume and pitch rolled (dB to linear at play), its delay (kept in `pending` until `update` passes it) and its chance; a play is a `SoundInstance` (its voices, `isAlive`, `stop(?fade)`), listed in `instances` while alive. `randomFunc` is every roll.
+
+**A held sound** (`loop: yes` on a layer, `on: stop` on a layer): `rollLayer` passes a layer's `loop` to the backend's `VoiceStart` and `play` skips the `on: stop` layers, giving the instance an `onStop` closure instead; `SoundInstance.stop()` stops its voices and calls it, and `startStopLayers` rolls and starts those layers as the others were (their delay through `pending` with `release: true`, started even though the instance is stopped). The instance is then `isReleasing()` while they play: not alive, so its `voices` slot is free and `stop(name)`/`stopAll` pass it by, but listed in `instances` until `isDone()`. `cut()` stops everything and forgets the pending stop layers: `removeBank` (and so `addBank` of the same name, a reload) cuts the bank's plays, so a hum never outlives the block that made it. `setPitch(rate)` and `setVolume(gain, ?fade)` keep the factors on the instance and set them on every voice, those added later too (`addVoice`), through `AudioVoice.setPitch`/`setGain` (the Heaps voice multiplies the rolled pitch, the bus's and its own into one `Pitch` effect; the log voice writes `pitch`/`volume` lines). `playAmbience(name, ?fade)`/`stopAmbience`/`ambiencePlaying` hold one sound beside the music as `playMusic` does a track, through `play`, so its bank's rules (voices, variants, stop layers) hold.
+
+**The mix** (`#name mix { }`, `addMix`, taken by `addBanks` too): the buses (`voices` each), the VCAs (`setVca(name, 0..1)`, multiplied into every bus they name) and the snapshots (`snapshot(name, on)`: per bus `pause`, a level in dB, a low-pass share, `pitch clock`, with a `fade` for its levels). `busState(bus)` folds them into one `BusState` per bus (the VCAs' product times the dB sum of the snapshots on, paused if any says so, the lowest low-pass, the clock's scale where `pitch clock`) and `setBus` hands it to the backend whole whenever anything of it changes, with the fade of what changed. The clock (`audio.clock`, the screen manager's) puts the `paused` snapshot on and off with its pause, pauses every bus when the mix has none, and re-pitches the `pitch clock` buses as its scale changes (never below `MIN_PITCH`). Every bus the backend hears of (the mix's, a bank's, the default one of the sounds that name none) is set once when first seen. `addMix` with the name the mix already has (a reload) keeps the levels of the VCAs the new block still has and the snapshots on that it still has; another name replaces the mix whole (every VCA at 1, no snapshot on).
+
+**Sound with no code.** `UIScreenBase.dispatchScreenEvent` plays the widgets' sounds before anything else hears the event (`playWidgetSound`): the event's key (`UIHover(true)` hover, `UIClick` click, `UIToggle` toggle, `UIChangeValue`/`UIChangeItem` change, `UIOpen`, `UIClose`; a slider's float is silent beside its int) and the widget's own `sound.<key>` setting, read through `UIElementRootSettings` (button, checkbox, dropdown, slider) or an interactive's metadata, go to `audio.playUi(key, ?own)`: the setting's sound, `none`, or `ui.<key>` when the `ui` bank has it. An interactive's events arrive as `UIInteractiveEvent(inner, id, metadata)` and are keyed by `inner`, so every interactive the screen registered (a panel's, a card hand's cards) plays `ui.click` on its click unless its metadata says `sound.click => none`; its `UIEntering` has no key, so its hover is silent. An `.anim`'s `sounds { }` (`AnimParser.sounds`) is given to the machine by `createAnimSM` with the loader's audio (`ResourceLoader.getAudio()`, the screen manager's own set on its loader), and `AnimationSM.fireAnimationEvent` plays the event's sound after the handler and the listeners. The block's `hold anim: "…"` lines (`AnimParser.holds`, checked against the file's animation names after the parse) go to `animSM.holds`: `play()` calls `updateHold()`, which keeps the held sound when the animation playing asks for the same one and otherwise stops it (`releaseHold`) and plays the new one into `heldSound`; `onRemove` releases it and `onAdd` holds it again, and `setStates` releases it when the reload leaves no animation playing. Ambience: `UIScreenBase.screenAmbience` (read from `ambience =>` beside `music =>` in `readMusicSetting`) and `ScreenManager.applyScreenAudio`, which resolves both through `screenAudioFor(mode, of)` and calls `playAmbience`/`stopAmbience` as it does `playMusic`/`stopMusic`. Music: a `music` block's tracks (`addMusic`, `playMusic(name, ?crossfade)` stops the one playing over the crossfade and starts the next with a fade in, `stopMusic`, `musicPlaying`); `UIScreenBase.screenMusic` (read from the first builder result added whose root settings say `music =>`, or set from code; not `music`, which a screen may use for a control of its own) and `ScreenManager.applyScreenAudio`, called from `notifyScreenChange` on every mode change: the `dialog` snapshot on under a dialog when the mix has one, and `musicFor(mode)` (a dialog's own else its caller's; a single's else the master's; "none" stops, nothing said keeps what plays). `audio.history` is the last 200 lines of what happened (`AudioHistoryEntry`: play, drop, stop (`stopAll` one line named `*`), snapshot, vca, param, music), `onHistory` told of each: the DevBridge's `audio_state`, `audio_log`, `audio_set` and `audio` event (`docs/devbridge.md`). `AudioScreenTest`.
+
+**Codegen and reload.** `bh.audio.AudioNames.build(path)` is a `@:build` macro: it parses the file with `MacroManimParser` at compile time (as `ProgrammableCodeGen` does) and adds a `public static inline final` per name (`FX_HIT = "fx.hit"`, `MUSIC_TITLE`, `BUS_SFX`, `VCA_MUSIC`, `SNAPSHOT_DIALOG`, `PARAM_SURFACE`; a name twice with another value is an error), registering the file as a module dependency. A `@:manim` programmable in a file with the blocks builds as without them: the codegen reads `result.nodes` and takes only the programmable it was asked for. `ScreenManager.hotReloadFile` registers a reloaded file's cursors again and calls `audio.addBanks` on the new builder, as `buildFromResource` does on a load and the rebuild-all reload (`docs/hot-reload.md` step 6); when the file had any of the blocks it then calls `applyScreenAudio(mode)`, as the rebuild-all reload's `updateScreenMode` does, so a `dialog` snapshot the reload added goes on under an open dialog. The grammars (`vscode/syntaxes`) have the blocks' words. `AudioCodegenTest`, `HotReloadTest.testAReloadedFilesSoundsAreTakenAsBanksAgain`, `HotReloadTest.testAReloadedMixKeepsTheLevelsAndPutsANewDialogSnapshotOnUnderADialog`.
+
+**Backends** (`AudioBackend`: `prepare(path)`, `play(VoiceStart):AudioVoice`, `setBus(bus, BusState)`, `update(dt)`): `HeapsBackend` plays through `hxd.snd` (a file is `loader.loadSound(path)`, a play its channel with `priority`, a `Pitch` effect for its own rate times the bus's, `fadeTo` for a fade in; a bus a `ChannelGroup` (volume, fades, a `LowPass` effect) and a `SoundGroup` (`maxAudible` from `voices`) made on first use; a paused bus is `Channel.pause` on each of its plays, never `Manager.suspended`, under which a virtual channel's time runs on; the manager starts itself on the first play), `LogBackend` plays nothing and writes `entries` (`time`, `kind` play/stop/pitch/volume/bus, `sound`, `layer`, `path`, `bus`, `volume`, `pitch`, `fade`, `loop`, `paused`, `lowpass`, `voices`), a file lasting `durations[path]` or `defaultDuration` (a looping one until stopped) and holding while its bus is paused: what the tests read (`AudioTest`, `AudioMixTest`) and what a headless game runs with. Tests never create `hxd.snd.Manager` (the CI build has no device).
+
+**Hooks a sound layer hangs on** (`AudioHooksTest`): `ResourceLoader.loadSound(path)` (an `hxd.res.Sound`, read through `loadHXDResourceImpl` and cached with the sheets, `getCacheKeys().sounds`); the widget events `UIHover(over)` from a button, `UIOpen` and `UIClose` from a dropdown, and a slider's `UIChangeValue` sent only when its value changes; `AnimationSM.addEventListener` beside `onAnimationEvent`; and the clock above. What is left (stage C: music on the beat, intros, stems, ducking, held sounds; stage D: ambience, placing, voice) is `todo/proposal-audio.md`.
+
 ### Screen Transitions & Modal Overlay
 
 **ScreenTransition** (`src/bh/ui/screens/ScreenTransition.hx`) — enum defining transition types: `None`, `Fade`, `SlideLeft/Right/Up/Down`, `Custom`. Used with `switchTo()`, `switchScreen()`, `modalDialogWithTransition()`, `closeDialogWithTransition()`. All navigation methods accept optional `?data:Dynamic` that flows through to entering screens via `UIEntering(data)` event.
@@ -272,8 +294,9 @@ Lightweight tween system (`src/bh/base/TweenManager.hx`) owned by `ScreenManager
 3. `executeTransition()` creates tweens on screen roots (fade alpha, slide position)
 4. All tweens use `skipFirstDt = true` to prevent stutter
 5. On complete, `transitionCleanup` removes old screens from scene
+6. Interrupted (a new transition, a dialog close, `finalizeTransition()`): the running transition's tweens jump to their end and its cleanup runs at once; its own `onComplete` is ignored afterwards (serial check). A `Custom` transition's tweens are the game's and keep running
 
-**Modal overlay:** When a dialog has `modalOverlayConfig` set, `ScreenManager` creates an `h2d.Bitmap` overlay at layer 5 (between master=4 and dialog=6). Overlay alpha animates in/out via TweenManager synchronized with dialog transition. Optional blur filter applied to underlying screen roots. Config: `color`, `alpha`, `fadeIn`, `fadeOut`, `blur`. Can be set in code (`modalOverlayConfig = {...}`) or via `.manim` `settings { overlay.color:color => ..., overlay.alpha:float => ... }`.
+**Modal overlay:** When a dialog has `modalOverlayConfig` set, `ScreenManager` creates an `h2d.Bitmap` overlay at layer 5 (between master=4 and dialog=6), sized to the scene and refitted in `update()` when the scene size changes. Overlay alpha animates in/out via TweenManager synchronized with dialog transition. Optional blur filter applied to underlying screen roots. Config: `color`, `alpha`, `fadeIn`, `fadeOut`, `blur`. Can be set in code (`modalOverlayConfig = {...}`) or via `.manim` `settings { overlay.color:color => ..., overlay.alpha:float => ... }`.
 
 **Layer ordering:** `layerContent=2`, `layerMaster=4`, `layerOverlay=5`, `layerDialog=6`
 
@@ -317,7 +340,9 @@ Controllers extend `UIDefaultController` and push onto the existing controller s
 
 Development-only JSON-RPC server exposing runtime inspection and manipulation (`-D MULTIANIM_DEV`). File: `src/bh/multianim/dev/DevBridge.hx`.
 
-Serves 37 JSON-RPC tools over HTTP plus SSE streaming for lifecycle events (screen changes, hot reload, parameter changes, custom events, debugger hits, game events). Default port 9001, configurable via `HX_DEV_PORT` env var. Consumed by the MCP server documented in `docs/devbridge.md`. Powers hot-reload triggers, runtime inspection (`scene_graph`, `inspect_element`, `list_interactives`, ...), input injection (`click_button`, `send_event`), and screenshot capture.
+Serves 37 JSON-RPC tools over HTTP plus SSE streaming for lifecycle events (screen changes, hot reload, parameter changes, custom events, debugger hits, game events). Default port 9001, configurable via `HX_DEV_PORT` env var; bind address defaults to `0.0.0.0`, configurable via `HX_DEV_BIND`. Consumed by the MCP server documented in `docs/devbridge.md`. Powers hot-reload triggers, runtime inspection (`scene_graph`, `inspect_element`, `list_interactives`, ...), input injection (`click_button`, `send_event`), and screenshot capture.
+
+The bridge is split from how it is reached. `DevBridge` owns `dispatch(method, params)`, the game ops and the event buffers, and implements `IDevBridgeHost` (`handleRequestJson`, `handleCall`). Transports in `src/bh/multianim/dev/transport/` carry requests in and events out: `HttpServerTransport` (HashLink HTTP + SSE), and in a browser build `PageTransport` (`window.hxDevBridge`) and `WebSocketTransport` (dials a relay such as the MCP server in `--listen` mode). Settings go through `DevBridgeConfig` (environment, or `window.HX_DEV` / query string in a page). `HX_DEV_TOKEN` gates every HTTP request and travels in the relay hello.
 
 ### Hot Reload
 
@@ -353,7 +378,7 @@ var res = MacroUtils.macroBuildWithParameters(componentsBuilder, "ui", [], [
 
 **`@:manim("path", "name")`** generates:
 - **Factory class** (e.g., `MyUI_Button`) — Stateless, holds resource loader and cached builder. Has `create(params...)` and `createFrom({...})` methods, plus static enum constants.
-- **Instance class** (e.g., `MyUI_ButtonInstance`) — Extends `h2d.Object`. Has `setXxx()` setters, `get_xxx()` named element accessors, `getSlot_xxx()` slot accessors, and visibility/expression update logic.
+- **Instance class** (e.g., `MyUI_ButtonInstance`) — Extends `h2d.Object`. Has `setXxx()` setters, `get_xxx()` named element accessors, `getSlot_xxx()` slot accessors, and visibility/expression update logic. Implements `bh.multianim.LiveProgrammable` (as `BuilderResult` does): `getNamedKeys()`, `getNamedDrawn(name, ?index, ?indexY)`, `getSlotEntries()`, `getDynamicRefKeys()`, `getParameterValues()`, `getRoot()`, `getProgrammableName()` — the same view of a built programmable from either path, so a tool needs no knowledge of the generated class. Under `-D MULTIANIM_DEV` the constructor registers the instance on the loader's `ReloadableRegistry` (`registerLive`), and `onAdd`/`onRemove` keep it listed only while its root is in the scene; the DevBridge lists it beside the `BuilderResult`s. Hot reload never touches it.
 
 **`@:data("path", "name" [, "pkg" [, mergeTypes]])`** generates:
 - **Data class** with `public final` fields matching the data block
@@ -424,56 +449,154 @@ Curve slots accept either named curves from `curves{}` or inline easing names (e
 
 ## Autotile
 
-Autotile is a root-level manim element for procedural terrain generation. It defines a tileset that can be automatically placed based on neighbor relationships.
+Autotile is a root-level manim element for procedural terrain generation: a tileset plus an index scheme. Language reference: `docs/manim.md` "Autotile".
 
-### Supported Formats
+### Formats
 
-- **cross**: Cross layout for standard terrain (13 tiles). Tile indices: 0=N, 1=W, 2=C, 3=E, 4=S, 5-8=outer corners, 9-12=inner corners
-- **blob47**: Full 47-tile autotile with all edge/corner combinations using 8-direction neighbor detection
+- **corner** (16 tiles): dual grid. One tile per grid-cell corner, offset by half a tile; index = filled cells around the corner, `NW 1 | NE 2 | SW 4 | SE 8`. Index 0 is never drawn. Matches the common "3x3 patch + inner corners + diagonals" tileset exactly and covers every configuration.
+- **blob47** (47 tiles): one tile per filled cell from 8-direction neighbours (diagonals only count when both adjacent cardinals are present). Tile indices are the 47 reduced masks in ascending order, so real tilesets need a `mapping:`.
+- **cross** (13 tiles): one tile per filled cell. 0=N, 1=W, 2=C, 3=E, 4=S edges, 5-8 outer, 9-12 inner corners.
 
-### DSL Syntax
+### Pipeline
 
-```
-#myTerrain autotile {
-    format: cross             // cross | blob47
-    sheet: "terrain"          // atlas name
-    prefix: "grass_"          // tile prefix (tiles named grass_0 to grass_12)
-    tileSize: 16              // tile size in pixels
-}
+1. **Parse** (`MacroManimParser.parseAutotile`) -> `AUTOTILE(AutotileDef)`: format, one `AutotileSource` (`ATSFile`, `ATSAtlas`, `ATSTiles`, `ATSDemo`), `tileSize`, optional `mapping` / `region` / `allowPartialMapping`. Parse-time validation: mapping keys per format, duplicate keys, `region:` only with `file:`, `allowPartialMapping` only with blob47, no `mapping:` with `demo:`, exactly one source.
+2. **Resolve** (`MultiAnimBuilder.getAutotileTiles`, cached per builder by name): for every autotile index `i`, source index `j = mapping[i]` (identity mapping when absent), with blob47 fallback (`Autotile.applyBlob47FallbackWithMap`) under `allowPartialMapping`; `j` is range-checked against the source and turned into a tile. Missing tiles throw `BuilderError` (`autotile_missing_tile` / `autotile_index` / `autotile_region`). Demo tiles are drawn into one `PixelLines` texture.
+3. **Place** (`buildAutotile`): index math from `bh.base.Autotile`, one `h2d.TileGroup`.
 
-// Or with image file instead of atlas:
-#myTerrain autotile {
-    format: cross
-    file: "terrain.png"       // image file with tiles in grid layout
-    tileSize: 16
-    depth: 8                  // optional: isometric depth for elevation
-    mapping: [0, 1, 2, ...]   // optional: custom index mapping
-}
-```
+`generated(autotile(name, index))` (builder: `loadTileSource`; codegen: `ProgrammableBuilder.getAutotileTileByIndex`) returns the same cached tile. `generated(autotileRegionSheet(...))` renders a `file:` region with source indices for authoring mappings.
 
 ### Usage
 
 ```haxe
 var builder = MultiAnimBuilder.load(content, resourceLoader, "terrain.manim");
 
-// Binary grid: 1 = terrain present, 0 = empty
+// grid[y][x], non-zero = terrain present
 var grid = [
     [0, 1, 1, 0],
     [1, 1, 1, 1],
     [0, 1, 1, 0]
 ];
 
-// Build terrain TileGroup
 var terrain = builder.buildAutotile("myTerrain", grid);
 scene.addChild(terrain);
-
-// For elevation with depth:
-var elevation = builder.buildAutotileElevation("elevation", grid, 0);
 ```
 
-### Tile Index Calculation
+### Index Math
 
 The `bh.base.Autotile` utility class provides:
-- `getNeighborMask8(grid, x, y)` - 8-direction neighbor bitmask (N=1, NE=2, E=4, SE=8, S=16, SW=32, W=64, NW=128)
-- `getCrossIndex(mask)` - Map neighbor mask to cross format tile index
-- `getBlob47Index(mask)` - Map neighbor mask to blob47 tile index
+- `getNeighborMask8(grid, x, y)` - 8-direction neighbour bitmask (N=1, NE=2, E=4, SE=8, S=16, SW=32, W=64, NW=128)
+- `getCornerIndex(grid, cornerX, cornerY)` - corner format index (corners run 0..width x 0..height)
+- `getCrossIndex(mask)` / `getBlob47Index(mask)` / `getBlob47Mask(index)` - per-cell formats
+- `getBlob47FallbackChain(index, mapping)` / `applyBlob47FallbackWithMap(index, mapping)` - partial-mapping fallback (one algorithm: same cardinals with the closest diagonals, then fewer cardinals, then tile 46, then 0; the chain form is what the hx-multianim-utils autotile mapper displays)
+
+## Tile maps
+
+`#name tileset { … }` → `TILESET(TilesetDef)`, `#name tilemap { … }` → `TILEMAP(TilemapDef)` (the map's
+`decor { }` elements are the node's children), `tilemap(name)` → `TILEMAP_REF(extRef, name)`. The parser
+checks the rows (width, height, legend, digits), keeping each row's line and column for tools; the
+builder (`buildTilemap`, `tilemapParts`, `checkTilemap`) resolves the tileset in this file or an
+import (`importedBuilder`), checks every name the map uses, and builds `bh.base.TileMap` with
+`TileMapTiles` closures (an autotile over a grid, the frames of a name, a tileset's metadata resolved
+as settings are, `resolveSettingValue`) so the map needs no builder of its own.
+Decor is built with `buildSingleNodeWithParams`. Codegen delegates `tilemap(name)` to
+`ProgrammableBuilder.buildTilemap`, as autotile tiles are.
+
+`tilemap(fill([external(imp),] tileset, terrain: t, cols: c, rows: r))` → `TILEMAP_FILL(extRef, tileset,
+terrain, cols, rows)`: no `#name tilemap`, the builder writes the rows itself (`tilemapFillDef`: a ring
+of `none` around `cols` by `rows` cells of the terrain, `fill: true` on the def) and builds them as a
+written map is (`buildTilemapFill` → `tilemapParts`, so the same checks and closures). In an
+incremental build `trackTilemapFill` tracks the programmable's params the three use (`@final`s
+expanded to theirs with `expandFinalAliases`, loop variables fixed, as `trackStaticRefRebuild` does)
+and `refillTilemap` reads the new rows into the same map (`setSource`), leaving it alone when terrain
+and size are unchanged; codegen emits `ProgrammableBuilder.buildTilemapFill` and an expression update
+calling `refillTilemap` (its `collectParamRefs` expands `@final`s too). The param-ref walkers for
+`@switch` arms, deferred conditionals and param-dependent repeat bodies list the three as they do a
+staticRef's target and arguments. `refreshTilemap` (hot reload) makes a map whose `sourceDef.fill` is
+true again from the new builder's tileset, of its terrain and size (`refreshTilemapFill`), unless it
+already has that tileset: a screen loaded again built it from the new builder.
+
+`TileMap` draws in chunks (`Chunk`: a rectangle of cells, its part of each of the map's passes, the
+objects of several cells it anchors, its frames of each animated terrain, `shown`, `dirty` for its
+tiles and `resolved` for its cells' sides and metadata). The passes are the map's draw order, one
+object each, made once a source (`makePasses`): every terrain in turn, the levels' edges with the
+platforms' tops, the sides, and each layer's cells under the actors, in `ground`; each layer's cells
+over the actors in `overLayer` and at the top in `topLayer`. A chunk's part of a pass is made as it
+first draws there (`partOf`; `TileGroups` makes it with its first tile), so a chunk costs objects
+for what it draws only and a chunk never drawn costs none. What a chunk draws past its cells — a
+corner autotile's tile, half a cell up and left of its corner, over the last column and row of the
+chunk before; an object reaching into the next chunk — is under every later pass of every chunk
+and over every earlier one, as when the map is drawn in one piece; with one object per chunk, a
+later chunk's terrain was drawn over an earlier chunk's layer cells and sides along every border.
+Every chunk starts dirty and unresolved and nothing is drawn as the map is built: `sync` first culls
+(`applyCulling` shows or hides a chunk's parts and its `draw: actors` objects, `showChunk`, for
+`cull`'s view or the scene's, through `globalToLocal` of its corners; a camera is not in that chain,
+so a game with one calls `cull`; the view reaches `cullMargin` past a chunk, a tile for a corner
+autotile's half tile plus `objectReach`: the furthest any layer entry draws past its anchor, by its
+footprint and its frames, since only the anchor's chunk draws an object, so an object is drawn and
+shown once any of it is in view; only the columns and rows of chunks the view reached last time and
+reaches now are looked at, and `cull` writes one rectangle), then `drawDirty(true)` draws the dirty
+chunks in view, looking at the chunks culling showed only, so a chunk dirty off screen costs no
+frame a look at every chunk. Reading a cell draws nothing: `terrainAt`,
+`levelAt`, `platformAt` and `cellAt` read per-cell arrays kept as the rows change (`terrainIndex`,
+`levelIndex`, `platformIndex`, `covers`; a character read from a row string is a string allocated
+on HashLink, so the rows are read once), and `sideAt`/`metadataAt` resolve the asked cell's chunk
+if it is not (`resolveCellsChunk` → `resolveChunk`: `scanRises` with no groups to draw into, then
+`mergeMetadata`), so a game that reads the whole map does not draw it. `setTerrain`/`setLevel`/
+`setCell` mark the chunks within reach dirty and unresolved (`touchChunks`, from the range of chunk
+columns and rows, never a walk over every chunk; `touch`: one cell for an autotile's corners;
+`touchRises` for a level or, with levels, a terrain: the longest rise `span` plus one, and for a
+rise of several `side` pieces every chunk along the run's axis, since a piece's turn is counted
+from the run's start). `drawChunks` draws some chunks in one pass whose masks (per terrain, per
+level, per platform; `highestLevel` too) are made once, as a chunk first asks
+(`beginPass`/`endPass`), over `passRect` alone: the chunks and a cell around them, as far as an
+autotile's index looks. The masks and the `where` grids are chunk-local (`gridOver`: the pass
+rectangle's corner is `[0][0]`), and `TileMapTiles.autotile` / `buildAutotile(name, grid, where,
+x0, y0)` are told that origin, so a chunk far into the map costs as much as the first. A chunk
+draws only its own positions: `positionsOf` (its cells, or for the corner format its corners up to
+the next chunk's, the map's last column and row going to the last chunks); `drawnPositions`,
+`meetingPositions` and `rimPositions` fill a `where` grid of that shape with flat loops, no array
+or closure per position, so `buildAutotile` walks the rectangle alone.
+
+Each layer's legend is resolved once as the rows are read (`layerEntries`: a `LayerEntry` a
+character, with its frames, `draw`, anchor, tileset cell and metadata), and each layer has, per
+cell, the entry whose character is there (`layerCell`, -1 elsewhere) and a cover (`covers`): the
+index of the cell whose character covers it, its own or the anchor's of an object of several
+cells, made by `readLayer` (`placeCover` throws `tilemap_object_outside` /
+`tilemap_object_overlap`, which the builder says at the map's node) and kept by `setCell`, which
+frees the old object's cells, places the new one and puts the old back if that throws. `cellAt`,
+`objectAt`, `drawLayers` and `mergeMetadata` read them.
+
+`drawChunk` draws a chunk from the map's own copy of the rows: the terrains (a mask per terrain of the cells
+of it and of every terrain after it; a `transition a, b` adds b's pair autotile over b's own at the
+positions `meetingPositions` finds, where the cells around a position are some of b-or-above and
+otherwise all a, computed in the autotile's own positions by its format, once a format rather than
+once an animation frame, and passed as `where`), each level's edge (along its rim only:
+`rimPositions`, by the edge's format, of the cells whose terrain has that edge, `edges[terrain]` or
+the tileset's own; a platform's cells are left out, and each platform's own edge is drawn over all
+of its cells), each rise's sides (`scanRises`, per direction, the cells scanned along the run's
+axis: the rise from `riseTable`, `riseFor`'s answer by direction, terrain, platform and levels
+worked out once a source (`readRises`) — a platform's own for a cell of one, else the terrain's
+own in that direction when it has any, else the tileset's, of that many levels or `any`; each
+cell's rise is looked up once, as the cell before looks at it to see whether its run goes on; the
+run's ends from the neighbours across the side's direction that take the same rise, in reading
+order, and of several `sides` the one whose turn it is along the run, carried from the cell before;
+the first cell of a run a scan meets reads where the run starts from what a scan before noted on
+its line (`runAlong`: `runStart`/`runEnd` per direction and line, good while `rowsVersion`, bumped
+by every change, holds) and walks back to it only when none did, so a long cliff costs its length,
+not its square, in any chunk size; a piece's frames are looked up once a name, `pieceFrames`), the
+layers into the chunk's parts of that layer's under, over or top pass (a `TileGroups` helper keeps
+one `TileGroup` a texture) or, for `draw: actors`, a bitmap among the map's `actors` standing on
+its feet, shown as its chunk is, and merges each cell's metadata once (`mergeMetadata`: a cell with
+its terrain's alone shares that terrain's `BuilderResolvedSettings`; any other combination of
+terrain, side and layer cells is merged once and shared by every cell of it, found by its sources'
+indices in a mixed radix, an Int key in `mergedByKey` while the combinations fit in one, else a
+string in `mergedSettings`; one shared empty one for the rest). `sync` steps the animated terrains
+and y-sorts `actors` with the frame's time (the private `step(dt)`), the one place it is done, so a
+game calls nothing each frame. `redraw()` marks every chunk dirty and draws them all now, whatever
+the view, a map drawn whole already too. Maps in a scene are in `TileMap.showing`
+(`onAdd`/`onRemove`; a Heaps object has no other sign of its lifetime, so a map off-scene is not
+reloaded): `ScreenManager.hotReloadFile` calls `TileMap.builderReplaced` after the file's screens are
+reloaded (their `load()` builds new maps and the old ones leave the scene), which `refreshTilemap`s
+each from the new builder, keeping the actors; `refreshTilemap` leaves a map whose `sourceDef` is this
+builder's parse alone, so a map is never drawn twice for one reload. The DevBridge's `map_list` and
+`map_get` read `showing`.
