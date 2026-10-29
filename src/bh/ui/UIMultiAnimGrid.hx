@@ -1675,7 +1675,7 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 				if (completed == null)
 					completed = [];
 				completed.push(entry);
-				activeSwapAnims.splice(i, 1);
+				activeSwapAnims.remove(entry); // at i; a splice makes an array of what it removes
 			}
 		}
 		if (completed != null)

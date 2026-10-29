@@ -709,7 +709,7 @@ The reference name itself can be a parameter, allowing the target programmable t
 
 When `template` is a parameter of the enclosing programmable (string or enum type), changing it triggers a **full rebuild**: the old programmable is torn down and the new one is built from scratch. Forwarded parameters (`value=>$hp`) are propagated incrementally when the template doesn't change.
 
-- **A `$name` must be in scope**: a parameter, a loop variable or an `@final` (whose value names the programmable). Any other `$name` is a parse error that points at the bare name: `staticRef($card)` with no `card` in scope used to place the programmable `card`, and placed what a parameter said as soon as the file, or one importing it, got a parameter `card`. A `dynamicRef($final)` whose `@final` uses a parameter swaps the template when that parameter changes, as `dynamicRef($param)` does
+- **A `$name` must be in scope**: a parameter, a loop variable or an `@final` (whose value names the programmable). Any other `$name` is a parse error that points at the bare name: `staticRef($card)` with no `card` in scope used to place the programmable `card`, and placed what a parameter said as soon as the file, or one importing it, got a parameter `card`. A `dynamicRef($final)` whose `@final` uses a parameter swaps the template when that parameter changes, as `dynamicRef($param)` does; one of a loop variable, or of an `@final` no parameter reaches, is placed as by the programmable's name (no container of its own), in the builder and in codegen
 - **Only a string or enum parameter names a programmable**: `dynamicRef($x)` / `staticRef($x)` with `x` a `bool`, number, `color` or `tile` parameter is a parse error. A programmable named like such a parameter (`panel:bool` beside `#panel`) is placed by its bare name: `@(panel=>true) #panel dynamicRef(panel, kind=>lobby)`
 - **A missing target is reported at the site**: `dynamicRef($template): $template is "nope", and there is no programmable "nope"` (`BuilderError`, code `missing_ref`), when the site is built or its template changes
 - **Strict validation**: forwarded parameters must exist on the target programmable (runtime error if missing, allowed if target has a default)
@@ -864,7 +864,8 @@ interactive(200, 30, "dragArea", cursor.hover => "move", cursor.disabled => "def
 ```
 
 Pre-registered names: `default`, `pointer`/`button`, `move`, `text`, `hide`/`none`. Register custom cursors via `CursorManager.registerCursor("name", cursor)` (a name code or a file
-has taken is an error until `unregisterCursor`; an OS cursor's may be replaced once).
+has taken is an error until `unregisterCursor`; an OS cursor's may be replaced once, and
+`unregisterCursor` gives it the OS cursor back).
 
 **UI integration:**
 * `UIInteractiveWrapper` wraps the interactive as a `UIElement` with `UIElementIdentifiable`
@@ -1520,8 +1521,9 @@ error.
 `ScreenManager.buildFromResource` registers every cursor of every `cursor { }` block of the file
 and of the files it imports with `CursorManager` (`builder.registerCursors()`, again on each
 reload; its `sounds`, `music` and `mix` blocks are taken the same way). A cursor name is one cursor
-for the whole game: the file that registered it replaces its own on a reload, another file (an
-import, the importer, any file loaded) or code registering a taken name is an error naming both
+for the whole game: the file that registered it replaces its own on a reload (and the cursors it
+has no more are unregistered, an OS cursor's name the OS cursor again), another file (an import,
+the importer, any file loaded) or code registering a taken name is an error naming both
 (`name_taken`); an OS cursor's name may be taken once. So a registered name
 then works wherever an OS cursor name does: an interactive's `cursor => "sword"`, `cursor.hover`,
 `cursor.disabled`, `CursorManager.getCursor("sword")`, `setOverrideCursor`. `builder.buildCursors(
@@ -1616,7 +1618,8 @@ replaced), and every file is loaded then. A block name is one bank for the whole
 taking its own block again (a reload) replaces it, keeping the parameter values the game set;
 another file's block of a taken name (an import's, the importer's, any file's) is an error naming
 both files, and so is `audio.addBank` from code over a taken name (`removeBank` frees it). `music`
-blocks follow the same rule. From code: `audio.play("fx.hit")` (null when the
+blocks follow the same rule (`removeMusic` frees a name, stopping its track if one plays). A file
+taken again drops the blocks it has no more, so their names are free for another file. From code: `audio.play("fx.hit")` (null when the
 cooldown or `steal: none` dropped it, or no variant matched), `audio.stop("fx.swell")` (over its
 `fade: out`), `audio.stopAll()`, `audio.set("surface", "grass")`, `audio.soundNames()`. A name no
 bank has is an error. `builder.buildSounds("fx")` is the block as parsed, `soundBlockNames()` the
@@ -1634,7 +1637,7 @@ file at compile time and gives a constant per name, so a sound misspelt in code 
 `Sfx.SNAPSHOT_DIALOG` and `Sfx.PARAM_SURFACE` the bare names (upper case, anything not a letter or
 a digit an underscore). A `@:manim` programmable in a file with these blocks builds as it would
 without them. Hot reload takes a file's blocks again as it reloads (a bank of the same name
-replaced; one the file dropped stays until the game restarts). The mix keeps what the game set: the
+replaced; a `sounds` or `music` block the file dropped is removed). The mix keeps what the game set: the
 levels of the VCAs it still has and the snapshots on that it still has, and the screens' audio is
 applied again, so a `dialog` snapshot the reload adds goes on under an open dialog.
 

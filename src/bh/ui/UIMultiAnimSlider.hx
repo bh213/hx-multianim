@@ -243,8 +243,10 @@ class UIStandardMultiAnimSlider implements UIElement implements UIElementDisabla
 		this.requestRedraw = true;
 	}
 
+	/** The value, in `min`..`max`: one set before the range (a starting value) reads as the end it is
+	 *  past, as it is drawn. */
 	public function getFloatValue():Float {
-		return currentValue;
+		return hxd.Math.clamp(currentValue, min, max);
 	}
 
 	public function setIntValue(v:Int) {
@@ -252,6 +254,6 @@ class UIStandardMultiAnimSlider implements UIElement implements UIElementDisabla
 	}
 
 	public function getIntValue():Int {
-		return Std.int(Math.round(currentValue));
+		return Std.int(Math.round(getFloatValue()));
 	}
 }

@@ -131,16 +131,15 @@ class LogBackend implements AudioBackend {
 
 	public function update(dt:Float):Void {
 		time += dt;
-		var i = 0;
-		while (i < voices.length) {
-			final v = voices[i];
+		// in place: a splice makes an array of what it removes
+		var kept = 0;
+		for (v in voices) {
 			if (!isBusPaused(v.start.bus))
 				v.elapsed += dt;
 			if (v.isPlaying())
-				i++;
-			else
-				voices.splice(i, 1);
+				voices[kept++] = v;
 		}
+		voices.resize(kept);
 	}
 
 	/** The plays, of one sound when `sound` is given. */

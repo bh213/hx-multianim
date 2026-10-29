@@ -212,7 +212,7 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 					case MAInteractive(_, _, identifier, _): identifier;
 					default: null;
 				};
-				if (id == null || Std.parseInt(id) != index)
+				if (id != '$index')
 					throw 'list item #${itemBuilder.name} $index: an interactive in an item has the item\'s index as its id (interactive(w, h, $$index)), not "$id"';
 			}
 

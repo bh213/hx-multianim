@@ -110,6 +110,23 @@ class RegisteredNamesTest extends utest.Test {
 		restoreBuiltIn("move", builtIn);
 	}
 
+	@Test
+	public function testUnregisteringAnOsCursorsNameGivesTheOsCursorBack():Void {
+		final builtIn = CursorManager.getCursor("move");
+		try {
+			CursorManager.registerCursor("move", hxd.Cursor.Hide);
+			Assert.isTrue(CursorManager.unregisterCursor("move"), "the cursor registered under it is removed");
+			Assert.isTrue(Type.enumEq(builtIn, CursorManager.getCursor("move")), "and the OS cursor is the name's again");
+			Assert.isFalse(CursorManager.unregisterCursor("MOVE"), "the OS cursor itself is not unregistered");
+			Assert.isTrue(Type.enumEq(builtIn, CursorManager.getCursor("move")));
+			Assert.isNull(errorOf(() -> CursorManager.registerCursor("move", hxd.Cursor.Hide)), "the name may be taken again");
+		} catch (e:Dynamic) {
+			restoreBuiltIn("move", builtIn);
+			throw e;
+		}
+		restoreBuiltIn("move", builtIn);
+	}
+
 	static function restoreBuiltIn(name:String, cursor:hxd.Cursor):Void {
 		CursorManager.unregisterCursor(name);
 		@:privateAccess CursorManager.cursorRegistry.set(name, cursor);
@@ -132,6 +149,85 @@ class RegisteredNamesTest extends utest.Test {
 			throw e;
 		}
 		FontManager.unregisterFont("regFont");
+	}
+
+	@Test
+	public function testUnregisteringAFontTakesItsOffsetOff():Void {
+		final font = hxd.res.DefaultFont.get().clone();
+		final baseLine = font.baseLine;
+		final lineHeight = font.lineHeight;
+		final glyphDy = font.getChar("A".code).t.dy;
+		try {
+			FontManager.registerFont("regOffset", font, 1, 3);
+			Assert.equals(baseLine + 3, font.baseLine, "registered with an offset");
+			FontManager.unregisterFont("regOffset");
+			Assert.equals(baseLine, font.baseLine, "unregistered, the font is as it was");
+			Assert.equals(lineHeight, font.lineHeight);
+			Assert.equals(glyphDy, font.getChar("A".code).t.dy, "its glyphs too");
+			FontManager.registerFont("regOffset", font, 1, 3);
+			Assert.equals(baseLine + 3, font.baseLine, "registered again, the offset is applied once");
+			Assert.equals(lineHeight + 3, font.lineHeight);
+		} catch (e:Dynamic) {
+			FontManager.unregisterFont("regOffset");
+			throw e;
+		}
+		FontManager.unregisterFont("regOffset");
+	}
+
+	// ==================== Names a reload drops ====================
+
+	@Test
+	public function testAReloadThatDropsACursorFreesItsName():Void {
+		final builtIn = CursorManager.getCursor("move");
+		try {
+			fileBuilder("a.manim", '#c cursor {\nregTmp: generated(color(4, 4, #FF0000))\nmove: generated(color(4, 4, #FF0000))\n}').registerCursors();
+			fileBuilder("a.manim", '#c cursor { regCode: generated(color(4, 4, #FF0000)) }').registerCursors();
+			Assert.isNull(CursorManager.getCursor("regTmp"), "the file has it no more");
+			Assert.isNull(CursorManager.getTileCursor("regTmp"));
+			Assert.notNull(CursorManager.getCursor("regCode"), "what the file has now stays");
+			Assert.isTrue(Type.enumEq(builtIn, CursorManager.getCursor("move")), "an OS cursor's name is the OS cursor again");
+			Assert.isNull(errorOf(() -> fileBuilder("b.manim", CURSORS).registerCursors()), "another file may take the name");
+			Assert.isNull(errorOf(() -> fileBuilder("b.manim", '#c cursor { move: generated(color(4, 4, #00FF00)) }').registerCursors()),
+				"and the OS cursor's name");
+		} catch (e:Dynamic) {
+			teardownCursors();
+			restoreBuiltIn("move", builtIn);
+			throw e;
+		}
+		teardownCursors();
+		restoreBuiltIn("move", builtIn);
+	}
+
+	@Test
+	public function testAReloadThatDropsASoundsOrMusicBlockFreesItsName():Void {
+		final log = new LogBackend();
+		final audio = new Audio(log);
+		audio.addBanks(fileBuilder("a.manim", SOUNDS_A + '\n#music music { track title { file: "music/a.ogg" } }'));
+		audio.playMusic("music.title");
+		audio.addBanks(fileBuilder("a.manim", '#fx sounds { hit { file: "sound/hit.wav" } }'));
+		Assert.isFalse(audio.has("ui.click"), "the file has the bank no more");
+		Assert.isTrue(audio.has("fx.hit"), "what the file has now is taken");
+		Assert.same([], audio.trackNames(), "nor the music block");
+		Assert.isNull(audio.musicPlaying, "a track of it stops");
+		Assert.isNull(errorOf(() -> audio.addBanks(fileBuilder("b.manim", SOUNDS_B + '\n#music music { track title { file: "music/b.ogg" } }'))),
+			"another file may take the names");
+		audio.play("ui.click");
+		Assert.equals("sound/b_click.wav", log.plays("ui.click")[0].path);
+	}
+
+	@Test
+	public function testAMusicBlockCanBeRemoved():Void {
+		final audio = new Audio(new LogBackend());
+		final def = fileBuilder("a.manim", '#music music { track title { file: "music/a.ogg" } }').buildMusic("music");
+		audio.addMusic("music", def);
+		audio.playMusic("music.title");
+		Assert.isTrue(audio.removeMusic("music"));
+		Assert.isFalse(audio.removeMusic("music"), "gone already");
+		Assert.same([], audio.trackNames());
+		Assert.isNull(audio.musicPlaying, "its track playing stops");
+		Assert.isNull(errorOf(() -> audio.addBanks(fileBuilder("b.manim", '#music music { track title { file: "music/b.ogg" } }'))),
+			"a file may take the name code freed");
+		Assert.same(["music.title"], audio.trackNames());
 	}
 
 	// ==================== Sound banks and music blocks ====================

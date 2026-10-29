@@ -13,7 +13,8 @@ import bh.multianim.MultiAnimBuilder.BuilderResult;
  *   dynamicRef forward, and as an interactive id (whose param then cannot be set); a repeat
  *   count from a constant @final keeps the body's own params tracked;
  * - a @final names what a staticRef or dynamicRef places, and one that uses a param (declared
- *   in a nested block too) swaps the template when the param changes;
+ *   in a nested block too) swaps the template when the param changes; a constant one is placed
+ *   as by its name, with no container, in the builder as in codegen;
  * - a @final, a @switch or an unconditional apply between conditionals starts a fresh chain
  *   for a later @default, in codegen as in the builder;
  * - `bit[N]` tests int params and loop variables, and comparisons test a flags param's value,
@@ -194,6 +195,54 @@ class CodegenParityReviewTest extends BuilderTestBase {
 		Assert.equals("9x4;9x4;9x4;9x4", sizes(cast inst), "codegen: the staticRef and the dynamicRef of picked follow kind");
 		inst.setParameter("kind", "cpRefNarrow");
 		Assert.equals("9x4;3x4;9x4;3x4", sizes(cast inst), "codegen: and follow it back");
+	}
+
+	@Test
+	public function testADynamicRefOfAConstantFinalIsPlacedAsByItsName():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "cpFinalRefTarget", null, Incremental);
+		final inst:Dynamic = createMp().cpFinalRefTarget.create();
+		final builderRef:BuilderResult = result.getDynamicRef("cpRefWide");
+		final codegenRef:BuilderResult = inst.getDynamicRef("cpRefWide");
+		Assert.equals(depthUnder(codegenRef.object, cast inst), depthUnder(builderRef.object, result.object),
+			"dynamicRef($fixed) sits as deep in the builder's tree as in codegen's: no container for a template that never changes");
+		#if MULTIANIM_DEV
+		final ctx = result.incrementalContext;
+		Assert.equals(1, ctx == null ? -1 : ctx.getDynamicNameBindingsCount(), "builder: only $picked, which uses a param, follows one");
+		#end
+	}
+
+	@Test
+	public function testADynamicRefOfAFinalNoParamReachesHasNoContainer():Void {
+		final constBuilt = BuilderTestBase.buildFromFile(FIXTURE, "cpConstExprRef", null, Incremental);
+		final constInst:Dynamic = createMp().cpConstExprRef.create();
+		Assert.equals("9x4", sizes(cast constInst), "codegen: \"cpRef\" + \"Wide\" is cpRefWide");
+		Assert.equals(bitmapDepths(constBuilt.object), bitmapDepths(cast constInst),
+			"a constant expression: as deep in codegen's tree as in the builder's, no container");
+
+		final loopBuilt = BuilderTestBase.buildFromFile(FIXTURE, "cpLoopFinalRef", null, Incremental);
+		final loopInst:Dynamic = createMp().cpLoopFinalRef.create();
+		Assert.equals("3x4;9x4", sizes(cast loopInst), "codegen: each iteration's target");
+		// Measured against the same repeat placing a programmable by its name, in each backend
+		final namedBuilt = BuilderTestBase.buildFromFile(FIXTURE, "cpLoopNamedRef", null, Incremental);
+		final namedInst:Dynamic = createMp().cpLoopNamedRef.create();
+		Assert.equals(bitmapDepths(namedBuilt.object), bitmapDepths(loopBuilt.object), "builder: an @final of a loop variable is placed as by its name");
+		Assert.equals(bitmapDepths(cast namedInst), bitmapDepths(cast loopInst), "codegen: the same");
+	}
+
+	/** How deep under `root` each visible bitmap is. */
+	static function bitmapDepths(root:h2d.Object):String {
+		return [for (b in BuilderTestBase.findVisibleBitmapDescendants(root)) depthUnder(b, root)].join(",");
+	}
+
+	/** How many parents up from `o` `root` is (-1 when it is not above it). */
+	static function depthUnder(o:h2d.Object, root:h2d.Object):Int {
+		var depth = 0;
+		var n = o;
+		while (n != null && n != root) {
+			n = n.parent;
+			depth++;
+		}
+		return n == root ? depth : -1;
 	}
 
 	@Test

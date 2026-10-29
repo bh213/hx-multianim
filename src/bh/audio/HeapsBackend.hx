@@ -179,13 +179,12 @@ class HeapsBackend implements AudioBackend {
 	}
 
 	public function update(dt:Float):Void {
-		// hxd.snd.Manager updates itself from haxe.MainLoop; only the list of plays is kept short
-		var i = 0;
-		while (i < voices.length) {
-			if (voices[i].isPlaying())
-				i++;
-			else
-				voices.splice(i, 1);
-		}
+		// hxd.snd.Manager updates itself from haxe.MainLoop; only the list of plays is kept short,
+		// in place (a splice makes an array of what it removes)
+		var kept = 0;
+		for (v in voices)
+			if (v.isPlaying())
+				voices[kept++] = v;
+		voices.resize(kept);
 	}
 }

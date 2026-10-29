@@ -923,6 +923,15 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/164-codegenParityReview/codegenParityReview.manim", "cpFinalRefNested")
 	public var cpFinalRefNested;
 
+	@:manim("test/examples/164-codegenParityReview/codegenParityReview.manim", "cpConstExprRef")
+	public var cpConstExprRef;
+
+	@:manim("test/examples/164-codegenParityReview/codegenParityReview.manim", "cpLoopFinalRef")
+	public var cpLoopFinalRef;
+
+	@:manim("test/examples/164-codegenParityReview/codegenParityReview.manim", "cpLoopNamedRef")
+	public var cpLoopNamedRef;
+
 	@:manim("test/examples/163-refsSlotsReview/refsSlotsReview.manim", "rsExclRef")
 	public var rsExclRef;
 

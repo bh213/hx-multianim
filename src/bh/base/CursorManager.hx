@@ -10,19 +10,28 @@ class CursorManager {
 		if (initialized)
 			return;
 		initialized = true;
-		cursorRegistry.set("default", hxd.Cursor.Default);
-		cursorRegistry.set("pointer", hxd.Cursor.Button);
-		cursorRegistry.set("button", hxd.Cursor.Button);
-		cursorRegistry.set("move", hxd.Cursor.Move);
-		cursorRegistry.set("text", hxd.Cursor.TextInput);
-		cursorRegistry.set("hide", hxd.Cursor.Hide);
-		cursorRegistry.set("none", hxd.Cursor.Hide);
-		cursorRegistry.set("resize-ns", hxd.Cursor.ResizeNS);
-		cursorRegistry.set("resize-we", hxd.Cursor.ResizeWE);
-		cursorRegistry.set("resize-nwse", hxd.Cursor.ResizeNWSE);
-		cursorRegistry.set("resize-nesw", hxd.Cursor.ResizeNESW);
+		for (name in BUILT_IN_NAMES)
+			cursorRegistry.set(name, builtIn(name));
+	}
 
+	static final BUILT_IN_NAMES = [
+		"default", "pointer", "button", "move", "text", "hide", "none", "resize-ns", "resize-we", "resize-nwse", "resize-nesw"
+	];
 
+	/** The OS cursor a name stands for before anything is registered under it, or null. */
+	static function builtIn(key:String):Null<hxd.Cursor> {
+		return switch key {
+			case "default": hxd.Cursor.Default;
+			case "pointer" | "button": hxd.Cursor.Button;
+			case "move": hxd.Cursor.Move;
+			case "text": hxd.Cursor.TextInput;
+			case "hide" | "none": hxd.Cursor.Hide;
+			case "resize-ns": hxd.Cursor.ResizeNS;
+			case "resize-we": hxd.Cursor.ResizeWE;
+			case "resize-nwse": hxd.Cursor.ResizeNWSE;
+			case "resize-nesw": hxd.Cursor.ResizeNESW;
+			default: null;
+		}
 	}
 
 	/**
@@ -98,11 +107,33 @@ class CursorManager {
 		return Custom(new hxd.Cursor.CustomCursor([frame], 1, hotX, hotY));
 	}
 
+	/** Removes the cursor registered under `name` (any case), so the name may be registered again;
+	 *  an OS cursor's name (`move`, `pointer`, …) is the OS cursor again, never removed. Returns
+	 *  whether a cursor was removed: false for a name nothing is registered under, an OS cursor's
+	 *  that nothing replaced included. */
 	public static function unregisterCursor(name:String):Bool {
 		ensureInit();
-		tileCursors.remove(name.toLowerCase());
-		owners.remove(name.toLowerCase());
-		return cursorRegistry.remove(name.toLowerCase());
+		final key = name.toLowerCase();
+		tileCursors.remove(key);
+		final os = builtIn(key);
+		if (os == null) {
+			owners.remove(key);
+			return cursorRegistry.remove(key);
+		}
+		cursorRegistry.set(key, os);
+		return owners.remove(key);
+	}
+
+	/** Drops the cursors the file `source` registered that `keep` does not name (any case): what a
+	 *  reload of a file that has them no more leaves free for another file (`unregisterCursor`, so
+	 *  an OS cursor's name is the OS cursor again). Returns how many. */
+	public static function unregisterDroppedBy(source:String, keep:Array<String>):Int {
+		ensureInit();
+		final kept = [for (name in keep) name.toLowerCase()];
+		final dropped = [for (key => owner in owners) if (owner == source && !kept.contains(key)) key];
+		for (key in dropped)
+			unregisterCursor(key);
+		return dropped.length;
 	}
 
 	/** Every registered cursor name (the OS ones and the registered ones), sorted. */

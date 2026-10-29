@@ -4307,6 +4307,23 @@ class MultiAnimBuilder {
 		return out;
 	}
 
+	/** Whether `name` is a parameter of the programmable, or the parameterized slot, `node` is in
+	 *  (not a loop variable or a @final). */
+	static function isParameterAt(node:Node, name:String):Bool {
+		var n = node.parent;
+		while (n != null) {
+			switch n.type {
+				case PROGRAMMABLE(_, defs, _):
+					return defs.exists(name);
+				case SLOT(defs, _) if (defs != null):
+					return defs.exists(name);
+				default:
+			}
+			n = n.parent;
+		}
+		return false;
+	}
+
 	/** inScope for a tracked expression's update (no result). */
 	function runInScope(scope:Map<String, ResolvedIndexParameters>, fn:Void -> Void):Void {
 		for (k => v in indexedParams)
@@ -7275,10 +7292,14 @@ class MultiAnimBuilder {
 				HeapsObject(rebuilt != null ? rebuilt : object);
 
 			case DYNAMIC_REF(externalReference, progRefRV, parameters):
-				final isDynamicName = progRefRV.match(RVReference(_)) && indexedParams.exists(switch progRefRV {
-					case RVReference(r): r;
-					default: "";
-				});
+				// A $name a parameter can change (itself, or a @final that uses one) is wrapped and
+				// followed; a loop variable or a constant @final names one programmable, placed as
+				// by its name (as codegen places it)
+				final isDynamicName = switch progRefRV {
+					case RVReference(r) if (indexedParams.exists(r)):
+						Lambda.exists(expandFinalAliases([r]), t -> isParameterAt(node, t));
+					default: false;
+				};
 				final reference = resolveRefName(progRefRV);
 				var builder = importedBuilder(externalReference, node);
 				checkRefTarget(node, "dynamicRef", builder, progRefRV, reference);
@@ -11411,9 +11432,10 @@ class MultiAnimBuilder {
 	 *  its name, so `cursor => "name"` on an interactive and `CursorManager.getCursor(name)` find
 	 *  it. `ScreenManager.buildFromResource` does this when a file loads (and again on reload), for
 	 *  the files it imports too. A name another file (or code) registered is an error naming both;
-	 *  this file's own are replaced (`RegisteredNames`). */
+	 *  this file's own are replaced (`RegisteredNames`), and those it has no more are dropped. */
 	public function registerCursors():Int {
 		var count = 0;
+		final registered:Array<String> = [];
 		for (name in cursorBlockNames()) {
 			final node = multiParserResult.nodes.get(name);
 			if (node == null)
@@ -11431,11 +11453,13 @@ class MultiAnimBuilder {
 						} catch (e:String) {
 							throw builderErrorAt(node, 'cursor "${def.name}": $e', "cursor_tile");
 						}
+						registered.push(def.name);
 						count++;
 					}
 				default:
 			}
 		}
+		bh.base.CursorManager.unregisterDroppedBy(sourceName, registered);
 		return count;
 	}
 

@@ -5553,7 +5553,9 @@ class ProgrammableCodeGen {
 	}
 
 	/** `dynamicRef($name)` with `$name` a parameter, or a @final that uses parameters: the template
-	 *  is built again when any of them changes to name another programmable. */
+	 *  is built again when any of them changes to name another programmable. A @final no parameter
+	 *  reaches (a constant expression, one of a loop variable) names one programmable for good:
+	 *  placed as it is, with no container, as the builder places it. */
 	static function generateDynamicNameRefCreate(node:Node, fieldName:String, externalReference:Null<String>,
 			templateRV:ReferenceableValue, parameters:Map<String, ReferenceableValue>, pos:Position):CreateResult {
 		final fieldRef = macro $p{["this", fieldName]};
@@ -5580,16 +5582,25 @@ class ProgrammableCodeGen {
 			}
 		}
 		final extRefExpr:Expr = externalReference != null ? macro $v{externalReference} : macro null;
-		mapBuildExprs.push(macro {
-			final _templateName:String = $resolveNameExpr;
-			$p{["this", nameField]} = _templateName;
-			final _result = this._pb.buildDynamicRef(_templateName, _refParams, $extRefExpr, this._fireRebuildListeners, $v{currentProgrammableName});
-			final _container = new h2d.Object();
-			if (_result != null && _result.object != null) _container.addChild(_result.object);
-			$fieldRef = _container;
-			$p{["this", containerField]} = _container;
-			$p{["this", resultField]} = _result;
-		});
+		if (templateRefs.length > 0)
+			mapBuildExprs.push(macro {
+				final _templateName:String = $resolveNameExpr;
+				$p{["this", nameField]} = _templateName;
+				final _result = this._pb.buildDynamicRef(_templateName, _refParams, $extRefExpr, this._fireRebuildListeners, $v{currentProgrammableName});
+				final _container = new h2d.Object();
+				if (_result != null && _result.object != null) _container.addChild(_result.object);
+				$fieldRef = _container;
+				$p{["this", containerField]} = _container;
+				$p{["this", resultField]} = _result;
+			});
+		else
+			mapBuildExprs.push(macro {
+				final _templateName:String = $resolveNameExpr;
+				$p{["this", nameField]} = _templateName;
+				final _result = this._pb.buildDynamicRef(_templateName, _refParams, $extRefExpr, this._fireRebuildListeners, $v{currentProgrammableName});
+				$fieldRef = _result != null && _result.object != null ? _result.object : new h2d.Object();
+				$p{["this", resultField]} = _result;
+			});
 		createExprs.push(macro $b{mapBuildExprs});
 
 		// Generate rebuild expression for when the template param changes

@@ -3,9 +3,9 @@ package bh.base;
 /**
 	The rule every registry of names for the whole game keeps (`CursorManager`, the sound banks and
 	music blocks of `bh.audio.Audio`): a file that registers a name again replaces what it
-	registered, as a reload does; code (no file), or another file, registering a name already taken
-	is an error that names both. Fonts and custom filters come from code only, so a taken name is an
-	error there too, until it is unregistered.
+	registered, as a reload does, and the names it has no more are dropped; code (no file), or
+	another file, registering a name already taken is an error that names both. Fonts and custom
+	filters come from code only, so a taken name is an error there too, until it is unregistered.
 **/
 class RegisteredNames {
 	/** The error for `source` registering a `kind` called `name` that `owner` holds, or null when

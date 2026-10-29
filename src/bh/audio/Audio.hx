@@ -266,6 +266,7 @@ class Audio {
 		}
 		banks.set(name, def);
 		bankOwners.set(name, source);
+		sortedBankNames = null;
 		final own = new Map<String, BankParam>();
 		for (p in def.params) {
 			final was = kept != null && kept.exists(p.name) ? kept.get(p.name).value : null;
@@ -288,21 +289,29 @@ class Audio {
 		}
 	}
 
-	/** Every `sounds`, `mix` and `music` block of a file; returns how many. */
+	/** Every `sounds`, `mix` and `music` block of a file; returns how many. The `sounds` and `music`
+	 *  blocks the file took before and has no more (a reload) are removed, their names free again. */
 	public function addBanks(builder:MultiAnimBuilder):Int {
 		var n = 0;
+		final source = builder.sourceName;
 		for (block in builder.mixBlockNames()) {
 			addMix(block, builder.buildMix(block));
 			n++;
 		}
-		for (block in builder.musicBlockNames()) {
-			addMusic(block, builder.buildMusic(block), builder.sourceName);
+		final musicBlocks = builder.musicBlockNames();
+		for (block in musicBlocks) {
+			addMusic(block, builder.buildMusic(block), source);
 			n++;
 		}
-		for (block in builder.soundBlockNames()) {
-			addBank(block, builder.buildSounds(block), builder.sourceName);
+		final soundBlocks = builder.soundBlockNames();
+		for (block in soundBlocks) {
+			addBank(block, builder.buildSounds(block), source);
 			n++;
 		}
+		for (name in [for (name => owner in musicOwners) if (owner == source && !musicBlocks.contains(name)) name])
+			removeMusic(name);
+		for (name in [for (name => owner in bankOwners) if (owner == source && !soundBlocks.contains(name)) name])
+			removeBank(name);
 		return n;
 	}
 
@@ -314,6 +323,7 @@ class Audio {
 			return false;
 		bankOwners.remove(name);
 		bankParams.remove(name);
+		sortedBankNames = null;
 		var cut = 0;
 		for (i in instances)
 			if (i.bank == name && !i.isDone()) {
@@ -557,9 +567,7 @@ class Audio {
 			final clash = RegisteredNames.clash("music block", name, musicOwners.get(name), source);
 			if (clash != null)
 				throw 'audio: $clash';
-			for (full in [for (k in tracks.keys()) k])
-				if (StringTools.startsWith(full, '$name.'))
-					tracks.remove(full);
+			removeTracksOf(name);
 		}
 		musicOwners.set(name, source);
 		ensureBus(def.bus ?? MUSIC_BUS);
@@ -567,6 +575,24 @@ class Audio {
 			tracks.set('$name.${t.name}', {def: t, bus: def.bus ?? MUSIC_BUS});
 			backend.prepare(t.file);
 		}
+	}
+
+	/** Drops a `music` block, its name free again for a file or code; the music stops at once when
+	 *  one of its tracks plays. Returns whether the block was here. */
+	public function removeMusic(name:String):Bool {
+		if (!musicOwners.exists(name))
+			return false;
+		musicOwners.remove(name);
+		removeTracksOf(name);
+		if (musicPlaying != null && StringTools.startsWith(musicPlaying, '$name.'))
+			stopMusic(0);
+		return true;
+	}
+
+	function removeTracksOf(block:String):Void {
+		for (full in [for (k in tracks.keys()) k])
+			if (StringTools.startsWith(full, '$block.'))
+				tracks.remove(full);
 	}
 
 	/** Every track's full name, sorted. */
@@ -744,10 +770,16 @@ class Audio {
 		return out;
 	}
 
+	/** The banks' names, sorted, made again only after a bank is added or removed. */
+	var sortedBankNames:Null<Array<String>> = null;
+
 	function sortedBanks():Array<String> {
-		final names = [for (k in bankParams.keys()) k];
-		names.sort(Reflect.compare);
-		return names;
+		if (sortedBankNames == null) {
+			final names = [for (k in bankParams.keys()) k];
+			names.sort(Reflect.compare);
+			sortedBankNames = names;
+		}
+		return sortedBankNames;
 	}
 
 	// ---- Playing ----
@@ -902,32 +934,32 @@ class Audio {
 	public function update(dt:Float):Void {
 		time += dt;
 		backend.update(dt);
+		// Both lists are compacted in place: a splice makes an array of what it removes
+		var kept = 0;
 		var i = 0;
 		while (i < pending.length) {
-			final p = pending[i];
-			if (p.at <= time) {
-				pending.splice(i, 1);
-				if (p.release) {
-					// a cut sound (its bank taken again) has forgotten its stop layers
-					if (p.instance.releasePending > 0) {
-						@:privateAccess p.instance.releasePending--;
-						p.instance.addVoice(backend.play(p.start), true);
-					}
-				} else if (!p.instance.stopped) {
-					@:privateAccess p.instance.pending--;
-					p.instance.addVoice(backend.play(p.start), false);
+			final p = pending[i++];
+			if (p.at > time) {
+				pending[kept++] = p;
+				continue;
+			}
+			if (p.release) {
+				// a cut sound (its bank taken again) has forgotten its stop layers
+				if (p.instance.releasePending > 0) {
+					@:privateAccess p.instance.releasePending--;
+					p.instance.addVoice(backend.play(p.start), true);
 				}
-			} else {
-				i++;
+			} else if (!p.instance.stopped) {
+				@:privateAccess p.instance.pending--;
+				p.instance.addVoice(backend.play(p.start), false);
 			}
 		}
-		var j = 0;
-		while (j < instances.length) {
-			if (instances[j].isDone())
-				instances.splice(j, 1);
-			else
-				j++;
-		}
+		pending.resize(kept);
+		kept = 0;
+		for (instance in instances)
+			if (!instance.isDone())
+				instances[kept++] = instance;
+		instances.resize(kept);
 	}
 
 	// ---- Picking and rolling ----
@@ -954,7 +986,12 @@ class Audio {
 					bag = files.copy();
 					entry.bags[li] = bag;
 				}
-				bag.splice(Std.int(randomFunc() * bag.length) % bag.length, 1)[0];
+				// the last file takes the picked one's place: the bag is a set, and no array is made
+				final k = Std.int(randomFunc() * bag.length) % bag.length;
+				final picked = bag[k];
+				bag[k] = bag[bag.length - 1];
+				bag.pop();
+				picked;
 		}
 	}
 

@@ -357,3 +357,27 @@ layouts {
     dynamicRef($inner): 0, 0
   }
 }
+// An @final no parameter reaches that is not a plain string: placed as by its name, no container
+#cpConstExprRef programmable() {
+  @final joined = "cpRef" + "Wide"
+  dynamicRef($joined): 0, 0
+}
+// The same for an @final of a loop variable (a repeat unrolled at compile time)
+#cpLoopRef0 programmable() {
+  bitmap(generated(color(3, 4, #FFFFFF))): 0, 0
+}
+#cpLoopRef1 programmable() {
+  bitmap(generated(color(9, 4, #FFFFFF))): 0, 0
+}
+#cpLoopFinalRef programmable() {
+  repeatable($i, step(2, dy: 10)) {
+    @final target = "cpLoopRef" + $i
+    dynamicRef($target): 0, 0
+  }
+}
+// The same repeat placing a programmable by its name, to measure against
+#cpLoopNamedRef programmable() {
+  repeatable($i, step(2, dy: 10)) {
+    dynamicRef(cpLoopRef0): 0, 0
+  }
+}

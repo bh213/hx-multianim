@@ -700,6 +700,13 @@ class UIComponentTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testAListItemsInteractiveIdIsTheIndexExactly():Void {
+		final source = StringTools.replace(SCROLLABLE_LIST_MANIM, "interactive($itemWidth, 20, $index);",
+			"interactive($itemWidth, 20, '${index}abc');");
+		Assert.raises(() -> listFrom(source), null, "an id that starts with the index is not the index");
+	}
+
+	@Test
 	public function testAddSliderReadsInitialValue():Void {
 		final screen = new UITestScreen();
 		final builder = BuilderTestBase.builderFromSource(SLIDER_MANIM);
@@ -709,6 +716,21 @@ class UIComponentTest extends BuilderTestBase {
 			return;
 		}
 		Assert.isTrue(slider.getFloatValue() == 30, "the setting is the slider's value, in its own range");
+	}
+
+	@Test
+	public function testASlidersValueIsInTheRangeSetAfterIt():Void {
+		final builder = BuilderTestBase.builderFromSource(SLIDER_MANIM);
+		final made = UIStandardMultiAnimSlider.create(builder, "slider", 200, 50.0);
+		made.min = 0;
+		made.max = 20;
+		Assert.equals(20.0, made.getFloatValue(), "a value past the range set after it reads as the end it is past");
+		Assert.equals(20, made.getIntValue());
+
+		final screen = new UITestScreen();
+		final settings:Map<String, SettingValue> = ["min" => RSVFloat(10), "max" => RSVFloat(50)];
+		final added = @:privateAccess screen.addSlider(builder, settings, 80);
+		Assert.equals(50.0, added.getFloatValue(), "addSlider's initialValue argument, in the range of its settings");
 	}
 
 	// ============== Interactive Wrapper Tests ==============

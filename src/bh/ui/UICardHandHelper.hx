@@ -837,7 +837,7 @@ class UICardHandHelper implements UIHigherOrderComponent {
 				if (completed == null)
 					completed = [];
 				completed.push(anim);
-				activeAnimations.splice(i, 1);
+				activeAnimations.remove(anim); // at i; a splice makes an array of what it removes
 			}
 			i--;
 		}
@@ -1704,11 +1704,12 @@ class UICardHandHelper implements UIHigherOrderComponent {
 		var displaced:Array<ActiveAnimation> = null;
 		var i = activeAnimations.length - 1;
 		while (i >= 0) {
-			if (activeAnimations[i].entry == entry) {
+			final anim = activeAnimations[i];
+			if (anim.entry == entry) {
 				if (displaced == null)
 					displaced = [];
-				displaced.push(activeAnimations[i]);
-				activeAnimations.splice(i, 1);
+				displaced.push(anim);
+				activeAnimations.remove(anim);
 			}
 			i--;
 		}

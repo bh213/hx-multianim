@@ -578,8 +578,9 @@ class ScreenManager {
 	/** The `#name cursor { }` blocks of a loaded file and of the files it imports (theirs too, each
 	 *  once) registered by name, so interactives' `cursor =>` metadata and `CursorManager.getCursor`
 	 *  find them; their `sounds`, `music` and `mix` blocks taken by `audio`. A file taking its own
-	 *  names again (a reload) replaces them; a name another file (an import, the importer, any other
-	 *  file loaded) has is an error naming both (`RegisteredNames`). An import already taken is not
+	 *  names again (a reload) replaces them, and drops those it has no more; a name another file
+	 *  (an import, the importer, any other file loaded) has is an error naming both
+	 *  (`RegisteredNames`). An import already taken is not
 	 *  taken again, so reloading the file that imports it leaves its sounds playing. Returns how
 	 *  many audio blocks were taken. */
 	function takeFileBlocks(built:MultiAnimBuilder):Int {
@@ -1838,9 +1839,10 @@ class ScreenManager {
 		}
 
 		// 6. Replace cached builder; the file's cursors are registered again and its sounds, mix and
-		// music blocks taken again (a bank of the same name replaced; one the file dropped stays; the
-		// mix keeps its VCA levels and snapshots on). The screens' audio is applied again, as a mode
-		// change would: a `dialog` snapshot the reload added goes on under an open dialog.
+		// music blocks taken again (a bank of the same name replaced; a cursor, bank or music block
+		// the file dropped is removed, its name free; the mix keeps its VCA levels and snapshots on).
+		// The screens' audio is applied again, as a mode change would: a `dialog` snapshot the
+		// reload added goes on under an open dialog.
 		builders.set(fileEntry.resource, newBuilder);
 		loader.replaceMultiAnim(path, newBuilder);
 		if (takeFileBlocks(newBuilder) > 0)

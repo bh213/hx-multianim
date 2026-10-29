@@ -593,6 +593,20 @@ class AudioTest extends utest.Test {
 	}
 
 	@Test
+	public function testABareSetReachesTheBanksThereNow():Void {
+		final a = audio();
+		a.audio.set("surface", "grass");
+		a.audio.addBank("steps", BuilderTestBase.builderFromSource('#steps sounds { param surface: [sand, grass]  walk { file: "sound/walk.wav" } }')
+			.buildSounds("steps"), "steps.manim");
+		a.audio.set("surface", "grass");
+		Assert.equals("grass", a.audio.get("steps.surface"), "a bank taken after a set is reached by the next");
+		a.audio.removeBank("fx");
+		a.audio.set("surface", "sand");
+		Assert.equals("sand", a.audio.get("steps.surface"), "and one removed is not looked for");
+		Assert.isNull(a.audio.get("fx.surface"));
+	}
+
+	@Test
 	public function testABankLoadedAgainStopsItsHeldSounds():Void {
 		final a = held();
 		a.audio.play("eng.hum");
@@ -712,6 +726,34 @@ class AudioTest extends utest.Test {
 			Assert.equals(bh.audio.HeapsBackend.DEFAULT_BUS, backend.group(null).name, "no bus is the default group");
 			voice.stop(0);
 			Assert.isFalse(voice.isPlaying());
+		} catch (e:Dynamic) {
+			Assert.pass('no audio device here: $e');
+		}
+	}
+
+	@Test
+	public function testTheHeapsBackendForgetsThePlaysThatEnded():Void {
+		final loader = new CachingResourceLoader();
+		loader.loadHXDResourceImpl = name -> hxd.res.Any.fromBytes(name, silentWav(0.5));
+		final backend = new bh.audio.HeapsBackend(loader);
+		try {
+			function start(bus:String) {
+				return backend.play({
+					sound: "t.beep", layer: "", path: "sound/beep.wav", volume: 0.5, pitch: 1, bus: bus, priority: 1, fadeIn: 0, loop: true
+				});
+			}
+			final a = start("sfx");
+			final b = start("sfx");
+			final c = start("ui");
+			b.stop(0);
+			backend.update(0);
+			final kept:Array<bh.audio.AudioBackend.AudioVoice> = cast @:privateAccess backend.voices;
+			Assert.equals(2, kept.length, "the stopped play is forgotten");
+			Assert.isTrue(kept[0] == a && kept[1] == c, "the others kept, in order");
+			a.stop(0);
+			c.stop(0);
+			backend.update(0);
+			Assert.equals(0, @:privateAccess backend.voices.length);
 		} catch (e:Dynamic) {
 			Assert.pass('no audio device here: $e');
 		}
