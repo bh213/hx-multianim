@@ -1,5 +1,6 @@
 package bh.base;
 
+import bh.base.TileGrid.TileGridKind;
 import bh.multianim.BuilderError;
 import bh.multianim.MultiAnimBuilder.BuilderResolvedSettings;
 import bh.multianim.MultiAnimParser.AutotileFormat;
@@ -26,6 +27,12 @@ typedef TileMapTiles = {
 		wherever it is in the map.
 	**/
 	var autotile:(name:String, grid:Array<Array<Int>>, where:Null<Array<Array<Int>>>, x0:Int, y0:Int) -> h2d.TileGroup;
+
+	/**
+		The same over the isometric or hex grid a map's tileset says: each tile put on its cell (or
+		corner) as the grid puts a frame (`TileGrid.frameX`). A map off the square grid uses this.
+	**/
+	var ?autotileOn:(name:String, grid:Array<Array<Int>>, where:Null<Array<Array<Int>>>, x0:Int, y0:Int, on:TileGrid) -> h2d.TileGroup;
 
 	/** An autotile's format, which says what its positions are; throws for a name the file has not. **/
 	var autotileFormat:(name:String) -> AutotileFormat;
@@ -161,7 +168,12 @@ class TileMap extends h2d.Object {
 	/** The .manim file it was read from. **/
 	public var sourceName(default, null):String;
 
+	/** A cell's width in pixels: the grid's `tileWidth` (the square's side on a square grid). **/
 	public var tileSize(default, null):Int = 0;
+
+	/** The grid the tileset lays its tiles on (`grid:`): where every cell is on screen, and its neighbours. **/
+	public var grid(default, null):TileGrid;
+
 	public var width(default, null):Int = 0;
 	public var height(default, null):Int = 0;
 
@@ -308,6 +320,9 @@ class TileMap extends h2d.Object {
 	// What a terrain's transitions are found once of: one a format, however many formats there are
 	static final FORMAT_COUNT = Type.getEnumConstructs(AutotileFormat).length;
 	static final scratchPoint = new h2d.col.Point();
+	// Written and read within one call, as `sceneRect` is: culling off the square grid
+	static final scratchCell = new h2d.col.IPoint();
+	static final scratchBounds = new h2d.col.Bounds();
 	// One rectangle for the scene's view, written by `localRectOf` and read by `applyCulling` in the
 	// same call, which runs no callbacks: `sync` is single-threaded and never re-enters it. Never
 	// kept past that call (`cullRect` is the map's own).
@@ -353,7 +368,8 @@ class TileMap extends h2d.Object {
 		this.def = copyOf(def);
 		this.tileset = tileset;
 		this.tiles = tiles;
-		tileSize = tileset.tileSize;
+		grid = TileGrid.of(tileset.grid, tileset.tileSize, tileset.tileOffsetX, tileset.tileOffsetY);
+		tileSize = grid.tileWidth;
 		width = def.width;
 		height = def.height;
 		terrainMetadata = [for (t in tileset.terrains) tiles.metadata(t.metadata)];
@@ -422,7 +438,7 @@ class TileMap extends h2d.Object {
 				final reach = reachOf(e);
 				if (reach > objectReach) objectReach = reach;
 			}
-		cullMargin = (1 + objectReach) * tileSize;
+		cullMargin = grid.kind == Orthogonal ? (1 + objectReach) * tileSize : marginOffGrid();
 		readRises();
 		makePasses();
 		makeChunks();
@@ -441,6 +457,9 @@ class TileMap extends h2d.Object {
 		atLeast(w - 1 - e.anchorX);
 		atLeast(e.anchorY);
 		atLeast(h - 1 - e.anchorY);
+		// off the square grid a frame's reach is in pixels, in `marginOffGrid`
+		if (grid.kind != Orthogonal)
+			return reach;
 		for (f in e.frames) {
 			atLeast(e.anchorX - Math.floor(f.dx / tileSize));
 			atLeast(Math.ceil((f.dx + f.width) / tileSize) - 1 - e.anchorX);
@@ -448,6 +467,36 @@ class TileMap extends h2d.Object {
 			atLeast(Math.ceil((f.dy + f.height) / tileSize) - 1 - e.anchorY);
 		}
 		return reach;
+	}
+
+	/**
+		How far past a chunk's cells what it draws may reach, in pixels, on the isometric and hex
+		grids: a frame stands on its cell and may be taller and wider than it, an object of several
+		cells reaches past its anchor, a raised cell is drawn higher, and the tileset's `tileOffset`
+		moves them all. Generous: a chunk shown a little early costs nothing drawn.
+	**/
+	function marginOffGrid():Int {
+		var frame = 0.0;
+		inline function atLeast(f:h2d.Tile) {
+			if (f.width > frame) frame = f.width;
+			if (f.height > frame) frame = f.height;
+		}
+		for (entries in layerEntries)
+			for (e in entries)
+				for (f in e.frames)
+					atLeast(f);
+		for (frames in terrainFrames)
+			if (frames != null)
+				for (f in frames)
+					atLeast(f);
+		final cell = grid.tileWidth > grid.tileHeight ? grid.tileWidth : grid.tileHeight;
+		final offset = Math.abs(grid.offsetX) + Math.abs(grid.offsetY);
+		return Math.ceil((2 + objectReach) * cell + frame + offset + liftMargin());
+	}
+
+	/** How high the highest level a map may have lifts a cell (none on the square grid). **/
+	function liftMargin():Float {
+		return 0;
 	}
 
 	/**
@@ -601,14 +650,19 @@ class TileMap extends h2d.Object {
 		return chunks[row * chunkCols + col].shown;
 	}
 
-	/** The cell a point of the map is in (pixels, in the map's own coordinates). **/
+	/** The cell a point of the map is in (pixels, in the map's own coordinates), as its grid lays the cells. **/
 	public function toCell(x:Float, y:Float):h2d.col.IPoint {
-		return new h2d.col.IPoint(Math.floor(x / tileSize), Math.floor(y / tileSize));
+		return grid.toCell(x, y);
 	}
 
-	/** A cell's top-left corner, in pixels. **/
+	/** A cell's top-left corner, in pixels: its box's, a diamond's or a hex's on those grids (`TileGrid.toPixel`). **/
 	public function toPixel(cx:Int, cy:Int):h2d.col.Point {
-		return new h2d.col.Point(cx * tileSize, cy * tileSize);
+		return grid.toPixel(cx, cy);
+	}
+
+	/** The middle of a cell, in pixels: where an actor standing on it has its feet (`TileGrid.center`). **/
+	public function centerOf(cx:Int, cy:Int):h2d.col.Point {
+		return grid.center(cx, cy);
 	}
 
 	public function inside(cx:Int, cy:Int):Bool {
@@ -932,6 +986,7 @@ class TileMap extends h2d.Object {
 			width: width,
 			height: height,
 			tileSize: tileSize,
+			grid: grid.describe(),
 			tileset: def.tileset,
 			legend: mapToObject(def.legend),
 			terrain: def.terrain.copy(),
@@ -1028,11 +1083,31 @@ class TileMap extends h2d.Object {
 		// the columns and rows of chunks the view may reach: a corner autotile reaches half a tile
 		// past its cells, and an object of several cells as far past its anchor as it covers or
 		// its image does, so a chunk within that of the view is shown (`cullMargin`)
-		final side = chunkSize * tileSize;
-		var col0 = Math.floor((view.x - cullMargin) / side);
-		var col1 = Math.floor((view.x + view.w + cullMargin) / side);
-		var row0 = Math.floor((view.y - cullMargin) / side);
-		var row1 = Math.floor((view.y + view.h + cullMargin) / side);
+		var col0, col1, row0, row1;
+		if (grid.kind == Orthogonal) {
+			final side = chunkSize * tileSize;
+			col0 = Math.floor((view.x - cullMargin) / side);
+			col1 = Math.floor((view.x + view.w + cullMargin) / side);
+			row0 = Math.floor((view.y - cullMargin) / side);
+			row1 = Math.floor((view.y + view.h + cullMargin) / side);
+		} else {
+			// the cells at the corners of the view and its margin; a diamond or a band of hexes in
+			// view lies within the rectangle of cells they span
+			var cx0 = 0x7FFFFFFF, cy0 = 0x7FFFFFFF, cx1 = -0x7FFFFFFF, cy1 = -0x7FFFFFFF;
+			final p = scratchCell;
+			for (corner in 0...4) {
+				grid.toCell(corner & 1 == 0 ? view.x - cullMargin : view.x + view.w + cullMargin,
+					corner < 2 ? view.y - cullMargin : view.y + view.h + cullMargin, p);
+				if (p.x < cx0) cx0 = p.x;
+				if (p.x > cx1) cx1 = p.x;
+				if (p.y < cy0) cy0 = p.y;
+				if (p.y > cy1) cy1 = p.y;
+			}
+			col0 = chunkOf(cx0 - 1);
+			col1 = chunkOf(cx1 + 1);
+			row0 = chunkOf(cy0 - 1);
+			row1 = chunkOf(cy1 + 1);
+		}
 		if (col0 < 0) col0 = 0;
 		if (row0 < 0) row0 = 0;
 		if (col1 >= chunkCols) col1 = chunkCols - 1;
@@ -1058,9 +1133,13 @@ class TileMap extends h2d.Object {
 	}
 
 	/** Whether a view reaches a chunk: within `cullMargin` of its cells, as far as what it draws reaches past them. **/
-	inline function inView(c:Chunk, view:PixelRect):Bool {
-		return c.rect.x1 * tileSize + cullMargin > view.x && c.rect.x0 * tileSize - cullMargin < view.x + view.w
-			&& c.rect.y1 * tileSize + cullMargin > view.y && c.rect.y0 * tileSize - cullMargin < view.y + view.h;
+	function inView(c:Chunk, view:PixelRect):Bool {
+		if (grid.kind == Orthogonal)
+			return c.rect.x1 * tileSize + cullMargin > view.x && c.rect.x0 * tileSize - cullMargin < view.x + view.w
+				&& c.rect.y1 * tileSize + cullMargin > view.y && c.rect.y0 * tileSize - cullMargin < view.y + view.h;
+		final b = grid.bounds(c.rect.x0, c.rect.y0, c.rect.x1, c.rect.y1, scratchBounds);
+		return b.xMax + cullMargin > view.x && b.xMin - cullMargin < view.x + view.w && b.yMax + cullMargin > view.y
+			&& b.yMin - cullMargin < view.y + view.h;
 	}
 
 	/** Shows or hides a chunk: its parts of the passes and its objects among the actors. **/
@@ -1311,7 +1390,7 @@ class TileMap extends h2d.Object {
 					x1: c.rect.x1 == width ? width + 1 : c.rect.x1,
 					y1: c.rect.y1 == height ? height + 1 : c.rect.y1,
 				};
-			case Cross | Blob47: c.rect;
+			case Cross | Blob47 | Hex64: c.rect;
 		};
 	}
 
@@ -1330,7 +1409,7 @@ class TileMap extends h2d.Object {
 			for (cx in r.x0...r.x1) {
 				final drawn = switch format {
 					case Corner: Autotile.getCornerIndex(mask, cx - ox, cy - oy) != 0;
-					case Cross | Blob47: Autotile.isFilled(mask, cx - ox, cy - oy);
+					case Cross | Blob47 | Hex64: Autotile.isFilled(mask, cx - ox, cy - oy);
 				};
 				if (drawn) {
 					row[cx - ox] = 1;
@@ -1349,8 +1428,10 @@ class TileMap extends h2d.Object {
 				final groups = new TileGroups(this, c, i);
 				for (cy in c.rect.y0...c.rect.y1)
 					for (cx in c.rect.x0...c.rect.x1)
-						if (terrainIndex[cy * width + cx] >= i)
-							groups.add(cx * tileSize, cy * tileSize, frames[Autotile.variantAt(cx, cy, frames.length)]);
+						if (terrainIndex[cy * width + cx] >= i) {
+							final f = frames[Autotile.variantAt(cx, cy, frames.length)];
+							groups.add(grid.frameX(cx, cy, f.width), grid.frameY(cx, cy, f.height), f);
+						}
 				continue;
 			}
 			if (terrain.autotiles.length == 0)
@@ -1370,7 +1451,7 @@ class TileMap extends h2d.Object {
 			final meetingFound:Array<Array<Bool>> = [for (_ in transitions) [for (_ in 0...FORMAT_COUNT) false]];
 			final frameGroups:Array<h2d.Object> = [];
 			for (k in 0...terrain.autotiles.length) {
-				final ownGroup = tiles.autotile(terrain.autotiles[k], mask, ownWhere, passRect.x0, passRect.y0);
+				final ownGroup = autotileGroup(terrain.autotiles[k], mask, ownWhere, passRect.x0, passRect.y0);
 				if (transitions.length == 0) {
 					frameGroups.push(ownGroup);
 					continue;
@@ -1387,7 +1468,7 @@ class TileMap extends h2d.Object {
 					}
 					final where = meeting[ti][fi];
 					if (where != null)
-						frame.addChild(tiles.autotile(autotile, mask, where, passRect.x0, passRect.y0));
+						frame.addChild(autotileGroup(autotile, mask, where, passRect.x0, passRect.y0));
 				}
 				frameGroups.push(frame);
 			}
@@ -1399,6 +1480,12 @@ class TileMap extends h2d.Object {
 				c.animated.push({terrain: i, frames: frameGroups});
 			}
 		}
+	}
+
+	/** An autotile over a pass's mask, its tiles put on the map's grid. **/
+	function autotileGroup(name:String, mask:Array<Array<Int>>, where:Null<Array<Array<Int>>>, x0:Int, y0:Int):h2d.TileGroup {
+		final on = tiles.autotileOn;
+		return grid.kind == Orthogonal || on == null ? tiles.autotile(name, mask, where, x0, y0) : on(name, mask, where, x0, y0, grid);
 	}
 
 	/** The index of a terrain of the tileset, -1 for `none` (null, or a name it has not). **/
@@ -1423,6 +1510,7 @@ class TileMap extends h2d.Object {
 		var any = false;
 		// the cells around a position: the four about a corner, the nine about a cell
 		final corner = format == Corner;
+		final hexGrid = grid.kind == Hex;
 		final d0 = -1;
 		final d1 = corner ? 1 : 2;
 		for (cy in r.y0...r.y1) {
@@ -1433,16 +1521,23 @@ class TileMap extends h2d.Object {
 				var insideCount = 0;
 				var outsideCount = 0;
 				var other = false;
-				for (dy in d0...d1)
-					for (dx in d0...d1) {
-						final t = terrainAtCell(cx + dx, cy + dy);
-						if (t >= i)
-							insideCount++;
-						else if (t == from)
-							outsideCount++;
-						else
-							other = true;
-					}
+				inline function count(t:Int) {
+					if (t >= i)
+						insideCount++;
+					else if (t == from)
+						outsideCount++;
+					else
+						other = true;
+				}
+				if (hexGrid && !corner) {
+					// a hex and its six neighbours
+					count(terrainAtCell(cx, cy));
+					for (d in 0...6)
+						count(terrainAtCell(grid.neighbourX(cx, cy, d), grid.neighbourY(cx, cy, d)));
+				} else
+					for (dy in d0...d1)
+						for (dx in d0...d1)
+							count(terrainAtCell(cx + dx, cy + dy));
 				if (!other && insideCount > 0 && outsideCount > 0) {
 					row[cx - ox] = 1;
 					any = true;
@@ -1475,7 +1570,7 @@ class TileMap extends h2d.Object {
 				final format = tiles.autotileFormat(name);
 				final where = rimPositions(mask, name, format, positionsOf(c, format));
 				if (where != null)
-					partOf(c, edgePass).addChild(tiles.autotile(name, mask, where, passRect.x0, passRect.y0));
+					partOf(c, edgePass).addChild(autotileGroup(name, mask, where, passRect.x0, passRect.y0));
 			}
 		}
 		// Every platform's top: its own autotile over all of it, on whatever terrain is under it
@@ -1491,7 +1586,7 @@ class TileMap extends h2d.Object {
 					continue;
 				final where = drawnPositions(mask, format, positionsOf(c, format));
 				if (where != null)
-					partOf(c, edgePass).addChild(tiles.autotile(edge, mask, where, passRect.x0, passRect.y0));
+					partOf(c, edgePass).addChild(autotileGroup(edge, mask, where, passRect.x0, passRect.y0));
 			}
 		}
 		scanRises(c, new TileGroups(this, c, sidePass));
@@ -1581,7 +1676,8 @@ class TileMap extends h2d.Object {
 						if (groups != null) {
 							if (frames == null)
 								frames = pieceFramesOf(sidePiece(rise, before, after, along));
-							groups.add(sx * tileSize, sy * tileSize, frames[k < frames.length ? k : frames.length - 1]);
+							final f = frames[k < frames.length ? k : frames.length - 1];
+							groups.add(grid.frameX(sx, sy, f.width), grid.frameY(sx, sy, f.height), f);
 						}
 						sides[sy * width + sx] = levels;
 						sideRises[sy * width + sx] = index;
@@ -1637,12 +1733,17 @@ class TileMap extends h2d.Object {
 							if (edge == null) edge = edgeOfCell(cx - 1, cy - 1);
 						}
 						count > 0 && count < 4 && edge == name;
-					case Cross | Blob47:
+					case Cross | Blob47 | Hex64:
 						var rim = false;
-						if (filled(cx, cy) && edgeOfCell(cx, cy) == name)
-							for (dy in -1...2)
-								for (dx in -1...2)
-									if (!filled(cx + dx, cy + dy)) rim = true;
+						if (filled(cx, cy) && edgeOfCell(cx, cy) == name) {
+							if (grid.kind == Hex) {
+								for (d in 0...6)
+									if (!filled(grid.neighbourX(cx, cy, d), grid.neighbourY(cx, cy, d))) rim = true;
+							} else
+								for (dy in -1...2)
+									for (dx in -1...2)
+										if (!filled(cx + dx, cy + dy)) rim = true;
+						}
 						rim;
 				};
 				if (rim) {
@@ -1753,17 +1854,34 @@ class TileMap extends h2d.Object {
 					final entry = entries[e];
 					final frames = entry.frames;
 					final tile = frames[Autotile.variantAt(cx, cy, frames.length)];
-					// an object of several cells is drawn from its top-left, the layer's character at its anchor
-					final x = (cx - entry.anchorX) * tileSize;
-					final y = (cy - entry.anchorY) * tileSize;
+					// an object of several cells is drawn from its top-left, the layer's character at its
+					// anchor; off the square grid it stands on its footprint's box
+					var x:Float, y:Float;
+					var footY = 0.0;
+					if (grid.kind == Orthogonal) {
+						x = (cx - entry.anchorX) * tileSize;
+						y = (cy - entry.anchorY) * tileSize;
+					} else {
+						final r = footprintOf(entry.cell, cx, cy);
+						final box = grid.bounds(r.x0, r.y0, r.x1, r.y1, scratchBounds);
+						x = grid.frameLeft(box.xMin, tile.width, box.width);
+						y = grid.frameTop(box.yMin, tile.height, box.height);
+						footY = (box.yMin + box.yMax) / 2;
+					}
 					switch entry.draw {
 						case "actors":
-							// among the actors, standing on its feet: its y is its bottom edge, which sorts it
+							// among the actors, standing on its feet: its y is its bottom edge, which sorts
+							// it; off the square grid, the middle of its footprint's box
 							final t = tile.clone();
-							t.dy -= t.height;
 							final sprite = new h2d.Bitmap(t);
 							sprite.x = x;
-							sprite.y = y + t.height;
+							if (grid.kind == Orthogonal) {
+								t.dy -= t.height;
+								sprite.y = y + t.height;
+							} else {
+								t.dy += y - footY;
+								sprite.y = footY;
+							}
 							sprite.visible = c.shown;
 							actors.add(sprite, 0);
 							c.objects.push(sprite);

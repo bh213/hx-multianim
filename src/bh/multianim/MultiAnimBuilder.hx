@@ -9616,11 +9616,17 @@ class MultiAnimBuilder {
 	 *   half a tile, so its tiles extend half a tile past the grid edge. An index with several tiles
 	 *   (`mapping: [15: 7 | 8 | 9]`) draws one of them by position, the same every time.
 	 */
-	public function buildAutotile(name:String, grid:Array<Array<Int>>, ?where:Array<Array<Int>>, x0 = 0, y0 = 0):h2d.TileGroup {
+	public function buildAutotile(name:String, grid:Array<Array<Int>>, ?where:Array<Array<Int>>, x0 = 0, y0 = 0, ?on:bh.base.TileGrid):h2d.TileGroup {
 		final at = getAutotileDef(name);
 		final tiles = getAutotileTiles(name, at.node, at.def);
 		final tileSize = resolveAsInteger(at.def.tileSize);
 		final tileGroup = new h2d.TileGroup();
+		// Off the square grid (`on`, a map's isometric or hex grid) a tile is put on its cell's or
+		// corner's box as the grid puts a frame, and drawn unturned: a quarter turn of a diamond or
+		// a hex is not one
+		// a hex64 autotile built alone (no map) is laid on pointy hexes of its tileSize, odd rows pushed
+		final cell:bh.base.TileGrid = on != null ? on : (at.def.format == AutotileFormat.Hex64 ? new bh.base.TileGrid(bh.base.TileGrid.TileGridKind.Hex, tileSize, tileSize) : bh.base.TileGrid.square(tileSize));
+		final offGrid = cell.kind != bh.base.TileGrid.TileGridKind.Orthogonal;
 		// A tile at (x, y), turned as its mapping says: a quarter turn is drawn about the tile's
 		// centre, so its origin moves to the corner that ends up at the top left
 		function place(index:Int, px:Int, py:Int, x:Float, y:Float):Void {
@@ -9628,6 +9634,14 @@ class MultiAnimBuilder {
 			if (variants == null)
 				return;
 			final v = variants[bh.base.Autotile.variantAt(px, py, variants.length)];
+			if (offGrid) {
+				if (at.def.format == AutotileFormat.Corner)
+					tileGroup.add(cell.frameLeft(cell.cornerX(px, py), v.tile.width, cell.tileWidth),
+						cell.frameTop(cell.cornerY(px, py), v.tile.height, cell.tileHeight), v.tile);
+				else
+					tileGroup.add(cell.frameX(px, py, v.tile.width), cell.frameY(px, py, v.tile.height), v.tile);
+				return;
+			}
 			switch v.rotation {
 				case 0: tileGroup.add(x, y, v.tile);
 				case 1: tileGroup.addTransform(x + tileSize, y, 1, 1, Math.PI / 2, v.tile);
@@ -9651,6 +9665,18 @@ class MultiAnimBuilder {
 						if (index == 0)
 							continue; // no filled cell around this corner
 						place(index, cx + x0, cy + y0, (cx + x0) * tileSize - half, (cy + y0) * tileSize - half);
+					}
+				}
+			case Hex64:
+				final rows = where != null ? where.length : grid.length;
+				for (y in 0...rows) {
+					final cols = where != null ? where[y].length : (y < grid.length ? grid[y].length : 0);
+					for (x in 0...cols) {
+						if (where != null && where[y][x] == 0)
+							continue;
+						if (!bh.base.Autotile.isFilled(grid, x, y))
+							continue;
+						place(bh.base.Autotile.getHexIndex(grid, x, y, cell, x0, y0), x + x0, y + y0, 0, 0);
 					}
 				}
 			case Cross | Blob47:
@@ -9944,6 +9970,7 @@ class MultiAnimBuilder {
 		final ts = tsBuilder.getTilesetDef(def.tileset).def;
 		final tiles:bh.base.TileMap.TileMapTiles = {
 			autotile: (autotileName, grid, where, x0, y0) -> tsBuilder.buildAutotile(autotileName, grid, where, x0, y0),
+			autotileOn: (autotileName, grid, where, x0, y0, on) -> tsBuilder.buildAutotile(autotileName, grid, where, x0, y0, on),
 			autotileFormat: autotileName -> tsBuilder.autotileFormat(autotileName),
 			frames: (sheet, cell) -> tsBuilder.atlasTiles(sheet, cell),
 			// a layer's own sheet is the map's, written in this file
@@ -10000,8 +10027,9 @@ class MultiAnimBuilder {
 				if (!has(sheet, cell, layersOwn))
 					throw builderErrorAt(node, 'tilemap $name: layer ${l.name}: "$c" is $cell, which sheet $sheet has not', "tilemap_missing_cell");
 				// an object of several cells is as big as its size says, in every frame
+				// (on the square grid: off it an object's frame stands on its footprint, as tall as it is)
 				final sized = Lambda.find(ts.cells, x -> x.name == cell && x.width != null);
-				if (sized != null) {
+				if (sized != null && (ts.grid == null || ts.grid.kind == "orthogonal")) {
 					final w = (sized.width ?? 1) * ts.tileSize;
 					final h = (sized.height ?? 1) * ts.tileSize;
 					final frames = framesIn(sheet, cell, layersOwn);
@@ -10059,6 +10087,7 @@ class MultiAnimBuilder {
 			case Cross: bh.base.Autotile.CROSS_TILE_COUNT;
 			case Blob47: bh.base.Autotile.BLOB47_TILE_COUNT;
 			case Corner: bh.base.Autotile.CORNER_TILE_COUNT;
+			case Hex64: bh.base.Autotile.HEX64_TILE_COUNT;
 		};
 	}
 
@@ -10067,6 +10096,7 @@ class MultiAnimBuilder {
 			case Cross: "cross";
 			case Blob47: "blob47";
 			case Corner: "corner";
+			case Hex64: "hex64";
 		};
 	}
 
@@ -10110,7 +10140,7 @@ class MultiAnimBuilder {
 		}
 
 		final optionalIndex = format == AutotileFormat.Corner ? 0 : -1;
-		final partial = format == AutotileFormat.Blob47 && def.allowPartialMapping == true;
+		final partial = (format == AutotileFormat.Blob47 || format == AutotileFormat.Hex64) && def.allowPartialMapping == true;
 		final alternates = def.alternates;
 		final transforms = def.transforms;
 		// Every source index an autotile index draws from: mapping's, then its alternates; and how
@@ -10129,14 +10159,14 @@ class MultiAnimBuilder {
 		for (i in 0...count) {
 			var found = sourcesOf(i);
 			if (found == null && partial)
-				found = sourcesOf(bh.base.Autotile.applyBlob47FallbackWithMap(i, mapping));
+				found = sourcesOf(format == AutotileFormat.Hex64 ? bh.base.Autotile.getHex64FallbackChain(i, mapping).result : bh.base.Autotile.applyBlob47FallbackWithMap(i, mapping));
 			if (found == null) {
 				if (i == optionalIndex) {
 					tiles.push(null);
 					continue;
 				}
 				final where = explicitMapping != null ? "mapping: has no entry for it" : '${source.desc} does not provide it';
-				final hint = format == AutotileFormat.Blob47 ? " (or set allowPartialMapping: true to use the closest mapped tile)" : "";
+				final hint = format == AutotileFormat.Blob47 || format == AutotileFormat.Hex64 ? " (or set allowPartialMapping: true to use the closest mapped tile)" : "";
 				throw builderErrorAt(node, 'autotile "$name": no tile for $formatName index $i - $where$hint', "autotile_missing_tile");
 			}
 			final variants:Array<AutotileTile> = [];
@@ -10383,6 +10413,7 @@ class MultiAnimBuilder {
 			case Blob47: bh.base.Autotile.getBlob47Mask(tileIndex);
 			case Cross: crossDemoMask(tileIndex);
 			case Corner: 0; // not used — corner demo tiles are drawn by quadrant
+			case Hex64: hexDemoMask(tileIndex);
 		};
 		final hasN = (mask & bh.base.Autotile.N) != 0;
 		final hasE = (mask & bh.base.Autotile.E) != 0;
@@ -10405,6 +10436,16 @@ class MultiAnimBuilder {
 	 * outer, 9-12 inner NE/NW/SE/SW). Edge/outer tiles carry the diagonals between the sides they
 	 * have, so only the inner tiles show a notch.
 	 */
+	/** A hex64 demo tile drawn as a square one: a border on each side whose hexes are missing (N for NE and NW, S for SE and SW on a pointy hex). */
+	static function hexDemoMask(tileIndex:Int):Int {
+		var mask = 0;
+		if (tileIndex & 1 != 0 && tileIndex & 32 != 0) mask |= bh.base.Autotile.N;
+		if (tileIndex & 2 != 0) mask |= bh.base.Autotile.E;
+		if (tileIndex & 4 != 0 && tileIndex & 8 != 0) mask |= bh.base.Autotile.S;
+		if (tileIndex & 16 != 0) mask |= bh.base.Autotile.W;
+		return mask;
+	}
+
 	static function crossDemoMask(tileIndex:Int):Int {
 		final n = bh.base.Autotile.N;
 		final ne = bh.base.Autotile.NE;

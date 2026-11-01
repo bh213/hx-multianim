@@ -7136,8 +7136,11 @@ class MacroManimParser {
 						case TIdentifier(s2) if (isKeyword(s2, "corner")):
 							advance();
 							format = Corner;
+						case TIdentifier(s2) if (isKeyword(s2, "hex64")):
+							advance();
+							format = Hex64;
 						default:
-							error("expected cross, blob47 or corner");
+							error("expected cross, blob47, corner or hex64");
 					}
 				case TIdentifier(s) if (isKeyword(s, "sheet")):
 					advance();
@@ -7242,8 +7245,8 @@ class MacroManimParser {
 				default: error("autotile margin: and spacing: only apply to a file: source (an atlas names its tiles where they are)");
 			}
 		}
-		if (allowPartialMapping && fmt != Blob47)
-			error("autotile allowPartialMapping: only applies to format: blob47");
+		if (allowPartialMapping && fmt != Blob47 && fmt != Hex64)
+			error("autotile allowPartialMapping: only applies to format: blob47 and hex64");
 		if (mapping != null) {
 			switch (src) {
 				case ATSDemo(_, _): error("autotile demo: source generates its own tiles and does not take mapping:");
@@ -7253,6 +7256,7 @@ class MacroManimParser {
 				case Cross: bh.base.Autotile.CROSS_TILE_COUNT;
 				case Blob47: bh.base.Autotile.BLOB47_TILE_COUNT;
 				case Corner: bh.base.Autotile.CORNER_TILE_COUNT;
+				case Hex64: bh.base.Autotile.HEX64_TILE_COUNT;
 			};
 			for (key => target in mapping) {
 				if (key < 0 || key >= indexCount)
@@ -7832,15 +7836,40 @@ class MacroManimParser {
 					error('rise $riseName toward ${parsed.toward} is defined twice');
 			rises.push(parsed);
 		}
+		var grid:Null<TilesetGridDef> = null;
+		var tileOffsetX:Null<Int> = null;
+		var tileOffsetY:Null<Int> = null;
+		var lift:Null<Int> = null;
 		while (!match(TCurlyClosed)) {
 			switch (peek()) {
 				case TIdentifier(s) if (isKeyword(s, "tilesize")):
 					advance();
 					expect(TColon);
 					if (tileSize != null) error("tileSize already set");
+					if (grid != null) error("tileSize: and grid: both say the size of a cell: give grid: alone");
 					final size = parseInteger();
 					if (size <= 0) error("tileSize must be greater than 0");
 					tileSize = size;
+				case TIdentifier(s) if (isKeyword(s, "grid")):
+					advance();
+					expect(TColon);
+					if (grid != null) error("grid already set");
+					if (tileSize != null) error("tileSize: and grid: both say the size of a cell: give grid: alone");
+					grid = parseTilesetGrid();
+				case TIdentifier(s) if (isKeyword(s, "tileoffset")):
+					advance();
+					expect(TColon);
+					if (tileOffsetX != null) error("tileOffset already set");
+					tileOffsetX = parseInteger();
+					expect(TComma);
+					tileOffsetY = parseInteger();
+				case TIdentifier(s) if (isKeyword(s, "lift")):
+					advance();
+					expect(TColon);
+					if (lift != null) error("lift already set");
+					final pixels = parseInteger();
+					if (pixels < 0) error("lift is 0 pixels a level or more");
+					lift = pixels;
 				case TIdentifier(s) if (isKeyword(s, "atlas")):
 					advance();
 					expect(TColon);
@@ -7922,8 +7951,33 @@ class MacroManimParser {
 					error('unexpected tileset property: ${peek()}');
 			}
 		}
-		if (tileSize == null) error("tileset requires tileSize");
+		if (tileSize == null && grid == null) error("tileset requires tileSize (or grid:)");
 		if (atlas == null) error("tileset requires atlas");
+		final gridKind = grid != null ? grid.kind : "orthogonal";
+		if (lift != null && gridKind == "orthogonal")
+			error("lift: is for the isometric and hex grids: on the orthogonal grid nothing is lifted");
+		// which way a rise's side may face depends on the grid, said anywhere in the block
+		final towards = switch gridKind {
+			case "isometric": ["down", "se", "sw"];
+			case "hex": grid != null && grid.pointy == true ? ["down", "lower", "se", "sw"] : ["down", "lower", "se", "s", "sw"];
+			default: ["down", "up", "left", "right"];
+		};
+		for (r in rises) {
+			if (!towards.contains(r.toward))
+				error('rise ${r.rise == 0 ? "any" : Std.string(r.rise)}: toward: on the $gridKind grid is ${towards.slice(0, -1).join(", ")} or ${towards[towards.length - 1]}, got ${r.toward}');
+			if (r.toward == "lower")
+				r.toward = "down";
+			if (r.span == 0) {
+				if (gridKind == "orthogonal")
+					error('rise ${r.rise == 0 ? "any" : Std.string(r.rise)} needs side: and span:');
+				r.span = 1;
+			}
+		}
+		for (i in 0...rises.length)
+			for (j in 0...i)
+				if (rises[i].rise == rises[j].rise && rises[i].toward == rises[j].toward && rises[i].terrain == rises[j].terrain
+					&& rises[i].platform == rises[j].platform)
+					error('rise ${rises[i].rise == 0 ? "any" : Std.string(rises[i].rise)} toward ${rises[i].toward} is defined twice');
 		// A tileset of things to place only (trees, houses, furniture) has no terrain: its maps are
 		// all `none`, with its cells in layers, drawn over another tileset's ground.
 		if (Lambda.exists(rises, r -> r.platform == null) && edge == null && !edges.keys().hasNext())
@@ -7955,7 +8009,51 @@ class MacroManimParser {
 					error('transition ${t.from}, ${t.to}: ${t.from} is drawn over ${t.to}; a transition is from the terrain below to the one above it');
 			}
 		}
-		return {tileSize: cast tileSize, atlas: cast atlas, edge: edge, edges: edges, terrains: terrains, transitions: transitions, rises: rises, platforms: platforms, cells: cells};
+		return {
+			tileSize: grid != null ? grid.width : cast tileSize,
+			grid: grid,
+			tileOffsetX: tileOffsetX,
+			tileOffsetY: tileOffsetY,
+			lift: lift,
+			atlas: cast atlas,
+			edge: edge,
+			edges: edges,
+			terrains: terrains,
+			transitions: transitions,
+			rises: rises,
+			platforms: platforms,
+			cells: cells
+		};
+	}
+
+	/** `orthogonal, w, h` | `isometric, w, h` | `hex, w, h, pointy|flat, odd|even[, side]`, after `grid:`. **/
+	function parseTilesetGrid():TilesetGridDef {
+		final kind = expectIdentifierOrString().toLowerCase();
+		if (kind != "orthogonal" && kind != "isometric" && kind != "hex")
+			error('grid: is orthogonal, isometric or hex, got $kind');
+		expect(TComma);
+		final width = parseInteger();
+		expect(TComma);
+		final height = parseInteger();
+		if (width <= 0 || height <= 0) error('grid: a cell is 1 pixel or more a side, got ${width}x$height');
+		if (kind != "hex")
+			return {kind: kind, width: width, height: height};
+		expect(TComma);
+		final orientation = expectIdentifierOrString().toLowerCase();
+		if (orientation != "pointy" && orientation != "flat") error('grid: a hex is pointy or flat, got $orientation');
+		expect(TComma);
+		final parity = expectIdentifierOrString().toLowerCase();
+		if (parity != "odd" && parity != "even") error('grid: a hex grid pushes the odd or the even ${orientation == "pointy" ? "rows" : "columns"}, got $parity');
+		final pointy = orientation == "pointy";
+		var side:Null<Int> = null;
+		if (match(TComma)) {
+			final across = pointy ? height : width;
+			final length = parseInteger();
+			if (length < 0 || length >= across)
+				error('grid: a $orientation hex ${across} pixels ${pointy ? "high" : "wide"} has sides of 0 to ${across - 1} pixels, got $length');
+			side = length;
+		}
+		return {kind: kind, width: width, height: height, pointy: pointy, odd: parity == "odd", side: side};
 	}
 
 	/** `a, b, "c"`: one name or more. **/
@@ -8040,9 +8138,10 @@ class MacroManimParser {
 				case TIdentifier(s) if (isKeyword(s, "toward")):
 					advance();
 					expect(TColon);
-					toward = expectIdentifierOrString();
-					if (toward != "down" && toward != "up" && toward != "left" && toward != "right")
-						error('rise $rise: toward: is down, up, left or right, got $toward');
+					// which of these the tileset's grid takes is checked with the whole tileset read
+					toward = expectIdentifierOrString().toLowerCase();
+					if (!["down", "up", "left", "right", "se", "sw", "s", "lower"].contains(toward))
+						error('rise $rise: toward: is down, up, left or right (se, sw, s or lower on the isometric and hex grids), got $toward');
 				case TIdentifier(s) if (isKeyword(s, "metadata")):
 					advance();
 					metadata = parseTileMetadata();
@@ -8050,7 +8149,8 @@ class MacroManimParser {
 					error('unexpected rise property: ${peek()}');
 			}
 		}
-		if (sides.length == 0 || span == null)
+		// span: may be left out on the isometric and hex grids (a piece a level); the tileset says which it is on
+		if (sides.length == 0)
 			error('rise $rise needs side: and span:');
 		return {
 			rise: riseLevels,
@@ -8060,7 +8160,7 @@ class MacroManimParser {
 			left: left,
 			right: right,
 			single: single,
-			span: cast span,
+			span: span != null ? span : 0,
 			toward: toward,
 			metadata: metadata,
 		};

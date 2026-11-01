@@ -1790,4 +1790,105 @@ class TilemapTest extends BuilderTestBase {
 			}
 		}
 	}
+
+	// ===== The orthogonal grid draws as it did before the grids =====
+
+	/**
+		Square maps of every kind the tests draw (terrains of every autotile format, transitions, levels
+		with edges and sides of every direction and kind, platforms, layers under, over, at the top and
+		among the actors, objects of several cells, chunks), each by the FNV-1a hash of its pixels as the
+		engine drew them before `TileGrid`, from the commit before it: a change to where a square map's
+		tiles are put shows here, whatever else the tests check.
+	**/
+	static final ORTHOGONAL_FIXTURES:Array<{name:String, source:String, hash:String}> = [
+		{
+			name: "terrains",
+			source: source('#m tilemap { tileset: plains size: 6, 4 legend { ".": grass, "d": dirt, "~": water } terrain: ["..dd..", ".dd~~.", "..d~..", "......"] }'),
+			hash: "769940C7",
+		},
+		{
+			name: "plateau",
+			source: source(PLATEAU),
+			hash: "88790F04",
+		},
+		{
+			name: "blob47 and cross",
+			source: source('
+				#b47 autotile { format: blob47 tileSize: 8 demo: #AA4422, #CC8844 }
+				#crs autotile { format: cross tileSize: 8 demo: #2244AA, #4488CC }
+				#m tilemap { tileset: plains size: 6, 5 legend { ".": grass, "b": bricks, "c": cobble } terrain: ["......", ".bbb..", ".b.bcc", ".bbbcc", "......"] }',
+				'terrain bricks { autotile: b47 } terrain cobble { autotile: crs }'),
+			hash: "F898F835",
+		},
+		{
+			name: "transitions",
+			source: source(SHORES
+				+ '#m tilemap { tileset: plains size: 5, 4 legend { ".": grass, "d": dirt, "~": water } terrain: [".....", ".~~d.", ".~...", "....."] }',
+				'transition grass, water { autotile: shore, shoreB }'),
+			hash: "B6442BC5",
+		},
+		{
+			name: "rises",
+			source: source('#m tilemap { tileset: plains size: 7, 7 legend { ".": grass, "d": dirt } terrain: [".......", ".......", "..d....", ".......", ".......", ".......", "......."]
+				levels: ["0000000", "0222200", "0232200", "0000000", "0000000", "0000000", "0000000"] }',
+				'rise any { side: "face" span: 3 }  rise any { side: "roof" span: 1 toward: up }  rise 3 dirt { side: "stairs" span: 1 }
+				rise 1 { side: "stairs", "flower", "roof" left: "faceEnd" span: 1 toward: right }  rise any { side: "flower" span: 1 toward: right }
+				rise any { side: "flower" span: 1 toward: left }'),
+			hash: "BC803E23",
+		},
+		{
+			name: "platform",
+			source: source('
+				#top autotile { format: blob47 tileSize: 8 demo: #224422, #446644 }
+				#m tilemap { tileset: plains size: 5, 6 legend { ".": grass } terrain: [".....", ".....", ".....", ".....", ".....", "....."]
+					levels { legend { "c": 1 canopy } rows: ["00000", "0ccc0", "0ccc0", "00000", "00011", "00011"] } }',
+				'platform canopy { edge: top  rise 1 { side: "roof" span: 1 } }'),
+			hash: "F88AD34A",
+		},
+		{
+			name: "layers and objects",
+			source: source('#m tilemap { tileset: plains size: 6, 4 legend { ".": grass, "d": dirt } terrain: ["......", "..dd..", "......", "......"]
+				layer props { legend { "t": tree, "f": flower, "r": roof, "s": stairs } rows: ["   r  ", " t  f ", "  s   ", "    t "] }
+				layer shade { draw: top legend { "f": flower } rows: ["f     ", "      ", "     f", "      "] }
+				layer high { draw: over legend { "s": stairs } rows: ["      ", "      ", "      ", "s     "] } }',
+				'cell tree { size: 2, 2 }'),
+			hash: "8681014E",
+		},
+		{
+			name: "chunks",
+			source: source('#m tilemap { tileset: plains size: 10, 6 legend { ".": grass, "d": dirt, "~": water }
+				terrain: ["..........", "...dddd...", "...d~~d...", "...dddd...", "..........", ".........."]
+				levels: ["0000000000", "0001111000", "0001111000", "0000000000", "0000000000", "0000000000"] }'),
+			hash: "7382A360",
+		},
+	];
+
+	static function pixelHash(pixels:hxd.Pixels):String {
+		var h = 0x811C9DC5;
+		final bytes = pixels.bytes;
+		for (i in 0...pixels.width * pixels.height * 4) {
+			h ^= bytes.get(i);
+			h = h * 0x01000193;
+		}
+		return StringTools.hex(h, 8);
+	}
+
+	@Test
+	public function testOrthogonalMapsDrawAsBeforeTheGrids() {
+		final was = TileMap.defaultChunkSize;
+		TileMap.defaultChunkSize = 4;
+		try {
+			for (f in ORTHOGONAL_FIXTURES) {
+				final hash = pixelHash(pixelsOf(builderFromSource(f.source).buildTilemap("m")));
+				if (f.hash == "")
+					trace('ORTHO_HASH ${f.name}: $hash');
+				else
+					Assert.equals(f.hash, hash, '${f.name}: the same pixels as before the grids');
+			}
+		} catch (e:Dynamic) {
+			TileMap.defaultChunkSize = was;
+			throw e;
+		}
+		TileMap.defaultChunkSize = was;
+	}
 }

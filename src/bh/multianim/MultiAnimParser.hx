@@ -920,6 +920,7 @@ enum AutotileFormat {
 	Cross;      // 13 tiles, one per filled cell: edges, center, outer + inner corners
 	Blob47;     // 47 tiles, one per filled cell: every 8-neighbour edge/corner combination
 	Corner;     // 16 tiles, dual grid: one per grid corner, index = filled cells NW=1|NE=2|SW=4|SE=8
+	Hex64;      // 64 tiles, one per filled hex: its six neighbours, from the top clockwise (Autotile.getHexIndex)
 }
 
 // Where an autotile's tiles come from. Every source is addressed by a *source index*; `mapping:`
@@ -999,7 +1000,11 @@ typedef TilesetRiseDef = {
 	var ?right:String;
 	var ?single:String;
 	var span:Int;
-	/** Where the side is drawn from the higher cell: down (the default), up, left or right. **/
+	/**
+		Where the side is drawn from the higher cell: down (the default), up, left or right on the
+		orthogonal grid; on the isometric one down (both front faces in one piece), se or sw (one face);
+		on the hex one down (the whole lower outline, also `lower`), se, sw, and s for flat hexes.
+	**/
 	var toward:String;
 	/** What the game reads of the cells a side covers: `metadata { wall:bool => true }`. **/
 	var metadata:Map<String, ParsedSettingValue>;
@@ -1039,10 +1044,36 @@ typedef TilesetCellDef = {
 	var metadata:Map<String, ParsedSettingValue>;
 }
 
+/**
+	`grid: orthogonal, w, h` | `grid: isometric, w, h` | `grid: hex, w, h, pointy|flat, odd|even[, side]`:
+	the grid a tileset's tiles are laid on, `bh.base.TileGrid` at runtime. `w` by `h` is a cell's box
+	(a diamond's, a hex's). A hex's `side` is the length of its two sides that run across the push
+	(upright for pointy, level for flat; Tiled's hex side length), half the box when unsaid (a
+	regular hex); `odd` pushes the odd rows (pointy) or columns (flat) half a cell over.
+**/
+@:nullSafety
+typedef TilesetGridDef = {
+	/** `orthogonal`, `isometric` or `hex`. **/
+	var kind:String;
+	var width:Int;
+	var height:Int;
+	var ?pointy:Bool;
+	var ?odd:Bool;
+	var ?side:Int;
+}
+
 /** `#name tileset { … }`: what a tile map is drawn with. **/
 @:nullSafety
 typedef TilesetDef = {
+	/** A cell's width in pixels (`tileSize: n`, or the grid's width). **/
 	var tileSize:Int;
+	/** `grid:`: the grid its tiles are laid on; null for the square one of `tileSize`. **/
+	var ?grid:TilesetGridDef;
+	/** `tileOffset: x, y`: pixels every frame is moved after it is put on its cell. **/
+	var ?tileOffsetX:Int;
+	var ?tileOffsetY:Int;
+	/** `lift: n`: pixels a level raises a cell on the isometric and hex grids (half a cell's height when unsaid). **/
+	var ?lift:Int;
 	/** The sheet the named cells are in (an atlas2 file or inline block). **/
 	var atlas:String;
 	/** An autotile drawn along the rim of "level >= L" for every level L above 0: a higher level's outline. **/

@@ -152,7 +152,7 @@ class DevBridge implements IDevBridgeHost {
 			{}, (_:Dynamic) -> {
 				maps: [
 					for (m in bh.base.TileMap.showing)
-						{name: m.mapName, source: m.sourceName, line: m.def.line, width: m.width, height: m.height, tileSize: m.tileSize}
+						{name: m.mapName, source: m.sourceName, line: m.def.line, width: m.width, height: m.height, tileSize: m.tileSize, grid: m.grid.describe()}
 				]
 			});
 		registerQuery("map_get",

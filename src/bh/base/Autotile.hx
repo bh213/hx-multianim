@@ -5,7 +5,7 @@ private typedef FallbackCandidate = {tile:Int, cardinals:Int, mismatch:Int, corn
 /**
  * Index math for autotile terrain generation.
  *
- * Three formats:
+ * Four formats (the fourth, hex64, for the hex grid: 6 neighbours, `getHexIndex`):
  * - Cross (13 tiles): one tile per filled cell; 4 edges + center + 4 outer + 4 inner corners.
  * - Blob47 (47 tiles): one tile per filled cell; every 8-neighbour combination (a diagonal only
  *   counts when both adjacent cardinals are present).
@@ -67,6 +67,54 @@ class Autotile {
 	public static inline var CROSS_TILE_COUNT:Int = 13;
 	public static inline var BLOB47_TILE_COUNT:Int = 47;
 	public static inline var CORNER_TILE_COUNT:Int = 16;
+	public static inline var HEX64_TILE_COUNT:Int = 64;
+
+	#if !noheaps
+	/**
+	 * Hex64 index of the cell `grid[y][x]`: bit d set where its neighbour in direction d is filled,
+	 * the directions as `TileGrid` numbers a hex's six edges, from the top, clockwise (pointy: NE 1,
+	 * E 2, SE 4, SW 8, W 16, NW 32; flat: N 1, NE 2, SE 4, S 8, SW 16, NW 32). Which offset cell is
+	 * which neighbour depends on the row (or column) being pushed, so the grid is told the map cell
+	 * `grid[0][0]` is (`x0`, `y0`).
+	 */
+	public static function getHexIndex(grid:Array<Array<Int>>, x:Int, y:Int, on:TileGrid, x0:Int, y0:Int):Int {
+		var index = 0;
+		for (d in 0...6)
+			if (isFilled(grid, on.neighbourX(x + x0, y + y0, d) - x0, on.neighbourY(x + x0, y + y0, d) - y0))
+				index |= 1 << d;
+		return index;
+	}
+	#end
+
+	/**
+	 * Fallback for a hex64 index with no tile in `mapping`: the mapped index whose sides differ from
+	 * it in the fewest places, of those the one with more of them (an edge too few reads better than
+	 * a seam inside the terrain), then the lower index; then the full hex (63), then the lone one (0).
+	 * Returns {result, skipped} as `getBlob47FallbackChain` does; `result == tileIndex` when nothing fits.
+	 */
+	public static function getHex64FallbackChain(tileIndex:Int, mapping:Map<Int, Int>):{result:Int, skipped:Array<Int>} {
+		if (mapping.exists(tileIndex))
+			return {result: tileIndex, skipped: []};
+		final candidates = [for (i in 0...64) if (i != tileIndex && i != 63 && i != 0) i];
+		candidates.sort((a, b) -> {
+			final da = bitCount(a ^ tileIndex);
+			final db = bitCount(b ^ tileIndex);
+			if (da != db) return da - db;
+			final ba = bitCount(a);
+			final bb = bitCount(b);
+			if (ba != bb) return bb - ba;
+			return a - b;
+		});
+		final skipped:Array<Int> = [];
+		for (c in candidates.concat([63, 0])) {
+			if (c == tileIndex)
+				continue;
+			if (mapping.exists(c))
+				return {result: c, skipped: skipped};
+			skipped.push(c);
+		}
+		return {result: tileIndex, skipped: skipped};
+	}
 
 	/**
 	 * Which of `count` variants a position takes: the same for the same position every time, and
