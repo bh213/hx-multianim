@@ -7698,6 +7698,11 @@ class MultiAnimBuilder {
 				var object = needsWrapper ? new h2d.Object() : null;
 				final buildTarget = needsWrapper ? object : current;
 				final ownPos = needsWrapper ? null : calculatePosition(node.pos, MultiAnimParser.getGridCoordinateSystem(node), MultiAnimParser.getHexCoordinateSystem(node));
+				// With no container, the items take what one would have been moved by: the repeat's own
+				// position and the offset of the enclosing repeat's iteration it is in (build returns
+				// null, so that repeat moves nothing of it)
+				final itemOffsetX = needsWrapper ? 0.0 : ownPos.x + iterationOffsetX;
+				final itemOffsetY = needsWrapper ? 0.0 : ownPos.y + iterationOffsetY;
 
 				if (indexedParams.exists(varName))
 					throw builderErrorAt(node, 'cannot use repeatable index param "$varName" as it is already defined');
@@ -7784,8 +7789,8 @@ class MultiAnimBuilder {
 								default:
 							}
 						} else {
-							pendingIterationOffsetX = ownPos.x;
-							pendingIterationOffsetY = ownPos.y;
+							pendingIterationOffsetX = itemOffsetX;
+							pendingIterationOffsetY = itemOffsetY;
 						}
 						var obj = build(childNode, ObjectMode(buildTarget), gridCoordinateSystem, hexCoordinateSystem, internalResults, builderParams);
 						if (obj == null)
@@ -7800,8 +7805,8 @@ class MultiAnimBuilder {
 									addPosition(obj, layoutPt.x, layoutPt.y);
 								default:
 							}
-						} else if (ownPos.x != 0 || ownPos.y != 0) {
-							addPosition(obj, ownPos.x, ownPos.y);
+						} else if (itemOffsetX != 0 || itemOffsetY != 0) {
+							addPosition(obj, itemOffsetX, itemOffsetY);
 						}
 					}
 					cleanupFinalVars(resolvedChildren, indexedParams);
@@ -7951,6 +7956,20 @@ class MultiAnimBuilder {
 								default: null;
 							};
 							for (childNode in resolvedChildren) {
+								// As the first build: a repeat inside with no container of its own moves
+								// its items by this iteration's offset itself (build returns null for it)
+								if (capturedSplice != null) {
+									pendingIterationOffsetX = capturedOwnPos.x;
+									pendingIterationOffsetY = capturedOwnPos.y;
+								} else switch capturedRepeatType {
+									case StepIterator(_, _, _):
+										pendingIterationOffsetX = newDx * count;
+										pendingIterationOffsetY = newDy * count;
+									case LayoutIterator(_):
+										pendingIterationOffsetX = layoutPt.x;
+										pendingIterationOffsetY = layoutPt.y;
+									default:
+								}
 								var obj = build(childNode, ObjectMode(rebuildTarget), gcs, hcs, capturedIR, capturedBP);
 								if (obj == null)
 									continue;
@@ -11218,7 +11237,11 @@ class MultiAnimBuilder {
 	 *
 	 *  progNode carries the parameter type definitions; parentParams supplies the runtime values
 	 *  (programmable params + current loop-var iteration). */
-	public function buildSingleNodeWithParams(node:Node, progNode:Node, parentParams:Map<String, Dynamic>, ?sink:SwitchArmResults):Null<h2d.Object> {
+	/** Builds `node` with `parentParams` as its scope; returns what it made, the first object of it.
+	 *  With `into` the node is built into that object as the builder places it (a repeat with no
+	 *  container of its own puts every item there) and null is returned. */
+	public function buildSingleNodeWithParams(node:Node, progNode:Node, parentParams:Map<String, Dynamic>, ?sink:SwitchArmResults,
+			?into:h2d.Object):Null<h2d.Object> {
 		final parentBP = this.builderParams;
 		final gridCS = MultiAnimParser.getGridCoordinateSystem(node);
 		final hexCS = MultiAnimParser.getHexCoordinateSystem(node);
@@ -11243,7 +11266,7 @@ class MultiAnimBuilder {
 				scene: parentBP != null ? parentBP.scene : null,
 			};
 			this.builderParams = bp;
-			final parent = new h2d.Object();
+			final parent = into != null ? into : new h2d.Object();
 			// When a sink is supplied (param-dependent repeat body), register the node's slots /
 			// dynamicRefs / indexed names into it so the codegen instance dispatchers stay able to
 			// resolve them; otherwise discard into a throwaway IR (callers that only need the object).
@@ -11252,7 +11275,7 @@ class MultiAnimBuilder {
 				: {names: [], interactives: [], slots: [], dynamicRefs: new Map(), htmlTextsWithLinks: []};
 			build(node, ObjectMode(parent), cast gridCS, cast hexCS, ir, bp);
 			popBuilderState();
-			return if (parent.numChildren > 0) parent.getChildAt(0) else null;
+			return if (into != null) null else if (parent.numChildren > 0) parent.getChildAt(0) else null;
 		} catch (e:Dynamic) {
 			// Keep the state stack balanced and the live indexedParams restored on any
 			// throw — same unwind contract as buildWithParameters

@@ -153,6 +153,13 @@ class ProgrammableCodeGen {
 	// Runtime loop variable mappings: maps manim var name -> runtime Haxe identifier name (for runtime iterators)
 	static var runtimeLoopVars:Map<String, String> = new Map();
 
+	// A repeat unrolled with step offsets puts its items straight into its container, each moved by
+	// its iteration's offset (builder parity: no container per iteration): the container, and the
+	// offset of the iteration being made, which every element made into it adds to its position
+	static var iterationOffsetParent:Null<String> = null;
+	static var iterationOffsetX:Float = 0;
+	static var iterationOffsetY:Float = 0;
+
 	// @final variable expressions: maps name -> expression for inline expansion in rvToExpr
 	static var finalVarExprs:Map<String, ReferenceableValue> = new Map();
 
@@ -239,6 +246,9 @@ class ProgrammableCodeGen {
 		paramEnumTypes = new Map();
 		loopVarSubstitutions = new Map();
 		runtimeLoopVars = new Map();
+		iterationOffsetParent = null;
+		iterationOffsetX = 0;
+		iterationOffsetY = 0;
 		finalVarExprs = new Map();
 		repeatRebuildEntries = [];
 		repeatForceUsesChangedParam = false;
@@ -2310,7 +2320,7 @@ class ProgrammableCodeGen {
 
 		// Position
 		ensureHexLayoutIfNeeded(node.pos, node, fields, ctorExprs, pos);
-		final posExpr = generatePositionExpr(node.pos, fieldName, pos, node);
+		final posExpr = withIterationOffset(generatePositionExpr(node.pos, fieldName, pos, node), fieldName, parentField);
 		if (posExpr != null)
 			ctorExprs.push(posExpr);
 
@@ -2441,7 +2451,7 @@ class ProgrammableCodeGen {
 		if (node.pos != null) {
 			final posParamRefs = collectPositionParamRefs(node.pos);
 			if (posParamRefs.length > 0) {
-				final posUpdate = generatePositionExpr(node.pos, fieldName, pos, node);
+				final posUpdate = withIterationOffset(generatePositionExpr(node.pos, fieldName, pos, node), fieldName, parentField);
 				if (posUpdate != null) {
 					expressionUpdates.push({
 						fieldName: fieldName,
@@ -2775,7 +2785,7 @@ class ProgrammableCodeGen {
 
 		// Apply position/scale/alpha/rotation on the container if the SWITCH node has them
 		ensureHexLayoutIfNeeded(node.pos, node, fields, ctorExprs, pos);
-		final posExpr = generatePositionExpr(node.pos, switchField, pos, node);
+		final posExpr = withIterationOffset(generatePositionExpr(node.pos, switchField, pos, node), switchField, parentField);
 		if (posExpr != null) ctorExprs.push(posExpr);
 		if (node.scale != null) {
 			final scaleExpr = rvToExpr(node.scale);
@@ -3124,7 +3134,7 @@ class ProgrammableCodeGen {
 
 		// Position the container
 		ensureHexLayoutIfNeeded(node.pos, node, fields, ctorExprs, pos);
-		final posExpr = generatePositionExpr(node.pos, containerName, pos, node);
+		final posExpr = withIterationOffset(generatePositionExpr(node.pos, containerName, pos, node), containerName, parentField);
 		if (posExpr != null)
 			ctorExprs.push(posExpr);
 
@@ -3289,22 +3299,11 @@ class ProgrammableCodeGen {
 			// Set loop var substitution
 			loopVarSubstitutions.set(varName, resolvedIndex);
 
-			// Create an iteration container for grid offset
-			if (dx != 0 || dy != 0) {
-				final iterContainerName = "_e" + (elementCounter++);
-				fields.push(makeField(iterContainerName, FVar(macro :h2d.Object, null), [APrivate], pos));
-				ctorExprs.push(macro $p{["this", iterContainerName]} = new h2d.Object());
-				final offsetX:Float = dx * i;
-				final offsetY:Float = dy * i;
-				ctorExprs.push(macro $p{["this", iterContainerName]}.setPosition($v{offsetX}, $v{offsetY}));
-				ctorExprs.push(macro $p{["this", containerField]}.addChild($p{["this", iterContainerName]}));
-
-				// Process children into the iteration container
-				processChildren(node.children, iterContainerName, fields, ctorExprs, [], pos);
-			} else {
-				// No grid offset — process children directly into the main container
+			// Into the main container, each element moved by the iteration's step offset
+			if (dx != 0 || dy != 0)
+				processIterationChildren(node.children, containerField, dx * i, dy * i, fields, ctorExprs, pos);
+			else
 				processChildren(node.children, containerField, fields, ctorExprs, [], pos);
-			}
 
 			loopVarSubstitutions.remove(varName);
 		}
@@ -3395,17 +3394,22 @@ class ProgrammableCodeGen {
 			forBodyExprs.push(macro final _rt_val = _rt_start + _rt_i * _rt_step);
 		}
 		final containerFieldRef = macro $p{["this", containerField]};
-		if (splice) {
-			// Each iteration's elements into the marker; moved in before its end once all are built
-			forBodyExprs.push(macro final _rt_cont:h2d.Object = $containerFieldRef);
-		} else {
-			forBodyExprs.push(macro final _rt_cont = new h2d.Object());
-			if (repeatType.match(StepIterator(_, _, _))) {
-				forBodyExprs.push(macro _rt_cont.setPosition(_rt_dx * _rt_i, _rt_dy * _rt_i));
-			}
-			forBodyExprs.push(macro $containerFieldRef.addChild(_rt_cont));
-		}
+		// Each iteration's elements into the repeat's container (into the marker when spliced: moved in
+		// before its end once all are built), each moved by its step offset (builder parity: no
+		// container per iteration). The body is built again whole on a change, so nothing sets an
+		// element's position later.
+		forBodyExprs.push(macro final _rt_cont:h2d.Object = $containerFieldRef);
+		final stepped = !splice && repeatType.match(StepIterator(_, _, _));
+		if (stepped)
+			forBodyExprs.push(macro final _rt_first = _rt_cont.numChildren);
 		for (e in loopBodyExprs) forBodyExprs.push(e);
+		if (stepped)
+			forBodyExprs.push(macro if (_rt_dx != 0 || _rt_dy != 0)
+				for (_rt_k in _rt_first..._rt_cont.numChildren) {
+					final _rt_o = _rt_cont.getChildAt(_rt_k);
+					_rt_o.x += _rt_dx * _rt_i;
+					_rt_o.y += _rt_dy * _rt_i;
+				});
 
 		final forBody:Expr = {expr: EBlock(forBodyExprs), pos: pos};
 
@@ -3503,7 +3507,7 @@ class ProgrammableCodeGen {
 		ctorExprs.push(macro $p{["this", containerName]} = new h2d.Object());
 
 		ensureHexLayoutIfNeeded(node.pos, node, fields, ctorExprs, pos);
-		final posExpr = generatePositionExpr(node.pos, containerName, pos, node);
+		final posExpr = withIterationOffset(generatePositionExpr(node.pos, containerName, pos, node), containerName, parentField);
 		if (posExpr != null)
 			ctorExprs.push(posExpr);
 
@@ -3845,7 +3849,7 @@ class ProgrammableCodeGen {
 			ctorExprs.push(macro $p{["this", containerName]} = new h2d.Object());
 
 			ensureHexLayoutIfNeeded(node.pos, node, fields, ctorExprs, pos);
-			final posExpr = generatePositionExpr(node.pos, containerName, pos, node);
+			final posExpr = withIterationOffset(generatePositionExpr(node.pos, containerName, pos, node), containerName, parentField);
 			if (posExpr != null)
 				ctorExprs.push(posExpr);
 		}
@@ -4536,12 +4540,9 @@ class ProgrammableCodeGen {
 		for (loopVar => loopIdent in runtimeLoopVars) {
 			mapExprs.push(macro _rt_pp.set($v{loopVar}, $i{loopIdent}));
 		}
-		// `_rt_fwd`, not `_rt_obj`: a POINT arm passes its own `_rt_obj` as containerRef, which
-		// a same-named local here would shadow (`_rt_obj.addChild(_rt_obj)`).
-		mapExprs.push(macro {
-			final _rt_fwd = this._pb.buildNodeByUniqueNameWithParams($v{progName}, $v{nodeName}, _rt_pp, $sinkExpr);
-			if (_rt_fwd != null) $containerRef.addChild(_rt_fwd);
-		});
+		// Built straight into the container, as the builder places it: a repeat with no container of
+		// its own puts every item there (handed back as one object, all but the first were lost)
+		mapExprs.push(macro this._pb.buildNodeByUniqueNameWithParams($v{progName}, $v{nodeName}, _rt_pp, $sinkExpr, $containerRef));
 		bodyExprs.push({expr: EBlock(mapExprs), pos: pos});
 	}
 
@@ -4675,7 +4676,7 @@ class ProgrammableCodeGen {
 		ctorExprs.push(macro $p{["this", containerName]} = new h2d.Object());
 
 		ensureHexLayoutIfNeeded(node.pos, node, fields, ctorExprs, pos);
-		final posExpr = generatePositionExpr(node.pos, containerName, pos, node);
+		final posExpr = withIterationOffset(generatePositionExpr(node.pos, containerName, pos, node), containerName, parentField);
 		if (posExpr != null)
 			ctorExprs.push(posExpr);
 
@@ -4842,16 +4843,10 @@ class ProgrammableCodeGen {
 				final totalDx:Float = infoX.dx * ix + infoY.dx * iy;
 				final totalDy:Float = infoX.dy * ix + infoY.dy * iy;
 
-				if (totalDx != 0 || totalDy != 0) {
-					final iterContainerName = "_e" + (elementCounter++);
-					fields.push(makeField(iterContainerName, FVar(macro :h2d.Object, null), [APrivate], pos));
-					ctorExprs.push(macro $p{["this", iterContainerName]} = new h2d.Object());
-					ctorExprs.push(macro $p{["this", iterContainerName]}.setPosition($v{totalDx}, $v{totalDy}));
-					ctorExprs.push(macro $p{["this", containerField]}.addChild($p{["this", iterContainerName]}));
-					processChildren(node.children, iterContainerName, fields, ctorExprs, [], pos);
-				} else {
+				if (totalDx != 0 || totalDy != 0)
+					processIterationChildren(node.children, containerField, totalDx, totalDy, fields, ctorExprs, pos);
+				else
 					processChildren(node.children, containerField, fields, ctorExprs, [], pos);
-				}
 
 				loopVarSubstitutions.remove(varNameX);
 			}
@@ -4953,15 +4948,26 @@ class ProgrammableCodeGen {
 		runtimeLoopVars.remove(varNameX);
 		runtimeLoopVars.remove(varNameY);
 
-		// Build inner loop body: loop value, container, position, children.
+		// Build inner loop body: loop value, children into the repeat's container, each moved by the
+		// cell's step offset (builder parity: no container per cell; the body is built again whole on
+		// a change, so nothing sets an element's position later).
 		final innerBodyExprs:Array<Expr> = [];
 		if (isRangeX)
 			innerBodyExprs.push(macro final _rt_valx = _rt_startX + _rt_ix * _rt_stepX);
-		innerBodyExprs.push(macro final _rt_cont = new h2d.Object());
-		innerBodyExprs.push(macro _rt_cont.setPosition(_rt_dxX * _rt_ix + _rt_dxY * _rt_iy, _rt_dyX * _rt_ix + _rt_dyY * _rt_iy));
 		final containerFieldRef = macro $p{["this", containerField]};
-		innerBodyExprs.push(macro $containerFieldRef.addChild(_rt_cont));
+		innerBodyExprs.push(macro final _rt_cont:h2d.Object = $containerFieldRef);
+		innerBodyExprs.push(macro final _rt_first = _rt_cont.numChildren);
 		for (e in loopBodyExprs) innerBodyExprs.push(e);
+		innerBodyExprs.push(macro {
+			final _rt_ox = _rt_dxX * _rt_ix + _rt_dxY * _rt_iy;
+			final _rt_oy = _rt_dyX * _rt_ix + _rt_dyY * _rt_iy;
+			if (_rt_ox != 0 || _rt_oy != 0)
+				for (_rt_k in _rt_first..._rt_cont.numChildren) {
+					final _rt_o = _rt_cont.getChildAt(_rt_k);
+					_rt_o.x += _rt_ox;
+					_rt_o.y += _rt_oy;
+				}
+		});
 		final innerBody:Expr = {expr: EBlock(innerBodyExprs), pos: pos};
 
 		final outerBody:Expr = if (isRangeY)
@@ -9308,6 +9314,47 @@ class ProgrammableCodeGen {
 	}
 
 	// ==================== Position ====================
+
+	/** `posExpr` (null: the element sets no position of its own) with the iteration's offset added
+	 *  when the element is made into the container of a repeat unrolled with step offsets
+	 *  (`iterationOffsetParent`). Every position expression sets the whole position, so the update
+	 *  that sets it again adds the offset again. */
+	static function withIterationOffset(posExpr:Null<Expr>, fieldName:String, parentField:Null<String>):Null<Expr> {
+		if (parentField == null || parentField != iterationOffsetParent || (iterationOffsetX == 0 && iterationOffsetY == 0))
+			return posExpr;
+		final fieldRef = macro $p{["this", fieldName]};
+		final shift = macro {
+			$fieldRef.x += $v{iterationOffsetX};
+			$fieldRef.y += $v{iterationOffsetY};
+		};
+		return posExpr == null ? shift : macro {
+			$posExpr;
+			$shift;
+		};
+	}
+
+	/** Makes the elements of one iteration of a repeat unrolled with step offsets: into `containerField`,
+	 *  each moved by `dx`, `dy`. A repeat with its own offsets inside sets its own and puts these back. */
+	static function processIterationChildren(children:Array<Node>, containerField:String, dx:Float, dy:Float, fields:Array<Field>,
+			ctorExprs:Array<Expr>, pos:Position):Void {
+		final savedParent = iterationOffsetParent;
+		final savedX = iterationOffsetX;
+		final savedY = iterationOffsetY;
+		iterationOffsetParent = containerField;
+		iterationOffsetX = dx;
+		iterationOffsetY = dy;
+		try
+			processChildren(children, containerField, fields, ctorExprs, [], pos)
+		catch (e:Dynamic) {
+			iterationOffsetParent = savedParent;
+			iterationOffsetX = savedX;
+			iterationOffsetY = savedY;
+			throw e;
+		}
+		iterationOffsetParent = savedParent;
+		iterationOffsetX = savedX;
+		iterationOffsetY = savedY;
+	}
 
 	static function generatePositionExpr(coords:Coordinates, fieldName:String, pos:Position, ?node:MultiAnimParser.Node):Null<Expr> {
 		if (coords == null)

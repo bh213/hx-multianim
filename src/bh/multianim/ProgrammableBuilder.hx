@@ -665,16 +665,18 @@ class ProgrammableBuilder {
 
 	/** Params-aware variant: pushes builder state with resolved params before building so that
 	 *  `$param` and loop-var refs inside the subtree resolve correctly. Used by the codegen
-	 *  runtime-rebuild fallback for param-dependent repeatable bodies. */
+	 *  runtime-rebuild fallback for param-dependent repeatable bodies, which passes `into`: the node
+	 *  is built into it as the builder places it (every item of a repeat with no container of its
+	 *  own), and null is returned. */
 	public function buildNodeByUniqueNameWithParams(programmableName:String, uniqueNodeName:String,
-			parentParams:Map<String, Dynamic>, ?sink:bh.multianim.MultiAnimBuilder.SwitchArmResults):Null<h2d.Object> {
+			parentParams:Map<String, Dynamic>, ?sink:bh.multianim.MultiAnimBuilder.SwitchArmResults, ?into:h2d.Object):Null<h2d.Object> {
 		final builder = getBuilder();
 		if (builder == null) return null;
 		final progNode = builder.multiParserResult.nodes.get(programmableName);
 		if (progNode == null) return null;
 		final targetNode = findNodeByUniqueName(progNode, uniqueNodeName);
 		if (targetNode == null) return null;
-		return builder.buildSingleNodeWithParams(targetNode, progNode, parentParams, sink);
+		return builder.buildSingleNodeWithParams(targetNode, progNode, parentParams, sink, into);
 	}
 
 	/** Reset a param-dependent repeat body's sink before the body is rebuilt at a new count.

@@ -22,6 +22,9 @@ import bh.multianim.MultiAnimBuilder.BuilderResult;
  * - a @switch arm whose pattern uses a param re-selects when that param changes;
  * - a value whose apply threw is applied again when it is set again;
  * - loop variables reach a tileGroup and particles inside a statically unrolled repeat;
+ * - a repeat with step offsets puts its items in its one container, each moved by its offset,
+ *   in codegen as in the builder (unrolled or built at runtime, 1D and 2D); a repeat with no
+ *   container of its own inside one moves with the iteration it is in, and keeps all its items;
  * - a @final inside a param-dependent repeat body takes each iteration's loop variable.
  *
  * Companion fixture: test/examples/164-codegenParityReview/codegenParityReview.manim
@@ -227,6 +230,51 @@ class CodegenParityReviewTest extends BuilderTestBase {
 		final namedInst:Dynamic = createMp().cpLoopNamedRef.create();
 		Assert.equals(bitmapDepths(namedBuilt.object), bitmapDepths(loopBuilt.object), "builder: an @final of a loop variable is placed as by its name");
 		Assert.equals(bitmapDepths(cast namedInst), bitmapDepths(cast loopInst), "codegen: the same");
+	}
+
+	@Test
+	public function testARepeatWithStepOffsetsPlacesItsItemsAsTheBuilderDoes():Void {
+		final built = BuilderTestBase.buildFromFile(FIXTURE, "cpStepRepeats", null, Incremental);
+		final inst:Dynamic = createMp().cpStepRepeats.create();
+		Assert.equals(bitmapPlaces(built.object), bitmapPlaces(cast inst), "the same places, as deep in codegen's tree as in the builder's");
+		built.setParameter("w", 7);
+		inst.setParameter("w", 7);
+		Assert.equals(bitmapPlaces(built.object), bitmapPlaces(cast inst), "an item's position that follows a param keeps its offset");
+		built.setParameter("n", 3);
+		inst.setParameter("n", 3);
+		Assert.equals(bitmapPlaces(built.object), bitmapPlaces(cast inst), "and repeats built again at runtime");
+	}
+
+	@Test
+	public function testANestedRepeatMovesWithTheIterationItIsIn():Void {
+		final built = BuilderTestBase.buildFromFile(FIXTURE, "cpNestedStepRepeats", null, Incremental);
+		final inst:Dynamic = createMp().cpNestedStepRepeats.create();
+		final firstRow = [for (b in BuilderTestBase.findVisibleBitmapDescendants(built.object)) if (b.tile.width == 2) b];
+		Assert.equals("0,10,20", [for (b in firstRow) if (b.y == 0) Std.int(b.x)].join(","), "builder: the inner repeat's items in each step of the outer one");
+		Assert.equals(bitmapPlaces(built.object), bitmapPlaces(cast inst), "the builder places them as codegen does");
+		built.setParameter("w", 3);
+		inst.setParameter("w", 3);
+		Assert.equals(bitmapPlaces(built.object), bitmapPlaces(cast inst), "an item's position that follows a param keeps the outer offset");
+		built.setParameter("n", 3);
+		inst.setParameter("n", 3);
+		Assert.equals(bitmapPlaces(built.object), bitmapPlaces(cast inst), "and when the outer repeat is built again");
+	}
+
+	/** Each visible bitmap's depth under `root` and its position there (x, y summed up the parents). */
+	static function bitmapPlaces(root:h2d.Object):String {
+		return [
+			for (b in BuilderTestBase.findVisibleBitmapDescendants(root)) {
+				var x = 0.0;
+				var y = 0.0;
+				var n:h2d.Object = b;
+				while (n != null && n != root) {
+					x += n.x;
+					y += n.y;
+					n = n.parent;
+				}
+				'${depthUnder(b, root)}@$x,$y';
+			}
+		].join(" ");
 	}
 
 	/** How deep under `root` each visible bitmap is. */

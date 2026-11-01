@@ -381,3 +381,39 @@ layouts {
     dynamicRef(cpLoopRef0): 0, 0
   }
 }
+// Repeats with step offsets put their items in one container, each moved by its offset, as the
+// builder does (no container per iteration): unrolled and built at runtime, 1D and 2D, and an
+// item whose position follows a param keeps its offset
+#cpStepRepeats programmable(n:uint=2, w:uint=3) {
+  repeatable($i, step(3, dx: 10)) {
+    bitmap(generated(color(3, 4, #FFFFFF))): $w, 2
+  }
+  repeatable($j, step($n, dy: 6)) {
+    bitmap(generated(color(5, 4, #FFFFFF))): 0, 30
+  }
+  repeatable2d($x, $y, step(2, dx: 8), step(2, dy: 9)) {
+    bitmap(generated(color(2, 2, #FFFFFF))): 50, 0
+  }
+  repeatable2d($x, $y, step($n, dx: 7), step(2, dy: 5)) {
+    bitmap(generated(color(1, 1, #FFFFFF))): 80, 0
+  }
+}
+// A repeat with no container of its own (no offsets) inside a stepped one: its items move with the
+// iteration they are in, in the builder too (they stayed where the first iteration put them)
+#cpNestedStepRepeats programmable(n:uint=2, w:uint=0) {
+  repeatable($i, step(3, dx: 10)) {
+    repeatable($j, range(0, 2)) {
+      bitmap(generated(color(2, 2, #FFFFFF))): $w, $j * 4
+    }
+  }
+  repeatable($k, step($n, dy: 20)) {
+    repeatable($m, range(0, 2)) {
+      bitmap(generated(color(3, 3, #FFFFFF))): 50 + $m * 5, 0
+    }
+  }
+  repeatable2d($x, $y, step(2, dx: 8), step(2, dy: 9)) {
+    repeatable($q, range(0, 2)) {
+      bitmap(generated(color(1, 1, #FFFFFF))): 80 + $q * 3, 0
+    }
+  }
+}
