@@ -730,7 +730,7 @@ unit and label) are `bh.multianim.ShaderCatalog`, with no Heaps, for tools; the 
 | `scanlines` | screen | Dark lines across the picture, as a screen's rows | `strength` 0–1 (0.3), `spacing` int 2–8 (3) |
 | `vignette` | screen | The edges darkened, the middle left as it is | `strength` 0–1 (0.45), `radius` 0.2–1.5 (0.75), `softness` 0.05–1 (0.45), `color` colour (#000000) |
 | `grade` | screen, thing | The colours graded: brighter or darker, more or less contrast and colour, a tint over all | `brightness` 0–2 (1), `contrast` 0–2 (1), `saturation` 0–2 (1), `tint` colour (#FFFFFF), `tintAmount` 0–1 (0) |
-| `paletteLock` | screen | Every colour held to a palette, the nearest of its colours, dithered if asked | `palette` palette (Sweetie 16 when none is given), `dither` 0–1 (0) |
+| `paletteLock` | screen | Every colour snapped to the nearest colour of a palette, dithered if asked | `palette` palette (Sweetie 16 when none is given), `dither` 0–1 (0) |
 | `pixelate` | screen, thing | Big pixels: the picture drawn in blocks | `size` int 1–32 (4) |
 | `dither` | screen | Fewer colours, the steps between them dithered in a pattern | `levels` int 2–16 (4), `size` int 1–4 (1) |
 | `aberration` | screen | The colours split apart towards the edges, as a cheap lens | `amount` 0–8 (2), `angle` 0–360 (0) |

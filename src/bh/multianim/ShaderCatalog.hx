@@ -105,7 +105,7 @@ class ShaderCatalog {
 		{
 			name: "paletteLock",
 			places: ["screen"],
-			says: "Every colour held to a palette, the nearest of its colours, dithered if asked",
+			says: "Every colour snapped to the nearest colour of a palette, dithered if asked",
 			time: false,
 			params: [
 				{name: "palette", type: CFPalette, defaultValue: SWEETIE_16, label: "Palette"},
@@ -127,7 +127,7 @@ class ShaderCatalog {
 			says: "Fewer colours, the steps between them dithered in a pattern",
 			time: false,
 			params: [
-				{name: "levels", type: CFInt, defaultValue: 4, min: 2, max: 16, step: 1, label: "Levels a colour"},
+				{name: "levels", type: CFInt, defaultValue: 4, min: 2, max: 16, step: 1, label: "Levels per colour"},
 				{name: "size", type: CFInt, defaultValue: 1, min: 1, max: 4, step: 1, unit: "px", label: "Pattern size"},
 			],
 		},
@@ -221,7 +221,7 @@ class ShaderCatalog {
 			params: [
 				{name: "color", type: CFColor, defaultValue: 0xFFFFFF, label: "Colour"},
 				{name: "amount", type: CFFloat, defaultValue: 0.35, min: 0, max: 1, step: 0.01, label: "Amount"},
-				{name: "speed", type: CFFloat, defaultValue: 1, min: 0.1, max: 8, step: 0.1, unit: "/s", label: "Pulses a second"},
+				{name: "speed", type: CFFloat, defaultValue: 1, min: 0.1, max: 8, step: 0.1, unit: "/s", label: "Pulses per second"},
 			],
 		},
 		{
