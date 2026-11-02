@@ -7418,6 +7418,58 @@ class BuilderUnitTest extends BuilderTestBase {
 		}
 	}
 
+	@Test
+	public function testPivotKeptWhenTheTileChangesBySetParameter():Void {
+		// A tile picked by a parameter and changed after the build kept left/top alignment: an
+		// isometric block swapped from grass to road drew from its top-left, a tile right and two
+		// levels down.
+		final result = buildFromSource("
+			#test programmable(w:int=40) {
+				bitmap(pivot(0.5, 1.0, generated(color($w, 20, #ff0000)))): 100, 100
+			}
+		", "test", null, Incremental);
+		Assert.notNull(result, "Build should succeed");
+		result.setParameter("w", 60);
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(60, Std.int(bitmaps[0].tile.width), "the new tile is drawn");
+		Assert.equals(-30, Std.int(bitmaps[0].tile.dx), "pivot 0.5 of the new tile's width");
+		Assert.equals(-20, Std.int(bitmaps[0].tile.dy), "pivot 1.0 of the new tile's height");
+	}
+
+	@Test
+	public function testAlignKeptWhenASolidColorTileChangesBySetParameter():Void {
+		// generated(color(…)) with a parameter takes a fast path on setParameter that set the new
+		// tile with no align offset: a centred bar jumped to its top-left.
+		final result = buildFromSource("
+			#test programmable(w:int=40) {
+				bitmap(generated(color($w, 20, #ff0000)), center, bottom): 100, 100
+			}
+		", "test", null, Incremental);
+		Assert.notNull(result, "Build should succeed");
+		result.setParameter("w", 60);
+		final bitmaps = findVisibleBitmapDescendants(result.object);
+		Assert.equals(1, bitmaps.length);
+		Assert.equals(60, Std.int(bitmaps[0].tile.width), "the new tile is drawn");
+		Assert.equals(-30, Std.int(bitmaps[0].tile.dx), "centred on the new tile's width");
+		Assert.equals(-20, Std.int(bitmaps[0].tile.dy), "standing on its bottom");
+	}
+
+	@Test
+	public function testPivotInTileGroup():Void {
+		final result = buildFromSource("
+			#test programmable() {
+				tileGroup {
+					bitmap(pivot(0.5, 1.0, generated(color(40, 20, #ff0000)))): 100, 100
+				}
+			}
+		", "test");
+		Assert.notNull(result, "Build should succeed");
+		final bounds = result.object.getBounds();
+		Assert.equals(80, Std.int(bounds.xMin), "pivot 0.5 puts the tile's middle on x 100");
+		Assert.equals(80, Std.int(bounds.yMin), "pivot 1.0 puts the tile's bottom on y 100");
+	}
+
 	// ==================== @any/@all with setParameter ====================
 
 	@Test

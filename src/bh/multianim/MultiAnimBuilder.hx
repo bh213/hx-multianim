@@ -5494,23 +5494,39 @@ class MultiAnimBuilder {
 								final wCapture = w;
 								final hCapture = h;
 								final colorCapture = color;
+								final hAlignCapture = hAlign;
+								final vAlignCapture = vAlign;
 								ctx.trackExpression(() -> {
-									bmp.tile = solidTile(resolveAsColorInteger(colorCapture),
+									final tile = solidTile(resolveAsColorInteger(colorCapture),
 										resolveAsInteger(wCapture), resolveAsInteger(hCapture));
+									// A fresh tile each time: aligned in place, as the first build's tile.sub() does
+									tile.dx = switch hAlignCapture {
+										case Left: 0.;
+										case Right: -tile.width;
+										case Center: -(tile.width * .5);
+									};
+									tile.dy = switch vAlignCapture {
+										case Top: 0.;
+										case Center: -(tile.height * .5);
+										case Bottom: -tile.height;
+									};
+									bmp.tile = tile;
 								}, bmpRefs, object);
 							default:
 								// A ground (generated(shader(…))) takes its size here, aligned as any tile, and its shader set in place
 								final tileSourceCapture = tileSource;
 								final hAlignCapture = hAlign;
 								final vAlignCapture = vAlign;
+								final hasPivot = tileSource.match(TSPivot(_, _, _));
 								ctx.trackExpression(() -> {
 									final tile = loadTileSource(tileSourceCapture);
-									final dh:Float = switch vAlignCapture {
+									// A pivot()'s tile keeps the offset pivot() gave it, as on the first build
+									final dh:Float = if (hasPivot) tile.dy else switch vAlignCapture {
 										case Top: 0.;
 										case Center: -(tile.height * .5);
 										case Bottom: -tile.height;
 									};
-									final wh:Float = switch hAlignCapture {
+									final wh:Float = if (hasPivot) tile.dx else switch hAlignCapture {
 										case Left: 0.;
 										case Right: -tile.width;
 										case Center: -(tile.width * .5);
@@ -6578,12 +6594,13 @@ class MultiAnimBuilder {
 				var tile = loadTileSource(tileSource);
 				var height = tile.height;
 				var width = tile.width;
-				var dh = switch vAlign {
+				final hasPivot = tileSource.match(TSPivot(_, _, _));
+				var dh = if (hasPivot) tile.dy else switch vAlign {
 					case Top: 0.;
 					case Center: -(height * .5);
 					case Bottom: -height;
 				}
-				var wh = switch hAlign {
+				var wh = if (hasPivot) tile.dx else switch hAlign {
 					case Left: 0.;
 					case Right: -width;
 					case Center: -(width * .5);

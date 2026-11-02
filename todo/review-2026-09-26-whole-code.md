@@ -496,11 +496,14 @@ Found 2026-09-28 while fixing the dialog items (`c388b14`):
   **FIXED 2026-10-22** on `bugfix/incremental-builder-codegen-parity`: a tracked expression that uses a
   loop variable or a nested `@final` keeps its build scope, and the repeat hands its iteration offset to
   the child's tracked position. `BuilderUnitTest.testSteppedRepeatPositionsSurviveHideShowAndParamChange`.
-- [ ] `BLD-15` **P1** **`center()`/`pivot()` and `align` are lost on `setParameter` and inside
+- [x] `BLD-15` **P1** **`center()`/`pivot()` and `align` are lost on `setParameter` and inside
   tilegroups** — the tracked BITMAP closure recomputes the offset from hAlign/vAlign only (:4477-4489),
   and its SolidColor fast path drops the align offset (:4468-4472); the tilegroup BITMAP case has the
   same omission (:5275-5291). The initial build honours `TSPivot` (:5659-5669). A centred bitmap jumps
   to its top-left anchor on the first update.
+  **FIXED 2026-11-02**: all three paths keep a pivot's offset (`hasPivot`, as the first build) and the
+  SolidColor fast path aligns its fresh tile. `BuilderUnitTest.testPivotKeptWhenTheTileChangesBySetParameter`,
+  `testPivotInTileGroup`, `testAlignKeptWhenASolidColorTileChangesBySetParameter`.
 - [ ] `BLD-16` **P1** 🤖 **`==`/`!=` compare arithmetic operands as strings; builder and codegen disagree** —
   `resolveAsBool` compares `resolveAsString` of both sides (:3240-3243), which concatenates `+` and
   truncates `*`/`/` (:3535-3538); the ternary condition has no parentheses and `==` binds below `+`.
