@@ -581,13 +581,18 @@ TileGroup a texture until an animated terrain's first tile (`addFrame`), from th
 object a frame (`TileMap.animate` registers it in `Chunk.animated`, which `step` shows in turn), every
 still tile after it added to each frame, so the run is as many objects as the terrain has frames.
 `rimPositions` and `meetingPositions` read a hex's 6 neighbours. Levels are lifted by `lift`
-(`liftAt`): `drawColumns` draws a raised cell's lowest level of side with the ground (`emitSides`, a
+(`liftAt`): `drawGroundInOrder` draws a raised cell's lowest level of side with the ground in its
+place, before the cells in front cover what of it hangs below the ground (`emitSides`, a
 rise's piece a level toward each `toward:`, from the lowest neighbour that way, `dropToward`; a single
 face's piece against that face's side of the box, `TileGrid.faceX`; the run's ends from
 `liftedPiece`, a level of side at a time, a run going along the screen through `runNeighbour` on the
-isometric grid and `hexRunNeighbour`, the lower outline walked, on the hex grid) and the rest of it, its
-terrains lifted and (`drawLayers`, through `columnOf`/`columnAt`) its layer cells as a `ColumnTiles`
-among the actors at its middle less half a pixel, in `Chunk.objects`; `drawRises` draws the levels'
+isometric grid and `hexRunNeighbour`, the lower outline walked, on the hex grid), and `drawColumns` the
+rest of it, its terrains lifted and (`drawLayers`, through `columnOf`/`columnAt`) its layer cells as a
+`ColumnTiles` among the actors at its middle less half a pixel, in `Chunk.objects`. A `draw: actors`
+cell of one cell whose frame reaches below its cell's top (`TileGrid.bottomAt`, the lower outline) is
+cut along it in columns two pixels wide (`addCut`): the part below with the ground in its place
+(`emitStandingBelow`, from `drawGroundInOrder`), the rest a `ColumnTiles` among the actors at the
+cell's middle; `drawRises` draws the levels'
 edges and the platforms' tops on the raised cells' columns at their level (`drawLiftedTops`,
 `liftedAutotile`: a cell format's tile on a cell of that level, a corner's on the front cell around
 it at the highest level there, a column of another chunk's cell made anew a little after it), and

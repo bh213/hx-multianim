@@ -287,6 +287,32 @@ class TileGrid {
 		return b;
 	}
 
+	/**
+		How far down a cell's own top reaches at `x` (pixels; `x` held to the cell's box): the lower
+		outline of its square, diamond or hex. What a frame standing on the cell draws below it is past
+		the cell, over the cells in front.
+	**/
+	public function bottomAt(cx:Int, cy:Int, x:Float):Float {
+		final y0 = pixelY(cx, cy);
+		var u = x - pixelX(cx, cy);
+		if (u < 0) u = 0;
+		if (u > tileWidth) u = tileWidth;
+		final half = tileWidth / 2;
+		return switch kind {
+			case Orthogonal: y0 + tileHeight;
+			case Isometric: y0 + tileHeight - Math.abs(u - half) * tileHeight / tileWidth;
+			case Hex:
+				if (pointy)
+					y0 + tileHeight - Math.abs(u - half) * slant / half;
+				else if (u < slant)
+					y0 + tileHeight / 2 + u * tileHeight / 2 / slant;
+				else if (u > tileWidth - slant)
+					y0 + tileHeight / 2 + (tileWidth - u) * tileHeight / 2 / slant;
+				else
+					y0 + tileHeight;
+		};
+	}
+
 	// ===================== Frames =====================
 
 	/** Where a frame `frameWidth` wide is drawn from on a cell box's left `boxX`: on its left (square grid), else over its middle; then moved. **/

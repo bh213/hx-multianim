@@ -369,9 +369,13 @@ class TileMap extends h2d.Object {
 	// What a terrain's transitions are found once of: one a format, however many formats there are
 	static final FORMAT_COUNT = Type.getEnumConstructs(AutotileFormat).length;
 	static final scratchPoint = new h2d.col.Point();
-	// Written and read within one call, as `sceneRect` is: culling off the square grid
+	// Each written and read within one call that runs no callbacks, as `sceneRect` is (culling off
+	// the square grid, a lifted piece's run, a layer cell's box): single-threaded, never re-entered
 	static final scratchCell = new h2d.col.IPoint();
 	static final scratchBounds = new h2d.col.Bounds();
+	// The width of the columns a standing frame is cut in along its cell's lower outline (`addCut`):
+	// an isometric or hex outline's 2:1 slope moves a row every two pixels
+	static inline final CUT = 2;
 	// One rectangle for the scene's view, written by `localRectOf` and read by `applyCulling` in the
 	// same call, which runs no callbacks: `sync` is single-threaded and never re-enters it. Never
 	// kept past that call (`cullRect` is the map's own).
@@ -1632,9 +1636,16 @@ class TileMap extends h2d.Object {
 							continue; // a raised cell is drawn with its column, among the actors
 						emitGround(plan, cx, cy, groups, 0);
 					}
+					if (cx < cells.x1 && cy < cells.y1) {
+						// a raised cell's lowest level of side, in its place: the cells in front cover
+						// what of it reaches past the cell
+						if (lifting && liftedAt(cx, cy))
+							emitSides(cx, cy, 0, 1, groups);
+						emitStandingBelow(cx, cy, groups);
+					}
 				}
 		if (lifting)
-			drawColumns(c, plans, groups);
+			drawColumns(c, plans);
 	}
 
 	/**
@@ -1648,14 +1659,13 @@ class TileMap extends h2d.Object {
 		what stands on it, an actor on it giving its feet on the ground (`centerOf`) and drawing
 		itself `liftAt` higher.
 	**/
-	function drawColumns(c:Chunk, plans:Array<GroundPlan>, groups:TileSink):Void {
+	function drawColumns(c:Chunk, plans:Array<GroundPlan>):Void {
 		columnOf = [];
 		for (cy in c.rect.y0...c.rect.y1)
 			for (cx in c.rect.x0...c.rect.x1) {
 				if (!liftedAt(cx, cy))
 					continue;
 				final level = levelIndex[cy * width + cx];
-				emitSides(cx, cy, 0, 1, groups);
 				final column = columnAt(c, cx, cy);
 				emitSides(cx, cy, 1, level, column);
 				for (plan in plans)
@@ -2438,6 +2448,70 @@ class TileMap extends h2d.Object {
 		return null;
 	}
 
+	/** Whether a layer's entry stands among the actors on one cell (not an object of several cells). **/
+	static function standsAlone(entry:LayerEntry):Bool {
+		final cell = entry.cell;
+		return entry.draw == "actors"
+			&& (cell == null || ((cell.width == null || cell.width == 1) && (cell.height == null || cell.height == 1)));
+	}
+
+	/** Whether a frame drawn from `y` on cell (cx, cy) reaches below the cell's own top somewhere (`TileGrid.bottomAt`). **/
+	function reachesBelow(cx:Int, cy:Int, y:Float, tile:h2d.Tile):Bool {
+		return y + tile.dy + tile.height > grid.bottomAt(cx, cy, grid.pixelX(cx, cy));
+	}
+
+	/**
+		What of the frames standing on a cell (a layer's `draw: actors` cell of one cell) reaches below
+		the cell's own top, drawn with the ground in the cell's place: a building drawn on its block
+		has the block's sides there, which the cells in front cover as they cover a terrain's. The
+		rest of the frame stands among the actors (`drawLayers`).
+	**/
+	function emitStandingBelow(cx:Int, cy:Int, sink:TileSink):Void {
+		for (li in 0...layerCell.length) {
+			final e = layerCell[li][cy * width + cx];
+			if (e < 0)
+				continue;
+			final entry = layerEntries[li][e];
+			if (!standsAlone(entry))
+				continue;
+			final frame = entry.frames[Autotile.variantAt(cx, cy, entry.frames.length)];
+			final y = grid.frameY(cx, cy, frame.height) - liftAt(cx, cy);
+			if (reachesBelow(cx, cy, y, frame.tile))
+				addCut(sink, cx, cy, grid.frameX(cx, cy, frame.width), y, frame.tile, false);
+		}
+	}
+
+	/**
+		A frame standing on cell (cx, cy), drawn from (x, y), cut along the cell's lower outline
+		(`TileGrid.bottomAt`) in columns `CUT` pixels wide: the part above the outline (`above`), or
+		the part below it. What is beside the cell's box is all above.
+	**/
+	function addCut(sink:TileSink, cx:Int, cy:Int, x:Float, y:Float, tile:h2d.Tile, above:Bool):Void {
+		final left = x + tile.dx;
+		final top = y + tile.dy;
+		final w = Std.int(tile.width);
+		final h = Std.int(tile.height);
+		final boxLeft = grid.pixelX(cx, cy);
+		final boxRight = boxLeft + grid.tileWidth;
+		var sx = 0;
+		while (sx < w) {
+			final cw = sx + CUT > w ? w - sx : CUT;
+			final mid = left + sx + cw / 2;
+			var r = h;
+			if (mid > boxLeft && mid < boxRight) {
+				r = Math.floor(grid.bottomAt(cx, cy, mid) - top);
+				if (r < 0) r = 0;
+				if (r > h) r = h;
+			}
+			if (above) {
+				if (r > 0)
+					sink.add(left + sx, top, tile.sub(sx, 0, cw, r));
+			} else if (r < h)
+				sink.add(left + sx, top + r, tile.sub(sx, r, cw, h - r));
+			sx += cw;
+		}
+	}
+
 	function drawLayers(c:Chunk):Void {
 		for (li in 0...def.layers.length) {
 			final entries = layerEntries[li];
@@ -2486,6 +2560,17 @@ class TileMap extends h2d.Object {
 									addStrips(c, footprint, x, y, tile);
 								else
 									addHexStrips(c, footprint, x, y, tile);
+								continue;
+							}
+							// off the square grid, what reaches below the cell's top is the ground's, drawn
+							// with it (`emitStandingBelow`); the rest stands among the actors, sorted by
+							// the middle of the cell's box
+							if (grid.kind != Orthogonal && chunkPlans.length > 0 && reachesBelow(cx, cy, y, tile)) {
+								final standing = new ColumnTiles(this, c, footY);
+								standing.object.visible = c.shown;
+								actors.add(standing.object, 0);
+								c.objects.push(standing.object);
+								addCut(standing, cx, cy, x, y, tile, true);
 								continue;
 							}
 							// among the actors, standing on its feet: its y is its bottom edge, which sorts

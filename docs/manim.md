@@ -2113,12 +2113,18 @@ and faces, a platform, animated water and a long building among people.
   isometric grid strips half a cell wide; on the hex grid the footprint's cells' boxes cut it where
   they begin and end, side by side pieces with the same front row being one strip (a pointy hex
   footprint's front row is one strip, its pushed rows' jagged ends their own). Walls, trees, houses
-  and lamp posts go there; a road, a rug or a shadow stays a layer `under` the actors.
+  and lamp posts go there; a road, a rug or a shadow stays a layer `under` the actors. What a cell
+  standing among the actors draws below its own cell's top (a building drawn on its own block, as
+  Kenney's city tiles are) is drawn with the ground in its place, under the cells in front: it sits
+  on the ground, its block's sides showing only where the ground in front is lower (the map's edge).
 - **Levels are lifted**: a cell `n` levels up is drawn `n · lift` pixels higher, its side from the level
   of its neighbour in front (the lowest of them for `toward: down`, the map's edge counting as 0) up to
   its own, a frame of the rise's piece a level (its frames from the top down, the last again below
-  them), and needs no `edge:`. Its lowest level of side is drawn with the ground; the rest, its top and
-  its layers' cells are a column among the actors, sorted by its middle on the ground less half a
+  them), and needs no `edge:`. It is a stack: its terrain's frame on top, whose own side (a block's) is
+  the top level of side, and a rise's piece each level under it; the lowest piece, as any block's
+  side, reaches below the ground and is drawn with it in its place, under the cells in front. So a
+  cell one level up shows one level of side, and a rise's pieces show from its second level down. The
+  rest, its top and its layers' cells are a column among the actors, sorted by its middle on the ground less half a
   pixel: in front of what stands behind it, behind what stands in front, under what stands on it. An
   actor on a raised cell keeps its `y` its feet on the ground (`centerOf`) and draws itself
   `map.liftAt(cx, cy)` higher.

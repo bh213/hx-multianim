@@ -734,6 +734,91 @@ class TileGridTest extends utest.Test {
 		} catch (e:bh.multianim.BuilderError) e.code, "two levels above the map's edge and its neighbours, with a rise of one only");
 	}
 
+	public function testACellsBottomIsItsLowerOutline() {
+		// isometric 32x16 at (0, 0): box (-16, 0) to (16, 16), the left and right corners 8 down, the bottom one 16
+		final iso = new TileGrid(Isometric, 32, 16);
+		Assert.floatEquals(8, iso.bottomAt(0, 0, -16));
+		Assert.floatEquals(12, iso.bottomAt(0, 0, -8));
+		Assert.floatEquals(16, iso.bottomAt(0, 0, 0));
+		Assert.floatEquals(8, iso.bottomAt(0, 0, 40), "past the box: held to it");
+		// a pointy hex 32x28 with sides of 12: its lower corners 20 down, its bottom one 28
+		final pointy = new TileGrid(Hex, 32, 28, true, true, 12);
+		Assert.floatEquals(20, pointy.bottomAt(0, 0, 0));
+		Assert.floatEquals(28, pointy.bottomAt(0, 0, 16));
+		// a flat hex 28x32 with sides of 12: its side corners half down, its bottom edge level from 8 to 20
+		final flat = new TileGrid(Hex, 28, 32, false, true, 12);
+		Assert.floatEquals(16, flat.bottomAt(0, 0, 0));
+		Assert.floatEquals(32, flat.bottomAt(0, 0, 8));
+		Assert.floatEquals(32, flat.bottomAt(0, 0, 14));
+		Assert.floatEquals(24, flat.bottomAt(0, 0, 24));
+		Assert.floatEquals(8, TileGrid.square(8).bottomAt(1, 0, 10));
+	}
+
+	/** How many pixels of two pictures of a map drawn at (x, y) differ inside the cells' shapes (their edges left out). **/
+	static function differInside(a:hxd.Pixels, b:hxd.Pixels, grid:TileGrid, x:Float, y:Float, cells:Array<Array<Int>>):Int {
+		var differ = 0;
+		for (py in 0...a.height)
+			for (px in 0...a.width)
+				for (c in cells)
+					if (insideShape(grid, c[0], c[1], px - x, py - y, 1.5)) {
+						if (a.getPixel(px, py) != b.getPixel(px, py))
+							differ++;
+						break;
+					}
+		return differ;
+	}
+
+	public function testARaisedCellsLowestSideIsUnderTheCellsInFront() {
+		// a raised cell is a stack: its terrain's block on top, a rise's piece a level under it. The
+		// lowest piece hangs below the ground as any block's side does, over the tops of the cells in
+		// front: drawn in its place, back to front, they cover it, so their tops are drawn as with
+		// nothing raised (drawn after the ground it showed a level of side too many)
+		final iso = (levels:String) -> builderFromSource('
+			#t tileset { grid: isometric, 32, 16 tileOffset: 0, 8 atlas: "isohex/lifted" terrain grass { cells: "grass" } rise any { side: "sideMid" } }
+			#m tilemap { tileset: t size: 3, 4 legend { ".": grass } terrain: ["...", "...", "...", "..."] levels: [$levels] }
+		').buildTilemap("m");
+		final hex = (levels:String) -> builderFromSource('
+			#t tileset { grid: hex, 32, 28, pointy, odd, 12 tileOffset: 0, 14 atlas: "isohex/hexset" terrain temperate { cells: "temperate" }
+				rise any { side: "desert" } }
+			#m tilemap { tileset: t size: 3, 3 legend { ".": temperate } terrain: ["...", "...", "..."] levels: [$levels] }
+		').buildTilemap("m");
+		final cases = [
+			{name: "isometric", flat: iso('"000", "000", "000", "000"'), raised: iso('"000", "010", "000", "000"'), x: 70.0, y: 20.0},
+			{name: "pointy hex", flat: hex('"000", "000", "000"'), raised: hex('"000", "010", "000"'), x: 8.0, y: 30.0},
+		];
+		for (k in cases) {
+			final grid = k.raised.grid;
+			final front = [for (d in grid.below()) [grid.neighbourX(1, 1, d), grid.neighbourY(1, 1, d)]];
+			// on the isometric grid the cell straight below too, under the raised cell's bottom corner
+			if (grid.kind == Isometric)
+				front.push([2, 2]);
+			final flat = drawnPixels(k.flat, k.x, k.y, 140, 120);
+			final raised = drawnPixels(k.raised, k.x, k.y, 140, 120);
+			Assert.equals(0, differInside(flat, raised, grid, k.x, k.y, front), '${k.name}: the tops of the cells in front of the raised one');
+			Assert.isTrue(differInside(flat, raised, grid, k.x, k.y, [[1, 1]]) > 0, '${k.name}: the raised cell is drawn lifted');
+		}
+	}
+
+	public function testWhatACellStandingOnTheGroundDrawsBelowItIsTheGrounds() {
+		// a cell standing among the actors whose frame reaches below its cell's top (a building drawn on
+		// its own block): that part is drawn with the ground in its place, under the cells in front.
+		// Standing there as the ground's own block, it changes no pixel
+		final map = (layer:String) -> builderFromSource('
+			#t tileset { grid: isometric, 32, 16 tileOffset: 0, 8 atlas: "isohex/lifted" terrain grass { cells: "grass" } }
+			#m tilemap { tileset: t size: 3, 4 legend { ".": grass } terrain: ["...", "...", "...", "..."] $layer }
+		').buildTilemap("m");
+		final ground = drawnPixels(map(""), 70, 20, 140, 120);
+		final standing = map('layer things { draw: actors legend { "b": grass } rows: ["   ", " b ", "   ", "   "] }');
+		final drawn = drawnPixels(standing, 70, 20, 140, 120);
+		var differ = 0;
+		for (py in 0...ground.height)
+			for (px in 0...ground.width)
+				if (ground.getPixel(px, py) != drawn.getPixel(px, py))
+					differ++;
+		Assert.equals(0, differ, "the block standing on (1, 1) draws as the ground there");
+		Assert.equals(1, (@:privateAccess standing.chunks[0].objects : Array<h2d.Object>).length, "what stands is among the actors");
+	}
+
 	public function testTheTilesetSaysItsGrid() {
 		final tileset = (grid:String) -> '
 			#fp atlas2("Tileset/Minifantasy_ForgottenPlainsTiles.png") { grass: 32, 24, 8, 8 }
