@@ -1,0 +1,96 @@
+version: 1.0
+
+// Tile maps on the isometric and hex grids: the tileset says its grid, the map is rows as
+// on the square grid. Left, a city on Kenney's Isometric Tiles City and Buildings: blocks 132 wide
+// whose top is a 132x66 diamond with 33 pixels of side under it (tileOffset: 0, 33 puts the top on
+// the cell), every block a terrain so each covers the sides of the ones behind it, houses among the
+// actors. Right, Kenney's Hexagon pack (pointy hexes 120x140, a regular side) at half size, and the
+// Hexset by mbartelsm (32x48 frames on pointy hexes 32x28 whose upright sides are 12, rows 20 apart,
+// the face 14 rows above the frame's bottom) at twice its size.
+// Tiles: Kenney (www.kenney.nl), CC0; Hexset v0.1.1 by mbartelsm, CC0. See ATTRIBUTION.md.
+
+#cityTiles tileset {
+    grid: isometric, 132, 66
+    tileOffset: 0, 33
+    atlas: "isohex/isoCity"
+    terrain plaza { cells: "plaza" }
+    terrain asphalt { cells: "asphalt" }
+    terrain roadA { cells: "roadA" }
+    terrain roadB { cells: "roadB" }
+    terrain cross { cells: "cross" }
+    terrain park { cells: "treeBlock" metadata { park:bool => true } }
+    cell house { draw: actors metadata { building:bool => true } }
+}
+
+#city tilemap {
+    tileset: cityTiles
+    size: 6, 6
+    legend { ".": plaza, "a": asphalt, "-": roadA, "|": roadB, "+": cross, "t": park }
+    terrain: [
+        "..|...",
+        "t.|.t.",
+        "--+---",
+        "..|aa.",
+        ".t|aa.",
+        "..|...",
+    ]
+    layer buildings { legend { "h": house } rows: [
+        "h     ",
+        "   h  ",
+        "      ",
+        "h     ",
+        "     h",
+        "   h  ",
+    ] }
+}
+
+#hexTiles tileset {
+    grid: hex, 120, 140, pointy, odd
+    atlas: "isohex/hexKenney"
+    terrain grass { cells: "grass" }
+    terrain dirt { cells: "dirt" }
+    terrain sand { cells: "sand" }
+    terrain stone { cells: "stone" }
+}
+
+#hexes tilemap {
+    tileset: hexTiles
+    size: 5, 4
+    legend { ".": grass, "d": dirt, "s": sand, "^": stone }
+    terrain: [
+        "..ds.",
+        ".dd^s",
+        "..^^.",
+        "s...d",
+    ]
+}
+
+#hexsetTiles tileset {
+    grid: hex, 32, 28, pointy, odd, 12
+    tileOffset: 0, 14
+    atlas: "isohex/hexset"
+    terrain deep_water { cells: "deep_water" }
+    terrain desert { cells: "desert" }
+    terrain temperate { cells: "temperate" }
+    terrain temperate_hill { cells: "temperate_hill" }
+    terrain stone_mountain { cells: "stone_mountain" }
+}
+
+#island tilemap {
+    tileset: hexsetTiles
+    size: 7, 5
+    legend { "~": deep_water, "d": desert, ".": temperate, "h": temperate_hill, "^": stone_mountain }
+    terrain: [
+        "~~~~~~~",
+        "~~..h~~",
+        "~d.^^.~",
+        "~~dh.~~",
+        "~~~~~~~",
+    ]
+}
+
+#tilemapGrids programmable() {
+    tilemap(city): 400, 20
+    @scale(0.5) tilemap(hexes): 830, 30
+    @scale(2) tilemap(island): 820, 330
+}

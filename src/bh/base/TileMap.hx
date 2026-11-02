@@ -34,6 +34,13 @@ typedef TileMapTiles = {
 	**/
 	var ?autotileOn:(name:String, grid:Array<Array<Int>>, where:Null<Array<Array<Int>>>, x0:Int, y0:Int, on:TileGrid) -> h2d.TileGroup;
 
+	/**
+		The tile an autotile draws for an index at map cell (x, y) (the one of several its position
+		picks), flipped as its mapping says and unturned; null where it draws nothing. A map off the
+		square grid draws its ground tile by tile with it, back to front.
+	**/
+	var ?autotileTile:(name:String, index:Int, x:Int, y:Int) -> Null<h2d.Tile>;
+
 	/** An autotile's format, which says what its positions are; throws for a name the file has not. **/
 	var autotileFormat:(name:String) -> AutotileFormat;
 
@@ -86,6 +93,17 @@ private typedef LayerEntry = {
 	final metadata:ResolvedSettings;
 }
 
+/** A terrain that is not animated as the ground off the square grid draws it, in a chunk: its frames, or its autotile with its mask, where it draws and its transitions. **/
+private typedef GroundPlan = {
+	final terrain:Int;
+	final frames:Null<Array<h2d.Tile>>;
+	final autotile:Null<String>;
+	final format:AutotileFormat;
+	final mask:Null<Array<Array<Int>>>;
+	final where:Null<Array<Array<Int>>>;
+	final transitions:Array<{autotile:String, format:AutotileFormat, where:Array<Array<Int>>}>;
+}
+
 /** The step from a cell to its neighbour toward a side, as `TileMap.towardStep` says it. **/
 typedef TowardStep = {
 	final dx:Int;
@@ -110,6 +128,9 @@ private class Chunk {
 	public var resolved = false;
 	/** In view, after culling: its parts and objects are shown. **/
 	public var shown = true;
+
+	/** Its place in the map's chunks, row by row: the order its parts keep in a pass off the square grid. **/
+	public var index = 0;
 
 	public function new(rect:CellRect, passes:Int) {
 		this.rect = rect;
@@ -547,7 +568,18 @@ class TileMap extends h2d.Object {
 	function partOf(c:Chunk, pass:Int):h2d.Object {
 		var part = c.parts[pass];
 		if (part == null) {
-			part = new h2d.Object(passes[pass]);
+			if (grid.kind == Orthogonal) {
+				part = new h2d.Object(passes[pass]);
+			} else {
+				// a frame taller or wider than its cell reaches into the chunks around it, so a
+				// pass's parts are kept in the chunks' order, back to front, whichever is drawn first
+				part = new h2d.Object();
+				final into = passes[pass];
+				var at = 0;
+				for (other in chunks)
+					if (other.index < c.index && other.parts[pass] != null) at++;
+				into.addChildAt(part, at);
+			}
 			part.visible = c.shown;
 			c.parts[pass] = part;
 		}
@@ -579,6 +611,7 @@ class TileMap extends h2d.Object {
 					x1: x0 + chunkSize < width ? x0 + chunkSize : width,
 					y1: y0 + chunkSize < height ? y0 + chunkSize : height,
 				}, passes.length));
+				chunks[chunks.length - 1].index = chunks.length - 1;
 			}
 		shownAll = true;
 		changed = true;
@@ -1421,9 +1454,15 @@ class TileMap extends h2d.Object {
 	}
 
 	function drawTerrains(c:Chunk):Void {
+		final offGrid = grid.kind != Orthogonal;
+		if (offGrid)
+			drawGroundInOrder(c);
 		for (i in 0...tileset.terrains.length) {
 			final terrain = tileset.terrains[i];
 			final frames = terrainFrames[i];
+			// off the square grid, a terrain that is not animated is drawn by `drawGroundInOrder`
+			if (offGrid && (frames != null || terrain.autotiles.length == 1))
+				continue;
 			if (frames != null) {
 				final groups = new TileGroups(this, c, i);
 				for (cy in c.rect.y0...c.rect.y1)
@@ -1480,6 +1519,127 @@ class TileMap extends h2d.Object {
 				c.animated.push({terrain: i, frames: frameGroups});
 			}
 		}
+	}
+
+	/**
+		The terrains that are not animated, off the square grid, in one pass and back to front: row
+		by row (on flat hexes the row's columns not pushed, then the pushed ones, which are lower),
+		each position's terrains bottom first, a transition's tile right after its terrain's. A
+		frame taller than its cell (a block with its side, a hex with its edge) then covers the cells
+		behind it and is covered by those in front, whichever terrain each is; drawn a terrain a
+		pass, as on the square grid, a terrain above would cover the cells in front of it. Under a
+		cell of a `cells:` terrain no terrain below is drawn: its frame is the whole cell, as the one
+		below would be. Animated terrains are drawn as on the square grid, each its own pass, under.
+	**/
+	function drawGroundInOrder(c:Chunk):Void {
+		final plans = groundPlans(c);
+		if (plans.length == 0)
+			return;
+		final groups = new TileGroups(this, c, plans[plans.length - 1].terrain);
+		final flatHex = grid.kind == Hex && !grid.pointy;
+		final lastRow = c.rect.y1 == height ? height + 1 : c.rect.y1;
+		for (cy in c.rect.y0...lastRow)
+			for (half in 0...(flatHex ? 2 : 1))
+				for (plan in plans) {
+					final corner = plan.format == Corner;
+					final r = corner ? positionsOf(c, Corner) : c.rect;
+					if (cy >= r.y1)
+						continue;
+					for (cx in r.x0...r.x1) {
+						if (flatHex && grid.pushed(cx) != (half == 1))
+							continue;
+						if (!corner && liftedAt(cx, cy))
+							continue; // a raised cell is drawn with its column, among the actors
+						emitGround(plan, cx, cy, groups, 0);
+					}
+				}
+	}
+
+	/** What `drawGroundInOrder` draws of each terrain that is not animated, bottom first; those not near the chunk left out. **/
+	function groundPlans(c:Chunk):Array<GroundPlan> {
+		final plans:Array<GroundPlan> = [];
+		for (i in 0...tileset.terrains.length) {
+			final terrain = tileset.terrains[i];
+			final frames = terrainFrames[i];
+			if (frames != null) {
+				plans.push({terrain: i, frames: frames, autotile: null, format: Blob47, mask: null, where: null, transitions: []});
+				continue;
+			}
+			if (terrain.autotiles.length != 1)
+				continue;
+			final mask = terrainMask(i);
+			final autotile = terrain.autotiles[0];
+			final format = tiles.autotileFormat(autotile);
+			if (format == Corner && grid.kind == Hex)
+				throw BuilderError.of('tilemap $mapName: terrain ${terrain.name}: autotile $autotile is of the corner format, which has no hex form (blob47, cross or hex64 are)',
+					"tilemap_grid");
+			final where = drawnPositions(mask, format, positionsOf(c, format));
+			if (where == null)
+				continue;
+			final transitions:Array<{autotile:String, format:AutotileFormat, where:Array<Array<Int>>}> = [];
+			for (t in tileset.transitions)
+				if (t.to == terrain.name) {
+					final tf = tiles.autotileFormat(t.autotiles[0]);
+					final meeting = meetingPositions(i, terrainIndexOf(t.from), tf, positionsOf(c, tf));
+					if (meeting != null)
+						transitions.push({autotile: t.autotiles[0], format: tf, where: meeting});
+				}
+			plans.push({terrain: i, frames: null, autotile: autotile, format: format, mask: mask, where: where, transitions: transitions});
+		}
+		return plans;
+	}
+
+	/** A terrain's tile at a position (a cell, or a corner of the corner format), and its transitions' there, moved up by `up` pixels. **/
+	function emitGround(plan:GroundPlan, cx:Int, cy:Int, groups:TileGroups, up:Float):Void {
+		final frames = plan.frames;
+		if (frames != null) {
+			final t = terrainIndex[cy * width + cx];
+			// under a cell of another `cells:` terrain nothing is drawn: its frame covers the cell
+			if (t < plan.terrain || (t > plan.terrain && terrainFrames[t] != null))
+				return;
+			final f = frames[Autotile.variantAt(cx, cy, frames.length)];
+			groups.add(grid.frameX(cx, cy, f.width), grid.frameY(cx, cy, f.height) - up, f);
+			return;
+		}
+		final where = plan.where;
+		final ox = passRect.x0;
+		final oy = passRect.y0;
+		if (where == null || !Autotile.isFilled(where, cx - ox, cy - oy))
+			return;
+		placeAutotileTile(plan.autotile, plan.format, cast plan.mask, cx, cy, groups, up);
+		for (t in plan.transitions)
+			if (Autotile.isFilled(t.where, cx - ox, cy - oy))
+				placeAutotileTile(t.autotile, t.format, cast plan.mask, cx, cy, groups, up);
+	}
+
+	/** The tile an autotile draws at a position over a pass's mask, put on the grid as `buildAutotile` puts it. **/
+	function placeAutotileTile(name:String, format:AutotileFormat, mask:Array<Array<Int>>, cx:Int, cy:Int, groups:TileGroups, up:Float):Void {
+		final lx = cx - passRect.x0;
+		final ly = cy - passRect.y0;
+		final index = switch format {
+			case Corner: Autotile.getCornerIndex(mask, lx, ly);
+			case Cross: Autotile.getCrossIndex(Autotile.getNeighborMask8(mask, lx, ly));
+			case Blob47: Autotile.getBlob47Index(Autotile.getNeighborMask8(mask, lx, ly));
+			case Hex64: Autotile.getHexIndex(mask, lx, ly, grid, passRect.x0, passRect.y0);
+		};
+		if (format == Corner && index == 0)
+			return;
+		final tileAt = tiles.autotileTile;
+		if (tileAt == null)
+			throw BuilderError.of('tilemap $mapName: its tiles give no autotile tile by index, which a map off the square grid needs', "tilemap_grid");
+		final tile = tileAt(name, index, cx, cy);
+		if (tile == null)
+			return;
+		if (format == Corner)
+			groups.add(grid.frameLeft(grid.cornerX(cx, cy), tile.width, grid.tileWidth),
+				grid.frameTop(grid.cornerY(cx, cy), tile.height, grid.tileHeight) - up, tile);
+		else
+			groups.add(grid.frameX(cx, cy, tile.width), grid.frameY(cx, cy, tile.height) - up, tile);
+	}
+
+	/** Whether a cell is drawn lifted, with its column among the actors (a raised cell off the square grid). **/
+	function liftedAt(cx:Int, cy:Int):Bool {
+		return false;
 	}
 
 	/** An autotile over a pass's mask, its tiles put on the map's grid. **/

@@ -9714,6 +9714,12 @@ class MultiAnimBuilder {
 		return h2d.Tile.fromColor(0, tileSize, tileSize, 0.0);
 	}
 
+	/** The tile `buildAutotile` draws for an index at position (x, y), flipped and unturned; null where it draws none (a corner format's 0). */
+	public function autotileTileAt(name:String, index:Int, x:Int, y:Int):Null<h2d.Tile> {
+		final placed = autotilePlacement(name, getAutotileDef(name), index, x, y);
+		return placed == null ? null : placed.tile;
+	}
+
 	/** Quarter turns clockwise `buildAutotile` gives the tile at position (x, y) of an index: 0 to 3. */
 	public function getAutotileRotation(name:String, index:Int, x = 0, y = 0):Int {
 		final placed = autotilePlacement(name, getAutotileDef(name), index, x, y);
@@ -9971,6 +9977,7 @@ class MultiAnimBuilder {
 		final tiles:bh.base.TileMap.TileMapTiles = {
 			autotile: (autotileName, grid, where, x0, y0) -> tsBuilder.buildAutotile(autotileName, grid, where, x0, y0),
 			autotileOn: (autotileName, grid, where, x0, y0, on) -> tsBuilder.buildAutotile(autotileName, grid, where, x0, y0, on),
+			autotileTile: (autotileName, index, x, y) -> tsBuilder.autotileTileAt(autotileName, index, x, y),
 			autotileFormat: autotileName -> tsBuilder.autotileFormat(autotileName),
 			frames: (sheet, cell) -> tsBuilder.atlasTiles(sheet, cell),
 			// a layer's own sheet is the map's, written in this file

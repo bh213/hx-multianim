@@ -201,6 +201,54 @@ class TileGridTest extends utest.Test {
 		Assert.floatEquals(iso.pixelY(1, 1) + 66 - 99, iso.frameY(1, 1, 99), "standing on the bottom");
 	}
 
+	public function testTheHex64Index() {
+		final g = new TileGrid(Hex, 32, 28, true, true);
+		// cell (1, 1), a pushed row: NE (2, 0), E (2, 1), SE (2, 2), SW (1, 2), W (0, 1), NW (1, 0)
+		final cells = [[0, 1, 1], [1, 1, 1], [0, 0, 1]];
+		Assert.equals(1 | 2 | 4 | 16 | 32, bh.base.Autotile.getHexIndex(cells, 1, 1, g, 0, 0));
+		// the same rows as map rows 1 to 3: row 1 of the grid is map row 2, not pushed, whose NE is (1, 1)
+		Assert.equals(1 | 2 | 16, bh.base.Autotile.getHexIndex(cells, 1, 1, g, 0, 1));
+		final flat = new TileGrid(Hex, 28, 32, false, true);
+		Assert.equals(63, bh.base.Autotile.getHexIndex([[1, 1, 1], [1, 1, 1], [1, 1, 1]], 1, 1, flat, 0, 0));
+		// the fallback: the fewest sides changed, more of them first, then the full hex, then the lone one
+		final mapping = [0 => 0, 63 => 1, 3 => 2, 7 => 3];
+		Assert.equals(3, bh.base.Autotile.getHex64FallbackChain(1, mapping).result);
+		Assert.equals(7, bh.base.Autotile.getHex64FallbackChain(15, mapping).result);
+		Assert.equals(63, bh.base.Autotile.getHex64FallbackChain(48, [63 => 0, 0 => 1]).result);
+		Assert.equals(5, bh.base.Autotile.getHex64FallbackChain(5, [5 => 0]).result, "mapped: itself");
+	}
+
+	public function testAHexMapDrawsItsHex64TerrainATileACellBackToFront() {
+		final map = builderFromSource('
+			#ring autotile { format: hex64 tileSize: 16 demo: #224422, #44AA44 }
+			#lone autotile { format: hex64 tileSize: 16 demo: #442222, #AA4444 }
+			#t tileset { grid: hex, 16, 16, pointy, odd atlas: "none" terrain moss { autotile: ring } terrain mud { autotile: lone } }
+			#m tilemap { tileset: t size: 4, 3 legend { ".": moss, "m": mud, " ": none } terrain: [" .. ", ".mm.", " .. "] }
+		').buildTilemap("m");
+		map.redraw();
+		var drawn = 0;
+		final parts:Array<Null<h2d.Object>> = @:privateAccess map.chunks[0].parts;
+		for (part in parts)
+			if (part != null)
+				for (o in part)
+					if (Std.isOfType(o, h2d.TileGroup)) drawn += (cast o : h2d.TileGroup).count();
+		// moss under every cell of moss and mud (8), mud on its own two: one pass, back to front
+		Assert.equals(10, drawn);
+		Assert.equals("mud", map.terrainAt(1, 1));
+		final c = map.grid.center(2, 1);
+		final cell = map.toCell(c.x, c.y);
+		Assert.equals(2, cell.x);
+		Assert.equals(1, cell.y);
+		Assert.equals("tilemap_grid", try {
+			builderFromSource('
+				#c autotile { format: corner tileSize: 16 demo: #224422, #44AA44 }
+				#t tileset { grid: hex, 16, 16, pointy, odd atlas: "none" terrain moss { autotile: c } }
+				#m tilemap { tileset: t size: 2, 2 legend { ".": moss } terrain: ["..", ".."] }
+			').buildTilemap("m").redraw();
+			null;
+		} catch (e:bh.multianim.BuilderError) e.code, "the corner format has no hex form");
+	}
+
 	public function testTheTilesetSaysItsGrid() {
 		final tileset = (grid:String) -> '
 			#fp atlas2("Tileset/Minifantasy_ForgottenPlainsTiles.png") { grass: 32, 24, 8, 8 }

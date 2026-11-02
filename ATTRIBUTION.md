@@ -85,6 +85,18 @@ https://krishna-palacio.itch.io/minifantasy-forgotten-plains
 by Krishna Palacio
 Used for autotile test examples.
 
+### Kenney: Isometric Tiles City, Isometric Tiles Buildings, Hexagon Pack
+https://kenney.nl/assets/isometric-tiles-city, https://kenney.nl/assets/isometric-tiles-buildings, https://kenney.nl/assets/hexagon-pack
+by Kenney (www.kenney.nl)
+- **License**: CC0 (public domain)
+- **Usage**: `test/res/isohex/isoCity` and `hexKenney`, a few tiles of each packed into one sheet, for the isometric and hex tile map tests (example 168). `test/res/isohex/LICENSE.txt` lists them.
+
+### Hexset v0.1.1
+https://opengameart.org/content/hexset-v011-hex-pixel-art-terrain-tileset
+by mbartelsm
+- **License**: CC0 (public domain)
+- **Usage**: `test/res/isohex/hexset`, seven of its 32x48 tiles, for the hex tile map tests (example 168).
+
 ---
 
 ## License Compliance
