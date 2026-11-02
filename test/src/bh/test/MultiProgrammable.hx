@@ -179,6 +179,9 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/168-tilemapGrids/tilemapGrids.manim", "tilemapGrids")
 	public var tilemapGrids;
 
+	@:manim("test/examples/169-tilemapLifted/tilemapLifted.manim", "tilemapLifted")
+	public var tilemapLifted;
+
 	@:manim("test/examples/54-codegenPaletteReplace/codegenPaletteReplace.manim", "codegenPaletteReplace")
 	public var paletteReplace;
 

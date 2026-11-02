@@ -2039,6 +2039,10 @@ a meaning: the game says what `wall`, `swim` or `cost` are for.
 - A layer's cells come from its `sheet:` (the tileset's `atlas` when not given) and are drawn `under`
   the actors (the default), `over` them, at the `top`, above everything, or as `actors`: each among
   them, sorted by its feet; a `cell` with its own `draw:` goes there instead.
+- A sheet whose frames its packer trimmed to their pixels (`offset:` and `orig:` in the atlas, as
+  TexturePacker writes them) draws as the whole one: every frame a map draws (a terrain's cells, a
+  layer's cell, a side's piece, an autotile's tile from a sheet) is put where its whole frame would be,
+  and stands on its cell by the whole frame's size; an object's size is checked against it too.
 - Drawing order: terrains, the levels' edges and sides, the `under` layers; the decor and the actors in
   one layer sorted by their feet every frame; `over`; `top`. The order holds across the map's
   chunks: a map drawn in chunks looks as it does drawn in one piece, at their borders too.
@@ -2049,7 +2053,8 @@ A tileset says the grid its tiles are laid on, and a map drawn with it is laid o
 are written as on the square grid (offset coordinates: column `cx` of row `cy`, a hex map typed row by
 row, the pushed rows understood). Everything a map is (terrains, transitions, levels, layers, objects,
 marks, metadata, chunks, culling, changes while running) works on every grid.
-[test/examples/168-tilemapGrids/](../test/examples/168-tilemapGrids/) draws one of each.
+[test/examples/168-tilemapGrids/](../test/examples/168-tilemapGrids/) draws one of each; [169-tilemapLifted/](../test/examples/169-tilemapLifted/) lifted levels with their edges, ends
+and faces, a platform, animated water and a long building among people.
 
 ```manim
 #city tileset {
@@ -2084,7 +2089,8 @@ marks, metadata, chunks, culling, changes while running) works on every grid.
 - **Back to front**: off the square grid the terrains that are not animated are drawn in one pass, row
   by row from the back, each cell's terrains bottom first, so a frame taller than its cell (a block's
   side, a hex's edge) is covered by the cells in front of it. Under a cell of a `cells:` terrain no
-  terrain below it is drawn. An animated terrain is drawn under them, as on the square grid. A
+  terrain below it is drawn. An animated terrain is drawn in its place in that order too (water in
+  front of a block covers the block's side, whichever frame shows). A
   `rot90`/`rot180`/`rot270` in an autotile's mapping is not drawn there (a diamond or a hex turned a
   quarter is not one); flips are.
 - **Autotiles**: `blob47`, `cross` and `corner` read the 8 neighbours in cells on the isometric grid as
@@ -2092,17 +2098,33 @@ marks, metadata, chunks, culling, changes while running) works on every grid.
   squares), never `corner`, which has no hex form (`tilemap_grid`).
 - **What stands up is among the actors**: a cell with `draw: actors` and an object of several cells
   are sorted with the actors by the middle of the cells they cover (an actor's `y` is its feet: in
-  front of a house, after it; behind, before it). Walls, trees, houses and lamp posts go there; a road,
-  a rug or a shadow stays a layer `under` the actors.
+  front of a house, after it; behind, before it). On the isometric grid an object of several cells is
+  drawn in strips half a cell wide, each sorted by the front cell of its footprint under it (the one
+  lowest on screen), so an actor beside a long building is in front of it or behind it all along its
+  side, at its far end too; on the hex grid it sorts by its footprint's middle. Walls, trees, houses
+  and lamp posts go there; a road, a rug or a shadow stays a layer `under` the actors.
 - **Levels are lifted**: a cell `n` levels up is drawn `n · lift` pixels higher, its side from the level
   of its neighbour in front (the lowest of them for `toward: down`, the map's edge counting as 0) up to
-  its own, a rise's `side` frame a level (`side: "a", "b"` from the top down, the last again below
+  its own, a frame of the rise's piece a level (its frames from the top down, the last again below
   them), and needs no `edge:`. Its lowest level of side is drawn with the ground; the rest, its top and
   its layers' cells are a column among the actors, sorted by its middle on the ground less half a
   pixel: in front of what stands behind it, behind what stands in front, under what stands on it. An
   actor on a raised cell keeps its `y` its feet on the ground (`centerOf`) and draws itself
-  `map.liftAt(cx, cy)` higher. `sideAt` is 0 there and a rise's metadata is on no cell, the levels'
-  `edge` and a platform's top are not drawn: a raised cell shows its sides.
+  `map.liftAt(cx, cy)` higher.
+- **A raised cell's side is its own**: `sideAt` says the most levels its side drops, and the rise that
+  draws it puts its metadata on the raised cell (on the square grid, on the cells the side covers).
+  A piece of one face (`toward: se`, `sw`, `s`) is drawn against that face's side of the cell (`se` the
+  right, `sw` the left, a flat hex's `s` the middle), so a face drawn alone, half a cell wide, lands
+  on its face, and a whole cell's frame with the other face clear where a frame goes. On the isometric
+  grid a run of sides has its ends, where the rise names them: an `se` face's run goes along its
+  column, an `sw` face's along its row, and the front of `toward: down` from the `sw` faces up to the
+  corner on to the `se` faces; `left` is the run's end on the left of the screen, `right` on the right,
+  `single` a side one cell long, the middles (`side: "a", "b"`) taken in turn from the left end. On the
+  hex grid there are no ends.
+- **Edges and platforms on a lifted map**: the tileset's `edge` (optional there) outlines a level's
+  rim on the top of the cells of that level, lifted with them (a higher cell shows its own level's);
+  a platform's `edge` is drawn on the top of every cell of it, its sides its own rises. A corner tile,
+  which four cells share, is drawn at the highest level around it.
 
 ### A fill: a map made where it is placed
 

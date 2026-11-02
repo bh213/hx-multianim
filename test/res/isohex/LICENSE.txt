@@ -1,5 +1,5 @@
 The tiles in this folder are all CC0 1.0 (public domain), packed into one sheet a set for
-hx-multianim's isometric and hex tile map tests (test/examples/168-tilemapGrids).
+hx-multianim's isometric and hex tile map tests (test/examples/168-tilemapGrids and 169-tilemapLifted).
 
 isoCity.png / isoCity.atlas2
   Kenney, "Isometric Tiles City" (cityTiles 066, 072, 074, 080, 073, 081, 089, 067) and
@@ -14,5 +14,14 @@ hexKenney.png / hexKenney.atlas2
 hexset.png / hexset.atlas2
   mbartelsm, "Hexset v0.1.1" (temperate, deep_water, desert, stone_mountain, temperate_hill).
   https://opengameart.org/content/hexset-v011-hex-pixel-art-terrain-tileset. License: CC0 1.0.
+
+padded.png / padded.atlas2 / paddedTrimmed.atlas2
+  Four of isoCity.png's tiles and two of hexset.png's (above), each with clear margins around it,
+  and a figure drawn for these tests: padded.atlas2 lists the frames whole, paddedTrimmed.atlas2
+  the same frames trimmed to their pixels (TileGridTest's trimmed atlas test). CC0 1.0, as above.
+
+lifted.png / lifted.atlas2
+  Blocks, side pieces, faces, an edge, a roof, a hall and figures drawn for these tests
+  (test/examples/169-tilemapLifted), dedicated to the public domain: CC0 1.0.
 
 CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/

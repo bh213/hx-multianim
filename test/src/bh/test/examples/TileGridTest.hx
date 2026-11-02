@@ -276,13 +276,17 @@ class TileGridTest extends utest.Test {
 	public function testObjectsAndRaisedCellsSortAmongTheActorsByTheirMiddle() {
 		final map = isoMap("", "", 'layer things { legend { "h": house, "w": wide } rows: ["    ", " w  ", "    ", "  h "] }');
 		final objects:Array<h2d.Object> = @:privateAccess map.chunks[0].objects;
-		Assert.equals(2, objects.length, "the house and the wide object among the actors");
-		// the house at (2, 3) sorts by its cell's middle; the wide one (anchor (1, 1), its bottom-left:
-		// cells (1, 0) to (2, 1)) by its footprint's
-		final house = objects[1];
+		// the wide one (anchor (1, 1), its bottom-left: cells (1, 0) to (2, 1)) in four strips half a
+		// cell wide, its footprint's half columns -1 to 2; then the house
+		Assert.equals(5, objects.length, "the wide object's four strips and the house among the actors");
+		// the house at (2, 3) sorts by its cell's middle
+		final house = objects[4];
 		Assert.floatEquals(map.grid.center(2, 3).y, house.y);
-		final wide = objects[0];
-		Assert.floatEquals((map.grid.bounds(1, 0, 3, 2).yMin + map.grid.bounds(1, 0, 3, 2).yMax) / 2, wide.y);
+		// each strip by the front cell under it: half column -1 is (1, 1)'s alone, 0 and 1 the
+		// footprint's front corner (2, 1), 2 (2, 0)'s alone
+		final fronts = [[1, 1], [2, 1], [2, 1], [2, 0]];
+		for (i in 0...4)
+			Assert.floatEquals(map.grid.center(fronts[i][0], fronts[i][1]).y - 0.25, objects[i].y, 'strip $i');
 		// an actor on the cell in front of the house (SE, (3, 3)) is drawn after it, one behind before
 		final front = new h2d.Object();
 		final behind = new h2d.Object();
@@ -295,6 +299,291 @@ class TileGridTest extends utest.Test {
 		map.actors.ysort(0);
 		Assert.isTrue(map.actors.getChildIndex(front) > map.actors.getChildIndex(house), "in front");
 		Assert.isTrue(map.actors.getChildIndex(behind) < map.actors.getChildIndex(house), "behind");
+	}
+
+	public function testALongObjectSortsByTheFrontCellUnderEachStrip() {
+		// a hall one cell by four, its anchor its top-left at (1, 0): cells (1, 0) to (1, 3)
+		final map = builderFromSource('
+			#blocks atlas2("Tileset/Minifantasy_ForgottenPlainsTiles.png") { ground: 0, 0, 32, 24  hall: 0, 0, 80, 60 }
+			#t tileset { grid: isometric, 32, 16 tileOffset: 0, 8 atlas: "blocks" terrain ground { cells: "ground" } cell hall { size: 1, 4 anchor: 0, 0 } }
+			#m tilemap { tileset: t size: 4, 6 legend { ".": ground } terrain: ["....", "....", "....", "....", "....", "...."]
+				layer things { legend { "h": hall } rows: [" h  ", "    ", "    ", "    ", "    ", "    "] } }
+		').buildTilemap("m");
+		map.redraw();
+		final strips:Array<h2d.Object> = @:privateAccess map.chunks[0].objects;
+		// half columns x0 - y1 = -3 to x1 - y0 - 1 = 1, a strip each
+		Assert.equals(5, strips.length);
+		final k0 = -3;
+		// actors standing on cells: in front of the long side's far end (E of (1, 0)), at its middle (E
+		// of (1, 2)), in front of its front corner (S of (1, 3)); behind it (W of (1, 1), N of (1, 0))
+		final cells = [
+			{x: 2, y: 0, inFront: true},
+			{x: 2, y: 2, inFront: true},
+			{x: 1, y: 4, inFront: true},
+			{x: 0, y: 1, inFront: false},
+			{x: 1, y: -1, inFront: false},
+		];
+		final actors = [
+			for (cell in cells) {
+				final a = new h2d.Object();
+				final p = map.grid.center(cell.x, cell.y);
+				a.setPosition(p.x, p.y);
+				map.addActor(a);
+				a;
+			}
+		];
+		// the footprint's middle, the one key it was sorted by, puts the first actor behind it
+		final middle = (map.grid.bounds(1, 0, 2, 4).yMin + map.grid.bounds(1, 0, 2, 4).yMax) / 2;
+		Assert.isTrue(actors[0].y < middle, "the far end's actor is above the footprint's middle");
+		map.actors.ysort(0);
+		for (i in 0...cells.length) {
+			final cell = cells[i];
+			// the strips the actor's cell is over: its half columns, cx - cy - 1 and cx - cy
+			for (k in cell.x - cell.y - 1...cell.x - cell.y + 1) {
+				final s = k - k0;
+				if (s < 0 || s >= strips.length)
+					continue;
+				final after = map.actors.getChildIndex(actors[i]) > map.actors.getChildIndex(strips[s]);
+				Assert.equals(cell.inFront, after, 'the actor on (${cell.x}, ${cell.y}) and the strip of half column $k');
+			}
+		}
+	}
+
+	/** The pixels a map draws, placed at (x, y) in a `w` by `h` picture. **/
+	static function drawnPixels(map:bh.base.TileMap, x:Float, y:Float, w:Int, h:Int):hxd.Pixels {
+		final scene = new h2d.Scene();
+		scene.addChild(map);
+		map.setPosition(x, y);
+		map.cullNone();
+		map.redraw();
+		scene.syncOnly(0);
+		final texture = new h3d.mat.Texture(w, h, [Target]);
+		texture.clear(0xFF00FF);
+		map.drawTo(texture);
+		final pixels = texture.capturePixels();
+		texture.dispose();
+		map.remove();
+		scene.dispose();
+		pixels.convert(BGRA);
+		return pixels;
+	}
+
+	public function testATrimmedSheetDrawsWhereTheWholeOneDoes() {
+		// test/res/isohex/padded.png's frames have clear margins: padded.atlas2 lists them whole,
+		// paddedTrimmed.atlas2 trimmed to their pixels (offset: from the left and bottom, orig: the whole size)
+		final maps = [
+			{
+				name: "square",
+				x: 10.0,
+				y: 10.0,
+				source: '
+					#auto autotile { format: blob47 tileSize: 140 sheet: "$$atlas", prefix: "auto" allowPartialMapping: true mapping: [46: 0] }
+					#t tileset { tileSize: 140 atlas: "$$atlas" terrain plaza { cells: "plaza" } terrain park { autotile: auto }
+						cell house { draw: actors } }
+					#m tilemap { tileset: t size: 4, 3 legend { ".": plaza, "p": park } terrain: [".pp.", ".pp.", "...."]
+						layer things { legend { "h": house, "m": man } rows: ["h   ", " m  ", "  h "] } }
+				',
+			},
+			{
+				name: "isometric",
+				x: 420.0,
+				y: 160.0,
+				source: '
+					#auto autotile { format: blob47 tileSize: 132 sheet: "$$atlas", prefix: "auto" allowPartialMapping: true mapping: [46: 0] }
+					#t tileset { grid: isometric, 132, 66 tileOffset: 0, 33 atlas: "$$atlas" terrain plaza { cells: "plaza" } terrain park { autotile: auto }
+						rise any { side: "cliff" } cell house { size: 2, 1 } cell man { draw: actors } }
+					#m tilemap { tileset: t size: 3, 3 legend { ".": plaza, "p": park } terrain: ["...", ".p.", "..."]
+						layer things { legend { "h": house, "m": man } rows: ["h  ", "  m", " m "] }
+						levels: ["000", "001", "010"] }
+				',
+			},
+			{
+				name: "hex",
+				x: 20.0,
+				y: 30.0,
+				source: '
+					#t tileset { grid: hex, 32, 28, pointy, odd, 12 tileOffset: 0, 14 atlas: "$$atlas" terrain temperate { cells: "temperate" }
+						terrain desert { cells: "desert" } rise any { side: "desert" } cell man { draw: actors } }
+					#m tilemap { tileset: t size: 4, 3 legend { ".": temperate, "d": desert } terrain: ["..d.", ".dd.", "...."]
+						layer people { legend { "m": man } rows: ["  m ", "m   ", "    "] }
+						levels: ["0000", "0100", "0000"] }
+				',
+			},
+		];
+		for (m in maps) {
+			final whole = drawnPixels(builderFromSource(StringTools.replace(m.source, "$atlas", "isohex/padded")).buildTilemap("m"), m.x, m.y, 800, 600);
+			final trimmed = drawnPixels(builderFromSource(StringTools.replace(m.source, "$atlas", "isohex/paddedTrimmed")).buildTilemap("m"), m.x, m.y, 800, 600);
+			var drawn = 0;
+			var differ = 0;
+			var first = "";
+			for (y in 0...whole.height)
+				for (x in 0...whole.width) {
+					final p = whole.getPixel(x, y);
+					if (p != 0xFFFF00FF)
+						drawn++;
+					if (trimmed.getPixel(x, y) != p) {
+						if (differ == 0)
+							first = 'first at $x, $y';
+						differ++;
+					}
+				}
+			Assert.isTrue(drawn > 5000, '${m.name}: the map draws ($drawn pixels)');
+			Assert.equals(0, differ, '${m.name}: the trimmed sheet draws as the whole one ($first)');
+		}
+	}
+
+	/** An isometric map over blocks whose rise has its ends and metadata (`rise any { … }` as given), its levels as given. **/
+	static function liftedMap(rise:String, levels:Array<String>, ?more:String = ""):bh.base.TileMap {
+		final rows = [for (r in levels) '"' + StringTools.lpad("", ".", r.length) + '"'].join(", ");
+		final map = builderFromSource('
+			#blocks atlas2("Tileset/Minifantasy_ForgottenPlainsTiles.png") {
+				ground: 0, 0, 32, 24  side: 32, 0, 32, 24  L: 64, 0, 32, 24  R: 96, 0, 32, 24  S: 128, 0, 32, 24  top0: 32, 24, 32, 24
+			}
+			#lip autotile { format: blob47 tileSize: 32 sheet: "blocks", prefix: "top" allowPartialMapping: true mapping: [46: 0] }
+			#t tileset {
+				grid: isometric, 32, 16
+				tileOffset: 0, 8
+				atlas: "blocks"
+				terrain ground { cells: "ground" }
+				$rise
+				$more
+			}
+			#m tilemap { tileset: t size: ${levels[0].length}, ${levels.length} legend { ".": ground } terrain: [$rows] levels: [${[for (r in levels) '"$r"'].join(", ")}] }
+		').buildTilemap("m");
+		return map;
+	}
+
+	public function testALiftedCellHasItsSideAndItsRisesMetadata() {
+		final levels = ["00000", "02100", "00100", "00000"];
+		final map = liftedMap('rise any { side: "side" metadata { cliff:bool => true } }', levels);
+		// read before anything is drawn, then after
+		for (pass in 0...2) {
+			if (pass == 1)
+				map.redraw();
+			// (1, 1), two up: its S neighbour (1, 2) is the ground, its E one (2, 1) one up: down drops two
+			Assert.equals(2, map.sideAt(1, 1), "the most levels its side drops");
+			Assert.equals(1, map.sideAt(2, 1));
+			Assert.equals(1, map.sideAt(2, 2));
+			Assert.equals(0, map.sideAt(0, 0), "the ground has none");
+			Assert.isTrue(map.metadataAt(1, 1).getBoolOrDefault("cliff", false), "the rise's metadata is on the raised cell");
+			Assert.isFalse(map.metadataAt(1, 2).getBoolOrDefault("cliff", false), "not on the cell in front of it");
+		}
+		map.setLevel(1, 1, 0);
+		Assert.equals(0, map.sideAt(1, 1), "a level changed: worked out again");
+		Assert.isFalse(map.metadataAt(1, 1).getBoolOrDefault("cliff", false));
+		Assert.equals(1, map.sideAt(2, 1));
+	}
+
+	public function testARunOfSidesHasItsEndsOnTheIsometricGrid() {
+		// a plateau of 3 by 3 one level up and a lone raised cell
+		final levels = ["000000", "011100", "011100", "011100", "000000", "000010"];
+		final map = liftedMap('rise any { side: "side" left: "L" right: "R" single: "S" }', levels);
+		map.redraw();
+		function piece(cx:Int, cy:Int):String
+			return @:privateAccess map.liftedPiece(cx, cy, 0, -1, 0);
+		// down: the front runs from the plateau's left corner along its sw faces to its bottom corner,
+		// then along its se faces to its right corner
+		Assert.equals("L", piece(1, 3), "the left end: its left corner");
+		Assert.equals("side", piece(2, 3));
+		Assert.equals("side", piece(3, 3), "the bottom corner, both faces");
+		Assert.equals("side", piece(3, 2));
+		Assert.equals("R", piece(3, 1), "the right end: its right corner");
+		Assert.equals("S", piece(4, 5), "a lone cell");
+		// one face: an se face's run goes along cy, its left end the lowest on screen
+		final se = liftedMap('rise any { side: "side" left: "L" right: "R" single: "S" toward: se }', levels);
+		se.redraw();
+		function sePiece(cx:Int, cy:Int):String
+			return @:privateAccess se.liftedPiece(cx, cy, 0, 2, 0);
+		Assert.equals("L", sePiece(3, 3));
+		Assert.equals("side", sePiece(3, 2));
+		Assert.equals("R", sePiece(3, 1));
+		final sw = liftedMap('rise any { side: "side" left: "L" right: "R" single: "S" toward: sw }', levels);
+		sw.redraw();
+		function swPiece(cx:Int, cy:Int):String
+			return @:privateAccess sw.liftedPiece(cx, cy, 0, 4, 0);
+		Assert.equals("L", swPiece(1, 3));
+		Assert.equals("side", swPiece(2, 3));
+		Assert.equals("R", swPiece(3, 3));
+	}
+
+	public function testAFacePieceStandsAgainstItsSideOfTheCell() {
+		final iso = new TileGrid(Isometric, 32, 16, true, true, null, 0, 8);
+		// se, the right face: a piece half the cell wide against the box's right
+		Assert.floatEquals(iso.pixelX(1, 1) + 16, iso.faceX(1, 1, 2, 16));
+		Assert.floatEquals(iso.pixelX(1, 1), iso.faceX(1, 1, 4, 16), "sw, against its left");
+		Assert.floatEquals(iso.frameX(1, 1, 32), iso.faceX(1, 1, 2, 32), "a whole cell's frame where a frame goes");
+		Assert.floatEquals(iso.frameX(1, 1, 32), iso.faceX(1, 1, 4, 32));
+		final pointy = new TileGrid(Hex, 32, 28, true, true, 12);
+		Assert.equals(1, pointy.faceSide(2));
+		Assert.equals(-1, pointy.faceSide(3));
+		final flat = new TileGrid(Hex, 28, 32, false, true);
+		Assert.equals(0, flat.faceSide(3), "a flat hex's s: the bottom");
+		Assert.equals(-1, flat.faceSide(4));
+	}
+
+	public function testALiftedMapDrawsItsEdgeAndAPlatformsTopOnTheRaisedCells() {
+		final levels = ["00000", "01100", "01100", "00000"];
+		final count = (map:bh.base.TileMap, cx:Int, cy:Int) -> {
+			final column:Null<Dynamic> = @:privateAccess map.columnOf.get(cy * map.width + cx);
+			var n = 0;
+			if (column != null)
+				for (g in (column.object : h2d.Object))
+					if (Std.isOfType(g, h2d.TileGroup)) n += (cast g : h2d.TileGroup).count();
+			n;
+		};
+		final plain = liftedMap('rise any { side: "side" }', levels);
+		plain.redraw();
+		Assert.equals(1, count(plain, 1, 1), "its terrain lifted, no edge");
+		final edged = liftedMap('rise any { side: "side" }', levels, "edge: lip");
+		edged.redraw();
+		Assert.equals(2, count(edged, 1, 1), "its terrain and the level's edge on it");
+		// a platform: its top over every cell of it
+		final roofed = builderFromSource('
+			#blocks atlas2("Tileset/Minifantasy_ForgottenPlainsTiles.png") { ground: 0, 0, 32, 24  side: 32, 0, 32, 24  top0: 32, 24, 32, 24 }
+			#lip autotile { format: blob47 tileSize: 32 sheet: "blocks", prefix: "top" allowPartialMapping: true mapping: [46: 0] }
+			#t tileset { grid: isometric, 32, 16 tileOffset: 0, 8 atlas: "blocks" terrain ground { cells: "ground" }
+				platform roof { edge: lip rise any { side: "side" } } }
+			#m tilemap { tileset: t size: 4, 4 legend { ".": ground } terrain: ["....", "....", "....", "...."]
+				levels { legend { "r": 1 roof } rows: ["0000", "0rr0", "0rr0", "0000"] } }
+		').buildTilemap("m");
+		roofed.redraw();
+		for (cell in [[1, 1], [2, 1], [1, 2], [2, 2]])
+			Assert.equals(2, count(roofed, cell[0], cell[1]), 'the roof\'s top on (${cell[0]}, ${cell[1]})');
+	}
+
+	public function testAnAnimatedTerrainIsDrawnInItsPlaceBackToFront() {
+		// the ground, then water over it, animated: a row of water between two rows of ground
+		final map = builderFromSource('
+			#blocks atlas2("Tileset/Minifantasy_ForgottenPlainsTiles.png") { ground: 0, 0, 32, 24  wetA0: 32, 0, 32, 24  wetB0: 64, 0, 32, 24 }
+			#w0 autotile { format: blob47 tileSize: 32 sheet: "blocks", prefix: "wetA" allowPartialMapping: true mapping: [46: 0] }
+			#w1 autotile { format: blob47 tileSize: 32 sheet: "blocks", prefix: "wetB" allowPartialMapping: true mapping: [46: 0] }
+			#t tileset { grid: isometric, 32, 16 tileOffset: 0, 8 atlas: "blocks" terrain ground { cells: "ground" } terrain water { autotile: w0, w1 duration: 100 } }
+			#m tilemap { tileset: t size: 3, 3 legend { ".": ground, "~": water } terrain: ["...", "~~~", "..."] }
+		').buildTilemap("m");
+		map.redraw();
+		final animated:Array<{terrain:Int, frames:Array<h2d.Object>}> = @:privateAccess map.chunks[0].animated;
+		Assert.equals(1, animated.length, "one run of the water");
+		final run = animated[0].frames;
+		Assert.equals(2, run.length, "a frame each");
+		final part = run[0].parent;
+		function tiles(o:h2d.Object):Int {
+			var n = 0;
+			for (g in o)
+				if (Std.isOfType(g, h2d.TileGroup)) n += (cast g : h2d.TileGroup).count();
+			return n;
+		}
+		// the row behind and the ground under the first water cell, still; then the run, its frames
+		// each with the water and the ground after it, in front of it
+		Assert.equals(3, part.numChildren);
+		Assert.isTrue(Std.isOfType(part.getChildAt(0), h2d.TileGroup));
+		Assert.equals(4, (cast part.getChildAt(0) : h2d.TileGroup).count(), "the row behind and the ground under (0, 1)");
+		Assert.equals(run[0], part.getChildAt(1));
+		Assert.equals(run[1], part.getChildAt(2));
+		Assert.equals(3 + 2 + 3, tiles(run[0]), "the water, the ground under the rest of it and the row in front");
+		Assert.equals(3 + 2 + 3, tiles(run[1]));
+		Assert.isTrue(run[0].visible && !run[1].visible, "its first frame shown");
+		@:privateAccess map.step(0.15);
+		Assert.isTrue(!run[0].visible && run[1].visible, "its next frame shown as the clock goes");
 	}
 
 	public function testARaisedCellIsLiftedAndItsTopIsWhereThePointerIs() {

@@ -258,7 +258,7 @@ class TilemapTest extends BuilderTestBase {
 	**/
 	static function piecesDrawn(map:TileMap, names:Array<String>):Array<String> {
 		final tiles:TileMapTiles = @:privateAccess map.tiles;
-		final pieces = [for (n in names) {name: n, tile: tiles.frames("fp", n)[0]}];
+		final pieces = [for (n in names) {name: n, tile: tiles.frames("fp", n)[0].tile}];
 		final drawn:Array<String> = [];
 		for (ci in 0...@:privateAccess map.chunks.length) {
 			for (drawnThing in groundOf(map, ci)) {

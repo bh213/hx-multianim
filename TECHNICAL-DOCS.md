@@ -567,20 +567,41 @@ the old one, held by `TilemapTest.testOrthogonalMapsDrawAsBeforeTheGrids` (pixel
 the grid). Off the square grid: `applyCulling` finds the chunks in view from the cells at the view's
 (margined) corners and `inView` tests `bounds`, `cullMargin` is `marginOffGrid` (the biggest frame, the
 offset, objects' reach and the highest lift in pixels); a pass's chunk parts are kept in the chunks'
-order (`partOf` inserts by `Chunk.index`), since a tall frame reaches into the chunk in front; the
-terrains that are not animated are drawn by `drawGroundInOrder` into the last static terrain's pass,
-row by row back to front (a flat hex row's unpushed columns first), each position's terrains bottom
-first through `groundPlans` (a terrain's frames, or its autotile with its pass mask, `where` and its
-transitions' meeting positions) and `emitGround`/`placeAutotileTile`, which computes each format's
-index itself and asks `TileMapTiles.autotileTile` (the builder's `autotileTileAt`) for the tile;
-animated terrains keep their passes through `autotileOn` (`buildAutotile(…, on)`). `rimPositions` and
-`meetingPositions` read a hex's 6 neighbours. Levels are lifted by `lift` (`liftAt`): `drawRises` and
-`scanRises` do nothing, `drawColumns` draws a raised cell's lowest level of side with the ground
-(`emitSides`, a rise's piece a level toward each `toward:`, from the lowest neighbour that way) and
-the rest of it, its terrains lifted and (`drawLayers`, through `columnOf`) its layer cells as a
-`ColumnTiles` among the actors at its middle less half a pixel, in `Chunk.objects`; `toCell` looks at
-every level for the cell whose top or side covers the point, the front one first. The builder's
-`checkTilemap` checks a lifted map's rises the way `emitSides` reads them.
+order (`partOf` inserts by `Chunk.index`), since a tall frame reaches into the chunk in front; every
+terrain, animated ones too, is drawn by `drawGroundInOrder` into the last terrain's pass, row by row
+back to front (a flat hex row's unpushed columns first), position by position along the row (a
+cell's neighbour along its row is in front of it on the isometric grid), each position's terrains
+bottom first through `groundPlans` (a terrain's frames, or its autotiles, one an animation frame,
+with its pass mask, `where` and its transitions' meeting positions) and
+`emitGround`/`placeAutotileTile`, which computes each format's index itself and asks
+`TileMapTiles.autotileTile` (the builder's `autotileTileAt`) for the tile. The tiles go into an
+`OrderedTiles` (`TileGroups` for a pass's part, `ColumnTiles` for a raised cell): still tiles in a
+TileGroup a texture until an animated terrain's first tile (`addFrame`), from there a run of an
+object a frame (`TileMap.animate` registers it in `Chunk.animated`, which `step` shows in turn), every
+still tile after it added to each frame, so the run is as many objects as the terrain has frames.
+`rimPositions` and `meetingPositions` read a hex's 6 neighbours. Levels are lifted by `lift`
+(`liftAt`): `drawColumns` draws a raised cell's lowest level of side with the ground (`emitSides`, a
+rise's piece a level toward each `toward:`, from the lowest neighbour that way, `dropToward`; a single
+face's piece against that face's side of the box, `TileGrid.faceX`; on the isometric grid the run's
+ends from `liftedPiece`, a run going along the screen through `runNeighbour`) and the rest of it, its
+terrains lifted and (`drawLayers`, through `columnOf`/`columnAt`) its layer cells as a `ColumnTiles`
+among the actors at its middle less half a pixel, in `Chunk.objects`; `drawRises` draws the levels'
+edges and the platforms' tops on the raised cells' columns at their level (`drawLiftedTops`,
+`liftedAutotile`: a cell format's tile on a cell of that level, a corner's on the front cell around
+it at the highest level there, a column of another chunk's cell made anew a little after it), and
+`noteLiftedSides` gives a raised cell `sideAt` (the most levels its side drops) and the rise that
+draws it, whose metadata the cell takes; `scanRises` does only that, for a chunk read without a
+draw. `toCell` looks at every level for the cell whose top or side covers the point, the front one
+first. The builder's `checkTilemap` checks a lifted map's rises the way `emitSides` reads them. An
+object of several cells among the actors on the isometric grid is cut by `addStrips` into strips half
+a cell wide, each a Bitmap sorted by the front cell of the footprint under it less a quarter pixel.
+
+A map's frames are `MapFrame`s (`TileMap.frameOf` of an atlas frame, `tileFrame` of a whole tile):
+the tile placed in its untrimmed frame by its `dx`/`dy` (`AnimationFrame.placedAbout(0, 0)`), and
+the frame's size, which `TileGrid.frameX`/`frameY` stand on the cell; the builder's `atlasFrames`
+gives them, and an autotile's `AutotileTile` carries its frame's size too (`resolveAutotileSource`
+places an atlas source's frames, `loadTileSourceFrame` a `tiles:` list's `sheet(…)`; a flip mirrors
+the tile within its frame). So a sheet trimmed by its packer draws as the whole one on every grid.
 
 Each layer's legend is resolved once as the rows are read (`layerEntries`: a `LayerEntry` a
 character, with its frames, `draw`, anchor, tileset cell and metadata), and each layer has, per

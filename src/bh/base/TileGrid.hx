@@ -399,6 +399,33 @@ class TileGrid {
 		};
 	}
 
+	/**
+		Which side of a cell's bottom a face below it is on (`direction`, one of `below()`): 1 right of
+		it (se), -1 left of it (sw), 0 the bottom itself (a flat hex's s, and the square grid's down).
+	**/
+	public function faceSide(direction:Int):Int {
+		return switch kind {
+			case Orthogonal: 0;
+			case Isometric: direction == 2 ? 1 : (direction == 4 ? -1 : 0);
+			case Hex: direction == 2 ? 1 : ((pointy && direction == 3) || (!pointy && direction == 4) ? -1 : 0);
+		};
+	}
+
+	/**
+		Where a piece `frameWidth` wide drawn on one face of a raised cell is drawn from: against the
+		right of the cell's box for a face right of its bottom (se), against its left for one left of it
+		(sw), over its middle for the bottom one; then moved. A piece as wide as the cell is where
+		`frameX` puts a frame, so a face drawn alone and a whole cell's frame with the other face clear
+		both land where they belong.
+	**/
+	public function faceX(cx:Int, cy:Int, direction:Int, frameWidth:Float):Float {
+		return switch faceSide(direction) {
+			case 1: pixelX(cx, cy) + tileWidth - frameWidth + offsetX;
+			case -1: pixelX(cx, cy) + offsetX;
+			default: frameX(cx, cy, frameWidth);
+		};
+	}
+
 	/** Whether a frame may be drawn turned a quarter (only a square's turn is a square). **/
 	public inline function turns():Bool {
 		return kind == Orthogonal && tileWidth == tileHeight;

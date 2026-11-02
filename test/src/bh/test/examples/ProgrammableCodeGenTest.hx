@@ -1570,6 +1570,11 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		simpleMacroTest(168, "tilemapGrids", () -> createMp().tilemapGrids.create(), async, "tilemapGrids");
 	}
 
+	@Test
+	public function test169_TilemapLifted(async:utest.Async):Void {
+		simpleMacroTest(169, "tilemapLifted", () -> createMp().tilemapLifted.create(), async, "tilemapLifted");
+	}
+
 	// ==================== NinePatchModes: the same cell tiled beside stretched; frames ====================
 
 	@Test

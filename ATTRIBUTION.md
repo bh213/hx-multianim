@@ -89,13 +89,13 @@ Used for autotile test examples.
 https://kenney.nl/assets/isometric-tiles-city, https://kenney.nl/assets/isometric-tiles-buildings, https://kenney.nl/assets/hexagon-pack
 by Kenney (www.kenney.nl)
 - **License**: CC0 (public domain)
-- **Usage**: `test/res/isohex/isoCity` and `hexKenney`, a few tiles of each packed into one sheet, for the isometric and hex tile map tests (example 168). `test/res/isohex/LICENSE.txt` lists them.
+- **Usage**: `test/res/isohex/isoCity` and `hexKenney`, a few tiles of each packed into one sheet, for the isometric and hex tile map tests (example 168); four of the city's tiles again, with clear margins, in `test/res/isohex/padded` for the trimmed atlas test. `test/res/isohex/LICENSE.txt` lists them.
 
 ### Hexset v0.1.1
 https://opengameart.org/content/hexset-v011-hex-pixel-art-terrain-tileset
 by mbartelsm
 - **License**: CC0 (public domain)
-- **Usage**: `test/res/isohex/hexset`, seven of its 32x48 tiles, for the hex tile map tests (example 168).
+- **Usage**: `test/res/isohex/hexset`, seven of its 32x48 tiles, for the hex tile map tests (example 168); two of them again in `test/res/isohex/padded`.
 
 ---
 

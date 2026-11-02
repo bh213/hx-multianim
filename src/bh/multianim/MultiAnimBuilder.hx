@@ -54,8 +54,12 @@ using bh.base.ColorUtils;
 
 /** A tile an autotile index draws at a position, turned as its mapping says: the flips are in the tile, the quarter turns clockwise beside it. **/
 typedef AutotileTile = {
+	/** Placed in the frame it was cut from (`dx`, `dy`): an atlas frame its packer trimmed keeps its place. **/
 	final tile:h2d.Tile;
 	final rotation:Int;
+	/** The frame's size: the tile's own, or an atlas frame's untrimmed one (`orig:`). **/
+	final width:Int;
+	final height:Int;
 }
 
 // Place this after imports, before any class definitions
@@ -4687,6 +4691,19 @@ class MultiAnimBuilder {
 		texture.dispose();
 
 		return h2d.Tile.fromPixels(pixels);
+	}
+
+	/**
+	 * A tile source as an autotile draws it: a sheet's frame placed in its untrimmed frame (a trimmed
+	 * atlas keeps its frames' places, `TileMap.frameOf`), any other tile whole.
+	 */
+	function loadTileSourceFrame(tileSource:TileSource):bh.base.TileMap.MapFrame {
+		return switch tileSource {
+			case TSSheet(sheet, name): bh.base.TileMap.frameOf(loadTileImpl(resolveAsString(sheet), resolveAsString(name)));
+			case TSSheetWithIndex(sheet, name, index):
+				bh.base.TileMap.frameOf(loadTileImpl(resolveAsString(sheet), resolveAsString(name), resolveAsInteger(index)));
+			default: bh.base.TileMap.tileFrame(loadTileSource(tileSource));
+		};
 	}
 
 	function loadTileSource(tileSource):h2d.Tile {
@@ -9636,10 +9653,10 @@ class MultiAnimBuilder {
 			final v = variants[bh.base.Autotile.variantAt(px, py, variants.length)];
 			if (offGrid) {
 				if (at.def.format == AutotileFormat.Corner)
-					tileGroup.add(cell.frameLeft(cell.cornerX(px, py), v.tile.width, cell.tileWidth),
-						cell.frameTop(cell.cornerY(px, py), v.tile.height, cell.tileHeight), v.tile);
+					tileGroup.add(cell.frameLeft(cell.cornerX(px, py), v.width, cell.tileWidth), cell.frameTop(cell.cornerY(px, py), v.height, cell.tileHeight),
+						v.tile);
 				else
-					tileGroup.add(cell.frameX(px, py, v.tile.width), cell.frameY(px, py, v.tile.height), v.tile);
+					tileGroup.add(cell.frameX(px, py, v.width), cell.frameY(px, py, v.height), v.tile);
 				return;
 			}
 			switch v.rotation {
@@ -9714,10 +9731,9 @@ class MultiAnimBuilder {
 		return h2d.Tile.fromColor(0, tileSize, tileSize, 0.0);
 	}
 
-	/** The tile `buildAutotile` draws for an index at position (x, y), flipped and unturned; null where it draws none (a corner format's 0). */
-	public function autotileTileAt(name:String, index:Int, x:Int, y:Int):Null<h2d.Tile> {
-		final placed = autotilePlacement(name, getAutotileDef(name), index, x, y);
-		return placed == null ? null : placed.tile;
+	/** The tile `buildAutotile` draws for an index at position (x, y), flipped and unturned, with its frame's size; null where it draws none (a corner format's 0). */
+	public function autotileTileAt(name:String, index:Int, x:Int, y:Int):Null<bh.base.TileMap.MapFrame> {
+		return autotilePlacement(name, getAutotileDef(name), index, x, y);
 	}
 
 	/** Quarter turns clockwise `buildAutotile` gives the tile at position (x, y) of an index: 0 to 3. */
@@ -9933,17 +9949,18 @@ class MultiAnimBuilder {
 	}
 
 	/**
-	 * The cells of a name in a sheet (an atlas2 file or inline block), or null when the sheet has no
-	 * such name. A sheet that cannot be loaded is an error, as the loader says it.
+	 * The frames of a name in a sheet (an atlas2 file or inline block), each placed in its untrimmed
+	 * frame (`TileMap.frameOf`: a trimmed atlas keeps its frames' places), or null when the sheet has
+	 * no such name. A sheet that cannot be loaded is an error, as the loader says it.
 	 */
-	public function atlasTiles(sheet:String, name:String):Null<Array<h2d.Tile>> {
+	public function atlasFrames(sheet:String, name:String):Null<Array<bh.base.TileMap.MapFrame>> {
 		final atlas:Null<IAtlas2> = getOrLoadSheet(sheet);
 		if (atlas == null)
 			throw builderError('sheet "$sheet" could not be loaded', "tilemap_sheet");
 		final frames = atlas.getAnim(name);
 		if (frames == null)
 			return null;
-		return [for (f in frames) if (f != null) f.tile];
+		return [for (f in frames) if (f != null) bh.base.TileMap.frameOf(f)];
 	}
 
 	function buildTilemapDecor(node:Node):Array<h2d.Object> {
@@ -9979,9 +9996,9 @@ class MultiAnimBuilder {
 			autotileOn: (autotileName, grid, where, x0, y0, on) -> tsBuilder.buildAutotile(autotileName, grid, where, x0, y0, on),
 			autotileTile: (autotileName, index, x, y) -> tsBuilder.autotileTileAt(autotileName, index, x, y),
 			autotileFormat: autotileName -> tsBuilder.autotileFormat(autotileName),
-			frames: (sheet, cell) -> tsBuilder.atlasTiles(sheet, cell),
+			frames: (sheet, cell) -> tsBuilder.atlasFrames(sheet, cell),
 			// a layer's own sheet is the map's, written in this file
-			layerFrames: (sheet, cell) -> atlasTiles(sheet, cell),
+			layerFrames: (sheet, cell) -> atlasFrames(sheet, cell),
 			metadata: metadata -> tsBuilder.resolveMetadata(metadata),
 		};
 		checkTilemap(name, node, def, ts, tiles);
@@ -9991,7 +10008,7 @@ class MultiAnimBuilder {
 	/** What the parse cannot know, since the tileset may be in another file: every name the map uses is there, and every rise has its cliff. */
 	function checkTilemap(name:String, node:Null<Node>, def:TilemapDef, ts:TilesetDef, tiles:bh.base.TileMap.TileMapTiles):Void {
 		// `layersOwn`: a layer's own sheet, found from the map's file
-		function framesIn(sheet:String, cell:String, layersOwn = false):Null<Array<h2d.Tile>> {
+		function framesIn(sheet:String, cell:String, layersOwn = false):Null<Array<bh.base.TileMap.MapFrame>> {
 			return try (layersOwn && tiles.layerFrames != null ? tiles.layerFrames(sheet, cell) : tiles.frames(sheet, cell)) catch (e:Dynamic)
 				throw builderErrorAt(node, 'tilemap $name: sheet $sheet cannot be loaded: ${Std.string(e)}', "tilemap_sheet");
 		}
@@ -10042,8 +10059,8 @@ class MultiAnimBuilder {
 					final frames = framesIn(sheet, cell, layersOwn);
 					if (frames != null)
 						for (f in frames)
-							if (Std.int(f.width) != w || Std.int(f.height) != h)
-								throw builderErrorAt(node, 'tileset ${def.tileset}: cell $cell is ${sized.width}x${sized.height} cells, ${w}x$h pixels, but sheet $sheet draws it ${Std.int(f.width)}x${Std.int(f.height)}', "tilemap_cell_size");
+							if (f.width != w || f.height != h)
+								throw builderErrorAt(node, 'tileset ${def.tileset}: cell $cell is ${sized.width}x${sized.height} cells, ${w}x$h pixels, but sheet $sheet draws it ${f.width}x${f.height}', "tilemap_cell_size");
 				}
 			}
 		}
@@ -10210,8 +10227,8 @@ class MultiAnimBuilder {
 				final j = found.sources[k];
 				if (source.count >= 0 && j >= source.count)
 					throw builderErrorAt(node, 'autotile "$name": $formatName index $i maps to source tile $j, but ${source.desc} has only ${source.count} tiles (0-${source.count - 1})', "autotile_index");
-				var tile = source.get(j);
-				if (tile == null) {
+				final frame = source.get(j);
+				if (frame == null) {
 					if (i == optionalIndex) {
 						missing = true;
 						break;
@@ -10219,18 +10236,27 @@ class MultiAnimBuilder {
 					throw builderErrorAt(node, 'autotile "$name": ${source.desc} has no source tile $j (needed for $formatName index $i)', "autotile_missing_tile");
 				}
 				final turned = found.turned[k];
+				final tile = frame.tile;
 				var placed:h2d.Tile = tile;
 				if ((turned & (bh.base.Autotile.FLIP_X | bh.base.Autotile.FLIP_Y)) != 0) {
 					// a flip is in the tile's own coordinates: a clone, the source's tile untouched.
 					// Heaps' flipX/flipY mirror the tile about its origin, moving dx/dy a tile
-					// back; the tile is to stay where its source sits, so they are put back
+					// back; the tile is to stay in its frame, mirrored in it (a trimmed frame's tile
+					// to the other side of it; a whole one where it is)
 					placed = placed.clone();
-					if ((turned & bh.base.Autotile.FLIP_X) != 0) placed.flipX();
-					if ((turned & bh.base.Autotile.FLIP_Y) != 0) placed.flipY();
-					placed.dx = tile.dx;
-					placed.dy = tile.dy;
+					final flipX = (turned & bh.base.Autotile.FLIP_X) != 0;
+					final flipY = (turned & bh.base.Autotile.FLIP_Y) != 0;
+					if (flipX) placed.flipX();
+					if (flipY) placed.flipY();
+					placed.dx = flipX ? frame.width - tile.dx - tile.width : tile.dx;
+					placed.dy = flipY ? frame.height - tile.dy - tile.height : tile.dy;
 				}
-				variants.push({tile: placed, rotation: bh.base.Autotile.rotationOf(turned)});
+				variants.push({
+					tile: placed,
+					rotation: bh.base.Autotile.rotationOf(turned),
+					width: frame.width,
+					height: frame.height
+				});
 			}
 			tiles.push(missing ? null : variants);
 		}
@@ -10243,13 +10269,15 @@ class MultiAnimBuilder {
 	 * `exact` = the source is an explicit list, so surplus tiles without a mapping are a mistake
 	 * (a file region may legitimately hold more tiles than the format uses).
 	 */
-	function resolveAutotileSource(name:String, node:Node, def:AutotileDef, tileSize:Int):{count:Int, exact:Bool, desc:String, get:Int->Null<h2d.Tile>} {
+	function resolveAutotileSource(name:String, node:Node, def:AutotileDef, tileSize:Int):{count:Int, exact:Bool, desc:String, get:Int->Null<bh.base.TileMap.MapFrame>} {
+		inline function whole(t:Null<h2d.Tile>):Null<bh.base.TileMap.MapFrame>
+			return t == null ? null : bh.base.TileMap.tileFrame(t);
 		return switch def.source {
 			case ATSDemo(edgeColor, fillColor):
 				final demo = generateAutotileDemoTiles(def.format, tileSize, resolveAsColorInteger(edgeColor), resolveAsColorInteger(fillColor));
-				{count: demo.length, exact: true, desc: "demo:", get: j -> demo[j]};
+				{count: demo.length, exact: true, desc: "demo:", get: j -> whole(demo[j])};
 			case ATSTiles(list):
-				final loaded = [for (ts in list) loadTileSource(ts)];
+				final loaded = [for (ts in list) loadTileSourceFrame(ts)];
 				{count: loaded.length, exact: true, desc: 'tiles: (${loaded.length} tiles)', get: j -> loaded[j]};
 			case ATSFile(filename):
 				final file = resolveAsString(filename);
@@ -10262,7 +10290,7 @@ class MultiAnimBuilder {
 					count: regionCount,
 					exact: false,
 					desc: 'file: "$file" region [${r.x}, ${r.y}, ${r.w}, ${r.h}]' + (r.margin != 0 || r.spacing != 0 ? ' margin ${r.margin} spacing ${r.spacing}' : ""),
-					get: j -> base.sub(r.x + r.margin + (j % cols) * pitch, r.y + r.margin + Std.int(j / cols) * pitch, tileSize, tileSize)
+					get: j -> whole(base.sub(r.x + r.margin + (j % cols) * pitch, r.y + r.margin + Std.int(j / cols) * pitch, tileSize, tileSize))
 				};
 			case ATSAtlas(sheet, prefix):
 				final sheetName = resolveAsString(sheet);
@@ -10274,7 +10302,7 @@ class MultiAnimBuilder {
 					desc: 'sheet: "$sheetName" prefix: "$prefixStr"',
 					get: j -> {
 						final frame = atlas.get(prefixStr + j);
-						frame == null ? null : frame.tile;
+						frame == null ? null : bh.base.TileMap.frameOf(frame);
 					}
 				};
 			case ATSAtlasIndexed(sheet, tileName):
@@ -10290,7 +10318,7 @@ class MultiAnimBuilder {
 					desc: 'sheet: "$sheetName" name: "$nameStr"',
 					get: j -> {
 						final frame = frames[j];
-						frame == null ? null : frame.tile;
+						frame == null ? null : bh.base.TileMap.frameOf(frame);
 					}
 				};
 		};

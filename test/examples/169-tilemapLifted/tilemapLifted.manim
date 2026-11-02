@@ -1,0 +1,116 @@
+version: 1.0
+
+// Isometric maps with lifted levels and objects of several cells, on 32x16
+// diamonds whose blocks have 8 rows of side under them (tileOffset: 0, 8), drawn at twice their size.
+// Top left, a town: a hall four cells long among people, each strip of it sorted by the front cell
+// under it (a man in front of its long side's far end is in front of it, one behind it hidden by it),
+// and animated water in its place back to front, covering the grass blocks' sides that hang over it.
+// Top right, hills: a plateau whose run of sides has its ends (left blue, right red, a lone cell
+// yellow, the middles grey), its rim outlined by the level's edge on its top at its level, a second
+// level on it, and a roof (a platform) with its top and its walls. Bottom, a hill whose sides are
+// faces drawn alone (se orange, sw teal), each against its side of the cell.
+// The art is drawn for these tests (test/res/isohex/LICENSE.txt).
+
+#water0 autotile { format: blob47 tileSize: 32 sheet: "isohex/lifted", name: "water" mapping: [46: 0] allowPartialMapping: true }
+#water1 autotile { format: blob47 tileSize: 32 sheet: "isohex/lifted", name: "water" mapping: [46: 1] allowPartialMapping: true }
+#lipEdge autotile { format: blob47 tileSize: 32 sheet: "isohex/lifted", name: "lip" mapping: [46: 0] allowPartialMapping: true }
+#roofEdge autotile { format: blob47 tileSize: 32 sheet: "isohex/lifted", name: "roofTop" mapping: [46: 0] allowPartialMapping: true }
+
+#liftedTiles tileset {
+    grid: isometric, 32, 16
+    tileOffset: 0, 8
+    atlas: "isohex/lifted"
+    edge: lipEdge
+    terrain water { autotile: water0, water1 duration: 1000000 }
+    terrain grass { cells: "grass" }
+    terrain stone { cells: "stone" }
+    rise any { side: "sideMid" left: "sideLeft" right: "sideRight" single: "sideSingle" metadata { cliff:bool => true } }
+    platform roof {
+        edge: roofEdge
+        rise any { side: "wall" }
+    }
+    cell hall { size: 1, 4 anchor: 0, 0 }
+    cell man { draw: actors }
+}
+
+#town tilemap {
+    tileset: liftedTiles
+    size: 8, 7
+    legend { ".": grass, "s": stone, "~": water }
+    terrain: [
+        "........",
+        "..s.....",
+        "..s.....",
+        "..s.....",
+        "..s...~~",
+        "......~~",
+        "~~~~~~~~",
+    ]
+    layer things { legend { "H": hall } rows: [
+        "        ",
+        "  H     ",
+        "        ",
+        "        ",
+        "        ",
+        "        ",
+        "        ",
+    ] }
+    layer people { legend { "m": man } rows: [
+        "  m     ",
+        "   m    ",
+        " m      ",
+        "   m    ",
+        "        ",
+        "  m     ",
+        "        ",
+    ] }
+}
+
+#hills tilemap {
+    tileset: liftedTiles
+    size: 8, 8
+    legend { ".": grass, "s": stone }
+    terrain: [
+        "........",
+        ".sss....",
+        ".sss....",
+        ".sss....",
+        "........",
+        "........",
+        "........",
+        "........",
+    ]
+    levels { legend { "r": 2 roof } rows: [
+        "00000000",
+        "01110000",
+        "01210000",
+        "01110000",
+        "00000100",
+        "00000000",
+        "00rr0000",
+        "00rr0000",
+    ] }
+}
+
+#faceTiles tileset {
+    grid: isometric, 32, 16
+    tileOffset: 0, 8
+    atlas: "isohex/lifted"
+    terrain stone { cells: "stone" }
+    rise any { side: "faceSE" toward: se }
+    rise any { side: "faceSW" toward: sw }
+}
+
+#faces tilemap {
+    tileset: faceTiles
+    size: 4, 4
+    legend { ".": stone }
+    terrain: ["....", "....", "....", "...."]
+    levels: ["0000", "0220", "0210", "0000"]
+}
+
+#tilemapLifted programmable() {
+    @scale(2) tilemap(town): 280, 60
+    @scale(2) tilemap(hills): 900, 40
+    @scale(3) tilemap(faces): 640, 400
+}
