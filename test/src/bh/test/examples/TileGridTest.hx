@@ -249,6 +249,96 @@ class TileGridTest extends utest.Test {
 		} catch (e:bh.multianim.BuilderError) e.code, "the corner format has no hex form");
 	}
 
+	/** An isometric map of 32x16 diamonds over demo blocks 32 by 24 (8 pixels of side), lifted 8 a level. **/
+	static function isoMap(levels:String, rows:String, ?layer:String = ""):bh.base.TileMap {
+		final map = builderFromSource('
+			#blocks atlas2("Tileset/Minifantasy_ForgottenPlainsTiles.png") {
+				ground: 0, 0, 32, 24
+				side: 32, 0, 32, 24
+				house: 64, 0, 32, 40
+				wide: 0, 24, 64, 48
+			}
+			#t tileset {
+				grid: isometric, 32, 16
+				tileOffset: 0, 8
+				atlas: "blocks"
+				terrain ground { cells: "ground" }
+				rise any { side: "side" }
+				cell house { draw: actors }
+				cell wide { size: 2, 2 }
+			}
+			#m tilemap { tileset: t size: 4, 4 legend { ".": ground } terrain: ["....", "....", "....", "...."] $levels $layer }
+		').buildTilemap("m");
+		map.redraw();
+		return map;
+	}
+
+	public function testObjectsAndRaisedCellsSortAmongTheActorsByTheirMiddle() {
+		final map = isoMap("", "", 'layer things { legend { "h": house, "w": wide } rows: ["    ", " w  ", "    ", "  h "] }');
+		final objects:Array<h2d.Object> = @:privateAccess map.chunks[0].objects;
+		Assert.equals(2, objects.length, "the house and the wide object among the actors");
+		// the house at (2, 3) sorts by its cell's middle; the wide one (anchor (1, 1), its bottom-left:
+		// cells (1, 0) to (2, 1)) by its footprint's
+		final house = objects[1];
+		Assert.floatEquals(map.grid.center(2, 3).y, house.y);
+		final wide = objects[0];
+		Assert.floatEquals((map.grid.bounds(1, 0, 3, 2).yMin + map.grid.bounds(1, 0, 3, 2).yMax) / 2, wide.y);
+		// an actor on the cell in front of the house (SE, (3, 3)) is drawn after it, one behind before
+		final front = new h2d.Object();
+		final behind = new h2d.Object();
+		final c = map.grid.center(3, 3);
+		front.setPosition(c.x, c.y);
+		final b = map.grid.center(1, 3);
+		behind.setPosition(b.x, b.y - map.grid.tileHeight / 2);
+		map.addActor(front);
+		map.addActor(behind);
+		map.actors.ysort(0);
+		Assert.isTrue(map.actors.getChildIndex(front) > map.actors.getChildIndex(house), "in front");
+		Assert.isTrue(map.actors.getChildIndex(behind) < map.actors.getChildIndex(house), "behind");
+	}
+
+	public function testARaisedCellIsLiftedAndItsTopIsWhereThePointerIs() {
+		final map = isoMap('levels: ["0000", "0120", "0000", "0000"]', "");
+		Assert.floatEquals(8, map.lift, "half the diamond's height when unsaid");
+		Assert.floatEquals(16, map.liftAt(2, 1));
+		Assert.floatEquals(0, map.liftAt(0, 0));
+		// each raised cell is a column among the actors, sorted by its middle on the ground
+		final columns:Array<h2d.Object> = @:privateAccess map.chunks[0].objects;
+		Assert.equals(2, columns.length);
+		Assert.floatEquals(map.grid.center(1, 1).y - 0.5, columns[0].y);
+		// the top of (2, 1), two levels up: the pointer on it finds it, not the ground it is drawn over
+		final top = map.grid.center(2, 1);
+		final atTop = map.toCell(top.x, top.y - 16);
+		Assert.equals(2, atTop.x);
+		Assert.equals(1, atTop.y);
+		// the point the top hides of the cell behind it, (1, 0), is (2, 1)'s too
+		final hidden = map.grid.center(1, 0);
+		final atHidden = map.toCell(hidden.x, hidden.y);
+		Assert.equals(2, atHidden.x, "hidden behind the raised cell");
+		Assert.equals(1, atHidden.y);
+		// on its side, below its top: still (2, 1)
+		final side = map.toCell(top.x, top.y);
+		Assert.equals(2, side.x);
+		Assert.equals(1, side.y);
+		// the ground away from it: the cell there
+		final ground = map.grid.center(0, 3);
+		final atGround = map.toCell(ground.x, ground.y);
+		Assert.equals(0, atGround.x);
+		Assert.equals(3, atGround.y);
+		// the map is drawn again as a level changes, its columns with it
+		map.setLevel(2, 1, 0);
+		map.redraw();
+		Assert.equals(1, (@:privateAccess map.chunks[0].objects : Array<h2d.Object>).length);
+		Assert.equals("tilemap_rise", try {
+			builderFromSource('
+				#blocks atlas2("Tileset/Minifantasy_ForgottenPlainsTiles.png") { ground: 0, 0, 32, 24 side: 32, 0, 32, 24 }
+				#t tileset { grid: isometric, 32, 16 atlas: "blocks" terrain ground { cells: "ground" } rise 1 { side: "side" } }
+				#m tilemap { tileset: t size: 2, 2 legend { ".": ground } terrain: ["..", ".."] levels: ["20", "00"] }
+			').buildTilemap("m");
+			null;
+		} catch (e:bh.multianim.BuilderError) e.code, "two levels above the map's edge and its neighbours, with a rise of one only");
+	}
+
 	public function testTheTilesetSaysItsGrid() {
 		final tileset = (grid:String) -> '
 			#fp atlas2("Tileset/Minifantasy_ForgottenPlainsTiles.png") { grass: 32, 24, 8, 8 }

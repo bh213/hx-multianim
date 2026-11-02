@@ -20,7 +20,7 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `#name layouts { ... }` | Define named coordinate layouts for positioning |
 | `#name atlas2("file") { ... }` | Define inline sprite atlas from image file |
 | `#name palette { ... }` | Define color palette |
-| `#name autotile { ... }` | Autotile terrain set (`corner` / `blob47` / `cross`) |
+| `#name autotile { ... }` | Autotile terrain set (`corner` / `blob47` / `cross` / `hex64`) |
 | `#name tileset { ... }` | What tile maps are drawn with: terrains, rises between levels, named cells, metadata |
 | `#name tilemap { ... }` | A tile map: legend, terrain and level rows, layers of cells, decor, marks |
 | `@final name = expr` | Declare immutable named constant. One that uses parameters (`@final w = $x * 2`) is live: `setParameter("x", …)` updates what uses `$w`, in both backends |
@@ -975,7 +975,7 @@ Without a `#ui sounds { }` block the widgets are silent; one that defines `hover
 
 | Property | Description |
 |----------|-------------|
-| `format` | `corner` (16 tiles, dual grid: one tile per grid corner, index `NW 1 + NE 2 + SW 4 + SE 8`, 0 never drawn), `blob47` (47 tiles, one per cell, 8 neighbours), `cross` (13 tiles, one per cell) |
+| `format` | `corner` (16 tiles, dual grid: one tile per grid corner, index `NW 1 + NE 2 + SW 4 + SE 8`, 0 never drawn), `blob47` (47 tiles, one per cell, 8 neighbours), `cross` (13 tiles, one per cell), `hex64` (64 tiles, one per hex, its 6 neighbours from the top clockwise, bit d for direction d) |
 | `tileSize` | Tile size in pixels |
 | source (exactly one) | `file: "img.png"` (tiles of `region:`, row-major), `sheet: "atlas", prefix: "p"` (atlas tile `p<j>`), `sheet: "atlas", name: "n"` (frame `j` of atlas tile `n`, by `index:` from 0), `tiles: <src> <src> ...` (listed tile sources), `demo: edgeColor, fillColor` (generated placeholders) |
 | `region` | `[x, y, w, h]`, `file:` source only; must fit the image and be whole tiles. Default: whole image |
@@ -995,11 +995,13 @@ Every index must resolve to a tile (build-time `BuilderError` codes `autotile_mi
 
 | Tileset | Description |
 |---------|-------------|
-| `tileSize: n`, `atlas: "sheet"`, `edge: autotile` | Cell size; the sheet named cells come from; the outline of every higher level, drawn along its rim (needed with rises) |
+| `tileSize: n`, `atlas: "sheet"`, `edge: autotile` | Cell size; the sheet named cells come from; the outline of every higher level, drawn along its rim (needed with rises on the square grid) |
+| `grid: orthogonal, w, h` \| `isometric, w, h` \| `hex, w, h, pointy\|flat, odd\|even[, side]` | The grid the tiles are laid on, in place of `tileSize` (`bh.base.TileGrid`); a hex's `side` is the length of its sides across the push, half the box when unsaid |
+| `tileOffset: x, y`, `lift: n` | Pixels every frame is moved after it is put on its cell; isometric and hex: pixels a level raises a cell (half the cell's height when unsaid) |
 | `edge <terrain>: autotile` | The outline where that terrain is on top, in place of `edge` |
 | `terrain name { autotile: a[, b…] duration: ms \| cells: "name"; metadata {…} }` | Drawn in order, bottom first, each under the ones after it; several autotiles = animated; `cells` = variants by position |
 | `transition a, b { autotile: x[, y…] }` | Where `b` meets `a` (a terrain below it, or `none`: the map's edge too) and nothing else, drawn over `b`'s own autotile; one a frame when `b` is animated |
-| `rise n { side: "name"[, "b"…] left: right: single: span: n toward: down\|up\|left\|right metadata {…} }` | A cell n levels above its neighbour `toward`: `side` covers `span` cells beyond it (several sides are taken in turn along the run); ends optional; one per number, direction and terrain |
+| `rise n { side: "name"[, "b"…] left: right: single: span: n toward: down\|up\|left\|right metadata {…} }` (isometric: `toward: down\|se\|sw`; hex: `down\|lower\|se\|sw`, and `s` on flat hexes; `span:` optional there: a piece a level of a lifted cell) | A cell n levels above its neighbour `toward`: `side` covers `span` cells beyond it (several sides are taken in turn along the run); ends optional; one per number, direction and terrain |
 | `rise any { … }`, `rise n <terrain> { … }` | For every number of levels with no rise of its own; for a higher cell of that terrain (a terrain with rises of its own toward a side uses only those) |
 | `platform name { edge: autotile  rise n { … } }` | A higher level that is not the ground raised (a tree top, a roof): its `edge` over all of it, on whatever terrain is under it, and sides of its own; a map names it in its levels' legend |
 | `cell name { draw: under\|over\|top\|actors metadata {…} }` | What a named layer cell is, wherever placed; `actors`: among them, sorted by its feet |

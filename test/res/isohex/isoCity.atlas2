@@ -62,8 +62,8 @@ treeBlock
 cliff
   rotate: false
   xy: 134, 103
-  size: 132, 101
-  orig: 132, 101
+  size: 132, 99
+  orig: 132, 99
   offset: 0, 0
   index: 0
 house

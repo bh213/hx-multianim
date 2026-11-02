@@ -10064,6 +10064,34 @@ class MultiAnimBuilder {
 			}
 			function platformAt(cx:Int, cy:Int):Null<String>
 				return def.levelPlatforms.get(def.levels[cy].charAt(cx));
+			final onGrid = bh.base.TileGrid.of(ts.grid, ts.tileSize);
+			if (onGrid.kind != bh.base.TileGrid.TileGridKind.Orthogonal) {
+				// lifted: a raised cell's side toward a face reaches down to the lowest neighbour
+				// there, the map's edge being level 0, as the map draws it (`emitSides`)
+				for (toward in towards) {
+					final d = onGrid.towardDirection(toward);
+					final faces = d < 0 ? onGrid.below() : [d];
+					for (cy in 0...def.height)
+						for (cx in 0...def.width) {
+							final here = level(cx, cy);
+							var lowest = here;
+							for (f in faces) {
+								final nx = onGrid.neighbourX(cx, cy, f);
+								final ny = onGrid.neighbourY(cx, cy, f);
+								final n = nx < 0 || ny < 0 || nx >= def.width || ny >= def.height ? 0 : level(nx, ny);
+								if (n < lowest) lowest = n;
+							}
+							final rise = here - lowest;
+							final platform = platformAt(cx, cy);
+							if (platform != null && !Lambda.exists(ts.rises, r -> r.toward == toward && r.platform == platform))
+								continue;
+							if (rise > 0 && bh.base.TileMap.riseFor(ts, rise, toward, terrainAt(cx, cy), platform) < 0)
+								throw builderErrorAt(node, 'tilemap $name: the cell at column ${cx + 1}, row ${cy + 1} is $rise level(s) above its neighbour $toward, and tileset ${def.tileset} has no rise $rise toward $toward${platform != null ? ' for platform $platform' : ""}',
+									"tilemap_rise");
+						}
+				}
+				towards.resize(0);
+			}
 			for (toward in towards) {
 				final step = bh.base.TileMap.towardStep(toward);
 				for (cy in 0...def.height)

@@ -6,7 +6,9 @@ version: 1.0
 // the cell), every block a terrain so each covers the sides of the ones behind it, houses among the
 // actors. Right, Kenney's Hexagon pack (pointy hexes 120x140, a regular side) at half size, and the
 // Hexset by mbartelsm (32x48 frames on pointy hexes 32x28 whose upright sides are 12, rows 20 apart,
-// the face 14 rows above the frame's bottom) at twice its size.
+// the face 14 rows above the frame's bottom) at twice its size. Raised cells are drawn lifted, half a
+// cell a level, their sides a rise's piece a level, among the actors: the asphalt and a house up
+// one and two levels in the city, a hill on each side of the island's mountains up one.
 // Tiles: Kenney (www.kenney.nl), CC0; Hexset v0.1.1 by mbartelsm, CC0. See ATTRIBUTION.md.
 
 #cityTiles tileset {
@@ -20,6 +22,7 @@ version: 1.0
     terrain cross { cells: "cross" }
     terrain park { cells: "treeBlock" metadata { park:bool => true } }
     cell house { draw: actors metadata { building:bool => true } }
+    rise any { side: "cliff" }
 }
 
 #city tilemap {
@@ -42,6 +45,14 @@ version: 1.0
         "     h",
         "   h  ",
     ] }
+    levels: [
+        "000000",
+        "000000",
+        "000000",
+        "000110",
+        "000112",
+        "000000",
+    ]
 }
 
 #hexTiles tileset {
@@ -74,6 +85,7 @@ version: 1.0
     terrain temperate { cells: "temperate" }
     terrain temperate_hill { cells: "temperate_hill" }
     terrain stone_mountain { cells: "stone_mountain" }
+    rise any { side: "desert" }
 }
 
 #island tilemap {
@@ -86,6 +98,13 @@ version: 1.0
         "~d.^^.~",
         "~~dh.~~",
         "~~~~~~~",
+    ]
+    levels: [
+        "0000000",
+        "0000100",
+        "0000000",
+        "0001000",
+        "0000000",
     ]
 }
 

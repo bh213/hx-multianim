@@ -1735,12 +1735,12 @@ Root-level element for procedural terrain. An autotile names a tileset and an in
 
 ```
 #name autotile {
-    format: corner | blob47 | cross
+    format: corner | blob47 | cross | hex64
     tileSize: <int>
     <source>
     [mapping: [...]]
     [region: [x, y, w, h]]          // file: source only
-    [allowPartialMapping: true]     // blob47 only
+    [allowPartialMapping: true]     // blob47 and hex64 only
 }
 ```
 
@@ -1751,6 +1751,7 @@ Root-level element for procedural terrain. An autotile names a tileset and an in
 | `corner` | 16 | One tile per grid **corner** (dual grid, offset by half a tile). Index = which of the 4 cells around the corner are terrain: `NW 1 + NE 2 + SW 4 + SE 8`. Index 0 is never drawn. | Your tileset is a 3x3 patch + 4 inner corners + 2 diagonals (15 tiles, the 16th is the plain background) - the most common two-terrain layout. Covers **every** grid configuration, including isolated cells, 1-wide strips and diagonal touches. |
 | `blob47` | 47 | One tile per filled cell, chosen from all 8 neighbours (a diagonal only counts when both adjacent sides are present). | Your tileset has the full 47-tile blob layout. With fewer tiles, see [Partial mapping](#partial-mapping-blob47). |
 | `cross` | 13 | One tile per filled cell: 4 edges, center, 4 outer + 4 inner corners (`0=N 1=W 2=C 3=E 4=S`, `5-8` = NW/NE/SW/SE outer, `9-12` = NE/NW/SE/SW inner). | Legacy 13-tile sets. Cannot express isolated cells, 1-wide strips or two missing diagonals (they render as the center tile). |
+| `hex64` | 64 | One tile per filled hex, from its 6 neighbours: bit d set where the neighbour in direction d is terrain, the directions from the top clockwise (pointy `NE 1, E 2, SE 4, SW 8, W 16, NW 32`; flat `N 1, NE 2, SE 4, S 8, SW 16, NW 32`). With `allowPartialMapping: true` an index with no tile takes the mapped one whose sides differ in the fewest places (more of them first), then the full hex (63), then the lone one (0). | A hex terrain on a hex grid (`grid: hex, …` in a tileset). Built alone (`buildAutotile`), it is laid on pointy hexes of its `tileSize`, odd rows pushed. |
 
 Edge tiles are named after the side that **borders empty space**: the `N edge` tile is used for a cell with no terrain to its north. Inner corners are named after the missing diagonal.
 
@@ -1935,7 +1936,12 @@ which way a level's side is drawn and what a cell means to the game are all writ
 
 | In a tileset | |
 |---|---|
-| `tileSize: n` | Pixels a cell |
+| `tileSize: n` | Pixels a cell: square cells, the same as `grid: orthogonal, n, n` |
+| `grid: orthogonal, w, h` | Cells `w` by `h` pixels |
+| `grid: isometric, w, h` | Diamonds `w` wide and `h` high, cell (0, 0)'s top corner at the map's origin, columns running down to the right and rows down to the left |
+| `grid: hex, w, h, pointy\|flat, odd\|even[, side]` | Hexes in a `w` by `h` box, corners up (`pointy`, rows pushed) or to the sides (`flat`, columns pushed); `odd` or `even` rows (columns) pushed half a cell over; `side`, the length of the two sides across the push (upright on a pointy hex, level on a flat one), half the box when unsaid. See [Isometric and hex grids](#isometric-and-hex-grids) |
+| `tileOffset: x, y` | Pixels every frame is moved after it is put on its cell (a block whose side hangs below its top: the side's height) |
+| `lift: n` | Isometric and hex: pixels a level raises a cell; half a cell's height when unsaid |
 | `atlas: "sheet"` | The sheet (an atlas2 file or inline block) its named cells come from |
 | `edge: autotile` | The outline of a higher level, drawn along the rim of every level above 0 (not its inside, so the terrains on it show); needed when there are rises |
 | `edge <terrain>: autotile` | The outline where that terrain is on top, in place of `edge`: for a tileset whose cliff rim is drawn with the ground it holds (a rim of stone round grass, another round dirt) |
@@ -1955,7 +1961,8 @@ which way a level's side is drawn and what a cell means to the game are all writ
 | `cells: "name"` | Or the frames of an atlas name, as variants: each cell takes one by its position, the same every time |
 | `metadata { … }` | What the game reads of a cell of this terrain |
 
-**Height is levels, and nothing is lifted.** A map's `levels:` give each cell a level: a digit, or
+**Height is levels, and on the square grid nothing is lifted** (on the isometric and hex grids a
+higher cell is: see [Isometric and hex grids](#isometric-and-hex-grids)). A map's `levels:` give each cell a level: a digit, or
 for more than ten levels a character of a legend, `levels { legend { "A": 10, "B": 11 } rows: [ … ] }`
 (a digit is always itself). A higher level is outlined by the tileset's `edge` autotile, and beyond a higher cell,
 toward the neighbour its rise faces, its `side` is drawn over `span` cells: the cliff face, the wall,
@@ -1968,7 +1975,7 @@ sorting by feet stays right.
 | `side: "a", "b", "c"` | Several middles, taken in turn along the run (after its first end): a wall drawn as columns that differ |
 | `left:`, `right:`, `single:` | Optional: the side's run's first end (left, or top), its last end, and a side one cell wide |
 | `span: n` | How many cells the side covers |
-| `toward: down` | Which neighbour the side faces: `down` (the default), `up`, `left`, `right`. One rise a number and direction |
+| `toward: down` | Which neighbour the side faces: `down` (the default), `up`, `left`, `right`. One rise a number and direction. On the isometric grid `down` (both front faces in one piece), `se` or `sw` (one face); on the hex grid `down` (also `lower`: the whole lower outline), `se`, `sw`, and `s` on flat hexes; `span:` may be left out there |
 | `metadata { … }` | What the game reads of the cells the side covers |
 
 **A platform** is a higher level with a top of its own, drawn over whatever terrain the map has
@@ -2035,6 +2042,67 @@ a meaning: the game says what `wall`, `swim` or `cost` are for.
 - Drawing order: terrains, the levels' edges and sides, the `under` layers; the decor and the actors in
   one layer sorted by their feet every frame; `over`; `top`. The order holds across the map's
   chunks: a map drawn in chunks looks as it does drawn in one piece, at their borders too.
+
+### Isometric and hex grids
+
+A tileset says the grid its tiles are laid on, and a map drawn with it is laid on that grid; its rows
+are written as on the square grid (offset coordinates: column `cx` of row `cy`, a hex map typed row by
+row, the pushed rows understood). Everything a map is (terrains, transitions, levels, layers, objects,
+marks, metadata, chunks, culling, changes while running) works on every grid.
+[test/examples/168-tilemapGrids/](../test/examples/168-tilemapGrids/) draws one of each.
+
+```manim
+#city tileset {
+    grid: isometric, 132, 66       // Kenney's isometric blocks: a 132x66 top...
+    tileOffset: 0, 33              // ...with 33 pixels of side under it, which hangs below the cell
+    atlas: "isoCity"
+    terrain plaza { cells: "plaza" }
+    terrain road { cells: "road" }
+    cell house { draw: actors }
+    rise any { side: "block" }     // a raised cell's side: a block a level
+}
+#island tileset {
+    grid: hex, 32, 28, pointy, odd, 12   // 32x48 frames on pointy hexes whose upright sides are 12: rows 20 apart
+    tileOffset: 0, 14
+    atlas: "hexset"
+    terrain sea { cells: "deep_water" }
+    terrain land { autotile: coast }     // a hex64 autotile
+}
+```
+
+- **Where a cell is** (`bh.base.TileGrid`, `map.grid`): a cell's box is `w` by `h`; `toPixel(cx, cy)` is
+  its top-left: orthogonal `(cx·w, cy·h)`; isometric `((cx − cy − 1)·w/2, (cx + cy)·h/2)`; pointy hexes
+  `(cx·w + (pushed row ? w/2 : 0), cy·(h + side)/2)`; flat hexes `(cx·(w + side)/2, cy·h + (pushed
+  column ? h/2 : 0))`. `map.toCell(x, y)` is the cell a point is in (on a lifted map, the one whose top
+  or side is drawn there, the front one first), `map.centerOf(cx, cy)` its middle on the ground. The
+  grid also gives a cell's neighbours (8, or a hex's 6 from the top clockwise), the box around cells
+  (`bounds`) and the faces a raised cell shows (`below`).
+- **A frame stands on its cell**: on the isometric and hex grids a frame of any size is drawn with its
+  bottom on the cell's box's bottom and its middle over the box's middle (as Tiled draws them), then
+  moved by `tileOffset`; an object of several cells stands so on the box of the cells it covers. On the
+  square grid a frame is drawn from the cell's top-left, as always.
+- **Back to front**: off the square grid the terrains that are not animated are drawn in one pass, row
+  by row from the back, each cell's terrains bottom first, so a frame taller than its cell (a block's
+  side, a hex's edge) is covered by the cells in front of it. Under a cell of a `cells:` terrain no
+  terrain below it is drawn. An animated terrain is drawn under them, as on the square grid. A
+  `rot90`/`rot180`/`rot270` in an autotile's mapping is not drawn there (a diamond or a hex turned a
+  quarter is not one); flips are.
+- **Autotiles**: `blob47`, `cross` and `corner` read the 8 neighbours in cells on the isometric grid as
+  on the square one (the art is diamonds); a hex grid takes `hex64` (and `blob47`/`cross`, read as
+  squares), never `corner`, which has no hex form (`tilemap_grid`).
+- **What stands up is among the actors**: a cell with `draw: actors` and an object of several cells
+  are sorted with the actors by the middle of the cells they cover (an actor's `y` is its feet: in
+  front of a house, after it; behind, before it). Walls, trees, houses and lamp posts go there; a road,
+  a rug or a shadow stays a layer `under` the actors.
+- **Levels are lifted**: a cell `n` levels up is drawn `n · lift` pixels higher, its side from the level
+  of its neighbour in front (the lowest of them for `toward: down`, the map's edge counting as 0) up to
+  its own, a rise's `side` frame a level (`side: "a", "b"` from the top down, the last again below
+  them), and needs no `edge:`. Its lowest level of side is drawn with the ground; the rest, its top and
+  its layers' cells are a column among the actors, sorted by its middle on the ground less half a
+  pixel: in front of what stands behind it, behind what stands in front, under what stands on it. An
+  actor on a raised cell keeps its `y` its feet on the ground (`centerOf`) and draws itself
+  `map.liftAt(cx, cy)` higher. `sideAt` is 0 there and a rise's metadata is on no cell, the levels'
+  `edge` and a platform's top are not drawn: a raised cell shows its sides.
 
 ### A fill: a map made where it is placed
 

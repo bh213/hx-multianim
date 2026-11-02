@@ -456,6 +456,7 @@ Autotile is a root-level manim element for procedural terrain generation: a tile
 - **corner** (16 tiles): dual grid. One tile per grid-cell corner, offset by half a tile; index = filled cells around the corner, `NW 1 | NE 2 | SW 4 | SE 8`. Index 0 is never drawn. Matches the common "3x3 patch + inner corners + diagonals" tileset exactly and covers every configuration.
 - **blob47** (47 tiles): one tile per filled cell from 8-direction neighbours (diagonals only count when both adjacent cardinals are present). Tile indices are the 47 reduced masks in ascending order, so real tilesets need a `mapping:`.
 - **cross** (13 tiles): one tile per filled cell. 0=N, 1=W, 2=C, 3=E, 4=S edges, 5-8 outer, 9-12 inner corners.
+- **hex64** (64 tiles): one tile per filled hex, index = its 6 neighbours, bit d for `TileGrid`'s direction d (from the top, clockwise), read through the map's grid (`Autotile.getHexIndex`, the row's push known from the map cell `grid[0][0]` is); `allowPartialMapping` falls back by `getHex64FallbackChain` (fewest sides changed, more of them first, then 63, then 0). Without a map it is laid on pointy hexes of its `tileSize`.
 
 ### Pipeline
 
@@ -556,6 +557,30 @@ draws only its own positions: `positionsOf` (its cells, or for the corner format
 the next chunk's, the map's last column and row going to the last chunks); `drawnPositions`,
 `meetingPositions` and `rimPositions` fill a `where` grid of that shape with flat loops, no array
 or closure per position, so `buildAutotile` walks the rectangle alone.
+
+**Grids** (`bh.base.TileGrid`, made by `TileGrid.of(tileset.grid, tileSize, tileOffset)`; `TilesetDef.grid` is
+the parse's `TilesetGridDef`): every place the map put a cell at `c * tileSize` asks the grid
+(`pixelX`/`pixelY`, `frameX`/`frameY`: a frame from the box's top-left on the square grid, standing on
+the box's bottom and centred off it, then `tileOffset`; `cornerX`/`cornerY` for a corner autotile's
+tile; `bounds` for an object's footprint and a chunk's culling box). The square grid's arithmetic is
+the old one, held by `TilemapTest.testOrthogonalMapsDrawAsBeforeTheGrids` (pixel hashes taken before
+the grid). Off the square grid: `applyCulling` finds the chunks in view from the cells at the view's
+(margined) corners and `inView` tests `bounds`, `cullMargin` is `marginOffGrid` (the biggest frame, the
+offset, objects' reach and the highest lift in pixels); a pass's chunk parts are kept in the chunks'
+order (`partOf` inserts by `Chunk.index`), since a tall frame reaches into the chunk in front; the
+terrains that are not animated are drawn by `drawGroundInOrder` into the last static terrain's pass,
+row by row back to front (a flat hex row's unpushed columns first), each position's terrains bottom
+first through `groundPlans` (a terrain's frames, or its autotile with its pass mask, `where` and its
+transitions' meeting positions) and `emitGround`/`placeAutotileTile`, which computes each format's
+index itself and asks `TileMapTiles.autotileTile` (the builder's `autotileTileAt`) for the tile;
+animated terrains keep their passes through `autotileOn` (`buildAutotile(…, on)`). `rimPositions` and
+`meetingPositions` read a hex's 6 neighbours. Levels are lifted by `lift` (`liftAt`): `drawRises` and
+`scanRises` do nothing, `drawColumns` draws a raised cell's lowest level of side with the ground
+(`emitSides`, a rise's piece a level toward each `toward:`, from the lowest neighbour that way) and
+the rest of it, its terrains lifted and (`drawLayers`, through `columnOf`) its layer cells as a
+`ColumnTiles` among the actors at its middle less half a pixel, in `Chunk.objects`; `toCell` looks at
+every level for the cell whose top or side covers the point, the front one first. The builder's
+`checkTilemap` checks a lifted map's rises the way `emitSides` reads them.
 
 Each layer's legend is resolved once as the rows are read (`layerEntries`: a `LayerEntry` a
 character, with its frames, `draw`, anchor, tileset cell and metadata), and each layer has, per

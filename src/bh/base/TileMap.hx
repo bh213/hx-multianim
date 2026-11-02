@@ -146,7 +146,7 @@ private class Chunk {
 	  two meet, the pair's `transition` autotile over the upper one's own;
 	- the levels: each outlined with the tileset's `edge` (the one of the terrain on top, where the
 	  tileset has one for it), along its rim only, and beyond a higher cell, toward the lower
-	  neighbour its rise faces (`toward:`, down by default), the rise's `side` over `span` cells. Nothing is lifted: what
+	  neighbour its rise faces (`toward:`, down by default), the rise's `side` over `span` cells. On the square grid nothing is lifted (off it, see the grid docs: a raised cell is): what
 	  stands on a higher level stands on its cells, where they are drawn;
 	- the platforms (a tree top, a roof: a kind of higher level that is not the ground raised, where the
 	  map's levels legend says one): each drawn with its own `edge` over all of it, and its own sides;
@@ -194,6 +194,12 @@ class TileMap extends h2d.Object {
 
 	/** The grid the tileset lays its tiles on (`grid:`): where every cell is on screen, and its neighbours. **/
 	public var grid(default, null):TileGrid;
+
+	/**
+		Pixels a level raises a cell, drawn lifted: on the isometric and hex grids the tileset's
+		`lift:`, half a cell's height when unsaid; 0 on the square grid, where nothing is lifted.
+	**/
+	public var lift(default, null):Float = 0;
 
 	public var width(default, null):Int = 0;
 	public var height(default, null):Int = 0;
@@ -253,6 +259,10 @@ class TileMap extends h2d.Object {
 	var topPass = 0;
 	var chunks:Array<Chunk> = [];
 	var decor:Array<h2d.Object> = [];
+	// The chunk being drawn, off the square grid: its terrains' plans, and its raised cells' columns
+	// by cell index (what `drawLayers` puts a raised cell's layer cells into)
+	var chunkPlans:Array<GroundPlan> = [];
+	var columnOf:Map<Int, ColumnTiles> = [];
 	// Per terrain: the clock of its animation, shared by every chunk
 	var animClocks:Array<{time:Float, index:Int}> = [];
 	// Per cell, kept as the rows are and read without a draw: its terrain's index in the tileset
@@ -391,6 +401,7 @@ class TileMap extends h2d.Object {
 		this.tiles = tiles;
 		grid = TileGrid.of(tileset.grid, tileset.tileSize, tileset.tileOffsetX, tileset.tileOffsetY);
 		tileSize = grid.tileWidth;
+		lift = grid.kind == Orthogonal ? 0 : (tileset.lift != null ? tileset.lift : grid.tileHeight / 2);
 		width = def.width;
 		height = def.height;
 		terrainMetadata = [for (t in tileset.terrains) tiles.metadata(t.metadata)];
@@ -517,7 +528,18 @@ class TileMap extends h2d.Object {
 
 	/** How high the highest level a map may have lifts a cell (none on the square grid). **/
 	function liftMargin():Float {
-		return 0;
+		if (lift == 0 || def.levels.length == 0)
+			return 0;
+		// levels are 0 to 9 or the legend's: the highest one a map may be given
+		var highest = 9;
+		for (_ => level in def.levelLegend)
+			if (level > highest) highest = level;
+		return highest * lift;
+	}
+
+	/** How far up a cell is drawn: its level times `lift` off the square grid, 0 on it. **/
+	public function liftAt(cx:Int, cy:Int):Float {
+		return lift == 0 || !inside(cx, cy) ? 0 : levelIndex[cy * width + cx] * lift;
 	}
 
 	/**
@@ -685,7 +707,25 @@ class TileMap extends h2d.Object {
 
 	/** The cell a point of the map is in (pixels, in the map's own coordinates), as its grid lays the cells. **/
 	public function toCell(x:Float, y:Float):h2d.col.IPoint {
-		return grid.toCell(x, y);
+		if (lift == 0 || def.levels.length == 0)
+			return grid.toCell(x, y);
+		// A cell drawn lifted is under the point where its top or its side is: of the cells whose
+		// column reaches the point, the one in front (the lowest middle on screen), the higher top
+		// on a tie. Looked for at every level a cell of the map may stand on.
+		final highest = Math.ceil(liftMargin() / lift);
+		var best:Null<h2d.col.IPoint> = null;
+		var bestY = Math.NEGATIVE_INFINITY;
+		for (level in 0...highest + 1) {
+			final c = grid.toCell(x, y + level * lift);
+			if (!inside(c.x, c.y) || levelIndex[c.y * width + c.x] < level)
+				continue;
+			final y0 = grid.pixelY(c.x, c.y);
+			if (y0 > bestY || (y0 == bestY && best != null && levelIndex[c.y * width + c.x] > levelIndex[best.y * width + best.x])) {
+				best = c;
+				bestY = y0;
+			}
+		}
+		return best != null ? best : grid.toCell(x, y);
 	}
 
 	/** A cell's top-left corner, in pixels: its box's, a diamond's or a hex's on those grids (`TileGrid.toPixel`). **/
@@ -1386,6 +1426,7 @@ class TileMap extends h2d.Object {
 	function drawChunk(c:Chunk):Void {
 		c.dirty = false;
 		clearChunk(c);
+		columnOf = [];
 		clearSides(c);
 		drawTerrains(c);
 		drawRises(c);
@@ -1533,10 +1574,12 @@ class TileMap extends h2d.Object {
 	**/
 	function drawGroundInOrder(c:Chunk):Void {
 		final plans = groundPlans(c);
+		chunkPlans = plans;
 		if (plans.length == 0)
 			return;
 		final groups = new TileGroups(this, c, plans[plans.length - 1].terrain);
 		final flatHex = grid.kind == Hex && !grid.pointy;
+		final lifting = lift > 0 && def.levels.length > 0;
 		final lastRow = c.rect.y1 == height ? height + 1 : c.rect.y1;
 		for (cy in c.rect.y0...lastRow)
 			for (half in 0...(flatHex ? 2 : 1))
@@ -1553,6 +1596,77 @@ class TileMap extends h2d.Object {
 						emitGround(plan, cx, cy, groups, 0);
 					}
 				}
+		if (lifting)
+			drawColumns(c, plans, groups);
+	}
+
+	/**
+		The raised cells of a chunk, drawn lifted. Each cell's side, from the level of the neighbour
+		in front of it up to its own, a rise's piece a level (`span` frames from the top down, the
+		last again below them), and on it the cell's terrains lifted by its level. The lowest level of
+		its side is drawn with the ground, back to front, where what stands in front covers what of it
+		reaches past its cell; the rest, its top and the layers' cells on it (`drawLayers`) are a
+		column among the actors, sorted by the middle of the cell on the ground less half a pixel, so
+		it is in front of what stands behind the cell, behind what stands in front of it, and under
+		what stands on it, an actor on it giving its feet on the ground (`centerOf`) and drawing
+		itself `liftAt` higher.
+	**/
+	function drawColumns(c:Chunk, plans:Array<GroundPlan>, groups:TileGroups):Void {
+		columnOf = [];
+		for (cy in c.rect.y0...c.rect.y1)
+			for (cx in c.rect.x0...c.rect.x1) {
+				if (!liftedAt(cx, cy))
+					continue;
+				final level = levelIndex[cy * width + cx];
+				emitSides(cx, cy, 0, 1, groups);
+				final column = new ColumnTiles(grid.pixelY(cx, cy) + grid.tileHeight / 2 - 0.5);
+				column.object.visible = c.shown;
+				emitSides(cx, cy, 1, level, column);
+				for (plan in plans)
+					if (plan.format != Corner)
+						emitGround(plan, cx, cy, column, level * lift);
+				actors.add(column.object, 0);
+				c.objects.push(column.object);
+				columnOf.set(cy * width + cx, column);
+			}
+	}
+
+	/**
+		A raised cell's side pieces for the levels `from` up to, not including, `to` (bottom first),
+		toward each face the tileset draws a side toward: `down` every face below at once, from the
+		lowest neighbour there (the map's edge counting as level 0), or one face (`se`, `sw`, `s`).
+	**/
+	function emitSides(cx:Int, cy:Int, from:Int, to:Int, sink:TileSink):Void {
+		final i = cy * width + cx;
+		final level = levelIndex[i];
+		if (to > level) to = level;
+		final terrain = terrainIndex[i] >= 0 ? tileset.terrains[terrainIndex[i]].name : null;
+		final platform = platformIndex[i] >= 0 ? platformNames[platformIndex[i]] : null;
+		for (k in from...to)
+			for (toward in towardNames) {
+				var lowest = level;
+				inline function look(d:Int) {
+					final nx = grid.neighbourX(cx, cy, d);
+					final ny = grid.neighbourY(cx, cy, d);
+					final n = inside(nx, ny) ? levelIndex[ny * width + nx] : 0;
+					if (n < lowest) lowest = n;
+				}
+				final d = grid.towardDirection(toward);
+				if (d < 0)
+					for (b in grid.below())
+						look(b);
+				else
+					look(d);
+				if (k < lowest)
+					continue;
+				final r = riseFor(tileset, level - lowest, toward, terrain, platform);
+				if (r < 0)
+					continue;
+				final frames = pieceFramesOf(tileset.rises[r].side);
+				final j = level - 1 - k;
+				final f = frames[j < frames.length ? j : frames.length - 1];
+				sink.add(grid.frameX(cx, cy, f.width), grid.frameY(cx, cy, f.height) - k * lift, f);
+			}
 	}
 
 	/** What `drawGroundInOrder` draws of each terrain that is not animated, bottom first; those not near the chunk left out. **/
@@ -1590,7 +1704,7 @@ class TileMap extends h2d.Object {
 	}
 
 	/** A terrain's tile at a position (a cell, or a corner of the corner format), and its transitions' there, moved up by `up` pixels. **/
-	function emitGround(plan:GroundPlan, cx:Int, cy:Int, groups:TileGroups, up:Float):Void {
+	function emitGround(plan:GroundPlan, cx:Int, cy:Int, groups:TileSink, up:Float):Void {
 		final frames = plan.frames;
 		if (frames != null) {
 			final t = terrainIndex[cy * width + cx];
@@ -1613,7 +1727,7 @@ class TileMap extends h2d.Object {
 	}
 
 	/** The tile an autotile draws at a position over a pass's mask, put on the grid as `buildAutotile` puts it. **/
-	function placeAutotileTile(name:String, format:AutotileFormat, mask:Array<Array<Int>>, cx:Int, cy:Int, groups:TileGroups, up:Float):Void {
+	function placeAutotileTile(name:String, format:AutotileFormat, mask:Array<Array<Int>>, cx:Int, cy:Int, groups:TileSink, up:Float):Void {
 		final lx = cx - passRect.x0;
 		final ly = cy - passRect.y0;
 		final index = switch format {
@@ -1639,7 +1753,7 @@ class TileMap extends h2d.Object {
 
 	/** Whether a cell is drawn lifted, with its column among the actors (a raised cell off the square grid). **/
 	function liftedAt(cx:Int, cy:Int):Bool {
-		return false;
+		return lift > 0 && inside(cx, cy) && levelIndex[cy * width + cx] > 0;
 	}
 
 	/** An autotile over a pass's mask, its tiles put on the map's grid. **/
@@ -1719,7 +1833,8 @@ class TileMap extends h2d.Object {
 
 	/** The levels' edges, the platforms' tops and the rises' sides of a chunk, the sides noted as they are drawn. **/
 	function drawRises(c:Chunk):Void {
-		if (def.levels.length == 0)
+		// off the square grid a raised cell is lifted, its sides drawn under it (`drawColumns`)
+		if (def.levels.length == 0 || lift > 0)
 			return;
 		final highest = highestLevel();
 		// Every level's outline: along its rim only, so what is on the level shows; the autotile of
@@ -1762,7 +1877,7 @@ class TileMap extends h2d.Object {
 		before noted on its line (`runAlong`), so a long cliff is not walked back along once a chunk.
 	**/
 	function scanRises(c:Chunk, groups:Null<TileGroups>):Void {
-		if (def.levels.length == 0)
+		if (def.levels.length == 0 || lift > 0)
 			return;
 		final span = maxSpan();
 		for (ti in 0...towardNames.length) {
@@ -2025,8 +2140,15 @@ class TileMap extends h2d.Object {
 						final r = footprintOf(entry.cell, cx, cy);
 						final box = grid.bounds(r.x0, r.y0, r.x1, r.y1, scratchBounds);
 						x = grid.frameLeft(box.xMin, tile.width, box.width);
-						y = grid.frameTop(box.yMin, tile.height, box.height);
+						// on a raised cell, lifted with it (an object by its anchor's level)
+						y = grid.frameTop(box.yMin, tile.height, box.height) - liftAt(cx, cy);
 						footY = (box.yMin + box.yMax) / 2;
+					}
+					// a raised cell's own cells under the actors are drawn on its column, among them
+					final column = entry.draw != "actors" && entry.draw != "over" && entry.draw != "top" ? columnOf.get(cy * width + cx) : null;
+					if (column != null) {
+						column.add(x, y, tile);
+						continue;
 					}
 					switch entry.draw {
 						case "actors":
@@ -2180,8 +2302,40 @@ class TileMap extends h2d.Object {
 	}
 }
 
+/** Where tiles are put as a chunk is drawn: a chunk's part of a pass, or a raised cell's column. **/
+private interface TileSink {
+	function add(x:Float, y:Float, tile:h2d.Tile):Void;
+}
+
+/**
+	A raised cell drawn lifted, among the actors: an object at the cell's middle on the ground (less
+	half a pixel), which is what sorts it, holding its tiles placed where the map puts them, one
+	TileGroup a texture.
+**/
+private class ColumnTiles implements TileSink {
+	public final object = new h2d.Object();
+
+	final groups:Array<h2d.TileGroup> = [];
+
+	public function new(sortY:Float) {
+		object.y = sortY;
+	}
+
+	public function add(x:Float, y:Float, tile:h2d.Tile):Void {
+		final texture = tile.getTexture();
+		for (g in groups)
+			if (g.tile.getTexture() == texture) {
+				g.add(x, y - object.y, tile);
+				return;
+			}
+		final g = new h2d.TileGroup(tile, object);
+		groups.push(g);
+		g.add(x, y - object.y, tile);
+	}
+}
+
 /** TileGroups under one parent, one a texture: a TileGroup draws from a single texture. **/
-private class TileGroups {
+private class TileGroups implements TileSink {
 	final map:TileMap;
 	final chunk:Chunk;
 	final pass:Int;

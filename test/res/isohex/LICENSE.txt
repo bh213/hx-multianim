@@ -2,7 +2,7 @@ The tiles in this folder are all CC0 1.0 (public domain), packed into one sheet 
 hx-multianim's isometric and hex tile map tests (test/examples/168-tilemapGrids).
 
 isoCity.png / isoCity.atlas2
-  Kenney, "Isometric Tiles City" (cityTiles 066, 072, 074, 080, 073, 081, 089, 067, 090) and
+  Kenney, "Isometric Tiles City" (cityTiles 066, 072, 074, 080, 073, 081, 089, 067) and
   "Isometric Tiles Buildings" (buildingTiles 002). https://kenney.nl/assets/isometric-tiles-city,
   https://kenney.nl/assets/isometric-tiles-buildings. License: CC0 1.0. Credit (Kenney or
   www.kenney.nl) is welcome, not required.

@@ -7980,7 +7980,8 @@ class MacroManimParser {
 					error('rise ${rises[i].rise == 0 ? "any" : Std.string(rises[i].rise)} toward ${rises[i].toward} is defined twice');
 		// A tileset of things to place only (trees, houses, furniture) has no terrain: its maps are
 		// all `none`, with its cells in layers, drawn over another tileset's ground.
-		if (Lambda.exists(rises, r -> r.platform == null) && edge == null && !edges.keys().hasNext())
+		// (off the square grid a raised cell is lifted and shows its sides: no outline is needed)
+		if (Lambda.exists(rises, r -> r.platform == null) && edge == null && !edges.keys().hasNext() && (grid == null || grid.kind == "orthogonal"))
 			error("a tileset with rises needs edge: the autotile that outlines a higher level");
 		for (edgeTerrain in edges.keys())
 			if (Lambda.findIndex(terrains, x -> x.name == edgeTerrain) < 0) error('edge $edgeTerrain: tileset has no terrain $edgeTerrain');

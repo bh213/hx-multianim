@@ -679,15 +679,16 @@ Returns `{name, seed, draws, picked: [ids]}`. Errors: `not_found`.
 The tile maps in a scene (`bh.base.TileMap.showing`), built from `#name tilemap { … }` blocks.
 
 #### `map_list`
-No parameters. Returns `{maps: [{name, source, line, width, height, tileSize}]}`: `source` the .manim file
-and `line` where the map's block is.
+No parameters. Returns `{maps: [{name, source, line, width, height, tileSize, grid}]}`: `source` the .manim file
+and `line` where the map's block is; `grid` the grid its tileset lays it on: `{kind, width, height, tileOffset}`
+(`kind` `orthogonal`, `isometric` or `hex`), a hex grid's with `orientation`, `offset`, `side`, `columnStep`, `rowStep`.
 
 #### `map_get`
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
 | `name` | string | yes | From `map_list` |
 
-The map as it is now, in the shape it is written in: `{name, source, line, width, height, tileSize,
+The map as it is now, in the shape it is written in: `{name, source, line, width, height, tileSize, grid,
 tileset, legend, terrain, levels, layers: [{name, sheet, draw, legend, rows}], marks: [{name, x, y, w?,
 h?}]}`. A map changed while the game runs (`setTerrain`, `setLevel`, `setCell`) answers with its rows as
 they are. Errors: `not_found`.
