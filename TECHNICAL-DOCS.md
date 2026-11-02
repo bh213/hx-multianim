@@ -582,8 +582,9 @@ still tile after it added to each frame, so the run is as many objects as the te
 `rimPositions` and `meetingPositions` read a hex's 6 neighbours. Levels are lifted by `lift`
 (`liftAt`): `drawColumns` draws a raised cell's lowest level of side with the ground (`emitSides`, a
 rise's piece a level toward each `toward:`, from the lowest neighbour that way, `dropToward`; a single
-face's piece against that face's side of the box, `TileGrid.faceX`; on the isometric grid the run's
-ends from `liftedPiece`, a run going along the screen through `runNeighbour`) and the rest of it, its
+face's piece against that face's side of the box, `TileGrid.faceX`; the run's ends from
+`liftedPiece`, a level of side at a time, a run going along the screen through `runNeighbour` on the
+isometric grid and `hexRunNeighbour`, the lower outline walked, on the hex grid) and the rest of it, its
 terrains lifted and (`drawLayers`, through `columnOf`/`columnAt`) its layer cells as a `ColumnTiles`
 among the actors at its middle less half a pixel, in `Chunk.objects`; `drawRises` draws the levels'
 edges and the platforms' tops on the raised cells' columns at their level (`drawLiftedTops`,
@@ -593,8 +594,10 @@ it at the highest level there, a column of another chunk's cell made anew a litt
 draws it, whose metadata the cell takes; `scanRises` does only that, for a chunk read without a
 draw. `toCell` looks at every level for the cell whose top or side covers the point, the front one
 first. The builder's `checkTilemap` checks a lifted map's rises the way `emitSides` reads them. An
-object of several cells among the actors on the isometric grid is cut by `addStrips` into strips half
-a cell wide, each a Bitmap sorted by the front cell of the footprint under it less a quarter pixel.
+object of several cells among the actors is cut into strips, each a Bitmap (`addStrip`) sorted by the
+front cell of the footprint under it less a quarter pixel: on the isometric grid by `addStrips`, half
+a cell wide; on the hex grid by `addHexStrips`, at the edges of the footprint's cells' boxes, pieces
+side by side with the same key one strip.
 
 A map's frames are `MapFrame`s (`TileMap.frameOf` of an atlas frame, `tileFrame` of a whole tile):
 the tile placed in its untrimmed frame by its `dx`/`dy` (`AnimationFrame.placedAbout(0, 0)`), and

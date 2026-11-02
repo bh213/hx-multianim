@@ -504,6 +504,112 @@ class TileGridTest extends utest.Test {
 		Assert.equals("L", swPiece(1, 3));
 		Assert.equals("side", swPiece(2, 3));
 		Assert.equals("R", swPiece(3, 3));
+		// a run is a level of side's: a cell two up beside one up goes on with its run below and
+		// ends its own above
+		final step = liftedMap('rise any { side: "side" left: "L" right: "R" single: "S" }', ["0000", "0120", "0000"]);
+		step.redraw();
+		Assert.equals("L", @:privateAccess step.liftedPiece(1, 1, 0, -1, 0, 0));
+		Assert.equals("R", @:privateAccess step.liftedPiece(2, 1, 0, -1, 0, 0), "the lower piece goes on from the cell one up");
+		Assert.equals("S", @:privateAccess step.liftedPiece(2, 1, 0, -1, 0, 1), "the upper piece stands alone");
+	}
+
+	/** A map of blocks on hexes (pointy 32x28 or flat 28x32, side 12, 14 rows of side) whose rise is as given, its levels as given. **/
+	static function hexLiftedMap(rise:String, levels:Array<String>, pointy:Bool, ?more:String = "", ?layer:String = ""):bh.base.TileMap {
+		final rows = [for (r in levels) '"' + StringTools.lpad("", ".", r.length) + '"'].join(", ");
+		final grid = pointy ? "grid: hex, 32, 28, pointy, odd, 12" : "grid: hex, 28, 32, flat, odd, 12";
+		final map = builderFromSource('
+			#blocks atlas2("Tileset/Minifantasy_ForgottenPlainsTiles.png") {
+				ground: 0, 0, 32, 42  side: 32, 0, 32, 42  L: 64, 0, 32, 42  R: 96, 0, 32, 42  S: 128, 0, 32, 42  tower: 0, 42, 80, 100
+			}
+			#t tileset { $grid tileOffset: 0, 14 atlas: "blocks" terrain ground { cells: "ground" } $rise $more }
+			#m tilemap { tileset: t size: ${levels[0].length}, ${levels.length} legend { ".": ground } terrain: [$rows]
+				levels: [${[for (r in levels) '"$r"'].join(", ")}] $layer }
+		').buildTilemap("m");
+		map.redraw();
+		return map;
+	}
+
+	public function testARunOfSidesHasItsEndsOnTheHexGrid() {
+		// pointy hexes, odd rows pushed right: a plateau of 3 by 2 one up and a lone raised cell. Row 2
+		// shows both faces; of row 1 only (3, 1), pushed past row 2's end, shows its se face
+		final levels = ["000000", "011100", "011100", "000000", "000010"];
+		final ends = 'left: "L" right: "R" single: "S"';
+		final down = hexLiftedMap('rise any { side: "side" $ends }', levels, true);
+		function piece(map:bh.base.TileMap, cx:Int, cy:Int, toward:Int):String
+			return @:privateAccess map.liftedPiece(cx, cy, 0, toward, 0);
+		// the lower outline runs from (1, 2)'s sw face along row 2's faces, up (3, 2)'s upright side to (3, 1)'s se face
+		Assert.equals("L", piece(down, 1, 2, -1), "the left end");
+		Assert.equals("side", piece(down, 2, 2, -1));
+		Assert.equals("side", piece(down, 3, 2, -1), "goes on up its upright side");
+		Assert.equals("R", piece(down, 3, 1, -1), "the right end: the pushed row's last face");
+		Assert.equals("S", piece(down, 4, 4, -1), "a lone cell");
+		Assert.equals(0, down.sideAt(1, 1), "the back row's cells show no face");
+		// one face: its run goes along the outline as far as the same face shows
+		final se = hexLiftedMap('rise any { side: "side" $ends toward: se }', levels, true);
+		Assert.equals("L", piece(se, 1, 2, 2));
+		Assert.equals("side", piece(se, 3, 2, 2));
+		Assert.equals("R", piece(se, 3, 1, 2));
+		final sw = hexLiftedMap('rise any { side: "side" $ends toward: sw }', levels, true);
+		Assert.equals("L", piece(sw, 1, 2, 3));
+		Assert.equals("side", piece(sw, 2, 2, 3));
+		Assert.equals("R", piece(sw, 3, 2, 3), "(3, 1) above it shows no sw face");
+		// flat hexes, odd columns pushed down: the pushed columns' faces stand out at the ends, two
+		// cells each, the left ones going on toward the middle and the right ones from it
+		final flat = hexLiftedMap('rise any { side: "side" $ends }', ["00000", "01110", "01110", "00000", "00000"], false);
+		Assert.equals("L", piece(flat, 1, 1, -1), "its sw face, over the one below");
+		Assert.equals("L", piece(flat, 1, 2, -1));
+		Assert.equals("side", piece(flat, 2, 2, -1), "the middle column's s face");
+		Assert.equals("R", piece(flat, 3, 2, -1));
+		Assert.equals("R", piece(flat, 3, 1, -1));
+		// two up beside one up, a level of side at a time
+		final step = hexLiftedMap('rise any { side: "side" $ends }', ["0000", "0120", "0000"], true);
+		Assert.equals("L", @:privateAccess step.liftedPiece(1, 1, 0, -1, 0, 0));
+		Assert.equals("R", @:privateAccess step.liftedPiece(2, 1, 0, -1, 0, 0));
+		Assert.equals("S", @:privateAccess step.liftedPiece(2, 1, 0, -1, 0, 1));
+	}
+
+	public function testALongObjectOnTheHexGridSortsByTheFrontCellUnderEachStrip() {
+		// a tower 2 cells by 4 on pointy hexes, its anchor its top-left at (1, 2): rows 2 to 5, rows 3
+		// and 5 pushed right half a cell, so its front row's last cell juts out past row 4's
+		final map = hexLiftedMap("", ["00000", "00000", "00000", "00000", "00000", "00000", "00000"], true, "cell tower { size: 2, 4 anchor: 0, 0 }",
+			'layer things { legend { "t": tower } rows: ["     ", "     ", " t   ", "     ", "     ", "     ", "     "] }');
+		final strips:Array<h2d.Object> = @:privateAccess map.chunks[0].objects;
+		// the half column only rows 2 and 4 cover (32 to 48), then the rest, whose front is row 5
+		Assert.equals(2, strips.length, "a strip for each front row");
+		Assert.floatEquals(map.grid.center(1, 4).y - 0.25, strips[0].y);
+		Assert.floatEquals(map.grid.center(1, 5).y - 0.25, strips[1].y);
+		// the pieces put together are the whole frame
+		final first = cast(strips[0], h2d.Bitmap).tile;
+		final second = cast(strips[1], h2d.Bitmap).tile;
+		Assert.floatEquals(16, first.width);
+		Assert.floatEquals(64, second.width);
+		Assert.floatEquals(first.dx + 16, second.dx);
+		// actors on cells: beside row 4 on the right, over the front row's corner (behind it; in front of
+		// the left end, row 4's, which it is not over); in front of the tower and of its left end; behind it
+		final cells = [
+			{x: 3, y: 4, inFront: [true, false]},
+			{x: 1, y: 6, inFront: [true, true]},
+			{x: 0, y: 5, inFront: [true, true]},
+			{x: 1, y: 1, inFront: [false, false]},
+		];
+		final actors = [
+			for (cell in cells) {
+				final a = new h2d.Object();
+				final p = map.grid.center(cell.x, cell.y);
+				a.setPosition(p.x, p.y);
+				map.addActor(a);
+				a;
+			}
+		];
+		// the footprint's middle, the one key it was sorted by, puts the first actor in front of it all
+		final box = map.grid.bounds(1, 2, 3, 6);
+		Assert.isTrue(actors[0].y > (box.yMin + box.yMax) / 2, "the actor beside row 4 is below the footprint's middle");
+		map.actors.ysort(0);
+		for (i in 0...cells.length)
+			for (s in 0...2) {
+				final after = map.actors.getChildIndex(actors[i]) > map.actors.getChildIndex(strips[s]);
+				Assert.equals(cells[i].inFront[s], after, 'the actor on (${cells[i].x}, ${cells[i].y}) and strip $s');
+			}
 	}
 
 	public function testAFacePieceStandsAgainstItsSideOfTheCell() {

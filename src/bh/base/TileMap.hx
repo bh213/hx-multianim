@@ -1710,20 +1710,25 @@ class TileMap extends h2d.Object {
 		return level - lowest;
 	}
 
-	/** Which of the tileset's rises draws a raised cell's side toward the side faced `toward` (by its index in `towardNames`), lifted; -1 for none. **/
-	function liftedRiseAt(cx:Int, cy:Int, toward:Int):Int {
+	/**
+		Which of the tileset's rises draws a raised cell's side toward the side faced `toward` (by its
+		index in `towardNames`), lifted, at the level of side `band` (the piece from `band` up to `band +
+		1`); -1 for none there.
+	**/
+	function liftedRiseAt(cx:Int, cy:Int, toward:Int, band:Int):Int {
 		if (!inside(cx, cy))
 			return -1;
+		final level = levelIndex[cy * width + cx];
 		final drop = dropToward(cx, cy, grid.towardDirection(towardNames[toward]));
-		return drop > 0 ? riseOf(cy * width + cx, toward, drop) : -1;
+		return drop > 0 && band < level && band >= level - drop ? riseOf(cy * width + cx, toward, drop) : -1;
 	}
 
 	/**
 		A raised cell's side pieces for the levels `from` up to, not including, `to` (bottom first),
 		toward each face the tileset draws a side toward: `down` every face below at once, from the
 		lowest neighbour there (the map's edge counting as level 0), or one face (`se`, `sw`, `s`),
-		its piece against that face's side of the cell (`TileGrid.faceX`). On the isometric grid the
-		piece is the run's `left` or `right` end, or `single`, where the rise names them (`liftedPiece`).
+		its piece against that face's side of the cell (`TileGrid.faceX`). The piece is the run's
+		`left` or `right` end, or `single`, where the rise names them (`liftedPiece`).
 	**/
 	function emitSides(cx:Int, cy:Int, from:Int, to:Int, sink:TileSink):Void {
 		final i = cy * width + cx;
@@ -1740,7 +1745,7 @@ class TileMap extends h2d.Object {
 				final r = riseOf(i, ti, drop);
 				if (r < 0)
 					continue;
-				final frames = pieceFramesOf(liftedPiece(cx, cy, ti, d, r));
+				final frames = pieceFramesOf(liftedPiece(cx, cy, ti, d, r, k));
 				final j = level - 1 - k;
 				final f = frames[j < frames.length ? j : frames.length - 1];
 				final x = d < 0 ? grid.frameX(cx, cy, f.width) : grid.faceX(cx, cy, d, f.width);
@@ -1754,26 +1759,33 @@ class TileMap extends h2d.Object {
 		the isometric grid a run goes along the screen: an `se` face's along its column (cy), an `sw`
 		face's along its row (cx), and the front of `down` (both faces in one piece) along the cells'
 		fronts, the `sw` faces up to the corner and the `se` faces from it; `left` is its end on the
-		left of the screen, `right` on the right. A neighbour goes on with the run where its side is
-		drawn by the same rise. Off the isometric grid there are no runs: the middle.
+		left of the screen, `right` on the right. On the hex grid every face's run follows the cells'
+		lower outline (`hexRunNeighbour`), whose faces zigzag. A run is a level of side's (`band`, the
+		piece from `band` up to `band + 1`; -1, the cell's top one): the outline is that of the cells
+		standing higher than the band, and a neighbour goes on with the run where its side has a piece
+		at that band drawn by the same rise. So a cell two up beside one up continues its neighbour's
+		run in its lower piece and ends its own in its upper one.
 	**/
-	function liftedPiece(cx:Int, cy:Int, toward:Int, direction:Int, index:Int):String {
+	function liftedPiece(cx:Int, cy:Int, toward:Int, direction:Int, index:Int, band:Int = -1):String {
 		final rise = tileset.rises[index];
-		if (grid.kind != Isometric || (rise.left == null && rise.right == null && rise.single == null && rise.sides.length < 2))
+		if (grid.kind == Orthogonal || (rise.left == null && rise.right == null && rise.single == null && rise.sides.length < 2))
 			return rise.sides[0];
+		final k = band >= 0 ? band : levelIndex[cy * width + cx] - 1;
 		final p = scratchCell;
 		inline function goesOn(x:Int, y:Int):Bool
-			return liftedRiseAt(x, y, toward) == index;
-		runNeighbour(cx, cy, direction, -1, p);
+			return liftedRiseAt(x, y, toward, k) == index;
+		runNeighbour(cx, cy, direction, -1, k, p);
 		final before = goesOn(p.x, p.y);
-		runNeighbour(cx, cy, direction, 1, p);
+		runNeighbour(cx, cy, direction, 1, k, p);
 		final after = goesOn(p.x, p.y);
-		// how far along the run, from its left end: each step left lowers cx - cy, so the walk ends
+		// how far along the run, from its left end: each step left moves left on screen (or, on a flat
+		// hex, straight down), so the walk ends; the map's size bounds it all the same
 		var along = 0;
 		if (before && rise.sides.length > 1) {
 			var x = cx, y = cy;
-			while (true) {
-				runNeighbour(x, y, direction, -1, p);
+			final most = width * height;
+			while (along < most) {
+				runNeighbour(x, y, direction, -1, k, p);
 				if (!goesOn(p.x, p.y))
 					break;
 				x = p.x;
@@ -1788,21 +1800,62 @@ class TileMap extends h2d.Object {
 		The cell beside a raised cell along its side's run, on the isometric grid: to the left on screen
 		(`way` -1) or to the right (1). An `se` face's run goes along cy, an `sw` face's along cx; the
 		front of `down` goes left along the `sw` faces where its `sw` face shows (else along the `se`
-		ones) and right along the `se` faces where its `se` face shows (else along the `sw` ones).
+		ones) and right along the `se` faces where its `se` face shows (else along the `sw` ones); a
+		face shows at the level of side `band` where the neighbour there stands no higher than it.
 	**/
-	function runNeighbour(cx:Int, cy:Int, direction:Int, way:Int, out:h2d.col.IPoint):Void {
+	function runNeighbour(cx:Int, cy:Int, direction:Int, way:Int, band:Int, out:h2d.col.IPoint):Void {
+		if (grid.kind == Hex) {
+			hexRunNeighbour(cx, cy, way, band, out);
+			return;
+		}
 		var alongX = direction == 4;
 		if (direction < 0) {
 			// down: whether each front face shows, its neighbour lower
-			final level = levelIndex[cy * width + cx];
 			inline function lower(x:Int, y:Int):Bool
-				return !inside(x, y) || levelIndex[y * width + x] < level;
+				return !inside(x, y) || levelIndex[y * width + x] <= band;
 			alongX = way < 0 ? lower(cx, cy + 1) : !lower(cx + 1, cy);
 		}
 		if (alongX)
 			out.set(cx + way, cy);
 		else
 			out.set(cx, cy - way);
+	}
+
+	/**
+		The next cell along a raised cell's lower outline on the hex grid, to the left on screen (`way`
+		-1) or to the right (1), whatever face the run is of: the outline walked past the cell's last
+		face that shows on that side at the level of side `band` (the neighbour below it no higher than
+		`band`, the map's edge counting as lower). Past its outermost face (se going right, sw going
+		left) the outline goes on along the next cell's faces: on a pointy hex the cell beside it (e, w)
+		when that stands higher, else up its upright side to the one above (ne, nw); on a flat hex the
+		one above (ne, nw). Past an inner face (a pointy hex's se hidden, a flat hex's s or se) the
+		cell in front of the hidden face goes on.
+	**/
+	function hexRunNeighbour(cx:Int, cy:Int, way:Int, band:Int, out:h2d.col.IPoint):Void {
+		inline function lower(d:Int):Bool {
+			final nx = grid.neighbourX(cx, cy, d);
+			final ny = grid.neighbourY(cx, cy, d);
+			return !inside(nx, ny) || levelIndex[ny * width + nx] <= band;
+		}
+		// the faces below, right to left: pointy se 2, sw 3; flat se 2, s 3, sw 4
+		final first = 2;
+		final last = grid.pointy ? 3 : 4;
+		var next:Int;
+		if (way > 0) {
+			var d = first;
+			while (d < last && !lower(d))
+				d++;
+			// the outermost face shows (or none but the last): past its right end
+			// (pointy: e 1, else ne 0; flat: ne 1)
+			next = d == first && lower(first) ? (grid.pointy ? (!lower(1) ? 1 : 0) : 1) : d - 1;
+		} else {
+			var d = last;
+			while (d > first && !lower(d))
+				d--;
+			// (pointy: w 4, else nw 5; flat: nw 5)
+			next = d == last && lower(last) ? (grid.pointy && !lower(4) ? 4 : 5) : d + 1;
+		}
+		out.set(grid.neighbourX(cx, cy, next), grid.neighbourY(cx, cy, next));
 	}
 
 	/**
@@ -2426,10 +2479,13 @@ class TileMap extends h2d.Object {
 					}
 					switch entry.draw {
 						case "actors":
-							// an object of several cells on the isometric grid: in strips, each sorted by
+							// an object of several cells off the square grid: in strips, each sorted by
 							// the front cell of the footprint under it
-							if (footprint != null && grid.kind == Isometric && (footprint.x1 - footprint.x0 > 1 || footprint.y1 - footprint.y0 > 1)) {
-								addStrips(c, footprint, x, y, tile);
+							if (footprint != null && (footprint.x1 - footprint.x0 > 1 || footprint.y1 - footprint.y0 > 1)) {
+								if (grid.kind == Isometric)
+									addStrips(c, footprint, x, y, tile);
+								else
+									addHexStrips(c, footprint, x, y, tile);
 								continue;
 							}
 							// among the actors, standing on its feet: its y is its bottom edge, which sorts
@@ -2489,14 +2545,73 @@ class TileMap extends h2d.Object {
 				frontX = fx;
 				frontY = fy;
 			}
-			final sortY = grid.pixelY(frontX, frontY) + grid.tileHeight / 2 - 0.25;
-			final sprite = new h2d.Bitmap(tile.sub(a - left, 0, b - a, tile.height, tile.dx + a - left, tile.dy + y - sortY));
-			sprite.x = x;
-			sprite.y = sortY;
-			sprite.visible = c.shown;
-			actors.add(sprite, 0);
-			c.objects.push(sprite);
+			addStrip(c, x, y, tile, left, a, b, grid.pixelY(frontX, frontY) + grid.tileHeight / 2 - 0.25);
 		}
+	}
+
+	/**
+		An object of several cells on the hex grid, among the actors in strips, as `addStrips` does on
+		the isometric grid: the footprint's cells' boxes cut the screen at their left and right edges
+		(half a cell apart on pointy hexes; a slant's width and a side's in turn on flat ones), each
+		piece sorted by the front cell over it (the lowest on screen of the footprint's cells whose box
+		covers it) less a quarter of a pixel. Pieces side by side with the same front row are one strip:
+		a pointy footprint's front row is one, its pushed rows' jagged ends their own. One key for the
+		whole object, its footprint's middle, puts an actor beside a back row in front of the front
+		row's corner over it.
+	**/
+	function addHexStrips(c:Chunk, r:CellRect, x:Float, y:Float, tile:h2d.Tile):Void {
+		final w = grid.tileWidth;
+		final cuts:Array<Float> = [];
+		for (cy in r.y0...r.y1)
+			for (cx in r.x0...r.x1) {
+				final px = grid.pixelX(cx, cy) + grid.offsetX;
+				if (cuts.indexOf(px) < 0)
+					cuts.push(px);
+				if (cuts.indexOf(px + w) < 0)
+					cuts.push(px + w);
+			}
+		cuts.sort((p, q) -> p < q ? -1 : (p > q ? 1 : 0));
+		final left = x + tile.dx;
+		final right = left + tile.width;
+		final last = cuts.length - 2;
+		var start = left;
+		var key = Math.NaN;
+		for (i in 0...last + 1) {
+			// the front cell over the piece: the most pixelY among the cells whose box covers its middle
+			final mid = (cuts[i] + cuts[i + 1]) / 2;
+			var front = Math.NEGATIVE_INFINITY;
+			for (cy in r.y0...r.y1)
+				for (cx in r.x0...r.x1) {
+					final px = grid.pixelX(cx, cy) + grid.offsetX;
+					final py = grid.pixelY(cx, cy);
+					if (px <= mid && mid < px + w && py > front)
+						front = py;
+				}
+			final k = front + grid.tileHeight / 2 - 0.25;
+			if (i > 0 && k != key) {
+				addStrip(c, x, y, tile, left, start, cuts[i], key);
+				start = cuts[i];
+			}
+			key = k;
+		}
+		addStrip(c, x, y, tile, left, start, right, key);
+	}
+
+	/** One strip of an object among the actors: its frame's columns from `a` to `b` (map pixels, kept within the frame), sorted at `sortY`. **/
+	function addStrip(c:Chunk, x:Float, y:Float, tile:h2d.Tile, left:Float, a:Float, b:Float, sortY:Float):Void {
+		final right = left + tile.width;
+		if (a < left)
+			a = left;
+		if (b > right)
+			b = right;
+		if (b <= a)
+			return;
+		final sprite = new h2d.Bitmap(tile.sub(a - left, 0, b - a, tile.height, tile.dx + a - left, tile.dy + y - sortY));
+		sprite.x = x;
+		sprite.y = sortY;
+		sprite.visible = c.shown;
+		actors.add(sprite, 0);
+		c.objects.push(sprite);
 	}
 
 	/**

@@ -2107,10 +2107,12 @@ and faces, a platform, animated water and a long building among people.
   squares), never `corner`, which has no hex form (`tilemap_grid`).
 - **What stands up is among the actors**: a cell with `draw: actors` and an object of several cells
   are sorted with the actors by the middle of the cells they cover (an actor's `y` is its feet: in
-  front of a house, after it; behind, before it). On the isometric grid an object of several cells is
-  drawn in strips half a cell wide, each sorted by the front cell of its footprint under it (the one
-  lowest on screen), so an actor beside a long building is in front of it or behind it all along its
-  side, at its far end too; on the hex grid it sorts by its footprint's middle. Walls, trees, houses
+  front of a house, after it; behind, before it). An object of several cells is drawn in strips, each
+  sorted by the front cell of its footprint under it (the one lowest on screen), so an actor beside a
+  long building is in front of it or behind it all along its side, at its far end too: on the
+  isometric grid strips half a cell wide; on the hex grid the footprint's cells' boxes cut it where
+  they begin and end, side by side pieces with the same front row being one strip (a pointy hex
+  footprint's front row is one strip, its pushed rows' jagged ends their own). Walls, trees, houses
   and lamp posts go there; a road, a rug or a shadow stays a layer `under` the actors.
 - **Levels are lifted**: a cell `n` levels up is drawn `n · lift` pixels higher, its side from the level
   of its neighbour in front (the lowest of them for `toward: down`, the map's edge counting as 0) up to
@@ -2124,12 +2126,16 @@ and faces, a platform, animated water and a long building among people.
   draws it puts its metadata on the raised cell (on the square grid, on the cells the side covers).
   A piece of one face (`toward: se`, `sw`, `s`) is drawn against that face's side of the cell (`se` the
   right, `sw` the left, a flat hex's `s` the middle), so a face drawn alone, half a cell wide, lands
-  on its face, and a whole cell's frame with the other face clear where a frame goes. On the isometric
-  grid a run of sides has its ends, where the rise names them: an `se` face's run goes along its
-  column, an `sw` face's along its row, and the front of `toward: down` from the `sw` faces up to the
-  corner on to the `se` faces; `left` is the run's end on the left of the screen, `right` on the right,
-  `single` a side one cell long, the middles (`side: "a", "b"`) taken in turn from the left end. On the
-  hex grid there are no ends.
+  on its face, and a whole cell's frame with the other face clear where a frame goes. A run of sides
+  has its ends, where the rise names them: `left` is the run's end on the left of the screen, `right`
+  on the right, `single` a side one cell long, the middles (`side: "a", "b"`) taken in turn from the
+  left end. On the isometric grid an `se` face's run goes along its column, an `sw` face's along its
+  row, and the front of `toward: down` from the `sw` faces up to the corner on to the `se` faces. On
+  the hex grid every run follows the raised cells' lower outline, whose faces zigzag: along a row
+  and its neighbours' faces, up a pointy hex's upright side to the row above where the outline turns
+  so, a face's run going on as far as the same face shows. A run is a level of side's: a cell two up
+  beside one up goes on with its neighbour's run in its lower piece and ends its own in its upper one,
+  and a run never goes on to a cell that stands lower (the outline turns back there).
 - **Edges and platforms on a lifted map**: the tileset's `edge` (optional there) outlines a level's
   rim on the top of the cells of that level, lifted with them (a higher cell shows its own level's);
   a platform's `edge` is drawn on the top of every cell of it, its sides its own rises. A corner tile,
