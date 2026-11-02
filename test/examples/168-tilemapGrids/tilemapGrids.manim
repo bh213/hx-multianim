@@ -4,7 +4,7 @@ version: 1.0
 // on the square grid. Left, a city on Kenney's Isometric Tiles City and Buildings: blocks 132 wide
 // whose top is a 132x66 diamond with 33 pixels of side under it (tileOffset: 0, 33 puts the top on
 // the cell), every block a terrain so each covers the sides of the ones behind it, houses among the
-// actors. Right, Kenney's Hexagon pack (pointy hexes 120x140, a regular side) at half size, and the
+// actors. Right, Kenney's Hexagon pack (pointy hexes 120x140, a regular side) at 0.4 of its size, and the
 // Hexset by mbartelsm (32x48 frames on pointy hexes 32x28 whose upright sides are 12, rows 20 apart,
 // the face 14 rows above the frame's bottom) at twice its size. Raised cells are drawn lifted, half a
 // cell a level, their sides a rise's piece a level, among the actors: the asphalt and a house up
@@ -110,6 +110,7 @@ version: 1.0
 
 #tilemapGrids programmable() {
     tilemap(city): 400, 20
-    @scale(0.5) tilemap(hexes): 830, 30
+    // 0.4, not 0.5: at half size every pixel samples on a texel's edge, which GPUs round differently
+    @scale(0.4) tilemap(hexes): 830, 30
     @scale(2) tilemap(island): 820, 330
 }
