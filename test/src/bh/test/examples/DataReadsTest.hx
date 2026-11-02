@@ -76,4 +76,25 @@ class DataReadsTest extends utest.Test {
 		Assert.isTrue(one.enabled && two.enabled);
 		Assert.equals("enabled 2", sorted(bh.test.DataReadsData_GameData.readsSince()));
 	}
+
+	public function testMergedRecordsCountEachValueAtItsPath():Void {
+		final shapes = counting().shapes;
+		bh.test.DataReadsData_Shapes.resetReads();
+		Assert.equals(Type.getClass(shapes.start), Type.getClass(shapes.end), "two records of one shape are one type");
+		Assert.equals(1 + 4 + 8, shapes.start.x + shapes.end.y + shapes.corners[1].x);
+		Assert.equals("corners[1].x 1, end.y 1, start.x 1", sorted(bh.test.DataReadsData_Shapes.readsSince()),
+			"one type, each value counted at its own path");
+	}
+
+	public function testACountingTypeIsNeverMergedWithOneThatDoesNot():Void {
+		final data = counting();
+		final countingType = Type.getClass(data.shapes.start);
+		final plainType = Type.getClass(data.shapesPlain.start);
+		Assert.notEquals(Type.getClassName(countingType), Type.getClassName(plainType), "the same shape merged without counting is a type of its own");
+		Assert.isTrue(Type.getInstanceFields(countingType).contains("__counts"), "the counting type keeps counts");
+		Assert.isFalse(Type.getInstanceFields(plainType).contains("__counts"), "the other keeps none");
+		bh.test.DataReadsData_ShapesPlain.resetReads();
+		Assert.equals(2, data.shapesPlain.start.y);
+		Assert.equals("", sorted(bh.test.DataReadsData_ShapesPlain.readsSince()));
+	}
 }

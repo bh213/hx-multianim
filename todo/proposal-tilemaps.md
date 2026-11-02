@@ -36,7 +36,6 @@ only at the chunks in view; `redraw()` on a map drawn already.
 
 Not done, by how many tilesets each blocks: Wang 2-edge and 3-corner formats; a shared `shape:`
 vocabulary for collision (full, slopes, half, one-way); inner-corner side pieces where two cliffs
-meet; layer `offset:` and `parallax:`; hex and isometric cells (the map is square-cell only); a
-run-length or other compact form for very big maps; an importer from Tiled and LDtk in
+meet; layer `offset:` and `parallax:`; a run-length or other compact form for very big maps; an importer from Tiled and LDtk in
 hx-multianim-utils; marks and regions as data-block tables; where each row is written, for a tool
 (the parse keeps it only for its own errors).

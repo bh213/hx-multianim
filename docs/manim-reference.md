@@ -1807,6 +1807,7 @@ public function onEvent(wrapper:UIElementEventWrapper):Void {
 |-------|-------------|
 | `@:manim("file", "name")` | Generate typed factory and instance classes from programmable |
 | `@:data("file", "name", "pkg")` | Generate typed record classes from data block |
+| `@:data("file", "name", "pkg", reads)` | The same, counting its values' reads: `readsSince()` (`"fear.seconds" => 3`, `tiers[1].name`, `all[agree].cost`) since `resetReads()`; `-D manim_data_reads` for every `@:data` of the build. Both statics exist without counting and say nothing |
 | `@:build(ProgrammableCodeGen.buildAll())` | Trigger code generation on class |
 
 Generated factories provide type-safe `create()`, `createFrom()`, parameter setters, and element accessors.
