@@ -93,7 +93,27 @@ class HeapsBackend implements AudioBackend {
 	}
 
 	public function prepare(path:String):Void {
-		loader.loadSound(path);
+		gapless(loader.loadSound(path));
+	}
+
+	/**
+		On HashLink, an MP3 that says its gap (an Info frame with LAME's tag) played from its first
+		sample to its last (`GaplessMp3Data`), so a loop joins with no pause at its seam: Heaps' own
+		decodes from the file's first sample. Done once a sound, and again after a hot reload reads it
+		anew. Elsewhere, and for any other sound, nothing.
+	**/
+	public static function gapless(sound:hxd.res.Sound):Void {
+		#if hl
+		final data = @:privateAccess sound.data;
+		if (Std.isOfType(data, GaplessMp3Data) || (data != null && !Std.isOfType(data, hxd.snd.Mp3Data)))
+			return;
+		final bytes = sound.entry.getBytes();
+		if (bytes.length == 0 || (bytes.get(0) != 0xFF && bytes.get(0) != "I".code))
+			return;
+		final made = GaplessMp3Data.ofBytes(bytes);
+		if (made != null)
+			@:privateAccess sound.data = made;
+		#end
 	}
 
 	static inline function busName(bus:Null<String>):String {
@@ -129,6 +149,7 @@ class HeapsBackend implements AudioBackend {
 
 	public function play(start:VoiceStart):AudioVoice {
 		final sound = loader.loadSound(start.path);
+		gapless(sound);
 		final name = busName(start.bus);
 		final channel = sound.play(start.loop, start.fadeIn > 0 ? 0 : start.volume, group(start.bus), soundGroup(start.bus));
 		channel.priority = start.priority;

@@ -125,7 +125,7 @@ class ManimKeywordInfo {
 	public static final exportDescription = "Marks a root block as exported: #name export programmable(...), any kind of root block. The file's exported names are MultiAnimResult.exports (in the order written); an import still reaches every block";
 
 	/** `///`: a doc comment, kept by the parser on what it documents. */
-	public static final docCommentDescription = "Doc comment: the /// lines directly above a root block, a parameter or an enum choice, or one trailing a parameter or a choice on its line, are kept as its doc (MultiAnimResultTools.docOf); several lines join with newlines. Any other /// is a plain comment";
+	public static final docCommentDescription = "Doc comment: the /// lines directly above a root block, a parameter, an enum choice, a sound of a sounds block or a track of a music block, or one trailing a parameter, a choice, a sound or a track on its line, are kept as its doc (MultiAnimResultTools.docOf, soundDocOf); several lines join with newlines. Any other /// is a plain comment";
 
 	public static function elementName(ctor:String):Null<String> {
 		return elementNames.get(ctor);
@@ -215,7 +215,7 @@ class ManimKeywordInfo {
 			case FilterBlur(_, _, _, _): "blur";
 			case FilterDropShadow(_, _, _, _, _, _, _, _): "dropShadow";
 			case FilterPixelOutline(_, _): "pixelOutline";
-			case FilterPaletteReplace(_, _, _): "replacePalette";
+			case FilterPaletteReplace(_, _, _, _): "replacePalette";
 			case FilterColorListReplace(_, _): "replaceColor";
 			case FilterCustom(_, _): "custom";
 		};
@@ -234,7 +234,7 @@ class ManimKeywordInfo {
 			case FilterBlur(_, _, _, _): "Blur: blur(radius, [gain, quality, linear])";
 			case FilterDropShadow(_, _, _, _, _, _, _, _): "Drop shadow: dropShadow(distance, angle, color, alpha, radius)";
 			case FilterPixelOutline(_, _): "Pixel-perfect outline";
-			case FilterPaletteReplace(_, _, _): "Palette replacement";
+			case FilterPaletteReplace(_, _, _, _): "Palette replacement";
 			case FilterColorListReplace(_, _): "Color replacement: replaceColor: [#src] => [#dst]";
 			case FilterCustom(_, _): "Custom registered filter";
 		};
@@ -251,7 +251,7 @@ class ManimKeywordInfo {
 		FilterOutline(null, null), FilterGlow(null, null, null, null, null, false, false),
 		FilterBlur(null, null, null, null), FilterSaturate(null), FilterBrightness(null),
 		FilterGrayscale(null), FilterHue(null), FilterDropShadow(null, null, null, null, null, null, null, false),
-		FilterPixelOutline(null, false), FilterPaletteReplace("", null, null),
+		FilterPixelOutline(null, false), FilterPaletteReplace(null, "", null, null),
 		FilterColorListReplace(null, null), FilterGroup(null), FilterNone,
 	];
 

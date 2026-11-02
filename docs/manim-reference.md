@@ -11,7 +11,7 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `version: 1.0` | Required file header declaring format version |
 | `import "file" as "name"` | Import external .manim file for cross-file references (a parse with no loader keeps the names in `MultiAnimResult.importPaths`). At the top level only, each alias once; every `external(name)` must name one (parse errors) |
 | `#name export kind …` | Marks a root block of any kind as exported: `#knight export programmable(…)`. A list for tools (`MultiAnimResult.exports`, `MultiAnimResultTools.exportedNames`); an `import` still reaches every block. See [Exports and Doc Comments](#exports-and-doc-comments-multianimresulttools) |
-| `/// text` | Doc comment, kept on the root block, parameter or enum choice it documents (`MultiAnimResultTools.docOf`); any other `///` is a plain comment. See [Exports and Doc Comments](#exports-and-doc-comments-multianimresulttools) |
+| `/// text` | Doc comment, kept on the root block, parameter, enum choice, bank's sound or music track it documents (`MultiAnimResultTools.docOf`, `soundDocOf`); any other `///` is a plain comment. See [Exports and Doc Comments](#exports-and-doc-comments-multianimresulttools) |
 | `#name programmable(params) { ... }` | Define a parameterized component (the main building block) |
 | `#name data { ... }` | Define static typed data block with records and fields |
 | `#name curves { ... }` | Define named interpolation curves |
@@ -669,7 +669,7 @@ Slots with parameters support visual states via conditionals. `slotContent` mark
 | `dropShadow(distance, angle, color, alpha, radius, gain, quality, smoothColor)` | Drop shadow |
 | `pixelOutline(knockout, color, knockoutStrength [, smoothColor])` | Pixel-level knockout outline. Mode keyword `knockout` is followed by the outline color and a float strength. Optional trailing `smoothColor` keyword enables smoothed edge blending. |
 | `pixelOutline(inlineColor, outlineColor, fillColor [, smoothColor])` | Pixel-level inline-color outline. Mode keyword `inlineColor` is followed by the outline color and the inner fill color drawn over the source. Optional trailing `smoothColor` keyword enables smoothed edge blending. |
-| `replacePalette(palette, sourceRow, replacementRow)` | Swap palette rows |
+| `replacePalette([external(alias),] palette, sourceRow, replacementRow)` | Swap palette rows; `external(alias)`: a palette of an imported file |
 | `replaceColor(sourceColors[], replacementColors[])` | Replace specific colors |
 | `group(filter1, filter2, ...)` | Combine multiple filters |
 | `none` | No filter / remove inherited filter |
@@ -687,7 +687,8 @@ unit and label) are `bh.multianim.ShaderCatalog`, with no Heaps, for tools; the 
   default; a name the shader has not, a parameter given twice, or one by position after one by
   name is an error. Custom filters take names the same way. A colour is `#RRGGBB`, `0x…` or a
   colour's name written bare (`vignette(color: black)`); an enum `$param` given to a word or palette
-  parameter is its value's name (`paletteLock(palette: $pal)`, `pal:[gameboy, mono]`), in both backends.
+  parameter is its value's name (`paletteLock(palette: $pal)`, `pal:[gameboy, mono]`), in both backends;
+  a palette of an imported file is `palette: external(alias), name`.
 - **Three places.** On a thing (`flash`, `dissolve`, …: the element's `filter:`); over the whole
   stage (`ScreenManager.setStageShader(FilterManager.buildCustomFilter("crt", []), 0.25)`: every
   screen and dialog under it, the one before crossfaded out over the seconds given); a **ground**
@@ -1900,7 +1901,7 @@ MultiAnimResultTools.docOf(result, "knight", "hp");            // "hit points, a
 MultiAnimResultTools.docOf(result, "knight", "state", "walk"); // "4 frames at 8 fps"
 ```
 
-`docOf` is null when there is no doc, or no such block, parameter (of a programmable) or choice. A builder has the same: `builder.exportedNames()`, `builder.docOf(block, ?param, ?choice)`, and `builder.getParameterDefinitions(name)` gives the definitions with their `doc` and `choiceDocs`. The LSP shows a block's, a parameter's and a choice's doc on hover, marks exported blocks `export` in the outline, and completes and explains `export`.
+`docOf` is null when there is no doc, or no such block, parameter (of a programmable) or choice. `MultiAnimResultTools.soundDocOf(result, "fx", "hit")` is a sound's of a `sounds` block (its first variant with one) or a track's of a `music` block. A builder has the same: `builder.exportedNames()`, `builder.docOf(block, ?param, ?choice)`, `builder.soundDocOf(block, name)`, and `builder.getParameterDefinitions(name)` gives the definitions with their `doc` and `choiceDocs`. The LSP shows a block's, a parameter's, a choice's, a sound's and a track's doc on hover, marks exported blocks `export` in the outline, and completes and explains `export`.
 
 ---
 

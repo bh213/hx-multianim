@@ -182,6 +182,7 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.RegisteredNamesTest());
 		testRunner.addCase(new bh.test.examples.UIScrollbarWidgetTest());
 		testRunner.addCase(new bh.test.examples.AudioHooksTest());
+		testRunner.addCase(new bh.test.examples.GaplessMp3Test());
 		testRunner.addCase(new bh.test.examples.AudioTest());
 		testRunner.addCase(new bh.test.examples.AudioMixTest());
 		testRunner.addCase(new bh.test.examples.AudioScreenTest());

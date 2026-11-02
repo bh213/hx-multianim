@@ -312,6 +312,47 @@ class ExportDocCommentTest extends BuilderTestBase {
 		Assert.equals("the limit", r.nodes.get("LIMIT").doc, "a root @final's");
 	}
 
+	// Request 27: a sound's words are the `///` lines right over it in its bank, as a parameter's are
+	@Test
+	public function testASoundsAndATracksDoc():Void {
+		final r = parse('
+			/// the bank
+			#fx sounds {
+				param surface: [stone, grass]
+				/// a sword hitting armour; for a hit landed
+				hit { files: ["sound/hit_1.wav", "sound/hit_2.wav"], pick: shuffle }
+				miss { file: "sound/miss.wav" }
+				// a plain comment between breaks the run
+				/// the grass step; for walking
+				step @(surface => grass) { file: "sound/step_grass.wav" }
+				step { file: "sound/step.wav" } /// a step on stone
+				/// two lines,
+				/// joined
+				land {
+					file: "sound/land.wav"
+				}
+			}
+			#tunes music {
+				/// the title theme; for the menu
+				track title { file: "music/title.mp3" }
+				track battle { file: "music/battle.mp3", loop: no }
+			}
+		');
+		Assert.equals("the bank", r.nodes.get("fx").doc, "the block's own");
+		Assert.equals("a sword hitting armour; for a hit landed", MultiAnimResultTools.soundDocOf(r, "fx", "hit"));
+		Assert.isNull(MultiAnimResultTools.soundDocOf(r, "fx", "miss"), "a sound with none");
+		Assert.equals("the grass step; for walking", MultiAnimResultTools.soundDocOf(r, "fx", "step"), "a variant's, the first that has one");
+		Assert.equals("two lines,\njoined", MultiAnimResultTools.soundDocOf(r, "fx", "land"));
+		final steps = switch r.nodes.get("fx").type {
+			case SOUNDS(def): [for (s in def.sounds) if (s.name == "step") s.doc];
+			default: [];
+		};
+		Assert.equals("a step on stone", steps[1], "one trailing a sound on the line it ends");
+		Assert.equals("the title theme; for the menu", MultiAnimResultTools.soundDocOf(r, "tunes", "title"));
+		Assert.isNull(MultiAnimResultTools.soundDocOf(r, "tunes", "battle"));
+		Assert.isNull(MultiAnimResultTools.soundDocOf(r, "nope", "hit"), "no such block");
+	}
+
 	@Test
 	public function testCrlfSourceDocs():Void {
 		final r = MacroManimParser.parseFile("version: 1.0\r\n/// crlf doc\r\n/// line two\r\n#a programmable(\r\n\t/// p's\r\n\tp:[x, /// ex\r\n\ty] = x\r\n) {}\r\n",

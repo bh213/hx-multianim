@@ -5272,7 +5272,7 @@ class MultiAnimBuilder {
 						collectParamRefs(color, result);
 						collectParamRefs(inlineColor, result);
 				}
-			case FilterPaletteReplace(_, sourceRow, replacementRow):
+			case FilterPaletteReplace(_, _, sourceRow, replacementRow):
 				collectParamRefs(sourceRow, result);
 				collectParamRefs(replacementRow, result);
 			case FilterColorListReplace(sourceColors, replacementColors):
@@ -8631,8 +8631,8 @@ class MultiAnimBuilder {
 				}
 				ret;
 			case FilterOutline(size, color): new h2d.filter.Outline(resolveAsNumber(size), resolveAsColorInteger(color));
-			case FilterPaletteReplace(paletteName, sourceRow, replacementRow):
-				var palette = getPalette(paletteName);
+			case FilterPaletteReplace(externalReference, paletteName, sourceRow, replacementRow):
+				var palette = importedBuilder(externalReference).getPalette(paletteName);
 				var srcRow = resolveAsInteger(sourceRow);
 				var dstRow = resolveAsInteger(replacementRow);
 				ReplacePaletteShader.createAsPaletteFilter(palette, srcRow, dstRow);
@@ -8738,7 +8738,7 @@ class MultiAnimBuilder {
 			};
 			given.push({value: value, name: def.name});
 		}
-		return try bh.base.FilterManager.valuesOf(name, reg.params, given, n -> getPalette(n).colorList()) catch (e:String) throw builderError(e);
+		return try bh.base.FilterManager.valuesOf(name, reg.params, given, n -> paletteNamed(n).colorList()) catch (e:String) throw builderError(e);
 	}
 
 	function stringToInt(n:String):Int {
@@ -8937,6 +8937,15 @@ class MultiAnimBuilder {
 	/** A palette of this file by its name (`#name palette { ... }`): what a game reads its own colours from. **/
 	public function getPalette(name:String):Palette {
 		return buildPalettes(name);
+	}
+
+	/**
+		A palette as a shader's palette argument names it: a palette of this file, or `alias.name`, one
+		of the file it imports as `alias` (written `palette: external(alias), name`).
+	**/
+	public function paletteNamed(name:String):Palette {
+		final dot = name.indexOf(".");
+		return dot < 0 ? getPalette(name) : importedBuilder(name.substr(0, dot)).getPalette(name.substr(dot + 1));
 	}
 
 	function buildPalettes(name:String):Palette {
@@ -11511,6 +11520,12 @@ class MultiAnimBuilder {
 	 *  (`choice`); null when it has none (`MultiAnimResultTools.docOf`). */
 	public function docOf(block:String, ?param:String, ?choice:String):Null<String> {
 		return MultiAnimParser.MultiAnimResultTools.docOf(multiParserResult, block, param, choice);
+	}
+
+	/** The `///` doc comment of a sound of a `sounds` block or a track of a `music` block of this
+	 *  file; null when it has none (`MultiAnimResultTools.soundDocOf`). */
+	public function soundDocOf(block:String, name:String):Null<String> {
+		return MultiAnimParser.MultiAnimResultTools.soundDocOf(multiParserResult, block, name);
 	}
 
 	/** The names of every `music { }` block in the file. */

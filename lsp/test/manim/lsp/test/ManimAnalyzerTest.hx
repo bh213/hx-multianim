@@ -21,6 +21,7 @@ class ManimAnalyzerTest {
 		testExportAndDocComments();
 		testExportKeywordCompletionAndHover();
 		testDocCommentHover();
+		testSoundDocHover();
 	}
 
 	/** The parser on JS (the LSP, a browser build) reads integers as HashLink does. */
@@ -128,6 +129,14 @@ class ManimAnalyzerTest {
 		final plainLine = 15; // "\tbitmap(generated(color($hp, 2, ..." in #plain, no docs
 		final plainHp = hoverText(DOCUMENTED, plainLine, lines[plainLine].indexOf("$hp") + 2);
 		LspTestRunner.assert(plainHp != null && plainHp.indexOf("**Parameter**") >= 0, 'A parameter without a doc keeps the plain hover (got $plainHp)');
+	}
+
+	static function testSoundDocHover():Void {
+		final text = "version: 1.0\n#fx sounds {\n\t/// a sword hitting armour\n\thit { file: \"hit.wav\" }\n}\n#tunes music {\n\t/// the title theme\n\ttrack title { file: \"title.mp3\" }\n}\n";
+		final hit = hoverText(text, 3, 2); // "\thit { …"
+		LspTestRunner.assert(hit != null && hit.indexOf("a sword hitting armour") >= 0 && hit.indexOf("sound of") >= 0, 'Hover on a sound shows its /// doc (got $hit)');
+		final title = hoverText(text, 7, 9); // "\ttrack title { …"
+		LspTestRunner.assert(title != null && title.indexOf("the title theme") >= 0 && title.indexOf("track of") >= 0, 'Hover on a track shows its /// doc (got $title)');
 	}
 
 	static function testValidFileNoDiagnostics():Void {

@@ -191,14 +191,14 @@ class ProgrammableBuilder {
 		return getBuilder().importedBuilder(externalRef);
 	}
 
-	/** A palette's colours, by its name: what a shader holding a picture to a palette is given (`paletteLock(palette: name)`). */
+	/** A palette's colours, by its name (or `alias.name`, an import's): what a shader holding a picture to a palette is given (`paletteLock(palette: name)`). */
 	public function paletteColors(paletteName:String):Array<Int> {
-		return getBuilder().getPalette(paletteName).colorList();
+		return getBuilder().paletteNamed(paletteName).colorList();
 	}
 
-	/** Build a palette replace filter via the builder (for FilterPaletteReplace) */
-	public function buildPaletteReplaceFilter(paletteName:String, sourceRow:Int, replacementRow:Int):h2d.filter.Filter {
-		var palette = getBuilder().getPalette(paletteName);
+	/** Build a palette replace filter via the builder (for FilterPaletteReplace), the palette of the import `externalRef` when given */
+	public function buildPaletteReplaceFilter(paletteName:String, sourceRow:Int, replacementRow:Int, ?externalRef:String):h2d.filter.Filter {
+		var palette = resolvePaletteBuilder(externalRef).getPalette(paletteName);
 		return bh.base.filters.ReplacePaletteShader.createAsPaletteFilter(palette, sourceRow, replacementRow);
 	}
 

@@ -822,6 +822,8 @@ typedef SoundDef = {
 	var fadeOut:Float;
 	var conditional:NodeConditionalValues;
 	var line:Int;
+	/** Its `///` doc comment: the lines right above it in its bank, or one trailing it on the line it ends. **/
+	var ?doc:Null<String>;
 }
 
 /** `param surface: [stone, grass]`: a labelled parameter a sound's variant is chosen by. */
@@ -893,6 +895,8 @@ typedef MusicTrackDef = {
 	var file:String;
 	var loop:Bool;
 	var line:Int;
+	/** Its `///` doc comment, as a sound's. **/
+	var ?doc:Null<String>;
 }
 
 /** A `#name music { }` block: tracks, each `block.track` by name, on one bus. */
@@ -1436,7 +1440,8 @@ enum FilterType {
 	FilterBlur(radius:ReferenceableValue, gain:ReferenceableValue, quality:ReferenceableValue, linear:ReferenceableValue);
 	FilterDropShadow(distance:ReferenceableValue, angle:ReferenceableValue, color:ReferenceableValue, alpha:ReferenceableValue, radius:ReferenceableValue, gain:ReferenceableValue, quality:ReferenceableValue, smoothColor:Bool);
 	FilterPixelOutline(mode:PixelOutlineModeDef, smoothColor:Bool);
-	FilterPaletteReplace(paletteName:String, sourceRow:ReferenceableValue, replacementRow:ReferenceableValue);
+	/** `replacePalette([external(alias),] name, from, to)`: the palette of this file, or of the import `alias`. **/
+	FilterPaletteReplace(externalReference:Null<String>, paletteName:String, sourceRow:ReferenceableValue, replacementRow:ReferenceableValue);
 	FilterColorListReplace(sourceColors:Array<ReferenceableValue>, replacementColors:Array<ReferenceableValue>);
 	FilterCustom(name:String, args:Array<CustomFilterArg>);
 }
@@ -1713,6 +1718,24 @@ class MultiAnimResultTools {
 		if (choice == null) return def.doc;
 		final choiceDocs = def.choiceDocs;
 		return choiceDocs == null ? null : choiceDocs.get(choice);
+	}
+
+	/** The `///` doc comment of a sound of the `sounds` block `block` (its first variant that has
+	 *  one) or of a track of the `music` block `block`; null when it has none, or there is no such
+	 *  block or entry. */
+	public static function soundDocOf(result:MultiAnimResult, block:String, name:String):Null<String> {
+		final node = result.nodes.get(block);
+		if (node == null) return null;
+		switch node.type {
+			case SOUNDS(def):
+				for (s in def.sounds)
+					if (s.name == name && s.doc != null) return s.doc;
+			case MUSIC(def):
+				for (t in def.tracks)
+					if (t.name == name) return t.doc;
+			default:
+		}
+		return null;
 	}
 }
 

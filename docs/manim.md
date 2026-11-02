@@ -1039,7 +1039,7 @@ Font metrics are resolved at build time and can be used in expressions:
 
 Filters can be applied to any visual element. Most parameters support expressions.
 
-* `replacePalette(paletteName, sourceRow, replacementRow)`
+* `replacePalette(paletteName, sourceRow, replacementRow)`; `replacePalette(external(alias), paletteName, sourceRow, replacementRow)` for a palette of the file imported as `alias`
 * `replaceColor([sourceColors...], [replacementColors...])`
 * `outline(size, color)`
 * `saturate(value)` - 0.0=grayscale, 1.0=normal
@@ -1444,7 +1444,7 @@ A file can say which of its root blocks it gives others, and what each block, pa
 ```
 
 - `export` goes between a root block's `#name` and its kind, for any kind of root block. `MultiAnimResultTools.exportedNames(result)` lists the exported names in the order written; every block is still built and imported alike.
-- `///` (exactly three slashes) lines directly above a root block, a parameter or an enum choice are its doc; a parameter or a choice may also have one trailing it on its line. Lines join with newlines. `MultiAnimResultTools.docOf(result, block, ?param, ?choice)` reads them. A `///` that documents none of these is a plain comment.
+- `///` (exactly three slashes) lines directly above a root block, a parameter or an enum choice are its doc; a parameter or a choice may also have one trailing it on its line. Lines join with newlines. `MultiAnimResultTools.docOf(result, block, ?param, ?choice)` reads them. A sound of a `sounds` block and a track of a `music` block keep theirs too (the lines right above it, or one after its `}` on that line): `MultiAnimResultTools.soundDocOf(result, block, name)` (a sound's variants: the first that has one). A `///` that documents none of these is a plain comment.
 
 See `docs/manim-reference.md`, Exports and Doc Comments, for every rule.
 
@@ -1493,6 +1493,13 @@ Collections of colors accessed by index.
 }
 ```
 The colors must fill whole rows of `width` (a partial last row is a build error). `palette(main, x, y)` reads column `x` of row `y`; `replacePalette(main, sourceRow, replacementRow)` recolours each colour of `sourceRow` to the colour in the same column of `replacementRow` (one way, not a swap).
+
+**A palette of another file** is named `external(alias), name` wherever a palette is named, `alias`
+the name the file imports it as (`import "pack.manim" as "pack"`): a colour of it,
+`palette(external(pack), teams, 3)`; a recolour by it, `replacePalette(external(pack), teams, 0, 2)`;
+a shader's palette, `paletteLock(palette: external(pack), tones)`. So a pack's palettes are written
+once and every file that recolours with them imports them. An alias the file does not import is an
+error when it is parsed.
 
 **File palette:**
 ```
@@ -1688,7 +1695,9 @@ unless given); a track is `file:` and `loop:` (`yes` unless given). One track pl
 `audio.playMusic("music.title")` fades the one playing out and the new one in over
 `Audio.MUSIC_CROSSFADE` (half a second; `playMusic(name, 1.5)` for another), the track already
 playing plays on; `audio.stopMusic(?fade)`; `audio.musicPlaying`, `trackNames()`. A track over five
-seconds is streamed by Heaps.
+seconds is streamed by Heaps. An MP3 whose first frame is an Info frame with LAME's tag (LAME, FFmpeg
+and the studio write one) is played from its first sample to its last on every target, so a loop
+joins with no gap: in the browser by its decoder, on HashLink by `bh.audio.GaplessMp3Data`.
 
 ### Widgets, sprites and screens: sound with no code
 

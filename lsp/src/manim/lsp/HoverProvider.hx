@@ -65,6 +65,14 @@ class HoverProvider {
 		final blockName = enclosingRootBlock(text, line);
 		final block = blockName == null ? null : result.nodes.get(blockName);
 		if (block == null) return null;
+		// a sound of a bank, or a track of a music block, by its name
+		switch block.type {
+			case SOUNDS(_) | MUSIC(_) if (!isRef):
+				final soundDoc = bh.multianim.MultiAnimParser.MultiAnimResultTools.soundDocOf(result, blockName, name);
+				if (soundDoc != null)
+					return '**$name** — ' + (block.type.match(MUSIC(_)) ? 'track' : 'sound') + ' of `#$blockName`\n\n$soundDoc';
+			default:
+		}
 		final defs = switch block.type {
 			case PROGRAMMABLE(_, defs, _): defs;
 			default: null;

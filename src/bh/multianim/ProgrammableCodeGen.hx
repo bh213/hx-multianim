@@ -10108,7 +10108,7 @@ class ProgrammableCodeGen {
 						collectParamRefsImpl(color, refs);
 						collectParamRefsImpl(inlineColor, refs);
 				}
-			case FilterPaletteReplace(_, sourceRow, replacementRow):
+			case FilterPaletteReplace(_, _, sourceRow, replacementRow):
 				collectParamRefsImpl(sourceRow, refs);
 				collectParamRefsImpl(replacementRow, refs);
 			case FilterColorListReplace(sourceColors, replacementColors):
@@ -10419,10 +10419,11 @@ class ProgrammableCodeGen {
 						final icExpr = rvToExpr(inlineColor);
 						macro new bh.base.filters.PixelOutline(bh.base.filters.PixelOutlineFilterMode.InlineColor($cExpr, $icExpr), $v{smoothColor});
 				}
-			case FilterPaletteReplace(paletteName, sourceRow, replacementRow):
+			case FilterPaletteReplace(externalReference, paletteName, sourceRow, replacementRow):
 				final srcExpr = rvToExpr(sourceRow);
 				final dstExpr = rvToExpr(replacementRow);
-				macro this._pb.buildPaletteReplaceFilter($v{paletteName}, $srcExpr, $dstExpr);
+				final extExpr:Expr = externalReference != null ? macro $v{externalReference} : macro null;
+				macro this._pb.buildPaletteReplaceFilter($v{paletteName}, $srcExpr, $dstExpr, $extExpr);
 			case FilterColorListReplace(sourceColors, replacementColors):
 				// Color list replace — generate arrays of resolved colors
 				final srcExprs:Array<Expr> = [];

@@ -2797,13 +2797,24 @@ class MacroManimParser {
 			case TIdentifier(s) if (isKeyword(s, "replacepalette")):
 				advance();
 				expect(TOpen);
+				// a palette of another file: replacePalette(external(alias), name, from, to), as palette(external(alias), name, i)
+				var externalReference:Null<String> = null;
+				switch (peek()) {
+					case TIdentifier(s2) if (isKeyword(s2, "external")):
+						advance();
+						expect(TOpen);
+						externalReference = externalAlias();
+						expect(TClosed);
+						expect(TComma);
+					default:
+				}
 				final paletteName = expectIdentifierOrString();
 				expect(TComma);
 				final sourceRow = parseIntegerOrReference();
 				expect(TComma);
 				final replacementRow = parseIntegerOrReference();
 				expect(TClosed);
-				return FilterPaletteReplace(paletteName, sourceRow, replacementRow);
+				return FilterPaletteReplace(externalReference, paletteName, sourceRow, replacementRow);
 			case TIdentifier(s) if (isKeyword(s, "replacecolor")):
 				advance();
 				expect(TOpen);
@@ -2880,6 +2891,15 @@ class MacroManimParser {
 			case TIdentifier(s) if (isKeyword(s, "false") || isKeyword(s, "no")):
 				advance();
 				return {value: RVFloat(0.0), type: CFBool};
+			case TIdentifier(s) if (isKeyword(s, "external")):
+				// a palette of another file: `palette: external(alias), name`, the word `alias.name`
+				advance();
+				expect(TOpen);
+				final alias = externalAlias();
+				expect(TClosed);
+				expect(TComma);
+				final name = expectIdentifierOrString();
+				return {value: RVString('$alias.$name'), type: CFWord};
 			case TIdentifier(s) if (!isKeyword(s, "callback")):
 				// A word: one of a parameter's choices, or a palette's name (checked against the filter's parameters).
 				// `callback(…)` stays a number, as parseFloatOrReference reads it
@@ -7606,6 +7626,7 @@ class MacroManimParser {
 					def.defs.set(paramName, {name: paramName, type: PPTEnum(values), defaultValue: Index(0, values[0])});
 					match(TComma);
 				default:
+					final first = tpos;
 					final soundName = expectIdentifierOrString();
 					var conditional:NodeConditionalValues = NoConditional;
 					if (match(TAt)) {
@@ -7626,7 +7647,11 @@ class MacroManimParser {
 						if (other.name == soundName && other.conditional.match(NoConditional) && conditional.match(NoConditional))
 							error('$blockName.$soundName is given twice (variants take a @(param => label) each)');
 					expect(TCurlyOpen);
-					def.sounds.push(parseSound(soundName, conditional, line));
+					final sound = parseSound(soundName, conditional, line);
+					// its `///` lines right above it, or one after its `}` on that line
+					final doc = itemDoc(first, tpos - 1);
+					if (doc != null) sound.doc = doc;
+					def.sounds.push(sound);
 			}
 		}
 		if (def.sounds.length == 0) error('$blockName: sounds block has no sounds (name { file: "…" })');
@@ -7768,6 +7793,7 @@ class MacroManimParser {
 					def.bus = expectIdentifierOrString();
 					match(TComma);
 				case TIdentifier(s) if (isKeyword(s, "track")):
+					final first = tpos;
 					advance();
 					final trackName = expectIdentifierOrString();
 					for (t in def.tracks)
@@ -7790,7 +7816,8 @@ class MacroManimParser {
 						match(TComma);
 					}
 					final trackFile:String = file != null ? file : error('$blockName.$trackName: no file');
-					def.tracks.push({name: trackName, file: trackFile, loop: loop, line: line});
+					final doc = itemDoc(first, tpos - 1);
+					def.tracks.push(doc != null ? {name: trackName, file: trackFile, loop: loop, line: line, doc: doc} : {name: trackName, file: trackFile, loop: loop, line: line});
 				default:
 					error('$blockName: expected bus: or track name { }, got ${peek()}');
 			}
