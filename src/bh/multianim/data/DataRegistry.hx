@@ -264,6 +264,9 @@ class DataRegistry {
 			final cls = Type.getClass(value);
 			final names = cls != null ? Type.getInstanceFields(cls) : Reflect.fields(value);
 			for (n in names) {
+				// a record counting its reads keeps its counts in __counts: not a value of it
+				if (StringTools.startsWith(n, "__"))
+					continue;
 				final v:Dynamic = Reflect.field(value, n);
 				if (v != null && !Reflect.isFunction(v)) Reflect.setField(out, n, plain(v, null));
 			}

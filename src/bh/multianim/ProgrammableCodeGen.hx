@@ -415,12 +415,15 @@ class ProgrammableCodeGen {
 						if (tp != null) typePack = tp.length > 0 ? tp.split(".") : [];
 					}
 
-					// Optional: mergeTypes flag (identifier)
+					// Optional: mergeTypes and reads flags (identifiers); reads for every @:data under -D manim_data_reads
 					var mergeTypes = false;
+					var reads = Context.defined("manim_data_reads");
 					for (i in 2...meta.params.length) {
 						switch (meta.params[i].expr) {
 							case EConst(CIdent("mergeTypes")):
 								mergeTypes = true;
+							case EConst(CIdent("reads")):
+								reads = true;
 							default:
 						}
 					}
@@ -438,7 +441,7 @@ class ProgrammableCodeGen {
 					switch (node.type) {
 						case DATA(dataDef):
 							final dataClassName = parentName + "_" + toPascalCase(field.name);
-							final dataFields = generateDataClass(dataDef, dataName, dataClassName, typePack, mergeTypes, pos, manimPath);
+							final dataFields = generateDataClass(dataDef, dataName, dataClassName, typePack, mergeTypes, pos, manimPath, reads);
 
 							// Define the data class
 							final dataTd:TypeDefinition = {
@@ -10812,9 +10815,12 @@ class ProgrammableCodeGen {
 	 *  @param className The internal data class name (e.g., "MultiProgrammable_GameData")
 	 *  @param typePack Package for exposed record/enum types
 	 *  @param mergeTypes Whether to deduplicate identical record/enum types
+	 *  @param reads Whether its values count their reads (`readsSince`, `resetReads`; DataReads): each
+	 *  value that holds no record a property whose getter adds one, each record told its path in the
+	 *  constructor. Without it the statics say nothing and the fields are finals as ever.
 	 */
 	static function generateDataClass(dataDef:DataDef, dataName:String, className:String, typePack:Array<String>,
-			mergeTypes:Bool, pos:Position, ?manimPath:String):Array<Field> {
+			mergeTypes:Bool, pos:Position, ?manimPath:String, reads:Bool = false):Array<Field> {
 		var dataFields:Array<Field> = [];
 
 		// Map from enum name → exposed type {pack, name}
@@ -10871,13 +10877,16 @@ class ProgrammableCodeGen {
 		// Map from record name → exposed type {pack, name}
 		var recordTypeMap:Map<String, {pack:Array<String>, name:String}> = new Map();
 
-		// Generate exposed record types
+		// Each record's type named before any is made: a record's field of another record is typed by
+		// it whichever the block's map gives first (made in the map's order, a field of a record not
+		// made yet was Dynamic, and read past its getters)
+		final made:Array<String> = [];
 		for (recordName => recordDef in dataDef.records) {
 			final exposedName = toPascalCase(dataName) + toPascalCase(recordName);
 
-			// Check for mergeTypes dedup
+			// Check for mergeTypes dedup (a record that counts its reads is not one that does not)
+			final sig = (reads ? "reads:" : "") + recordSignature(recordDef);
 			if (mergeTypes) {
-				final sig = recordSignature(recordDef);
 				final existing = mergedTypeCache.get(sig);
 				if (existing != null) {
 					recordTypeMap.set(recordName, existing);
@@ -10893,12 +10902,30 @@ class ProgrammableCodeGen {
 				// Expected — type doesn't exist yet
 			}
 
+			final typeInfo = {pack: typePack, name: exposedName};
+			recordTypeMap.set(recordName, typeInfo);
+			if (mergeTypes)
+				mergedTypeCache.set(sig, typeInfo);
+			made.push(recordName);
+		}
+
+		// Generate exposed record types
+		for (recordName in made) {
+			final recordDef = dataDef.records.get(recordName);
+			final exposedName = toPascalCase(dataName) + toPascalCase(recordName);
 			final recordFields:Array<Field> = [];
 
-			// Public final fields for each record field
-			for (rf in recordDef.fields) {
+			// Public final fields for each record field; counting its reads, a property each value
+			// that holds no record, adding one to the count of its place in the record
+			for (j in 0...recordDef.fields.length) {
+				final rf = recordDef.fields[j];
 				var ct = dataTypeToComplexType(rf.type, enumTypeMap, recordTypeMap);
 				if (rf.optional) ct = TPath({pack: [], name: "Null", params: [TPType(ct)]});
+				if (reads && !holdsRecords(rf.type)) {
+					for (f in countedProperty(rf.name, ct, null, j, true, pos))
+						recordFields.push(f);
+					continue;
+				}
 				recordFields.push({
 					name: rf.name,
 					kind: FVar(ct, null),
@@ -10906,6 +10933,14 @@ class ProgrammableCodeGen {
 					pos: pos,
 				});
 			}
+			if (reads)
+				recordFields.push({
+					name: "__counts",
+					kind: FVar(macro :Null<Array<Int>>, macro null),
+					access: [APublic],
+					meta: [{name: ":noCompletion", pos: pos}],
+					pos: pos,
+				});
 
 			// Constructor: new(field1, field2, ...) — optional fields have opt:true
 			final ctorArgs:Array<FunctionArg> = [];
@@ -10923,9 +10958,6 @@ class ProgrammableCodeGen {
 				pos: pos,
 			});
 
-			final typeInfo = {pack: typePack, name: exposedName};
-			recordTypeMap.set(recordName, typeInfo);
-
 			final recordTd:TypeDefinition = {
 				pack: typePack,
 				name: exposedName,
@@ -10934,10 +10966,6 @@ class ProgrammableCodeGen {
 				fields: recordFields,
 			};
 			Context.defineType(recordTd);
-
-			if (mergeTypes) {
-				mergedTypeCache.set(recordSignature(recordDef), typeInfo);
-			}
 		}
 
 		// A class of each keyed record's ids, as constants: CardsCardId.Agree is "agree".
@@ -10946,8 +10974,44 @@ class ProgrammableCodeGen {
 			generateDataIds(dataDef, dataName, recordName, typePack, pos);
 		}
 
+		// Counting reads: the class's own counts first, a count a field (those holding records never
+		// add to theirs), and the statics that read them, which say nothing when it does not count
+		final readsType:ComplexType = macro :bh.multianim.data.DataReads;
+		if (reads) {
+			dataFields.push({
+				name: "__reads",
+				kind: FVar(readsType, macro new bh.multianim.data.DataReads()),
+				access: [AStatic, AFinal],
+				meta: [{name: ":noCompletion", pos: pos}],
+				pos: pos,
+			});
+			final topNames = [for (field in dataDef.fields) field.name];
+			dataFields.push({
+				name: "__counts",
+				kind: FVar(macro :Array<Int>, macro __reads.track("", $v{topNames})),
+				access: [AFinal],
+				meta: [{name: ":noCompletion", pos: pos}],
+				pos: pos,
+			});
+		}
+		dataFields.push({
+			name: "readsSince",
+			doc: "The values' paths read since `resetReads()` (fear.seconds, all[agree].cost), with how many times; empty unless the class counts them (`-D manim_data_reads`, or `reads` in its `@:data`).",
+			kind: FFun({args: [], ret: macro :Map<String, Int>, expr: reads ? macro return __reads.since() : macro return new Map<String, Int>()}),
+			access: [APublic, AStatic],
+			pos: pos,
+		});
+		dataFields.push({
+			name: "resetReads",
+			doc: "Every count of reads back to nothing.",
+			kind: FFun({args: [], ret: macro :Void, expr: reads ? macro __reads.reset() : macro {}}),
+			access: [APublic, AStatic],
+			pos: pos,
+		});
+
 		// Generate public final fields for each data entry
-		for (field in dataDef.fields) {
+		for (fieldIndex in 0...dataDef.fields.length) {
+			final field = dataDef.fields[fieldIndex];
 			final initExpr = dataValueToExpr(field.value, enumTypeMap, recordTypeMap, dataDef.enums, dataDef.records, pos);
 			final record = DataSchema.tableRecord(dataDef, field);
 			final key = record != null ? record.key : null;
@@ -10970,9 +11034,15 @@ class ProgrammableCodeGen {
 				});
 				continue;
 			}
+			final fieldCT = dataTypeToComplexType(field.type, enumTypeMap, recordTypeMap);
+			if (reads && !holdsRecords(field.type)) {
+				for (f in countedProperty(field.name, fieldCT, initExpr, fieldIndex, false, pos))
+					dataFields.push(f);
+				continue;
+			}
 			dataFields.push({
 				name: field.name,
-				kind: FVar(dataTypeToComplexType(field.type, enumTypeMap, recordTypeMap), initExpr),
+				kind: FVar(fieldCT, initExpr),
 				access: [APublic, AFinal],
 				pos: pos,
 			});
@@ -11029,6 +11099,23 @@ class ProgrammableCodeGen {
 			}
 		}
 
+		// Counting reads: each record of the data told its path and given its counts, once the picks
+		// are made (a pick's weights read while it is made are the engine's, not the game's)
+		if (reads)
+			for (field in dataDef.fields) {
+				final record = DataSchema.tableRecord(dataDef, field);
+				final here:Expr = {expr: EField(macro this, field.name), pos: pos};
+				if (record != null && record.key != null) {
+					final rows = DataSchema.rowsOf(field);
+					for (i in 0...rows.length) {
+						final id = DataSchema.rowId(rows[i], record);
+						final row:Expr = {expr: EArray({expr: EField(here, "rows"), pos: pos}, macro $v{i}), pos: pos};
+						stampReads(row, rows[i], DVTRecord(record.name), '${field.name}[${id != null ? id : Std.string(i)}]', dataDef.records, ctorExprs, pos);
+					}
+				} else if (holdsRecords(field.type))
+					stampReads(here, field.value, field.type, field.name, dataDef.records, ctorExprs, pos);
+			}
+
 		// Constructor: the fields are initialized inline; the picks are made here.
 		dataFields.push({
 			name: "new",
@@ -11038,6 +11125,71 @@ class ProgrammableCodeGen {
 		});
 
 		return dataFields;
+	}
+
+	/** Whether a data value's type holds a record (a record, or an array of them): its reads are its record's fields', never its own. */
+	static function holdsRecords(type:DataValueType):Bool {
+		return switch (type) {
+			case DVTRecord(_): true;
+			case DVTArray(element): holdsRecords(element);
+			default: false;
+		};
+	}
+
+	/** A value that counts its reads: a physical property whose getter adds one to `__counts[index]`
+	 *  (a record's counts are null until its data's constructor gives them), with a setter for a
+	 *  record's field, read-only (its initializer the value) for the data class's own. */
+	static function countedProperty(name:String, ct:ComplexType, init:Null<Expr>, index:Int, record:Bool, pos:Position):Array<Field> {
+		final fieldRef:Expr = {expr: EConst(CIdent(name)), pos: pos};
+		final count:Expr = record ? (macro if (__counts != null) __counts[$v{index}]++) : (macro __counts[$v{index}]++);
+		final fields:Array<Field> = [
+			{
+				name: name,
+				kind: FProp("get", record ? "set" : "never", ct, init),
+				access: [APublic],
+				meta: [{name: ":isVar", pos: pos}],
+				pos: pos,
+			},
+			{
+				name: "get_" + name,
+				kind: FFun({args: [], ret: ct, expr: macro {
+					$count;
+					return $fieldRef;
+				}}),
+				meta: [{name: ":noCompletion", pos: pos}],
+				pos: pos,
+			},
+		];
+		if (record)
+			fields.push({
+				name: "set_" + name,
+				kind: FFun({args: [{name: "__value", type: ct}], ret: ct, expr: macro return $fieldRef = __value}),
+				meta: [{name: ":noCompletion", pos: pos}],
+				pos: pos,
+			});
+		return fields;
+	}
+
+	/** The constructor's lines that give each record of a value (the value itself, its records' records,
+	 *  an array's items) its counts, tracked at its path: `defaultTier`, `tiers[1]`, `relics[amulet].look`. */
+	static function stampReads(target:Expr, value:DataValue, type:DataValueType, path:String, records:Map<String, DataRecordDef>, out:Array<Expr>,
+			pos:Position):Void {
+		switch [value, type] {
+			case [DVRecord(recordName, values), _]:
+				final recordDef = records.get(recordName);
+				if (recordDef == null) return;
+				final names = [for (rf in recordDef.fields) rf.name];
+				out.push(macro $target.__counts = __reads.track($v{path}, $v{names}));
+				for (rf in recordDef.fields) {
+					final v = values.get(rf.name);
+					if (v != null && holdsRecords(rf.type))
+						stampReads({expr: EField(target, rf.name), pos: pos}, v, rf.type, path + "." + rf.name, records, out, pos);
+				}
+			case [DVArray(items), DVTArray(element)] if (holdsRecords(element)):
+				for (i in 0...items.length)
+					stampReads({expr: EArray(target, macro $v{i}), pos: pos}, items[i], element, '$path[$i]', records, out, pos);
+			default:
+		}
 	}
 
 	/** What a table or a pick knows of itself (`DataTableInfo`, `DataPickInfo`: plain objects, arrays,

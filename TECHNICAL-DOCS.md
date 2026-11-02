@@ -380,11 +380,12 @@ var res = MacroUtils.macroBuildWithParameters(componentsBuilder, "ui", [], [
 - **Factory class** (e.g., `MyUI_Button`) — Stateless, holds resource loader and cached builder. Has `create(params...)` and `createFrom({...})` methods, plus static enum constants.
 - **Instance class** (e.g., `MyUI_ButtonInstance`) — Extends `h2d.Object`. Has `setXxx()` setters, `get_xxx()` named element accessors, `getSlot_xxx()` slot accessors, and visibility/expression update logic. Implements `bh.multianim.LiveProgrammable` (as `BuilderResult` does): `getNamedKeys()`, `getNamedDrawn(name, ?index, ?indexY)`, `getSlotEntries()`, `getDynamicRefKeys()`, `getParameterValues()`, `getRoot()`, `getProgrammableName()` — the same view of a built programmable from either path, so a tool needs no knowledge of the generated class. Under `-D MULTIANIM_DEV` the constructor registers the instance on the loader's `ReloadableRegistry` (`registerLive`), and `onAdd`/`onRemove` keep it listed only while its root is in the scene; the DevBridge lists it beside the `BuilderResult`s. Hot reload never touches it.
 
-**`@:data("path", "name" [, "pkg" [, mergeTypes]])`** generates:
+**`@:data("path", "name" [, "pkg" [, mergeTypes] [, reads]])`** generates:
 - **Data class** with `public final` fields matching the data block
 - **Enum types** for named enums (e.g., `GameDataRarity` for `#rarity enum(...)` in `#gameData data`)
-- **Record classes** for named record types (e.g., `UpgradesTier` for `#tier record(...)` in `#upgrades data`)
+- **Record classes** for named record types (e.g., `UpgradesTier` for `#tier record(...)` in `#upgrades data`), every one named before any is made, so a record's field of another record is typed whatever order the block's records come in
 - Optional custom type package and `mergeTypes` deduplication (applies to both enums and records)
+- Static `readsSince()` and `resetReads()` on the data class. With `reads` (or `-D manim_data_reads`) each value that holds no record is an `@:isVar` property whose getter adds one to its object's `__counts` (`countedProperty`); the data class keeps a `bh.multianim.data.DataReads` (`__reads`), its own counts tracked at path "", and its constructor gives each record of it its counts, tracked at its path (`stampReads`: `defaultTier`, `tiers[1]`, a table's row as `all[agree]`, a record's record as `relics[amulet].look`), after the picks are made. `DataRegistry`'s rows leave `__` fields out. Without it the statics say nothing and the fields stay finals.
 
 **MacroManimParser** is the compile-time parser used by `ProgrammableCodeGen`. It is NOT an hxparse `Parser` — it uses a simpler `peek()`/`match()`/`advance()` API on a pre-lexed token stream.
 

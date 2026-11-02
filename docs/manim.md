@@ -2581,6 +2581,31 @@ public var mages;
 
 Records are considered identical when they have the same fields (name, type, optional flag) in the same order. Enums are considered identical when they have the same values in the same order. A fatal error occurs if the generated type name collides with an existing type.
 
+#### Which values a play read: `reads`
+
+A tool that wants to know which numbers a game really read (a playtest of one part of it, say)
+asks the data class to count them: `reads` in its `@:data`, or `-D manim_data_reads` for every
+`@:data` of the build.
+
+```haxe
+@:data("res/manim/params.manim", "params", "game.params", reads)
+public var params;
+
+MyGame_Params.resetReads();
+// … the game plays, reading params.fear.seconds, params.ghost.speed …
+MyGame_Params.readsSince();   // ["fear.seconds" => 3, "ghost.speed" => 120]
+```
+
+`readsSince()` gives each value's path read since `resetReads()`, with how many times: a field of
+the block (`maxLevel`), a record's field by its path (`fear.seconds`, `relics[amulet].look.shine`),
+an array's item by its index (`tiers[1].name`), a table's row by its id (`all[agree].cost`). A value
+that holds records (a record, an array of them, a table) is never counted itself; its records'
+fields are. Each value that holds no record is then a property whose getter adds one; the
+engine's own reads (a table finding its rows by id, the DevBridge's rows) are not counted, and two
+copies of the data add their reads. Both statics are there whether the class counts or not:
+without `reads` they say nothing, and the fields are `final` as ever. A record type that counts
+is never merged with one that does not.
+
 ### Rules
 
 - Data blocks must be root-level (not nested inside programmables)
