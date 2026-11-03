@@ -2591,7 +2591,8 @@ class AnimParser extends AnimFileParser implements AnimParserResult {
 	/** `footprint`: a layer's frames flip about the timeline's axis, this untrimmed size, whatever their own. **/
 	function createStates(anims:Array<AnimPlaylistFrames>, anim:AnimationState, stateSelector:AnimationStateSelector,
 			?footprint:{w:Float, h:Float}):Array<AnimationFrameState> {
-		final _center = anim.center ?? center; // the animation's own, else the file's
+		// Typed: left to inference, `??` gives `Point` in some builds and null safety refuses it
+		final _center:Null<Point> = anim.center ?? center; // the animation's own, else the file's
 		final _sheetName = sheetName;
 		if (_sheetName == null) throw 'sheet not set';
 		final _fps = anim.fps;
@@ -2911,7 +2912,7 @@ class AnimParser extends AnimFileParser implements AnimParserResult {
 					}
 					if (!found) throw 'anim ${name}: flipX/flipY enabled but no Frame states found';
 				}
-				final animCenter = anim.center ?? center; // the animation's own, else the file's
+				final animCenter:Null<Point> = anim.center ?? center; // the animation's own, else the file's
 				final cx:Float = animCenter != null ? animCenter.x : 0;
 				final cy:Float = animCenter != null ? animCenter.y : 0;
 				// (#13) Mirror around untrimmed screen center, matching Option B tile flip
