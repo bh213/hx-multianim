@@ -96,6 +96,49 @@ jobs:
         test -f build/js-manim.js || (echo "ERROR: build/js-manim.js not found" && exit 1)
         echo "Build artifacts verified successfully"
 
+  build-order:
+    name: Build order (${{ matrix.label }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Standard
+            extra-args: ""
+          - label: Dev
+            extra-args: "-D MULTIANIM_DEV"
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Haxe
+      uses: krdlab/setup-haxe@v1
+      with:
+        haxe-version: '4.3.6'
+
+    - name: Setup Lix
+      uses: lix-pm/setup-lix@5d98ddc5d00ee5ebf9bd3095dc36b1c9fb50a98f
+
+    - name: Cache Lix dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/haxe_libraries
+        key: ${{ runner.os }}-lix-${{ hashFiles('**/haxe_libraries/*.hxml') }}
+        restore-keys: |
+          ${{ runner.os }}-lix-
+
+    - name: Install dependencies
+      run: lix download
+
+    - name: Every module typed first
+      # Haxe can infer a type differently by the order it types modules in: a `??` local came
+      # out non-null in a game's build, and @:nullSafety failed there and nowhere here (f5ada56).
+      # This compiles, per module under src/, a program importing only it, beside a res folder.
+      # Local equivalent: test/build-order/sweep.sh [-D MULTIANIM_DEV] (Git Bash on Windows).
+      run: bash test/build-order/sweep.sh ${{ matrix.extra-args }}
+
   test:
     name: Test (${{ matrix.label }})
     runs-on: ubuntu-latest

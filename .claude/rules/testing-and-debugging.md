@@ -101,6 +101,10 @@ public function testFooDoesNotAllocateInHotPath():Void {
 - Keep the gated counter type **public** — tests need to read it. The fields it counts can stay implementation-private.
 - The smoke test `AllocationSmokeTest` runs a representative scene for ~60 ticks and asserts a total budget across counters. New per-frame allocations will trip it even without a dedicated test.
 
+## Build-Order Sweep
+
+`test/build-order/sweep.sh [haxe args]` compiles, for every module under `src/`, a program that imports only that module, beside a `res` folder (`test/build-order/res`): each module is once the first the compiler types, as in some game. Compile only, one per CPU at a time (`BUILD_ORDER_JOBS`), about 2 minutes. CI runs it plain and with `-D MULTIANIM_DEV` (job "Build order"); locally from Git Bash. A module that cannot be first goes in its `skip` list with the reason (`AtlasMacroInit`: macro only; `FPointAbstract`: does not compile on its own, nothing imports it).
+
 ## Debug Tracing
 
 Debug traces are included with `-D MULTIANIM_DEV` (same flag that enables hot reload and DevBridge).
@@ -144,6 +148,7 @@ throw BuilderError.of('Slot "$name" not found in BuilderResult');
 - **Map has no `.count()` method.** Use a separate counter variable to track size.
 - **`Null<Bool> == false` is false when the value is null.** Optional Bool fields (`var ?flag:Bool`) default to null, so a check like `if (x.visited == false) error(...)` can never fire for never-written entries — this made AnimParser's reachability validation dead code for years. Flag-style checks on nullable Bools must use `!= true` (or `== true`).
 - **A `Dynamic` field read does not run a property getter on HashLink.** `(chunk : Dynamic).ground.numChildren` is null, since `numChildren` is `(get, never)`; `.dirty` (a plain var) reads fine. In tests, reach a module-private class through inference instead of `Array<Dynamic>`: `@:privateAccess map.chunks[i].ground.numChildren` is typed and works.
+- **`final x = a ?? b` with no type can be inferred `T`, not `Null<T>`, depending on the order Haxe types modules** (4.3.6 and 4.3.7): with `b` nullable, a `@:nullSafety` class then fails "Cannot assign nullable value here" in some game's build and in none of this repo's (f5ada56: a game naming `AnimParser` first, with a `res` folder). Write the type: `final x:Null<T> = a ?? b`. CI's build-order job catches it (`test/build-order/sweep.sh`, below).
 - **A `Null<Int>` stored into an `Int` field reads as 0 on HashLink** (JS keeps null). `lastIndex = hit == null ? null : idx` into an `Int` field silently becomes index 0 — the scrollable list armed a double-click on item 0 this way. Store a sentinel (`?? -1`) or type the field `Null<Int>`.
 
 ## Environment Notes
