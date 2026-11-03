@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-11-02 21:28:59</div>
+    <div class="timestamp">Generated: 2026-11-03 12:47:53</div>
     <div class="summary">
         <strong>Summary:</strong> 108 tests,         <span style="color: #4CAF50;">108 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.2s, visual 29.4s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.4s, visual 30.9s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>22120 assertions:</strong>             <span style="color: #4CAF50;">22120 passed</span>
+            <strong>22359 assertions:</strong>             <span style="color: #4CAF50;">22359 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -457,6 +457,7 @@
                 <div class="unit-method pass">testAFlippedAnimationsPointEventIsMirroredAsItsExtraPoint: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testAmbiguousAnimationSelectorErrorIsStructured: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testAnAnimFilesStatesKeepTheirOrder: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testAnAnimationsOwnCenterIsWhereItsFramesAreDrawnAbout: OK <span class="dots">.............................................</span></div>
                 <div class="unit-method pass">testAnimColorLiteralsBakeOpaqueAlpha: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testAnimEightDigitColorKeepsExplicitAlpha: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testAnimLexerRejectsUnknownCharacters: OK <span class="dots">.</span></div>
@@ -764,10 +765,12 @@
                 <div class="unit-method pass">testAScreenWithNoManagerIsSilent: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testAStateMachineHoldsASoundWhileItsAnimationPlays: OK <span class="dots">............</span></div>
                 <div class="unit-method pass">testAStateMachinePlaysItsEventsSounds: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testAWidgetsMusicClickPlaysCrossfadesAndStopsATrack: OK <span class="dots">...............</span></div>
                 <div class="unit-method pass">testAWidgetsOwnSettingSaysItsSoundOrNone: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testAmbienceFollowsTheScreens: OK <span class="dots">...........</span></div>
                 <div class="unit-method pass">testAnExtraPointOfAnAnimFilePlaysNoneOfItsSounds: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testAnInteractivesMetadataSaysItsSound: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testAnInteractivesMusicClickIsAJukeboxKey: OK <span class="dots">.........</span></div>
                 <div class="unit-method pass">testAnUnknownTrackIsAnError: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testMusicFollowsTheScreensAndCrossfades: OK <span class="dots">..............</span></div>
                 <div class="unit-method pass">testStopAllWritesAHistoryLine: OK <span class="dots">.......</span></div>
@@ -788,6 +791,7 @@
                 <div class="unit-method pass">testAStolenSoundEndsWithItsStopLayer: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testAStoppedSoundPlaysItsStopLayer: OK <span class="dots">..................</span></div>
                 <div class="unit-method pass">testAStoppingSoundFreesItsVoice: OK <span class="dots">.....</span></div>
+                <div class="unit-method pass">testATracksLoopFromIsParsed: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testAVariantIsChosenByTheParameter: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testAnAmbienceIsOneHeldSoundAtATime: OK <span class="dots">.........</span></div>
                 <div class="unit-method pass">testAnUnknownSoundIsAnError: OK <span class="dots">..</span></div>
@@ -796,11 +800,13 @@
                 <div class="unit-method pass">testLayersStartTogetherAfterTheirDelaysByTheirOdds: OK <span class="dots">.............</span></div>
                 <div class="unit-method pass">testParsesAHeldSound: OK <span class="dots">.................</span></div>
                 <div class="unit-method pass">testParsesASoundsBlock: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testPlayMusicAsksForTheRepeatFromPastTheIntro: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testShufflePlaysEveryFileBeforeAnyAgain: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testStealOldestStopsTheOldestWithItsFade: OK <span class="dots">.........</span></div>
                 <div class="unit-method pass">testStealQuietestStopsTheQuietest: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testStopFadesEveryPlayOfASoundOut: OK <span class="dots">........</span></div>
                 <div class="unit-method pass">testTheDefaultVariantPlaysWhenNoneMatches: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testTheRepeatsFirstSampleIsTheMarks: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testTheSustainIsDrivenWhileItPlays: OK <span class="dots">..........</span></div>
                 <div class="unit-method pass">testThirtyHitsInAFrameAreThreeSounds: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testTurnPlaysTheFilesInOrder: OK <span class="dots">.</span></div>
@@ -817,6 +823,9 @@
                 <div class="unit-method pass">testBlob47FallbackPrefersMostCornersWithSameCardinals: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testBlob47LookupCoversAll47AndRoundTrips: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testBuildAutotileDrawsOnlyWhere: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testConnect16DrawsARoadJoiningItsNeighbours: OK <span class="dots">.............................................................</span></div>
+                <div class="unit-method pass">testConnect16IndexIsTheSidesItJoins: OK <span class="dots">..............</span></div>
+                <div class="unit-method pass">testConnect16IsATilesetsTerrainOnTheSquareAndIsometricGrids: OK <span class="dots">..............</span></div>
                 <div class="unit-method pass">testCornerDemoIsolatedCellDrawsFourCornerTiles: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testCornerDemoStripDrawsEveryCorner: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testCornerIndex: OK <span class="dots">.....</span></div>
@@ -1742,6 +1751,7 @@
                 <div class="unit-method pass">testDynamicRefForwardThroughFinal_Codegen_UpdatesTheChild: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testElementHiddenByTheSameChange_Builder_IsNotEvaluated: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testElementHiddenByTheSameChange_Codegen_IsNotEvaluated: OK <span class="dots">......</span></div>
+                <div class="unit-method pass">testEllipseIsCentredWithTwoRadii: OK <span class="dots">........</span></div>
                 <div class="unit-method pass">testExtraPointIsWhereTheDrawnElementPutsIt_Codegen: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testFailedTemplateSwapInABatchSetAgain_Builder_IsAppliedAgain: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testFailedTemplateSwapInABatchSetAgain_Codegen_IsAppliedAgain: OK <span class="dots">...</span></div>
@@ -1775,6 +1785,8 @@
                 <div class="unit-method pass">testRepeatFlowPropsInFlow_Builder_GoToEachItem: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testRepeatFlowPropsInFlow_Codegen_GoToEachItem: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testRepeatInFlow_FullBuild_IsTheReference: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testStateanimFileFromParameters_Builder_BuildsAndIsFrozen: OK <span class="dots">............</span></div>
+                <div class="unit-method pass">testStateanimFileFromParameters_Codegen_BuildsAndIsFrozen: OK <span class="dots">.............</span></div>
                 <div class="unit-method pass">testSwitchArmPatternParam_Builder_ReselectsWhenItChanges: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testSwitchArmPatternParam_Codegen_ReselectsWhenItChanges: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testTemplateSwapWhileHidden_Builder_IsDoneAtOnce: OK <span class="dots">.</span></div>
@@ -2028,6 +2040,7 @@
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">EventPriorityTest</div>
+                <div class="unit-method pass">testAHiddenElementPassesTheClickToTheOneUnderIt: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testAHoveredElementsCursorFollowsItsState: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testAWidgetDisabledWhileItHoldsTheMouseLetsItGo: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testAllPassThroughNoneConsume: OK <span class="dots">..</span></div>
@@ -2046,12 +2059,14 @@
                 <div class="unit-method pass">testHighPriorityRegisteredSecondStillWins: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testHoverOnlyTopElement: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testIntegrationForEachElementVisitsAllElementsInOrder: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testIsShownWalksEveryParent: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testKeyEventBubbles: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testKeyEventStopsWhenConsumed: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testNoPriorityBubblePassThrough: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testNoPriorityElementDefaultsToZero: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testNonOverlappingOnlyHitsTarget: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testReleaseEventBubbles: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testTwoButtonsInOnePlaceTheHiddenOneIsNotTheSource: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testUIDefaultControllerHotPathNeverCallsGetElements: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testWheelEventRespectsConsumed: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testWheelEventStopsWhenConsumed: OK <span class="dots">..</span></div>
@@ -2273,6 +2288,7 @@
                 <div class="unit-method pass">testAFillNeedsItsTilesetsSheetsAsAPlacedMapDoes: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testAFinalInASwitchArmStaysInTheArm: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testAFinalIsListedByItsValue: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testAJukeboxsKeysNeedTheirTracks: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testASheetNamedByAParameterIsListedByItsDefaultAndSaysSo: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testASlotsParametersAreSeenInItsBody: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testASoundNamedThroughAParameterSaysSo: OK <span class="dots">...</span></div>
@@ -2283,6 +2299,7 @@
                 <div class="unit-method pass">testAnAnimFilesSheetFramesAndSounds: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testAnInteractiveThatDoesNotClickPlaysNoClick: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testAnimFiles: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testAnimFilesBuiltFromParameters: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testCursorsATilesetAndATileMap: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testCursorsAnInteractiveNames: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testCustomFilters: OK <span class="dots">..</span></div>
@@ -3459,6 +3476,7 @@
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">TileGridTest</div>
+                <div class="unit-method pass">testACellOfAnEarlierTerrainIsNeverDrawnOverTheBlockInFrontOfIt: OK <span class="dots">...........</span></div>
                 <div class="unit-method pass">testACellsBottomIsItsLowerOutline: OK <span class="dots">...........</span></div>
                 <div class="unit-method pass">testAFacePieceStandsAgainstItsSideOfTheCell: OK <span class="dots">........</span></div>
                 <div class="unit-method pass">testAFrameStandsOnItsCellOffTheSquareGrid: OK <span class="dots">....</span></div>
