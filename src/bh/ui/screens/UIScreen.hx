@@ -275,7 +275,10 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	/** The widgets' sounds, with no code: a button's hover and click, a checkbox's toggle, a slider's,
 	 *  dropdown's, list's or tabs' change, a dropdown's open and close play `ui.<key>` when a
 	 *  `sounds` block named `ui` has it, unless the widget's own `settings { sound.<key> => … }` names
-	 *  another sound or `none`. An interactive's metadata says the same for it. */
+	 *  another sound or `none`. An interactive's metadata says the same for it. A click of one whose
+	 *  settings or metadata say `music.click => "block.track"` plays that track as `playMusic` does
+	 *  (crossfading from the one playing), or stops the music when that track is the one playing; its
+	 *  click then plays only its own `sound.click`, never `ui.click`. */
 	function playWidgetSound(event:UIScreenEvent, source:Null<UIElement>):Void {
 		if (screenManager == null)
 			return;
@@ -289,11 +292,30 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 				if (source != null && Std.isOfType(source, UIElementRootSettings))
 					settings = cast(source, UIElementRootSettings).getRootSettings();
 		}
-		final key = widgetSoundKey(inner);
-		if (key == null)
+		final eventKey = widgetSoundKey(inner);
+		if (eventKey == null)
 			return;
+		final key:String = eventKey;
+		final music = key == "click" && settings != null && settings.has(MUSIC_CLICK) ? settings.getStringOrDefault(MUSIC_CLICK, "none") : null;
 		final own = settings != null && settings.has('sound.$key') ? settings.getStringOrDefault('sound.$key', "none") : null;
+		if (music != null) {
+			// a jukebox's key: its own click sound if it names one, then the track
+			if (own != null)
+				screenManager.audio.playUi(key, own);
+			playMusicKey(music);
+			return;
+		}
 		screenManager.audio.playUi(key, own);
+	}
+
+	/** The setting or metadata key of a click that plays a music track. */
+	public static inline final MUSIC_CLICK = "music.click";
+
+	/** A `music.click` key pressed: the track plays (crossfading), or, when it is the one playing, the music stops; `none` does nothing. */
+	function playMusicKey(track:String):Void {
+		if (track == "none" || track == "")
+			return;
+		screenManager.audio.toggleMusic(track);
 	}
 
 	/** The `ui.<key>` a widget event plays, or null for an event that makes no sound. */

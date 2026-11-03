@@ -21,6 +21,8 @@ typedef AudioLogEntry = {
 	var fade:Float;
 	/** A play line: round and round until stopped. */
 	var loop:Bool;
+	/** A play line of a looping file: seconds into it every repeat starts at, null for the whole file. */
+	var loopFrom:Null<Float>;
 	/** A bus line: frozen or not. */
 	var paused:Bool;
 	/** A bus line: the low-pass share of highs kept, or null. */
@@ -77,7 +79,7 @@ private class LogVoice implements AudioVoice {
 	public function entry(kind:String, fade:Float):AudioLogEntry {
 		return {
 			time: log.time, kind: kind, sound: start.sound, layer: start.layer, path: start.path, bus: start.bus, volume: volume, pitch: pitch,
-			fade: fade, loop: start.loop, paused: false, lowpass: null, voices: 0
+			fade: fade, loop: start.loop, loopFrom: start.loop ? start.loopFrom : null, paused: false, lowpass: null, voices: 0
 		};
 	}
 }
@@ -119,7 +121,7 @@ class LogBackend implements AudioBackend {
 		buses.set(bus ?? "", state);
 		entries.push({
 			time: time, kind: "bus", sound: "", layer: "", path: "", bus: bus, volume: state.volume, pitch: state.pitch,
-			fade: state.fade, loop: false, paused: state.paused, lowpass: state.lowpass, voices: state.voices
+			fade: state.fade, loop: false, loopFrom: null, paused: state.paused, lowpass: state.lowpass, voices: state.voices
 		});
 	}
 

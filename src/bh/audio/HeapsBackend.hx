@@ -87,6 +87,8 @@ class HeapsBackend implements AudioBackend {
 	final lowPasses:Map<String, hxd.snd.effect.LowPass> = [];
 	final states:Map<String, BusState> = [];
 	var voices:Array<HeapsVoice> = [];
+	/** A looping play's repeat from past its intro, by file and point (`loopBody`). */
+	final loopBodies:Map<String, hxd.res.Sound> = [];
 
 	public function new(loader:ResourceLoader) {
 		this.loader = loader;
@@ -147,11 +149,36 @@ class HeapsBackend implements AudioBackend {
 		return lowPasses.get(busName(bus));
 	}
 
+	/**
+		What a looping play with `loopFrom` repeats: the sound from that point on (`LoopFromData`), one
+		a file and point, made again when the file's data was (a hot reload).
+	**/
+	public function loopBody(path:String, sound:hxd.res.Sound, seconds:Float):hxd.res.Sound {
+		final key = '$path@$seconds';
+		final data = sound.getData();
+		var body = loopBodies.get(key);
+		final had:Null<LoopFromData> = body == null ? null : Std.downcast(@:privateAccess body.data, LoopFromData);
+		if (body == null || had == null || had.inner != data) {
+			// an entry of its own: Heaps keeps a short sound's decoded buffer by its entry's path, and
+			// this one's samples are not the file's (its data is set, so the entry is never read)
+			body = new hxd.res.Sound(new hxd.fs.BytesFileSystem.BytesFileEntry(key, haxe.io.Bytes.alloc(0)));
+			@:privateAccess body.data = new LoopFromData(data, seconds);
+			loopBodies.set(key, body);
+		}
+		return body;
+	}
+
 	public function play(start:VoiceStart):AudioVoice {
 		final sound = loader.loadSound(start.path);
 		gapless(sound);
 		final name = busName(start.bus);
 		final channel = sound.play(start.loop, start.fadeIn > 0 ? 0 : start.volume, group(start.bus), soundGroup(start.bus));
+		// A repeat from past the intro: the first play is the whole file, then the channel goes on, with
+		// no gap, to the sound from that point, which it loops (Heaps plays a queued sound next and
+		// loops the last it played)
+		final loopFrom = start.loopFrom;
+		if (start.loop && loopFrom != null && loopFrom > 0)
+			channel.queueSound(loopBody(start.path, sound, loopFrom));
 		channel.priority = start.priority;
 		if (start.fadeIn > 0)
 			channel.fadeTo(start.volume, start.fadeIn);

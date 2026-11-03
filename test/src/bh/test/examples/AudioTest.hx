@@ -693,7 +693,106 @@ class AudioTest extends utest.Test {
 		sm.dispose();
 	}
 
+	// ==================== A track that repeats from past its intro (hx-multianim request 39) ====================
+
+	/** A 16-bit mono WAV at 8 kHz: `intro` samples of silence, then a ramp 1000, 1001, … of `body` samples. */
+	static function introWav(intro:Int, body:Int):Bytes {
+		final rate = 8000;
+		final data = Bytes.alloc((intro + body) * 2);
+		for (i in 0...body)
+			data.setUInt16((intro + i) * 2, 1000 + i);
+		final out = new haxe.io.BytesOutput();
+		new format.wav.Writer(out).write({
+			header: {format: WF_PCM, channels: 1, samplingRate: rate, byteRate: rate * 2, blockAlign: 2, bitsPerSample: 16},
+			data: data,
+			cuePoints: null
+		});
+		return out.getBytes();
+	}
+
+	@Test
+	public function testATracksLoopFromIsParsed():Void {
+		final def = BuilderTestBase.builderFromSource('#m music {\n track a { file: "music/a.mp3", loopFrom: 18.04s }\n track b { file: "music/b.mp3", loopFrom: 500ms }\n track c { file: "music/c.mp3" }\n}').buildMusic("m");
+		Assert.floatEquals(18.04, def.tracks[0].loopFrom, 0.0001, "in seconds");
+		Assert.floatEquals(0.5, def.tracks[1].loopFrom, 0.0001, "500ms");
+		Assert.isNull(def.tracks[2].loopFrom, "none: the whole file repeats");
+		function refused(src:String, says:String):Void {
+			var said = "";
+			try {
+				BuilderTestBase.builderFromSource(src);
+			} catch (e:Dynamic) {
+				said = Std.string(e);
+			}
+			Assert.isTrue(said.indexOf(says) >= 0, 'the error says "$says": $said');
+		}
+		refused('#m music { track a { file: "a.mp3", loop: no, loopFrom: 2s } }', "does not repeat");
+		refused('#m music { track a { file: "a.mp3", loopFrom: 1s..2s } }', "one time");
+		refused('#m music { track a { file: "a.mp3", loopFrom: 1s, loopFrom: 2s } }', "twice");
+	}
+
+	@Test
+	public function testPlayMusicAsksForTheRepeatFromPastTheIntro():Void {
+		final log = new LogBackend();
+		final audio = new Audio(log);
+		audio.addMusic("m", BuilderTestBase.builderFromSource('#m music { track waking { file: "music/waking.mp3", loopFrom: 15.4s }  track plain { file: "music/plain.mp3" } }').buildMusic("m"));
+		audio.playMusic("m.waking");
+		final play = log.plays("m.waking")[0];
+		Assert.isTrue(play.loop);
+		Assert.floatEquals(15.4, play.loopFrom, 0.0001, "the backend is told where a repeat starts");
+		Assert.stringContains("repeats from 15.4s", audio.history[audio.history.length - 1].detail, "the history says it");
+		audio.playMusic("m.plain");
+		Assert.isNull(log.plays("m.plain")[0].loopFrom, "a track with none repeats whole");
+	}
+
+	@Test
+	public function testTheRepeatsFirstSampleIsTheMarks():Void {
+		// 200 samples of silence (the intro), then the ramp: marked at 200 / 8000 s
+		final wav = new hxd.snd.WavData(introWav(200, 600));
+		final body = new bh.audio.LoopFromData(wav, 200 / 8000);
+		Assert.equals(200, body.from);
+		Assert.equals(600, body.samples, "the sound from the mark to its end");
+		final out = Bytes.alloc(600 * 2);
+		body.decode(out, 0, 0, 600);
+		Assert.equals(1000, out.getUInt16(0), "the repeat's first sample is the mark's, the ramp's first");
+		Assert.equals(1599, out.getUInt16(599 * 2), "and its last the file's");
+		final whole = Bytes.alloc(800 * 2);
+		wav.decode(whole, 0, 0, 800);
+		Assert.equals(0, whole.getUInt16(0), "the first play is the whole file, from its silent intro");
+		Assert.equals(1000, whole.getUInt16(200 * 2));
+	}
+
 	#if hldx
+	@Test
+	public function testTheHeapsBackendQueuesTheRepeatAfterTheFirstPlay():Void {
+		final loader = new CachingResourceLoader();
+		loader.loadHXDResourceImpl = name -> hxd.res.Any.fromBytes(name, introWav(200, 600));
+		final backend = new bh.audio.HeapsBackend(loader);
+		try {
+			final voice = backend.play({
+				sound: "m.intro", layer: "", path: "music/intro.wav", volume: 1, pitch: 1, bus: "music", priority: 2, fadeIn: 0, loop: true,
+				loopFrom: 200 / 8000
+			});
+			final channel:hxd.snd.Channel = @:privateAccess (cast voice).channel;
+			final queued:Array<hxd.res.Sound> = @:privateAccess channel.queue;
+			Assert.isTrue(channel.loop);
+			Assert.equals(1, queued.length, "the sound from the mark, played after the whole file and then looped");
+			final data = Std.downcast(queued[0].getData(), bh.audio.LoopFromData);
+			Assert.notNull(data);
+			if (data != null)
+				Assert.equals(200, data.from);
+			Assert.isTrue(queued[0] == backend.loopBody("music/intro.wav", loader.loadSound("music/intro.wav"), 200 / 8000), "made once a file and point");
+			Assert.isTrue(queued[0].entry.path != "music/intro.wav", "an entry of its own: Heaps keeps short sounds' buffers by path");
+			voice.stop(0);
+			final plain = backend.play({
+				sound: "m.plain", layer: "", path: "music/intro.wav", volume: 1, pitch: 1, bus: "music", priority: 2, fadeIn: 0, loop: true
+			});
+			Assert.equals(0, (@:privateAccess (cast plain).channel.queue : Array<hxd.res.Sound>).length, "with no mark, nothing queued");
+			plain.stop(0);
+		} catch (e:Dynamic) {
+			Assert.pass('no audio device here: $e');
+		}
+	}
+
 	/** A 16-bit mono WAV of silence, as an asset pipeline writes one. */
 	static function silentWav(seconds:Float):Bytes {
 		final rate = 8000;

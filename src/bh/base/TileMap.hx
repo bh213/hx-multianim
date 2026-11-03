@@ -356,6 +356,8 @@ class TileMap extends h2d.Object {
 	// `[0][0]`: per terrain, per level, per platform and level
 	var passRect:CellRect = {x0: 0, y0: 0, x1: 0, y1: 0};
 	var passTerrainMasks:Array<Null<Array<Array<Int>>>> = [];
+	/** A line terrain's (`connect16`) own cells alone, within the pass (`autotileMask`). */
+	var passOwnTerrainMasks:Array<Null<Array<Array<Int>>>> = [];
 	var passLevelMasks:Map<Int, Array<Array<Int>>> = [];
 	var passPlatformMasks:Map<Int, Null<Array<Array<Int>>>> = [];
 	var passHighest = -1;
@@ -1364,6 +1366,7 @@ class TileMap extends h2d.Object {
 	function beginPass(rect:CellRect):Void {
 		passRect = rect;
 		passTerrainMasks = [for (_ in tileset.terrains) null];
+		passOwnTerrainMasks = [for (_ in tileset.terrains) null];
 		passLevelMasks = [];
 		passPlatformMasks = [];
 		passHighest = -1;
@@ -1371,6 +1374,7 @@ class TileMap extends h2d.Object {
 
 	function endPass():Void {
 		passTerrainMasks = [];
+		passOwnTerrainMasks = [];
 		passLevelMasks = [];
 		passPlatformMasks = [];
 	}
@@ -1387,6 +1391,27 @@ class TileMap extends h2d.Object {
 		for (_ in r.y0...r.y1)
 			rows.push([for (_ in 0...cols) 0]);
 		return rows;
+	}
+
+	/**
+		The mask terrain `i`'s autotile is drawn over: a ground's (blob47, corner, …) is its cells and
+		those of every terrain above it, so the terrains above stand on it; a line's (`connect16`, a
+		road) is its own cells alone, so it joins only its own and runs under nothing else.
+	**/
+	function autotileMask(i:Int, format:AutotileFormat):Array<Array<Int>> {
+		if (format != Connect16)
+			return terrainMask(i);
+		var mask = passOwnTerrainMasks[i];
+		if (mask == null) {
+			mask = gridOver(passRect);
+			for (cy in passRect.y0...passRect.y1) {
+				final row = mask[cy - passRect.y0];
+				for (cx in passRect.x0...passRect.x1)
+					row[cx - passRect.x0] = terrainIndex[cy * width + cx] == i ? 1 : 0;
+			}
+			passOwnTerrainMasks[i] = mask;
+		}
+		return mask;
 	}
 
 	/** Terrain `i`'s cells and those of every terrain above it, within the pass. **/
@@ -1498,7 +1523,7 @@ class TileMap extends h2d.Object {
 					x1: c.rect.x1 == width ? width + 1 : c.rect.x1,
 					y1: c.rect.y1 == height ? height + 1 : c.rect.y1,
 				};
-			case Cross | Blob47 | Hex64: c.rect;
+			case Cross | Blob47 | Hex64 | Connect16: c.rect;
 		};
 	}
 
@@ -1517,7 +1542,7 @@ class TileMap extends h2d.Object {
 			for (cx in r.x0...r.x1) {
 				final drawn = switch format {
 					case Corner: Autotile.getCornerIndex(mask, cx - ox, cy - oy) != 0;
-					case Cross | Blob47 | Hex64: Autotile.isFilled(mask, cx - ox, cy - oy);
+					case Cross | Blob47 | Hex64 | Connect16: Autotile.isFilled(mask, cx - ox, cy - oy);
 				};
 				if (drawn) {
 					row[cx - ox] = 1;
@@ -1549,8 +1574,8 @@ class TileMap extends h2d.Object {
 			}
 			if (terrain.autotiles.length == 0)
 				continue;
-			final mask = terrainMask(i);
 			final format = tiles.autotileFormat(terrain.autotiles[0]);
+			final mask = autotileMask(i, format);
 			final ownWhere = drawnPositions(mask, format, positionsOf(c, format));
 			if (ownWhere == null)
 				continue; // none of the terrain near this chunk
@@ -1979,11 +2004,11 @@ class TileMap extends h2d.Object {
 			}
 			if (terrain.autotiles.length == 0)
 				continue;
-			final mask = terrainMask(i);
 			final autotile = terrain.autotiles[0];
 			final format = tiles.autotileFormat(autotile);
-			if (format == Corner && grid.kind == Hex)
-				throw BuilderError.of('tilemap $mapName: terrain ${terrain.name}: autotile $autotile is of the corner format, which has no hex form (blob47, cross or hex64 are)',
+			final mask = autotileMask(i, format);
+			if ((format == Corner || format == Connect16) && grid.kind == Hex)
+				throw BuilderError.of('tilemap $mapName: terrain ${terrain.name}: autotile $autotile is of the ${format == Corner ? "corner" : "connect16"} format, which has no hex form (blob47, cross or hex64 are)',
 					"tilemap_grid");
 			final where = drawnPositions(mask, format, positionsOf(c, format));
 			if (where == null)
@@ -2055,6 +2080,8 @@ class TileMap extends h2d.Object {
 			case Cross: Autotile.getCrossIndex(Autotile.getNeighborMask8(mask, lx, ly));
 			case Blob47: Autotile.getBlob47Index(Autotile.getNeighborMask8(mask, lx, ly));
 			case Hex64: Autotile.getHexIndex(mask, lx, ly, grid, passRect.x0, passRect.y0);
+			// on the isometric grid too: N, E, S and W are the grid's, the diamond's four edges
+			case Connect16: Autotile.getConnect16Index(mask, lx, ly);
 		};
 		if (format == Corner && index == 0)
 			return;
@@ -2339,7 +2366,7 @@ class TileMap extends h2d.Object {
 							if (edge == null) edge = edgeOfCell(cx - 1, cy - 1);
 						}
 						count > 0 && count < 4 && edge == name;
-					case Cross | Blob47 | Hex64:
+					case Cross | Blob47 | Hex64 | Connect16:
 						var rim = false;
 						if (filled(cx, cy) && edgeOfCell(cx, cy) == name) {
 							if (grid.kind == Hex) {

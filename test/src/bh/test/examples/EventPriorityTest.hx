@@ -5,6 +5,7 @@ import h2d.col.Point;
 import bh.ui.UIElement;
 import bh.ui.controllers.UIController;
 import bh.ui.controllers.UIDefaultController;
+import bh.ui.screens.UIScreen.LayersEnum;
 
 /**
  * Mock element with configurable hit area, priority, and consumed behavior.
@@ -689,6 +690,127 @@ class EventPriorityTest extends utest.Test {
 			throw e;
 		}
 		hxd.System.setCursor = was;
+	}
+
+	// ==================== A hidden element takes no clicks (hx-multianim request 36) ====================
+
+	@Test
+	public function testAHiddenElementPassesTheClickToTheOneUnderIt():Void {
+		final hidden = new MockObjectInteractive("hidden");
+		final shown = new MockObjectInteractive("shown");
+		// the hidden one first, so it would be first under the pointer
+		integration.elements = [hidden, shown];
+		hidden.object.visible = false;
+		controller.handleClick(new Point(50, 50), 0, false, eventWrapper());
+		Assert.equals(0, hidden.receivedEvents.length, "a hidden element hears no click");
+		Assert.equals(1, shown.receivedEvents.length, "the click is the shown one's");
+
+		// hidden by a parent (an @() arm that is not shown)
+		shown.clearReceived();
+		hidden.object.visible = true;
+		final arm = new h2d.Object();
+		arm.addChild(hidden.object);
+		arm.visible = false;
+		controller.handleMove(new Point(50, 50), eventWrapper());
+		controller.handleClick(new Point(50, 50), 0, false, eventWrapper());
+		Assert.equals(0, hidden.receivedEvents.length, "under a hidden parent: no move, no click");
+		Assert.isTrue(shown.receivedEvents.length >= 2, "the shown one hears both");
+
+		// shown again, it is first again
+		shown.clearReceived();
+		arm.visible = true;
+		controller.handleClick(new Point(50, 50), 0, false, eventWrapper());
+		Assert.equals(1, hidden.receivedEvents.length, "shown again, it takes the click");
+		Assert.equals(0, shown.receivedEvents.length);
+	}
+
+	@Test
+	public function testTwoButtonsInOnePlaceTheHiddenOneIsNotTheSource():Void {
+		// Deal and Hit at one place, Deal hidden: a click is Hit's (Playing Cards' blackjack screen)
+		final screen = new TwoButtonsScreen();
+		Assert.isFalse(screen.deal.getObject().visible);
+		final ctrl = screen.getController();
+		ctrl.handleClick(new Point(260, 110), 0, false, eventWrapper());
+		ctrl.handleClick(new Point(260, 110), 0, true, eventWrapper());
+		Assert.equals(1, screen.clicks.length, "one click");
+		Assert.isTrue(screen.clicks[0] == screen.hit, "from the shown button, Hit");
+		screen.deal.getObject().visible = true;
+		screen.hit.getObject().visible = false;
+		ctrl.handleClick(new Point(260, 110), 0, false, eventWrapper());
+		ctrl.handleClick(new Point(260, 110), 0, true, eventWrapper());
+		Assert.equals(2, screen.clicks.length);
+		Assert.isTrue(screen.clicks[1] == screen.deal, "swapped: from Deal");
+	}
+
+	@Test
+	public function testIsShownWalksEveryParent():Void {
+		final top = new h2d.Object();
+		final mid = new h2d.Object(top);
+		final leaf = new h2d.Object(mid);
+		Assert.isTrue(UIDefaultController.isShown(leaf));
+		mid.visible = false;
+		Assert.isFalse(UIDefaultController.isShown(leaf), "a hidden parent hides it");
+		mid.visible = true;
+		top.visible = false;
+		Assert.isFalse(UIDefaultController.isShown(leaf), "so does a hidden grandparent");
+		Assert.isTrue(UIDefaultController.isShown(null), "no object: as before, shown");
+	}
+}
+
+/** An element over (0, 0) to (100, 100) with an object of its own, to hide. **/
+private class MockObjectInteractive implements UIElement implements StandardUIElementEvents {
+	public final name:String;
+	public final object = new h2d.Object();
+	public var receivedEvents:Array<UIElementEvents> = [];
+
+	public function new(name:String) {
+		this.name = name;
+	}
+
+	public function getObject():h2d.Object return object;
+
+	public function containsPoint(pos:Point):Bool {
+		return pos.x >= 0 && pos.x <= 100 && pos.y >= 0 && pos.y <= 100;
+	}
+
+	public function clear():Void {}
+
+	public function onEvent(wrapper:UIElementEventWrapper):Void {
+		receivedEvents.push(wrapper.event);
+	}
+
+	public function clearReceived():Void {
+		receivedEvents = [];
+	}
+}
+
+/** Deal and Hit, two buttons at one place made by `addButtonWithSingleBuilder`, Deal hidden. **/
+private class TwoButtonsScreen extends bh.ui.screens.UIScreen.UIScreenBase {
+	public var deal:bh.ui.UIMultiAnimButton.UIStandardMultiAnimButton;
+	public var hit:bh.ui.UIMultiAnimButton.UIStandardMultiAnimButton;
+	public final clicks:Array<UIElement> = [];
+
+	public function new() {
+		super(cast null);
+		final builder = bh.test.BuilderTestBase.builderFromSource('
+			#button programmable(buttonText:string=Click, status:[normal,hover,pressed]=normal, disabled:bool=false) {
+				bitmap(generated(color(60, 24, #444444))): 0, 0
+			}
+		');
+		deal = addButtonWithSingleBuilder(builder, "button", null, "Deal");
+		hit = addButtonWithSingleBuilder(builder, "button", null, "Hit");
+		for (b in [deal, hit]) {
+			addElement(b, DefaultLayer);
+			b.getObject().setPosition(248, 100);
+		}
+		deal.getObject().visible = false;
+	}
+
+	public function load():Void {}
+
+	public function onScreenEvent(event:UIScreenEvent, source:Null<UIElement>):Void {
+		if (event.match(UIClick))
+			clicks.push(source);
 	}
 }
 

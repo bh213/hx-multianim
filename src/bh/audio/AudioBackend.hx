@@ -16,6 +16,9 @@ typedef VoiceStart = {
 	/** Seconds, 0 for none. */
 	var fadeIn:Float;
 	var loop:Bool;
+	/** With `loop`: seconds into the file every repeat starts at, the first play being from its start
+	 *  (a track's intro); null or absent for the whole file each time. */
+	var ?loopFrom:Null<Float>;
 }
 
 /** What a bus is set to, whole, every time any of it changes (the service works it out from the

@@ -144,7 +144,7 @@ class UIDefaultController implements UIController {
 			@:nullSafety(Off) redrawAndUpdate(element, _updateDt);
 		};
 		this._hitsCallback = function(element:UIElement):Void {
-			@:nullSafety(Off) if (element.containsPoint(_hitsPos)) _hits.push(element);
+			@:nullSafety(Off) if (isShown(element.getObject()) && element.containsPoint(_hitsPos)) _hits.push(element);
 		};
 		this.controllable = new ControllableImpl(this);
 		#if MULTIANIM_ALLOC_TRACK
@@ -154,6 +154,23 @@ class UIDefaultController implements UIController {
 
 	public function getDebugName():String {
 		return "default UI controller";
+	}
+
+	/**
+		Whether an element's object is shown: it and every parent of it visible. Only a shown element
+		takes the pointer (a click, a move, the wheel, a key): one hidden by `getObject().visible =
+		false`, or under a hidden parent (an `@()` arm that is not shown), passes it to the next one
+		under the pointer, so two controls swapped in one place (Deal and Hit) need no check of which
+		sent the click. An element with no object is taken as shown.
+	**/
+	public static function isShown(object:Null<h2d.Object>):Bool {
+		var o = object;
+		while (o != null) {
+			if (!o.visible)
+				return false;
+			o = o.parent;
+		}
+		return true;
 	}
 
 	/** Returns true if the event was consumed (default), false if it should bubble. */

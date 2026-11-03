@@ -20,7 +20,7 @@ Quick-lookup reference of all elements, properties, and operations in the `.mani
 | `#name layouts { ... }` | Define named coordinate layouts for positioning |
 | `#name atlas2("file") { ... }` | Define inline sprite atlas from image file |
 | `#name palette { ... }` | Define color palette |
-| `#name autotile { ... }` | Autotile terrain set (`corner` / `blob47` / `cross` / `hex64`) |
+| `#name autotile { ... }` | Autotile terrain set (`corner` / `blob47` / `cross` / `hex64` / `connect16`) |
 | `#name tileset { ... }` | What tile maps are drawn with: terrains, rises between levels, named cells, metadata |
 | `#name tilemap { ... }` | A tile map: legend, terrain and level rows, layers of cells, decor, marks |
 | `@final name = expr` | Declare immutable named constant. One that uses parameters (`@final w = $x * 2`) is live: `setParameter("x", …)` updates what uses `$w`, in both backends |
@@ -42,7 +42,7 @@ Every root element has a `#name` (an unnamed `curves`/`paths` block names itself
 | `#name cursor { name: tileSource, hot: x, y … }` | Bitmap cursors from atlas cells, registered by name when the file, or a file that imports it, loads (root only) — see Cursors |
 | `pixels(...)` | Pixel-level drawing primitives |
 | `graphics(...)` | Vector graphics shapes |
-| `stateanim("file", state, selector)` | State machine animation from .anim file |
+| `stateanim("file", state, selector)` | State machine animation from .anim file. The file is a string as any other: written out, or built from parameters and loop variables (`stateanim('units/${$kind}.anim', "idle")`, `"units/" + $kind + ".anim"`), worked out when it is built; a parameter it is built from cannot be changed afterwards (`untracked_param`, reason `stateanim file`), and `ManimNeeds.anims` lists every file it can be |
 | `stateanim construct(initial, states)` | Inline state machine animation definition. A state's `center` puts each untrimmed frame's middle at the origin; without it, the frame's top-left; a trimmed frame keeps its place in its untrimmed frame |
 | `stateanim construct(initial, externallyDriven, states)` | Inline state animation driven externally (not by internal timer) |
 | `particles { ... }` | Particle effect system |
@@ -246,7 +246,7 @@ images: {coin: generated(color(14, 14, #FFD700)), sword: sheet("items", "sword_1
 |-------|-------------|
 | `rect(color, style, w, h)` | Rectangle |
 | `circle(color, style, radius)` | Circle |
-| `ellipse(color, style, w, h)` | Ellipse |
+| `ellipse(color, style, rx, ry)` | Ellipse centred on its position, as `circle` is, `rx` and `ry` its two radii: a 40×20 body is `ellipse(color, filled, 20, 10)` at its middle |
 | `roundrect(color, style, w, h, radius)` | Rounded rectangle |
 | `arc(color, style, radius, startAngle, arcAngle)` | Arc segment |
 | `line(color, lineWidth, x1, y1, x2, y2)` | Line segment |
@@ -949,16 +949,20 @@ Root node, needs a `#name`, one per game. A snapshot's bus takes `pause`, a leve
   bus: music                                              // the bus the tracks play on (music unless given)
   track title { file: "music/title.mp3", loop: yes }     // name.track; loop: yes unless given
   track play  { file: "music/play.mp3" }
+  track twist { file: "music/twist.mp3", loopFrom: 18.04s }  // every repeat from 18.04 s, past the intro
 }
 ```
 
-Root node, needs a `#name`. One track at a time: `audio.playMusic("music.title", ?crossfade)` (half a second unless given; the same track plays on), `stopMusic(?fade)`, `musicPlaying`, `trackNames()`; `builder.buildMusic(name)`, `musicBlockNames()`.
+Root node, needs a `#name`. One track at a time: `audio.playMusic("music.title", ?crossfade)` (half a second unless given; the same track plays on), `stopMusic(?fade)`, `toggleMusic(name, ?crossfade)` (plays it, or stops the music when it is the one heard), `isMusicPlaying(?name)`, `musicPlaying`, `trackNames()`; `builder.buildMusic(name)`, `musicBlockNames()`.
+
+`loopFrom: <time>` (`18.04s`, `500ms`; a bare number is milliseconds, as a sound's times): the first play is the whole file, its intro too, and every repeat starts that far into it, with no gap at the seam (the backend plays the file, then, joined to it, the file from that point, round and round: `HeapsBackend` queues a `bh.audio.LoopFromData` on the channel; an MP3 with its LAME tag stays gapless as request 22 plays it). Only on a track that loops; one time, not a range, given once. `VoiceStart.loopFrom` is what a backend is told; the log's play line has it (`loopFrom`), and the history's music line says `repeats from …s`.
 
 ### Sound with no code
 
 | Where | Key | Description |
 |-------|-----|-------------|
 | a widget's `settings { }` or an interactive's metadata | `sound.<key> => "block.sound"` or `none` | What the event plays instead of `ui.<key>`; keys `hover`, `click`, `toggle`, `change`, `open`, `close` |
+| a widget's `settings { }` or an interactive's metadata | `music.click => "block.track"` or `none` | A jukebox's key: a click plays that track of a `music` block as `playMusic` does (crossfading from the one playing), and a click while that track is heard stops the music (`audio.toggleMusic(name)`). The key's click plays no `ui.click`, only a `sound.click` of its own if it says one; the screen still hears the click |
 | a screen's programmable `settings { }` | `music => "block.track"` or `none` | The screen's music, crossfaded to as it comes up (the first programmable added to the screen that says it) |
 | a screen's programmable `settings { }` | `ambience => "block.sound"` or `none` | The screen's ambience, a looping sound held beside the music: started as the screen comes up, stopped as a screen naming another or `none` comes up; a screen naming the same one keeps it, one that says nothing keeps what plays (`screen.screenAmbience`) |
 | an `.anim` file | `sounds { event: "block.sound" }` | The sound each event plays, by the state machine |
@@ -976,7 +980,7 @@ Without a `#ui sounds { }` block the widgets are silent; one that defines `hover
 
 | Property | Description |
 |----------|-------------|
-| `format` | `corner` (16 tiles, dual grid: one tile per grid corner, index `NW 1 + NE 2 + SW 4 + SE 8`, 0 never drawn), `blob47` (47 tiles, one per cell, 8 neighbours), `cross` (13 tiles, one per cell), `hex64` (64 tiles, one per hex, its 6 neighbours from the top clockwise, bit d for direction d) |
+| `format` | `corner` (16 tiles, dual grid: one tile per grid corner, index `NW 1 + NE 2 + SW 4 + SE 8`, 0 never drawn), `blob47` (47 tiles, one per cell, 8 neighbours), `cross` (13 tiles, one per cell), `hex64` (64 tiles, one per hex, its 6 neighbours from the top clockwise, bit d for direction d), `connect16` (16 tiles, one per cell, a line joining its 4 neighbours of the same terrain: index `N 1 + E 2 + S 4 + W 8`, 0 the lone piece, 15 the crossing; roads, rails, rivers, pipes; on the isometric grid the diamond's four edges, the grid's N, E, S, W; no hex form) |
 | `tileSize` | Tile size in pixels |
 | source (exactly one) | `file: "img.png"` (tiles of `region:`, row-major), `sheet: "atlas", prefix: "p"` (atlas tile `p<j>`), `sheet: "atlas", name: "n"` (frame `j` of atlas tile `n`, by `index:` from 0), `tiles: <src> <src> ...` (listed tile sources), `demo: edgeColor, fillColor` (generated placeholders) |
 | `region` | `[x, y, w, h]`, `file:` source only; must fit the image and be whole tiles. Default: whole image |
@@ -1627,7 +1631,7 @@ rendered state inconsistent. Either rebuild the programmable or avoid
 runtime mutation of this param.
 ```
 
-Builder throws `BuilderError` with `code == "untracked_param"`; codegen throws a plain `String` from the generated setter. Params that appear in both tracked and frozen slots are also rejected (the tracked effect would apply while the frozen one would silently drift). Reasons surface the slot kind so the message is greppable: `interactive id`, `interactive metadata key`, `interactive metadata value`, `stateanim selector "<name>"` (in a param-dependent repeat body only), `stateanim_construct animName "<key>"`, `stateanim_construct fps "<key>"`, `param-dep repeat: tilemap fill terrain` (`cols`, `rows`; in a param-dependent repeat body only). Applies to param-dependent `repeatable` / `repeatable2d` bodies as well — the walker `markUntrackedParamsInSubtree` (builder) / `recordUntrackedParamsInSubtree` (codegen) seeds `untrackedParamRefs` before the repeat body is built non-incrementally, so the param-dep case is identical to the static-count case. **Exception: conditional gates.** A param referenced only by `@()`/`@else`/`@default` gates inside a param-dependent repeat body is NOT untracked on either backend — it is a rebuild trigger: changing it rebuilds the repeat body (builder folds it into `repeatParamRefs`; codegen forces the `_rebuildRepeat_*` method past its scalar early-out), and the gates re-evaluate during the rebuild. A constant-count repeat whose body holds such a gate is rebuilt whole by the builder when *any* parameter its body uses changes, not only the gate's, so a `$param` position, text or bitmap beside the gate follows too (it used to throw `untracked_param` or go stale; codegen unrolls the repeat and tracks each element). A parameterized slot's own parameters and an inner repeat's loop variables are not parameters of the enclosing repeat.
+Builder throws `BuilderError` with `code == "untracked_param"`; codegen throws a plain `String` from the generated setter. Params that appear in both tracked and frozen slots are also rejected (the tracked effect would apply while the frozen one would silently drift). Reasons surface the slot kind so the message is greppable: `interactive id`, `interactive metadata key`, `interactive metadata value`, `stateanim file`, `stateanim selector "<name>"` (in a param-dependent repeat body only), `stateanim_construct animName "<key>"`, `stateanim_construct fps "<key>"`, `param-dep repeat: tilemap fill terrain` (`cols`, `rows`; in a param-dependent repeat body only). Applies to param-dependent `repeatable` / `repeatable2d` bodies as well — the walker `markUntrackedParamsInSubtree` (builder) / `recordUntrackedParamsInSubtree` (codegen) seeds `untrackedParamRefs` before the repeat body is built non-incrementally, so the param-dep case is identical to the static-count case. **Exception: conditional gates.** A param referenced only by `@()`/`@else`/`@default` gates inside a param-dependent repeat body is NOT untracked on either backend — it is a rebuild trigger: changing it rebuilds the repeat body (builder folds it into `repeatParamRefs`; codegen forces the `_rebuildRepeat_*` method past its scalar early-out), and the gates re-evaluate during the rebuild. A constant-count repeat whose body holds such a gate is rebuilt whole by the builder when *any* parameter its body uses changes, not only the gate's, so a `$param` position, text or bitmap beside the gate follows too (it used to throw `untracked_param` or go stale; codegen unrolls the repeat and tracks each element). A parameterized slot's own parameters and an inner repeat's loop variables are not parameters of the enclosing repeat.
 
 ### Other `BuilderError` codes from `setParameter` / `beginUpdate` / `endUpdate`
 
@@ -1769,6 +1773,8 @@ interactive(200, 30, "background", eventPriority:int => 0)
 
 When multiple interactives overlap at the cursor position, `UIDefaultController` sorts by `eventPriority` (descending), with registration order as tiebreaker for equal priorities. By default, the first element consumes the event (no bubbling).
 
+**Only what shows takes the pointer** — an element (a widget or an interactive) whose object or any parent of it is not visible is not under the pointer: a click, a move, the wheel and a key pass to the next one there (`UIDefaultController.isShown(object)`). So two controls swapped in one place (Deal and Hit, Play and Pause, one hidden with `getObject().visible = false`) need no check of which sent the click, and an interactive in an `@()` arm that is not shown takes none. A widget that holds the mouse (a slider dragged) keeps it until its release, as before.
+
 **Priority tier constants** (`UIEventPriority` class):
 
 | Constant | Value | Usage |
@@ -1840,7 +1846,7 @@ final needs:ManimNeeds = ManimNeedsTools.needsOf(result);
 | `cursors:Array<String>` | Cursors an interactive names (`cursor => "sword"`, `cursor.hover`, `cursor.disabled`) that are neither `CursorManager`'s own (`pointer`, `move`, `text`, …: `ManimNeedsTools.BUILT_IN_CURSORS`) nor in the file's `#name cursor { }` blocks; lower case, as `CursorManager` keeps them |
 | `fromParameters:Bool` | A name could not be listed whole: an expression over a parameter that can be given values other than those listed (a string or number parameter), over a loop variable, or worked out in a way the parse does not follow. A cell so is its sheet whole (`null` cells); a sheet whose own name cannot be known is not listed |
 | `sounds:Array<String>` | Full names `bank.sound` the file plays: a widget's `settings { sound.<key> => "…" }`, an interactive's `sound.<key> => "…"` metadata, a screen's `settings { ambience => "…" }` (`none` names nothing) |
-| `music:Array<String>` | Full names `bank.track` a screen's programmable names with `settings { music => "…" }` |
+| `music:Array<String>` | Full names `bank.track` a screen's programmable names with `settings { music => "…" }`, and those a jukebox's keys play: a widget's `settings { music.click => "…" }`, an interactive's `music.click => "…"` metadata (such a key plays no `ui.click`, so it is not in `uiSounds` for it) |
 | `soundFiles:Array<String>` | The files the file's own `#name sounds { }` (`file:`, `files:`, a layer's) and `#name music { }` (a track's `file:`) blocks name. A `#name mix { }` block is the game's, not a need |
 | `uiSounds:Array<String>` | The keys of the `#ui` sounds bank the file's widgets and interactives play by default, having no `sound.<key>` of their own. The parse does not know which widget the host makes of a programmable, so it goes by the parameters each widget passes: an `interactive()` plays `click` (not with `events:` that leave clicks out); a programmable with `status` and `buttonText` (a button) `hover` and `click`; with `status` and `checked` (a checkbox, or a tab or radio button, whose tabs and radio group send a change) `toggle` and `change`; with `status` and `panel` (a dropdown) `open`, `close` and `change`; with `status`, `value` and `size` (a slider), with `scrollPosition`, `scrollableHeight` and `panelHeight` (a scrollbar), or with `status`, `title` and `selected` (a list's item) `change`; any other (a text input, a card, a grid cell) none. The runtime plays what the widget sends (`UIScreenBase.playWidgetSound`), so this is at most what a widget of it could play |
 

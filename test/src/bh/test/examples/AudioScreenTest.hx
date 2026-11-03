@@ -39,6 +39,18 @@ class AudioScreenTest extends utest.Test {
 			bitmap(generated(color(10, 10, #222222))): 0, 0
 			settings { ambience => "amb.hum" }
 		}
+		#titleKey programmable(buttonText:string=Click, status:[normal,hover,pressed]=normal, disabled:bool=false) {
+			bitmap(generated(color(40, 20, #444444))): 0, 0
+			settings { music.click => "music.title" }
+		}
+		#playKey programmable(buttonText:string=Click, status:[normal,hover,pressed]=normal, disabled:bool=false) {
+			bitmap(generated(color(40, 20, #444444))): 0, 0
+			settings { music.click => "music.play", sound.click => "ui.change" }
+		}
+		#jukebox programmable() {
+			interactive(40, 20, "title", music.click => "music.title"): 0, 0
+			interactive(40, 20, "play", music.click => "music.play"): 50, 0
+		}
 	';
 
 	final managers:Array<ScreenManager> = [];
@@ -110,6 +122,68 @@ class AudioScreenTest extends utest.Test {
 			screen.dispatchScreenEvent(e.event, wrapper);
 		Assert.equals(1, m.log.plays("ui.change").length, "sound.click => \"ui.change\" in the interactive's metadata");
 		Assert.equals(0, m.log.plays("ui.click").length);
+	}
+
+	// ==================== A jukebox's keys (hx-multianim request 44) ====================
+
+	@Test
+	public function testAWidgetsMusicClickPlaysCrossfadesAndStopsATrack():Void {
+		final m = manager();
+		final screen = new SoundTestScreen(m.sm);
+		final builder = BuilderTestBase.builderFromSource(WIDGETS);
+		final title = UIStandardMultiAnimButton.create(builder, "titleKey", "Title");
+		final play = UIStandardMultiAnimButton.create(builder, "playKey", "Play");
+		final before = m.sm.audio.history.length;
+
+		screen.dispatchScreenEvent(UIClick, title);
+		Assert.equals("music.title", m.sm.audio.musicPlaying, "the first key plays its track");
+		Assert.equals(1, m.log.plays("music.title").length);
+		Assert.equals(0, m.log.plays("ui.click").length, "a jukebox's key plays no ui.click");
+
+		screen.dispatchScreenEvent(UIClick, play);
+		Assert.equals("music.play", m.sm.audio.musicPlaying, "the second crossfades to its own");
+		Assert.equals(1, m.log.stops("music.title").length, "the first fades out");
+		Assert.floatEquals(Audio.MUSIC_CROSSFADE, m.log.stops("music.title")[0].fade);
+		Assert.floatEquals(Audio.MUSIC_CROSSFADE, m.log.plays("music.play")[0].fade, "as it fades in");
+		Assert.equals(1, m.log.plays("ui.change").length, "a key's own sound.click plays beside its track");
+
+		screen.dispatchScreenEvent(UIClick, play);
+		Assert.isNull(m.sm.audio.musicPlaying, "a click on the track that plays stops the music");
+		Assert.equals(1, m.log.stops("music.play").length);
+
+		final said = [for (l in m.sm.audio.history.slice(before)) if (l.kind == "music") '${l.name} ${l.detail}'];
+		Assert.equals(3, said.length, 'the history says each: $said');
+		Assert.isTrue(StringTools.startsWith(said[0], "music.title crossfade"));
+		Assert.isTrue(StringTools.startsWith(said[1], "music.play crossfade"));
+		Assert.equals("music.play stopped", said[2]);
+		Assert.equals(3, screen.recordedEvents.length, "the screen still hears every click");
+	}
+
+	@Test
+	public function testAnInteractivesMusicClickIsAJukeboxKey():Void {
+		final m = manager();
+		final screen = new SoundTestScreen(m.sm);
+		final result = BuilderTestBase.builderFromSource(WIDGETS).buildWithParameters("jukebox", []);
+		final keys = [for (i in result.interactives) new UIInteractiveWrapper(i, null)];
+		function click(i:Int):Void {
+			final mock = new MockControllable();
+			UITestHarness.simulateClick(keys[i], mock);
+			for (e in mock.recordedEvents)
+				screen.dispatchScreenEvent(e.event, keys[i]);
+		}
+		click(0);
+		Assert.equals("music.title", m.sm.audio.musicPlaying);
+		click(1);
+		Assert.equals("music.play", m.sm.audio.musicPlaying, "crossfaded to the other key's track");
+		click(1);
+		Assert.isNull(m.sm.audio.musicPlaying, "and stopped by it again");
+		click(0);
+		Assert.equals("music.title", m.sm.audio.musicPlaying, "a key plays again after a stop");
+		Assert.equals(0, m.log.plays("ui.click").length, "no ui.click from a jukebox's key");
+		Assert.isFalse(m.sm.audio.toggleMusic("music.title"), "toggleMusic: the one heard stops");
+		Assert.isTrue(m.sm.audio.toggleMusic("music.title"), "and plays again");
+		Assert.isTrue(m.sm.audio.isMusicPlaying("music.title"));
+		Assert.isFalse(m.sm.audio.isMusicPlaying("music.play"));
 	}
 
 	@Test

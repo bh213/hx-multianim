@@ -4583,7 +4583,8 @@ class ProgrammableCodeGen {
 						filterAndRecord(collectParamRefs(entry.value), "interactive metadata value");
 					}
 				}
-			case STATEANIM(_, _, selectorReferences):
+			case STATEANIM(filename, _, selectorReferences):
+				filterAndRecord(collectParamRefs(filename), "stateanim file");
 				if (selectorReferences != null) {
 					for (k => v in selectorReferences)
 						filterAndRecord(collectParamRefs(v), 'stateanim selector "$k"');
@@ -7112,17 +7113,24 @@ class ProgrammableCodeGen {
 
 	// ==================== State Anim ====================
 
-	static function generateStateAnimCreate(node:Node, fieldName:String, filename:String, initialState:ReferenceableValue,
+	static function generateStateAnimCreate(node:Node, fieldName:String, filename:ReferenceableValue, initialState:ReferenceableValue,
 			selectorReferences:Map<String, ReferenceableValue>, pos:Position):CreateResult {
 		final fieldRef = macro $p{["this", fieldName]};
-		final filenameExpr:Expr = macro $v{filename};
-		final initialStateExpr = rvToExpr(initialState);
+		// The file is a string as any other; one built from parameters is frozen at create (as the
+		// builder's): changing such a parameter throws untracked_param
+		final filenameExpr:Expr = switch filename {
+			case RVString(s): macro $v{s};
+			default: macro Std.string(${rvToExpr(filename, true)});
+		};
+		recordUntrackedParams(collectParamRefs(filename), "stateanim file");
+		// As strings: an enum parameter is its value's name, as in the builder (not its index)
+		final initialStateExpr = rvToExpr(initialState, true);
 
 		// Build selector map: new Map(), then .set() for each entry
 		final mapBuildExprs:Array<Expr> = [macro final _selMap = new Map<String, String>()];
 		for (k => v in selectorReferences) {
 			final keyExpr:Expr = macro $v{k};
-			final valExpr = rvToExpr(v);
+			final valExpr = rvToExpr(v, true);
 			mapBuildExprs.push(macro _selMap.set($keyExpr, Std.string($valExpr)));
 		}
 		mapBuildExprs.push(macro $fieldRef = this._pb.buildStateAnim($filenameExpr, _selMap, Std.string($initialStateExpr)));
@@ -7144,7 +7152,7 @@ class ProgrammableCodeGen {
 			if (selRefs.length == 0)
 				continue;
 			final keyExpr:Expr = macro $v{k};
-			final valExpr = rvToExpr(v);
+			final valExpr = rvToExpr(v, true);
 			updatesSA.push({
 				fieldName: fieldName,
 				updateExpr: macro (cast $fieldRef : bh.stateanim.AnimationSM).setState($keyExpr, Std.string($valExpr)),
@@ -10262,7 +10270,8 @@ class ProgrammableCodeGen {
 					// it uses the params of its value (builder parity)
 					value(v);
 					true;
-				case STATEANIM(_, initialState, selector):
+				case STATEANIM(filename, initialState, selector):
+					value(filename);
 					value(initialState);
 					if (selector != null) for (_ => v in selector) value(v);
 					true;

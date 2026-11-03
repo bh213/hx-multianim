@@ -5660,10 +5660,14 @@ class MultiAnimBuilder {
 						for (r in vRefs) ctx.markParamUntracked(r, "interactive metadata value");
 					}
 				}
-			case STATEANIM(_, initialState, selectorReferences):
+			case STATEANIM(filename, initialState, selectorReferences):
 				// initialState replays the animation; a selector changes that state in place
 				// (AnimationSM.setState keeps the frame when the animation's length allows). The
-				// filename stays frozen — changing it would require a full detach/rebuild.
+				// filename stays frozen — changing it would require a full detach/rebuild — so a
+				// parameter it is built from cannot be changed after the build.
+				final fRefs:Array<String> = [];
+				collectParamRefs(filename, fRefs);
+				for (r in fRefs) ctx.markParamUntracked(r, "stateanim file");
 				final sm = switch builtObject { case StateAnim(a): a; default: null; };
 				final sRefs:Array<String> = [];
 				collectParamRefs(initialState, sRefs);
@@ -5937,7 +5941,8 @@ class MultiAnimBuilder {
 						value(entry.value);
 					}
 				true;
-			case STATEANIM(_, initialState, selector):
+			case STATEANIM(filename, initialState, selector):
+				value(filename);
 				value(initialState);
 				if (selector != null)
 					for (v in selector)
@@ -7574,7 +7579,7 @@ class MultiAnimBuilder {
 				HeapsObject(container);
 			case STATEANIM(filename, initialState, selectorReferences):
 				var selector = [for (k => v in selectorReferences) k => resolveAsString(v)];
-				var animSM = resourceLoader.createAnimSM(filename, selector);
+				var animSM = resourceLoader.createAnimSM(resolveAsString(filename), selector);
 				animSM.play(resolveAsString(initialState));
 
 				StateAnim(animSM);
@@ -9722,8 +9727,8 @@ class MultiAnimBuilder {
 						place(bh.base.Autotile.getHexIndex(grid, x, y, cell, x0, y0), x + x0, y + y0, 0, 0);
 					}
 				}
-			case Cross | Blob47:
-				final isCross = at.def.format == AutotileFormat.Cross;
+			case Cross | Blob47 | Connect16:
+				final format = at.def.format;
 				final rows = where != null ? where.length : grid.length;
 				for (y in 0...rows) {
 					final cols = where != null ? where[y].length : (y < grid.length ? grid[y].length : 0);
@@ -9732,8 +9737,12 @@ class MultiAnimBuilder {
 							continue;
 						if (!bh.base.Autotile.isFilled(grid, x, y))
 							continue;
-						final mask8 = bh.base.Autotile.getNeighborMask8(grid, x, y);
-						final index = isCross ? bh.base.Autotile.getCrossIndex(mask8) : bh.base.Autotile.getBlob47Index(mask8);
+						final index = switch format {
+							case Cross: bh.base.Autotile.getCrossIndex(bh.base.Autotile.getNeighborMask8(grid, x, y));
+							// a line: the sides it joins, N 1, E 2, S 4, W 8
+							case Connect16: bh.base.Autotile.getConnect16Index(grid, x, y);
+							default: bh.base.Autotile.getBlob47Index(bh.base.Autotile.getNeighborMask8(grid, x, y));
+						};
 						place(index, x + x0, y + y0, (x + x0) * tileSize, (y + y0) * tileSize);
 					}
 				}
@@ -10166,6 +10175,7 @@ class MultiAnimBuilder {
 			case Blob47: bh.base.Autotile.BLOB47_TILE_COUNT;
 			case Corner: bh.base.Autotile.CORNER_TILE_COUNT;
 			case Hex64: bh.base.Autotile.HEX64_TILE_COUNT;
+			case Connect16: bh.base.Autotile.CONNECT16_TILE_COUNT;
 		};
 	}
 
@@ -10175,6 +10185,7 @@ class MultiAnimBuilder {
 			case Blob47: "blob47";
 			case Corner: "corner";
 			case Hex64: "hex64";
+			case Connect16: "connect16";
 		};
 	}
 
@@ -10426,6 +10437,7 @@ class MultiAnimBuilder {
 	 * but the diagonal between them is missing (inner corner).
 	 * corner: filled quadrants for the filled cells, border along the terrain boundary through the
 	 * tile centre, transparent elsewhere.
+	 * connect16: a road half the tile wide, from the middle to each side it joins, kerbed.
 	 */
 	function drawAutotileDemoTile(pl:PixelLines, ox:Int, oy:Int, format:AutotileFormat, tileIndex:Int, tileSize:Int, edgeColor:Int, fillColor:Int):Void {
 		final borderWidth = Std.int(Math.max(1, tileSize / 8));
@@ -10445,6 +10457,42 @@ class MultiAnimBuilder {
 			if (sw != se) pl.filledRect(sw ? ox + half - borderWidth : ox + half, oy + half, borderWidth, tileSize - half, edgeColor);
 			if (nw != sw) pl.filledRect(ox, nw ? oy + half - borderWidth : oy + half, half, borderWidth, edgeColor);
 			if (ne != se) pl.filledRect(ox + half, ne ? oy + half - borderWidth : oy + half, tileSize - half, borderWidth, edgeColor);
+			return;
+		}
+		if (format == AutotileFormat.Connect16) {
+			// a road half the tile wide: its middle, an arm to each side it joins, a kerb along each
+			// side of it that does not go on; the rest of the tile clear
+			final a = Std.int(tileSize / 4);
+			final b = tileSize - a;
+			final n = (tileIndex & bh.base.Autotile.N4) != 0;
+			final e = (tileIndex & bh.base.Autotile.E4) != 0;
+			final s = (tileIndex & bh.base.Autotile.S4) != 0;
+			final w = (tileIndex & bh.base.Autotile.W4) != 0;
+			pl.filledRect(ox + a, oy + a, b - a, b - a, fillColor);
+			if (n) pl.filledRect(ox + a, oy, b - a, a, fillColor);
+			if (s) pl.filledRect(ox + a, oy + b, b - a, tileSize - b, fillColor);
+			if (w) pl.filledRect(ox, oy + a, a, b - a, fillColor);
+			if (e) pl.filledRect(ox + b, oy + a, tileSize - b, b - a, fillColor);
+			if (!n) pl.filledRect(ox + a, oy + a, b - a, borderWidth, edgeColor);
+			if (!s) pl.filledRect(ox + a, oy + b - borderWidth, b - a, borderWidth, edgeColor);
+			if (!w) pl.filledRect(ox + a, oy + a, borderWidth, b - a, edgeColor);
+			if (!e) pl.filledRect(ox + b - borderWidth, oy + a, borderWidth, b - a, edgeColor);
+			if (n) {
+				pl.filledRect(ox + a, oy, borderWidth, a, edgeColor);
+				pl.filledRect(ox + b - borderWidth, oy, borderWidth, a, edgeColor);
+			}
+			if (s) {
+				pl.filledRect(ox + a, oy + b, borderWidth, tileSize - b, edgeColor);
+				pl.filledRect(ox + b - borderWidth, oy + b, borderWidth, tileSize - b, edgeColor);
+			}
+			if (w) {
+				pl.filledRect(ox, oy + a, a, borderWidth, edgeColor);
+				pl.filledRect(ox, oy + b - borderWidth, a, borderWidth, edgeColor);
+			}
+			if (e) {
+				pl.filledRect(ox + b, oy + a, tileSize - b, borderWidth, edgeColor);
+				pl.filledRect(ox + b, oy + b - borderWidth, tileSize - b, borderWidth, edgeColor);
+			}
 			return;
 		}
 
@@ -10502,6 +10550,7 @@ class MultiAnimBuilder {
 			case Blob47: bh.base.Autotile.getBlob47Mask(tileIndex);
 			case Cross: crossDemoMask(tileIndex);
 			case Corner: 0; // not used — corner demo tiles are drawn by quadrant
+			case Connect16: 0; // not used — connect16 demo tiles are drawn as a road
 			case Hex64: hexDemoMask(tileIndex);
 		};
 		final hasN = (mask & bh.base.Autotile.N) != 0;
@@ -11297,7 +11346,8 @@ class MultiAnimBuilder {
 						markRefs(entry.value, "interactive metadata value");
 					}
 				}
-			case STATEANIM(_, _, selectorReferences):
+			case STATEANIM(filename, _, selectorReferences):
+				markRefs(filename, "stateanim file");
 				if (selectorReferences != null) {
 					for (k => v in selectorReferences)
 						markRefs(v, 'stateanim selector "$k"');

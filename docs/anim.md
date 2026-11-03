@@ -112,10 +112,12 @@ states: direction(l, r), color(red, blue, green)
 ```
 
 ### center
-Optional center point for the animation. Can be set at file level (applies to all animations) or per-animation.
+Optional center point for the animation. Can be set at file level (applies to all animations) or per-animation: an animation's own `center:`, anywhere in its block, is its frames', extra points' and flip's in place of the file's.
 
 ```anim
 center: 32,48
+
+animation lance_e { center: 0, 4  fps: 10  playlist { sheet: "lance_e" } }   // anchored at the caster's end
 ```
 
 ### fps (file-level default)

@@ -417,3 +417,19 @@ layouts {
     }
   }
 }
+// A stateanim's file built from a parameter, joined, and from a @final (hx-multianim request 37);
+// @scale from a parameter on a stateanim and on a placed programmable
+#cpAnimFile programmable(kind:[marine]=marine, size:uint=2, dir:[l, r]=r) {
+  @final f = "marine"
+  #byParam @scale($size) stateanim('${$kind}.anim', "idle", direction=>l): 0, 0
+  #joined stateanim($kind + ".anim", "idle", direction=>$dir): 40, 0
+  #byFinal stateanim('${$f}.anim', "idle", direction=>l): 80, 0
+  #placed @scale($size) staticRef(cpAnimFigure): 120, 0
+}
+#cpAnimFigure programmable() {
+  stateanim("marine.anim", "idle", direction=>l): 0, 0
+}
+// An ellipse is centred on its position, its radii 20 and 10, as a circle is (request 37)
+#cpEllipse programmable() {
+  #shape graphics(ellipse(#FFFFFF, filled, 20, 10): 0, 0): 50, 50
+}

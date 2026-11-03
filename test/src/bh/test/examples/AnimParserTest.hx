@@ -3180,6 +3180,45 @@ animation idle { fps: 4 playlist { file: "c.png" frames: 0..1 } }
 	}
 
 	@Test
+	public function testAnAnimationsOwnCenterIsWhereItsFramesAreDrawnAbout() {
+		// hx-multianim request 43: an animation's `center:` in place of the file's, its frames, extra
+		// points and flip about it; the other animation keeps the file's
+		final source = 'sheet: crew2\ncenter: 32, 48\nallowedExtraPoints: [tip]\nfps: 4\n'
+			+ 'animation a { playlist { sheet: "Arrow_dir0" } extrapoints { tip: 10, 2 } }\n'
+			+ 'animation b { center: 0, 12  flipX: no playlist { sheet: "Arrow_dir0" } extrapoints { tip: 10, 2 } }\n'
+			+ 'animation c { flipX: yes center: 0, 12 playlist { sheet: "Arrow_dir0" } extrapoints { tip: 10, 2 } }\n';
+		final fileCenter = framesOf('sheet: crew2\ncenter: 32, 48\nanimation x { fps: 4 playlist { sheet: "Arrow_dir0" } }\n', "x");
+		final ownCenter = framesOf('sheet: crew2\ncenter: 0, 12\nanimation x { fps: 4 playlist { sheet: "Arrow_dir0" } }\n', "x");
+		final ownCenterFlipped = framesOf('sheet: crew2\ncenter: 0, 12\nanimation x { fps: 4 flipX: yes playlist { sheet: "Arrow_dir0" } }\n', "x");
+		final a = framesOf(source, "a"), b = framesOf(source, "b"), c = framesOf(source, "c");
+		Assert.isTrue(a.length > 0 && a.length == b.length && b.length == c.length);
+		Assert.isTrue(fileCenter[0].tile.dx != ownCenter[0].tile.dx, "precondition: the two centers draw the frame apart");
+		for (i in 0...a.length) {
+			Assert.equals(fileCenter[i].tile.dx, a[i].tile.dx, 'a, frame $i: about the file\'s center');
+			Assert.equals(fileCenter[i].tile.dy, a[i].tile.dy);
+			Assert.equals(ownCenter[i].tile.dx, b[i].tile.dx, 'b, frame $i: about its own center');
+			Assert.equals(ownCenter[i].tile.dy, b[i].tile.dy);
+			Assert.equals(ownCenterFlipped[i].tile.dx, c[i].tile.dx, 'c, frame $i: flipped about its own center');
+			Assert.equals(ownCenterFlipped[i].tile.dy, c[i].tile.dy);
+		}
+
+		final loader:bh.base.ResourceLoader = bh.test.TestResourceLoader.createLoader(false);
+		final parsed = AnimParser.parseFile(byte.ByteData.ofString(source), "test-input", loader, true);
+		final sm = parsed.createAnimSM([]);
+		// A 128x128 frame flipped about x = 0: the point 10 mirrors to 128 - 0 - 10
+		Assert.equals(10, sm.animationStates.get("b").extraPoints.get("tip").x);
+		Assert.equals(118, sm.animationStates.get("c").extraPoints.get("tip").x, "the extra point mirrors about the animation's center");
+		final loaded = parsed.loaded();
+		Assert.isNull(loaded.animations[0].center);
+		Assert.equals(0, loaded.animations[1].center.x);
+		Assert.equals(12, loaded.animations[1].center.y);
+		Assert.isTrue(Lambda.exists(loaded.spans, s -> s.path == "animations.1.center"), "the animation's center has its span");
+
+		Assert.raises(() -> AnimParser.parseFile(byte.ByteData.ofString('sheet: crew2\nanimation a { fps: 4 center: 1, 1 center: 2, 2 playlist { sheet: "Arrow_dir0" } }\n'),
+			"test-input", loader), null, "center twice in an animation is an error");
+	}
+
+	@Test
 	public function testAnAnimFilesStatesKeepTheirOrder() {
 		final loader:bh.base.ResourceLoader = bh.test.TestResourceLoader.createLoader(false);
 		final parsed = AnimParser.parseFile(byte.ByteData.ofString('sheet: crew2\nstates: weapon(gun, sword), facing(l, r), mood(calm, angry)\n'

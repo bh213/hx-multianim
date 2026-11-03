@@ -38,7 +38,9 @@ import bh.stateanim.AnimParser;
 	  parse does not follow. A sheet whose own name cannot be known is not listed.
 	- `sounds`: full names `bank.sound` the file plays: a widget's `settings { sound.<key> => "…" }`,
 	  an interactive's `sound.<key> => "…"` metadata, a screen's `settings { ambience => "…" }` (not `none`).
-	- `music`: full names `bank.track` a screen's programmable names with `settings { music => "…" }`.
+	- `music`: full names `bank.track` a screen's programmable names with `settings { music => "…" }`,
+	  and a jukebox's key plays: a widget's `settings { music.click => "…" }`, an interactive's
+	  `music.click => "…"` metadata (such a key's click plays no `ui.click`).
 	- `soundFiles`: the files the file's own `#name sounds { }` and `#name music { }` blocks name
 	  (`file:`, `files:`, a layer's files, a track's file). A `#name mix { }` block names nothing.
 	- `uiSounds`: the keys of the `#ui` sounds bank the file's widgets and interactives play by default,
@@ -678,11 +680,23 @@ class ManimNeedsTools {
 					add(sounds, s);
 	}
 
+	/** `music.click => "bank.track" | none`: a jukebox's key plays the track named, and no `ui.click` (it is the key's own). */
+	function musicClickSetting(value:ReferenceableValue, own:Array<String>) {
+		own.push("click");
+		final tracks = names(value);
+		if (tracks != null)
+			for (t in tracks)
+				if (t != "none" && t != "")
+					add(music, t);
+	}
+
 	function settings(node:Node, own:Array<String>) {
 		if (node.settings == null)
 			return;
 		for (key => sv in node.settings) {
-			if (key == "music") {
+			if (key == "music.click")
+				musicClickSetting(sv.value, own);
+			else if (key == "music") {
 				final tracks = names(sv.value);
 				if (tracks != null)
 					for (t in tracks)
@@ -782,7 +796,11 @@ class ManimNeedsTools {
 			case SPACER(w, h): rv(w); rv(h);
 			case BITMAP(ts, _, _): tile(ts);
 			case STATEANIM(filename, initial, selector):
-				add(anims, filename);
+				// every file the name can be (`fromParameters` when that is not all it can be)
+				final files = names(filename);
+				if (files != null)
+					for (f in files)
+						add(anims, f);
 				rv(initial);
 				for (_ => v in selector)
 					rv(v);
@@ -834,6 +852,7 @@ class ManimNeedsTools {
 								}
 							case RVString(key) if (key == "cursor" || StringTools.startsWith(key, "cursor.")):
 								cursorRV(m.value);
+							case RVString("music.click"): musicClickSetting(m.value, own);
 							case RVString(key): soundSetting(key, m.value, own);
 							default:
 						}

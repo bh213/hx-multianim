@@ -178,7 +178,7 @@ animation name @(direction=>l) {
 | `name` | Name in header (`animation idle {`) or body (`name: idle`). If both, must match |
 | `fps` | Frames per second (inherits file-level default if omitted) |
 | `loop` | `yes`/`true` = forever, `no`/`false` = none, `N` = loop N times (inherits default) |
-| `center` | Per-animation center point override. A trimmed frame keeps its place in its untrimmed frame about it; with no `center` anywhere, about the untrimmed frame's top-left |
+| `center` | `center: x, y`, once, anywhere in the block: this animation's center in place of the file's. Its frames (a layered one's every layer), its extra points and point events, and a flip are all about it; the file's other animations keep the file's. A trimmed frame keeps its place in its untrimmed frame about it; with no `center` anywhere, about the untrimmed frame's top-left |
 | `playlist` | Frame sequence (required, at least one) |
 | `extrapoints` | Named coordinate points |
 | `filters` | Typed filter declarations |
@@ -432,7 +432,8 @@ scene.addChild(animSM);
 `LoadedAnimation` is the file as written, not as played: `sheet`, `states`, `stateOrder` (the states'
 names in the order `states:` writes them; `states` is a map, in no order), `allowedExtraPoints`,
 `center`, `metadata` (the API above) and `metadataEntries` (every entry by key, with its states),
-`animations` (each `AnimationState` as parsed, with its `annotations`), `defaults` (the file-level
+`animations` (each `AnimationState` as parsed, with its `annotations` and its own `center`, null when
+it has none), `defaults` (the file-level
 `fps`, `loop`, `flipX`, `flipY`), the file's `annotations`, `sounds` (the `sounds { }` block, an
 event's name to the full name of the sound it plays), `holds` (its `hold` lines, an animation's name
 to the sound held while it plays), and `spans`. The arrays and maps are the parser's own: read them,
@@ -473,7 +474,7 @@ the file as it was. Its `path`:
 | `metadata.<key>#<n>` | The value of the key's n-th entry |
 | `@<name>#<n>` | The file's n-th annotation of that name, whole |
 | `animations.<i>` | The i-th animation, from `animation` (or `anim`) to its end |
-| `animations.<i>.name`, `.fps`, `.loop`, `.flipX`, `.flipY` | The value |
+| `animations.<i>.name`, `.fps`, `.loop`, `.flipX`, `.flipY`, `.center` | The value |
 | `animations.<i>.@<name>#<n>` | The animation's annotation, whole |
 | `animations.<i>.extrapoints`, `.filters` | The block |
 | `animations.<i>.extrapoints.<point>#<n>` | The point's n-th coordinates |

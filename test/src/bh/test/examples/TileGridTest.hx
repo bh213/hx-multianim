@@ -754,18 +754,60 @@ class TileGridTest extends utest.Test {
 		Assert.floatEquals(8, TileGrid.square(8).bottomAt(1, 0, 10));
 	}
 
-	/** How many pixels of two pictures of a map drawn at (x, y) differ inside the cells' shapes (their edges left out). **/
-	static function differInside(a:hxd.Pixels, b:hxd.Pixels, grid:TileGrid, x:Float, y:Float, cells:Array<Array<Int>>):Int {
+	/** How many pixels of two pictures of a map drawn at (x, y) differ inside the cells' shapes (their edges, `inset` wide, left out). **/
+	static function differInside(a:hxd.Pixels, b:hxd.Pixels, grid:TileGrid, x:Float, y:Float, cells:Array<Array<Int>>, inset = 1.5):Int {
 		var differ = 0;
 		for (py in 0...a.height)
 			for (px in 0...a.width)
 				for (c in cells)
-					if (insideShape(grid, c[0], c[1], px - x, py - y, 1.5)) {
+					if (insideShape(grid, c[0], c[1], px - x, py - y, inset)) {
 						if (a.getPixel(px, py) != b.getPixel(px, py))
 							differ++;
 						break;
 					}
 		return differ;
+	}
+
+	public function testACellOfAnEarlierTerrainIsNeverDrawnOverTheBlockInFrontOfIt() {
+		// hx-multianim request 35 (Kenney's Isometric City, imported on its grid): blocks 132 wide whose
+		// side hangs 33 pixels under their top, the terrains declared grass_bed, asphalt, then park.
+		// Off the square grid each row's cells are drawn in their column's order, each cell's terrains
+		// bottom first, so a cell of any terrain is drawn before the cells in front of it: their tops
+		// cover its side. Drawn with or without the cells behind a cell, its top is the same
+		final map = (rows:Array<String>) -> builderFromSource('
+			#t tileset { grid: isometric, 132, 66 tileOffset: 0, 33 atlas: "isohex/isoCity"
+				terrain grass_bed { cells: "plaza" } terrain asphalt { cells: "asphalt" } terrain park { cells: "treeBlock" } }
+			#m tilemap { tileset: t size: ${rows[0].length}, ${rows.length} legend { "g": grass_bed, "a": asphalt, "t": park, " ": none }
+				terrain: [${[for (r in rows) '"$r"'].join(", ")}] }
+		').buildTilemap("m");
+		final x = 210.0, y = 20.0;
+		final grid = map(["ag", "ga"]).grid;
+
+		// the asphalt at (0, 0) is behind the grass at (1, 0), its side under that block's top
+		final asphaltAlone = drawnPixels(map(["a ", "  "]), x, y, 420, 320);
+		var under = 0;
+		for (py in 0...asphaltAlone.height)
+			for (px in 0...asphaltAlone.width)
+				if (insideShape(grid, 1, 0, px - x, py - y, 1.5) && asphaltAlone.getPixel(px, py) != 0xFFFF00FF)
+					under++;
+		Assert.isTrue(under > 500, 'precondition: the asphalt block\'s side reaches under (1, 0)\'s top ($under pixels)');
+		final full = drawnPixels(map(["ag", "ga"]), x, y, 420, 320);
+		final withoutIt = drawnPixels(map([" g", "ga"]), x, y, 420, 320);
+		Assert.equals(0, differInside(full, withoutIt, grid, x, y, [[1, 0]]), "the 2x2 map: (1, 0)'s top whole, the asphalt behind it drawn first");
+
+		// every cell of a map of three terrains, one declared last among the earlier ones
+		final rows = ["gat", "tga", "atg"];
+		final whole = drawnPixels(map(rows), x, y, 420, 320);
+		for (cy in 0...3)
+			for (cx in 0...3) {
+				// the cells behind (cx, cy), drawn before it, taken away
+				final behind = [
+					for (ry in 0...3) [for (rx in 0...3) (rx <= cx && ry <= cy && !(rx == cx && ry == cy)) ? " " : rows[ry].charAt(rx)].join("")
+				];
+				final alone = drawnPixels(map(behind), x, y, 420, 320);
+				// 4 pixels in from the diamond's edge: an asphalt top's soft edge shows what is behind it
+				Assert.equals(0, differInside(whole, alone, grid, x, y, [[cx, cy]], 4), '($cx, $cy), a ${rows[cy].charAt(cx)}: its top drawn over what is behind it');
+			}
 	}
 
 	public function testARaisedCellsLowestSideIsUnderTheCellsInFront() {

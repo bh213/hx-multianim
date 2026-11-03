@@ -488,6 +488,132 @@ class AutotileTest extends BuilderTestBase {
 		Assert.equals(1 + 12 * 10, Std.int(whole.getAutotileTile("w", 12).x));
 	}
 
+	// ==================== A line joining its four neighbours: connect16 (hx-multianim request 38) ====================
+
+	static final ROAD = ["..#..", "#####", "..#..", "..##.", "....#"];
+
+	static function roadGrid():Array<Array<Int>> {
+		return [for (row in ROAD) [for (i in 0...row.length) row.charAt(i) == "#" ? 1 : 0]];
+	}
+
+	@Test
+	public function testConnect16IndexIsTheSidesItJoins():Void {
+		final grid = roadGrid();
+		Assert.equals(Autotile.N4 | Autotile.E4 | Autotile.S4 | Autotile.W4, Autotile.getConnect16Index(grid, 2, 1), "the crossing: 15");
+		Assert.equals(Autotile.S4, Autotile.getConnect16Index(grid, 2, 0), "an end, open to the south");
+		Assert.equals(Autotile.E4, Autotile.getConnect16Index(grid, 0, 1), "an end, open to the east");
+		Assert.equals(Autotile.E4 | Autotile.W4, Autotile.getConnect16Index(grid, 1, 1), "a straight east-west: 10");
+		Assert.equals(Autotile.N4 | Autotile.S4, Autotile.getConnect16Index(grid, 2, 2), "a straight north-south: 5");
+		Assert.equals(Autotile.N4 | Autotile.E4, Autotile.getConnect16Index(grid, 2, 3), "a corner, north and east: 3");
+		Assert.equals(Autotile.W4, Autotile.getConnect16Index(grid, 3, 3), "a diagonal is no join: an end");
+		Assert.equals(0, Autotile.getConnect16Index(grid, 4, 4), "the lone piece: 0");
+		Assert.equals(16, Autotile.CONNECT16_TILE_COUNT);
+		Assert.isTrue(parseExpectingSuccess("#r autotile { format: connect16 tileSize: 8 demo: #fff, #000 }"));
+		assertParseError('#r autotile { format: connect16 tileSize: 8 file: "$TILESET" mapping: [16: 0] }', "0-15");
+		assertParseError("#r autotile { format: roads tileSize: 8 demo: #fff, #000 }", "connect16");
+	}
+
+	/** The pixels an object draws in a `w` by `h` picture, cleared to transparent. **/
+	static function drawnPixels(obj:h2d.Object, w:Int, h:Int):hxd.Pixels {
+		final scene = new h2d.Scene();
+		scene.addChild(obj);
+		scene.syncOnly(0);
+		final texture = new h3d.mat.Texture(w, h, [Target]);
+		texture.clear(0, 0);
+		obj.drawTo(texture);
+		final pixels = texture.capturePixels();
+		texture.dispose();
+		obj.remove();
+		scene.dispose();
+		pixels.convert(BGRA);
+		return pixels;
+	}
+
+	@Test
+	public function testConnect16DrawsARoadJoiningItsNeighbours():Void {
+		// the demo draws a road half a tile wide from the middle to each side it joins
+		final builder = builderFromSource("#road autotile { format: connect16 tileSize: 16 demo: #FF0000, #00FF00 }");
+		final grid = roadGrid();
+		final group = builder.buildAutotile("road", grid);
+		Assert.equals(10, group.count(), "a tile a road cell");
+		final pixels = drawnPixels(group, 80, 80);
+		inline function road(px:Int, py:Int):Bool
+			return pixels.getPixel(px, py) == 0xFF00FF00;
+		for (y in 0...grid.length)
+			for (x in 0...grid[y].length) {
+				if (grid[y][x] == 0)
+					continue;
+				final ox = x * 16, oy = y * 16;
+				Assert.isTrue(road(ox + 8, oy + 8), 'the road through ($x, $y)');
+				// each side's middle: road where the neighbour is road, nothing where it is not
+				Assert.equals(Autotile.isFilled(grid, x, y - 1), road(ox + 8, oy), '($x, $y) north');
+				Assert.equals(Autotile.isFilled(grid, x + 1, y), road(ox + 15, oy + 8), '($x, $y) east');
+				Assert.equals(Autotile.isFilled(grid, x, y + 1), road(ox + 8, oy + 15), '($x, $y) south');
+				Assert.equals(Autotile.isFilled(grid, x - 1, y), road(ox, oy + 8), '($x, $y) west');
+				Assert.equals(0, pixels.getPixel(ox, oy) >>> 24, '($x, $y): its corner is clear');
+			}
+	}
+
+	@Test
+	public function testConnect16IsATilesetsTerrainOnTheSquareAndIsometricGrids():Void {
+		// a pond declared after the road beside it at (3, 0): the road joins only its own cells, and is
+		// not drawn under the pond as a ground is under the terrains above it
+		final rows = [for (r in ROAD) '"$r"'];
+		rows[0] = '"..#~."';
+		final source = (grid:String) -> '
+			#fp atlas2("$TILESET") { grass: 32, 24, 8, 8  water: 40, 24, 8, 8 }
+			#road autotile { format: connect16 tileSize: 8 demo: #554433, #AA9966 }
+			#t tileset { $grid atlas: "fp" terrain grass { cells: "grass" } terrain road { autotile: road } terrain pond { cells: "water" } }
+			#m tilemap { tileset: t size: 5, 5 legend { ".": grass, "#": road, "~": pond } terrain: [${rows.join(", ")}] }
+		';
+		// the square grid: one road tile a road cell, over the grass
+		final square = builderFromSource(source("tileSize: 8")).buildTilemap("m");
+		final drawnRoad = autotileCount(square, "road");
+		Assert.equals(10, drawnRoad, "a tile a road cell, the grass under them, none under the pond");
+		// a connect16 terrain filling a rectangle (`tilemap(fill(…))`): crossings inside, ends at its edges
+		final fill = builderFromSource(source("tileSize: 8")).buildTilemapFill("t", "road", 3, 2);
+		Assert.equals(6, autotileCount(fill, "road"));
+
+		// the isometric grid: the diamond's four edges are the grid's N, E, S and W
+		final iso = builderFromSource(source("grid: isometric, 16, 8")).buildTilemap("m");
+		final indices = new Map<String, Int>();
+		final tiles:bh.base.TileMap.TileMapTiles = @:privateAccess iso.tiles;
+		final tileAt = tiles.autotileTile;
+		tiles.autotileTile = (name, index, x, y) -> {
+			if (name == "road")
+				indices.set('$x,$y', index);
+			return tileAt(name, index, x, y);
+		};
+		iso.redraw();
+		final grid = roadGrid();
+		var cells = 0;
+		for (y in 0...5)
+			for (x in 0...5)
+				if (grid[y][x] != 0) {
+					cells++;
+					Assert.equals(Autotile.getConnect16Index(grid, x, y), indices.get('$x,$y'), 'iso ($x, $y): the sides it joins');
+				}
+		Assert.equals(cells, Lambda.count(indices), "a tile a road cell");
+
+		assertBuilderError(() -> builderFromSource(source("grid: hex, 16, 16, pointy, odd")).buildTilemap("m").redraw(), "tilemap_grid");
+	}
+
+	/** How many tiles a map's autotile `name` draws as it is drawn again (the square grid's TileGroups it builds). **/
+	static function autotileCount(map:bh.base.TileMap, name:String):Int {
+		var n = 0;
+		final tiles:bh.base.TileMap.TileMapTiles = @:privateAccess map.tiles;
+		final build = tiles.autotile;
+		tiles.autotile = (at, grid, where, x0, y0) -> {
+			final g = build(at, grid, where, x0, y0);
+			if (at == name)
+				n += g.count();
+			return g;
+		};
+		map.redraw();
+		tiles.autotile = build;
+		return n;
+	}
+
 	// ==================== Helpers ====================
 
 	static function assertParseError(source:String, expectedFragment:String, ?pos:haxe.PosInfos):Void {

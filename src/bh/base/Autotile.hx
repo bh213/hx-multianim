@@ -5,7 +5,8 @@ private typedef FallbackCandidate = {tile:Int, cardinals:Int, mismatch:Int, corn
 /**
  * Index math for autotile terrain generation.
  *
- * Four formats (the fourth, hex64, for the hex grid: 6 neighbours, `getHexIndex`):
+ * Five formats (the fourth, hex64, for the hex grid: 6 neighbours, `getHexIndex`; the fifth,
+ * connect16, a line joining its 4 neighbours, `getConnect16Index`):
  * - Cross (13 tiles): one tile per filled cell; 4 edges + center + 4 outer + 4 inner corners.
  * - Blob47 (47 tiles): one tile per filled cell; every 8-neighbour combination (a diagonal only
  *   counts when both adjacent cardinals are present).
@@ -13,6 +14,11 @@ private typedef FallbackCandidate = {tile:Int, cardinals:Int, mismatch:Int, corn
  *   says which of the 4 cells around that corner are filled (NW=1, NE=2, SW=4, SE=8). Covers every
  *   configuration (isolated cells, 1-wide strips, diagonal touches) with no fallback. Index 0
  *   (no filled cell) is never drawn.
+ * - Connect16 (16 tiles): one tile per filled cell, a line (a road, a rail, a river, a pipe) that
+ *   joins the cell to each of its 4 neighbours of the same terrain: index N=1 | E=2 | S=4 | W=8
+ *   (`N4`..`W4`). 0 the lone piece, 1/2/4/8 the ends, 5 and 10 the straights, 3/6/12/9 the corners,
+ *   the junctions the three-way ones, 15 the crossing. On the isometric grid N, E, S and W are the
+ *   grid's (the diamond's top-right, bottom-right, bottom-left and top-left edges); no hex form.
  *
  * Grid convention: `grid[y][x]`, any non-zero value = terrain present. Out-of-range cells
  * (including ragged rows) count as empty.
@@ -68,6 +74,15 @@ class Autotile {
 	public static inline var BLOB47_TILE_COUNT:Int = 47;
 	public static inline var CORNER_TILE_COUNT:Int = 16;
 	public static inline var HEX64_TILE_COUNT:Int = 64;
+	public static inline var CONNECT16_TILE_COUNT:Int = 16;
+
+	/**
+	 * Connect16 index of the cell `grid[y][x]`: which of its four neighbours are filled, N 1, E 2,
+	 * S 4, W 8 (`getNeighborMask4`), so a road's tile is picked by the sides it joins.
+	 */
+	public static inline function getConnect16Index(grid:Array<Array<Int>>, x:Int, y:Int):Int {
+		return getNeighborMask4(grid, x, y);
+	}
 
 	#if !noheaps
 	/**

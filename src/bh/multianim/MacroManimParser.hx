@@ -4204,7 +4204,8 @@ class MacroManimParser {
 						createNode(STATEANIM_CONSTRUCT(initialState, constructs, externallyDriven), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
 					default:
 						expect(TOpen);
-						final filename = expectIdentifierOrString();
+						// the file as any string: written out, or built from parameters and loop variables
+						final filename = parseStringOrReference();
 						expect(TComma);
 						final initialState = parseStringOrReference();
 						var selector:Map<String, ReferenceableValue> = new Map();
@@ -6332,18 +6333,19 @@ class MacroManimParser {
 		return {element: GERoundRect(color, style, width, height, radius), pos: pos};
 	}
 
+	/** `ellipse(color, style, rx, ry)`: centred on its position, as a circle is, `rx` and `ry` its radii. */
 	function parseGraphicsEllipse():PositionedGraphicsElement {
 		expect(TOpen);
 		final color = parseColorOrReference();
 		expect(TComma);
 		final style = parseGraphicsStyle();
 		expect(TComma);
-		final width = parseIntegerOrReference();
+		final radiusX = parseIntegerOrReference();
 		expect(TComma);
-		final height = parseIntegerOrReference();
+		final radiusY = parseIntegerOrReference();
 		expect(TClosed);
 		final pos = parseOptionalElementPos();
-		return {element: GEEllipse(color, style, width, height), pos: pos};
+		return {element: GEEllipse(color, style, radiusX, radiusY), pos: pos};
 	}
 
 	function parseGraphicsArc():PositionedGraphicsElement {
@@ -7159,8 +7161,11 @@ class MacroManimParser {
 						case TIdentifier(s2) if (isKeyword(s2, "hex64")):
 							advance();
 							format = Hex64;
+						case TIdentifier(s2) if (isKeyword(s2, "connect16")):
+							advance();
+							format = Connect16;
 						default:
-							error("expected cross, blob47, corner or hex64");
+							error("expected cross, blob47, corner, hex64 or connect16");
 					}
 				case TIdentifier(s) if (isKeyword(s, "sheet")):
 					advance();
@@ -7277,6 +7282,7 @@ class MacroManimParser {
 				case Blob47: bh.base.Autotile.BLOB47_TILE_COUNT;
 				case Corner: bh.base.Autotile.CORNER_TILE_COUNT;
 				case Hex64: bh.base.Autotile.HEX64_TILE_COUNT;
+				case Connect16: bh.base.Autotile.CONNECT16_TILE_COUNT;
 			};
 			for (key => target in mapping) {
 				if (key < 0 || key >= indexCount)
@@ -7801,6 +7807,7 @@ class MacroManimParser {
 					expect(TCurlyOpen);
 					var file:Null<String> = null;
 					var loop = true;
+					var loopFrom:Null<Float> = null;
 					while (!match(TCurlyClosed)) {
 						final key = expectIdentifierOrString();
 						expect(TColon);
@@ -7810,14 +7817,24 @@ class MacroManimParser {
 								file = expectIdentifierOrString();
 							case "loop":
 								loop = parseBool();
+							case "loopfrom":
+								// where every repeat starts, past an intro the first play has: `18.04s`, `500ms`
+								if (loopFrom != null) error('$blockName.$trackName: loopFrom given twice');
+								final at = parseSecondsRange('$blockName.$trackName: loopFrom');
+								if (at.min != at.max) error('$blockName.$trackName: loopFrom is one time, not a range');
+								loopFrom = at.min;
 							default:
-								error('$blockName.$trackName: unknown key "$key" (file, loop)');
+								error('$blockName.$trackName: unknown key "$key" (file, loop, loopFrom)');
 						}
 						match(TComma);
 					}
 					final trackFile:String = file != null ? file : error('$blockName.$trackName: no file');
+					if (loopFrom != null && !loop) error('$blockName.$trackName: loopFrom is where a repeat starts, and the track does not repeat (loop: no)');
 					final doc = itemDoc(first, tpos - 1);
-					def.tracks.push(doc != null ? {name: trackName, file: trackFile, loop: loop, line: line, doc: doc} : {name: trackName, file: trackFile, loop: loop, line: line});
+					final track:MusicTrackDef = {name: trackName, file: trackFile, loop: loop, line: line};
+					if (loopFrom != null) track.loopFrom = loopFrom;
+					if (doc != null) track.doc = doc;
+					def.tracks.push(track);
 				default:
 					error('$blockName: expected bus: or track name { }, got ${peek()}');
 			}

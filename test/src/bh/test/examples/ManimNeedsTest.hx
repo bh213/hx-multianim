@@ -269,6 +269,22 @@ class ManimNeedsTest extends utest.Test {
 	}
 
 	@Test
+	public function testAnimFilesBuiltFromParameters() {
+		// hx-multianim request 37: a stateanim's file is a string as any other, listed by every value it can be
+		final n = needs("
+			#p programmable(kind:[jeep, tank]=jeep) {
+				stateanim('vehicles/${$kind}.anim', \"idle\"): 0, 0
+				stateanim(\"lib/\" + $kind + \".anim\", \"idle\"): 0, 0
+			}
+		");
+		Assert.same(["lib/jeep.anim", "lib/tank.anim", "vehicles/jeep.anim", "vehicles/tank.anim"], n.anims);
+		Assert.isFalse(n.fromParameters, "an enum's every value is known");
+		final open = needs("#p programmable(kind:string=jeep) { stateanim($kind + \".anim\", \"idle\"): 0, 0 }");
+		Assert.same(["jeep.anim"], open.anims, "a string's default");
+		Assert.isTrue(open.fromParameters, "a string can be given another");
+	}
+
+	@Test
 	public function testImportsAreKeptWithNoLoader() {
 		final result = MacroManimParser.parseFile('version: 1.0\nimport "std.manim" as "std"\nimport "theme/dark.manim" as "dark"\n#p programmable() { bitmap(sheet("ui", "x")): 0, 0 }', "needs-test", null);
 		Assert.same(["dark", "std"], keys(result.importPaths));
@@ -331,6 +347,23 @@ class ManimNeedsTest extends utest.Test {
 		');
 		Assert.same(["music.play"], n.music);
 		Assert.same(["amb.hum"], n.sounds, "an ambience is a sound a screen holds");
+	}
+
+	@Test
+	public function testAJukeboxsKeysNeedTheirTracks() {
+		// hx-multianim request 44: `music.click` on a widget and on an interactive
+		final n = needs('
+			#key programmable(buttonText:string=Click, status:[normal,hover,pressed]=normal) {
+				bitmap(sheet("ui", "button")): 0, 0
+				settings { music.click => "jrpg.town" }
+			}
+			#keys programmable() {
+				interactive(40, 20, "a", music.click => "horror.wastes"): 0, 0
+				interactive(40, 20, "b", music.click => none): 50, 0
+			}
+		');
+		Assert.same(["horror.wastes", "jrpg.town"], n.music);
+		Assert.same(["hover"], n.uiSounds, "a jukebox's key plays no ui.click: the button's hover is all");
 	}
 
 	@Test

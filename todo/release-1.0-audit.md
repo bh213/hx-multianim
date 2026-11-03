@@ -227,7 +227,8 @@ before assigning a new ID.
 - [ ] `DOC-14` **`event <name> trigger` does not parse** — no `trigger` keyword; anim.md's complete example
   (L554) won't parse. Also documented in hx-multianim CLAUDE.md. Fix docs (bare form is canonical)
   or add a no-op keyword + test.
-- [ ] `DOC-15` Per-animation `center:` override doesn't exist (parse error).
+- [x] `DOC-15` ~~Per-animation `center:` override doesn't exist (parse error).~~ (**DONE 2026-11-03**:
+  `animation x { center: x, y … }` parses; frames, extra points, events and flip are about it.)
 - [ ] `DOC-16` Playlist per-frame filters **replace**, don't accumulate (pinned by AnimFilterRuntimeTest).
 - [ ] `DOC-17` `$$state$$` "migration hint error" doesn't exist; ~~`LoadedAnimation` in example is dead code~~
   (**DONE 2026-09-30**: `AnimParserResult.loaded()` returns it, and the example calls it);

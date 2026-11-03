@@ -619,11 +619,31 @@ class Audio {
 		if (musicVoice != null)
 			musicVoice.stop(fade);
 		musicPlaying = name;
-		musicVoice = backend.play({
+		final start:VoiceStart = {
 			sound: name, layer: "", path: track.def.file, volume: 1, pitch: 1, bus: track.bus, priority: 2, fadeIn: fade,
 			loop: track.def.loop
-		});
-		note("music", name, 'crossfade $fade');
+		};
+		// every repeat from past the intro (`loopFrom:`), the first play from the file's start
+		if (track.def.loop && track.def.loopFrom != null)
+			start.loopFrom = track.def.loopFrom;
+		musicVoice = backend.play(start);
+		note("music", name, 'crossfade $fade' + (start.loopFrom != null ? ', repeats from ${start.loopFrom}s' : ""));
+	}
+
+	/** Whether a track is heard now: `name`, or any when null (a track that does not loop has ended). */
+	public function isMusicPlaying(?name:String):Bool {
+		return musicPlaying != null && (name == null || musicPlaying == name) && musicVoice != null && musicVoice.isPlaying();
+	}
+
+	/** A jukebox's key (`music.click`): plays the track, crossfading from the one playing, or stops the
+	 *  music when that track is the one heard. Returns whether it plays now. A name no block has is an error. */
+	public function toggleMusic(name:String, ?crossfade:Float):Bool {
+		if (isMusicPlaying(name)) {
+			stopMusic(crossfade);
+			return false;
+		}
+		playMusic(name, crossfade);
+		return true;
 	}
 
 	/** Stops the music over `fade` seconds (`MUSIC_CROSSFADE` unless given); nothing when none plays. */

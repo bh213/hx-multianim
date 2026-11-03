@@ -209,7 +209,8 @@ enum GraphicsElement {
 	GERect(color:ReferenceableValue, style:GraphicsStyle, width:ReferenceableValue, height:ReferenceableValue);
 	GEPolygon(color:ReferenceableValue, style:GraphicsStyle, points:Array<Coordinates>);
 	GECircle(color:ReferenceableValue, style:GraphicsStyle, radius:ReferenceableValue);
-	GEEllipse(color:ReferenceableValue, style:GraphicsStyle, width:ReferenceableValue, height:ReferenceableValue);
+	// centred on its position, as a circle is: two radii, not a box
+	GEEllipse(color:ReferenceableValue, style:GraphicsStyle, radiusX:ReferenceableValue, radiusY:ReferenceableValue);
 	GEArc(color:ReferenceableValue, style:GraphicsStyle, radius:ReferenceableValue, startAngle:ReferenceableValue, arcAngle:ReferenceableValue);
 	GERoundRect(color:ReferenceableValue, style:GraphicsStyle, width:ReferenceableValue, height:ReferenceableValue, radius:ReferenceableValue);
 	GELine(color:ReferenceableValue, lineWidth:ReferenceableValue, start:Coordinates, end:Coordinates);
@@ -894,6 +895,8 @@ typedef MusicTrackDef = {
 	var name:String;
 	var file:String;
 	var loop:Bool;
+	/** `loopFrom: 18.04s`: seconds into the file every repeat starts at (the first play is from the start, its intro); null for the whole file. **/
+	var ?loopFrom:Null<Float>;
 	var line:Int;
 	/** Its `///` doc comment, as a sound's. **/
 	var ?doc:Null<String>;
@@ -925,6 +928,7 @@ enum AutotileFormat {
 	Blob47;     // 47 tiles, one per filled cell: every 8-neighbour edge/corner combination
 	Corner;     // 16 tiles, dual grid: one per grid corner, index = filled cells NW=1|NE=2|SW=4|SE=8
 	Hex64;      // 64 tiles, one per filled hex: its six neighbours, from the top clockwise (Autotile.getHexIndex)
+	Connect16;  // 16 tiles, one per filled cell, a line joining its four neighbours: index = N 1 | E 2 | S 4 | W 8 of the same terrain (roads, rails, rivers, pipes)
 }
 
 // Where an autotile's tiles come from. Every source is addressed by a *source index*; `mapping:`
@@ -1329,7 +1333,8 @@ enum NodeType {
 	SPACER(width:Null<ReferenceableValue>, height:Null<ReferenceableValue>);
 	BITMAP(tileSource:TileSource, hAlign:HorizontalAlign, vAlign:VerticalAlign);
 	POINT;
-	STATEANIM(filename:String, initialState:ReferenceableValue, selector:Map<String, ReferenceableValue>);
+	// `filename`: a string as any other, so it may be built from parameters ('units/${$kind}.anim')
+	STATEANIM(filename:ReferenceableValue, initialState:ReferenceableValue, selector:Map<String, ReferenceableValue>);
 	STATEANIM_CONSTRUCT(initialState:ReferenceableValue, construct:Map<String, StateAnimConstruct>, externallyDriven:Bool);
 	PIXELS(shapes:Array<PixelShapes>);
 	TEXT(textDef:TextDef);

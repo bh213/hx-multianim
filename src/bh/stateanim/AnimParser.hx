@@ -166,6 +166,7 @@ class AnimKeywordInfo {
 			"filters {\n\t$0\n}", true),
 		new AnimKeywordInfo("flipX", AKAnimationBody, "Horizontal flip (yes/no)", "flipX: yes"),
 		new AnimKeywordInfo("flipY", AKAnimationBody, "Vertical flip (yes/no)", "flipY: yes"),
+		new AnimKeywordInfo("center", AKAnimationBody, "This animation's center point, in place of the file's: `center: x,y`", "center: "),
 		// Escaped newlines, never a literal spanning lines: a CRLF checkout would embed "\r\n" and the
 		// packaged LSP server would differ from the one CI builds on Linux (the drift gate)
 		new AnimKeywordInfo("layer", AKAnimationBody, "A layer's frames, in place of a playlist: `layer hat @(hat != none) { sheet: \"hat_walk\" }`",
@@ -505,7 +506,7 @@ typedef AnimAnnotation = {
 	  `metadata` block, and `metadata.<key>#<n>`, the value of the key's n-th entry
 	- `@<name>#<n>`, a file annotation, whole
 	- `animations.<i>`, the i-th animation block of the file, whole, and in it `.name`, `.fps`,
-	  `.loop`, `.flipX`, `.flipY`, `.@<name>#<n>`, `.extrapoints` (the block),
+	  `.loop`, `.flipX`, `.flipY`, `.center`, `.@<name>#<n>`, `.extrapoints` (the block),
 	  `.extrapoints.<point>#<n>` (the point's n-th coordinates), `.filters` (the block),
 	  `.playlist#<p>` (the p-th playlist block) and in it `.<j>`, its j-th line, with `.sheet`,
 	  `.file`, `.frames`, `.duration`, `.offset` and, for an event, `.at`; `.timeline`, and
@@ -820,6 +821,8 @@ typedef AnimationState = {
 	var ?filters:Array<AnimFilterEntry>; // (#12)
 	var ?flipX:Bool; // (#13) horizontal flip
 	var ?flipY:Bool; // (#13) vertical flip
+	// `center: x, y` in the animation: its frames, extra points and flip about it in place of the file's
+	var ?center:Point;
 	var ?annotations:Array<AnimAnnotation>; // written before the animation, kept for tools
 	// A layered animation: every `layer` block, in the order written, the timeline's included, and
 	// the timeline's name. `playlist` then holds the timeline's blocks, so it plays as a playlist does.
@@ -1184,6 +1187,7 @@ class AnimFileParser {
 						filters: parsedAnim.filters,
 						flipX: parsedAnim.flipX ?? defaultFlipX,
 						flipY: parsedAnim.flipY ?? defaultFlipY,
+						center: parsedAnim.center,
 						annotations: [],
 						layers: parsedAnim.layers.length > 0 ? parsedAnim.layers : null,
 						timeline: parsedAnim.timeline,
@@ -1797,6 +1801,7 @@ class AnimFileParser {
 			flipY: flipY,
 			layers: ([] : Array<AnimLayer>),
 			timeline: (null : Null<String>),
+			center: (null : Null<Point>),
 		};
 
 		while (true) {
@@ -1889,6 +1894,11 @@ class AnimFileParser {
 					expect(APColon);
 					if (ret.flipY != null) syntaxError("flipY already set");
 					ret.flipY = spanned('$path.flipY', parseBoolValue);
+				case APIdentifier(_, APCenter, AITString): // the animation's own center, in place of the file's
+					advance();
+					expect(APColon);
+					if (ret.center != null) syntaxError("center already set");
+					ret.center = spanned('$path.center', parseCoordinates);
 				default:
 					unexpectedError();
 			}
@@ -2581,7 +2591,7 @@ class AnimParser extends AnimFileParser implements AnimParserResult {
 	/** `footprint`: a layer's frames flip about the timeline's axis, this untrimmed size, whatever their own. **/
 	function createStates(anims:Array<AnimPlaylistFrames>, anim:AnimationState, stateSelector:AnimationStateSelector,
 			?footprint:{w:Float, h:Float}):Array<AnimationFrameState> {
-		final _center = center;
+		final _center = anim.center ?? center; // the animation's own, else the file's
 		final _sheetName = sheetName;
 		if (_sheetName == null) throw 'sheet not set';
 		final _fps = anim.fps;
@@ -2901,8 +2911,9 @@ class AnimParser extends AnimFileParser implements AnimParserResult {
 					}
 					if (!found) throw 'anim ${name}: flipX/flipY enabled but no Frame states found';
 				}
-				final cx:Float = center != null ? center.x : 0;
-				final cy:Float = center != null ? center.y : 0;
+				final animCenter = anim.center ?? center; // the animation's own, else the file's
+				final cx:Float = animCenter != null ? animCenter.x : 0;
+				final cy:Float = animCenter != null ? animCenter.y : 0;
 				// (#13) Mirror around untrimmed screen center, matching Option B tile flip
 				inline function mirrored(p:h2d.col.IPoint):h2d.col.IPoint {
 					if (!_flipX && !_flipY)

@@ -359,6 +359,60 @@ class CodegenParityReviewTest extends BuilderTestBase {
 		Assert.stringContains("interactive id", Std.string(err), "codegen: the rejection names the interactive id");
 	}
 
+	// ==================== A stateanim's file built from parameters, @scale from one (request 37) ====================
+
+	static function assertAnimFile(live:bh.multianim.LiveProgrammable, backend:String):Void {
+		for (name in ["byParam", "joined", "byFinal"]) {
+			final sm = Std.downcast(live.getNamedDrawn(name), bh.stateanim.AnimationSM);
+			Assert.notNull(sm, '$backend: $name is a stateanim');
+			if (sm != null)
+				Assert.isTrue(sm.animationStates.exists("fire-up"), '$backend: $name plays marine.anim, its file built from ${name == "byFinal" ? "a @final" : "the parameter"}');
+		}
+		final joined = Std.downcast(live.getNamedDrawn("joined"), bh.stateanim.AnimationSM);
+		if (joined != null)
+			Assert.equals("r", joined.currentSelector.get("direction"), '$backend: an enum parameter in a selector is its value\'s name');
+		Assert.floatEquals(2, live.getNamedDrawn("byParam").scaleX, 0.001, '$backend: @scale($$size) scales a stateanim');
+		Assert.floatEquals(2, live.getNamedDrawn("placed").scaleX, 0.001, '$backend: @scale($$size) scales a placed programmable');
+	}
+
+	@Test
+	public function testStateanimFileFromParameters_Builder_BuildsAndIsFrozen():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "cpAnimFile", null, Incremental);
+		assertAnimFile(result, "builder");
+		final err = errorOf(() -> result.setParameter("kind", "marine"));
+		Assert.isTrue(isUntrackedParamError(err) && err.indexOf("stateanim file") >= 0,
+			'builder: the file is worked out at the build, so its parameter cannot be set after; got $err');
+		result.setParameter("size", 3);
+		Assert.floatEquals(3, result.getNamedDrawn("byParam").scaleX, 0.001, "builder: the stateanim's scale follows size");
+		Assert.floatEquals(3, result.getNamedDrawn("placed").scaleX, 0.001, "builder: the placed programmable's scale follows size");
+	}
+
+	@Test
+	public function testStateanimFileFromParameters_Codegen_BuildsAndIsFrozen():Void {
+		final inst:Dynamic = createMp().cpAnimFile.create();
+		final live:bh.multianim.LiveProgrammable = cast inst;
+		assertAnimFile(live, "codegen");
+		final err = errorOf(() -> inst.setParameter("kind", "marine"));
+		Assert.notNull(err, "codegen: the file's parameter cannot be set after create");
+		Assert.stringContains("stateanim file", Std.string(err), "codegen: the rejection names the stateanim's file");
+		inst.setParameter("size", 3);
+		Assert.floatEquals(3, live.getNamedDrawn("byParam").scaleX, 0.001, "codegen: the stateanim's scale follows size");
+		Assert.floatEquals(3, live.getNamedDrawn("placed").scaleX, 0.001, "codegen: the placed programmable's scale follows size");
+	}
+
+	@Test
+	public function testEllipseIsCentredWithTwoRadii():Void {
+		final built = BuilderTestBase.buildFromFile(FIXTURE, "cpEllipse", null, Incremental);
+		final inst:Dynamic = createMp().cpEllipse.create();
+		for (pair in [{backend: "builder", root: built.object}, {backend: "codegen", root: (cast inst : h2d.Object)}]) {
+			final b = pair.root.getBounds(pair.root);
+			Assert.floatEquals(30, b.xMin, 0.5, '${pair.backend}: 20 to the left of its middle at 50');
+			Assert.floatEquals(70, b.xMax, 0.5, '${pair.backend}: and 20 to the right');
+			Assert.floatEquals(40, b.yMin, 0.5, '${pair.backend}: 10 above');
+			Assert.floatEquals(60, b.yMax, 0.5, '${pair.backend}: and 10 below');
+		}
+	}
+
 	// ==================== A chain broken by a @final, a @switch or an apply ====================
 
 	@Test

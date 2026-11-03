@@ -1687,14 +1687,20 @@ that it still has; another block replaces the mix whole.
   bus: music
   track title { file: "music/title.mp3", loop: yes }
   track play  { file: "music/play.mp3" }
+  track twist { file: "music/twist.mp3", loopFrom: 18.04s }   // its repeats skip the intro
 }
 ```
 
 A root node with a `#name`; its tracks are `name.track`. `bus:` is the bus they play on (`music`
-unless given); a track is `file:` and `loop:` (`yes` unless given). One track plays at a time:
+unless given); a track is `file:`, `loop:` (`yes` unless given) and `loopFrom:`. `loopFrom: 18.04s`
+(or `500ms`; a bare number is milliseconds) is where every repeat starts: the first play is the
+whole file, its intro too, and from its end the file plays on, with no gap, from that point, round
+and round (`HeapsBackend` queues the rest of the file, `bh.audio.LoopFromData`, on the play's
+channel, which Heaps joins to it and loops). Only on a track that loops. One track plays at a time:
 `audio.playMusic("music.title")` fades the one playing out and the new one in over
 `Audio.MUSIC_CROSSFADE` (half a second; `playMusic(name, 1.5)` for another), the track already
-playing plays on; `audio.stopMusic(?fade)`; `audio.musicPlaying`, `trackNames()`. A track over five
+playing plays on; `audio.stopMusic(?fade)`; `audio.toggleMusic(name)` plays it or, when it is the
+one heard, stops the music; `audio.isMusicPlaying(?name)`, `audio.musicPlaying`, `trackNames()`. A track over five
 seconds is streamed by Heaps. An MP3 whose first frame is an Info frame with LAME's tag (LAME, FFmpeg
 and the studio write one) is played from its first sample to its last on every target, so a loop
 joins with no gap: in the browser by its decoder, on HashLink by `bh.audio.GaplessMp3Data`.
@@ -1713,6 +1719,12 @@ joins with no gap: in the browser by its decoder, on HashLink by `bh.audio.Gaple
   the screen registered with `addInteractives` (a screen's own, a panel's, a card hand's cards).
   Its hover is silent (an interactive sends `UIEntering`, not `UIHover`). One that should make no
   sound says `sound.click => none` in its metadata.
+- **A jukebox's keys**: `music.click => "music.title"` in a widget's `settings { }` or an
+  interactive's metadata (`interactive(40, 20, "title", music.click => "music.title")`). A click
+  plays that track as `playMusic` does, crossfading from the one playing; a click while that track is
+  heard stops the music. Such a key's click plays no `ui.click`, only a `sound.click` it names itself;
+  the screen still hears the click. A music room, a sound test or a showcase of a music pack is the
+  keys and no code.
 - **A sprite's events** play what its `.anim` file's `sounds { fire: "fx.shot" }` block maps them to,
   as the state machine fires them, through the loader's audio (`docs/anim.md` "sounds").
 - **A sprite's animation holds a sound**: `sounds { hold thrust: "fx.engine" }` in the `.anim` file
@@ -1744,7 +1756,7 @@ Root-level element for procedural terrain. An autotile names a tileset and an in
 
 ```
 #name autotile {
-    format: corner | blob47 | cross | hex64
+    format: corner | blob47 | cross | hex64 | connect16
     tileSize: <int>
     <source>
     [mapping: [...]]
@@ -1761,6 +1773,7 @@ Root-level element for procedural terrain. An autotile names a tileset and an in
 | `blob47` | 47 | One tile per filled cell, chosen from all 8 neighbours (a diagonal only counts when both adjacent sides are present). | Your tileset has the full 47-tile blob layout. With fewer tiles, see [Partial mapping](#partial-mapping-blob47). |
 | `cross` | 13 | One tile per filled cell: 4 edges, center, 4 outer + 4 inner corners (`0=N 1=W 2=C 3=E 4=S`, `5-8` = NW/NE/SW/SE outer, `9-12` = NE/NW/SE/SW inner). | Legacy 13-tile sets. Cannot express isolated cells, 1-wide strips or two missing diagonals (they render as the center tile). |
 | `hex64` | 64 | One tile per filled hex, from its 6 neighbours: bit d set where the neighbour in direction d is terrain, the directions from the top clockwise (pointy `NE 1, E 2, SE 4, SW 8, W 16, NW 32`; flat `N 1, NE 2, SE 4, S 8, SW 16, NW 32`). With `allowPartialMapping: true` an index with no tile takes the mapped one whose sides differ in the fewest places (more of them first), then the full hex (63), then the lone one (0). | A hex terrain on a hex grid (`grid: hex, …` in a tileset). Built alone (`buildAutotile`), it is laid on pointy hexes of its `tileSize`, odd rows pushed. |
+| `connect16` | 16 | One tile per filled cell, a line that joins it to each of its 4 neighbours of the same terrain: index `N 1 + E 2 + S 4 + W 8` (`Autotile.getConnect16Index`). 0 is the lone piece, 1, 2, 4 and 8 the ends (open to that side), 5 and 10 the straights, 3, 6, 12 and 9 the corners, 7, 11, 13 and 14 the junctions, 15 the crossing; a diagonal neighbour is no join. On the isometric grid N, E, S and W are the grid's: the diamond's top-right, bottom-right, bottom-left and top-left edges. No hex form (a hex map with one is an error, `tilemap_grid`). | Roads, rails, rivers, pipes, a wall run: a set of 16 named by the sides each piece joins. As a tileset's terrain (`terrain road { autotile: road }`) a road is painted cell by cell and every piece is picked; `tilemap(fill(…))` alike. Unlike a ground's autotile, which is drawn under the terrains above it too, a line's joins and is drawn on its own terrain's cells alone: a pond declared after the road is no road under the water, and the road does not run into it. |
 
 Edge tiles are named after the side that **borders empty space**: the `N edge` tile is used for a cell with no terrain to its north. Inner corners are named after the missing diagonal.
 
@@ -2764,7 +2777,7 @@ graphics (
 **Elements:**
 * `rect(color, style, width, height)`
 * `circle(color, style, radius)`
-* `ellipse(color, style, width, height)`
+* `ellipse(color, style, rx, ry)`: centred on its position, as `circle` is, `rx` and `ry` its two radii (the example's is 160×80)
 * `arc(color, style, radius, startAngle, arcAngle)`
 * `line(color, lineWidth, x1, y1, x2, y2)`
 * `roundrect(color, style, width, height, radius)`

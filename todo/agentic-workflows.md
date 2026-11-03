@@ -107,8 +107,8 @@ These are cheap and each one silently breaks an agent workflow.
   - `event <name> trigger` appears in `AnimParser.hx:162` (the LSP hover text), `CLAUDE.md:101`,
     `anim-reference.md:152` and `anim.md:30/309/554`. `trigger` isn't a keyword, and the bare-event
     branch (AnimParser.hx:1602-1604) leaves it as an unexpected token.
-  - Per-animation `center:` is documented (anim-reference.md:107/121, anim.md:115/261), but
-    `parseAnimation` rejects it.
+  - ~~Per-animation `center:` is documented (anim-reference.md:107/121, anim.md:115/261), but
+    `parseAnimation` rejects it.~~ (**DONE 2026-11-03**: it parses and is used.)
   - `CLAUDE.md:25/158` claims `.anim` hot reload, which doesn't exist (hot-reload.md:465).
   - "Per-frame filters accumulate" (anim-reference.md:240) is wrong: `SetFilter` replaces
     (AnimationSM.hx:262-279).
