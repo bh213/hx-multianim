@@ -91,6 +91,14 @@ class UIComponentTest extends BuilderTestBase {
 		}
 	";
 
+	// Button design with an extra style parameter, for setStyleParameter tests.
+	static final STYLED_BUTTON_MANIM = "
+		#button programmable(buttonText:string=Click, status:[normal,hover,pressed]=normal, disabled:bool=false, accent:[gold,silver]=gold) {
+			@(accent=>gold) bitmap(generated(color(100, 30, #AA8800))): 0, 0
+			@(accent=>silver) bitmap(generated(color(100, 30, #888899))): 0, 0
+		}
+	";
+
 	static final CHECKBOX_MANIM = "
 		#checkbox programmable(status:[normal,hover,pressed]=normal, disabled:bool=false, checked:bool=false) {
 			bitmap(generated(color(20, 20, #666666))): 0, 0
@@ -100,6 +108,14 @@ class UIComponentTest extends BuilderTestBase {
 	static final PROGRESSBAR_MANIM = "
 		#progressBar programmable(value:uint=0) {
 			bitmap(generated(color(200, 20, #333333))): 0, 0
+		}
+	";
+
+	static final SLIDER_MANIM = "
+		#slider programmable(status:[normal,hover,pressed]=normal, size:uint=200, value:0..100=0, disabled:bool=false) {
+			bitmap(generated(color($size, 10, #444444))): 0, 0
+			#start point: 0, 5
+			#end point: $size, 5
 		}
 	";
 
@@ -124,6 +140,32 @@ class UIComponentTest extends BuilderTestBase {
 
 		Assert.isTrue(mock.hasEvent(UIClick));
 		Assert.equals(1, mock.eventCount());
+	}
+
+	@Test
+	public function testAButtonClicksOnlyForALeftPressAndReleaseOnIt():Void {
+		final builder = BuilderTestBase.builderFromSource(BUTTON_MANIM);
+		final button = UIStandardMultiAnimButton.create(builder, "button", "Test");
+		final mock = new MockControllable();
+
+		// pressed elsewhere, dragged over it and let go there
+		button.onEvent(UITestHarness.createEventWrapper(OnRelease(0), mock));
+		Assert.isFalse(mock.hasEvent(UIClick), "a release with no press on the button is no click");
+		// the right button
+		button.onEvent(UITestHarness.createEventWrapper(OnPush(1), mock));
+		button.onEvent(UITestHarness.createEventWrapper(OnRelease(1), mock));
+		Assert.isFalse(mock.hasEvent(UIClick), "a right click is no click");
+		UITestHarness.simulateClick(button, mock);
+		Assert.isTrue(mock.hasEvent(UIClick), "a left press and release is");
+
+		// a checkbox and a tab button act on the left button only
+		final checkbox = UIStandardMultiCheckbox.create(BuilderTestBase.builderFromSource(CHECKBOX_MANIM), "checkbox", false);
+		checkbox.onEvent(UITestHarness.createEventWrapper(OnPush(1), mock));
+		Assert.isFalse(checkbox.selected, "a right push does not toggle a checkbox");
+		final tabs = createTabs();
+		final tabMock = new MockControllable();
+		getTabButton(tabs.tabs, 1).onEvent(UITestHarness.createEventWrapper(OnPush(1), tabMock));
+		Assert.equals(0, tabs.tabs.getSelectedIndex(), "a right push does not select a tab");
 	}
 
 	@Test
@@ -191,6 +233,57 @@ class UIComponentTest extends BuilderTestBase {
 
 		button.setText("Updated");
 		Assert.equals("Updated", getStringParam(result, "buttonText"));
+	}
+
+	@Test
+	public function testButtonSetStyleParameterAppliesDeclaredParam():Void {
+		var builder = BuilderTestBase.builderFromSource(STYLED_BUTTON_MANIM);
+		var button = UIStandardMultiAnimButton.create(builder, "button", "Test");
+
+		@:privateAccess var result = button.result;
+		Assert.equals("gold", getStringParam(result, "accent"));
+
+		Assert.isTrue(button.setStyleParameter("accent", "silver"));
+		Assert.equals("silver", getStringParam(result, "accent"));
+	}
+
+	@Test
+	public function testButtonSetStyleParameterUnknownReturnsFalse():Void {
+		var builder = BuilderTestBase.builderFromSource(STYLED_BUTTON_MANIM);
+		var button = UIStandardMultiAnimButton.create(builder, "button", "Test");
+
+		// Undeclared parameter: no-op signalled via return value — never throws,
+		// so callers can probe any button design safely.
+		Assert.isFalse(button.setStyleParameter("noSuchParam", 42));
+		@:privateAccess var result = button.result;
+		Assert.equals("gold", getStringParam(result, "accent"));
+	}
+
+	@Test
+	public function testButtonSetStyleParameterRejectsWidgetManagedParams():Void {
+		var builder = BuilderTestBase.builderFromSource(STYLED_BUTTON_MANIM);
+		var button = UIStandardMultiAnimButton.create(builder, "button", "Original");
+
+		// status/buttonText/disabled are owned by the widget — writing them via
+		// setStyleParameter would desync getText(), the hover state machine, and
+		// event gating. Each must throw and leave widget state untouched.
+		for (managed in ["status", "buttonText", "disabled"]) {
+			var threw = false;
+			try {
+				button.setStyleParameter(managed, "whatever");
+			} catch (e:bh.multianim.BuilderError) {
+				threw = true;
+				Assert.equals("widget_managed_param", e.code);
+				Assert.isTrue(Std.string(e).indexOf(managed) >= 0, 'Expected error to name "$managed", got: $e');
+			}
+			Assert.isTrue(threw, 'setStyleParameter("$managed") must throw');
+		}
+
+		Assert.equals("Original", button.getText());
+		Assert.isFalse(button.disabled);
+		@:privateAccess var result = button.result;
+		Assert.equals("normal", getStatusParam(result));
+		Assert.equals("Original", getStringParam(result, "buttonText"));
 	}
 
 	// ============== Checkbox Tests ==============
@@ -384,8 +477,8 @@ class UIComponentTest extends BuilderTestBase {
 
 	@Test
 	public function testSliderCreation():Void {
-		var builder = BuilderTestBase.builderFromSource(BUTTON_MANIM);
-		var slider = UIStandardMultiAnimSlider.create(builder, "button", 200, 50.0);
+		var builder = BuilderTestBase.builderFromSource(SLIDER_MANIM);
+		var slider = UIStandardMultiAnimSlider.create(builder, "slider", 200, 50.0);
 		Assert.notNull(slider);
 		Assert.notNull(slider.getObject());
 		Assert.isFalse(slider.disabled);
@@ -394,8 +487,8 @@ class UIComponentTest extends BuilderTestBase {
 
 	@Test
 	public function testSliderFloatValueRoundTrip():Void {
-		var builder = BuilderTestBase.builderFromSource(BUTTON_MANIM);
-		var slider = UIStandardMultiAnimSlider.create(builder, "button", 200, 0.0);
+		var builder = BuilderTestBase.builderFromSource(SLIDER_MANIM);
+		var slider = UIStandardMultiAnimSlider.create(builder, "slider", 200, 0.0);
 
 		slider.setFloatValue(42.5);
 		Assert.isTrue(slider.getFloatValue() == 42.5);
@@ -409,8 +502,8 @@ class UIComponentTest extends BuilderTestBase {
 
 	@Test
 	public function testSliderIntValueRoundTrip():Void {
-		var builder = BuilderTestBase.builderFromSource(BUTTON_MANIM);
-		var slider = UIStandardMultiAnimSlider.create(builder, "button", 200, 0.0);
+		var builder = BuilderTestBase.builderFromSource(SLIDER_MANIM);
+		var slider = UIStandardMultiAnimSlider.create(builder, "slider", 200, 0.0);
 
 		slider.setIntValue(75);
 		Assert.equals(75, slider.getIntValue());
@@ -421,8 +514,8 @@ class UIComponentTest extends BuilderTestBase {
 
 	@Test
 	public function testSliderClampToRange():Void {
-		var builder = BuilderTestBase.builderFromSource(BUTTON_MANIM);
-		var slider = UIStandardMultiAnimSlider.create(builder, "button", 200, 0.0);
+		var builder = BuilderTestBase.builderFromSource(SLIDER_MANIM);
+		var slider = UIStandardMultiAnimSlider.create(builder, "slider", 200, 0.0);
 
 		slider.setFloatValue(150.0);
 		Assert.isTrue(slider.getFloatValue() == 100.0);
@@ -433,8 +526,8 @@ class UIComponentTest extends BuilderTestBase {
 
 	@Test
 	public function testSliderStepSnapping():Void {
-		var builder = BuilderTestBase.builderFromSource(BUTTON_MANIM);
-		var slider = UIStandardMultiAnimSlider.create(builder, "button", 200, 0.0);
+		var builder = BuilderTestBase.builderFromSource(SLIDER_MANIM);
+		var slider = UIStandardMultiAnimSlider.create(builder, "slider", 200, 0.0);
 		slider.step = 10;
 
 		slider.setFloatValue(23.0);
@@ -446,8 +539,8 @@ class UIComponentTest extends BuilderTestBase {
 
 	@Test
 	public function testSliderContinuousNoSnap():Void {
-		var builder = BuilderTestBase.builderFromSource(BUTTON_MANIM);
-		var slider = UIStandardMultiAnimSlider.create(builder, "button", 200, 0.0);
+		var builder = BuilderTestBase.builderFromSource(SLIDER_MANIM);
+		var slider = UIStandardMultiAnimSlider.create(builder, "slider", 200, 0.0);
 		slider.step = 0;
 
 		slider.setFloatValue(23.7);
@@ -456,8 +549,8 @@ class UIComponentTest extends BuilderTestBase {
 
 	@Test
 	public function testSliderMinEqualsMax():Void {
-		var builder = BuilderTestBase.builderFromSource(BUTTON_MANIM);
-		var slider = UIStandardMultiAnimSlider.create(builder, "button", 200, 50.0);
+		var builder = BuilderTestBase.builderFromSource(SLIDER_MANIM);
+		var slider = UIStandardMultiAnimSlider.create(builder, "slider", 200, 50.0);
 		slider.min = 50;
 		slider.max = 50;
 
@@ -473,8 +566,8 @@ class UIComponentTest extends BuilderTestBase {
 
 	@Test
 	public function testSliderCustomRange():Void {
-		var builder = BuilderTestBase.builderFromSource(BUTTON_MANIM);
-		var slider = UIStandardMultiAnimSlider.create(builder, "button", 200, 10.0);
+		var builder = BuilderTestBase.builderFromSource(SLIDER_MANIM);
+		var slider = UIStandardMultiAnimSlider.create(builder, "slider", 200, 10.0);
 		slider.min = 10;
 		slider.max = 50;
 
@@ -490,8 +583,8 @@ class UIComponentTest extends BuilderTestBase {
 
 	@Test
 	public function testSliderDisabledRedraw():Void {
-		var builder = BuilderTestBase.builderFromSource(BUTTON_MANIM);
-		var slider = UIStandardMultiAnimSlider.create(builder, "button", 200, 50.0);
+		var builder = BuilderTestBase.builderFromSource(SLIDER_MANIM);
+		var slider = UIStandardMultiAnimSlider.create(builder, "slider", 200, 50.0);
 
 		Assert.isTrue(slider.requestRedraw);
 
@@ -502,8 +595,8 @@ class UIComponentTest extends BuilderTestBase {
 
 	@Test
 	public function testSliderSetValueRedraw():Void {
-		var builder = BuilderTestBase.builderFromSource(BUTTON_MANIM);
-		var slider = UIStandardMultiAnimSlider.create(builder, "button", 200, 50.0);
+		var builder = BuilderTestBase.builderFromSource(SLIDER_MANIM);
+		var slider = UIStandardMultiAnimSlider.create(builder, "slider", 200, 50.0);
 
 		slider.setFloatValue(75.0);
 		Assert.isTrue(slider.requestRedraw);
@@ -511,8 +604,8 @@ class UIComponentTest extends BuilderTestBase {
 
 	@Test
 	public function testSliderDisabledBlocksEvents():Void {
-		var builder = BuilderTestBase.builderFromSource(BUTTON_MANIM);
-		var slider = UIStandardMultiAnimSlider.create(builder, "button", 200, 50.0);
+		var builder = BuilderTestBase.builderFromSource(SLIDER_MANIM);
+		var slider = UIStandardMultiAnimSlider.create(builder, "slider", 200, 50.0);
 		slider.disabled = true;
 		var mock = new MockControllable();
 
@@ -522,8 +615,8 @@ class UIComponentTest extends BuilderTestBase {
 
 	@Test
 	public function testSliderUsesScratchPointForGlobalToLocal():Void {
-		var builder = BuilderTestBase.builderFromSource(BUTTON_MANIM);
-		var slider = UIStandardMultiAnimSlider.create(builder, "button", 200, 50.0);
+		var builder = BuilderTestBase.builderFromSource(SLIDER_MANIM);
+		var slider = UIStandardMultiAnimSlider.create(builder, "slider", 200, 50.0);
 
 		// The slider must keep a single scratch Point and reuse it inside
 		// calculatePos(). Per-event Point.clone() generated GC pressure during
@@ -532,6 +625,112 @@ class UIComponentTest extends BuilderTestBase {
 		// no scratch field; the assertion fails (null) before fix, passes after.
 		var scratch:Dynamic = Reflect.field(slider, "tmpPoint");
 		Assert.notNull(scratch);
+	}
+
+	// ============== A widget's parts are checked when it is made ==============
+
+	function listFrom(source:String, ?items:Array<UIElementListItem>):UIMultiAnimScrollableList {
+		ensureTestFont();
+		final builder = BuilderTestBase.builderFromSource(source);
+		return UIMultiAnimScrollableList.createWithSingleBuilder(builder, "list-panel", "list-item", "scrollbar", "scrollbar", 120, 200,
+			items ?? createScrollableListItems(), 0, 0);
+	}
+
+	@Test
+	public function testAListPanelWithoutAMaskPlaceholderFailsWhenMade():Void {
+		final source = StringTools.replace(SCROLLABLE_LIST_MANIM,
+			"placeholder(generated(color($width, $height, #000000)), builderParameter(\"mask\")): 0, 0", "");
+		Assert.raises(() -> listFrom(source), null, "a panel that never places the list's mask shows no items");
+	}
+
+	@Test
+	public function testAListPanelWithoutItsScrollbarPointFailsWhenMade():Void {
+		// five items fit the panel: no scrollbar is shown yet, a later setItems would need it
+		final source = StringTools.replace(SCROLLABLE_LIST_MANIM, "#scrollbar point: $width - 10, 0", "");
+		Assert.raises(() -> listFrom(source), null, "the panel has no #scrollbar point");
+	}
+
+	@Test
+	public function testADropdownWithoutSelectedNameFailsWhenMade():Void {
+		ensureTestFont();
+		final source = StringTools.replace(DROPDOWN_MANIM,
+			"#selectedName(updatable) text($font, callback(\"selectedName\"), $fontColor): 2, 4", "");
+		final builder = BuilderTestBase.builderFromSource(source);
+		Assert.raises(() -> UIStandardMultiAnimDropdown.createWithSingleBuilder(builder, createDropdownItems(), 0, "dropdown", "list-panel",
+			"list-item", "scrollbar", "scrollbar", 120, 200), null, "the dropdown has no #selectedName");
+	}
+
+	@Test
+	public function testASliderWithoutStartAndEndFailsWhenMade():Void {
+		final source = StringTools.replace(StringTools.replace(SLIDER_MANIM, "#start point: 0, 5", ""), "#end point: $size, 5", "");
+		final builder = BuilderTestBase.builderFromSource(source);
+		Assert.raises(() -> UIStandardMultiAnimSlider.create(builder, "slider", 200, 0.0), null, "a slider with no #start/#end cannot be dragged");
+	}
+
+	@Test
+	public function testASliderIsBuiltWhenMade():Void {
+		final builder = BuilderTestBase.builderFromSource(SLIDER_MANIM);
+		Assert.raises(() -> UIStandardMultiAnimSlider.create(builder, "slider", 200, 0.0, ["bogus" => 1]), null,
+			"an argument the design has not fails when the slider is made, not at its first update");
+		final slider = UIStandardMultiAnimSlider.create(builder, "slider", 200, 500.0);
+		Assert.notNull(@:privateAccess slider.currentResult, "built at once; a value past the default range is drawn at its end");
+	}
+
+	@Test
+	public function testAProgressBarIsBuiltWhenMade():Void {
+		final builder = BuilderTestBase.builderFromSource(PROGRESSBAR_MANIM);
+		final bar = UIMultiAnimProgressBar.create(builder, "progressBar", 40);
+		Assert.notNull(bar.getResult(), "built when made");
+		Assert.raises(() -> UIMultiAnimProgressBar.create(builder, "progressBar", 0, ["bogus" => 1]), null,
+			"an argument the design has not fails when the bar is made");
+	}
+
+	@Test
+	public function testAListItemsTileMustBeDeclared():Void {
+		final source = StringTools.replace(SCROLLABLE_LIST_MANIM, ", tile:tile", "");
+		Assert.raises(() -> listFrom(source, [{name: "Sword", tileRef: TRGeneratedRect(4, 4)}]), null,
+			"an item with a tile, a design with no tile parameter: refused, not dropped");
+	}
+
+	@Test
+	public function testAListItemsInteractivesMustHaveTheItemsIndexAsId():Void {
+		final source = StringTools.replace(SCROLLABLE_LIST_MANIM, "interactive($itemWidth, 20, $index);",
+			"interactive($itemWidth, 20, $index);\n\t\t\tinteractive(10, 10, \"del\"): 100, 0");
+		Assert.raises(() -> listFrom(source), null, "an interactive whose id is not the item's index fails when the items are built");
+	}
+
+	@Test
+	public function testAListItemsInteractiveIdIsTheIndexExactly():Void {
+		final source = StringTools.replace(SCROLLABLE_LIST_MANIM, "interactive($itemWidth, 20, $index);",
+			"interactive($itemWidth, 20, '${index}abc');");
+		Assert.raises(() -> listFrom(source), null, "an id that starts with the index is not the index");
+	}
+
+	@Test
+	public function testAddSliderReadsInitialValue():Void {
+		final screen = new UITestScreen();
+		final builder = BuilderTestBase.builderFromSource(SLIDER_MANIM);
+		final settings:Map<String, SettingValue> = ["initialValue" => RSVFloat(30), "min" => RSVFloat(10), "max" => RSVFloat(50)];
+		final slider = try @:privateAccess screen.addSlider(builder, settings, 0) catch (e:Dynamic) {
+			Assert.fail('initialValue went to the design: $e');
+			return;
+		}
+		Assert.isTrue(slider.getFloatValue() == 30, "the setting is the slider's value, in its own range");
+	}
+
+	@Test
+	public function testASlidersValueIsInTheRangeSetAfterIt():Void {
+		final builder = BuilderTestBase.builderFromSource(SLIDER_MANIM);
+		final made = UIStandardMultiAnimSlider.create(builder, "slider", 200, 50.0);
+		made.min = 0;
+		made.max = 20;
+		Assert.equals(20.0, made.getFloatValue(), "a value past the range set after it reads as the end it is past");
+		Assert.equals(20, made.getIntValue());
+
+		final screen = new UITestScreen();
+		final settings:Map<String, SettingValue> = ["min" => RSVFloat(10), "max" => RSVFloat(50)];
+		final added = @:privateAccess screen.addSlider(builder, settings, 80);
+		Assert.equals(50.0, added.getFloatValue(), "addSlider's initialValue argument, in the range of its settings");
 	}
 
 	// ============== Interactive Wrapper Tests ==============
@@ -881,6 +1080,35 @@ class UIComponentTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testTextInputTellsItsScreenBeforeTheMouseEverTouchesIt():Void {
+		ensureTestFont();
+		final builder = BuilderTestBase.builderFromSource(TEXTINPUT_MANIM);
+		final input = UIMultiAnimTextInput.create(builder, "textInput", {font: "testfont"});
+		final screen = new UITestScreen();
+		screen.testAddElement(input);
+		// Focused by Tab and typed into: no mouse event has reached the input
+		input.setText("hi");
+		@:privateAccess input.textInput.onChange();
+		Assert.isTrue(screen.hasEvent(UITextChange("hi")), "the change reaches the screen with no mouse event first");
+	}
+
+	@Test
+	public function testTextInputTakesFocusOnTheUpdateAfterAPush():Void {
+		ensureTestFont();
+		final builder = BuilderTestBase.builderFromSource(TEXTINPUT_MANIM);
+		final input = UIMultiAnimTextInput.create(builder, "textInput", {font: "testfont"});
+		final stage = bh.test.VisualTestBase.appInstance.s2d;
+		stage.addChild(input.getObject());
+		final mock = new MockControllable();
+		input.onEvent(UITestHarness.createEventWrapper(OnPush(0), mock, new h2d.col.Point(5, 5)));
+		Assert.isFalse(input.hasFocus(), "not from the push itself: Heaps' own events for that push would blur it again");
+		input.update(0);
+		Assert.isTrue(input.hasFocus(), "focused by the update after the push");
+		input.blur();
+		input.getObject().remove();
+	}
+
+	@Test
 	public function testTextInputDisabledState():Void {
 		ensureTestFont();
 		var builder = BuilderTestBase.builderFromSource(TEXTINPUT_MANIM);
@@ -1194,6 +1422,37 @@ class UIComponentTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testADropdownChoiceIsOneChangeFromTheDropdown():Void {
+		final dropdown = createDropdown();
+		dropdown.autoOpen = false;
+		final mock = new MockControllable();
+		UITestHarness.simulateClick(dropdown, mock, new h2d.col.Point(60, -100));
+		mock.clearEvents();
+		final list:UIMultiAnimScrollableList = @:privateAccess dropdown.panel;
+		final itemBounds = @:privateAccess list.interactives[2].getBounds();
+		UITestHarness.simulateClick(dropdown, mock, new h2d.col.Point(itemBounds.getCenter().x, itemBounds.getCenter().y));
+		Assert.equals(2, dropdown.getSelectedIndex(), "precondition: the third item was chosen");
+		final changes = [for (e in mock.recordedEvents) if (e.event.match(UIChangeItem(_, _))) e];
+		Assert.equals(1, changes.length, "one choice is one UIChangeItem, not one from the dropdown and one from its list");
+		if (changes.length > 0)
+			Assert.equals((dropdown : UIElement), changes[0].source, "said by the dropdown");
+	}
+
+	@Test
+	public function testDisablingAnOpenDropdownClosesItsPanel():Void {
+		final dropdown = createDropdown();
+		dropdown.autoOpen = false;
+		final mock = new MockControllable();
+		final panelObj = getDropdownPanelObject(dropdown);
+		UITestHarness.simulateClick(dropdown, mock, new h2d.col.Point(60, -100));
+		Assert.isTrue(panelObj.visible, "precondition: open");
+		dropdown.disabled = true;
+		dropdown.update(2.0);
+		Assert.isFalse(panelObj.visible, "a disabled dropdown's panel closes: it could never be closed by the player");
+		Assert.equals(bh.ui.UIElement.UIEventPriority.Content, dropdown.eventPriority, "and no longer takes the clicks over it");
+	}
+
+	@Test
 	public function testDropdownSetSelectedIndexOutOfBounds():Void {
 		var dropdown = createDropdown();
 
@@ -1359,6 +1618,70 @@ class UIComponentTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testSetItemsWithTheListsOwnArrayKeepsTheItems():Void {
+		final list = createScrollableList();
+		list.setItems(list.items, 0);
+		Assert.equals(5, list.items.length, "setItems(list.items) keeps them");
+		final mine = createScrollableListItems();
+		final shared = createScrollableList(mine);
+		mine.push({name: "Item 6"});
+		shared.setItems(mine, 0);
+		Assert.equals(6, shared.items.length, "the caller's array, grown and given again, is the list");
+	}
+
+	@Test
+	public function testAListKeepsItsOwnCopyOfItsItems():Void {
+		final mine = createScrollableListItems();
+		final list = createScrollableList(mine);
+		list.setItems([{name: "Only"}], 0);
+		Assert.equals(5, mine.length, "the array the list was made with is the caller's, left as it was");
+		mine.push({name: "Item 6"});
+		Assert.equals(1, list.items.length, "and what the caller does to it later is not the list's");
+		// A dropdown reads its list's items: replacing them there changes what it shows
+		final given = createDropdownItems();
+		final dropdown = createDropdown(given);
+		@:privateAccess dropdown.panel.setItems([{name: "A"}, {name: "B"}], 0);
+		Assert.equals(5, given.length, "the dropdown's caller keeps its array");
+		Assert.equals(2, dropdown.items.length, "the dropdown follows its list");
+		Assert.equals("B", dropdown.items[1].name);
+	}
+
+	@Test
+	public function testItemsScrolledOutOfTheListsViewCannotBeChosen():Void {
+		final list = createScrollableList(createManyScrollableListItems(30), 5);
+		@:privateAccess list.mask.scrollY = 60;
+		final mock = new MockControllable();
+		// Item 1 lies at -40..-20 now: above the list's view, under its header
+		final above = new h2d.col.Point(50, -30);
+		list.onEvent(UITestHarness.createEventWrapper(OnMouseMove, mock, above));
+		Assert.equals(-1, list.currentHoverIndex, "an item out of view is not hovered");
+		UITestHarness.simulateClick(list, mock, above);
+		Assert.equals(5, list.currentItemIndex, "nor chosen");
+	}
+
+	@Test
+	public function testARadioGroupSaysOneChangeForAClick():Void {
+		final builder = BuilderTestBase.builderFromSource("
+			#radioGroup programmable(count:uint=2) {
+				repeatable($i, step($count, dy: 20)) {
+					placeholder(generated(color(10, 10, #ffffff)), callback(\"checkbox\", $i)): 0, 0
+				}
+			}
+			#radio programmable(status:[normal,hover,pressed,disabled]=normal, disabled:bool=false, checked:bool=false) {
+				bitmap(generated(color(10, 10, #ffffff))): 0, 0
+			}
+		");
+		final items:Array<UIElementListItem> = [{name: "a"}, {name: "b"}];
+		final group = bh.ui.UIMultiAnimRadioButtons.create(builder, "radioGroup", "radio", items, 0);
+		final mock = new MockControllable();
+		final second:bh.ui.UIElement.StandardUIElementEvents = cast group.getSubElements(SETReceiveEvents)[1];
+		UITestHarness.simulateClick(second, mock);
+		Assert.equals(1, group.getSelectedIndex(), "precondition: the second chosen");
+		Assert.isTrue(mock.hasEvent(UIChangeItem(1, items)), "the group says its change");
+		Assert.isFalse(mock.hasEvent(UIToggle(true)), "its button does not say a toggle of its own beside it");
+	}
+
+	@Test
 	public function testScrollableListCreation():Void {
 		var list = createScrollableList();
 		Assert.notNull(list);
@@ -1515,6 +1838,31 @@ class UIComponentTest extends BuilderTestBase {
 			}
 		}
 		Assert.isTrue(hasClickItem);
+	}
+
+	@Test
+	public function testScrollableListEmptySpacePressDoesNotArmDoubleClick():Void {
+		var list = createScrollableList();
+		var mock = new MockControllable();
+		function doubleClickCount():Int {
+			var count = 0;
+			for (e in mock.recordedEvents)
+				switch e.event {
+					case UIDoubleClickItem(_, _): count++;
+					default:
+				}
+			return count;
+		}
+
+		// Press on the empty tail below the last item (5 items x 20px, panel 200px) ...
+		UITestHarness.simulateClick(list, mock, new h2d.col.Point(60, 150));
+		// ... then on item 0 within the double-click window: one press on item 0 is not a double-click.
+		UITestHarness.simulateClick(list, mock, new h2d.col.Point(60, 5));
+		Assert.equals(0, doubleClickCount(), "a press on empty space followed by a press on item 0 must not double-click item 0");
+
+		// Control: a second press on item 0 is a double-click.
+		UITestHarness.simulateClick(list, mock, new h2d.col.Point(60, 5));
+		Assert.equals(1, doubleClickCount(), "two presses on item 0 double-click it");
 	}
 
 	@Test

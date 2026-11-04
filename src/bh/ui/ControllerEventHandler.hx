@@ -16,6 +16,11 @@ class ControllerEventHandler {
 		window.addEventTarget(handleEvents);
 	}
 
+	/** Stops hearing the window's input (the window matches the method by `Reflect.compareMethods`). */
+	public function dispose():Void {
+		window.removeEventTarget(handleEvents);
+	}
+
 	inline function getControllers():Array<UIController> {
 		return Lambda.map(screenManager.activeScreenControllers, x -> x.getController());
 	}

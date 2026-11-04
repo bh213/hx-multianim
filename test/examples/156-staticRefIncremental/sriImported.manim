@@ -1,0 +1,21 @@
+version: 1.0
+
+// Imported by staticRefIncremental.manim as "ext": the target of a staticRef(external(ext), ...)
+// that is built again when the importing programmable's parameter changes.
+
+#sriExtLeaf programmable(w:uint=11) {
+  bitmap(generated(color($w, 3, #ffaa00))): 0, 0
+}
+
+// Named as the importing file's wrapper that places it (sriSameName there): two programmables in
+// two files, not one programmable placing itself.
+#sriSameName programmable(w:uint=6) {
+  bitmap(generated(color($w, 5, #00aaff))): 0, 0
+}
+
+// A string and an enum parameter given by the importer: an argument is read as the type of this
+// file's parameter it is given to, in both backends (StaticRefIncrementalTest)
+#sriExtLabel programmable(label:string="", tone:[dim, bright]=dim) {
+  text(dd, $label, #ffffff): 0, 0
+  @(tone=>bright) bitmap(generated(color(6, 6, #ffffff))): 0, 10
+}

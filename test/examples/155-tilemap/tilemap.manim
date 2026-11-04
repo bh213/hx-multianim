@@ -1,0 +1,127 @@
+version: 1.0
+
+// A tile map drawn from a tileset: grass variants, dirt (a corner autotile) and water (two demo
+// autotiles, an animated terrain, slow enough to hold still for the screenshots), a plateau one
+// level up with its edge and its side two cells tall, stairs on the side, a layer of cells, a
+// shadow, decor sorted with the actors, metadata, and marks. Placed with tilemap(meadow).
+// Tiles: Minifantasy - Forgotten Plains by Krishna Palacio (free tiles).
+
+#fp atlas2("Tileset/Minifantasy_ForgottenPlainsTiles.png") {
+    grass: 32, 24, 8, 8, index: 0
+    grass: 32, 40, 8, 8, index: 1
+    grass: 32, 48, 8, 8, index: 2
+    grass: 32, 32, 8, 8, index: 3
+    flower: 16, 8, 8, 8
+    face: 296, 112, 8, 8, index: 0
+    face: 296, 120, 8, 8, index: 1
+    stairs: 88, 160, 8, 8
+}
+
+#fpShadows atlas2("Tileset/Minifantasy_ForgottenPlainsTilesShadows.png") {
+    shade: 216, 144, 8, 8
+}
+
+#dirtCorner autotile {
+    format: corner
+    tileSize: 8
+    file: "Tileset/Minifantasy_ForgottenPlainsTiles.png"
+    region: [56, 24, 24, 40]
+    mapping: [1:8, 2:6, 3:7, 4:2, 5:5, 6:11, 7:13, 8:0, 9:14, 10:3, 11:12, 12:1, 13:10, 14:9, 15:4]
+}
+
+#water autotile { format: corner tileSize: 8 demo: #2A4A9A, #4A78D0 }
+#waterB autotile { format: corner tileSize: 8 demo: #2A4A9A, #5A88E0 }
+// where water meets grass only: a sandy shore in place of water's own edge
+#shore autotile { format: corner tileSize: 8 demo: #D8C47A, #4A78D0 }
+#shoreB autotile { format: corner tileSize: 8 demo: #D8C47A, #5A88E0 }
+#rim autotile { format: corner tileSize: 8 demo: #3A2A1A, #00000000 }
+
+#plains tileset {
+    tileSize: 8
+    atlas: "fp"
+    edge: rim
+    terrain grass { cells: "grass" }
+    terrain dirt { autotile: dirtCorner }
+    terrain water { autotile: water, waterB duration: 100000 metadata { swim:bool => true } }
+    transition grass, water { autotile: shore, shoreB }
+    rise 1 { side: "face" span: 2 metadata { wall:bool => true } }
+    cell stairs { metadata { wall:bool => false, climb:bool => true } }
+}
+
+#meadow tilemap {
+    tileset: plains
+    size: 20, 12
+    legend { ".": grass, "d": dirt, "~": water }
+    terrain: [
+        "....................",
+        "..dddd..............",
+        "..dddd.......~~~~...",
+        "..dddd.......~~~~...",
+        ".............~~~~...",
+        "....................",
+        "....................",
+        "....................",
+        "....................",
+        "....................",
+        "....................",
+        "....................",
+    ]
+    levels: [
+        "00000000000000000000",
+        "00000000000000000000",
+        "00000000000000000000",
+        "00000000000000000000",
+        "00000000000000000000",
+        "00000011111100000000",
+        "00000011111100000000",
+        "00000011111100000000",
+        "00000000000000000000",
+        "00000000000000000000",
+        "00000000000000000000",
+        "00000000000000000000",
+    ]
+    layer deco {
+        legend { "f": flower, "s": stairs }
+        rows: [
+            "                    ",
+            "                    ",
+            "                    ",
+            "                    ",
+            "                    ",
+            "                    ",
+            "                    ",
+            "                    ",
+            "        s           ",
+            "   f            f   ",
+            "                    ",
+            "                    ",
+        ]
+    }
+    layer shadows {
+        sheet: "fpShadows"
+        draw: top
+        legend { "x": shade }
+        rows: [
+            "                    ",
+            "                    ",
+            "                    ",
+            "                    ",
+            "                    ",
+            "                    ",
+            "                    ",
+            "                    ",
+            "                    ",
+            "                    ",
+            "     x              ",
+            "                    ",
+        ]
+    }
+    decor {
+        bitmap(generated(color(4, 8, #CC3333))): 40, 80
+    }
+    marks { spawn: 1, 1  exit: 16, 9, 3, 2 }
+}
+
+#tilemapDemo programmable() {
+    tilemap(meadow): 8, 8
+}

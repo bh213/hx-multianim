@@ -506,6 +506,30 @@ class RichTextTest extends BuilderTestBase {
 		Assert.equals(origFont, t.font, "font must remain the original when fonts array is empty");
 	}
 
+	// ==================== autoFit on incremental updates ====================
+
+	@Test
+	public function testAutoFitGrowsBackOnIncrementalUpdate():Void {
+		// Regression: an incremental text update re-ran autoFit from the font the last fit
+		// had left on the text, so once a long value pushed it down to a fallback font a
+		// short value could never bring the primary font back.
+		var builder = BuilderTestBase.builderFromSource("
+			#test programmable(label=\"Hi\") {
+				text(m6x11, $label, #FFFFFF, left, 60, lineBreak: false, autoFit: width [m3x6]): 0, 0
+			}
+		");
+		var result = builder.buildWithParameters("test", ["label" => "Hi"], null, null, true);
+		var t = BuilderTestBase.findTextChild(result.object);
+		Assert.notNull(t);
+		var primary = t.font;
+
+		result.setParameter("label", "A VERY LONG NAME INDEED");
+		Assert.notEquals(primary, t.font, "a value too wide for the primary font falls back");
+
+		result.setParameter("label", "Hi");
+		Assert.equals(primary, t.font, "a short value gets the primary font back");
+	}
+
 	// ==================== Hyperlink callback error gating ====================
 
 	@Test

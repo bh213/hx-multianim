@@ -81,3 +81,11 @@ paths {
 #newPathCommands programmable() {
   text(m3x6, "New Path Commands", white, left): 10, 5
 }
+
+// Its path ends in `close`, which codegen cannot bake: getPath_triangle() falls back to the
+// builder, and this createAnimatedPath_triangleAnim() builds on that fallback (AnimatedPathBuilderTest).
+#triangleAnim animatedPath {
+  path: triangle
+  type: time
+  duration: 1.0
+}

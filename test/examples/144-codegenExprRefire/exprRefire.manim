@@ -1,0 +1,21 @@
+version: 1.0
+
+// Text A's content comes from a callback (with a $idx-dependent index);
+// bitmap B's y depends on $y. Changing $y must re-fire only B's expression
+// update — the codegen's monolithic _updateExpressions() re-runs A's callback
+// too.
+// (The callback lives in a STRING context on purpose: a literal default in a
+// numeric coordinate context is a separate codegen compile-error bug, pinned
+// by the isolated compile checks in test/examples/152-codegenCompileErrors.)
+#exprRefire programmable(idx:int=0, y:int=0) {
+  text(dd, callback("label", $idx), white, left, 200): 0, 0
+  bitmap(generated(color(4, 4, #FF0000))): 0, $y
+}
+
+// A callback whose result lands in an integer coordinate context: a CBRFloat
+// result must be rejected (builder parity), not silently replaced by the
+// default. The default is a $ref (not a literal) so the codegen takes the
+// resolveCallbackWithIndexInt branch and the fixture compiles.
+#cbFloat programmable(k:int=0, d:int=5) {
+  bitmap(generated(color(4, 4, #FFFFFF))): callback("fx", $k) = $d, 0
+}

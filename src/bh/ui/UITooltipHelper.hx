@@ -55,10 +55,14 @@ class UITooltipHelper {
 	var activeBuildName:Null<String> = null;
 	var activeParams:Null<Map<String, Dynamic>> = null;
 
-	// Fade state
+	// Fade state. The *Gen fields hold each tween's generation when it started: a fade cancelled
+	// elsewhere (TweenManager.clear / cancelAll) goes back to the pool, and the kept reference must
+	// not cancel whatever animation reuses it (see Tween.generation).
 	var fadeInTween:Null<Tween> = null;
+	var fadeInGen:Int = 0;
 	var fadingOutObj:Null<h2d.Object> = null;
 	var fadeOutTween:Null<Tween> = null;
+	var fadeOutGen:Int = 0;
 
 	public function new(screen:UIComponentHost, builder:MultiAnimBuilder, ?defaults:TooltipDefaults, ?tweens:TweenManager) {
 		this.screen = screen;
@@ -112,10 +116,8 @@ class UITooltipHelper {
 	/** Hide the currently active tooltip. */
 	public function hide():Void {
 		// Cancel any in-progress fade-in
-		if (fadeInTween != null) {
-			fadeInTween.cancel();
-			fadeInTween = null;
-		}
+		Tween.cancelIfCurrent(fadeInTween, fadeInGen);
+		fadeInTween = null;
 
 		// Cancel any in-progress fade-out of previous tooltip
 		cancelFadeOut();
@@ -124,8 +126,10 @@ class UITooltipHelper {
 			final obj = activeResult.object;
 			if (defaultFadeOut > 0 && tweens != null) {
 				fadingOutObj = obj;
-				fadeOutTween = tweens.tween(obj, defaultFadeOut, [Alpha(0.0)]);
-				fadeOutTween.setOnComplete(() -> {
+				final fadeOut = tweens.tween(obj, defaultFadeOut, [Alpha(0.0)]);
+				fadeOutTween = fadeOut;
+				fadeOutGen = fadeOut.generation;
+				fadeOut.setOnComplete(() -> {
 					obj.remove();
 					fadingOutObj = null;
 					fadeOutTween = null;
@@ -230,8 +234,10 @@ class UITooltipHelper {
 		// Apply fade-in
 		if (defaultFadeIn > 0 && tweens != null) {
 			result.object.alpha = 0;
-			fadeInTween = tweens.tween(result.object, defaultFadeIn, [Alpha(1.0)]);
-			fadeInTween.setOnComplete(() -> {
+			final fadeIn = tweens.tween(result.object, defaultFadeIn, [Alpha(1.0)]);
+			fadeInTween = fadeIn;
+			fadeInGen = fadeIn.generation;
+			fadeIn.setOnComplete(() -> {
 				fadeInTween = null;
 			});
 		}
@@ -243,10 +249,8 @@ class UITooltipHelper {
 	}
 
 	function cancelFadeOut():Void {
-		if (fadeOutTween != null) {
-			fadeOutTween.cancel();
-			fadeOutTween = null;
-		}
+		Tween.cancelIfCurrent(fadeOutTween, fadeOutGen);
+		fadeOutTween = null;
 		if (fadingOutObj != null) {
 			fadingOutObj.remove();
 			fadingOutObj = null;
@@ -257,14 +261,10 @@ class UITooltipHelper {
 	    (e.g. during hot reload or full rebuild) to prevent in-flight fade tween closures
 	    from holding h2d.Object references past the screen's lifetime. */
 	public function dispose():Void {
-		if (fadeInTween != null) {
-			fadeInTween.cancel();
-			fadeInTween = null;
-		}
-		if (fadeOutTween != null) {
-			fadeOutTween.cancel();
-			fadeOutTween = null;
-		}
+		Tween.cancelIfCurrent(fadeInTween, fadeInGen);
+		fadeInTween = null;
+		Tween.cancelIfCurrent(fadeOutTween, fadeOutGen);
+		fadeOutTween = null;
 		if (fadingOutObj != null) {
 			fadingOutObj.remove();
 			fadingOutObj = null;

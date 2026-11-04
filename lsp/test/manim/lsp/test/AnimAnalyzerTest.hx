@@ -2,6 +2,7 @@ package manim.lsp.test;
 
 import manim.lsp.AnimAnalyzer;
 import manim.lsp.LspTypes;
+import bh.stateanim.AnimParser.AnimPlaylistFrames;
 
 class AnimAnalyzerTest {
 	public static function run():Void {
@@ -13,6 +14,25 @@ class AnimAnalyzerTest {
 		testSymbols();
 		testCompletions();
 		testHover();
+		testAnAnimFileReadWithoutHeaps();
+	}
+
+	/** The .anim parse needs no Heaps (this suite builds with -D noheaps): states in order, points as plain points. */
+	static function testAnAnimFileReadWithoutHeaps():Void {
+		final text = "sheet: hero\nstates: weapon(gun, sword), facing(left, right)\ncenter: 8, 16\nanimation shoot {\n\tfps: 10\n\tplaylist {\n"
+			+ "\t\tsheet: \"hero_shoot\"\n\t\tevent muzzle 3, -4\n\t\tevent spark random 1, 2, 5\n\t\tevent done\n\t}\n}";
+		final loaded = bh.stateanim.AnimParser.AnimFileParser.parseLoaded(text, "test.anim");
+		LspTestRunner.assertEqual(loaded.stateOrder.join(","), "weapon,facing", "Heaps-free .anim parse keeps the states in the order written");
+		LspTestRunner.assertEqual(loaded.center.x, 8, "Heaps-free .anim parse reads the centre");
+		final events:Array<String> = [];
+		for (a in loaded.animations[0].playlist[0].anims)
+			switch a {
+				case PlaylistPointEvent(name, p): events.push('$name@${p.x},${p.y}');
+				case PlaylistRandomPointEvent(name, p, r): events.push('$name@${p.x},${p.y}~$r');
+				case PlaylistTrigger(name): events.push(name);
+				default:
+			}
+		LspTestRunner.assertEqual(events.join(" "), "muzzle@3,-4 spark@1,2~5 done", "Heaps-free .anim parse keeps point events as plain points");
 	}
 
 	static function testValidFileNoDiagnostics():Void {

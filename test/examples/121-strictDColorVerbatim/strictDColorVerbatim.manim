@@ -1,0 +1,18 @@
+version: 1.0
+
+// Heaps 0x color form with a zero top byte is transparent under strict-D and
+// must be stored verbatim (alpha = 0), not silently forced opaque. 0xFF0000 =
+// transparent red.
+
+#strictDTint programmable() {
+  bitmap(generated(color(16, 16, #0000FF))) {
+    tint: 0xFF0000
+    pos: 0, 0
+  }
+}
+
+#strictDPixels programmable() {
+  pixels (
+    filledRect 0, 0, 4, 4, 0xFF0000
+  );
+}

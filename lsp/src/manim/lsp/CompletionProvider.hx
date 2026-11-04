@@ -24,6 +24,7 @@ class CompletionProvider {
 			case AnimatedPathBody: animatedPathCompletions();
 			case SettingsBody: settingsCompletions();
 			case TransitionBody: transitionCompletions();
+			case TilesetTransitionBody: tilesetTransitionCompletions();
 			case FilterPosition: filterCompletions();
 			case ProgrammableParams: paramTypeCompletions();
 			case DataBody: dataCompletions();
@@ -40,6 +41,7 @@ class CompletionProvider {
 		final items:Array<LspCompletionItem> = [];
 		items.push(snippet("import", "import \"$1\" as \"$2\"", "Import external .manim file"));
 		items.push(kw("version:", "File version header"));
+		items.push(kw(ManimKeywordInfo.exportKeyword, ManimKeywordInfo.exportDescription));
 
 		for (ctor in ManimKeywordInfo.allElementCtors) {
 			if (ManimKeywordInfo.isTopLevel(ctor)) {
@@ -163,8 +165,21 @@ class CompletionProvider {
 		return items;
 	}
 
+	/** A tileset's `transition a, b { … }`: its autotile (one a frame) and the terrains that count as `b`. */
+	static function tilesetTransitionCompletions():Array<LspCompletionItem> {
+		return [
+			snippet("autotile", "autotile: ${1:name}", "The autotile drawn over b's own where b meets a (one a frame when b is animated)"),
+			snippet("ignore", "ignore: ${1:terrain}",
+				"Terrains below b that count as b: a cell of b that also touches them still meets a, and no edge faces them"),
+		];
+	}
+
 	static function filterCompletions():Array<LspCompletionItem> {
-		return [for (f in ManimKeywordInfo.completableFilters) kw(ManimKeywordInfo.filterName(f), ManimKeywordInfo.filterDescription(f))];
+		final items = [for (f in ManimKeywordInfo.completableFilters) kw(ManimKeywordInfo.filterName(f), ManimKeywordInfo.filterDescription(f))];
+		// The engine's shaders are filters too (filter: crt(curve: 0.2))
+		for (info in bh.multianim.ShaderCatalog.shaders)
+			items.push(kw(info.name, ManimKeywordInfo.shaderDescription(info)));
+		return items;
 	}
 
 	static function paramTypeCompletions():Array<LspCompletionItem> {
@@ -174,7 +189,7 @@ class CompletionProvider {
 	static function referenceCompletions(paramNames:Array<String>, prefix:String):Array<LspCompletionItem> {
 		final items:Array<LspCompletionItem> = [];
 		for (name in paramNames)
-			items.push({label: '$$name', kind: CompletionKind.Variable, detail: "Parameter reference"});
+			items.push({label: "$" + name, kind: CompletionKind.Variable, detail: "Parameter reference"});
 		items.push({label: "$grid", kind: CompletionKind.Module, detail: "Grid coordinate system"});
 		items.push({label: "$hex", kind: CompletionKind.Module, detail: "Hex coordinate system"});
 		items.push({label: "$ctx", kind: CompletionKind.Module, detail: "Context (width, height, random, font)"});

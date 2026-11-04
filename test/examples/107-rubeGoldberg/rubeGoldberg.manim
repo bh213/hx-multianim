@@ -153,8 +153,8 @@ curves {
 
     // Static/dynamic refs
     text(f3x5, "refs:", #AAAAAA): 0, 240
-    staticRef(external(ext), $extWidget, label => "ext-S"): 0, 250
-    dynamicRef(external(ext), $extWidget, label => $label, bg => $accent): 70, 250
+    staticRef(external(ext), extWidget, label => "ext-S"): 0, 250
+    dynamicRef(external(ext), extWidget, label => $label, bg => $accent): 70, 250
     // Template-switched dynamicRef — $template names the target programmable
     dynamicRef($template, tint => $accent, foo => $label): 140, 250
 

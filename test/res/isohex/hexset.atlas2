@@ -1,0 +1,54 @@
+hexset.png
+size: 232,50
+format: RGBA8888
+filter: Nearest,Nearest
+repeat: none
+temperate
+  rotate: false
+  xy: 1, 1
+  size: 32, 48
+  orig: 32, 48
+  offset: 0, 0
+  index: 0
+temperate
+  rotate: false
+  xy: 34, 1
+  size: 32, 48
+  orig: 32, 48
+  offset: 0, 0
+  index: 1
+temperate
+  rotate: false
+  xy: 67, 1
+  size: 32, 48
+  orig: 32, 48
+  offset: 0, 0
+  index: 2
+deep_water
+  rotate: false
+  xy: 100, 1
+  size: 32, 48
+  orig: 32, 48
+  offset: 0, 0
+  index: 0
+desert
+  rotate: false
+  xy: 133, 1
+  size: 32, 48
+  orig: 32, 48
+  offset: 0, 0
+  index: 0
+stone_mountain
+  rotate: false
+  xy: 166, 1
+  size: 32, 48
+  orig: 32, 48
+  offset: 0, 0
+  index: 0
+temperate_hill
+  rotate: false
+  xy: 199, 1
+  size: 32, 48
+  orig: 32, 48
+  offset: 0, 0
+  index: 0

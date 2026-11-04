@@ -1,0 +1,34 @@
+version: 1.0
+
+// A stateanim held at a frame: frame: $k counts the animation's frames (0 the first, events not
+// counted), progress: $t goes from 0 to 1 over it. Held, not on its own clock, so the builder and
+// the macro screenshots show the same frames. killed has 6 frames of 50 ms.
+
+#stateAnimFrame programmable(k:int=3, t:float=0.6) {
+    // frame: 0, 2, 4, $k (3), and past the end: the last
+    stateanim("marine.anim", "killed", direction=>l, frame: 0): 40, 60
+    stateanim("marine.anim", "killed", direction=>l, frame: 2): 110, 60
+    stateanim("marine.anim", "killed", direction=>l, frame: 4): 180, 60
+    stateanim("marine.anim", "killed", direction=>l, frame: $k): 250, 60
+    stateanim("marine.anim", "killed", direction=>l, frame: 99): 320, 60
+    // progress: 0, 0.4, 0.75, $t (0.6) and 1 of the way through: frames 0, 2, 4, 3 and 5
+    stateanim("marine.anim", "killed", direction=>r, progress: 0): 40, 130
+    stateanim("marine.anim", "killed", direction=>r, progress: 0.4): 110, 130
+    stateanim("marine.anim", "killed", direction=>r, progress: 0.75): 180, 130
+    stateanim("marine.anim", "killed", direction=>r, progress: $t): 250, 130
+    stateanim("marine.anim", "killed", direction=>r, progress: 1): 320, 130
+    // hit's event after its 5 frames is not a frame; a layered file shows every layer on the frame held
+    stateanim("marine.anim", "hit", direction=>l, frame: 4): 40, 200
+    stateanim("marineLayers.anim", "walk", direction=>l, hat=>cap, glow=>off, frame: 1): 110, 200
+    stateanim("marineLayers.anim", "walk", direction=>r, hat=>cap, glow=>off, progress: 0.9): 180, 200
+}
+
+// frame: follows its parameter; another animation (the initial state) or another state of the
+// .anim (a selector) is held at the frame it says too
+#stateAnimFrameParams programmable(k:int=1, anim:[killed, hit]=killed, dir:[l, r]=l) {
+    stateanim("marine.anim", $anim, direction=>$dir, frame: $k): 0, 0
+}
+
+#stateAnimProgressParams programmable(t:float=0) {
+    stateanim("marine.anim", "killed", direction=>l, progress: $t): 0, 0
+}

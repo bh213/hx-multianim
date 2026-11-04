@@ -1,0 +1,42 @@
+version: 1.0
+
+// Tile maps made where they are placed: tilemap(fill(tileset, terrain: t, cols: c, rows: r)), cols by
+// rows cells of one terrain in a ring of none, made again when a parameter they use changes. Of a
+// tileset of this file (a terrain of cells and one of each autotile format), of an imported one, and
+// sized by @finals over the parameters. TilemapTest builds them with the builder and with codegen and
+// compares both with the written maps they stand for.
+
+import "test/examples/155-tilemap/tilemap.manim" as "tiles"
+
+#fp atlas2("Tileset/Minifantasy_ForgottenPlainsTiles.png") {
+    grass: 32, 24, 8, 8, index: 0
+    grass: 32, 40, 8, 8, index: 1
+}
+
+#dirtCorner autotile { format: corner tileSize: 8 demo: #886644, #664422 }
+#waterBlob autotile { format: blob47 tileSize: 8 demo: #2A4A9A, #4A78D0 }
+#pathCross autotile { format: cross tileSize: 8 demo: #AA8844, #CCAA66 }
+
+#floor tileset {
+    tileSize: 8
+    atlas: "fp"
+    terrain grass { cells: "grass" }
+    terrain dirt { autotile: dirtCorner }
+    terrain water { autotile: waterBlob }
+    terrain path { autotile: pathCross }
+}
+
+#fillHere programmable(terrain:[grass, dirt, water, path]=dirt, cols:uint=3, rows:uint=2) {
+    tilemap(fill(floor, terrain: $terrain, cols: $cols, rows: $rows)): 4, 4
+}
+
+#fillImported programmable(terrain:[grass, dirt, water]=dirt, cols:uint=3, rows:uint=2) {
+    tilemap(fill(external("tiles"), plains, terrain: $terrain, cols: $cols, rows: $rows)): 0, 0
+}
+
+// A @final follows the parameters it uses: wide $cols + 1 cells, high $rows * 2.
+#fillFinal programmable(terrain:[grass, dirt, water, path]=dirt, cols:uint=3, rows:uint=2) {
+    @final wide = $cols + 1
+    @final high = $rows * 2
+    tilemap(fill(floor, terrain: $terrain, cols: $wide, rows: $high)): 0, 0
+}

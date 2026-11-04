@@ -29,6 +29,11 @@ class Palette {
         return colors[x + y*width];
     }
 
+    /** Every colour of it, in order: what a shader that holds a picture to a palette is given. */
+    public function colorList():Array<Int> {
+        return colors.copy();
+    }
+
     public function getRow(y:Int) {
         if (width == null) throw 'palette is not 2d';
         return colors.slice(y * width, (y+1) * width);

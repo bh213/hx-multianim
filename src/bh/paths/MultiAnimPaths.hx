@@ -46,6 +46,11 @@ class MultiAnimPaths {
 	}
 
 	public function getPath(name:String, ?normalization:PathNormalization):Path {
+		// Look up before touching builder state — the not-found throw must not leak the scratch map
+		final def = pathDefs.get(name);
+		if (def == null)
+			throw 'path not found: $name';
+
 		final oldIndexed = builder.indexedParams;
 		builder.indexedParams = [];
 
@@ -60,15 +65,11 @@ class MultiAnimPaths {
 			return builder.resolveAsNumber(value);
 		}
 
-		final def = pathDefs.get(name);
-		if (def == null)
-			throw 'path not found: $name';
-
 		var singlePaths:Array<SinglePath> = [];
 		var point = new FPoint(0, 0);
 		var angle:Float = 0.;
 
-		for (path in def) {
+		try for (path in def) {
 			switch path {
 				case LineTo(end, mode):
 					var end = resolveCoordinate(end);
@@ -230,14 +231,25 @@ class MultiAnimPaths {
 					var cnt = resolveNumber(count);
 					var totalLength = wl * cnt;
 
+					// A fractional cycle count ends mid-oscillation: the trace at
+					// rate 1.0 carries a residual lateral offset of
+					// amp * sin(cnt * 2π). The recorded endpoint (next segment's
+					// start, Stretch normalization anchor) must include it or the
+					// trace jumps at the segment boundary.
+					var residualLateral = amp * Math.sin(cnt * 2 * Math.PI);
 					var endPt = new FPoint(
-						point.x + totalLength * Math.cos(angle),
-						point.y + totalLength * Math.sin(angle)
+						point.x + totalLength * Math.cos(angle) - residualLateral * Math.sin(angle),
+						point.y + totalLength * Math.sin(angle) + residualLateral * Math.cos(angle)
 					);
 					singlePaths.push(new SinglePath(point, endPt, Wave(amp, wl, cnt, angle)));
 					// Wave ends in same direction, angle doesn't change
 					point = endPt;
 			}
+		} catch (e:Dynamic) {
+			// A throwing $ref resolution must not leave the scratch map installed on the
+			// builder — that would corrupt every later build in the session
+			builder.indexedParams = oldIndexed;
+			throw e;
 		}
 
 		builder.indexedParams = oldIndexed;
@@ -268,6 +280,7 @@ class MultiAnimPaths {
 
 
 @:allow(bh.paths.MultiAnimPaths)
+@:allow(bh.paths.AnimatedPath)
 class Path {
 	var singlePaths:Array<SinglePath>;
 	var checkpoints:Map<String, Float> = [];
@@ -290,8 +303,15 @@ class Path {
 		this.totalLength = currentLength;
 
 		for (singlePath in singlePaths) {
-			singlePath.startRange /= totalLength;
-			singlePath.endRange /= totalLength;
+			if (totalLength > 0) {
+				singlePath.startRange /= totalLength;
+				singlePath.endRange /= totalLength;
+			} else {
+				// Zero-length path (Stretch(p, p), a lone lineTo(0, 0)): there is no length to
+				// divide by, and all its points coincide — every segment spans the whole range.
+				singlePath.startRange = 0.;
+				singlePath.endRange = 1.;
+			}
 			switch singlePath.path {
 				case Checkpoint(name):
 					if (checkpoints.exists(name))
@@ -353,18 +373,18 @@ class Path {
 
 	public function getPoint(rate:Float) {
 		for (singlePath in singlePaths) {
-			if (rate >= singlePath.startRange && rate <= singlePath.endRange) {
-				return singlePath.getPoint((rate - singlePath.startRange) / (singlePath.endRange - singlePath.startRange));
+			if (covers(singlePath, rate)) {
+				return singlePath.getPoint(localRate(singlePath, rate));
 			}
 		}
 		// Extrapolate beyond [0, 1] using first/last segment (e.g. for overshooting progress curves)
 		if (rate > 1.0 && singlePaths.length > 0) {
 			var last = singlePaths[singlePaths.length - 1];
-			return last.getPoint((rate - last.startRange) / (last.endRange - last.startRange));
+			return last.getPoint(localRate(last, rate));
 		}
 		if (rate < 0.0 && singlePaths.length > 0) {
 			var first = singlePaths[0];
-			return first.getPoint((rate - first.startRange) / (first.endRange - first.startRange));
+			return first.getPoint(localRate(first, rate));
 		}
 		throw 'rate out of range: $rate';
 	}
@@ -372,20 +392,33 @@ class Path {
 	/** Get analytical tangent angle (radians) at the given rate (0..1). */
 	public function getTangentAngle(rate:Float):Float {
 		for (singlePath in singlePaths) {
-			if (rate >= singlePath.startRange && rate <= singlePath.endRange) {
-				return singlePath.getTangentAngle((rate - singlePath.startRange) / (singlePath.endRange - singlePath.startRange));
+			if (covers(singlePath, rate)) {
+				return singlePath.getTangentAngle(localRate(singlePath, rate));
 			}
 		}
 		// Extrapolate beyond [0, 1] using first/last segment
 		if (rate > 1.0 && singlePaths.length > 0) {
 			var last = singlePaths[singlePaths.length - 1];
-			return last.getTangentAngle((rate - last.startRange) / (last.endRange - last.startRange));
+			return last.getTangentAngle(localRate(last, rate));
 		}
 		if (rate < 0.0 && singlePaths.length > 0) {
 			var first = singlePaths[0];
-			return first.getTangentAngle((rate - first.startRange) / (first.endRange - first.startRange));
+			return first.getTangentAngle(localRate(first, rate));
 		}
 		throw 'rate out of range: $rate';
+	}
+
+	/** Whether `rate` falls on this segment. A zero-length segment inside a longer path (a leading
+	 *  `lineTo(0, 0)`) spans no rates: the neighbouring segment holds the same point, and a tangent. */
+	static inline function covers(singlePath:SinglePath, rate:Float):Bool {
+		return rate >= singlePath.startRange && rate <= singlePath.endRange && singlePath.endRange > singlePath.startRange;
+	}
+
+	/** `rate` as the segment's own 0..1 rate. A zero-width segment (reached only when extrapolating
+	 *  past either end) is one point: 0, not 0 / 0 = NaN. */
+	static inline function localRate(singlePath:SinglePath, rate:Float):Float {
+		final width = singlePath.endRange - singlePath.startRange;
+		return if (width > 0) (rate - singlePath.startRange) / width else 0.;
 	}
 
 	public function getEndpoint():FPoint {
@@ -395,19 +428,19 @@ class Path {
 	/** Write point at rate into the given FPoint (no allocation). */
 	public function getPointInto(rate:Float, out:FPoint):Void {
 		for (singlePath in singlePaths) {
-			if (rate >= singlePath.startRange && rate <= singlePath.endRange) {
-				singlePath.getPointInto((rate - singlePath.startRange) / (singlePath.endRange - singlePath.startRange), out);
+			if (covers(singlePath, rate)) {
+				singlePath.getPointInto(localRate(singlePath, rate), out);
 				return;
 			}
 		}
 		if (rate > 1.0 && singlePaths.length > 0) {
 			var last = singlePaths[singlePaths.length - 1];
-			last.getPointInto((rate - last.startRange) / (last.endRange - last.startRange), out);
+			last.getPointInto(localRate(last, rate), out);
 			return;
 		}
 		if (rate < 0.0 && singlePaths.length > 0) {
 			var first = singlePaths[0];
-			first.getPointInto((rate - first.startRange) / (first.endRange - first.startRange), out);
+			first.getPointInto(localRate(first, rate), out);
 			return;
 		}
 		throw 'rate out of range: $rate';

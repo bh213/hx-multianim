@@ -45,6 +45,8 @@ class UIMultiAnimRadioButtons implements UIElement implements UIElementDisablabl
 			case PlaceholderWithIndex(name, index):
 				if (name == "checkbox") {
 					var c = UIStandardMultiCheckbox.create(builder, singleRadioButtonBuilderName, false);
+					// The group says the change (UIChangeItem): its buttons' toggles are not the screen's
+					c.pushesScreenEvents = false;
 					this.checkboxes[index] = c;
 					c.onInternalToggle = onSingleToggle.bind(index);
 					return CBRObject(c.getObject());

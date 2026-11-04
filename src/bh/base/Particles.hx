@@ -136,8 +136,35 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 	// Current AnimSM state index (for lifetime-driven animation states)
 	public var currentAnimStateIndex : Int = 0;
 
+	// Pin currentAnimStateIndex against the per-frame natural-advance loop.
+	// Set by applyAnimEventOverride; cleared on init() (spawn/recycle) AND, when the
+	// override is releasable (see below), one-shot in update() once lifetime progression
+	// passes the end of the pinned state's window. Without the pin, an override that
+	// targets a state with a startLifeRate lower than the natural-by-time index would
+	// be clobbered on the very next tick — the impact / bounce anim would flicker for
+	// one frame.
+	public var animOverrideActive : Bool = false;
+
+	// Distinguishes a "play-through" override (release the pin once the lifetime crosses
+	// the end of the override target's window, so e.g. an onBounce → impact mid-life
+	// trigger plays through once and then resumes lifetime-driven advance — otherwise a
+	// long-lived bouncing particle would freeze on the impact frame forever) from a
+	// "sticky" override (hold the pin until reinit). Set by applyAnimEventOverride: true
+	// when the override fires while the target state's window is still current/ahead
+	// (timeNormalized < overrideEnd), false when it targets a state whose window is
+	// already in the past (a deliberate late-life override into an earlier state, which
+	// must persist). onDeath needs no release either way — the particle recycles/frees.
+	public var animOverrideReleasable : Bool = false;
+
 	// Current color curve segment index (monotonic advance; avoids O(N) rescan per frame)
 	public var currentColorSegmentIndex : Int = 0;
+
+	// The particle's own colour, multiplied into the group's colour curve (or drawn as is
+	// when the group has no colorStops): the group's `tint` when it is born, a burst's own
+	// tint over that, and its parent's when a sub-emitter spawned it. 1, 1, 1 is no tint.
+	public var tintR : Float = 1;
+	public var tintG : Float = 1;
+	public var tintB : Float = 1;
 
 	public function new(group:ParticleGroup) {
 		super(null);
@@ -159,7 +186,8 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 				} else {
 					// Mirror burst path: rejected particles skip same-frame physics.
 					// init() left visible=false / life=maxLife+1 / rejected=true; the
-					// next update will free this particle through the lifecycle branch.
+					// next update will free this particle through the rejection
+					// short-circuit below — without paying for a physics tick.
 					return true;
 				}
 			}
@@ -167,6 +195,33 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 				visible = false;
 				return true;
 			}
+		}
+
+		// Short-circuit filter-rejected particles before physics. init() marked
+		// this particle dead (life=maxLife+1, rejected=true, visible=false); the
+		// burst / delayed-init paths deferred cleanup to this tick. Run the same
+		// emitLoop/non-loop free logic the lifecycle branch uses, but skip the
+		// full physics block (gravity, force fields, position, rotation, size,
+		// alpha, color, sprite anim, bounds) that would otherwise execute on a
+		// particle already known to be dead.
+		if (rejected) {
+			if (group.emitLoop) {
+				if (group.shutdownActive && group.liveCount > group.shutdownTargetCount) {
+					group.liveCount--;
+					group.freeParticles.push(this);
+					return false;
+				}
+				if (!group.init(this)) {
+					group.liveCount--;
+					group.freeParticles.push(this);
+					return false;
+				}
+				delay = 0;
+				return true;
+			}
+			group.liveCount--;
+			group.freeParticles.push(this);
+			return false;
 		}
 
 		var timeNormalized = life / maxLife;
@@ -179,9 +234,10 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 		vx *= dv;
 		vy *= dv;
 
-		// Apply gravity
-		vx += group.gravity * dt * group.sinGravityAngle;
-		vy += group.gravity * dt * group.cosGravityAngle;
+		// Apply gravity. Screen convention (matches the .manim direction
+		// constants): 0 = right, π/2 = down — direction vector is (cos, sin).
+		vx += group.gravity * dt * group.cosGravityAngle;
+		vy += group.gravity * dt * group.sinGravityAngle;
 
 		// Apply force fields
 		group.applyForceFields(this, dt);
@@ -238,19 +294,39 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 				else if (localT > 1) localT = 1;
 				var curveValue = segment.curve.getValue(localT);
 				var col = group.lerpColor(segment.startColor, segment.endColor, curveValue);
-				r = ((col >> 16) & 0xFF) / 255.0;
-				g = ((col >> 8) & 0xFF) / 255.0;
-				b = (col & 0xFF) / 255.0;
+				r = ((col >> 16) & 0xFF) / 255.0 * tintR;
+				g = ((col >> 8) & 0xFF) / 255.0 * tintG;
+				b = (col & 0xFF) / 255.0 * tintB;
 			}
+		} else {
+			r = tintR;
+			g = tintG;
+			b = tintB;
 		}
 
 		// Sprite animation
 		if (group.animStates.length > 0) {
 			// AnimSM-driven: find active state by lifetime rate
 			var stateIdx = currentAnimStateIndex;
-			// Advance state if we've passed the next state's start rate
-			while (stateIdx + 1 < group.animStates.length && timeNormalized >= group.animStates[stateIdx + 1].startLifeRate) {
-				stateIdx++;
+			// An event override (e.g. onBounce → "impact") pins the state so the next
+			// natural-advance pass can't immediately clobber it. A releasable (play-through)
+			// pin is one-shot: release it once lifetime progression passes the END of the
+			// pinned state's window, so the impact anim plays through once and then resumes
+			// lifetime-driven advance. Without this release a long-lived bouncing particle
+			// would freeze on the impact frame forever (localT clamps to 1.0) and never reach
+			// its dying state. A non-releasable (sticky) pin — an override fired into a state
+			// whose window is already in the past — holds until reinit. See animOverrideReleasable.
+			if (animOverrideActive && animOverrideReleasable) {
+				var overrideEnd = if (stateIdx + 1 < group.animStates.length) group.animStates[stateIdx + 1].startLifeRate else 1.0;
+				if (timeNormalized >= overrideEnd) animOverrideActive = false;
+			}
+			// Skip the natural advance while an event override is still pinned —
+			// otherwise the monotonic-forward walk would clobber overrides that target
+			// a state earlier than the natural-by-time index.
+			if (!animOverrideActive) {
+				while (stateIdx + 1 < group.animStates.length && timeNormalized >= group.animStates[stateIdx + 1].startLifeRate) {
+					stateIdx++;
+				}
 			}
 			currentAnimStateIndex = stateIdx;
 			var animState = group.animStates[stateIdx];
@@ -308,8 +384,10 @@ private class Particle extends h2d.SpriteBatch.BatchElement {
 		if( timeNormalized > 1 ) {
 			// Trigger OnDeath sub-emitters (skip for filter-rejected particles
 			// to avoid an explosive spawn loop at the rejection boundary).
-			if (!rejected)
+			if (!rejected) {
 				group.triggerSubEmitters(this, OnDeath);
+				group.applyAnimEventOverride(this, "onDeath");
+			}
 
 			if( group.emitLoop ) {
 				if (group.shutdownActive && group.liveCount > group.shutdownTargetCount) {
@@ -476,11 +554,12 @@ class ParticleGroup {
 	**/
 	public var gravity(default, null) : Float		= 0;
 	/**
-		The gravity angle in radians. `0` points down.
+		The gravity angle in radians. Screen convention matching the .manim
+		direction constants: `0` points right, `π/2` points down (the default).
 	**/
-	public var gravityAngle(default, set) : Float 	= 0;
-	var cosGravityAngle : Float = 1.0;  // cos(0) = 1
-	var sinGravityAngle : Float = 0.0;  // sin(0) = 0
+	public var gravityAngle(default, set) : Float 	= Math.PI / 2;
+	var cosGravityAngle : Float = 0.0;  // cos(π/2) = 0 — no sideways drift by default
+	var sinGravityAngle : Float = 1.0;  // sin(π/2) = 1 — default gravity falls down
 
 	/**
 		Initial particle rotation.
@@ -531,6 +610,15 @@ class ParticleGroup {
 	// ========== NEW FEATURES ==========
 
 	// ----- Color Interpolation -----
+	/**
+		A colour every particle born from now on is multiplied by (0xRRGGBB), over the group's
+		`colorStops` or, with none, as its colour: one `sparks` group drawn in every brick's
+		colour, an exhaust group in each ship's. Null is none. A burst's own tint
+		(`emitBurstAt(…, tint)`) wins over it for the burst's particles; the particles already
+		alive keep the tint they were born with.
+	**/
+	public var tint : Null<Int> = null;
+
 	/**
 		Enable color interpolation over particle lifetime.
 	**/
@@ -589,21 +677,22 @@ class ParticleGroup {
 	**/
 	public var boundsMode(default, null) : BoundsMode = None;
 	/**
-		Boundary rectangle - minX.
+		Boundary rectangle - minX. Defaults to -infinity (no box) so line-only
+		bounds configurations are not clipped by an implicit box.
 	**/
-	public var boundsMinX(default, null) : Float = 0;
+	public var boundsMinX(default, null) : Float = Math.NEGATIVE_INFINITY;
 	/**
-		Boundary rectangle - maxX.
+		Boundary rectangle - maxX. Defaults to +infinity (no box).
 	**/
-	public var boundsMaxX(default, null) : Float = 800;
+	public var boundsMaxX(default, null) : Float = Math.POSITIVE_INFINITY;
 	/**
-		Boundary rectangle - minY.
+		Boundary rectangle - minY. Defaults to -infinity (no box).
 	**/
-	public var boundsMinY(default, null) : Float = 0;
+	public var boundsMinY(default, null) : Float = Math.NEGATIVE_INFINITY;
 	/**
-		Boundary rectangle - maxY.
+		Boundary rectangle - maxY. Defaults to +infinity (no box).
 	**/
-	public var boundsMaxY(default, null) : Float = 600;
+	public var boundsMaxY(default, null) : Float = Math.POSITIVE_INFINITY;
 	/**
 		Line bounds. Each line has endpoints (x1,y1)-(x2,y2) and a precomputed outward normal (nx,ny).
 		Particles on the normal side are in-bounds; those on the opposite side are out-of-bounds.
@@ -678,6 +767,9 @@ class ParticleGroup {
 
 	/** Whether shutdown is currently active. */
 	var shutdownActive : Bool = false;
+	/** Set by shutdown(). A burst-driven group (nparts == 0) keeps its Particles container alive
+	 *  while idle between bursts; once shut down, its empty batch lets the container end. */
+	var shutdownRequested : Bool = false;
 	/** Elapsed time since shutdown started. */
 	var shutdownTime : Float = 0;
 	/** Active shutdown duration (from shutdown() call or configured default). */
@@ -756,6 +848,12 @@ class ParticleGroup {
 					p.visible = true;
 					triggerSubEmitters(p, OnBirth);
 				}
+			} else {
+				// Not born yet: no tile until init() runs, so it must not be drawn. update()
+				// hides a waiting particle too, but an externally driven group's update()
+				// returns before that until its next advanceTime(), and a group started by
+				// Particles.sync() is drawn before then (a second render in the same frame).
+				p.visible = false;
 			}
 			batch.add(p);
 		}
@@ -763,40 +861,75 @@ class ParticleGroup {
 
 	/**
 		Emit a burst of particles at a specific position with optional inherited velocity.
-		Creates particles on-the-fly and adds them to the batch.
+		Creates particles on-the-fly and adds them to the batch. `tint` (0xRRGGBB) colours
+		the burst's particles: multiplied into the group's `colorStops`, or their colour when
+		the group has none; null leaves them the group's `tint`, if any.
 	**/
-	public function emitBurstAt(atX:Float, atY:Float, inheritVx:Float, inheritVy:Float, count:Int):Void {
+	public function emitBurstAt(atX:Float, atY:Float, inheritVx:Float, inheritVy:Float, count:Int, ?tint:Int):Void {
+		if (tint == null)
+			emitBurstTinted(atX, atY, inheritVx, inheritVy, count, -1, -1, -1);
+		else
+			emitBurstTinted(atX, atY, inheritVx, inheritVy, count, ((tint >> 16) & 0xFF) / 255.0, ((tint >> 8) & 0xFF) / 255.0, (tint & 0xFF) / 255.0);
+	}
+
+	/**
+		The burst with its tint as floats; a negative tint is none (the group's `tint`, or the
+		parent's for a sub-emitter, stands). Sub-emitters pass their parent's through here.
+	**/
+	function emitBurstTinted(atX:Float, atY:Float, inheritVx:Float, inheritVy:Float, count:Int, tintR:Float, tintG:Float, tintB:Float):Void {
 		if (!started) {
-			batch.visible = true;
-			started = true;
-			globalTime = 0;
+			// Note: batch.visible must stay false — group batches are children of
+			// the Particles object but are drawn explicitly in Particles.draw();
+			// a visible batch would be rendered a second time by the child pass.
+			if (nparts > 0) {
+				// A group of its own particles starts as sync() would have: sync() starts only a
+				// group not started yet, so marking it started here left it without them for good.
+				// Switched off, it is left for sync() to start once it is on (which clears the
+				// burst, never drawn while it was off).
+				if (enabled)
+					start();
+			} else {
+				started = true;
+				globalTime = 0;
+			}
 		}
 		for (i in 0...count) {
 			var p = allocParticle();
 			var accepted = init(p);
-			p.x += atX;
-			p.y += atY;
-			p.vx += inheritVx;
-			p.vy += inheritVy;
-			batch.add(p);
-			// Count every batched particle so the death-branch decrement balances out.
-			// Stillborn (filter-rejected) particles still hit update()'s death branch
-			// via life=maxLife+1; gating the increment on `accepted` would drift
-			// liveCount negative across rejection-heavy bursts and poison
-			// shutdownTargetCount (= liveCount at shutdown()).
-			liveCount++;
 			if (accepted) {
+				// Apply burst-position offset only to live particles. Rejected
+				// particles are already marked dead by init(); writing the offset
+				// onto them would just clobber the rejection-state position/velocity
+				// that the next-update rejection short-circuit relies on observing.
+				p.x += atX;
+				p.y += atY;
+				p.vx += inheritVx;
+				p.vy += inheritVy;
+				if (tintR >= 0) {
+					p.tintR = tintR;
+					p.tintG = tintG;
+					p.tintB = tintB;
+				}
 				p.visible = true;
 				triggerSubEmitters(p, OnBirth);
 			}
+			batch.add(p);
+			// Count every batched particle so the rejection short-circuit (or
+			// death-branch) decrement balances out. Stillborn (filter-rejected)
+			// particles still hit update() — via the rejected short-circuit at the
+			// top of Particle.update — which performs the matching liveCount--.
+			// Gating the increment on `accepted` would drift liveCount negative
+			// across rejection-heavy bursts and poison shutdownTargetCount
+			// (= liveCount at shutdown()).
+			liveCount++;
 		}
 	}
 
 	/**
 		Emit a burst of particles at the emitter's current position.
 	**/
-	public function emitBurst(count:Int):Void {
-		emitBurstAt(0, 0, 0, 0, count);
+	public function emitBurst(count:Int, ?tint:Int):Void {
+		emitBurstAt(0, 0, 0, 0, count, tint);
 	}
 
 	/**
@@ -808,12 +941,14 @@ class ParticleGroup {
 		not recycled based on the count curve. After the curve reaches zero, remaining particles
 		enter natural die-off.
 
-		No-op on non-looping groups. `emitBurstAt()` still works after shutdown.
+		No-op on non-looping groups, apart from marking a burst-driven group (`nparts == 0`) done so
+		its `Particles` container ends once its particles die. `emitBurstAt()` still works after shutdown.
 
 		@param duration Shutdown duration in seconds. null or 0 = instant (emitLoop = false).
 		@param curve Count curve override. null = use configured `shutdownCountCurve`, or linear default.
 	**/
 	public function shutdown(?duration:Float, ?curve:bh.paths.Curve.ICurve):Void {
+		shutdownRequested = true;
 		if (!emitLoop) return;
 		final dur = duration != null ? duration : shutdownDuration;
 		if (dur <= 0) {
@@ -965,10 +1100,24 @@ class ParticleGroup {
 			p.b = (initColor & 0xFF) / 255.0;
 		}
 
+		// The group's tint, or none: a recycled particle never keeps a burst's.
+		final groupTint = tint;
+		if (groupTint != null) {
+			p.tintR = ((groupTint >> 16) & 0xFF) / 255.0;
+			p.tintG = ((groupTint >> 8) & 0xFF) / 255.0;
+			p.tintB = (groupTint & 0xFF) / 255.0;
+		} else {
+			p.tintR = 1;
+			p.tintG = 1;
+			p.tintB = 1;
+		}
+
 		// Reset per-particle monotonic caches so recycled particles restart at the
 		// first segment / first anim state instead of getting stuck on the last one.
 		p.currentColorSegmentIndex = 0;
 		p.currentAnimStateIndex = 0;
+		p.animOverrideActive = false;
+		p.animOverrideReleasable = false;
 
 		if ( !isRelative ) {
 			var parts = this.parts;
@@ -1240,25 +1389,23 @@ class ParticleGroup {
 			var subGroup = parts.getGroup(se.groupId);
 			if (subGroup == null) continue;
 
-			// Spawn particles from sub-group at parent particle's location
-			subGroup.emitBurstAt(
+			// Spawn particles from sub-group at parent particle's location, in its colour
+			subGroup.emitBurstTinted(
 				p.x + se.offsetX,
 				p.y + se.offsetY,
 				p.vx * se.inheritVelocity,
 				p.vy * se.inheritVelocity,
-				se.burstCount
+				se.burstCount,
+				p.tintR, p.tintG, p.tintB
 			);
 		}
 	}
 
 	function matchesTrigger(configured:SubEmitTrigger, actual:SubEmitTrigger):Bool {
-		return switch [configured, actual] {
-			case [OnBirth, OnBirth]: true;
-			case [OnDeath, OnDeath]: true;
-			case [OnCollision, OnCollision]: true;
-			case [OnInterval(_), OnInterval(_)]: true;
-			case _: false;
-		};
+		// Constructor-identity comparison: every matching arm was "same constructor"
+		// (OnInterval ignored its payload). Avoids the per-call array that
+		// `switch [configured, actual]` would allocate on this sub-emitter-event hot path.
+		return Type.enumIndex(configured) == Type.enumIndex(actual);
 	}
 
 	/**
@@ -1269,6 +1416,16 @@ class ParticleGroup {
 		var stateIndex = animEventOverrides.get(triggerName);
 		if (stateIndex != null && stateIndex < animStates.length) {
 			p.currentAnimStateIndex = stateIndex;
+			// Pin against the next tick's natural-advance loop, which would otherwise
+			// walk forward by lifetime rate and clobber the override on the very next
+			// frame whenever the override targets an earlier state index.
+			p.animOverrideActive = true;
+			// Releasable (play-through) only when the override target's window is still
+			// current/ahead at fire time. If lifetime has already passed the end of that
+			// window (a deliberate late-life override into an earlier state), keep it sticky.
+			final overrideEnd = if (stateIndex + 1 < animStates.length) animStates[stateIndex + 1].startLifeRate else 1.0;
+			final timeNormalized = p.maxLife > 0 ? p.life / p.maxLife : 0.0;
+			p.animOverrideReleasable = timeNormalized < overrideEnd;
 			// Update tile immediately
 			var animState = animStates[stateIndex];
 			if (animState.tiles.length > 0) {
@@ -1292,12 +1449,13 @@ class ParticleGroup {
 						if (rand() <= se.probability) {
 							var subGroup = parts.getGroup(se.groupId);
 							if (subGroup != null) {
-								subGroup.emitBurstAt(
+								subGroup.emitBurstTinted(
 									p.x + se.offsetX,
 									p.y + se.offsetY,
 									p.vx * se.inheritVelocity,
 									p.vy * se.inheritVelocity,
-									se.burstCount
+									se.burstCount,
+									p.tintR, p.tintG, p.tintB
 								);
 							}
 						}
@@ -1412,6 +1570,13 @@ class Particles extends h2d.Drawable {
 	// a worse trade than the linear scan it replaces.
 	final groupList : Array<ParticleGroup> = [];
 
+	// Set once any group's batch holds a live particle, cleared when onEnd() fires.
+	// Gates onEnd() so a freshly-created container or a burst-only group
+	// (nparts == 0, awaiting emitBurstAt) is not auto-removed on the first sync
+	// just because no particles exist yet — distinguishes "not started" from "done" —
+	// and so onEnd() fires once per live → empty transition, not on every idle frame.
+	var hasEmittedAny:Bool = false;
+
 	/**
 		Designated world-space anchor for non-relative groups. When non-null, groups
 		with `isRelative = false` bake emit positions into `worldAnchor`'s local frame
@@ -1504,14 +1669,25 @@ class Particles extends h2d.Drawable {
 	override function sync(ctx:h2d.RenderContext):Void {
 		super.sync(ctx);
 		var isDone = true;
+		// Only a group that emits on its own (nparts > 0) or was shut down can finish the container.
+		// A burst-driven group (count: 0 — emitBurst/emitBurstAt/sub-emitter bursts only) is idle,
+		// not done, when its batch empties: a shared burst container must survive between bursts.
+		var canEnd = false;
 		var dt = ctx.elapsedTime;
 		for( g in groupList ) {
 			if ( !g.started && g.enabled ) g.start();
 			if (!g.externallyDriven)
 				g.updateTime(dt);
-			if (g.batch.first != null) isDone = false;
+			if (g.batch.first != null) {
+				isDone = false;
+				hasEmittedAny = true;
+			}
+			if (g.nparts > 0 || g.shutdownRequested) canEnd = true;
 		}
-		if (isDone) onEnd();
+		if (isDone && hasEmittedAny && canEnd) {
+			hasEmittedAny = false;
+			onEnd();
+		}
 	}
 
 	public dynamic function onEnd():Void {

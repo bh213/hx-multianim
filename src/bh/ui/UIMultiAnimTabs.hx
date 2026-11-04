@@ -94,7 +94,7 @@ class UIMultiAnimTabButton implements UIElement implements UIElementDisablable i
 			return;
 		switch wrapper.event {
 			case OnPush(button):
-				if (!selected) {
+				if (button == 0 && !selected) {
 					result.setParameter("status", "pressed");
 					onInternalClick(wrapper.control);
 				}

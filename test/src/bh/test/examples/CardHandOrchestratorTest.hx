@@ -102,6 +102,20 @@ class CardHandOrchestratorTest extends BuilderTestBase {
 		}
 	}
 
+	@Test
+	public function testFanLayoutHoverPopsAlongTheCardsUpAxis():Void {
+		// A card off the middle leans with the fan: it pops along its own up axis, out from the
+		// fan's centre, not across toward the middle of the hand
+		var base = UICardHandLayout.computeFanLayout(5, 400.0, 500.0, 300.0, 30.0, -1, 20.0, 1.0, 0.0);
+		var hovered = UICardHandLayout.computeFanLayout(5, 400.0, 500.0, 300.0, 30.0, 4, 20.0, 1.0, 0.0);
+		final r = hovered[4].rotation;
+		Assert.isTrue(r > 0.0, "precondition: the rightmost card leans right");
+		Assert.floatEquals(Math.sin(r) * 20.0, hovered[4].x - base[4].x, "pop along the card's up axis (x)");
+		Assert.floatEquals(-Math.cos(r) * 20.0, hovered[4].y - base[4].y, "pop along the card's up axis (y)");
+		Assert.floatEquals(Math.sin(r), hovered[4].normalX, "the normal is the card's up axis (x)");
+		Assert.floatEquals(-Math.cos(r), hovered[4].normalY, "the normal is the card's up axis (y)");
+	}
+
 	// ==================== Linear Layout ====================
 
 	@Test
@@ -232,6 +246,27 @@ class CardHandOrchestratorTest extends BuilderTestBase {
 		// Hovered card at index 1 should have scale 1.5
 		Assert.floatEquals(1.5, result[1].scale);
 		Assert.floatEquals(1.0, result[0].scale);
+	}
+
+	@Test
+	public function testPathLayoutHoverPopsUpOnALeftToRightPath():Void {
+		// A hand drawn left to right: the hovered card rises (y up is negative), as in the fan
+		// and linear layouts
+		var path = createHorizontalPath();
+		var result = UICardHandLayout.computePathLayout(3, path, EvenRate, Straight, 1, 30.0, 1.5, 0.05);
+		Assert.floatEquals(-30.0, result[1].y, "the hovered card pops up by hoverPopDistance");
+		Assert.isTrue(result[1].normalY < 0.0, "its normal points up");
+	}
+
+	@Test
+	public function testPathLayoutHoverPopsAlongTheCardsUpAxisOnASlope():Void {
+		// With Tangent orientation a card leans with the path: it pops along its own up axis
+		var path = new Path([new SinglePath(new FPoint(0, 0), new FPoint(400, -200), Line)]);
+		var base = UICardHandLayout.computePathLayout(3, path, EvenRate, Tangent, -1, 30.0, 1.0, 0.0);
+		var hovered = UICardHandLayout.computePathLayout(3, path, EvenRate, Tangent, 1, 30.0, 1.0, 0.0);
+		final r = hovered[1].rotation;
+		Assert.floatEquals(Math.sin(r) * 30.0, hovered[1].x - base[1].x, "pop along the card's up axis (x)");
+		Assert.floatEquals(-Math.cos(r) * 30.0, hovered[1].y - base[1].y, "pop along the card's up axis (y)");
 	}
 
 	@Test
@@ -588,6 +623,52 @@ class CardHandOrchestratorTest extends BuilderTestBase {
 		// null path names should not throw (instant snap behavior)
 		var h = createHelper({drawPathName: null, discardPathName: null, returnPathName: null, rearrangePathName: null});
 		Assert.notNull(h.helper);
+	}
+
+	// ==================== canPlayCard targeting result reuse ====================
+
+	// While dragging a card over the same target, updateDrag fires every frame and
+	// hands a TargetingResult to canPlayCard. TargetZone carries a String arg, so a
+	// fresh enum is allocated per frame unless the result is cached. When the target
+	// id does not change frame-to-frame, the same TargetZone instance must be reused.
+	@Test
+	public function testDragReusesTargetingResultAcrossFramesForSameTarget():Void {
+		var h = createHelper();
+		h.helper.setHand([desc("a")]);
+
+		var captured:Array<TargetingResult> = [];
+		h.helper.canPlayCard = function(cardId, target) {
+			captured.push(target);
+			return true;
+		};
+
+		@:privateAccess {
+			var entry = h.helper.cards[0];
+			h.helper.draggedEntry = entry;
+			h.helper.isTargeting = false;
+			h.helper.currentTargetId = "zoneA";
+			// Cursor well below the targeting threshold (anchorY 680 - threshold 100 = 580)
+			// so updateDrag stays in the normal-drag branch and preserves currentTargetId
+			// instead of re-running highlight detection.
+			h.helper.cursorY = 100000;
+			h.helper.sceneCursorY = 100000;
+
+			h.helper.updateDrag();
+			h.helper.updateDrag();
+			h.helper.updateDrag();
+		}
+
+		Assert.equals(3, captured.length);
+		// HL == on a parameterized enum is reference identity. Same target id every
+		// frame must yield the same cached instance, not three fresh allocations.
+		Assert.isTrue(captured[0] == captured[1],
+			"TargetZone result must be cached and reused across frames with an unchanged target id (got a fresh allocation)");
+		Assert.isTrue(captured[1] == captured[2],
+			"TargetZone result must be cached and reused across frames with an unchanged target id (got a fresh allocation)");
+		switch captured[0] {
+			case TargetZone(id): Assert.equals("zoneA", id);
+			default: Assert.fail("Expected TargetZone");
+		}
 	}
 
 	// ==================== Bug: discardCard missing CardHoverEnd ====================

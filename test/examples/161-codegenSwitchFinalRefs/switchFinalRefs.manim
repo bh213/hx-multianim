@@ -1,0 +1,86 @@
+version: 1.0
+
+// Codegen against the builder: a @switch inside a constant-count repeatable, @final
+// constants in subtrees codegen hands to the builder (switch arms, particles, tileGroup),
+// a template swap that throws, and transitions that unrelated or batched params must not
+// cut short. Arms and elements are told apart by tile width.
+
+// Two copies of one switch, then a second switch: a 8px, b 12px; side l 16px, r 20px.
+#swInRepeat programmable(mode:[a,b]=a, side:[l,r]=l) {
+  repeatable($i, step(2, dx: 20)) {
+    @switch(mode) {
+      a: bitmap(generated(color(8, 8, #FF0000)));
+      b: bitmap(generated(color(12, 12, #0000FF)));
+    }
+  }
+  @switch(side) {
+    l: bitmap(generated(color(16, 16, #00FF00))): 0, 40;
+    r: bitmap(generated(color(20, 20, #FFFF00))): 0, 40;
+  }
+}
+
+// The loop variable inside an arm: each copy's bitmap sits at y = $i * 5.
+#swInRepeatLoopVar programmable(mode:[a,b]=a) {
+  repeatable($i, step(2, dx: 20)) {
+    @switch(mode) {
+      a: bitmap(generated(color(8, 8, #FF0000))): 0, $i * 5;
+      b: bitmap(generated(color(12, 12, #0000FF))): 0, $i * 5;
+    }
+  }
+}
+
+#swFinal programmable(mode:[a,b]=a) {
+  @final W = 20
+  @switch(mode) {
+    a: bitmap(generated(color($W, 10, #FF0000)));
+    default: bitmap(generated(color(6, 6, #0000FF)));
+  }
+}
+
+#particlesFinal programmable() {
+  @final N = 13
+  point {
+    pos: 100, 100
+    particles {
+      count: $N
+      emit: point(dist: 0, distRand: 0)
+      maxLife: 1.0
+      speed: 50
+      tiles: sheet("demo", "tile-center")
+      loop: false
+      size: 1.0
+    }
+  }
+}
+
+#tileGroupFinal programmable() {
+  @final X = 30
+  tileGroup {
+    bitmap(generated(color(20, 20, red)), left, top): $X, 0
+  }
+}
+
+// swapB has no `p`: swapping to it throws, and the swap must leave swapA in place.
+#swapA programmable(p:uint=1) {
+  bitmap(generated(color(10, 10, #FF0000))): 0, 0
+}
+#swapB programmable() {
+  bitmap(generated(color(20, 20, #00FF00))): 0, 0
+}
+#swapFail programmable(tmpl:[swapA, swapB]=swapA, n:uint=1) {
+  #w dynamicRef($tmpl, p=>$n): 0, 0
+}
+
+// A fade-out of the 10px bitmap must run on when `hover` changes meanwhile.
+#fadeOutUnrelated programmable(open:bool=true, hover:bool=false) {
+  transition { open: fade(0.5) }
+  @(open=>true) bitmap(generated(color(10, 10, #FF0000))): 0, 0
+  @(hover=>true) bitmap(generated(color(4, 4, #0000FF))): 20, 0
+}
+
+// A batch that sets `status` before `checked` must still fade the 10px bitmap in.
+#batchCheckedAfterStatus programmable(status:[normal,pressed]=normal, checked:bool=false) {
+  transition { checked: fade(1.0) }
+  @(checked=>true) bitmap(generated(color(10, 10, #FF0000))): 0, 0
+  @(status=>pressed) bitmap(generated(color(4, 4, #0000FF))): 20, 0
+}

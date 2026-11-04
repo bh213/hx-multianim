@@ -3,7 +3,6 @@ package bh.base;
 import bh.multianim.MultiAnimBuilder;
 import bh.multianim.MultiAnimParser.GeneratedTileType;
 import bh.multianim.MultiAnimParser.PlaceholderTypes;
-import bh.multianim.MultiAnimParser.AutotileFormat;
 import h2d.Font;
 import bh.stateanim.AnimationSM;
 import bh.stateanim.AnimParser.AnimationStateSelector;
@@ -15,9 +14,7 @@ enum ResolvedGeneratedTileType {
     Cross(width:Int, height:Int, color:Int, thickness:Int);
 	SolidColor(width:Int, height:Int, color:Int);
 	SolidColorWithText(width:Int, height:Int, color:Int, text:String, textColor:Int, font:String);
-	AutotileRef(format:AutotileFormat, tileIndex:Int, tileSize:Int, edgeColor:Int, fillColor:Int);
-	AutotileRegionSheet(baseTile:h2d.Tile, regionX:Int, regionY:Int, regionW:Int, regionH:Int, tileSize:Int, tileCount:Int, scale:Int, font:String, fontColor:Int);
-	PreloadedTile(tile:h2d.Tile);
+	AutotileRegionSheet(baseTile:h2d.Tile, regionX:Int, regionY:Int, regionW:Int, regionH:Int, tileSize:Int, tileCount:Int, scale:Int, font:String, fontColor:Int, margin:Int, spacing:Int);
 }
 
 interface ResourceLoader {
@@ -27,6 +24,12 @@ interface ResourceLoader {
     function loadMultiAnim(resourceFilename:String):MultiAnimBuilder;
     function loadHXDResource(filename:String):hxd.res.Any;
     function loadFont(font:String):h2d.Font;
+    /** A sound by its resource path (`sound/coin.wav`), loaded once and shared: `play()` it as often
+     *  as wanted, every play its own channel. */
+    function loadSound(filename:String):hxd.res.Sound;
+    /** The audio the sounds of an `.anim` file play through (the screen manager's); null where
+     *  nothing plays (a loader of its own, a test). */
+    function getAudio():Null<bh.audio.Audio>;
     function loadAnimParser(filename:String):AnimParserResult;
     function createAnimSM(filename:String, selector:AnimationStateSelector):AnimationSM;
     function getOrCreatePlaceholder(key: ResolvedGeneratedTileType, builder:ResolvedGeneratedTileType->h2d.Tile):h2d.Tile;
@@ -40,21 +43,31 @@ class CachingResourceLoader implements ResourceLoader {
 	public var fileChangeDetector:Null<bh.multianim.dev.HotReload.FileChangeDetector> = null;
 
 	/** Returns cached resource names by category. Used by DevBridge. */
-	public function getCacheKeys():{sheets:Array<String>, fonts:Array<String>, manimFiles:Array<String>, animFiles:Array<String>} {
+	public function getCacheKeys():{sheets:Array<String>, fonts:Array<String>, manimFiles:Array<String>, animFiles:Array<String>, sounds:Array<String>} {
 		var sheets:Array<String> = [];
 		var fonts:Array<String> = [];
 		var manimFiles:Array<String> = [];
 		var animFiles:Array<String> = [];
+		var sounds:Array<String> = [];
 		for (name => _ in atlas2Cache) sheets.push(name);
 		for (name => _ in atlasCache) sheets.push(name);
 		for (name => _ in fontCache) fonts.push(name);
 		for (name => _ in multiAnimCache) manimFiles.push(name);
 		for (name => _ in animSMCache) animFiles.push(name);
-		return {sheets: sheets, fonts: fonts, manimFiles: manimFiles, animFiles: animFiles};
+		for (name => _ in soundCache) sounds.push(name);
+		return {sheets: sheets, fonts: fonts, manimFiles: manimFiles, animFiles: animFiles, sounds: sounds};
 	}
 	#end
 
     var animSMCache:Map<String, AnimParserResult> = [];
+    var soundCache:Map<String, hxd.res.Sound> = [];
+
+    /** The audio an `.anim`'s `sounds { }` play through; `ScreenManager` sets its own here. */
+    public var audio:Null<bh.audio.Audio> = null;
+
+    public function getAudio():Null<bh.audio.Audio> {
+        return audio;
+    }
     var multiAnimCache:Map<String, MultiAnimBuilder> = [];
     var tileCache:Map<String, h2d.Tile> = [];
     var placeholderCache:Map<ResolvedGeneratedTileType, h2d.Tile> = [];
@@ -92,6 +105,15 @@ class CachingResourceLoader implements ResourceLoader {
 		throw new haxe.exceptions.NotImplementedException();
 	}
 
+    /** Reads the sound through `loadHXDResourceImpl` (hxd.Res on HashLink, an embedded resource or
+     *  the page's file loader on JS), so a loader that loads any resource loads sounds too; replace
+     *  it to fetch sounds from elsewhere. */
+    public dynamic function loadSoundImpl(filename:String):hxd.res.Sound {
+        var res:hxd.res.Any = loadHXDResourceImpl(filename);
+        if (res == null) throw 'could not load sound "$filename"';
+        return res.toSound();
+    }
+
 	public dynamic function loadAnimSMImpl(filename:String):AnimParserResult {
 		throw new haxe.exceptions.NotImplementedException();
 	}
@@ -123,6 +145,10 @@ class CachingResourceLoader implements ResourceLoader {
         return cachedGet(fontCache, fontName, fontname->loadFontImpl(fontname));
 	}
 
+    public function loadSound(filename:String):hxd.res.Sound {
+        return cachedGet(soundCache, filename, filename->loadSoundImpl(filename));
+	}
+
     public function loadAnimParser(filename:String):AnimParserResult {
         return cachedGet(animSMCache, filename, filename->loadAnimSMImpl(filename));
     }
@@ -141,6 +167,7 @@ class CachingResourceLoader implements ResourceLoader {
         atlasCache.clear();
         atlas2Cache.clear();
         fontCache.clear();
+        soundCache.clear();
         placeholderCache.clear();
         multiAnimCache.clear();
         multiAnimCycleDetection = [];
@@ -160,7 +187,13 @@ class CachingResourceLoader implements ResourceLoader {
         if (multiAnimCycleDetection.contains(key)) throw 'cyclic dependency in multiAnim $key: path ${multiAnimCycleDetection}';
         multiAnimCycleDetection.push(key);
 
-        var retVal =  cachedGet(multiAnimCache, key, k ->loadMultiAnimImpl(k));
+        var retVal = try {
+            cachedGet(multiAnimCache, key, k ->loadMultiAnimImpl(k));
+        } catch (e) {
+            // A failed load must leave the path, or every retry reports a cyclic dependency.
+            multiAnimCycleDetection.remove(key);
+            throw e;
+        }
 
         multiAnimCycleDetection.remove(key);
         return retVal;

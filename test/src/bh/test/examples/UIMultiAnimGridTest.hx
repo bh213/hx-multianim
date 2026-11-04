@@ -157,6 +157,61 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 		Assert.equals(3, grid.get(0, 0).hp);
 	}
 
+	// A cell with a param of its own: lit draws a 10-wide mark over the 50-wide cell
+	static final LIT_CELL_MANIM = "
+		#litCell programmable(col:int=0, row:int=0, status:[normal,hover]=normal, highlight:[none,accept,reject]=none, lit:bool=false) {
+			bitmap(generated(color(50, 50, #666666))): 0, 0
+			@(lit=>true) bitmap(generated(color(10, 10, #ff0000))): 0, 0
+		}
+	";
+
+	function createLitGrid():UIMultiAnimGrid<Dynamic> {
+		final builder = BuilderTestBase.builderFromSource(LIT_CELL_MANIM);
+		final grid = new UIMultiAnimGrid(builder, {
+			gridType: Rect(50, 50, 2),
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "litCell"}),
+		});
+		grid.addRectRegion(1, 1);
+		return grid;
+	}
+
+	static function litMarkShown(grid:UIMultiAnimGrid<Dynamic>):Bool {
+		final result = grid.getCellVisual(0, 0).getResult();
+		for (b in BuilderTestBase.findVisibleBitmapDescendants(result.object))
+			if (Std.int(b.tile.width) == 10)
+				return true;
+		return false;
+	}
+
+	static function throwsSomething(fn:() -> Void):Bool {
+		try {
+			fn();
+		} catch (e:Dynamic) {
+			return true;
+		}
+		return false;
+	}
+
+	@Test
+	public function testSetCellParametersWithAnUnknownParamLeavesTheCellUpdatable():Void {
+		final grid = createLitGrid();
+		Assert.isTrue(throwsSomething(() -> grid.setCellParameters(0, 0, ["nope" => 1])), "precondition: an unknown param is refused");
+		Assert.isFalse(grid.getCellVisual(0, 0).getResult().batchMode, "the grid's own batch is closed after the throw");
+		grid.setCellParameter(0, 0, "lit", true);
+		Assert.isTrue(litMarkShown(grid), "a later setCellParameter applies");
+		Assert.isFalse(throwsSomething(() -> grid.setCellParameters(0, 0, ["lit" => false])), "a later setCellParameters opens its batch");
+		Assert.isFalse(litMarkShown(grid), "and applies");
+	}
+
+	@Test
+	public function testSetWithAnUnknownParamLeavesTheCellUpdatable():Void {
+		final grid = createLitGrid();
+		Assert.isTrue(throwsSomething(() -> grid.set(0, 0, {hp: 1}, ["nope" => 1])), "precondition: an unknown param is refused");
+		Assert.isFalse(grid.getCellVisual(0, 0).getResult().batchMode, "the grid's own batch is closed after the throw");
+		grid.set(0, 0, {hp: 2}, ["lit" => true]);
+		Assert.isTrue(litMarkShown(grid), "a later set with params applies");
+	}
+
 	@Test
 	public function testGetEmptyCell():Void {
 		var grid = createRectGrid(2, 2);
@@ -606,6 +661,95 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testCellCardPlayedReachesEachGridOnceWhenAHandlerRemovesACell():Void {
+		// A game removes the cell a card was played on from its CellCardPlayed handler. The
+		// event must reach that grid once, and still reach a second grid on the same hand.
+		var screen = new UITestScreen();
+		var builder = BuilderTestBase.builderFromSource('$CELL_MANIM\n$CARD_MANIM');
+		final factory = new DefaultCellVisualFactory(builder, {cellBuildName: "cell"});
+		var gridA = new UIMultiAnimGrid(builder, {gridType: Rect(50, 50), cellVisualFactory: factory});
+		var gridB = new UIMultiAnimGrid(builder, {gridType: Rect(50, 50), cellVisualFactory: factory});
+		gridA.addRectRegion(2, 2);
+		gridB.addRectRegion(2, 2);
+
+		var cardHand = new UICardHandHelper(screen, builder);
+		gridA.registerAsCardTarget(cardHand);
+		gridB.registerAsCardTarget(cardHand);
+
+		var playedOnA = 0;
+		var cardPlayedSeenByB = 0;
+		gridA.onGridEvent = (event) -> {
+			switch event {
+				case CellCardPlayed(cell, _):
+					playedOnA++;
+					gridA.removeCell(cell.col, cell.row);
+				default:
+			}
+		};
+		gridB.onGridEvent = (event) -> {
+			switch event {
+				case CellCardPlayed(_, _): cardPlayedSeenByB++;
+				default:
+			}
+		};
+
+		@:privateAccess var prefixA = gridA.registeredCardHands[0].targetPrefix;
+		@:privateAccess cardHand.emitEvent(CardHandEvent.CardPlayed("testCard", TargetingResult.TargetZone('${prefixA}_1_0')));
+		Assert.equals(1, playedOnA, "the cell removed from the handler gets CellCardPlayed once");
+		Assert.isFalse(gridA.hasCell(1, 0), "and is gone");
+
+		@:privateAccess var prefixB = gridB.registeredCardHands[0].targetPrefix;
+		@:privateAccess cardHand.emitEvent(CardHandEvent.CardPlayed("testCard", TargetingResult.TargetZone('${prefixB}_0_0')));
+		Assert.equals(1, cardPlayedSeenByB, "the second grid still gets the cards played on it");
+		Assert.equals(1, playedOnA, "and the first grid does not get the second grid's card");
+	}
+
+	@Test
+	public function testCellCardPlayedReachesTheNextGridWhenAHandlerChangesTheFirst():Void {
+		// The hand tells every registered grid of each event. A handler on the first grid that
+		// adds or removes its cells must not make the hand skip the grid after it.
+		var screen = new UITestScreen();
+		var builder = BuilderTestBase.builderFromSource('$CELL_MANIM\n$CARD_MANIM');
+		final factory = new DefaultCellVisualFactory(builder, {cellBuildName: "cell"});
+		var gridA = new UIMultiAnimGrid(builder, {gridType: Rect(50, 50), cellVisualFactory: factory});
+		var gridB = new UIMultiAnimGrid(builder, {gridType: Rect(50, 50), cellVisualFactory: factory});
+		gridA.addRectRegion(2, 2);
+		gridB.addRectRegion(2, 2);
+
+		var cardHand = new UICardHandHelper(screen, builder);
+		gridA.registerAsCardTarget(cardHand);
+		gridB.registerAsCardTarget(cardHand);
+
+		var dragStartsSeenByB = 0;
+		gridA.onGridEvent = (event) -> {};
+		@:privateAccess {
+			// Count what reaches B's chained listener: wrap it in place, keeping its position.
+			final listeners = cardHand.chainedListeners;
+			final bListener = listeners[1];
+			listeners[1] = (e) -> {
+				switch e {
+					case CardDragStart(_): dragStartsSeenByB++;
+					default:
+				}
+				bListener(e);
+			};
+			gridB.registeredCardHands[0].eventListener = listeners[1];
+			// A's listener changes A's cells on a drag start, as a game's handler may.
+			final aListener = listeners[0];
+			listeners[0] = (e) -> {
+				aListener(e);
+				switch e {
+					case CardDragStart(_): gridA.removeCell(0, 0);
+					default:
+				}
+			};
+			gridA.registeredCardHands[0].eventListener = listeners[0];
+			cardHand.emitEvent(CardHandEvent.CardDragStart("testCard"));
+		}
+		Assert.equals(1, dragStartsSeenByB, "the grid after the one whose cells changed still gets the event");
+	}
+
+	@Test
 	public function testCellCardPlayedNotEmittedForForeignTarget():Void {
 		// Card played on a target that doesn't belong to this grid → no event
 		var screen = new UITestScreen();
@@ -839,6 +983,130 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 		// Interactive should be at (0 - 30, 0 - 30) = (-30, -30).
 		Assert.floatEquals(-30.0, obj00.x);
 		Assert.floatEquals(-30.0, obj00.y);
+	}
+
+	@Test
+	public function testHexCardTargetIsTheHexUnderTheCursor():Void {
+		// Neighbouring hexes' bounding rectangles overlap: near an edge the target must still be
+		// the hex the cursor is in, whatever order the targets were registered in
+		var screen = new UITestScreen();
+		var builder = BuilderTestBase.builderFromSource('$HEX_CELL_MANIM\n$CARD_MANIM');
+		var grid = new UIMultiAnimGrid(builder, {
+			gridType: Hex(POINTY, 30, 30),
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "hexCell"}),
+		});
+		grid.addHexRegion(0, 0, 1);
+		var cardHand = new UICardHandHelper(screen, builder);
+		grid.registerAsCardTarget(cardHand);
+		@:privateAccess var prefix = grid.registeredCardHands[0].targetPrefix;
+
+		final targeting = cardHand.getTargeting();
+		var checked = 0;
+		final wrong:Array<String> = [];
+		var y = -90.0;
+		while (y <= 90.0) {
+			var x = -90.0;
+			while (x <= 90.0) {
+				final cell = grid.cellAtPoint(x, y);
+				if (cell != null) {
+					checked++;
+					final expected = '${prefix}_${cell.col}_${cell.row}';
+					final actual = targeting.hitTestTargets(x, y, "card");
+					if (actual != expected)
+						wrong.push('($x, $y): $actual, not $expected');
+				}
+				x += 3.0;
+			}
+			y += 3.0;
+		}
+		Assert.isTrue(checked > 100, "precondition: the samples cross the cells");
+		Assert.equals(0, wrong.length, 'the target is the hex under the cursor: ${wrong.length} of $checked wrong, e.g. ${wrong.slice(0, 4).join("; ")}');
+	}
+
+	// ============== Card target callbacks on the card hand ==============
+
+	@Test
+	public function testCardTargetHighlightRunsOnceAfterTheCellsChange():Void {
+		// Every addCell / removeCell re-creates the card targets; the highlight must not be
+		// wrapped again each time
+		var screen = new UITestScreen();
+		var builder = BuilderTestBase.builderFromSource('$CELL_MANIM\n$CARD_MANIM');
+		var grid = new UIMultiAnimGrid(builder, {
+			gridType: Rect(50, 50),
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
+		});
+		grid.addRectRegion(2, 2);
+		var cardHand = new UICardHandHelper(screen, builder);
+		grid.registerAsCardTarget(cardHand, (_, _) -> true);
+		grid.addCell(2, 0);
+		grid.addCell(3, 0);
+		grid.removeCell(3, 0);
+
+		var enters = 0;
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellTargetEnter(_, _): enters++;
+				default:
+			}
+		};
+		// Over cell (1, 0): 50..100 x 0..50
+		Assert.notNull(cardHand.getTargeting().updateHighlight(75, 25, "card"), "precondition: the cursor is over a target");
+
+		Assert.equals(1, enters, "one highlight of a cell is one CellTargetEnter, however often the cells changed");
+	}
+
+	@Test
+	public function testCardHandGetsItsOwnTargetCallbacksBackWhenTheGridsLeave():Void {
+		var screen = new UITestScreen();
+		var builder = BuilderTestBase.builderFromSource('$CELL_MANIM\n$CARD_MANIM');
+		function makeGrid():UIMultiAnimGrid<Dynamic> {
+			var grid = new UIMultiAnimGrid(builder, {
+				gridType: Rect(50, 50),
+				cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
+			});
+			grid.addRectRegion(2, 2);
+			return grid;
+		}
+		var gridA = makeGrid();
+		var gridB = makeGrid();
+		var cardHand = new UICardHandHelper(screen, builder);
+		final ownAccepts:TargetAcceptsCallback = (_, _, _) -> true;
+		final ownHighlight:TargetHighlightCallback = (_, _, _) -> {};
+		cardHand.setTargetAcceptsFilter(ownAccepts);
+		cardHand.setTargetHighlightCallback(ownHighlight);
+
+		gridA.registerAsCardTarget(cardHand, (_, _) -> true);
+		gridB.registerAsCardTarget(cardHand, (_, _) -> true);
+		gridA.addCell(2, 0); // re-creates A's card targets
+
+		// A leaves first: B, registered after it, keeps working and A hears nothing more
+		gridA.unregisterAsCardTarget(cardHand);
+		var aEnters = 0;
+		var bEnters = 0;
+		gridA.onGridEvent = (event) -> {
+			switch event {
+				case CellTargetEnter(_, _): aEnters++;
+				default:
+			}
+		};
+		gridB.onGridEvent = (event) -> {
+			switch event {
+				case CellTargetEnter(_, _): bEnters++;
+				default:
+			}
+		};
+		// Both grids lie over the same place: over cell (0, 0)
+		Assert.notNull(cardHand.getTargeting().updateHighlight(25, 25, "card"), "precondition: the cursor is over a target");
+		Assert.equals(0, aEnters, "an unregistered grid takes no part in the card hand's highlight");
+		Assert.equals(1, bEnters, "the grid still registered keeps its highlight");
+
+		// B goes too (disposed): the card hand is left with its own callbacks, holding no grid
+		gridB.dispose();
+		Assert.isTrue(Reflect.compareMethods(ownAccepts, cardHand.getTargeting().acceptsFilter),
+			"the card hand's own accepts filter is back once no grid targets it");
+		Assert.isTrue(Reflect.compareMethods(ownHighlight, cardHand.getTargeting().onTargetHighlight),
+			"the card hand's own highlight callback is back once no grid targets it");
+		Assert.equals(0, @:privateAccess cardHand.getTargeting().hooks.length, "no grid's hook is left on the card hand");
 	}
 
 	// ============== acceptDrops duplicate registration (Bug 1.14) ==============
@@ -1353,6 +1621,56 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 	}
 
 	// ============== swapEnabled drop behavior ==============
+
+	@Test
+	public function testAcceptDropsFallsBackToCellDropWhenSwapHasNoSourceCell():Void {
+		// External draggable (not built via makeDraggableFromCell) has a null sourceCellCoord.
+		// Dropping it on a swapEnabled grid's occupied cell must fall through to CellDrop
+		// instead of trying to swap with a null source cell.
+		var grid = createSwapGrid(2, 1);
+		grid.set(0, 0, "target");
+		grid.set(1, 0, "occupied");
+
+		var dragTarget = new h2d.Object();
+		var drag = UIMultiAnimDraggable.create(dragTarget);
+		drag.payload = "external";
+		// Note: sourceCellCoord is intentionally NOT set — this is what triggers the bug.
+		grid.acceptDrops(drag);
+
+		var swapFired = false;
+		var dropFired = false;
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellSwap(_, _, _, _): swapFired = true;
+				case CellDrop(_, _, _, _, _): dropFired = true;
+				default:
+			}
+		};
+
+		final zone:bh.ui.UIMultiAnimDraggable.DropZone = {
+			id: GridCell(grid, 1, 0),
+			bounds: h2d.col.Bounds.fromValues(50, 0, 50, 50),
+		};
+		final result:bh.ui.UIMultiAnimDraggable.DragDropResult = {
+			zone: zone,
+			pos: new h2d.col.Point(75, 25),
+		};
+
+		final cb = drag.onDragDrop;
+		Assert.notNull(cb, "acceptDrops should wire onDragDrop");
+		if (cb == null) return;
+
+		var threw:Null<Dynamic> = null;
+		try {
+			cb(result, null);
+		} catch (e:Dynamic) {
+			threw = e;
+		}
+
+		Assert.isNull(threw, "Drop should not throw NRE when external draggable has no source cell");
+		Assert.isFalse(swapFired, "Must not fire CellSwap when draggable has no source cell");
+		Assert.isTrue(dropFired, "Must fall through to CellDrop instead");
+	}
 
 	@Test
 	public function testSwapEnabledConfigStored():Void {
@@ -2111,6 +2429,456 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 		grid.dispose();
 	}
 
+	// ============== cellDragEnabled: input while the drop settles ==============
+
+	@Test
+	public function testCellDragSecondReleaseDuringSnapDoesNotDropAgain():Void {
+		var grid = createCellDragGridWithPaths(3, 1);
+		grid.set(0, 0, "item");
+
+		var drops = 0;
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellDrop(_, _, _, _, ctx):
+					drops++;
+					ctx.accept();
+				default:
+			}
+		};
+
+		grid.onMouseClick(25, 25, 0);
+		grid.onMouseRelease(104 + 25, 25); // drop on (2,0); the snap animation starts
+		Assert.equals(1, drops);
+
+		// A click lands while the dropped item is still snapping into place
+		grid.onMouseMove(52 + 25, 25);
+		grid.onMouseClick(104 + 25, 25, 0);
+		grid.onMouseRelease(104 + 25, 25);
+		Assert.equals(1, drops, "a release while the drop settles must not drop the item again");
+
+		grid.update(2.0);
+		Assert.equals(1, drops);
+		grid.dispose();
+	}
+
+	@Test
+	public function testCellDragSecondReleaseDuringSwapDoesNotSwapBack():Void {
+		var grid = createCellDragGridWithPaths(3, 1);
+		grid.set(0, 0, "A");
+		grid.set(1, 0, "B");
+
+		var swaps = 0;
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellSwap(_, _, _, ctx):
+					swaps++;
+					ctx.accept();
+				default:
+			}
+		};
+
+		grid.onMouseClick(25, 25, 0);
+		grid.onMouseRelease(52 + 25, 25); // swap (0,0) <-> (1,0); both items animate
+		Assert.equals(1, swaps);
+
+		grid.onMouseClick(52 + 25, 25, 0);
+		grid.onMouseRelease(52 + 25, 25);
+		Assert.equals(1, swaps, "a release while the swap settles must not swap again");
+		Assert.equals("B", grid.get(0, 0), "the swap stays done");
+		Assert.equals("A", grid.get(1, 0), "the swap stays done");
+
+		grid.update(2.0);
+		grid.dispose();
+	}
+
+	@Test
+	public function testCellDragOtherButtonReleaseDoesNotDrop():Void {
+		// Screen-routed, as a real controller delivers it: the release carries its button.
+		var grid = createCellDragGrid(3, 1);
+		grid.set(0, 0, "item");
+		var screen = new UITestScreen();
+		@:privateAccess screen.registerComponent(grid);
+
+		var drops = 0;
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellDrop(_, _, _, _, ctx):
+					drops++;
+					ctx.accept();
+				default:
+			}
+		};
+
+		screen.dispatchMouseClick(new h2d.col.Point(25, 25), 0, false);
+		@:privateAccess Assert.notNull(grid.cellDragObj, "precondition: a left push drags the cell");
+		screen.dispatchMouseClick(new h2d.col.Point(104 + 25, 25), 1, true);
+		Assert.equals(0, drops, "a right-button release does not drop a left-button drag");
+		@:privateAccess Assert.notNull(grid.cellDragObj, "the drag goes on");
+
+		screen.dispatchMouseClick(new h2d.col.Point(104 + 25, 25), 0, true);
+		Assert.equals(1, drops, "the left-button release drops it");
+		grid.dispose();
+	}
+
+	// ============== Teardown and cell removal while drags / swaps settle ==============
+
+	/** Two linked cell-drag grids (A at x 0, B at x 200) caught mid cross-grid swap: A(0,0) was
+	 *  dragged onto B's occupied (0,0). A's snap animation rebuilds B's cell when it lands, and the
+	 *  displaced item's animation (in B) rebuilds A's cell. */
+	function createLinkedGridsMidSwap():{a:UIMultiAnimGrid<Dynamic>, b:UIMultiAnimGrid<Dynamic>} {
+		var builder = BuilderTestBase.builderFromSource(CELL_WITH_PATH_MANIM);
+		function make(originX:Float):UIMultiAnimGrid<Dynamic> {
+			var grid = new UIMultiAnimGrid(builder, {
+				gridType: Rect(50, 50, 2),
+				cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
+				originX: originX,
+				originY: 0,
+				cellDragEnabled: true,
+				snapPathName: "swapAnim",
+				returnPathName: "swapAnim",
+				swapEnabled: true,
+				swapPathName: "swapAnim",
+			});
+			grid.addRectRegion(2, 1);
+			return grid;
+		}
+		var a = make(0);
+		var b = make(200);
+		UIMultiAnimGrid.linkGrids(a, b);
+		a.set(0, 0, "A");
+		b.set(0, 0, "B");
+		a.onMouseClick(25, 25, 0);
+		a.onMouseRelease(225, 25);
+		@:privateAccess Assert.equals(1, a.activeSwapAnims.length, "precondition: the dragged item snaps into B");
+		@:privateAccess Assert.equals(1, b.activeSwapAnims.length, "precondition: the displaced item flies back to A");
+		return {a: a, b: b};
+	}
+
+	@Test
+	public function testDisposingLinkedGridsMidCrossGridSwapDoesNotThrow():Void {
+		// Screen teardown disposes both grids, in either order, while the swap still animates.
+		for (aFirst in [true, false]) {
+			final grids = createLinkedGridsMidSwap();
+			var threw:Null<Dynamic> = null;
+			try {
+				if (aFirst) {
+					grids.a.dispose();
+					grids.b.dispose();
+				} else {
+					grids.b.dispose();
+					grids.a.dispose();
+				}
+			} catch (e:Dynamic) {
+				threw = e;
+			}
+			Assert.isNull(threw, 'disposing linked grids mid-swap (${aFirst ? "source" : "target"} first) must not throw, got: $threw');
+		}
+	}
+
+	@Test
+	public function testUpdateAfterLinkedGridDisposedMidSwapDoesNotThrow():Void {
+		// Only one grid goes away; the other keeps animating its half of the swap.
+		for (disposeSource in [true, false]) {
+			final grids = createLinkedGridsMidSwap();
+			final gone = disposeSource ? grids.a : grids.b;
+			final alive = disposeSource ? grids.b : grids.a;
+			var threw:Null<Dynamic> = null;
+			try {
+				gone.dispose();
+				alive.update(2.0);
+			} catch (e:Dynamic) {
+				threw = e;
+			}
+			Assert.isNull(threw, 'updating the ${disposeSource ? "target" : "source"} grid after the other was disposed mid-swap must not throw, got: $threw');
+			@:privateAccess Assert.equals(0, alive.activeSwapAnims.length, "the surviving grid's swap animation finishes");
+			alive.dispose();
+		}
+	}
+
+	@Test
+	public function testSwapCompletionThatDisposesGridDoesNotCrashUpdate():Void {
+		// A swap's onComplete switches screens (clear() -> dispose()) while another swap
+		// finishes in the same frame.
+		var grid = createSwapGridWithPath();
+		grid.addRectRegion(4, 1);
+		grid.set(0, 0, "a");
+		grid.set(1, 0, "b");
+		grid.set(2, 0, "c");
+		grid.set(3, 0, "d");
+		var completions = 0;
+		var disposed = false;
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellSwap(_, _, _, ctx):
+					ctx.onComplete(() -> {
+						completions++;
+						if (!disposed) {
+							disposed = true;
+							grid.dispose();
+						}
+					});
+				default:
+			}
+		};
+		grid.swapCells(0, 0, 1, 0, true);
+		grid.swapCells(2, 0, 3, 0, true);
+		@:privateAccess Assert.equals(4, grid.activeSwapAnims.length, "precondition: two swaps in flight");
+
+		var threw:Null<Dynamic> = null;
+		try {
+			grid.update(2.0);
+		} catch (e:Dynamic) {
+			threw = e;
+		}
+		Assert.isNull(threw, 'a swap completion that disposes the grid must not crash update(), got: $threw');
+		Assert.equals(2, completions, "each swap completes exactly once");
+	}
+
+	@Test
+	public function testRemovingDragSourceCellMidDragDoesNotWedgeLaterDrags():Void {
+		var grid = createCellDragGrid(3, 1);
+		grid.set(0, 0, "item");
+		grid.set(1, 0, "other");
+		var dragEnds = 0;
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellDragEnd(_): dragEnds++;
+				default:
+			}
+		};
+
+		grid.onMouseClick(25, 25, 0);
+		@:privateAccess Assert.notNull(grid.cellDragObj, "precondition: (0,0) is being dragged");
+		var threw:Null<Dynamic> = null;
+		try {
+			grid.removeCell(0, 0);
+			grid.onMouseRelease(500, 500);
+		} catch (e:Dynamic) {
+			threw = e;
+		}
+		Assert.isNull(threw, 'removing the dragged cell, then releasing, must not throw, got: $threw');
+		Assert.equals(1, dragEnds, "the drag ends (CellDragEnd) once its source cell is removed");
+		@:privateAccess Assert.isFalse(grid.cellDragSettling, "the drag is not left settling");
+
+		// A later drag moves and releases as usual
+		grid.onMouseClick(52 + 25, 25, 0);
+		@:privateAccess Assert.notNull(grid.cellDragObj, "a new drag starts");
+		Assert.isTrue(grid.onMouseMove(300, 300), "the new drag follows the mouse");
+		Assert.isTrue(grid.onMouseRelease(500, 500), "the new drag can be released");
+		@:privateAccess Assert.isNull(grid.cellDragObj, "the new drag settles");
+		Assert.equals("other", grid.get(1, 0));
+		grid.dispose();
+	}
+
+	@Test
+	public function testRemovingDragSourceCellThenReleasingOnOccupiedCellDoesNotSwap():Void {
+		var grid = createCellDragSwapGrid(3, 1);
+		grid.set(0, 0, "A");
+		grid.set(1, 0, "B");
+		var swaps = 0;
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellSwap(_, _, _, _): swaps++;
+				default:
+			}
+		};
+
+		grid.onMouseClick(25, 25, 0);
+		var threw:Null<Dynamic> = null;
+		try {
+			grid.removeCell(0, 0);
+			grid.onMouseRelease(52 + 25, 25);
+		} catch (e:Dynamic) {
+			threw = e;
+		}
+		Assert.isNull(threw, 'releasing onto an occupied cell after the source cell was removed must not throw, got: $threw');
+		Assert.equals(0, swaps, "there is no source cell left to swap with");
+		Assert.equals("B", grid.get(1, 0), "the occupied cell keeps its item");
+		Assert.notNull(grid.getCellVisual(1, 0).getResult(), "the occupied cell keeps a real visual");
+		grid.dispose();
+	}
+
+	@Test
+	public function testRemovingDragSourceCellWhileItReturnsDoesNotWedgeLaterDrags():Void {
+		var grid = createCellDragGridWithPaths(3, 1);
+		grid.set(0, 0, "item");
+		grid.set(1, 0, "other");
+
+		grid.onMouseClick(25, 25, 0);
+		grid.onMouseMove(300, 300);
+		grid.onMouseRelease(300, 300); // no target: the item animates back to (0,0)
+		@:privateAccess Assert.isTrue(grid.cellDragSettling, "precondition: the return animation runs");
+		var threw:Null<Dynamic> = null;
+		try {
+			grid.removeCell(0, 0);
+			grid.update(2.0);
+		} catch (e:Dynamic) {
+			threw = e;
+		}
+		Assert.isNull(threw, 'the return animation landing on a removed cell must not throw, got: $threw');
+		@:privateAccess Assert.isFalse(grid.cellDragSettling, "the drag finishes");
+		@:privateAccess Assert.isNull(grid.cellDragObj, "the dragged visual is gone");
+
+		grid.onMouseClick(52 + 25, 25, 0);
+		@:privateAccess Assert.notNull(grid.cellDragObj, "a new drag starts");
+		Assert.isTrue(grid.onMouseRelease(500, 500), "the new drag can be released");
+		grid.update(2.0);
+		@:privateAccess Assert.isNull(grid.cellDragObj, "the new drag settles");
+		grid.dispose();
+	}
+
+	function createDropTargetGrid(builder:bh.multianim.MultiAnimBuilder):UIMultiAnimGrid<Dynamic> {
+		var grid = new UIMultiAnimGrid(builder, {
+			gridType: Rect(50, 50, 2),
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
+			originX: 0,
+			originY: 0,
+			snapPathName: "swapAnim",
+			swapEnabled: true,
+			swapPathName: "swapAnim",
+		});
+		grid.addRectRegion(2, 1);
+		return grid;
+	}
+
+	@Test
+	public function testAcceptedExternalDropSettlingAfterDisposeDoesNotCallBackLater():Void {
+		var builder = BuilderTestBase.builderFromSource(CELL_WITH_PATH_MANIM);
+		var grid = createDropTargetGrid(builder);
+		var drag = UIMultiAnimDraggable.create(new h2d.Object());
+		drag.setSnapAnimPath(builder, "swapAnim");
+		grid.acceptDrops(drag);
+		var completions = 0;
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellDrop(_, _, _, _, ctx):
+					ctx.accept();
+					ctx.onComplete(() -> completions++);
+				default:
+			}
+		};
+
+		var control = new bh.test.UITestHarness.MockControllable();
+		bh.test.UITestHarness.simulatePush(drag, control, new h2d.col.Point(10, 10));
+		drag.onEvent(bh.test.UITestHarness.createEventWrapper(OnRelease(0), control, new h2d.col.Point(52 + 25, 25)));
+		Assert.isTrue(drag.isAnimating(), "precondition: the accepted drop snaps into cell (1,0)");
+
+		grid.dispose();
+		final atDispose = completions;
+		drag.update(2.0);
+		Assert.equals(atDispose, completions, "no drop completion may run after dispose()");
+		Assert.equals(1, completions, "the accepted drop completes (once) as the grid is disposed, like swap animations");
+	}
+
+	@Test
+	public function testAcceptedExternalSwapSettlingAfterDisposeDoesNotCallBackLater():Void {
+		var builder = BuilderTestBase.builderFromSource(CELL_WITH_PATH_MANIM);
+		var grid = createDropTargetGrid(builder);
+		grid.set(0, 0, "A");
+		grid.set(1, 0, "B");
+		var drag = grid.makeDraggableFromCell(0, 0);
+		grid.acceptDrops(drag);
+		var completions = 0;
+		grid.onGridEvent = (event) -> {
+			switch event {
+				case CellSwap(_, _, _, ctx):
+					ctx.accept();
+					ctx.onComplete(() -> completions++);
+				default:
+			}
+		};
+
+		var control = new bh.test.UITestHarness.MockControllable();
+		bh.test.UITestHarness.simulatePush(drag, control, new h2d.col.Point(25, 25));
+		drag.onEvent(bh.test.UITestHarness.createEventWrapper(OnRelease(0), control, new h2d.col.Point(52 + 25, 25)));
+		Assert.isTrue(drag.isAnimating(), "precondition: the swapped-in item snaps into cell (1,0)");
+
+		grid.dispose();
+		final atDispose = completions;
+		drag.update(2.0);
+		Assert.equals(atDispose, completions, "no swap completion may run after dispose()");
+		Assert.equals(1, completions, "the accepted swap completes (once) as the grid is disposed");
+	}
+
+	// ============== Cell tweens: dispose / rebuild ==============
+
+	function createTweenGrid(tm:bh.base.TweenManager):UIMultiAnimGrid<Dynamic> {
+		var builder = BuilderTestBase.builderFromSource(CELL_MANIM);
+		var grid = new UIMultiAnimGrid(builder, {
+			gridType: Rect(50, 50, 2),
+			cellVisualFactory: new DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
+			originX: 0,
+			originY: 0,
+			tweenManager: tm,
+		});
+		grid.addRectRegion(2, 1);
+		return grid;
+	}
+
+	@Test
+	public function testDisposeDoesNotRunRemoveCellAnimatedCallbackLater():Void {
+		var tm = new bh.base.TweenManager();
+		var grid = createTweenGrid(tm);
+		grid.set(0, 0, "item");
+
+		var removed = 0;
+		grid.removeCellAnimated(0, 0, 0.5, [bh.base.TweenManager.TweenProperty.Alpha(0.0)], null, () -> removed++);
+		grid.dispose();
+		final atDispose = removed;
+
+		tm.update(1.0);
+		Assert.equals(atDispose, removed, "no removeCellAnimated callback may run after dispose()");
+		Assert.equals(1, removed, "the pending removal completes (once) as the grid is disposed, like swap animations");
+	}
+
+	@Test
+	public function testDisposeSkipsRemoveCellAnimatedCallbackWhoseTweenWasCancelledElsewhere():Void {
+		// ScreenManager cancels every tween under a screen root when the screen goes away. A
+		// cancelled tween never completes, so the removal's callback never ran, and dispose()
+		// must not run it now, long after the fact, as if the animation had just finished.
+		var tm = new bh.base.TweenManager();
+		var grid = createTweenGrid(tm);
+		grid.set(0, 0, "item");
+
+		var removed = 0;
+		grid.removeCellAnimated(0, 0, 0.5, [bh.base.TweenManager.TweenProperty.Alpha(0.0)], null, () -> removed++);
+		tm.cancelAllChildren(grid.getObject()); // as ScreenManager.removeScreen does for the screen root
+		grid.dispose();
+
+		Assert.equals(0, removed, "dispose() must not run the callback of a removal whose tween was cancelled elsewhere");
+	}
+
+	@Test
+	public function testDisposeSkipsRemoveCellAnimatedCallbackWhoseTweenWentBackToThePool():Void {
+		// Same as above, but the cancelled tween has already been recycled by an update(): the
+		// kept reference is now a pooled instance with a newer generation.
+		var tm = new bh.base.TweenManager();
+		var grid = createTweenGrid(tm);
+		grid.set(0, 0, "item");
+
+		var removed = 0;
+		grid.removeCellAnimated(0, 0, 0.5, [bh.base.TweenManager.TweenProperty.Alpha(0.0)], null, () -> removed++);
+		tm.cancelAllChildren(grid.getObject());
+		tm.update(0.1);
+		Assert.equals(0, removed, "precondition: a cancelled tween does not complete");
+		grid.dispose();
+
+		Assert.equals(0, removed, "dispose() must not run the callback of a removal whose tween already went back to the pool");
+	}
+
+	@Test
+	public function testRebuildCellStopsEntranceTweenOnReplacedVisual():Void {
+		var tm = new bh.base.TweenManager();
+		var grid = createTweenGrid(tm);
+		grid.addCellAnimated(2, 0, "item", null, 0.5, [bh.base.TweenManager.TweenProperty.Alpha(0.0)]);
+		final oldVisual = grid.getCellVisual(2, 0).object;
+		Assert.isTrue(tm.hasTweens(oldVisual), "precondition: the entrance tween runs");
+
+		grid.rebuildCell(2, 0);
+		Assert.isFalse(tm.hasTweens(oldVisual), "rebuildCell must stop tweens on the visual it replaces");
+		grid.dispose();
+	}
+
 	// ============== cellDragEnabled: right click does not drag ==============
 
 	@Test
@@ -2603,6 +3371,63 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 			+ "should write into a scratch FPoint on the hot path. Allocated "
 			+ delta + " fresh FPoints across 20 drag-move events.");
 
+		grid.dispose();
+	}
+
+	// The hover hit-test (onMouseMove -> cellAtPointInto -> hitTestRectInto ->
+	// cells.exists(cellKey)) runs cellKey on every move. When cells was String-keyed,
+	// the membership check built one '${col}_${row}' String per move even when the
+	// cursor stayed in the same cell. The invariant that prevents that allocation is
+	// "cells (and the layerEntries inner map) are Int-keyed" — a String-keyed regression
+	// makes the underlying map a haxe.ds.StringMap, so cells.exists() must build a String.
+	// Assert the concrete map type directly: an active guard that fails the instant the
+	// map type is reverted to String, independent of any voluntary allocation counter.
+	@:access(bh.ui.UIMultiAnimGrid)
+	@Test
+	public function testCellHoverHitTestUsesIntKeyedMapNotStringKey():Void {
+		var rect = createRectGrid(3, 3);
+		// Exercise the hover path so the lookup map is actually used.
+		rect.onMouseMove(25, 25);
+		Assert.isTrue(Std.isOfType(rect.cells, haxe.ds.IntMap),
+			"rect grid hover-path map must be Int-keyed (haxe.ds.IntMap) so cells.exists() "
+			+ "allocates no cell-key String per move; got " + Type.getClassName(Type.getClass(rect.cells)));
+
+		var hex = createHexGrid(2);
+		hex.onMouseMove(0, 0);
+		Assert.isTrue(Std.isOfType(hex.cells, haxe.ds.IntMap),
+			"hex grid hover-path map must be Int-keyed (haxe.ds.IntMap); got "
+			+ Type.getClassName(Type.getClass(hex.cells)));
+
+		// The per-cell layer overlays share the same packed-Int key scheme and the same
+		// regression risk, so guard their inner map type too.
+		var layered = createRectGridWithLayers(2, 2);
+		layered.addLayer("overlay", {buildName: "overlay", zOrder: 1});
+		for (_ => inner in layered.layerEntries)
+			Assert.isTrue(Std.isOfType(inner, haxe.ds.IntMap),
+				"layerEntries inner map must be Int-keyed (haxe.ds.IntMap); got "
+				+ Type.getClassName(Type.getClass(inner)));
+
+		rect.dispose();
+		hex.dispose();
+		layered.dispose();
+	}
+
+	// Int-packed cell keys must stay collision-free, including negative hex axial
+	// coords (q/r can be negative). Distinct (col,row) pairs must not alias.
+	@Test
+	public function testCellKeysAreCollisionFreeIncludingNegativeCoords():Void {
+		var grid = createHexGrid();
+		// Coords that a naive pack could collide; includes negatives and swapped pairs.
+		final coords = [[0, 0], [1, 0], [0, 1], [-1, 0], [0, -1], [1, -1], [-1, 1], [2, -3], [-3, 2]];
+		for (c in coords)
+			grid.addCell(c[0], c[1], {tag: c[0] + ":" + c[1]});
+
+		Assert.equals(coords.length, grid.cellCount());
+		for (c in coords) {
+			Assert.isTrue(grid.hasCell(c[0], c[1]), 'cell (${c[0]}, ${c[1]}) should exist');
+			Assert.equals(c[0] + ":" + c[1], grid.get(c[0], c[1]).tag,
+				'cell (${c[0]}, ${c[1]}) returned the wrong data — key collision');
+		}
 		grid.dispose();
 	}
 }

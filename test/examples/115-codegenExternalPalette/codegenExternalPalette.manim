@@ -5,3 +5,15 @@ import "test/examples/115-codegenExternalPalette/extPalette.manim" as "ext"
 #codegenExternalPalette programmable() {
   bitmap(generated(color(20, 20, palette(external(ext), tones, 0)))): 0, 0
 }
+
+// a palette of the import recolours (replacePalette) and holds a picture to it (a shader's palette:)
+#externalSwap programmable() {
+  bitmap(generated(color(8, 8, #FF0000))) {
+    filter: replacePalette(external(ext), teams, 0, 1)
+    pos: 0, 0
+  }
+  bitmap(generated(color(8, 8, #E00030))) {
+    filter: paletteLock(palette: external(ext), tones)
+    pos: 10, 0
+  }
+}

@@ -1,0 +1,8 @@
+walls.png
+  Wall faces of bricks with openings in them (an arch, a drain, a broken hole, a door and a
+  window), a floor, darkness, water and a wall's top, on the square, isometric and hex grids,
+  drawn for hx-multianim's tile map tests of cells drawn in place of a rise's side
+  (test/examples/177-tilemapSideCells, 178-tilemapSideCellsLifted, TilemapTest, TileGridTest),
+  dedicated to the public domain: CC0 1.0.
+
+CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/

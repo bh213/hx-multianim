@@ -63,11 +63,28 @@ typedef ReloadableHandle = {
 	sourcePath:String,
 	programmableName:String,
 	result:BuilderResult,
+	// Owning registry — lets structural discard paths (which bypass the scene-removal
+	// sentinel) unregister the handle directly
+	registry:ReloadableRegistry,
+	// Set by `unregister`: the result was discarded or replaced, so a sentinel still in its tree
+	// must not bring the handle back when the object is added to the scene again.
+	disposed:Bool,
 }
 
 typedef ParamSnapshot = Map<String, ResolvedIndexParameters>;
 typedef SlotSnapshot = Array<{key:SlotKey, content:Null<h2d.Object>, data:Dynamic}>;
-typedef DynamicRefSnapshot = Map<String, ParamSnapshot>;
+/** A dynamicRef child's state: the values set on it, its slots, and its own dynamicRefs
+ *  (captured at every depth); site: where its site sits (BuilderResult.sitePathOf). */
+typedef DynamicRefState = {
+	site:Null<String>,
+	params:ParamSnapshot,
+	slots:SlotSnapshot,
+	dynamicRefs:DynamicRefSnapshot,
+}
+/** The children under each key, one state per child in build order: the unnamed sites of a
+ *  repeat share a key, and so do the sites of one #name in exclusive arms; each child gets its
+ *  own state back (BuilderResult.pairSites, as the rebuilt children are adopted). */
+typedef DynamicRefSnapshot = Map<String, Array<DynamicRefState>>;
 
 typedef PlaceholderSnapshot = Array<{name:String, index:Null<Int>, object:h2d.Object}>;
 
@@ -121,8 +138,10 @@ class FileChangeDetector {
 }
 
 // ---- ReloadSentinel ----
-// Invisible child placed inside a BuilderResult's root object.
-// When the root is removed from scene, onRemove() fires, triggering auto-unregister.
+// Invisible child placed inside a BuilderResult's root object. While the root is out of the
+// scene its handle is detached from the registry (not a reload target, not listed by DevBridge);
+// when the root comes back — a screen switched away and back, a dialog revived — it is attached
+// again. Heaps fires onAdd/onRemove only for roots under an allocated scene.
 
 class ReloadSentinel extends h2d.Object {
 	var registry:ReloadableRegistry;
@@ -135,40 +154,132 @@ class ReloadSentinel extends h2d.Object {
 		this.visible = false;
 	}
 
+	override function onAdd() {
+		super.onAdd();
+		registry.attach(handle);
+	}
+
 	override function onRemove() {
 		super.onRemove();
-		registry.unregister(handle);
+		registry.detach(handle);
 	}
+}
+
+/** A codegen instance (`@:manim`) on the registry's list of what is alive. It cannot be reloaded —
+ *  its tree is compiled in — so hot reload never sees it; the DevBridge lists it beside the
+ *  `BuilderResult` handles through `getAllLive`. The generated instance registers itself from its
+ *  constructor and, like a `ReloadSentinel`, goes off the list while its root is out of the scene. */
+typedef LiveInstanceHandle = {
+	sourcePath:String,
+	programmableName:String,
+	live:bh.multianim.LiveProgrammable,
+	registry:ReloadableRegistry,
+}
+
+/** One live programmable as the DevBridge sees it: a `BuilderResult` (then `result` is set) or a
+ *  codegen instance (`result` null). `live` is the common view of either. */
+typedef LiveEntry = {
+	sourcePath:String,
+	programmableName:String,
+	live:bh.multianim.LiveProgrammable,
+	result:Null<BuilderResult>,
 }
 
 // ---- ReloadableRegistry ----
 
 class ReloadableRegistry {
 	var liveObjects:Map<String, Array<ReloadableHandle>> = new Map();
+	var liveInstances:Map<String, Array<LiveInstanceHandle>> = new Map();
 
 	public function new() {}
+
+	/** Put a codegen instance on the list. Called by the generated constructor through
+	 *  `registerLiveFrom`; `attachLive`/`detachLive` follow its root in and out of the scene. */
+	public function registerLive(sourcePath:String, programmableName:String, live:bh.multianim.LiveProgrammable):LiveInstanceHandle {
+		final handle:LiveInstanceHandle = {sourcePath: sourcePath, programmableName: programmableName, live: live, registry: this};
+		attachLive(handle);
+		return handle;
+	}
+
+	/** `registerLive` on the loader's registry, when the loader has one (a `CachingResourceLoader`
+	 *  wired by `ScreenManager`); null otherwise. What the generated instance constructor calls. */
+	public static function registerLiveFrom(loader:bh.base.ResourceLoader, sourcePath:String, programmableName:String,
+			live:bh.multianim.LiveProgrammable):Null<LiveInstanceHandle> {
+		if (!Std.isOfType(loader, bh.base.ResourceLoader.CachingResourceLoader))
+			return null;
+		final registry = cast(loader, bh.base.ResourceLoader.CachingResourceLoader).hotReloadRegistry;
+		if (registry == null)
+			return null;
+		return registry.registerLive(sourcePath, programmableName, live);
+	}
+
+	public function attachLive(handle:LiveInstanceHandle):Void {
+		var list = liveInstances.get(handle.sourcePath);
+		if (list == null) {
+			list = [];
+			liveInstances.set(handle.sourcePath, list);
+		}
+		if (!list.contains(handle))
+			list.push(handle);
+	}
+
+	public function detachLive(handle:LiveInstanceHandle):Void {
+		final list = liveInstances.get(handle.sourcePath);
+		if (list != null)
+			list.remove(handle);
+	}
+
+	/** Every live programmable, the `BuilderResult` handles first and then the codegen instances,
+	 *  each as a `LiveEntry`. What the DevBridge walks. */
+	public function getAllLive():Array<LiveEntry> {
+		final all:Array<LiveEntry> = [];
+		for (_ => handles in liveObjects)
+			for (h in handles)
+				all.push({sourcePath: h.sourcePath, programmableName: h.programmableName, live: h.result, result: h.result});
+		for (_ => handles in liveInstances)
+			for (h in handles)
+				all.push({sourcePath: h.sourcePath, programmableName: h.programmableName, live: h.live, result: null});
+		return all;
+	}
 
 	public function register(sourcePath:String, result:BuilderResult, programmableName:String):ReloadableHandle {
 		final handle:ReloadableHandle = {
 			sourcePath: sourcePath,
 			programmableName: programmableName,
 			result: result,
+			registry: this,
+			disposed: false,
 		};
-		var list = liveObjects.get(sourcePath);
-		if (list == null) {
-			list = [];
-			liveObjects.set(sourcePath, list);
-		}
-		list.push(handle);
+		attach(handle);
 
-		// Plant sentinel child for auto-unregister on scene removal
+		// Plant sentinel child: detaches the handle while the root is out of the scene
 		final sentinel = new ReloadSentinel(this, handle);
 		result.object.addChild(sentinel);
 
 		return handle;
 	}
 
+	/** Drop a handle for good: its result was discarded or replaced. */
 	public function unregister(handle:ReloadableHandle):Void {
+		handle.disposed = true;
+		detach(handle);
+	}
+
+	/** List a handle (again) unless it was unregistered. Idempotent. */
+	public function attach(handle:ReloadableHandle):Void {
+		if (handle.disposed)
+			return;
+		var list = liveObjects.get(handle.sourcePath);
+		if (list == null) {
+			list = [];
+			liveObjects.set(handle.sourcePath, list);
+		}
+		if (!list.contains(handle))
+			list.push(handle);
+	}
+
+	/** Take a handle off the list while its root is out of the scene; `attach` brings it back. */
+	public function detach(handle:ReloadableHandle):Void {
 		final list = liveObjects.get(handle.sourcePath);
 		if (list != null)
 			list.remove(handle);
@@ -241,19 +352,23 @@ class SignatureChecker {
 // ---- StateSnapshotter ----
 
 class StateSnapshotter {
+	/** The state of a result its handle rebuilds on its own. A dynamicRef child's host is in another
+	 *  file (else the host's rebuild makes it): its site's arguments are kept with the rest. */
 	public static function capture(result:BuilderResult):BuilderResultSnapshot {
 		return {
-			params: captureParams(result),
+			params: result.incrementalContext == null ? new Map() : result.incrementalContext.snapshotInputParams(),
 			slots: captureSlots(result),
 			dynamicRefs: captureDynamicRefs(result),
 			placeholders: capturePlaceholders(result),
 		};
 	}
 
+	/** The values the caller gave at build or set through setParameter — not defaults, nor what an
+	 *  enclosing result forwards: an edited default or dynamicRef argument applies after a reload. */
 	public static function captureParams(result:BuilderResult):ParamSnapshot {
 		if (result.incrementalContext == null)
 			return new Map();
-		return result.incrementalContext.snapshotParams();
+		return result.incrementalContext.snapshotSetParams();
 	}
 
 	static function captureSlots(result:BuilderResult):SlotSnapshot {
@@ -274,14 +389,19 @@ class StateSnapshotter {
 		final snapshot:DynamicRefSnapshot = new Map();
 		if (result.dynamicRefs == null)
 			return snapshot;
-		// Per-key arrays hold one writer per `dynamicRef` site. For the non-collision case
-		// (the common one — collisions are a build-time error users see immediately) the array
-		// has length 1. For collision cases, snapshot the first writer's params: hot reload is
-		// best-effort across pathological dev states, and `restoreDynamicRefs` reapplies the
-		// same snapshot to every writer under the key on the way back.
+		// Per-key arrays hold one child per `dynamicRef` site: one for a named site, one per
+		// iteration for an unnamed site in a repeat (the iterations share the key)
 		for (name => arr in result.dynamicRefs) {
 			if (arr.length > 0)
-				snapshot.set(name, captureParams(arr[0]));
+				snapshot.set(name, [
+					for (child in arr)
+						{
+							site: BuilderResult.sitePathOf(child),
+							params: captureParams(child),
+							slots: captureSlots(child),
+							dynamicRefs: captureDynamicRefs(child),
+						}
+				]);
 		}
 		return snapshot;
 	}
@@ -295,9 +415,65 @@ class StateSnapshotter {
 
 class StateRestorer {
 	public static function restore(newResult:BuilderResult, snapshot:BuilderResultSnapshot):Void {
+		restoreState(newResult, snapshot);
+		moveSlotContents(newResult, snapshot);
+	}
+
+	/** The part of `restore` that can fail (a `setParameter` rejected by the new build) and moves
+	 *  nothing out of the old result: parameters and dynamicRef children's parameters. */
+	public static function restoreState(newResult:BuilderResult, snapshot:BuilderResultSnapshot):Void {
 		restoreParams(newResult, snapshot.params);
-		restoreSlots(newResult, snapshot.slots);
 		restoreDynamicRefs(newResult, snapshot.dynamicRefs);
+	}
+
+	/** Move the old result's slot contents into the new result's matching slots. Takes the objects
+	 *  out of the old result, so it runs last, once nothing else can fail. */
+	public static function moveSlotContents(newResult:BuilderResult, snapshot:BuilderResultSnapshot):Void {
+		restoreSlots(newResult, snapshot.slots);
+		restoreDynamicRefSlots(newResult, snapshot.dynamicRefs);
+	}
+
+	/** Lift every captured slot content (of the result and of its dynamicRef children, at every
+	 *  depth) out of the old tree without Heaps' onRemove teardown, before the old tree goes. */
+	public static function detachSlotContents(snapshot:BuilderResultSnapshot):Void {
+		detachSlotList(snapshot.slots);
+		detachDynamicRefSlots(snapshot.dynamicRefs);
+	}
+
+	static function detachSlotList(slots:SlotSnapshot):Void {
+		if (slots == null) return;
+		for (saved in slots)
+			if (saved.content != null)
+				bh.base.HeapsUtils.safeDetach(saved.content);
+	}
+
+	static function detachDynamicRefSlots(refs:DynamicRefSnapshot):Void {
+		if (refs == null) return;
+		for (_ => states in refs)
+			for (state in states) {
+				detachSlotList(state.slots);
+				detachDynamicRefSlots(state.dynamicRefs);
+			}
+	}
+
+	/** Each new child under a key gets the state of the old child it stands for. */
+	static function restoreDynamicRefSlots(newResult:BuilderResult, refs:DynamicRefSnapshot):Void {
+		if (refs == null || newResult.dynamicRefs == null) return;
+		for (name => states in refs) {
+			final arr = newResult.dynamicRefs.get(name);
+			if (arr == null) continue;
+			final pairs = pairStates(states, arr);
+			for (i in 0...arr.length) {
+				if (pairs[i] < 0) continue;
+				final state = states[pairs[i]];
+				restoreSlots(arr[i], state.slots);
+				restoreDynamicRefSlots(arr[i], state.dynamicRefs);
+			}
+		}
+	}
+
+	static function pairStates(states:Array<DynamicRefState>, children:Array<BuilderResult>):Array<Int> {
+		return BuilderResult.pairSites([for (st in states) st.site], [for (c in children) BuilderResult.sitePathOf(c)]);
 	}
 
 	// Clear slot contents from old result so h2d.Objects can be reparented.
@@ -318,9 +494,16 @@ class StateRestorer {
 		// nested beginUpdate would throw `nested_begin_update` and crash the dev
 		// session. The outer batch's endUpdate flushes our setParameter calls in
 		// its own applyUpdates cycle.
+		// Only params whose value differs: a result rebuilt from the snapshot already holds them, and
+		// setParameter rejects a param used in an interactive id or a param-dependent repeat body
+		// (`untracked_param`) whatever the value.
+		final current = result.incrementalContext.snapshotParams();
 		final opened = !result.batchMode;
 		if (opened) result.beginUpdate();
 		for (name => value in params) {
+			final now = current.get(name);
+			if (now != null && Type.enumEq(now, value))
+				continue;
 			final dynVal = resolvedToDynamic(value);
 			if (dynVal != null)
 				result.setParameter(name, dynVal);
@@ -328,17 +511,8 @@ class StateRestorer {
 		if (opened) result.endUpdate();
 	}
 
-	public static function resolvedToDynamic(p:ResolvedIndexParameters):Null<Dynamic> {
-		return switch p {
-			case Value(val): val;
-			case ValueF(val): val;
-			case StringValue(s): s;
-			case Flag(f): f;
-			case Index(_, name): name;
-			case ArrayString(arr): arr;
-			case ExpressionAlias(_): null;
-			case TileSourceValue(_): null;
-		};
+	public static inline function resolvedToDynamic(p:ResolvedIndexParameters):Null<Dynamic> {
+		return bh.multianim.LiveProgrammable.LiveProgrammableTools.resolvedToDynamic(p);
 	}
 
 	static function restoreSlots(newResult:BuilderResult, slots:SlotSnapshot):Void {
@@ -366,10 +540,16 @@ class StateRestorer {
 	static function restoreDynamicRefs(newResult:BuilderResult, drSnapshot:DynamicRefSnapshot):Void {
 		if (drSnapshot == null || newResult.dynamicRefs == null)
 			return;
-		for (name => paramSnap in drSnapshot) {
+		for (name => states in drSnapshot) {
 			final arr = newResult.dynamicRefs.get(name);
-			if (arr != null) {
-				for (dynRef in arr) restoreParams(dynRef, paramSnap);
+			if (arr == null) continue;
+			// Paired as restoreDynamicRefSlots pairs them
+			final pairs = pairStates(states, arr);
+			for (i in 0...arr.length) {
+				if (pairs[i] < 0) continue;
+				final state = states[pairs[i]];
+				restoreParams(arr[i], state.params);
+				restoreDynamicRefs(arr[i], state.dynamicRefs);
 			}
 		}
 	}
@@ -390,11 +570,51 @@ class StateRestorer {
 // Wraps BuilderParameters to reuse previously-captured placeholder objects
 // instead of re-invoking callbacks/factories during hot reload rebuild.
 
+typedef PlaceholderHome = {object:h2d.Object, parent:Null<h2d.Object>, layer:Int, index:Int, x:Float, y:Float};
+
 class PlaceholderReuser {
 	// Delegate to shared HeapsUtils.safeDetach — detaches object from parent
 	// without triggering onRemove() cascade that destroys h2d.Graphics content.
 	static inline function safeDetach(obj:h2d.Object):Void {
 		bh.base.HeapsUtils.safeDetach(obj);
+	}
+
+	/** Where each captured placeholder sits now, so a failed rebuild that already borrowed some of
+	 *  them (the wrapped callbacks move them into the new tree) can put them back. */
+	public static function recordHomes(captured:PlaceholderSnapshot):Array<PlaceholderHome> {
+		final homes:Array<PlaceholderHome> = [];
+		for (entry in captured) {
+			final obj = entry.object;
+			final parent = obj.parent;
+			var layer = -1;
+			var index = -1;
+			if (parent != null) {
+				if (Std.isOfType(parent, h2d.Layers)) {
+					final layers:h2d.Layers = cast parent;
+					layer = layers.getChildLayer(obj);
+					index = layers.getChildIndexInLayer(obj);
+				} else {
+					index = parent.getChildIndex(obj);
+				}
+			}
+			homes.push({object: obj, parent: parent, layer: layer, index: index, x: obj.x, y: obj.y});
+		}
+		return homes;
+	}
+
+	/** Put borrowed placeholders back where `recordHomes` found them. */
+	public static function putBack(homes:Array<PlaceholderHome>):Void {
+		for (home in homes) {
+			final parent = home.parent;
+			if (parent == null || home.object.parent == parent)
+				continue;
+			safeDetach(home.object);
+			if (Std.isOfType(parent, h2d.Layers))
+				(cast parent : h2d.Layers).add(home.object, home.layer, home.index);
+			else
+				parent.addChildAt(home.object, home.index);
+			home.object.setPosition(home.x, home.y);
+		}
 	}
 
 	// Create wrapped BuilderParameters that returns captured objects for matching placeholders.
@@ -495,6 +715,31 @@ class SceneSwapper {
 			oldRoot.filter = newRoot.filter;
 			newRoot.filter = null;
 		}
+	}
+
+	/** Show a rebuilt root inside the stable root object the game holds, in place of what it showed
+	 *  before. The rebuilt tree is kept whole: its incremental context, conditional parents, `@layer`
+	 *  order and root-level `$param` tracking all point at `newRoot`, which is now live, so later
+	 *  updates and the root's own edited properties reach the screen.
+	 *
+	 *  `builderRootProps` names the properties the original build set on `stable` itself (non-empty
+	 *  only on the first reload of a result, while `stable` is still that build's root). They move to
+	 *  `newRoot`, so they are reset on `stable`; what the game set there (position, visibility, other
+	 *  transforms) stays. */
+	public static function nest(stable:h2d.Object, newRoot:h2d.Object, builderRootProps:Array<String>):Void {
+		while (stable.numChildren > 0)
+			stable.getChildAt(stable.numChildren - 1).remove();
+		for (prop in builderRootProps) {
+			switch prop {
+				case "scale": stable.setScale(1.0);
+				case "rotation": stable.rotation = 0.0;
+				case "alpha": stable.alpha = 1.0;
+				case "blendMode": stable.blendMode = Alpha;
+				case "filter": stable.filter = null;
+				default:
+			}
+		}
+		stable.addChild(newRoot);
 	}
 }
 #end

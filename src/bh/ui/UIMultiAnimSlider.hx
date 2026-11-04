@@ -8,8 +8,20 @@ import h2d.col.Point;
 import bh.ui.UIElement;
 import bh.multianim.MultiAnimParser.NamedBuildResult;
 
+/** Which way a slider runs. `Auto` reads it from the design's `#start` and `#end` points: when
+ *  they differ in y and not in x, it is vertical. */
+enum SliderDirection {
+	Auto;
+	Horizontal;
+	Vertical;
+}
+
 class UIStandardMultiAnimSlider implements UIElement implements UIElementDisablable implements StandardUIElementEvents implements UIElementNumberValue
-		implements UIElementFloatValue implements UIElementSyncRedraw implements UIElementCursor {
+		implements UIElementFloatValue implements UIElementSyncRedraw implements UIElementCursor implements UIElementRootSettings {
+	public function getRootSettings():Null<bh.multianim.MultiAnimBuilder.BuilderResolvedSettings> {
+		return currentResult != null ? currentResult.rootSettings : null;
+	}
+
 	var status(default, set):StandardUIElementStates = SUINormal;
 	var currentResult:Null<BuilderResult> = null;
 	var root:h2d.Object;
@@ -25,6 +37,8 @@ class UIStandardMultiAnimSlider implements UIElement implements UIElementDisabla
 	public var min:Float = 0;
 	public var max:Float = 100;
 	public var step:Float = 0;
+	/** `settings { direction => vertical }`; `Auto` (the default) reads the `#start`/`#end` points. */
+	public var direction:SliderDirection = Auto;
 
 	var extraParams:Null<Map<String, Dynamic>>;
 	// Scratch reused inside calculatePos() — globalToLocal mutates its argument,
@@ -32,6 +46,8 @@ class UIStandardMultiAnimSlider implements UIElement implements UIElementDisabla
 	// without allocating per event.
 	final tmpPoint:Point = new Point();
 
+	/** Built at once, so a design that does not fit fails here, not at the first frame; the first
+	 *  update draws it again, with the `min`/`max`/`step` set after this. */
 	function new(builder:MultiAnimBuilder, name:String, size:Int, initialValue:Float, ?extraParams:Null<Map<String, Dynamic>>) {
 		this.root = new h2d.Object();
 		this.builder = builder;
@@ -39,6 +55,10 @@ class UIStandardMultiAnimSlider implements UIElement implements UIElementDisabla
 		this.currentValue = initialValue;
 		this.size = size;
 		this.extraParams = extraParams;
+		doRedraw();
+		if (!builder.hasNamedElement(name, "start") || !builder.hasNamedElement(name, "end"))
+			throw 'slider #$name has no #start and #end points: the track a push or a drag is read along';
+		this.requestRedraw = true;
 	}
 
 	public function clear() {
@@ -72,9 +92,11 @@ class UIStandardMultiAnimSlider implements UIElement implements UIElementDisabla
 		return new UIStandardMultiAnimSlider(builder, name, size, initialValue, extraParams);
 	}
 
+	/** The value as the design's `value` (0..100); one outside `min`..`max` (a starting value given
+	 *  before them) is drawn at the end it is past. */
 	function externalToInternal(value:Float):Int {
 		if (max == min) return 0;
-		return Std.int(Math.round((value - min) / (max - min) * 100));
+		return Std.int(hxd.Math.clamp(Math.round((value - min) / (max - min) * 100), 0, 100));
 	}
 
 	function snapToStep(value:Float):Float {
@@ -119,39 +141,44 @@ class UIStandardMultiAnimSlider implements UIElement implements UIElementDisabla
 		return getObject().getBounds().contains(pos);
 	}
 
-	static function isVisibleInScene(obj:h2d.Object):Bool {
-		var cur = obj;
-		while (cur != null) {
-			if (!cur.visible) return false;
-			cur = cur.parent;
-		}
-		return true;
+	// The slider .manim has multiple conditional branches (one per size variant), each with its
+	// own #start/#end points; names["start"] holds every variant, and an arm that does not match
+	// is out of the scene graph. getNamedDrawn gives the one drawn under the result's root.
+	function findVisible(name:String):Null<h2d.Object> {
+		return currentResult.getNamedDrawn(name);
 	}
 
-	// The slider .manim has multiple conditional branches (one per size variant),
-	// each with its own #start/#end points. In incremental mode, inactive branches
-	// are kept in the scene graph with visible=false on the conditional wrapper.
-	// names["start"] returns all variants, so we walk the parent chain to find
-	// the one in the active (visible) branch.
-	static function findVisible(items:Array<NamedBuildResult>):Null<h2d.Object> {
-		for (item in items) {
-			final obj = item.getBuiltHeapsObject().toh2dObject();
-			if (obj != null && isVisibleInScene(obj))
-				return obj;
-		}
-		return null;
+	/** Whether the slider runs along y: `direction`, or for `Auto` the `#start`/`#end` points of the
+	 *  design (vertical when they differ in y and not in x). */
+	public function isVertical():Bool {
+		return switch direction {
+			case Vertical: true;
+			case Horizontal: false;
+			case Auto:
+				if (currentResult == null) return false;
+				final start = findVisible("start");
+				final end = findVisible("end");
+				start != null && end != null && start.x == end.x && start.y != end.y;
+		};
 	}
 
 	function calculatePos(eventPos:Point):Float {
-		final start = findVisible(currentResult.names["start"]);
-		final end = findVisible(currentResult.names["end"]);
+		final start = findVisible("start");
+		final end = findVisible("end");
 		if (start == null || end == null) return currentValue;
 		// globalToLocal on start.parent (the ninepatch) converts scene mouse coords
 		// into the same coordinate space as start.x/end.x, handling any parent scaling.
 		// globalToLocal mutates its argument — copy into scratch so eventPos stays intact.
 		tmpPoint.set(eventPos.x, eventPos.y);
 		final localPos = start.parent.globalToLocal(tmpPoint);
-		final ratio = hxd.Math.clamp((localPos.x - start.x) / (end.x - start.x), 0, 1);
+		final vertical = switch direction {
+			case Vertical: true;
+			case Horizontal: false;
+			case Auto: start.x == end.x && start.y != end.y;
+		};
+		final ratio = vertical
+			? hxd.Math.clamp((localPos.y - start.y) / (end.y - start.y), 0, 1)
+			: hxd.Math.clamp((localPos.x - start.x) / (end.x - start.x), 0, 1);
 		return snapToStep(min + ratio * (max - min));
 	}
 
@@ -190,7 +217,14 @@ class UIStandardMultiAnimSlider implements UIElement implements UIElementDisabla
 		}
 	}
 
+	/** The value last said by a push or a drag; a move that leaves the value where it was says
+	 *  nothing, so a listener (a sound, a setting written on change) hears only real changes. */
+	var lastSentValue:Null<Float> = null;
+
 	function triggerOnChange(value:Float, wrapper:UIElementEventWrapper) {
+		if (lastSentValue != null && lastSentValue == value)
+			return;
+		lastSentValue = value;
 		onChange(Std.int(Math.round(value)), wrapper);
 		onFloatChange(value, wrapper);
 		wrapper.control.pushEvent(UIChangeValue(Std.int(Math.round(value))), this);
@@ -204,11 +238,15 @@ class UIStandardMultiAnimSlider implements UIElement implements UIElementDisabla
 	public function setFloatValue(v:Float) {
 		currentValue = hxd.Math.clamp(v, min, max);
 		if (step > 0) currentValue = snapToStep(currentValue);
+		// a value set from code is where the slider stands: the next push says a change from here
+		lastSentValue = currentValue;
 		this.requestRedraw = true;
 	}
 
+	/** The value, in `min`..`max`: one set before the range (a starting value) reads as the end it is
+	 *  past, as it is drawn. */
 	public function getFloatValue():Float {
-		return currentValue;
+		return hxd.Math.clamp(currentValue, min, max);
 	}
 
 	public function setIntValue(v:Int) {
@@ -216,6 +254,6 @@ class UIStandardMultiAnimSlider implements UIElement implements UIElementDisabla
 	}
 
 	public function getIntValue():Int {
-		return Std.int(Math.round(currentValue));
+		return Std.int(Math.round(getFloatValue()));
 	}
 }
