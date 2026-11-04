@@ -1,6 +1,7 @@
 package bh.test.examples;
 
 import utest.Assert;
+import bh.base.Autotile;
 import bh.base.TileMap;
 import bh.base.TileMap.TileMapTiles;
 import bh.multianim.BuilderError;
@@ -792,6 +793,155 @@ class TilemapTest extends BuilderTestBase {
 			"an autotile the file has not is said at build time, before anything is drawn");
 	}
 
+	// ===== A transition that ignores a terrain (`ignore:`) =====
+
+	/** Every autotile a map asks for while it is drawn again: its name, the mask it is indexed over, and its positions. **/
+	static function autotilesWithMasksDrawn(map:TileMap):Array<{name:String, grid:Array<Array<Int>>, where:Null<Array<Array<Int>>>}> {
+		final asked:Array<{name:String, grid:Array<Array<Int>>, where:Null<Array<Array<Int>>>}> = [];
+		final tiles:TileMapTiles = @:privateAccess map.tiles;
+		map.setSource(map.def, map.tileset, {
+			autotile: (name, grid, where, x0, y0) -> {
+				asked.push({name: name, grid: grid, where: where});
+				return tiles.autotile(name, grid, where, x0, y0);
+			},
+			autotileFormat: tiles.autotileFormat,
+			frames: tiles.frames,
+			metadata: tiles.metadata,
+		});
+		map.redraw();
+		return asked;
+	}
+
+	/** Rows of a pass's grid as strings, a position a digit: easier to read in an assertion. **/
+	static function rowsOf(grid:Null<Array<Array<Int>>>):Array<String> {
+		return grid == null ? [] : [for (row in grid) row.join("")];
+	}
+
+	/**
+		Grass, a band of shallows one cell wide (a terrain above the water) and the deep water below
+		it, with a coast from grass to the shallows that ignores what `ignore` says.
+	**/
+	static function coastMap(ignore:String):TileMap {
+		return builderFromSource(source('
+			#shallow autotile { format: blob47 tileSize: 8 demo: #6090E0, #80B0F0 }
+			#coast autotile { format: blob47 tileSize: 8 demo: #E0C878, #00000000 }
+			#m tilemap { tileset: plains size: 5, 3 legend { ".": grass, "~": water, "s": shallows } terrain: [".....", "sssss", "~~~~~"] }
+		',
+			'terrain shallows { autotile: shallow }  transition grass, shallows { autotile: coast $ignore }')).buildTilemap("m");
+	}
+
+	@Test
+	public function testATransitionThatIgnoresATerrainMeetsItsOwnAcrossIt() {
+		// without ignore: every shallow cell touches the water as well as the grass, so none meets grass alone
+		Assert.equals(0, autotilesWithMasksDrawn(coastMap("")).filter(a -> a.name == "coast").length, "no coast on a band one cell wide");
+		final drawn = autotilesWithMasksDrawn(coastMap("ignore: water"));
+		final coast = drawn.filter(a -> a.name == "coast");
+		Assert.equals(1, coast.length, "the coast is drawn");
+		if (coast.length == 0)
+			return;
+		Assert.same(["00000", "01110", "00000"], rowsOf(coast[0].where), "on the shallow cells beside the grass; the two at the map's edge touch none (the edge is no terrain ignored)");
+		Assert.same(["00000", "11111", "11111"], rowsOf(coast[0].grid), "indexed over the shallows and the water it ignores");
+		Assert.equals(Autotile.E | Autotile.SE | Autotile.S | Autotile.SW | Autotile.W, Autotile.getNeighborMask8(coast[0].grid, 2, 1),
+			"so its edge faces the grass alone");
+		final own = drawn.filter(a -> a.name == "shallow");
+		Assert.equals(1, own.length);
+		Assert.same(["00000", "11111", "00000"], rowsOf(own[0].grid), "the terrain's own autotile is over its own cells, as without ignore:");
+	}
+
+	@Test
+	public function testAnIgnoringTransitionOfTheCornerFormat() {
+		// the corner format: a corner of water, grass and dirt (below the water) meets grass when dirt is ignored;
+		// a corner with no water about it never does, whatever it ignores
+		final map = builderFromSource(source(SHORES
+			+ '#m tilemap { tileset: plains size: 4, 3 legend { ".": grass, "d": dirt, "~": water } terrain: ["....", ".~~d", "...."] }',
+			'transition grass, water { autotile: shore, shoreB  ignore: dirt }')).buildTilemap("m");
+		final drawn = autotilesWithMasksDrawn(map);
+		final shore = drawn.filter(a -> a.name == "shore");
+		Assert.equals(1, shore.length);
+		if (shore.length == 0)
+			return;
+		Assert.same(["00000", "01110", "01110", "00000"], rowsOf(shore[0].where), "the four corners of before, and the two between the water, the dirt and grass");
+		Assert.same(["0000", "0111", "0000"], rowsOf(shore[0].grid), "the dirt counts as water for the shore");
+		Assert.equals(Autotile.CORNER_SW | Autotile.CORNER_SE, Autotile.getCornerIndex(shore[0].grid, 3, 1), "an edge along the grass, none toward the dirt");
+		Assert.same(["0000", "0110", "0000"], rowsOf(drawn.filter(a -> a.name == "water")[0].grid), "the water's own is its own cells");
+	}
+
+	/** The coast map off the square grid: what tile an autotile puts on which cell, recorded as the map draws them back to front. **/
+	static function coastTilesOffTheSquareGrid(grid:String, format:String, size:Int, ignore:String):{map:TileMap, placed:Array<{name:String, index:Int, x:Int, y:Int}>} {
+		final map = builderFromSource('
+			#land autotile { format: $format tileSize: $size demo: #44AA44, #44AA44 }
+			#sea autotile { format: $format tileSize: $size demo: #2A4A9A, #2A4A9A }
+			#shallow autotile { format: $format tileSize: $size demo: #6090E0, #80B0F0 }
+			#coast autotile { format: $format tileSize: $size demo: #E0C878, #00000000 }
+			#t tileset { grid: $grid atlas: "none"
+				terrain land { autotile: land } terrain sea { autotile: sea } terrain shallows { autotile: shallow }
+				transition land, shallows { autotile: coast $ignore } }
+			#m tilemap { tileset: t size: 5, 3 legend { ".": land, "~": sea, "s": shallows } terrain: [".....", "sssss", "~~~~~"] }
+		').buildTilemap("m");
+		final placed:Array<{name:String, index:Int, x:Int, y:Int}> = [];
+		final tiles:TileMapTiles = @:privateAccess map.tiles;
+		final tileAt = tiles.autotileTile;
+		map.setSource(map.def, map.tileset, {
+			autotile: tiles.autotile,
+			autotileOn: tiles.autotileOn,
+			autotileTile: (name, index, x, y) -> {
+				placed.push({name: name, index: index, x: x, y: y});
+				return tileAt == null ? null : tileAt(name, index, x, y);
+			},
+			autotileFormat: tiles.autotileFormat,
+			frames: tiles.frames,
+			metadata: tiles.metadata,
+		});
+		map.redraw();
+		return {map: map, placed: placed};
+	}
+
+	@Test
+	public function testAnIgnoringTransitionOffTheSquareGrid() {
+		// the same shallows between land and the sea, on the isometric grid (blob47) and on hexes (hex64)
+		final ignoredMask = [[0, 0, 0, 0, 0], [1, 1, 1, 1, 1], [1, 1, 1, 1, 1]];
+		for (g in [{grid: "isometric, 32, 16", format: "blob47", size: 32}, {grid: "hex, 16, 16, pointy, odd", format: "hex64", size: 16}]) {
+			final without = coastTilesOffTheSquareGrid(g.grid, g.format, g.size, "");
+			Assert.equals(0, without.placed.filter(p -> p.name == "coast").length, '${g.format}: no coast without ignore:');
+			final ignoring = coastTilesOffTheSquareGrid(g.grid, g.format, g.size, "ignore: sea");
+			final coast = ignoring.placed.filter(p -> p.name == "coast");
+			Assert.same(["1,1", "2,1", "3,1"], [for (p in coast) '${p.x},${p.y}'], '${g.format}: on the shallow cells inside the map, back to front');
+			for (p in coast) {
+				final expected = g.format == "hex64" ? Autotile.getHexIndex(ignoredMask, p.x, p.y, ignoring.map.grid, 0, 0) : Autotile.getBlob47Index(Autotile.getNeighborMask8(ignoredMask, p.x, p.y));
+				Assert.equals(expected, p.index, '${g.format}: the coast at ${p.x},${p.y} is indexed over the shallows and the sea');
+			}
+			final own = ignoring.placed.filter(p -> p.name == "shallow" && p.x == 2);
+			Assert.equals(1, own.length);
+			final ownMask = [[0, 0, 0, 0, 0], [1, 1, 1, 1, 1], [0, 0, 0, 0, 0]];
+			if (own.length == 1)
+				Assert.equals(g.format == "hex64" ? Autotile.getHexIndex(ownMask, 2, 1, ignoring.map.grid, 0, 0) : Autotile.getBlob47Index(Autotile.getNeighborMask8(ownMask, 2, 1)),
+					own[0].index, '${g.format}: the shallows\' own tile is indexed over their own cells');
+		}
+	}
+
+	@Test
+	public function testIgnoreErrors() {
+		function expect(fragment:String, tilesetExtra:String, ?pos:haxe.PosInfos) {
+			final error = parseExpectingError(source(SHORES + '#m tilemap { tileset: plains size: 1, 1 legend { ".": grass } terrain: ["."] }', tilesetExtra));
+			Assert.notNull(error, 'expected an error with "$fragment"', pos);
+			if (error != null) Assert.stringContains(fragment, error, pos);
+		}
+		expect("ignore: tileset has no terrain lava (it has grass, dirt, water)", 'transition grass, water { autotile: shore, shoreB  ignore: lava }');
+		expect("ignore: water is the transition's own terrain; leave it out", 'transition grass, water { autotile: shore, shoreB  ignore: water }');
+		expect("ignore: grass is the terrain the edge is drawn toward; leave it out of ignore:", 'transition grass, water { autotile: shore, shoreB  ignore: grass }');
+		expect("ignore: none - none is no terrain", 'transition grass, water { autotile: shore, shoreB  ignore: none }');
+		expect("ignore: names dirt twice; name it once", 'transition grass, water { autotile: shore, shoreB  ignore: dirt, dirt }');
+		expect("ignore: is given twice; name every terrain in one (ignore: a, b)", 'transition grass, water { autotile: shore, shoreB  ignore: dirt  ignore: dirt }');
+		expect("ignore: water is drawn over dirt, so it counts as dirt already; leave it out of ignore:",
+			'transition grass, dirt { autotile: shore  ignore: water }');
+		expect("a transition has autotile: only, or autotile: and ignore:", 'transition grass, water { autotile: shore, shoreB  depth: 1 }');
+		// the error is at the name ignored: a terrain may be written after the transition, so it is found once the tileset is read
+		final error = parseExpectingError('#t tileset {\n\ttileSize: 8\n\tatlas: "fp"\n\tterrain g { cells: "grass" }\n\tterrain w { autotile: a }\n\ttransition g, w {\n\t\tautotile: b\n\t\tignore: lava\n\t}\n}');
+		Assert.stringContains("test-input:9:", error, "line 9 (with the version line): the ignore: line");
+		// an ignored terrain written after the transition is fine
+		Assert.isTrue(parseExpectingSuccess('#t tileset { tileSize: 8 atlas: "fp" terrain g { cells: "grass" } transition g, w { autotile: b ignore: m } terrain m { cells: "grass" } terrain w { autotile: a } }'));
+	}
+
 	// ===== Objects of several cells =====
 
 	@Test
@@ -893,6 +1043,116 @@ class TilemapTest extends BuilderTestBase {
 		Assert.stringContains("anchor 2, 0 is outside", parseExpectingError(source(head, 'cell tree { size: 2, 2 anchor: 2, 0 }')));
 		Assert.stringContains("anchor: is for a cell with a size:", parseExpectingError(source(head, 'cell tree { anchor: 0, 0 }')));
 		Assert.stringContains("or actors", parseExpectingError(source(head, 'cell tree { draw: sideways }')));
+	}
+
+	// ===== Cells drawn in place of a side (`draw: side`) =====
+
+	/**
+		A wall one level up (row 0, columns 1 to 5) whose side covers rows 1 and 2, with an arch of two
+		cells by one over (2, 1) and (3, 1), and a gate of two by two over (4, 1) to (5, 2), both drawn
+		in place of the side.
+	**/
+	static final WALL = '#m tilemap {
+		tileset: plains
+		size: 7, 4
+		legend { ".": grass }
+		terrain: [".......", ".......", ".......", "......."]
+		levels:  ["0111110", "0000000", "0000000", "0000000"]
+		layer openings { legend { "a": arch, "g": gate, "h": hole } rows: ["       ", "  a    ", "    g  ", "       "] }
+	}';
+
+	static final WALL_CELLS = 'cell arch { size: 2, 1 draw: side metadata { wall:bool => false, door:bool => true } }  cell gate { size: 2, 2 draw: side }  cell hole { draw: side }';
+	static final WALL_ATLAS = 'arch: 200, 160, 16, 8  gate: 216, 160, 16, 16  hole: 120, 160, 8, 8';
+
+	/** A chunk's part of the sides' pass: the side's pieces, then the cells drawn in their place. **/
+	static function sidePart(map:TileMap, ?chunk:Int = 0):Null<h2d.Object> {
+		final parts:Array<Null<h2d.Object>> = @:privateAccess map.chunks[chunk].parts;
+		return parts[@:privateAccess map.sidePass];
+	}
+
+	@Test
+	public function testACellDrawnInPlaceOfTheSideHidesThePiecesItCovers() {
+		final map = builderFromSource(source(WALL, WALL_CELLS, WALL_ATLAS)).buildTilemap("m");
+		map.redraw();
+		final side = sidePart(map);
+		Assert.notNull(side);
+		if (side == null)
+			return;
+		// the run of five, two cells high, less the arch's two cells and the gate's four
+		Assert.equals(2, side.numChildren, "the side's pieces, then the cells in their place, after them");
+		Assert.equals(4, (cast side.getChildAt(0) : h2d.TileGroup).count());
+		Assert.equals(2, (cast side.getChildAt(1) : h2d.TileGroup).count());
+		// the pieces of the side's first row (the left end at (1, 1) alone), then the arch and the gate
+		Assert.same(["faceEnd", "arch", "gate"], piecesDrawn(map, ["faceEnd", "face", "arch", "gate"]));
+		Assert.isTrue(@:privateAccess map.hasSideCells, "the map knows it has cells drawn in a side's place");
+		// what the cells are does not change: the side is the cell's, the cell's metadata over the rise's
+		Assert.equals(1, map.sideAt(2, 1), "a side drawn over by the arch is the cell's all the same");
+		Assert.equals(1, map.sideAt(5, 2));
+		Assert.isFalse(map.metadataAt(2, 1).getBoolOrDefault("wall", true), "the arch's metadata wins over the rise's");
+		Assert.isTrue(map.metadataAt(3, 1).getBoolOrDefault("door", false));
+		Assert.isTrue(map.metadataAt(5, 2).getBoolOrDefault("wall", false), "the gate has none: the rise's");
+		Assert.same({name: "gate", anchorX: 4, anchorY: 2, x: 4, y: 1, width: 2, height: 2}, map.objectAt("openings", 5, 1));
+		// changed while the game runs: the arch taken away, its pieces drawn again; a hole at the run's left end
+		map.setCell("openings", 2, 1, " ");
+		map.redraw();
+		Assert.same(["faceEnd", "face", "face", "gate"], piecesDrawn(map, ["faceEnd", "face", "arch", "gate"]));
+		Assert.isTrue(map.metadataAt(2, 1).getBoolOrDefault("wall", false));
+		map.setCell("openings", 1, 1, "h");
+		map.redraw();
+		Assert.same(["face", "face", "hole", "gate"], piecesDrawn(map, ["faceEnd", "face", "hole", "gate"]), "the run's left end under the hole, not drawn");
+		// in chunks of two cells: the gate anchored at (4, 2) covers (4, 1) and (5, 1), in the chunk above
+		map.setChunkSize(2);
+		map.redraw();
+		final drawn = piecesDrawn(map, ["faceEnd", "face", "hole", "gate"]);
+		Assert.equals(0, drawn.filter(n -> n == "faceEnd").length);
+		Assert.equals(2, drawn.filter(n -> n == "face").length, "(2, 1) and (3, 1)");
+		Assert.equals(1, drawn.filter(n -> n == "hole").length);
+		Assert.equals(1, drawn.filter(n -> n == "gate").length, "drawn once, by its anchor's chunk");
+	}
+
+	@Test
+	public function testASidesRunGoesOnPastACellDrawnInItsPlace() {
+		// A run of five, three middles in turn between its ends: a hole over the third cell hides its
+		// piece and cuts nothing. The cell after it takes the turn it had (roof), the ends stay where
+		// the wall's are.
+		final map = builderFromSource(source('#m tilemap {
+			tileset: plains
+			size: 7, 3
+			legend { ".": grass }
+			terrain: [".......", ".......", "......."]
+			levels:  ["0222220", "0000000", "0000000"]
+			layer openings { legend { "h": hole } rows: ["       ", "   h   ", "       "] }
+		}', 'rise 2 { side: "stairs", "flower", "roof" left: "faceEnd" right: "tree" span: 1 }  cell hole { draw: side }', 'hole: 120, 160, 8, 8')).buildTilemap("m");
+		map.redraw();
+		Assert.same(["faceEnd", "stairs", "roof", "tree", "hole"], piecesDrawn(map, ["stairs", "flower", "roof", "faceEnd", "tree", "hole"]));
+	}
+
+	@Test
+	public function testALayerDrawnInPlaceOfTheSide() {
+		// a layer's own draw: side, for every cell of it; where a cell covers no side it hides nothing
+		final map = build('#m tilemap {
+			tileset: plains
+			size: 5, 6
+			legend { ".": grass }
+			terrain: [".....", ".....", ".....", ".....", ".....", "....."]
+			levels:  ["00000", "01110", "01110", "00000", "00000", "00000"]
+			layer cracks { draw: side legend { "f": flower } rows: ["     ", "     ", "     ", "  f  ", "     ", "f    "] }
+		}');
+		Assert.same(["faceEnd", "face", "flower", "flower"], piecesDrawn(map, ["faceEnd", "face", "flower"]),
+			"the side's first row less (2, 3), then the flowers in the sides' pass, the one on the ground too");
+		Assert.equals("flower", map.cellAt("cracks", 2, 3));
+		Assert.equals(1, map.sideAt(2, 3));
+	}
+
+	@Test
+	public function testAMapWithoutCellsInASidesPlaceLooksAtNoLayerForItsSides() {
+		final map = build(PLATEAU);
+		Assert.isFalse(@:privateAccess map.hasSideCells);
+		final side = sidePart(map);
+		Assert.notNull(side);
+		if (side != null)
+			Assert.equals(1, side.numChildren, "the side's pieces alone in the sides' pass");
+		Assert.stringContains("side (in place of a rise's side", parseExpectingError(source(PLATEAU, 'cell flower { draw: sideways }')));
 	}
 
 	// ===== Chunks and culling =====

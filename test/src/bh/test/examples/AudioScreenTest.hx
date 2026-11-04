@@ -10,6 +10,8 @@ import bh.test.UITestHarness;
 import bh.test.UITestHarness.MockControllable;
 import bh.ui.UIElement;
 import bh.ui.UIInteractiveWrapper;
+import bh.ui.UIRichInteractiveHelper;
+import bh.multianim.MultiAnimBuilder.BuilderResult;
 import bh.ui.UIMultiAnimButton.UIStandardMultiAnimButton;
 import bh.ui.screens.ScreenManager;
 import bh.ui.screens.UIScreen;
@@ -52,6 +54,16 @@ class AudioScreenTest extends utest.Test {
 			interactive(40, 20, "play", music.click => "music.play"): 50, 0
 		}
 	';
+
+	/** Jukebox keys that show their status: one wired by the screen, one by a helper of the game's. */
+	static final KEYS = "
+		#autoKey programmable(status:[normal,hover,pressed]=normal, track:string=\"music.title\") {
+			interactive(40, 20, \"key\", autoStatus => \"status\", music.click => $track): 0, 0
+		}
+		#boundKey programmable(status:[normal,hover,pressed]=normal, track:string=\"music.title\") {
+			interactive(40, 20, \"key\", bind => \"status\", music.click => $track): 0, 0
+		}
+	";
 
 	final managers:Array<ScreenManager> = [];
 
@@ -184,6 +196,102 @@ class AudioScreenTest extends utest.Test {
 		Assert.isTrue(m.sm.audio.toggleMusic("music.title"), "and plays again");
 		Assert.isTrue(m.sm.audio.isMusicPlaying("music.title"));
 		Assert.isFalse(m.sm.audio.isMusicPlaying("music.play"));
+	}
+
+	/** The pointer's events on a screen's key, as a mouse gives them, then a frame. */
+	static function pointer(screen:SoundTestScreen, id:String, enter:Bool, click:Bool, leave:Bool, ?helper:UIRichInteractiveHelper):Void {
+		final key = screen.getInteractive(id);
+		Assert.notNull(key, 'no key $id');
+		final mock = new MockControllable();
+		if (enter)
+			UITestHarness.simulateEnter(key, mock);
+		if (click)
+			UITestHarness.simulateClick(key, mock);
+		if (leave)
+			UITestHarness.simulateLeave(key, mock);
+		for (e in mock.recordedEvents) {
+			screen.dispatchScreenEvent(e.event, key);
+			if (helper != null)
+				helper.handleEvent(e.event);
+		}
+		screen.update(0);
+	}
+
+	static function status(result:BuilderResult):String {
+		return result.getParameterValues().get("status");
+	}
+
+	@Test
+	public function testAJukeboxKeyIsShownPressedWhileItsTrackPlays():Void {
+		final m = manager();
+		// a track that does not loop: it ends by itself
+		m.sm.audio.addMusic("jingles", {bus: null, tracks: [{name: "win", file: "music/win.mp3", loop: false, line: 0}]});
+		final screen = new SoundTestScreen(m.sm);
+		final builder = BuilderTestBase.builderFromSource(KEYS);
+		final title = builder.buildWithParameters("autoKey", ["track" => "music.title"], null, null, true);
+		final play = builder.buildWithParameters("autoKey", ["track" => "music.play"], null, null, true);
+		final win = builder.buildWithParameters("autoKey", ["track" => "jingles.win"], null, null, true);
+		screen.addInteractives(title, "title");
+		screen.addInteractives(play, "play");
+		screen.addInteractives(win, "win");
+
+		pointer(screen, "title.key", true, true, false);
+		Assert.equals("music.title", m.sm.audio.musicPlaying);
+		Assert.equals("pressed", status(title), "pressed while its track plays, the pointer still on it");
+		Assert.isTrue(screen.isKeyHeld("title.key"));
+		pointer(screen, "title.key", false, false, true);
+		Assert.equals("pressed", status(title), "the pointer leaving leaves it pressed");
+
+		pointer(screen, "play.key", true, true, true);
+		Assert.equals("normal", status(title), "let go as another key's track takes over");
+		Assert.isFalse(screen.isKeyHeld("title.key"));
+		Assert.equals("pressed", status(play));
+
+		pointer(screen, "win.key", true, true, true);
+		Assert.equals("normal", status(play));
+		Assert.equals("pressed", status(win));
+		m.log.update(2.0);
+		screen.update(0);
+		Assert.equals("normal", status(win), "let go as its track ends (it does not loop)");
+
+		m.sm.audio.playMusic("music.title");
+		screen.update(0);
+		Assert.equals("pressed", status(title), "pressed while its track plays, whoever started it");
+		pointer(screen, "title.key", true, true, false);
+		Assert.isNull(m.sm.audio.musicPlaying, "a click on it stops the music");
+		Assert.equals("hover", status(title), "let go, the pointer on it");
+		m.sm.audio.playMusic("music.title");
+		screen.update(0);
+		m.sm.audio.stopMusic();
+		screen.update(0);
+		Assert.equals("hover", status(title), "let go as the music stops");
+	}
+
+	@Test
+	public function testAJukeboxKeyAGameBindsIsHeldToo():Void {
+		final m = manager();
+		final screen = new SoundTestScreen(m.sm);
+		final builder = BuilderTestBase.builderFromSource(KEYS);
+		final title = builder.buildWithParameters("boundKey", ["track" => "music.title"], null, null, true);
+		final play = builder.buildWithParameters("boundKey", ["track" => "music.play"], null, null, true);
+		screen.addInteractives(title, "title");
+		screen.addInteractives(play, "play");
+		// the game's own helper drives `bind`; the screen holds its key down all the same
+		final helper = new UIRichInteractiveHelper(screen);
+		helper.register(title, "title");
+
+		pointer(screen, "title.key", true, true, true, helper);
+		Assert.equals("pressed", status(title), "the helper's hover and normal show pressed while the track plays");
+		pointer(screen, "title.key", true, false, true, helper);
+		Assert.equals("pressed", status(title));
+
+		m.sm.audio.playMusic("music.play");
+		screen.update(0);
+		Assert.equals("normal", status(title), "let go as another track takes over");
+		Assert.equals("pressed", status(play), "a key no helper binds is shown pressed by the screen");
+		m.sm.audio.stopMusic();
+		screen.update(0);
+		Assert.equals("normal", status(play));
 	}
 
 	@Test

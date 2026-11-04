@@ -49,8 +49,10 @@ enum PlaceholderReplacementSource {
 enum UpdatableNameType {
 	UNTObject(name:String);
 	UNTUpdatable(name:String);
-	UNTIndexed(name:String, indexVar:String);
-	UNTIndexed2D(name:String, indexVarX:String, indexVarY:String);
+	/** `#name[index]`: `RVReference(v)` for a plain `$v`, else a whole-number expression of loop
+	 *  variables, numbers and @finals of those (`$row * 3 + $c`), checked by the parser. */
+	UNTIndexed(name:String, index:ReferenceableValue);
+	UNTIndexed2D(name:String, indexX:ReferenceableValue, indexY:ReferenceableValue);
 }
 
 @:nullSafety
@@ -98,6 +100,58 @@ function getNameString(updatableNameType:UpdatableNameType) {
 		case UNTUpdatable(name): name;
 		case UNTIndexed(name, _): name;
 		case UNTIndexed2D(name, _, _): name;
+	}
+}
+
+/** An index of `#name[...]` as written (`$row * 3 + $c`), for messages. */
+function indexText(index:ReferenceableValue):String {
+	return switch index {
+		case RVInteger(i): '$i';
+		case RVReference(r): "$" + r;
+		case RVParenthesis(e): '(${indexText(e)})';
+		case EUnaryOp(OpNeg, e): '-${indexText(e)}';
+		case EBinop(op, a, b):
+			final opText = switch op {
+				case OpAdd: "+";
+				case OpSub: "-";
+				case OpMul: "*";
+				case OpDiv: "/";
+				case OpIntegerDiv: "div";
+				case OpMod: "%";
+				case OpEq: "==";
+				case OpNotEq: "!=";
+				case OpLess: "<";
+				case OpGreater: ">";
+				case OpLessEq: "<=";
+				case OpGreaterEq: ">=";
+			};
+			'${indexText(a)} $opText ${indexText(b)}';
+		default: "…";
+	}
+}
+
+/** `#name[...]` as written, its index or indices included (`#card[$row * 3 + $c]`), for messages. */
+function indexedNameText(updatableNameType:UpdatableNameType):String {
+	return switch updatableNameType {
+		case UNTIndexed(name, index): '#$name[${indexText(index)}]';
+		case UNTIndexed2D(name, x, y): '#$name[${indexText(x)}, ${indexText(y)}]';
+		case UNTObject(name) | UNTUpdatable(name): '#$name';
+	}
+}
+
+/** What to write instead when an indexed name, slot or dynamicRef key recurs, for the builder's
+ *  and codegen's collision messages: the written index when it is an expression, the one-list form. */
+function indexCollisionHint(updatableNameType:UpdatableNameType):String {
+	return switch updatableNameType {
+		case UNTIndexed(name, RVReference(_)):
+			'Give the inner loop a unique index, number nested repeatables as one list (#$name[$$row * N + $$col], N the inner loop\'s count), or use a 2-D indexed name (#$name[indexX, indexY]).';
+		case UNTIndexed(name, _):
+			'${indexedNameText(updatableNameType)} gives that index to more than one element: make the expression count each element once (nested repeatables of N per row: #$name[$$row * N + $$col]), or use a 2-D indexed name (#$name[indexX, indexY]).';
+		case UNTIndexed2D(_, RVReference(_), RVReference(_)):
+			'Ensure each (indexX, indexY) is unique.';
+		case UNTIndexed2D(_, _, _):
+			'${indexedNameText(updatableNameType)} gives that index pair to more than one element: ensure each (indexX, indexY) is unique.';
+		case UNTObject(_) | UNTUpdatable(_): "";
 	}
 }
 
@@ -974,15 +1028,19 @@ typedef TilesetTerrainDef = {
 }
 
 /**
-	`transition a, b { autotile: … }`: where terrain `b` meets terrain `a` (or `none`), this autotile is
-	drawn over `b`'s own at the meeting positions, for a tileset whose edge between two terrains is
-	drawn for that pair. `a` is below `b` in the tileset; the autotiles are one a frame when `b` is animated.
+	`transition a, b { autotile: … ignore: c, d }`: where terrain `b` meets terrain `a` (or `none`), this
+	autotile is drawn over `b`'s own at the meeting positions, for a tileset whose edge between two
+	terrains is drawn for that pair. `a` is below `b` in the tileset; the autotiles are one a frame when
+	`b` is animated. `ignore:` names terrains below `b` (neither `a` nor `b`) that count as `b`: a cell
+	of `b` that also touches them still meets `a`, and no edge is drawn toward them.
 **/
 @:nullSafety
 typedef TilesetTransitionDef = {
 	var from:String;
 	var to:String;
 	var autotiles:Array<String>;
+	/** `ignore:`: terrains that count as `to` for this transition; empty when none. **/
+	var ignore:Array<String>;
 }
 
 /**
@@ -1036,12 +1094,13 @@ typedef TilesetPlatformDef = {
 	`size: w, h` makes it an object of several cells (a tree, a house) whose image is `w` by `h` cells:
 	the layer's character marks its `anchor` cell (its bottom-left one unless given), it is drawn among
 	the actors sorted by its feet unless `draw:` says otherwise, and its name and metadata are on every
-	cell it covers.
+	cell it covers. `draw: side` puts it in place of a rise's side: where it covers one, the side is not
+	drawn, and it is drawn in the side's place and order (a doorway, an arch or a drain in a wall face).
 **/
 @:nullSafety
 typedef TilesetCellDef = {
 	var name:String;
-	/** Where it is drawn, over the layer's own `draw:`: under, over, top, or actors (among them, sorted by its feet). **/
+	/** Where it is drawn, over the layer's own `draw:`: under, over, top, actors (among them, sorted by its feet), or side (in place of a rise's side it covers). **/
 	var ?draw:String;
 	/** In cells; 1 by 1 when not given. **/
 	var ?width:Int;
@@ -1107,7 +1166,7 @@ typedef TilemapLayerDef = {
 	var rows:Array<String>;
 	/** The sheet its cells are in; the tileset's atlas when not given. **/
 	var ?sheet:String;
-	/** `under` the actors (the default; a cell the tileset lists in `over` still goes above them), `over` them, or `top`, above everything (shadows). **/
+	/** `under` the actors (the default; a cell the tileset lists in `over` still goes above them), `over` them, `top`, above everything (shadows), `actors`, or `side`, in place of a rise's side. **/
 	var draw:String;
 }
 
@@ -1176,6 +1235,43 @@ typedef Atlas2Def = {
 @:nullSafety
 enum StateAnimConstruct {
 	IndexedSheet(sheet:String, name:ReferenceableValue, fps:ReferenceableValue, loop: Bool, center:Bool);
+}
+
+/** Where a `stateanim(file, …)` given `frame:` or `progress:` stands: held there, not on its own
+ *  clock, moved by the parameters the value uses (`AnimationSM.seekFrame` / `seekProgress`). */
+@:nullSafety
+enum StateAnimSeek {
+	/** `frame: $k`: the k-th frame of the animation playing, 0 the first, counting frames only. */
+	SAFrame(frame:ReferenceableValue);
+	/** `progress: $t`: `t` of the way through the animation playing, 0 its start, 1 its end. */
+	SAProgress(progress:ReferenceableValue);
+}
+
+@:nullSafety
+class StateAnimSeekTools {
+	/** The value written: `$k` of `frame: $k`, `$t` of `progress: $t`. */
+	public static function value(seek:StateAnimSeek):ReferenceableValue {
+		return switch seek {
+			case SAFrame(v) | SAProgress(v): v;
+		}
+	}
+
+	/** Why a parameter it uses cannot be changed where it is frozen (`untracked_param`): `stateanim frame`, `stateanim progress`. */
+	public static function reason(seek:StateAnimSeek):String {
+		return switch seek {
+			case SAFrame(_): "stateanim frame";
+			case SAProgress(_): "stateanim progress";
+		}
+	}
+}
+
+/** `hide => [weapon_front, weapon_back]` on a `stateanim(file, …)`, a `staticRef` or a `dynamicRef`:
+ *  layers of the `.anim` (its `layers:`) not drawn, as `sm.layer(name).visible = false`. The names as
+ *  written; `line` where they are, for the error naming a layer the `.anim` has not. */
+@:nullSafety
+typedef HiddenLayers = {
+	final names:Array<String>;
+	final line:Int;
 }
 
 @:nullSafety
@@ -1333,8 +1429,10 @@ enum NodeType {
 	SPACER(width:Null<ReferenceableValue>, height:Null<ReferenceableValue>);
 	BITMAP(tileSource:TileSource, hAlign:HorizontalAlign, vAlign:VerticalAlign);
 	POINT;
-	// `filename`: a string as any other, so it may be built from parameters ('units/${$kind}.anim')
-	STATEANIM(filename:ReferenceableValue, initialState:ReferenceableValue, selector:Map<String, ReferenceableValue>);
+	// `filename`: a string as any other, so it may be built from parameters ('units/${$kind}.anim');
+	// `seek`: `frame:` / `progress:`, null for an animation on its own clock (its `hide => [...]` is
+	// the node's `hiddenLayers`, as a ref's)
+	STATEANIM(filename:ReferenceableValue, initialState:ReferenceableValue, selector:Map<String, ReferenceableValue>, seek:Null<StateAnimSeek>);
 	STATEANIM_CONSTRUCT(initialState:ReferenceableValue, construct:Map<String, StateAnimConstruct>, externallyDriven:Bool);
 	PIXELS(shapes:Array<PixelShapes>);
 	TEXT(textDef:TextDef);
@@ -1679,6 +1777,9 @@ typedef Node = {
 	/** A root block's `///` doc comment, the lines directly above it joined with "\n"; absent
 	 *  when it has none (and on every node that is not a root block). */
 	?doc:String,
+	/** `hide => [a, b]` on a `stateanim(file, …)`, a `staticRef` or a `dynamicRef`: the layers of
+	 *  its `.anim` (a ref's: of every stateanim it draws) not drawn; absent on every other node. */
+	?hiddenLayers:HiddenLayers,
 	#if MULTIANIM_DEV
 	parserPos:String
 	#end

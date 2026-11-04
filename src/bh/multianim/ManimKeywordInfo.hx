@@ -37,7 +37,7 @@ class ManimKeywordInfo {
 		"SPACER" => "Empty space: spacer(w, h)",
 		"BITMAP" => "Display image: bitmap(source, [center])",
 		"POINT" => "Positioning point for coordinate reference",
-		"STATEANIM" => "State animation from .anim file",
+		"STATEANIM" => "State animation from .anim file: stateanim(file, state, key => value, …); frame: $k or progress: $t holds it at a frame, hide => [layer, …] leaves layers out",
 		"STATEANIM_CONSTRUCT" => "Inline state animation construct",
 		"PIXELS" => "Pixel-level drawing primitives",
 		"TEXT" => "Simple text element (h2d.Text)",
@@ -115,6 +115,28 @@ class ManimKeywordInfo {
 		"POINT", "APPLY", "GRAPHICS", "PIXELS", "PARTICLES", "REPEAT", "REPEAT2D",
 		"STATIC_REF", "DYNAMIC_REF", "PLACEHOLDER", "STATEANIM", "STATEANIM_CONSTRUCT",
 		"AUTOTILE", "FINAL_VAR", "SWITCH", "TILEMAP_REF", "TILEMAP_FILL",
+	];
+
+	// ---- stateanim's own arguments (not NodeType variants) ----
+
+	/** The arguments `stateanim(file, state, …)` takes beside its state selectors (`hide =>` on a
+	 *  staticRef and a dynamicRef too): the word, how it is written, what it does. */
+	public static final stateAnimArguments:Array<{name:String, usage:String, description:String}> = [
+		{
+			name: "frame",
+			usage: "stateanim(\"hero.anim\", \"walk\", frame: $k)",
+			description: "Holds the stateanim at frame k of the animation playing (0 the first, only frames counted, clamped), off its own clock; setParameter moves it (AnimationSM.seekFrame)",
+		},
+		{
+			name: "progress",
+			usage: "stateanim(\"hero.anim\", \"walk\", progress: $t)",
+			description: "Holds the stateanim t of the way through the animation playing (0 the first frame, 1 the last, frames weighed by their durations), off its own clock; setParameter moves it (AnimationSM.seekProgress)",
+		},
+		{
+			name: "hide",
+			usage: "stateanim(\"hero.anim\", \"slash\", hide => [weapon_front, weapon_back])",
+			description: "Leaves those layers of the layered .anim out (its layers:), as sm.layer(name).visible = false; on a staticRef or dynamicRef, of every stateanim it draws. A name the .anim has not is an error naming it",
+		},
 	];
 
 	// ---- Root block marker and doc comments (not NodeType variants) ----

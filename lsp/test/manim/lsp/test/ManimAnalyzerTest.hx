@@ -15,6 +15,7 @@ class ManimAnalyzerTest {
 		testReferenceCompletionLabels();
 		testPathCompletionsSuggestOnlyParserKeywords();
 		testHover();
+		testStateAnimArguments();
 		testDefinition();
 		testDataEnumSymbols();
 		testIntegerLiteralsAreThirtyTwoBits();
@@ -22,6 +23,25 @@ class ManimAnalyzerTest {
 		testExportKeywordCompletionAndHover();
 		testDocCommentHover();
 		testSoundDocHover();
+		testTilesetTransitionIgnore();
+	}
+
+	/** A tileset's `transition a, b { autotile: … ignore: … }`: completed, hovered, and its errors said at the name ignored. */
+	static function testTilesetTransitionIgnore():Void {
+		final head = "version: 1.0\n#c autotile { format: blob47 tileSize: 8 demo: #E0C878, #00000000 }\n#t tileset {\n\ttileSize: 8\n\tatlas: \"fp\"\n\tterrain land { cells: \"grass\" }\n\tterrain sea { autotile: c }\n\tterrain shallows { autotile: c }\n\ttransition land, shallows {\n\t\t";
+		final lines = head.split("\n");
+		final items = ManimAnalyzer.getCompletions(head, lines.length - 1, lines[lines.length - 1].length);
+		final labels = [for (item in items) item.label];
+		LspTestRunner.assert(labels.contains("ignore") && labels.contains("autotile"), 'A tileset transition completes autotile and ignore (got ${labels.join(", ")})');
+		LspTestRunner.assert(!labels.contains("crossfade"), "and not a programmable transition's animations");
+		final text = head + "autotile: c\n\t\tignore: sea\n\t}\n}\n";
+		final ignoreLine = text.split("\n")[10];
+		final hover = hoverText(text, 10, ignoreLine.indexOf("ignore") + 2);
+		LspTestRunner.assert(hover != null && hover.indexOf("count as `b`") >= 0, 'Hover on ignore explains it (got $hover)');
+		LspTestRunner.assertEqual(ManimAnalyzer.getDiagnostics(text, "t.manim").length, 0, "ignore: sea is a terrain below shallows: no diagnostics");
+		final wrong = ManimAnalyzer.getDiagnostics(StringTools.replace(text, "ignore: sea", "ignore: lava"), "t.manim");
+		LspTestRunner.assert(wrong.length > 0 && wrong[0].message.indexOf("tileset has no terrain lava") >= 0 && wrong[0].range.start.line == 10,
+			'An ignored terrain the tileset has not is an error on its line (got ${wrong.length > 0 ? wrong[0].message + " at " + wrong[0].range.start.line : "none"})');
 	}
 
 	/** The parser on JS (the LSP, a browser build) reads integers as HashLink does. */
@@ -226,6 +246,29 @@ class ManimAnalyzerTest {
 		final text = "version: 1.0\nprogrammable";
 		final hover = ManimAnalyzer.getHover(text, "test.manim", 1, 5);
 		LspTestRunner.assert(hover != null, "Hover returned for 'programmable' keyword");
+	}
+
+	/** stateanim's frame:, progress: and hide => [...]: parsed without diagnostics, explained on hover. */
+	static function testStateAnimArguments():Void {
+		final text = "version: 1.0\n"
+			+ "#fig programmable(k:int=0) {\n"
+			+ "\tstateanim(\"hero.anim\", \"walk\", direction=>l, frame: $k, hide => [weapon_front, weapon_back]): 0, 0\n"
+			+ "\tstateanim(\"hero.anim\", \"walk\", progress: 0.5): 0, 0\n"
+			+ "}\n"
+			+ "#p programmable() {\n"
+			+ "\tstaticRef(fig, hide => [weapon_front]): 0, 0\n"
+			+ "}\n";
+		final diags = ManimAnalyzer.getDiagnostics(text, "test.manim");
+		LspTestRunner.assertEqual(diags.length, 0, "frame:, progress: and hide => [...] parse with no diagnostics");
+		final lines = text.split("\n");
+		final frame = hoverText(text, 2, lines[2].indexOf("frame") + 1);
+		LspTestRunner.assert(frame != null && frame.indexOf("seekFrame") >= 0, 'Hover on frame explains it (got $frame)');
+		final hide = hoverText(text, 2, lines[2].indexOf("hide") + 1);
+		LspTestRunner.assert(hide != null && hide.indexOf("layers") >= 0, 'Hover on hide explains it (got $hide)');
+		final progress = hoverText(text, 3, lines[3].indexOf("progress") + 1);
+		LspTestRunner.assert(progress != null && progress.indexOf("seekProgress") >= 0, 'Hover on progress explains it (got $progress)');
+		final twice = ManimAnalyzer.getDiagnostics("version: 1.0\n#p programmable() {\n\tstateanim(\"a.anim\", \"s\", frame: 1, progress: 0.5): 0, 0\n}", "test.manim");
+		LspTestRunner.assertGreater(twice.length, 0, "frame: and progress: together are an error");
 	}
 
 	static function testDataEnumSymbols():Void {

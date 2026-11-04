@@ -795,7 +795,7 @@ class ManimNeedsTools {
 					sheetRV(bgSheet, bgTile);
 			case SPACER(w, h): rv(w); rv(h);
 			case BITMAP(ts, _, _): tile(ts);
-			case STATEANIM(filename, initial, selector):
+			case STATEANIM(filename, initial, selector, seek):
 				// every file the name can be (`fromParameters` when that is not all it can be)
 				final files = names(filename);
 				if (files != null)
@@ -804,6 +804,8 @@ class ManimNeedsTools {
 				rv(initial);
 				for (_ => v in selector)
 					rv(v);
+				if (seek != null)
+					rv(StateAnimSeekTools.value(seek));
 			case STATEANIM_CONSTRUCT(initial, construct, _):
 				rv(initial);
 				for (_ => c in construct)

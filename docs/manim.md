@@ -115,6 +115,28 @@ Creates a state animation from a `.anim` file.
 stateanim("filename", "initialState", "direction"=>"l")
 ```
 
+**Held at a frame:** `frame: $k` shows frame `k` of the animation playing (0 the first; only frames
+count, not the playlist's events or `filter` lines; clamped to the first and the last), and
+`progress: $t` shows it `t` of the way through (0 the first frame, 1 and past it the last, the
+frames weighed by their durations). Either holds it there instead of running it on its own clock,
+and follows its parameters: `setParameter` moves it, and a new animation or state is held at the
+frame the value says. A walk spread over a turn-based move's glide:
+
+```
+#hero programmable(state:[idle, walk]=idle, dir:[l, r]=l, glide:float=0) {
+    stateanim("hero.anim", $state, direction=>$dir, progress: $glide): 0, 0
+}
+```
+
+`AnimationSM.seekFrame(n)` / `seekProgress(t)` do the same from code.
+
+**Layers left out:** `hide => [weapon_front, weapon_back]` does not draw those layers of a layered
+`.anim`, as `sm.layer(name).visible = false` does (an overlay pack's own weapon drawn on a library
+figure). On a `staticRef` or `dynamicRef` of a figure it hides them in every stateanim the figure
+draws: `staticRef(two_handed_attacks, facing=>se, hide => [weapon_front, weapon_back])`. A name the
+`.anim` has not is an error naming it and the layers it has. `hide => value` without a list still
+selects a state named `hide` (on a ref, it is the target's argument `hide`).
+
 ### stateanim construct
 Creates a state animation inline without requiring a separate `.anim` file. Each state maps to a sheet animation with FPS and optional flags.
 
@@ -127,7 +149,7 @@ stateanim construct("initialState",
 
 **Parameters per state:**
 * `sheet "sheetName"` - atlas sheet to load tiles from (required)
-* `tileName` - animation tile name in the atlas (required)
+* `tileName` - animation tile name in the atlas (required); a string as any other, so built from parameters in single quotes (`'body_${dir}_human'`) or with `+` (`"body_" + $dir`), an enum parameter by its value's name
 * `fps` - frames per second (required)
 * `loop` - if present, animation loops forever; if omitted, plays once
 * `center` - if present, tiles are centered
@@ -475,6 +497,18 @@ result.getUpdatableByIndex("icon", 2).updateTile(someTile);
 instance.get_label(0);  // h2d.Object (cast to h2d.Text)
 instance.get_icon(2);   // h2d.Object (cast to h2d.Bitmap)
 ```
+
+**An index can be an expression** of the loop variables of the repeatables around the element, numbers and `@final`s of those (`+ - * / % div`, parentheses, unary minus), so nested repeatables number one list:
+
+```
+repeatable($row, range(0, 4)) {
+    repeatable($c, range(0, 3)) {
+        #card[$row * 3 + $c] dynamicRef(upgradeCard, line => $row): $c * 206, $row * 130
+    }
+}
+```
+
+`getDynamicRefByIndex("card", 0)` to `getDynamicRefByIndex("card", 11)`, row by row, in the builder and codegen alike; sibling repeatables can go on with one list (`#item[$i]`, then `#item[$j + 2]`). The index is the element's key, fixed when it is built, so a parameter cannot be in it (a parse error, through a `@final` too: use a constant `@final cols = 3`, or a 2-D index `#card[$c, $row]`). Two elements given one index are a build error naming the index as written, unless they are in mutually exclusive `@()`/`@else` arms.
 
 ### slot
 Defines a swappable container whose content can be replaced at runtime. Children are default content shown when no replacement is set. Requires a `#name` prefix.
@@ -1724,7 +1758,10 @@ joins with no gap: in the browser by its decoder, on HashLink by `bh.audio.Gaple
   plays that track as `playMusic` does, crossfading from the one playing; a click while that track is
   heard stops the music. Such a key's click plays no `ui.click`, only a `sound.click` it names itself;
   the screen still hears the click. A music room, a sound test or a showcase of a music pack is the
-  keys and no code.
+  keys and no code. A key with a status (`autoStatus => "status"`, or `bind => "status"` for a
+  helper of the game's) shows `pressed` while its track is heard, whoever started it, and is let go
+  as the music stops, the track ends or another track takes over (as its crossfade starts): the
+  pointer leaving it, or the click that started it, leaves it pressed.
 - **A sprite's events** play what its `.anim` file's `sounds { fire: "fx.shot" }` block maps them to,
   as the state machine fires them, through the loader's audio (`docs/anim.md` "sounds").
 - **A sprite's animation holds a sound**: `sounds { hold thrust: "fx.engine" }` in the `.anim` file
@@ -1968,12 +2005,13 @@ which way a level's side is drawn and what a cell means to the game are all writ
 | `edge: autotile` | The outline of a higher level, drawn along the rim of every level above 0 (not its inside, so the terrains on it show); needed when there are rises |
 | `edge <terrain>: autotile` | The outline where that terrain is on top, in place of `edge`: for a tileset whose cliff rim is drawn with the ground it holds (a rim of stone round grass, another round dirt) |
 | `terrain name { … }` | A terrain, drawn in the order written, bottom first; each is drawn under every terrain after it (its autotile covers their cells too, so what is drawn over it has something under it). A tileset of things to place only (trees, houses, furniture) has none: its maps are all `none` (`legend { " ": none }`), its cells in layers, laid over a map of another tileset's ground |
-| `transition a, b { autotile: … }` | Where terrain `b` meets terrain `a` (or `none`, the map's edge included) and nothing else, this autotile is drawn over `b`'s own there: for a tileset whose edge between those two is its own tile set (grass to water, not grass to anything). `a` is below `b`; one autotile a frame when `b` is animated |
+| `transition a, b { autotile: … }` | Where terrain `b` meets terrain `a` (or `none`, the map's edge included) and nothing else, this autotile is drawn over `b`'s own there: for a tileset whose edge between those two is its own tile set (grass to water, not grass to anything). `a` is below `b`; one autotile a frame when `b` is animated. It is drawn on `b`'s cells, by which of their neighbours are `b` (or above): an edge a sheet draws on the ground around a terrain (a sunken floor's rim on the dirt beside it) is the ground's transition from that terrain, the floor declared under the dirt |
+| `transition a, b { autotile: …  ignore: c, d }` | The terrains named count as `b` for this transition: a cell of `b` that touches `a` and one of them still meets `a`, and the edge faces `a` alone. For a third terrain below `b` that `b` also touches: shallows one cell wide between land and the deep sea (`transition land, shallows { autotile: coast  ignore: sea }`), a dirt yard round a sunken floor that also meets grass. Each a terrain below `b`, neither `a` nor `b` (nor `none`: the map's edge is never ignored) |
 | `rise n { … }` | How a cell `n` levels above its neighbour is drawn (below) |
 | `rise any { … }` | The same for every number of levels that has no rise of its own: a fence behind a plateau is the same however high it is |
 | `rise n <terrain> { … }` | The same where the higher cell is of that terrain. A terrain with rises of its own toward a side uses only those there |
 | `platform name { … }` | A kind of higher level that is not the ground raised: a tree top, a roof (below) |
-| `cell name { … }` | What a named cell of a map's layers is, wherever it is placed: `draw:` (`under`, `over`, `top`, or `actors`: among them, sorted by its feet) and `metadata` |
+| `cell name { … }` | What a named cell of a map's layers is, wherever it is placed: `draw:` (`under`, `over`, `top`, `actors`: among them, sorted by its feet, or `side`: in place of a rise's side, below) and `metadata` |
 | `cell name { size: w, h anchor: x, y }` | An object of several cells (a tree, a house) whose frames are `w` by `h` cells: the layer's character marks its `anchor` cell (its bottom-left one unless given, counted from its top-left), it is drawn among the actors standing on its feet unless `draw:` says otherwise, and every cell it covers is it (`cellAt`, `metadataAt`; `objectAt` says where its anchor is). It must lie inside the map and cover no other cell of its layer |
 
 | In a terrain | |
@@ -1999,6 +2037,30 @@ sorting by feet stays right.
 | `span: n` | How many cells the side covers |
 | `toward: down` | Which neighbour the side faces: `down` (the default), `up`, `left`, `right`. One rise a number and direction. On the isometric grid `down` (both front faces in one piece), `se` or `sw` (one face); on the hex grid `down` (also `lower`: the whole lower outline), `se`, `sw`, and `s` on flat hexes; `span:` may be left out there |
 | `metadata { … }` | What the game reads of the cells the side covers |
+
+**An opening in a side** (a doorway, an arch, a drain, a broken hole): a wall face's variant piece
+with a see-through opening is a cell drawn in place of the side, `draw: side`. Where it covers the
+side, the side's pieces are not drawn and it is drawn in their place and order, so what is under the
+side (the map's terrain there: darkness, water) shows through the opening, not the wall's bricks; laid
+over the face as an `under` cell, the bricks would. An object of several cells (`size: 4, 2`) hides the
+side under every cell it covers. The side's run goes on past it as if whole: the pieces beside it are
+the ones they were, the ends where the wall's are, `side: "a", "b"` taken in turn through it, so a
+piece drawn as the face with an opening fits between the bricks it was drawn beside. On the square
+grid it is placed as any layer cell is (its frames variants by position), in the sides' pass after
+the pieces and under every layer's `under` cells, and where it covers no side it is drawn there all
+the same. `sideAt` still says the side (the levels are as they were), and the cell's metadata wins over
+the rise's as any layer's does: `metadata { wall:bool => false }` on a doorway opens it. A layer may say
+`draw: side` for all its cells.
+
+```manim
+rise 1 { side: "face_a", "face_b" left: "face_l" right: "face_r" span: 2 metadata { wall:bool => true } }
+cell arch { size: 2, 2 draw: side metadata { wall:bool => false } }   // a 32x32 frame: the face with an arched opening
+cell drain { size: 1, 2 draw: side }
+```
+
+[test/examples/177-tilemapSideCells/](../test/examples/177-tilemapSideCells/) draws a sewer wall with an
+arch laid over it as an `under` cell (its bricks show through) and an arch, a drain and a hole drawn in
+the side's place.
 
 **A platform** is a higher level with a top of its own, drawn over whatever terrain the map has
 there: the ground under a tree top is still grass. Its `edge` autotile is drawn over all of it,
@@ -2059,13 +2121,14 @@ a meaning: the game says what `wall`, `swim` or `cost` are for.
   file: every terrain, cell and side piece is there (`tilemap_terrain`, `tilemap_missing_cell`), and
   every rise the map has in a direction the tileset draws sides toward has its `rise` (`tilemap_rise`).
 - A layer's cells come from its `sheet:` (the tileset's `atlas` when not given) and are drawn `under`
-  the actors (the default), `over` them, at the `top`, above everything, or as `actors`: each among
-  them, sorted by its feet; a `cell` with its own `draw:` goes there instead.
+  the actors (the default), `over` them, at the `top`, above everything, as `actors`: each among
+  them, sorted by its feet, or in place of a rise's `side` they cover; a `cell` with its own `draw:`
+  goes there instead.
 - A sheet whose frames its packer trimmed to their pixels (`offset:` and `orig:` in the atlas, as
   TexturePacker writes them) draws as the whole one: every frame a map draws (a terrain's cells, a
   layer's cell, a side's piece, an autotile's tile from a sheet) is put where its whole frame would be,
   and stands on its cell by the whole frame's size; an object's size is checked against it too.
-- Drawing order: terrains, the levels' edges and sides, the `under` layers; the decor and the actors in
+- Drawing order: terrains, the levels' edges and sides (and the cells drawn in a side's place), the `under` layers; the decor and the actors in
   one layer sorted by their feet every frame; `over`; `top`. The order holds across the map's
   chunks: a map drawn in chunks looks as it does drawn in one piece, at their borders too.
 
@@ -2155,6 +2218,16 @@ and faces, a platform, animated water and a long building among people.
   so, a face's run going on as far as the same face shows. A run is a level of side's: a cell two up
   beside one up goes on with its neighbour's run in its lower piece and ends its own in its upper one,
   and a run never goes on to a cell that stands lower (the outline turns back there).
+- **An opening in a raised cell's side** (`draw: side`, see "An opening in a side" under [Tileset](#tileset)): placed
+  on the raised cell, it is drawn in place of its side's pieces, every face's, and as they are: a
+  piece a level, its frames from the top down as a rise's (a door's upper level a window, its lower
+  one the doorway; the last again below them), standing on the cell (an object of several cells on
+  its footprint's box, from its anchor, hiding the side of every cell it covers), the lowest level with
+  the ground and the rest on the cell's column. The run goes on past it as if whole. Where the cell
+  shows no side (the ground, a raised cell no higher than its neighbours) it is drawn as an `under`
+  cell. A terrain's own side (a block's, the top level of side) is the terrain's and stays.
+  [178-tilemapSideCellsLifted/](../test/examples/178-tilemapSideCellsLifted/) draws a door in an
+  isometric wall two levels up and a drain in a hex wall.
 - **Edges and platforms on a lifted map**: the tileset's `edge` (optional there) outlines a level's
   rim on the top of the cells of that level, lifted with them (a higher cell shows its own level's);
   a platform's `edge` is drawn on the top of every cell of it, its sides its own rises. A corner tile,

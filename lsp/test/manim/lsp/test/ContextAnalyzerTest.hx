@@ -15,6 +15,14 @@ class ContextAnalyzerTest {
 		testParamsOfAnEarlierProgrammableAreOutOfScope();
 		testASlotBodySeesOnlyItsOwnParams();
 		testKeywordsMatchInAnyCase();
+		testATilesetTransitionIsNotAProgrammablesTransition();
+	}
+
+	static function testATilesetTransitionIsNotAProgrammablesTransition():Void {
+		final tileset = analyzeAtEnd("version: 1.0\n#t tileset {\n\tterrain land { cells: \"grass\" }\n\ttransition land, sea {\n\t\t");
+		LspTestRunner.assertEqual(tileset.context, TilesetTransitionBody, "transition a, b { in a tileset");
+		final programmable = analyzeAtEnd("version: 1.0\n#p programmable(s:[a,b]=a) {\n\ttransition {\n\t\t");
+		LspTestRunner.assertEqual(programmable.context, TransitionBody, "transition { in a programmable");
 	}
 
 	static function analyzeAtEnd(text:String):CursorContextResult {

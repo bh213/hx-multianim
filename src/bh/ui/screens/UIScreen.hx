@@ -45,6 +45,16 @@ typedef ModalOverlayConfig = {
 	var ?blur:Float;
 }
 
+/** A jukebox's key on a screen: its interactive, the track its `music.click` names, the status
+ *  parameter its `autoStatus` (`auto`) or `bind` names, and whether it is held pressed now. */
+private typedef MusicKeyHold = {
+	final wrapper:UIInteractiveWrapper;
+	final track:String;
+	final param:String;
+	final auto:Bool;
+	var held:Bool;
+}
+
 enum LayersEnum {
 	ModalLayer;
 	DefaultLayer;
@@ -70,7 +80,7 @@ interface UIScreen {
 }
 
 @:nullSafety
-abstract class UIScreenBase implements UIScreen implements UIControllerScreenIntegration implements bh.ui.UIComponentHost {
+abstract class UIScreenBase implements UIScreen implements UIControllerScreenIntegration implements bh.ui.UIComponentHost implements bh.ui.UIHeldKeys {
 	var elements:Array<UIElement> = [];
 	var subElementProviders:Array<UIElementSubElements> = [];
 	var controllersStack:Array<UIController> = [];
@@ -98,6 +108,13 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	 *  when a SWITCH arm flips or REPEAT count changes the underlying interactives list. */
 	var interactiveSubscriptions:Array<{source:bh.ui.UIInteractiveSource, prefix:Null<String>, listener:Void->Void}> = [];
 	var autoStatusHelper:Null<UIRichInteractiveHelper> = null;
+	/** The jukebox's keys among the interactives: a `music.click` track and an `autoStatus` or `bind`
+	 *  status. Found again when the interactives change (`musicKeyHoldsStale`), so `update` reads no
+	 *  metadata. Not `musicKeys`: a subclass may not declare a field of the same name. */
+	var musicKeyHolds:Array<MusicKeyHold> = [];
+	var musicKeyHoldsStale:Bool = false;
+	/** The ids of the keys held pressed now, their track heard (`isKeyHeld`). */
+	final heldMusicKeyIds:Map<String, Bool> = [];
 	var panelHelpers:Array<UIPanelHelper> = [];
 	var tooltipHelpers:Array<UITooltipHelper> = [];
 	var higherOrderComponents:Array<UIHigherOrderComponent> = [];
@@ -208,6 +225,9 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		if (autoStatusHelper != null)
 			autoStatusHelper.unbindAll();
 		autoStatusHelper = null;
+		musicKeyHolds = [];
+		musicKeyHoldsStale = false;
+		heldMusicKeyIds.clear();
 		for (helper in panelHelpers)
 			helper.dispose();
 		panelHelpers = [];
@@ -318,6 +338,79 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		screenManager.audio.toggleMusic(track);
 	}
 
+	/** Whether an interactive is held pressed now: a jukebox's key (`music.click` with an
+	 *  `autoStatus` or `bind` status) while its track is heard. Every `UIRichInteractiveHelper` on
+	 *  this screen shows such a key `pressed` whatever the pointer does (`UIHeldKeys`). */
+	public function isKeyHeld(interactiveId:String):Bool {
+		return heldMusicKeyIds.exists(interactiveId);
+	}
+
+	/** The jukebox's keys among the interactives now. A key held before stays held, and is shown
+	 *  pressed again: a rebuild may have made its result anew, at its default. */
+	function findMusicKeys():Void {
+		musicKeyHoldsStale = false;
+		musicKeyHolds = [];
+		for (w in interactiveWrappers) {
+			final meta = w.metadata;
+			if (!meta.has(MUSIC_CLICK))
+				continue;
+			final track = meta.getStringOrDefault(MUSIC_CLICK, "none");
+			final auto = meta.getStringOrDefault(UIRichInteractiveHelper.RESERVED_KEY, "");
+			final param = auto != "" ? auto : meta.getStringOrDefault("bind", "");
+			if (track == "none" || track == "" || param == "")
+				continue;
+			musicKeyHolds.push({wrapper: w, track: track, param: param, auto: auto != "", held: heldMusicKeyIds.exists(w.id)});
+		}
+		// a held key no more among them is let go
+		for (id in [for (id in heldMusicKeyIds.keys()) id])
+			if (!Lambda.exists(musicKeyHolds, k -> k.held && k.wrapper.id == id))
+				heldMusicKeyIds.remove(id);
+		for (k in musicKeyHolds)
+			if (k.held)
+				showMusicKey(k);
+	}
+
+	/** Once a frame: a jukebox's key is held pressed while its track is heard, and let go as the
+	 *  music stops, the track ends, or another track takes over (as its crossfade starts). */
+	function holdMusicKeys():Void {
+		if (screenManager == null)
+			return;
+		final audio = screenManager.audio;
+		for (k in musicKeyHolds) {
+			final heard = audio.isMusicPlaying(k.track);
+			if (heard == k.held)
+				continue;
+			k.held = heard;
+			if (heard)
+				heldMusicKeyIds.set(k.wrapper.id, true);
+			else
+				heldMusicKeyIds.remove(k.wrapper.id);
+			showMusicKey(k);
+		}
+	}
+
+	/** A jukebox's key shown as it is: `pressed` while held, else `hover` under the pointer and
+	 *  `normal` elsewhere; a disabled key is left as it is. An `autoStatus` key through the screen's
+	 *  helper, a `bind` key on the result that placed it (a game's own helper drives it otherwise). */
+	function showMusicKey(k:MusicKeyHold):Void {
+		final w = k.wrapper;
+		if (w.disabled)
+			return;
+		final helper = autoStatusHelper;
+		if (k.auto && helper != null && helper.hasBinding(w.id)) {
+			if (k.held)
+				helper.setParameter(w.id, k.param, "pressed");
+			else if (w.hovered)
+				helper.setHoverState(w.id);
+			else
+				helper.resetState(w.id);
+			return;
+		}
+		final source = w.source;
+		if (source != null)
+			UIRichInteractiveHelper.ownerOf(source, w.interactive).setParameter(k.param, k.held ? "pressed" : w.hovered ? "hover" : "normal");
+	}
+
 	/** The `ui.<key>` a widget event plays, or null for an event that makes no sound. */
 	public static function widgetSoundKey(event:UIScreenEvent):Null<String> {
 		return switch event {
@@ -401,6 +494,10 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 			postCustomAddToLayer.clear();
 			postCustomAddToLayerPending = false;
 		}
+		if (musicKeyHoldsStale)
+			findMusicKeys();
+		if (musicKeyHolds.length > 0)
+			holdMusicKeys();
 	}
 
 	static inline function elementMatchesType(e:UIElement, type:SubElementsType):Bool {
@@ -1212,6 +1309,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		var wrapper = new UIInteractiveWrapper(obj, prefix, source);
 		interactiveWrappers.push(wrapper);
 		interactiveMap.set(wrapper.id, wrapper);
+		musicKeyHoldsStale = true;
 		addElement(wrapper, null);
 		return wrapper;
 	}
@@ -1220,6 +1318,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	 *  codegen instance): detaching one would take it out of a hidden container for good. */
 	function unregisterInteractiveWrapper(w:UIInteractiveWrapper):Void {
 		interactiveWrappers.remove(w);
+		musicKeyHoldsStale = true;
 		if (interactiveMap.get(w.id) == w) {
 			interactiveMap.remove(w.id);
 			// Another source under the same prefix may use the same id: it takes over the entry.
@@ -1325,6 +1424,8 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 				if (w.id == id) {
 					stale.remove(oldObj);
 					w.rebind(obj);
+					// its metadata and the result it is shown on may be new
+					musicKeyHoldsStale = true;
 					rebound = true;
 					break;
 				}

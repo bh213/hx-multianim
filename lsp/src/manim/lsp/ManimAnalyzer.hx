@@ -264,7 +264,7 @@ class ManimAnalyzer {
 			case PARTICLES(_): "particles";
 			case APPLY: "apply";
 			case PROGRAMMABLE(_, _, _): "programmable";
-			case STATEANIM(_, _, _): "stateanim";
+			case STATEANIM(_, _, _, _): "stateanim";
 			case STATEANIM_CONSTRUCT(_, _, _): "stateanim";
 			case DATA(_): "data";
 			case ANIMATED_PATH(_): "animatedPath";

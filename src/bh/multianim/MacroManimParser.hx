@@ -606,6 +606,145 @@ class MacroManimParser {
 		}
 	}
 
+	// `#name[` read: the index (or the two of `#name[x, y]`) and the `]`. Each index is a
+	// whole-number expression of the loop variables of the repeatables around the element, numbers
+	// and @finals of those (`#card[$row * 3 + $c]`); a plain `$i` is a loop variable as before. A
+	// parameter is refused: the index keys the element in the names, slots and dynamicRefs when it is
+	// built, and a parameter can change after (neither backend keys an element again).
+	function parseIndexedName(name:String, parent:Null<Node>, currentDefs:Null<ParametersDefinitions>):UpdatableNameType {
+		final xAt = peekToken();
+		final x = parseNameIndexExpr(name);
+		var yAt:Null<Token> = null;
+		var y:Null<ReferenceableValue> = null;
+		if (match(TComma)) {
+			yAt = peekToken();
+			y = parseNameIndexExpr(name);
+		}
+		expect(TBracketClosed);
+		final named = y == null ? UNTIndexed(name, x) : UNTIndexed2D(name, x, y);
+		checkNameIndex(named, x, xAt, parent, currentDefs);
+		if (y != null && yAt != null)
+			checkNameIndex(named, y, yAt, parent, currentDefs);
+		return named;
+	}
+
+	// `#name` inside nested repeatables: the inner variable alone recurs once per outer iteration,
+	// so the message offers the one-list form an index expression gives, or a 2-D index.
+	static function nestedRepeatHint(name:String, innerVar:String, outer:Null<Node>):String {
+		var p = outer;
+		while (p != null) {
+			switch (p.type) {
+				case REPEAT(outerVar, _):
+					return ' (nested in repeatable($$$outerVar): number them as one list, #$name[$$$outerVar * N + $$$innerVar] with N the inner count, or #$name[$$$innerVar, $$$outerVar])';
+				default:
+			}
+			p = p.parent;
+		}
+		return "";
+	}
+
+	// One index of `#name[...]`. Read without the usual reference check: checkNameIndex checks it
+	// whole once read, and names the index as written and what an index can use.
+	function parseNameIndexExpr(name:String):ReferenceableValue {
+		switch (peek()) {
+			case TBracketClosed | TComma:
+				return error('#$name[]: expected an index inside the brackets: #$name[$$i], #$name[$$row * 3 + $$c] or #$name[$$x, $$y], with the loop variables of the repeatables around the element');
+			default:
+		}
+		final savedDefs = activeDefs;
+		activeDefs = null;
+		final index = try parseExpr(EInt) catch (e:Dynamic) {
+			activeDefs = savedDefs;
+			throw e;
+		}
+		activeDefs = savedDefs;
+		return index;
+	}
+
+	// An index uses loop variables, numbers and @finals of those, with + - * / % div, parentheses and
+	// unary minus: what the builder works out with resolveAsInteger and codegen while it unrolls a
+	// repeatable, each as a whole number, the same in both.
+	function checkNameIndex(named:UpdatableNameType, index:ReferenceableValue, at:Token, parent:Null<Node>,
+			currentDefs:Null<ParametersDefinitions>):Void {
+		final name = getNameString(named);
+		function uses():String
+			return 'An index is a whole number worked out from the loop variables of the repeatables around the element, numbers and @finals of those, with + - * / % div and parentheses: #$name[$$i], #$name[$$row * 3 + $$c], #$name[$$x, $$y]';
+		function fixedWhenBuilt():String
+			return 'an index is fixed when the element is built and a parameter can change after. Use loop variables, numbers and @finals of those (@final cols = 3, then #$name[$$row * $$cols + $$c]), or a 2-D index #$name[$$x, $$y]';
+		function fail(msg:String):Void {
+			errorAtLine(at.line, at.col, '${indexedNameText(named)}: $msg');
+		}
+		function describe(rv:ReferenceableValue):String {
+			return switch rv {
+				case RVFloat(f): '$f (not a whole number)';
+				case RVString(s): '"$s" (a string)';
+				case RVPropertyAccess(r, p): "$" + r + "." + p;
+				case RVMethodCall(r, m, _): "$" + r + "." + m + "(…)";
+				case RVChainedMethodCall(_, m, _): "." + m + "(…)";
+				case RVElementOfArray(a, _): "$" + a + "[…]";
+				case RVTernary(_, _, _): "a ?(…) … : … choice";
+				case RVCallbacks(_, _) | RVCallbacksWithIndex(_, _, _): "a callback(…)";
+				case RVColor(_, _) | RVColorXY(_, _, _): "a palette colour";
+				case RVArray(_) | RVArrayReference(_): "an array";
+				case EBinop(_, _, _): '"${indexText(rv)}" (a comparison)';
+				default: indexText(rv);
+			}
+		}
+		// `finalName`: the @final whose value is being walked (null for the index itself)
+		function walk(rv:ReferenceableValue, finalName:Null<String>, chain:Array<String>):Void {
+			switch rv {
+				case RVInteger(_):
+				case RVParenthesis(e) | EUnaryOp(_, e):
+					walk(e, finalName, chain);
+				case EBinop(OpAdd | OpSub | OpMul | OpDiv | OpIntegerDiv | OpMod, a, b):
+					walk(a, finalName, chain);
+					walk(b, finalName, chain);
+				case RVReference(v):
+					if (currentDefs != null && currentDefs.exists(v)) {
+						if (finalName == null)
+							fail('$$$v is a parameter, and ${fixedWhenBuilt()}');
+						else
+							fail('@final $$$finalName uses the parameter $$$v, and ${fixedWhenBuilt()}');
+					}
+					final finalExpr = finalExprInScope(v, parent);
+					if (finalExpr != null) {
+						if (chain.indexOf(v) < 0)
+							walk(finalExpr, v, chain.concat([v]));
+					} else if (scopeVars == null || !scopeVars.contains(v)) {
+						if (finalName == null)
+							fail('index variable $$$v is not a known loop variable or @final in this scope. ${uses()}');
+						else
+							fail('@final $$$finalName uses $$$v, which is no loop variable or @final here. ${uses()}');
+					}
+				default:
+					if (finalName == null)
+						fail('${describe(rv)} cannot be an index. ${uses()}');
+					else
+						fail('@final $$$finalName uses ${describe(rv)}, which cannot be part of an index. ${uses()}');
+			}
+		}
+		walk(index, null, []);
+	}
+
+	// The value of the @final `name` in scope where an element of `parent` is being read: the latest
+	// one among the elements read before it in `parent` and each block around it. Null for a loop variable.
+	static function finalExprInScope(name:String, parent:Null<Node>):Null<ReferenceableValue> {
+		var p = parent;
+		while (p != null) {
+			var i = p.children.length - 1;
+			while (i >= 0) {
+				switch (p.children[i].type) {
+					case FINAL_VAR(n, e) if (n == name):
+						return e;
+					default:
+				}
+				i--;
+			}
+			p = p.parent;
+		}
+		return null;
+	}
+
 	function iteratorOutputVars(rt:RepeatType):Array<String> {
 		return switch rt {
 			case ArrayIterator(valueVar, _): [valueVar];
@@ -3484,31 +3623,7 @@ class MacroManimParser {
 					}
 					expect(TClosed);
 				} else if (match(TBracketOpen)) {
-					switch (peek()) {
-						case TReference(indexVar1):
-							advance();
-							if (match(TComma)) {
-								switch (peek()) {
-									case TReference(indexVar2):
-										advance();
-										if (scopeVars == null || !scopeVars.contains(indexVar1))
-											error('#name[$$$indexVar1, $$$indexVar2]: index variable $$$indexVar1 is not a known loop variable in this scope');
-										if (scopeVars == null || !scopeVars.contains(indexVar2))
-											error('#name[$$$indexVar1, $$$indexVar2]: index variable $$$indexVar2 is not a known loop variable in this scope');
-										expect(TBracketClosed);
-										updatableName = UNTIndexed2D(name, indexVar1, indexVar2);
-									default:
-										error('expected $$variable for second index in #name[$$x, $$y]');
-								}
-							} else {
-								if (scopeVars == null || !scopeVars.contains(indexVar1))
-									error('#name[$$$indexVar1]: index variable $$$indexVar1 is not a known loop variable in this scope');
-								expect(TBracketClosed);
-								updatableName = UNTIndexed(name, indexVar1);
-							}
-						default:
-							error('expected $$variable inside #name[...]');
-					}
+					updatableName = parseIndexedName(name, parent, currentDefs);
 				}
 				// Validate: #name (non-indexed) is not allowed inside repeatable
 				switch (updatableName) {
@@ -3517,7 +3632,7 @@ class MacroManimParser {
 						while (checkNode != null) {
 							switch (checkNode.type) {
 								case REPEAT(varName, _):
-									error('#$name requires indexed form #$name[$$' + varName + '] inside repeatable');
+									error('#$name requires indexed form #$name[$$' + varName + '] inside repeatable' + nestedRepeatHint(name, varName, checkNode.parent));
 								case REPEAT2D(varNameX, varNameY, _, _):
 									error('#$name requires indexed form #$name[$$' + varNameX + ', $$' + varNameY + '] inside repeatable2d');
 								default:
@@ -4065,11 +4180,17 @@ class MacroManimParser {
 				final progRef = expectReferenceOrIdentifierAsRV();
 				validateRefTargetParam("staticRef", extRef, progRef, refToken, currentDefs);
 				var params:Map<String, ReferenceableValue> = new Map();
+				var hidden:Null<HiddenLayers> = null;
 				if (match(TComma)) {
-					params = parseReferenceParams();
+					final args = parseReferenceParams("staticRef");
+					params = args.params;
+					hidden = args.hidden;
 				}
 				expect(TClosed);
-				createNode(STATIC_REF(extRef, progRef, params), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
+				final refNode = createNode(STATIC_REF(extRef, progRef, params), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
+				if (hidden != null)
+					refNode.hiddenLayers = hidden;
+				refNode;
 
 			case TIdentifier(s) if (isKeyword(s, "dynamicRef")):
 				advance();
@@ -4088,11 +4209,17 @@ class MacroManimParser {
 				final progRef = expectReferenceOrIdentifierAsRV();
 				validateRefTargetParam("dynamicRef", extRef, progRef, refToken, currentDefs);
 				var params:Map<String, ReferenceableValue> = new Map();
+				var hidden:Null<HiddenLayers> = null;
 				if (match(TComma)) {
-					params = parseReferenceParams();
+					final args = parseReferenceParams("dynamicRef");
+					params = args.params;
+					hidden = args.hidden;
 				}
 				expect(TClosed);
-				createNode(DYNAMIC_REF(extRef, progRef, params), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
+				final refNode = createNode(DYNAMIC_REF(extRef, progRef, params), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
+				if (hidden != null)
+					refNode.hiddenLayers = hidden;
+				refNode;
 
 			case TIdentifier(s) if (isKeyword(s, "placeholder")):
 				advance();
@@ -4209,14 +4336,37 @@ class MacroManimParser {
 						expect(TComma);
 						final initialState = parseStringOrReference();
 						var selector:Map<String, ReferenceableValue> = new Map();
+						var seek:Null<StateAnimSeek> = null;
+						var hidden:Null<HiddenLayers> = null;
 						while (match(TComma)) {
+							final keyLine = peekToken().line;
 							final key = expectIdentifierOrString();
+							// The stateanim's own arguments: `frame: $k` / `progress: $t` with a colon, `hide => [a, b]`
+							// with a list. Any other `key => value` selects a state of the .anim (one named hide too)
+							if (match(TColon)) {
+								final isFrame = isKeyword(key, "frame");
+								if (!isFrame && !isKeyword(key, "progress"))
+									error('stateanim: unknown argument "$key:" (frame: $$k or progress: $$t hold it at a frame); a state of the .anim is selected with $key => value');
+								if (seek != null)
+									error('stateanim: frame: and progress: say where it is held: give one of them, once');
+								seek = isFrame ? SAFrame(parseIntegerOrReference()) : SAProgress(parseFloatOrReference());
+								continue;
+							}
 							expect(TArrow);
+							if (isKeyword(key, "hide") && peek().match(TBracketOpen)) {
+								if (hidden != null)
+									error('stateanim: hide => [...] given twice: name every layer in one list');
+								hidden = parseHiddenLayers("stateanim", keyLine);
+								continue;
+							}
 							final val = parseStringOrReference();
 							selector.set(key, val);
 						}
 						expect(TClosed);
-						createNode(STATEANIM(filename, initialState, selector), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
+						final animNode = createNode(STATEANIM(filename, initialState, selector, seek), parent, conditional, scale, rotation, alpha, tint, layerIndex, updatableName);
+						if (hidden != null)
+							animNode.hiddenLayers = hidden;
+						animNode;
 				}
 
 			case TIdentifier(s) if (isKeyword(s, "tilegroup")):
@@ -5469,21 +5619,58 @@ class MacroManimParser {
 
 	// ===================== Reference Parameters =====================
 
-	function parseReferenceParams():Map<String, ReferenceableValue> {
+	/** A ref's arguments `name => value`; `hide => [a, b]` (a list) is the layers of the stateanims it
+	 *  draws left out (`hide => $list`, or any value that is not a list, is an argument, as before). */
+	function parseReferenceParams(what:String):{params:Map<String, ReferenceableValue>, hidden:Null<HiddenLayers>} {
 		var params:Map<String, ReferenceableValue> = new Map();
+		var hidden:Null<HiddenLayers> = null;
 		while (true) {
 			switch (peek()) {
 				case TClosed:
-					return params;
+					return {params: params, hidden: hidden};
 				case TIdentifier(name):
+					final nameLine = peekToken().line;
 					advance();
 					expect(TArrow);
-					params.set(name, parseAnything());
+					if (isKeyword(name, "hide") && peek().match(TBracketOpen)) {
+						if (hidden != null)
+							error('$what: hide => [...] given twice: name every layer in one list');
+						hidden = parseHiddenLayers(what, nameLine);
+					} else
+						params.set(name, parseAnything());
 					eatComma();
 				default:
-					return params;
+					return {params: params, hidden: hidden};
 			}
 		}
+	}
+
+	/** `hide => [weapon_front, weapon_back]`: layers of a .anim by name, as its `layers:` line writes
+	 *  them, each once. `what` is the element it is written on, for the errors. */
+	function parseHiddenLayers(what:String, line:Int):HiddenLayers {
+		expect(TBracketOpen);
+		final names:Array<String> = [];
+		while (!match(TBracketClosed)) {
+			if (names.length > 0) {
+				expect(TComma);
+				if (match(TBracketClosed))
+					break;
+			}
+			switch (peek()) {
+				case TIdentifier(_) | TQuotedString(_):
+				case TReference(r):
+					error('$what: hide => [...] names layers as the .anim\'s layers: line writes them, not $$$r: hide => [weapon_front, weapon_back]');
+				default:
+					error('$what: hide => [...] takes the names of layers of the .anim: hide => [weapon_front, weapon_back]');
+			}
+			final name = expectIdentifierOrString();
+			if (names.contains(name))
+				error('$what: hide => [...] names layer "$name" twice');
+			names.push(name);
+		}
+		if (names.length == 0)
+			error('$what: hide => [] hides nothing: name the layers, hide => [weapon_front, weapon_back], or leave it out');
+		return {names: names, line: line};
 	}
 
 	// ===================== Interactive Metadata =====================
@@ -5929,34 +6116,8 @@ class MacroManimParser {
 						}
 						expect(TClosed);
 					} else if (match(TBracketOpen)) {
-						// #name[$var] or #name[$varX, $varY] — indexed named element
-						switch (peek()) {
-							case TReference(indexVar1):
-								advance();
-								if (match(TComma)) {
-									// 2D indexing: #name[$x, $y]
-									switch (peek()) {
-										case TReference(indexVar2):
-											advance();
-											if (scopeVars == null || !scopeVars.contains(indexVar1))
-												error('#name[$$$indexVar1, $$$indexVar2]: index variable $$$indexVar1 is not a known loop variable in this scope');
-											if (scopeVars == null || !scopeVars.contains(indexVar2))
-												error('#name[$$$indexVar1, $$$indexVar2]: index variable $$$indexVar2 is not a known loop variable in this scope');
-											expect(TBracketClosed);
-											nameType = UNTIndexed2D(name, indexVar1, indexVar2);
-										default:
-											error('expected $$variable for second index in #name[$$x, $$y]');
-									}
-								} else {
-									// 1D indexing: #name[$i]
-									if (scopeVars == null || !scopeVars.contains(indexVar1))
-										error('#name[$$$indexVar1]: index variable $$$indexVar1 is not a known loop variable in this scope');
-									expect(TBracketClosed);
-									nameType = UNTIndexed(name, indexVar1);
-								}
-							default:
-								error('expected $$variable inside #name[...]');
-						}
+						// #name[$i], #name[$row * 3 + $c] or #name[$x, $y] — indexed named element
+						nameType = parseIndexedName(name, node, defs);
 					}
 					// Validate: #name (non-indexed) is not allowed inside repeatable
 					switch (nameType) {
@@ -5965,7 +6126,7 @@ class MacroManimParser {
 							while (checkNode != null) {
 								switch (checkNode.type) {
 									case REPEAT(varName, _):
-										error('#$name requires indexed form #$name[$$' + varName + '] inside repeatable');
+										error('#$name requires indexed form #$name[$$' + varName + '] inside repeatable' + nestedRepeatHint(name, varName, checkNode.parent));
 									case REPEAT2D(varNameX, varNameY, _, _):
 										error('#$name requires indexed form #$name[$$' + varNameX + ', $$' + varNameY + '] inside repeatable2d');
 									default:
@@ -6474,7 +6635,14 @@ class MacroManimParser {
 			}
 			final sheet = expectIdentifierOrString();
 			expect(TComma);
+			// The tile name is a string as any other: built from parameters in single quotes
+			// ('body_${dir}_human') or with + ("body_" + $dir)
 			final name = parseStringOrReference();
+			switch (peek()) {
+				case TReference(_):
+					error('stateanim construct "$stateName": a tile name built from parameters is a single-quoted string, \'body_$${dir}_human\' (or "body_" + $$dir); written bare, the name ends where its $$ starts');
+				default:
+			}
 			expect(TComma);
 			final fps = parseIntegerOrReference();
 			eatComma();
@@ -7853,6 +8021,8 @@ class MacroManimParser {
 		final edges:Map<String, String> = [];
 		final terrains:Array<TilesetTerrainDef> = [];
 		final transitions:Array<TilesetTransitionDef> = [];
+		// where each transition's ignored terrains are written, for errors found once every terrain is known
+		final transitionIgnoreAt:Array<Array<Token>> = [];
 		final rises:Array<TilesetRiseDef> = [];
 		final platforms:Array<TilesetPlatformDef> = [];
 		final cells:Array<TilesetCellDef> = [];
@@ -7947,18 +8117,43 @@ class MacroManimParser {
 						if (t.from == from && t.to == to) error('transition $from, $to is defined twice');
 					expect(TCurlyOpen);
 					final autotiles:Array<String> = [];
+					final ignore:Array<String> = [];
+					final ignoreAt:Array<Token> = [];
+					var ignoreSet = false;
 					while (!match(TCurlyClosed)) {
 						switch (peek()) {
 							case TIdentifier(s2) if (isKeyword(s2, "autotile")):
 								advance();
 								expect(TColon);
 								parseNameList(autotiles);
+							case TIdentifier(s2) if (isKeyword(s2, "ignore")):
+								// ignore: c, d - terrains below `to` that count as `to` where it meets `from`
+								advance();
+								expect(TColon);
+								if (ignoreSet) error('transition $from, $to: ignore: is given twice; name every terrain in one (ignore: a, b)');
+								ignoreSet = true;
+								do {
+									final at = peekToken();
+									final name = expectIdentifierOrString();
+									if (name == "none")
+										errorAtLine(at.line, at.col,
+											'transition $from, $to: ignore: none - none is no terrain (the map\'s edge and its none cells are not ignored); ignore: names terrains below $to');
+									if (name == to)
+										errorAtLine(at.line, at.col, 'transition $from, $to: ignore: $to is the transition\'s own terrain; leave it out (ignore: names terrains below $to that count as $to)');
+									if (name == from)
+										errorAtLine(at.line, at.col, 'transition $from, $to: ignore: $from is the terrain the edge is drawn toward; leave it out of ignore:');
+									if (ignore.contains(name))
+										errorAtLine(at.line, at.col, 'transition $from, $to: ignore: names $name twice; name it once');
+									ignore.push(name);
+									ignoreAt.push(at);
+								} while (match(TComma));
 							default:
-								error('unexpected transition property: ${peek()} (a transition has autotile: only)');
+								error('unexpected transition property: ${peek()} (a transition has autotile: only, or autotile: and ignore:)');
 						}
 					}
 					if (autotiles.length == 0) error('transition $from, $to needs autotile:');
-					transitions.push({from: from, to: to, autotiles: autotiles});
+					transitionIgnoreAt.push(ignoreAt);
+					transitions.push({from: from, to: to, autotiles: autotiles, ignore: ignore});
 				case TIdentifier(s) if (isKeyword(s, "rise")):
 					advance();
 					parseRise(null);
@@ -8039,7 +8234,8 @@ class MacroManimParser {
 				error('platform ${p.name} needs edge: (the autotile its top is drawn with) or a rise');
 		// by rise, the smallest first, `any` last
 		rises.sort((a, b) -> (a.rise == 0 ? 0x7FFFFFFF : a.rise) - (b.rise == 0 ? 0x7FFFFFFF : b.rise));
-		for (t in transitions) {
+		for (ti in 0...transitions.length) {
+			final t = transitions[ti];
 			final toIndex = Lambda.findIndex(terrains, x -> x.name == t.to);
 			if (toIndex < 0) error('transition ${t.from}, ${t.to}: tileset has no terrain ${t.to}');
 			final to = terrains[toIndex];
@@ -8052,6 +8248,17 @@ class MacroManimParser {
 				if (fromIndex < 0) error('transition ${t.from}, ${t.to}: tileset has no terrain ${t.from} (or none)');
 				if (fromIndex >= toIndex)
 					error('transition ${t.from}, ${t.to}: ${t.from} is drawn over ${t.to}; a transition is from the terrain below to the one above it');
+			}
+			for (k in 0...t.ignore.length) {
+				final name = t.ignore[k];
+				final at = transitionIgnoreAt[ti][k];
+				final ignoredIndex = Lambda.findIndex(terrains, x -> x.name == name);
+				if (ignoredIndex < 0)
+					errorAtLine(at.line, at.col,
+						'transition ${t.from}, ${t.to}: ignore: tileset has no terrain $name (it has ${[for (x in terrains) x.name].join(", ")})');
+				if (ignoredIndex > toIndex)
+					errorAtLine(at.line, at.col,
+						'transition ${t.from}, ${t.to}: ignore: $name is drawn over ${t.to}, so it counts as ${t.to} already; leave it out of ignore:');
 			}
 		}
 		return {
@@ -8265,11 +8472,14 @@ class MacroManimParser {
 		return {name: name, draw: draw, width: width, height: height, anchorX: anchorX, anchorY: anchorY, metadata: metadata};
 	}
 
-	/** `draw:` of a layer or a cell: where it is drawn among what else the map draws. **/
+	/**
+		`draw:` of a layer or a cell: where it is drawn among what else the map draws. `side`: in place
+		of a rise's side where it covers one (the side is not drawn there), in the side's order.
+	**/
 	function parseTilemapDraw(what:String):String {
 		final where = expectIdentifierOrString();
-		if (where != "under" && where != "over" && where != "top" && where != "actors")
-			error('$what: draw: is under (the actors), over (them), top (above everything) or actors (among them, sorted by its feet), got $where');
+		if (where != "under" && where != "over" && where != "top" && where != "actors" && where != "side")
+			error('$what: draw: is under (the actors), over (them), top (above everything), side (in place of a rise\'s side it covers) or actors (among them, sorted by its feet), got $where');
 		return where;
 	}
 

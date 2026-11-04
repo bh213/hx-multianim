@@ -232,24 +232,51 @@ class ProgrammableBuilder {
 	/** Build a sub-programmable via the builder (for STATIC_REF nodes). `fromProgrammable` is the
 	 *  programmable the instance builds: a ref back to it is circular, as in the builder. Only in
 	 *  its own file: another file's programmable of that name is another programmable. */
-	public function buildStaticRef(name:String, parameters:Map<String, Dynamic>, ?externalRef:String, ?fromProgrammable:String):BuilderResult {
+	public function buildStaticRef(name:String, parameters:Map<String, Dynamic>, ?externalRef:String, ?fromProgrammable:String,
+			?hidden:MultiAnimParser.HiddenLayers, ?where:String):BuilderResult {
 		final target = getBuilder().importedBuilder(externalRef);
 		target.checkRefArguments(name, parameters);
-		return target.buildingFrom(externalRef == null ? fromProgrammable : null,
+		final result = target.buildingFrom(externalRef == null ? fromProgrammable : null,
 			() -> target.buildWithParameters(name, parameters, refBuilderParams()));
+		// `hide => [...]`: as the builder's STATIC_REF
+		if (hidden != null && result != null)
+			hideOrThrow(result.object, hidden, false, 'staticRef($name) on line ${hidden.line}', where);
+		return result;
+	}
+
+	/** A `hide => [...]` applied, as the builder's: a layer none of the state machines has is an
+	 *  error, its place (`where`, the .manim the instance was made from) after its line. */
+	static function hideOrThrow(root:h2d.Object, hidden:MultiAnimParser.HiddenLayers, ofStateAnim:Bool, what:String, ?where:String):Void {
+		final error = MultiAnimBuilder.hideAnimLayers(root, hidden, ofStateAnim, where != null ? '$what of $where' : what, true);
+		if (error != null)
+			throw BuilderError.of(error, "hide_layer");
 	}
 
 	/** Build a dynamic ref via the builder (for DYNAMIC_REF nodes, always incremental).
 	 *  `onChildRebuilt` runs when the child rebuilds on its own (its setParameter): the instance's
 	 *  rebuild listeners, so a screen resyncs the interactives the child shows or hides. */
 	public function buildDynamicRef(name:String, parameters:Map<String, Dynamic>, ?externalRef:String, ?onChildRebuilt:Void -> Void,
-			?fromProgrammable:String):BuilderResult {
+			?fromProgrammable:String, ?hidden:MultiAnimParser.HiddenLayers, ?where:String):BuilderResult {
 		final target = getBuilder().importedBuilder(externalRef);
 		target.checkRefArguments(name, parameters);
 		final result = target.buildingFrom(externalRef == null ? fromProgrammable : null,
 			() -> target.buildWithParameters(name, parameters, refBuilderParams(), null, true));
-		if (onChildRebuilt != null && result != null && result.isIncremental)
-			result.addRebuildListener(onChildRebuilt);
+		// `hide => [...]`: as the builder's DYNAMIC_REF, on what it draws now and after each rebuild of
+		// its own, in the one listener with `onChildRebuilt` (two would be copied on every rebuild)
+		var listener:Null<Void -> Void> = onChildRebuilt;
+		if (hidden != null && result != null) {
+			final layers:MultiAnimParser.HiddenLayers = hidden;
+			hideOrThrow(result.object, layers, false, 'dynamicRef($name) on line ${layers.line}', where);
+			final root = result.object;
+			final then = onChildRebuilt;
+			listener = () -> {
+				MultiAnimBuilder.hideAnimLayers(root, layers, false, "", false);
+				if (then != null)
+					then();
+			};
+		}
+		if (listener != null && result != null && result.isIncremental)
+			result.addRebuildListener(listener);
 		#if MULTIANIM_DEV
 		// The child's inputs are the site's arguments: a hot reload applies the file's
 		if (result != null && result.incrementalContext != null)
@@ -327,9 +354,13 @@ class ProgrammableBuilder {
 
 	/** Build a state animation from a .anim file.
 	 *  Used by generated code for STATEANIM nodes. */
-	public function buildStateAnim(filename:String, selectorMap:Map<String, String>, initialState:String):AnimationSM {
+	public function buildStateAnim(filename:String, selectorMap:Map<String, String>, initialState:String, ?hidden:MultiAnimParser.HiddenLayers,
+			?where:String):AnimationSM {
 		final animSM = resourceLoader.createAnimSM(filename, selectorMap);
 		animSM.play(initialState);
+		// `hide => [...]`: as the builder's STATEANIM
+		if (hidden != null)
+			hideOrThrow(animSM, hidden, true, 'stateanim("$filename") on line ${hidden.line}', where);
 		return animSM;
 	}
 

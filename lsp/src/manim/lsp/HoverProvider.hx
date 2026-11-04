@@ -229,6 +229,13 @@ class HoverProvider {
 			}
 		}
 
+		// stateanim's own arguments (frame:, progress:, hide => [...])
+		for (arg in ManimKeywordInfo.stateAnimArguments) {
+			if (arg.name == word) {
+				return '**${word}** — ${arg.description}\n\n```manim\n${arg.usage}\n```';
+			}
+		}
+
 		// Try transition types (from TransitionType — exhaustive switch)
 		for (trans in ManimKeywordInfo.allTransitions) {
 			if (ManimKeywordInfo.transitionName(trans) == word) {
@@ -241,7 +248,8 @@ class HoverProvider {
 			case "record": "**record** — Named record type in data block\n\n```manim\n#name record(field:type, ...)\n```";
 			case "enum": "**enum** — Named enum type in data block\n\n```manim\n#name enum(val1, val2, ...)\n```";
 			case "settings": "**settings** — Component settings block\n\n```manim\nsettings {\n  key:type => value\n}\n```";
-			case "transition": "**transition** — Animated transitions for parameter changes\n\n```manim\ntransition {\n  param: crossfade(0.1, easeOutQuad)\n}\n```";
+			case "transition": "**transition** — Animated transitions for parameter changes\n\n```manim\ntransition {\n  param: crossfade(0.1, easeOutQuad)\n}\n```\n\nIn a tileset, where terrain `b` meets terrain `a` (below it, or `none`), an autotile drawn over `b`'s own:\n\n```manim\ntransition land, shallows { autotile: coast  ignore: sea }\n```";
+			case "ignore": "**ignore** — In a tileset's `transition a, b { }`: terrains below `b` that count as `b`. A cell of `b` that also touches them still meets `a`, and no edge is drawn toward them\n\n```manim\ntransition land, shallows { autotile: coast  ignore: sea }\n```";
 			case "import": "**import** — Import external .manim file\n\n```manim\nimport \"file.manim\" as \"name\"\n```";
 			case "export": '**export** — ${ManimKeywordInfo.exportDescription}\n\n```manim\n/// The knight, walking or standing\n#knight export programmable(state:[idle, walk]=idle) {\n  ...\n}\n```';
 			case "version": "**version** — File version header: `version: 1.0`";

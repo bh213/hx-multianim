@@ -1558,6 +1558,23 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		simpleMacroTest(154, "animLayers", () -> createMp().animLayers.create(), async, null, null, 4.0);
 	}
 
+	// ==================== A stateanim held at a frame; layers left out; a construct's built names ====================
+
+	@Test
+	public function test174_StateAnimFrame(async:utest.Async):Void {
+		simpleMacroTest(174, "stateAnimFrame", () -> createMp().stateAnimFrame.create(), async, null, null, 3.0);
+	}
+
+	@Test
+	public function test175_StateAnimHide(async:utest.Async):Void {
+		simpleMacroTest(175, "stateAnimHide", () -> createMp().stateAnimHide.create(), async, null, null, 3.0);
+	}
+
+	@Test
+	public function test176_StateAnimConstructName(async:utest.Async):Void {
+		simpleMacroTest(176, "stateAnimConstructName", () -> createMp().stateAnimConstructName.create(), async, null, null, 4.0);
+	}
+
 	// ==================== Tilemap: tilesets and tile maps ====================
 
 	@Test
@@ -1573,6 +1590,28 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 	@Test
 	public function test169_TilemapLifted(async:utest.Async):Void {
 		simpleMacroTest(169, "tilemapLifted", () -> createMp().tilemapLifted.create(), async, "tilemapLifted");
+	}
+
+	// A coast from land to shallows on the sea, without and with `ignore: sea`: a band one cell wide gets its coast
+	@Test
+	public function test170_TilemapIgnore(async:utest.Async):Void {
+		simpleMacroTest(170, "tilemapIgnore", () -> createMp().tilemapIgnore.create(), async, "tilemapIgnore", null, 4.0);
+	}
+
+	// A sunken floor's rim drawn on the dirt around it (a transition from the floor below), and beside grass with ignore:
+	@Test
+	public function test171_TilemapSunkenFloor(async:utest.Async):Void {
+		simpleMacroTest(171, "tilemapSunkenFloor", () -> createMp().tilemapSunkenFloor.create(), async, "tilemapSunkenFloor", null, 4.0);
+	}
+
+	@Test
+	public function test177_TilemapSideCells(async:utest.Async):Void {
+		simpleMacroTest(177, "tilemapSideCells", () -> createMp().tilemapSideCells.create(), async, "tilemapSideCells", null, 4.0);
+	}
+
+	@Test
+	public function test178_TilemapSideCellsLifted(async:utest.Async):Void {
+		simpleMacroTest(178, "tilemapSideCellsLifted", () -> createMp().tilemapSideCellsLifted.create(), async, "tilemapSideCellsLifted");
 	}
 
 	// ==================== NinePatchModes: the same cell tiled beside stretched; frames ====================
@@ -5998,6 +6037,10 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 			{label: "switchArmDynamicRef", path: "test/examples/106-switchArmNames/switchArmNames.manim", name: "switchArmDynamicRef", inst: mp.switchArmDynamicRef.create()},
 			{label: "switchUnrelatedParam", path: "test/examples/106-switchArmNames/switchArmNames.manim", name: "switchUnrelatedParam", inst: mp.switchUnrelatedParam.create()},
 			{label: "switchRepeat", path: "test/examples/102-switchRepeat/switchRepeat.manim", name: "switchRepeat", inst: mp.switchRepeat.create()},
+			{label: "ixGrid", path: "test/examples/173-indexExpression/indexExpression.manim", name: "ixGrid", inst: mp.ixGrid.create()},
+			{label: "ixNames", path: "test/examples/173-indexExpression/indexExpression.manim", name: "ixNames", inst: mp.ixNames.create()},
+			{label: "ixArms", path: "test/examples/173-indexExpression/indexExpression.manim", name: "ixArms", inst: mp.ixArms.create()},
+			{label: "ixParamGrid", path: "test/examples/173-indexExpression/indexExpression.manim", name: "ixParamGrid", inst: mp.ixParamGrid.create()},
 		];
 		for (c in cases)
 			assertLiveParity(c.label, c.inst, liveBuilderResult(c.path, c.name));

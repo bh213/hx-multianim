@@ -271,7 +271,7 @@ The server (compiled from `hx-multianim/lsp/`) provides these capabilities:
 - Supports snippet format for structured elements
 
 ### Hover
-- Documentation for all element keywords, filter types, parameter types
+- Documentation for all element keywords, filter types, parameter types, and stateanim's own arguments (`frame`, `progress`, `hide`: `ManimKeywordInfo.stateAnimArguments`)
 - Parameter type info for `$references`
 - Color preview for color literals
 

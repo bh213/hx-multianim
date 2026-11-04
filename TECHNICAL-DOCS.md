@@ -641,7 +641,10 @@ by every change, holds) and walks back to it only when none did, so a long cliff
 not its square, in any chunk size; a piece's frames are looked up once a name, `pieceFrames`), the
 layers into the chunk's parts of that layer's under, over or top pass (a `TileGroups` helper keeps
 one `TileGroup` a texture) or, for `draw: actors`, a bitmap among the map's `actors` standing on
-its feet, shown as its chunk is, and merges each cell's metadata once (`mergeMetadata`: a cell with
+its feet, shown as its chunk is (a `draw: side` cell into the sides' pass, after the pieces, which
+`scanRises` leaves out under it, `sideCellOver` reading the covers, only when `hasSideCells`; on a
+lifted map `emitSides` draws it in their place instead, `emitSideCells`, a piece a level, and
+`drawLayers` only where the cell shows no side, `liftedDrop`, as an `under` cell), and merges each cell's metadata once (`mergeMetadata`: a cell with
 its terrain's alone shares that terrain's `BuilderResolvedSettings`; any other combination of
 terrain, side and layer cells is merged once and shared by every cell of it, found by its sources'
 indices in a mixed radix, an Int key in `mergedByKey` while the combinations fit in one, else a

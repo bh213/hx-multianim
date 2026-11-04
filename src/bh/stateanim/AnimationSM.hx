@@ -313,6 +313,99 @@ class AnimationSM extends h2d.Object {
 		redisplay(playing);
 	}
 
+	/** The frames of the playing animation (a layered file's: its timeline's), as `seekFrame` counts them: its events and `filter` lines are not frames. 0 when none plays. **/
+	public function frameCount():Int {
+		final playing = current;
+		if (playing == null)
+			return 0;
+		var n = 0;
+		for (s in playing.states)
+			switch s {
+				case Frame(_): n++;
+				default:
+			}
+		return n;
+	}
+
+	/**
+		Shows frame `n` of the playing animation and stays there, paused, as `seek` does: 0 is its
+		first frame, and only frames count (not its events or `filter` lines). Before the first or
+		past the last: the first or the last frame. Every layer shows the same frame, the per-frame
+		filters up to it apply, no event fires. Allocates nothing.
+	**/
+	public function seekFrame(n:Int):Void {
+		final playing = current;
+		if (playing == null)
+			return;
+		var last = -1;
+		var k = 0;
+		for (i in 0...playing.states.length)
+			switch playing.states[i] {
+				case Frame(_):
+					last = i;
+					if (k == n || n < 0) {
+						seek(i);
+						return;
+					}
+					k++;
+				default:
+			}
+		if (last >= 0)
+			seek(last);
+	}
+
+	/**
+		Shows the playing animation `t` of the way through it and stays there, paused, as
+		`seekFrame` does: 0 is its start (the first frame), 1 its end. The frame shown is the one
+		that would be showing that far into the animation when it plays, its frames weighed by their
+		durations; at 1 and past it, the last frame (a cycle that comes round again is `t % 1`);
+		before 0, the first. Allocates nothing.
+	**/
+	public function seekProgress(t:Float):Void {
+		final playing = current;
+		if (playing == null)
+			return;
+		var total = 0.0;
+		var count = 0;
+		for (s in playing.states)
+			switch s {
+				case Frame(frame):
+					total += frame.duration;
+					count++;
+				default:
+			}
+		if (count == 0)
+			return;
+		if (!(t > 0)) { // NaN too
+			seekFrame(0);
+			return;
+		}
+		if (t >= 1) {
+			seekFrame(count - 1);
+			return;
+		}
+		if (total <= 0) {
+			// no durations to weigh by: the frames evenly
+			seekFrame(Std.int(t * count));
+			return;
+		}
+		final at = t * total;
+		var start = 0.0;
+		var k = 0;
+		for (s in playing.states)
+			switch s {
+				case Frame(frame):
+					start += frame.duration;
+					if (at < start) {
+						seekFrame(k);
+						return;
+					}
+					k++;
+				default:
+			}
+		seekFrame(count - 1);
+	}
+
 	/** After a reload: the look of the animation and of the per-frame filters so far, and the frame showing. **/
 	function redisplay(desc:AnimationDescriptor):Void {
 		clearDisplay();
@@ -412,6 +505,44 @@ class AnimationSM extends h2d.Object {
 		for (j in 0...i)
 			if (detachedTo[j] == null) at++;
 		root.addChildAt(c, at);
+	}
+
+	/**
+		Hides layer `name` of every state machine in `root` (itself and every object under it), as
+		`layer(name).visible = false`: what a `.manim` `hide => [...]` does. Whether any of them has
+		such a layer. Allocates nothing.
+	**/
+	// Off: on JavaScript Std.downcast takes and gives only non-null values under null safety (the studio's bundle)
+	@:nullSafety(Off)
+	public static function hideLayerIn(root:h2d.Object, name:String):Bool {
+		var found = false;
+		final sm:Null<AnimationSM> = Std.downcast(root, AnimationSM);
+		if (sm != null) {
+			final clip = sm.layer(name);
+			if (clip != null) {
+				clip.visible = false;
+				found = true;
+			}
+		}
+		for (i in 0...root.numChildren)
+			if (hideLayerIn(root.getChildAt(i), name))
+				found = true;
+		return found;
+	}
+
+	/** The layers of every state machine in `root` (itself and every object under it), each once, in the order met: what an error names. **/
+	// Off: on JavaScript Std.downcast takes and gives only non-null values under null safety (the studio's bundle)
+	@:nullSafety(Off)
+	public static function layerNamesIn(root:h2d.Object, ?into:Array<String>):Array<String> {
+		final names:Array<String> = into != null ? into : [];
+		final sm:Null<AnimationSM> = Std.downcast(root, AnimationSM);
+		if (sm != null)
+			for (n in sm.layerNames)
+				if (!names.contains(n))
+					names.push(n);
+		for (i in 0...root.numChildren)
+			layerNamesIn(root.getChildAt(i), names);
+		return names;
 	}
 
 	function layerIndex(name:String):Int {

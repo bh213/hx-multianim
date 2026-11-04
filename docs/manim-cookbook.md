@@ -25,6 +25,7 @@ A pattern-based guide for building UIs and game elements. Always start with `.ma
 - [Character Sheets](#character-sheets)
 - [Status Effects Bar](#status-effects)
 - [Data Blocks for Game Config](#data-blocks)
+- [Tile Maps: Edges Between Terrains](#tile-maps)
 - [Standard Widget Library](#standard-widget-library)
 - [Common Visual Patterns](#common-patterns)
 - [Wiring .manim to Haxe Code](#wiring-to-code)
@@ -1322,6 +1323,69 @@ for (unit in units) {
     var hp = unit.getInt("hp");
 }
 ```
+
+---
+
+<a id="tile-maps"></a>
+## Tile Maps: Edges Between Terrains
+
+Terrains are drawn bottom first, each under the ones after it. A terrain's own autotile draws its
+edge toward everything below it; a `transition a, b` draws an edge of its own where `b` meets `a`
+and nothing else, on `b`'s cells, by which of their neighbours are `b` (or above).
+
+### A sunken floor whose rim is on the ground around it
+
+Some sheets draw a pit, a hut floor or a sunken path plain, and its rim on the ground tiles beside
+it (the dirt tile next to the floor carries a dark line on its floor side). That is the ground's
+transition from the floor: declare the floor first (under the dirt), and the rim is a blob47 over
+the dirt's cells, picked by which of each dirt cell's eight neighbours are floor. The floor's own
+tiles stay plain.
+
+```manim
+#floorPlain autotile { format: blob47 tileSize: 8 sheet: "hut", name: "floor" allowPartialMapping: true mapping: [46: 0] }
+#dirtPlain autotile { format: blob47 tileSize: 8 sheet: "hut", name: "dirt" allowPartialMapping: true mapping: [46: 0] }
+#rim autotile { format: blob47 tileSize: 8 sheet: "hut", name: "rim" }   // the dirt tiles with the rim, by blob47 index
+
+#hut tileset {
+    tileSize: 8
+    atlas: "hut"
+    terrain floor { autotile: floorPlain }      // below
+    terrain dirt { autotile: dirtPlain }        // the ground, over it
+    transition floor, dirt { autotile: rim }    // drawn on the dirt cells beside the floor
+}
+```
+
+The transition's target must be an autotile terrain (a plain one: every index the same tile, as
+above). A dirt cell on the map's border touches the edge, which is `none`, so it gets no rim: keep
+the dirt around the floor off the border.
+
+### When the ground also meets a third terrain: `ignore:`
+
+A transition is drawn only where `b` meets `a` alone. Where the dirt yard also meets grass (a
+terrain below the dirt), a dirt cell one wide touches both and gets neither edge. Let each
+transition count the other's terrain as dirt:
+
+```manim
+terrain grass { cells: "grass" }
+terrain floor { autotile: floorPlain }
+terrain dirt { autotile: dirtPlain }
+transition floor, dirt { autotile: rim  ignore: grass }        // the rim faces the floor only
+transition grass, dirt { autotile: dirtEdge  ignore: floor }   // the dirt's edge faces the grass only
+```
+
+The same for two-tone water: shallows on the deep sea, a coast from land to both.
+
+```manim
+terrain land { cells: "grass" }
+terrain sea { autotile: deep }
+terrain shallows { autotile: shallow }                          // over the sea
+transition land, sea { autotile: coast }
+transition land, shallows { autotile: coast  ignore: sea }      // a band one cell wide keeps its coast
+```
+
+An ignored terrain is one below `b`, neither `a` nor `b`; a terrain above `b` counts as `b`
+already. Both transitions draw full tiles over `b`'s own: where a cell takes two, the later one
+is on top, so draw edges like these as lines on a transparent tile when both may meet.
 
 ---
 

@@ -19,9 +19,23 @@ class UIRichInteractiveHelper {
 
 	final screen:UIComponentHost;
 	final bindings:Map<String, InteractiveBinding> = [];
+	/** The host, when it holds keys pressed (a jukebox's key while its track plays): such a key is
+	 *  shown `pressed` whatever state the pointer gives it. */
+	final heldKeys:Null<UIHeldKeys>;
 
 	public function new(screen:UIComponentHost) {
 		this.screen = screen;
+		heldKeys = Std.isOfType(screen, UIHeldKeys) ? cast screen : null;
+	}
+
+	/** Shows a binding's state on its result: `pressed` instead while the host holds the key. */
+	function show(interactiveId:String, binding:InteractiveBinding, state:InteractiveState):Void {
+		binding.target.setParameter(binding.stateParam, stateName(state != Disabled && isHeld(interactiveId) ? Pressed : state));
+	}
+
+	function isHeld(interactiveId:String):Bool {
+		final keys = heldKeys;
+		return keys != null && keys.isKeyHeld(interactiveId);
 	}
 
 	/** Scan source.getInteractives() for metadataKey metadata, auto-wire state machines.
@@ -110,8 +124,8 @@ class UIRichInteractiveHelper {
 									existing.target = owner;
 									existing.stateParam = paramName;
 									// A new result is built at its own default: it takes the state the binding holds
-									if (existing.currentState != Normal)
-										owner.setParameter(paramName, stateName(existing.currentState));
+									if (existing.currentState != Normal || isHeld(fullId))
+										show(fullId, existing, existing.currentState);
 								}
 							}
 						}
@@ -207,7 +221,7 @@ class UIRichInteractiveHelper {
 		final binding = bindings.get(interactiveId);
 		if (binding == null) return;
 		binding.currentState = Normal;
-		binding.target.setParameter(binding.stateParam, "normal");
+		show(interactiveId, binding, Normal);
 	}
 
 	/** Set binding state to Hover and set the parameter to "hover".
@@ -216,7 +230,7 @@ class UIRichInteractiveHelper {
 		final binding = bindings.get(interactiveId);
 		if (binding == null) return;
 		binding.currentState = Hover;
-		binding.target.setParameter(binding.stateParam, "hover");
+		show(interactiveId, binding, Hover);
 	}
 
 	/** Set disabled state. Also disables the UIInteractiveWrapper to gate events. */
@@ -230,11 +244,11 @@ class UIRichInteractiveHelper {
 
 		if (disabled) {
 			binding.currentState = Disabled;
-			binding.target.setParameter(binding.stateParam, "disabled");
+			show(interactiveId, binding, Disabled);
 		} else {
 			final isHovered = wrapper != null && wrapper.hovered;
 			binding.currentState = isHovered ? Hover : Normal;
-			binding.target.setParameter(binding.stateParam, isHovered ? "hover" : "normal");
+			show(interactiveId, binding, binding.currentState);
 		}
 	}
 
@@ -256,6 +270,7 @@ class UIRichInteractiveHelper {
 	/** The result whose param an interactive's binding drives: the dynamicRef child (at any depth)
 	 *  whose own interactives hold it — a button placed by dynamicRef has its own `status` — else
 	 *  `source` (an interactive of its own, or of a staticRef target, which follows its params). */
+	@:allow(bh.ui.screens.UIScreenBase)
 	static function ownerOf(source:UIInteractiveSource, obj:bh.base.MAObject):UIInteractiveSource {
 		final owner = findDynamicRefOwner(source, obj);
 		return owner != null ? owner : source;
@@ -292,25 +307,25 @@ class UIRichInteractiveHelper {
 					case UIEntering(_):
 						if (binding.currentState == Normal) {
 							binding.currentState = Hover;
-							binding.target.setParameter(binding.stateParam, "hover");
+							show(id, binding, Hover);
 						}
 					case UIPush:
 						if (binding.currentState == Hover || binding.currentState == Normal) {
 							binding.enteredPressedViaHover = binding.currentState == Hover;
 							binding.currentState = Pressed;
-							binding.target.setParameter(binding.stateParam, "pressed");
+							show(id, binding, Pressed);
 						}
 					case UIClick:
 						if (binding.currentState == Pressed) {
 							// Touch: no prior hover, return to Normal. Mouse: return to Hover.
 							final target = binding.enteredPressedViaHover ? Hover : Normal;
 							binding.currentState = target;
-							binding.target.setParameter(binding.stateParam, target == Hover ? "hover" : "normal");
+							show(id, binding, target);
 						}
 					case UILeaving:
 						if (binding.currentState == Hover || binding.currentState == Pressed) {
 							binding.currentState = Normal;
-							binding.target.setParameter(binding.stateParam, "normal");
+							show(id, binding, Normal);
 						}
 					default:
 				}

@@ -2147,6 +2147,8 @@ class IncrementalUpdateContext {
 			() -> targetBuilder.buildWithParameters(newName, paramMap, builderParams, builder.indexedParams, true, builder));
 		if (result?.object == null)
 			throw BuilderError.of('could not build dynamicRef "$newName"');
+		// the site's `hide => [...]` on the new template, its names checked against it
+		builder.hideDynamicRefLayers(binding.node, newName, result);
 		// The new template animates with this context's manager, set maybe after the build
 		final swapTweens = tweenManager;
 		if (swapTweens != null && result.incrementalContext != null)
@@ -3553,6 +3555,65 @@ class MultiAnimBuilder {
 	inline function builderErrorAt(node:Null<Node>, message:String, ?code:String):BuilderError
 		return new BuilderError(message, node, code);
 
+	/** A stateanim's `frame:` / `progress:` now: the state machine shows that frame and holds it
+	 *  (AnimationSM.seekFrame / seekProgress). After a `play` or a `setState` too, which start it again. */
+	function seekStateAnim(sm:AnimationSM, seek:StateAnimSeek):Void {
+		switch seek {
+			case SAFrame(frame): sm.seekFrame(resolveAsInteger(frame));
+			case SAProgress(progress): sm.seekProgress(resolveAsNumber(progress));
+		}
+	}
+
+	/** A `hide => [...]`: those layers of every state machine in `root` hidden (AnimationSM.hideLayerIn).
+	 *  Returns the error, when `strict`, for a name none of them has: `what` (where it is written,
+	 *  `stateanim("hero.anim") on line 7`) and what the layers are; null when every name was found, or
+	 *  when not strict (a ref built again hides what it now draws). `ofStateAnim`: written on the
+	 *  stateanim itself (its .anim's layers), else on a ref (the layers of the stateanims it draws).
+	 *  Shared with codegen (ProgrammableBuilder). */
+	public static function hideAnimLayers(root:h2d.Object, hidden:HiddenLayers, ofStateAnim:Bool, what:String, strict:Bool):Null<String> {
+		var missing:Null<String> = null;
+		for (name in hidden.names)
+			if (!AnimationSM.hideLayerIn(root, name) && missing == null)
+				missing = name;
+		if (missing == null || !strict)
+			return null;
+		final there = AnimationSM.layerNamesIn(root);
+		final list = 'hide => [${hidden.names.join(", ")}]';
+		return if (ofStateAnim)
+			there.length == 0 ? '$what: $list: the .anim has no layers (no layers: line), so there is no layer "$missing" to hide; leave hide out'
+				: '$what: $list: the .anim has no layer "$missing" (its layers: ${there.join(", ")})';
+		else
+			there.length == 0 ? '$what: $list: it draws no stateanim with layers, so there is no layer "$missing" to hide; leave hide out'
+				: '$what: $list: no stateanim it draws has a layer "$missing" (their layers: ${there.join(", ")})';
+	}
+
+	/** A ref's `hide => [...]` on what it built: an error at the ref (`kind`: staticRef or dynamicRef)
+	 *  for a layer none of its stateanims has, when `strict`. */
+	function hideRefLayers(node:Node, kind:String, reference:String, root:h2d.Object, strict:Bool):Void {
+		final hidden:Null<HiddenLayers> = node.hiddenLayers;
+		if (hidden == null)
+			return;
+		final error = hideAnimLayers(root, hidden, false, '$kind($reference) on line ${hidden.line}', strict);
+		if (error != null)
+			throw builderErrorAt(node, error, "hide_layer");
+	}
+
+	/** A dynamicRef's `hide => [...]` on the result it built, and again after each rebuild of the
+	 *  result (a `@switch` arm or a repeat of the target may make new state machines). */
+	function hideDynamicRefLayers(node:Node, reference:String, result:BuilderResult):Void {
+		final hidden:Null<HiddenLayers> = node.hiddenLayers;
+		if (hidden == null)
+			return;
+		hideRefLayers(node, "dynamicRef", reference, result.object, true);
+		if (result.isIncremental) {
+			final root = result.object;
+			final layers:HiddenLayers = hidden;
+			result.addRebuildListener(() -> {
+				hideAnimLayers(root, layers, false, "", false);
+			});
+		}
+	}
+
 	/** Iteration count of `range(start, end, step)` — `end` exclusive, a negative step counts
 	 *  down. Shared with codegen-generated repeat rebuilds. A step of 0 (only reachable through a
 	 *  `$param`: the parser rejects a literal 0) throws instead of dividing by zero, which JS
@@ -4405,20 +4466,46 @@ class MultiAnimBuilder {
 		return switch node.updatableName {
 			case UNTObject(null): fallback;
 			case UNTObject(name) | UNTUpdatable(name): name;
-			case UNTIndexed(name, indexVar):
-				final idx = indexValueFor(indexVar);
+			case UNTIndexed(name, index):
+				final idx = indexValueFor(index);
 				'${name} ${idx}';
-			case UNTIndexed2D(name, indexVarX, indexVarY):
-				'${name} ${indexValueFor(indexVarX)} ${indexValueFor(indexVarY)}';
+			case UNTIndexed2D(name, indexX, indexY):
+				'${name} ${indexValueFor(indexX)} ${indexValueFor(indexY)}';
 		};
 	}
 
-	inline function indexValueFor(indexVar:String):Int {
-		final iv = indexedParams.get(indexVar);
-		return if (iv != null) switch iv {
-			case Value(v): v;
-			default: 0;
-		} else 0;
+	/** The index one coordinate of `#name[...]` gives in this pass: a loop variable's value as it
+	 *  always was (0 when it holds no number), a @final or an expression (`$row * 3 + $c`) worked
+	 *  out as a whole number by resolveAsInteger, as codegen does while it unrolls. */
+	inline function indexValueFor(index:ReferenceableValue):Int {
+		return switch index {
+			case RVReference(indexVar):
+				final iv = indexedParams.get(indexVar);
+				if (iv != null) switch iv {
+					case Value(v): v;
+					case ExpressionAlias(_): resolveAsInteger(index);
+					default: 0;
+				} else 0;
+			default: resolveAsInteger(index);
+		}
+	}
+
+	/** An indexed slot's index: a plain `$v` read as a string as it always was (an array iterator's
+	 *  value too), an expression worked out as a whole number like every other index. */
+	inline function slotIndexFor(index:ReferenceableValue):Int {
+		return switch index {
+			case RVReference(_): resolveAsString(index).toInt();
+			default: resolveAsInteger(index);
+		}
+	}
+
+	/** False for a plain loop variable this pass does not have (its name is not registered, as it
+	 *  never was); an expression always has its index (resolveAsInteger names a missing variable). */
+	inline function indexInPass(index:ReferenceableValue):Bool {
+		return switch index {
+			case RVReference(indexVar): indexedParams.get(indexVar) != null;
+			default: true;
+		}
 	}
 
 	@:nullSafety(Off)
@@ -5660,11 +5747,13 @@ class MultiAnimBuilder {
 						for (r in vRefs) ctx.markParamUntracked(r, "interactive metadata value");
 					}
 				}
-			case STATEANIM(filename, initialState, selectorReferences):
+			case STATEANIM(filename, initialState, selectorReferences, seek):
 				// initialState replays the animation; a selector changes that state in place
 				// (AnimationSM.setState keeps the frame when the animation's length allows). The
 				// filename stays frozen — changing it would require a full detach/rebuild — so a
-				// parameter it is built from cannot be changed after the build.
+				// parameter it is built from cannot be changed after the build. A `frame:` /
+				// `progress:` holds it: its params move it, and a replay or a state change holds it
+				// again where the value says (in any order within a batch).
 				final fRefs:Array<String> = [];
 				collectParamRefs(filename, fRefs);
 				for (r in fRefs) ctx.markParamUntracked(r, "stateanim file");
@@ -5677,6 +5766,7 @@ class MultiAnimBuilder {
 						// A restart: replayed on a show only when its param changed meanwhile
 						ctx.trackExpression(() -> {
 							sm.play(resolveAsString(initCapture));
+							if (seek != null) seekStateAnim(sm, seek);
 						}, sRefs, object, true);
 					}
 				}
@@ -5691,9 +5781,20 @@ class MultiAnimBuilder {
 							final valueCapture = v;
 							ctx.trackExpression(() -> {
 								sm.setState(key, resolveAsString(valueCapture));
+								if (seek != null) seekStateAnim(sm, seek);
 							}, selRefs, object);
 						} else
 							for (r in selRefs) ctx.markParamUntracked(r, 'stateanim selector "$k"');
+					}
+				}
+				if (seek != null) {
+					final seekRefs:Array<String> = [];
+					collectParamRefs(StateAnimSeekTools.value(seek), seekRefs);
+					if (seekRefs.length > 0) {
+						if (sm != null)
+							ctx.trackExpression(() -> seekStateAnim(sm, seek), seekRefs, object);
+						else
+							for (r in seekRefs) ctx.markParamUntracked(r, StateAnimSeekTools.reason(seek));
 					}
 				}
 			case STATEANIM_CONSTRUCT(initialState, construct, _):
@@ -5837,6 +5938,8 @@ class MultiAnimBuilder {
 				final fresh = freshResult?.object;
 				if (fresh == null)
 					throw builderErrorAt(node, 'could not build staticRef ${reference}');
+				// another target may have other layers: the names checked again
+				hideRefLayers(node, "staticRef", reference, fresh, true);
 				ctx.cleanupDestroyedSubtree(ir, current);
 				current.remove();
 				container.addChild(fresh);
@@ -5941,12 +6044,14 @@ class MultiAnimBuilder {
 						value(entry.value);
 					}
 				true;
-			case STATEANIM(filename, initialState, selector):
+			case STATEANIM(filename, initialState, selector, seek):
 				value(filename);
 				value(initialState);
 				if (selector != null)
 					for (v in selector)
 						value(v);
+				if (seek != null)
+					value(StateAnimSeekTools.value(seek));
 				true;
 			case STATEANIM_CONSTRUCT(initialState, construct, _):
 				value(initialState);
@@ -7310,6 +7415,8 @@ class MultiAnimBuilder {
 				var object = result?.object;
 				if (object == null)
 					throw builderErrorAt(node, 'could not build staticRef ${reference}');
+				// `hide => [...]`: layers of the stateanims it draws left out (codegen: ProgrammableBuilder.buildStaticRef)
+				hideRefLayers(node, "staticRef", reference, object, true);
 				// The target's interactives belong to the enclosing result: the nested build is a
 				// snapshot, so its list is final — with those of the dynamicRefs it places (out of
 				// reach otherwise). A codegen instance lists them from its scene graph.
@@ -7348,6 +7455,9 @@ class MultiAnimBuilder {
 				var object = result?.object;
 				if (object == null)
 					throw builderErrorAt(node, 'could not build dynamicRef ${reference}');
+				// `hide => [...]`: layers of the stateanims it draws left out, and of those it draws after a
+				// rebuild of its own (codegen: ProgrammableBuilder.buildDynamicRef)
+				hideDynamicRefLayers(node, reference, result);
 
 				// For dynamic name refs, wrap in a container for easy rebuild
 				final container = if (isDynamicName) {
@@ -7577,10 +7687,22 @@ class MultiAnimBuilder {
 
 				skipChildren = true;
 				HeapsObject(container);
-			case STATEANIM(filename, initialState, selectorReferences):
+			case STATEANIM(filename, initialState, selectorReferences, seek):
 				var selector = [for (k => v in selectorReferences) k => resolveAsString(v)];
-				var animSM = resourceLoader.createAnimSM(resolveAsString(filename), selector);
+				final file = resolveAsString(filename);
+				var animSM = resourceLoader.createAnimSM(file, selector);
 				animSM.play(resolveAsString(initialState));
+				// `frame:` / `progress:`: held where the value says, off its own clock (codegen: generateStateAnimCreate)
+				if (seek != null) {
+					animSM.externallyDriven = true;
+					seekStateAnim(animSM, seek);
+				}
+				final hidden:Null<HiddenLayers> = node.hiddenLayers;
+				if (hidden != null) {
+					final error = hideAnimLayers(animSM, hidden, true, 'stateanim("$file") on line ${hidden.line}', true);
+					if (error != null)
+						throw builderErrorAt(node, error, "hide_layer");
+				}
 
 				StateAnim(animSM);
 			case STATEANIM_CONSTRUCT(initialState, construct, externallyDriven):
@@ -8384,13 +8506,10 @@ class MultiAnimBuilder {
 			final names = internalResults.names;
 			// For indexed names (#name[$i] or #name[$x,$y]), also store under name_N / name_X_Y key
 			switch updatableName {
-				case UNTIndexed(name, indexVar):
-					final indexValue = indexedParams.get(indexVar);
-					if (indexValue != null) {
-						final idx = switch indexValue {
-							case Value(v): v;
-							default: 0;
-						};
+				case UNTIndexed(name, index):
+					// A plain loop variable missing from this pass registers nothing, as it never did
+					if (indexInPass(index)) {
+						final idx = indexValueFor(index);
 						final indexedKey = '${name} ${idx}';
 						// A 1-D indexed name must resolve to a unique index per build pass.
 						// When its index recurs (e.g. #name[$j] inside nested repeatables,
@@ -8400,23 +8519,21 @@ class MultiAnimBuilder {
 						// (The same key from mutually exclusive arms is no recurrence: only one is shown.)
 						final existingNamed = names.get(indexedKey);
 						if (existingNamed != null && !allInExclusiveArms(existingNamed, node))
-							throw builderError('indexed name "${name}[${idx}]" is built more than once with the same index — a 1-D indexed name whose index recurs (nested loops, or a duplicate-value iterator) collides. Give the inner loop a unique index or use a 2-D indexed name (#name[indexX, indexY]).',
+							throw builderError('indexed name "${name}[${idx}]" is built more than once with the same index — a 1-D indexed name whose index recurs (nested loops, or a duplicate-value iterator) collides. ${indexCollisionHint(updatableName)}',
 								"indexed_name_collision");
 						if (existingNamed != null)
 							existingNamed.push(toNamedResult(updatableName, builtObject, node));
 						else
 							names[indexedKey] = [toNamedResult(updatableName, builtObject, node)];
 					}
-				case UNTIndexed2D(name, indexVarX, indexVarY):
-					final indexValueX = indexedParams.get(indexVarX);
-					final indexValueY = indexedParams.get(indexVarY);
-					if (indexValueX != null && indexValueY != null) {
-						final idxX = switch indexValueX { case Value(v): v; default: 0; };
-						final idxY = switch indexValueY { case Value(v): v; default: 0; };
+				case UNTIndexed2D(name, indexX, indexY):
+					if (indexInPass(indexX) && indexInPass(indexY)) {
+						final idxX = indexValueFor(indexX);
+						final idxY = indexValueFor(indexY);
 						final indexedKey = '${name} ${idxX} ${idxY}';
 						final existingNamed = names.get(indexedKey);
 						if (existingNamed != null && !allInExclusiveArms(existingNamed, node))
-							throw builderError('indexed name "${name}[${idxX},${idxY}]" is built more than once with the same index pair — the indices collide. Ensure each (indexX, indexY) is unique.',
+							throw builderError('indexed name "${name}[${idxX},${idxY}]" is built more than once with the same index pair — the indices collide. ${indexCollisionHint(updatableName)}',
 								"indexed_name_collision");
 						if (existingNamed != null)
 							existingNamed.push(toNamedResult(updatableName, builtObject, node));
@@ -8535,13 +8652,13 @@ class MultiAnimBuilder {
 				final handle = new SlotHandle(object, slotIncrementalCtx, slotContentTarget);
 				handle.siteNode = node;
 				switch node.updatableName {
-					case UNTIndexed(baseName, indexVar):
-						final index = resolveAsString(RVReference(indexVar)).toInt();
-						{ for (__se in internalResults.slots) switch __se.key { case Indexed(n, i) if (n == baseName && i == index && !inExclusiveArms(__se.handle.siteNode, node)): throw builderError('indexed slot "${baseName}[${index}]" is built more than once with the same index — a 1-D indexed slot whose index recurs (nested loops, or a duplicate-value iterator) collides. Give the inner loop a unique index or use a 2-D indexed slot (#name[indexX, indexY]).', "indexed_slot_collision"); default: } } internalResults.slots.push({key: Indexed(baseName, index), handle: handle});
-					case UNTIndexed2D(baseName, indexVarX, indexVarY):
-						final indexX = resolveAsString(RVReference(indexVarX)).toInt();
-						final indexY = resolveAsString(RVReference(indexVarY)).toInt();
-						{ for (__se in internalResults.slots) switch __se.key { case Indexed2D(n, ix, iy) if (n == baseName && ix == indexX && iy == indexY && !inExclusiveArms(__se.handle.siteNode, node)): throw builderError('indexed slot "${baseName}[${indexX},${indexY}]" is built more than once with the same index pair — the indices collide. Ensure each (indexX, indexY) is unique.', "indexed_slot_collision"); default: } } internalResults.slots.push({key: Indexed2D(baseName, indexX, indexY), handle: handle});
+					case UNTIndexed(baseName, indexRV):
+						final index = slotIndexFor(indexRV);
+						{ for (__se in internalResults.slots) switch __se.key { case Indexed(n, i) if (n == baseName && i == index && !inExclusiveArms(__se.handle.siteNode, node)): throw builderError('indexed slot "${baseName}[${index}]" is built more than once with the same index — a 1-D indexed slot whose index recurs (nested loops, or a duplicate-value iterator) collides. ${indexCollisionHint(node.updatableName)}', "indexed_slot_collision"); default: } } internalResults.slots.push({key: Indexed(baseName, index), handle: handle});
+					case UNTIndexed2D(baseName, indexRVX, indexRVY):
+						final indexX = slotIndexFor(indexRVX);
+						final indexY = slotIndexFor(indexRVY);
+						{ for (__se in internalResults.slots) switch __se.key { case Indexed2D(n, ix, iy) if (n == baseName && ix == indexX && iy == indexY && !inExclusiveArms(__se.handle.siteNode, node)): throw builderError('indexed slot "${baseName}[${indexX},${indexY}]" is built more than once with the same index pair — the indices collide. ${indexCollisionHint(node.updatableName)}', "indexed_slot_collision"); default: } } internalResults.slots.push({key: Indexed2D(baseName, indexX, indexY), handle: handle});
 					case UNTObject(name) | UNTUpdatable(name):
 						internalResults.slots.push({key: Named(name), handle: handle});
 					default:
@@ -11346,12 +11463,14 @@ class MultiAnimBuilder {
 						markRefs(entry.value, "interactive metadata value");
 					}
 				}
-			case STATEANIM(filename, _, selectorReferences):
+			case STATEANIM(filename, _, selectorReferences, seek):
 				markRefs(filename, "stateanim file");
 				if (selectorReferences != null) {
 					for (k => v in selectorReferences)
 						markRefs(v, 'stateanim selector "$k"');
 				}
+				if (seek != null)
+					markRefs(StateAnimSeekTools.value(seek), StateAnimSeekTools.reason(seek));
 			case STATEANIM_CONSTRUCT(_, construct, _):
 				if (construct != null) {
 					for (key => value in construct) {

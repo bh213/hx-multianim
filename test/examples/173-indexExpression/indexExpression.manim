@@ -1,0 +1,58 @@
+version: 1.0
+
+// #name[...] with an index worked out from loop variables, numbers and @finals: nested or sibling
+// repeatables number one list. Read back by index in the builder and codegen (IndexExpressionTest,
+// testLiveProgrammableParity); no picture.
+
+#ixCard programmable(label:string="") {
+  bitmap(generated(color(10, 10, #00ffff))): 0, 0
+}
+
+// Two nested repeatables, 3 per row, one list of dynamicRefs: card 0..11
+#ixGrid programmable() {
+  repeatable($row, range(0, 4)) {
+    repeatable($c, range(0, 3)) {
+      #card[$row * 3 + $c] dynamicRef(ixCard, label => "x"): $c * 20, $row * 14
+    }
+  }
+}
+
+// Names, slots, a 2-D index and dynamicRef, @finals, sibling repeatables
+#ixNames programmable() {
+  @final perRow = 3
+  repeatable($row, range(0, 2)) {
+    repeatable($c, range(0, 3)) {
+      #tile[$row * $perRow + $c] bitmap(generated(color(4, 4, #ff0000))): $c * 10, $row * 10
+      #cell[($row * 3 + $c) * 2 + 1] slot: $c * 10, $row * 10 + 40
+      #pip[$c + 1, $row * 2] bitmap(generated(color(2, 2, #00ff00))): $c * 10, $row * 10 + 80
+      #ref2[$c, $row + 1] dynamicRef(ixCard, label => "y"): $c * 10, $row * 10 + 120
+      @final k = $row * 3 + $c
+      #mark[$k] bitmap(generated(color(3, 3, #0000ff))): $c * 10, $row * 10 + 160
+    }
+  }
+  repeatable($i, range(0, 2)) {
+    #item[$i] bitmap(generated(color(5, 5, #ffff00))): $i * 10, 200
+  }
+  repeatable($j, range(0, 3)) {
+    #item[$j + 2] bitmap(generated(color(5, 5, #ff00ff))): $j * 10, 210
+  }
+}
+
+// One index in mutually exclusive arms is no collision: the shown arm's element answers
+#ixArms programmable(mode:[a,b]=a) {
+  repeatable($row, range(0, 2)) {
+    repeatable($c, range(0, 3)) {
+      @(mode=>a) #tile[$row * 3 + $c] bitmap(generated(color(4, 4, #ff0000))): $c * 10, $row * 10
+      @else #tile[$row * 3 + $c] bitmap(generated(color(6, 6, #0000ff))): $c * 10, $row * 10
+    }
+  }
+}
+
+// The inner count a parameter: built again (and read again by index) when n changes
+#ixParamGrid programmable(n:uint=3) {
+  repeatable($row, range(0, 2)) {
+    repeatable($c, range(0, $n)) {
+      #card[$row * 3 + $c] dynamicRef(ixCard, label => "p"): $c * 20, $row * 14
+    }
+  }
+}

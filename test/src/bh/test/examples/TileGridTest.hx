@@ -901,4 +901,142 @@ class TileGridTest extends utest.Test {
 				Assert.stringContains(bad.says, message, bad.grid);
 		}
 	}
+
+	// ===== Cells drawn in place of a raised cell's side (`draw: side`) =====
+
+	/**
+		A lifted map of test/res/walls/walls.png's faces with openings: on the isometric grid (32x16, a
+		level lifting 16), pointy hexes (32x28, sides 12, lifting 12) or flat ones (the same art, for
+		counting only). `edgeL`, `edgeR` and `gate` are regions of the sheet told apart by where they
+		are, not what they look like.
+	**/
+	static function wallsMap(grid:String, rise:String, levels:Array<String>, layer:Array<String>):bh.base.TileMap {
+		final rows = (of:Array<String>, fill:String) -> [for (r in of) '"' + (fill == "" ? r : StringTools.lpad("", fill, r.length)) + '"'].join(", ");
+		final map = builderFromSource('
+			#walls atlas2("walls/walls.png") {
+				isoFloor: 0, 48, 32, 16
+				isoFace: 64, 48, 32, 32
+				isoDoor: 96, 48, 32, 32, index: 0
+				isoDoor: 128, 48, 32, 32, index: 1
+				edgeL: 0, 16, 32, 32
+				edgeR: 32, 16, 32, 32
+				gate: 64, 16, 64, 32
+				hexFloor: 0, 80, 32, 28
+				hexFace: 64, 80, 32, 40
+				hexDrain: 96, 80, 32, 40
+			}
+			#t tileset {
+				$grid
+				atlas: "walls"
+				terrain floor { cells: "${grid.indexOf("isometric") >= 0 ? "isoFloor" : "hexFloor"}" }
+				$rise
+				cell isoDoor { draw: side metadata { door:bool => true } }
+				cell gate { size: 2, 1 draw: side }
+				cell hexDrain { draw: side }
+			}
+			#m tilemap { tileset: t size: ${levels[0].length}, ${levels.length} legend { ".": floor } terrain: [${rows(levels, ".")}]
+				levels: [${rows(levels, "")}]
+				layer openings { legend { "d": isoDoor, "g": gate, "o": hexDrain } rows: [${rows(layer, "")}] } }
+		').buildTilemap("m");
+		map.redraw();
+		return map;
+	}
+
+	/**
+		The tiles of `names` (a name of one frame by its name, of several as `name:index`) drawn under
+		`root`, in the order they are drawn, read from the TileGroups' vertices (four of x, y, u, v, r,
+		g, b, a a tile) and told apart by where they are in the sheet.
+	**/
+	static function wallFramesIn(map:bh.base.TileMap, root:Null<h2d.Object>, names:Array<String>):Array<String> {
+		final tiles:bh.base.TileMap.TileMapTiles = @:privateAccess map.tiles;
+		final known:Array<{name:String, tile:h2d.Tile}> = [];
+		for (n in names) {
+			final frames = tiles.frames("walls", n);
+			if (frames.length == 1)
+				known.push({name: n, tile: frames[0].tile});
+			else
+				for (k in 0...frames.length)
+					known.push({name: '$n:$k', tile: frames[k].tile});
+		}
+		final drawn:Array<String> = [];
+		function walk(o:h2d.Object) {
+			final group = Std.downcast(o, h2d.TileGroup);
+			if (group != null && group.tile != null) {
+				final texture = group.tile.getTexture();
+				final buffer:hxd.FloatBuffer = @:privateAccess group.content.tmp;
+				var i = 0;
+				while (i + 3 < buffer.length) {
+					for (p in known)
+						if (p.tile.getTexture() == texture && Math.abs(@:privateAccess p.tile.u - buffer[i + 2]) < 1e-6
+							&& Math.abs(@:privateAccess p.tile.v - buffer[i + 3]) < 1e-6)
+							drawn.push(p.name);
+					i += 32;
+				}
+			}
+			for (child in o)
+				walk(child);
+		}
+		if (root != null)
+			walk(root);
+		return drawn;
+	}
+
+	/** What the first chunk of a lifted map drew with the ground (its first pass: the terrains, a raised cell's lowest side, back to front). **/
+	static function groundPart(map:bh.base.TileMap):Null<h2d.Object> {
+		final parts:Array<Null<h2d.Object>> = @:privateAccess map.chunks[0].parts;
+		return parts[0];
+	}
+
+	public function testACellDrawnInPlaceOfALiftedSideIsItsPiecesALevel() {
+		final names = ["isoFace", "edgeL", "edgeR", "isoDoor", "gate"];
+		final rise = 'rise any { side: "isoFace" left: "edgeL" right: "edgeR" metadata { wall:bool => true } }';
+		// a wall two levels up with a door at (3, 1), a block one level up with the door at (3, 3), and
+		// the door on the ground at (0, 4), where there is no side
+		final map = wallsMap("grid: isometric, 32, 16  lift: 16", rise, ["0000000", "0222220", "0000000", "0001000", "0000000"],
+			["       ", "   d   ", "       ", "   d   ", "d      "]);
+		// the lowest level of side with the ground, back to front: the run's ends where the wall's are,
+		// its middle on both sides of the door (the run is not cut), the door's lower piece (its second
+		// frame) in place of the side's; the block's one level of side is the door's first frame
+		Assert.same(["edgeL", "isoFace", "isoDoor:1", "isoFace", "edgeR", "isoDoor:0"], wallFramesIn(map, groundPart(map), names));
+		// the upper level of side on the raised cells' columns, among the actors: the door's first frame
+		Assert.same(["edgeL", "isoFace", "isoDoor:0", "isoFace", "edgeR"], wallFramesIn(map, map.actors, names));
+		// where it shows no side, it is drawn as an `under` cell
+		final under:Null<h2d.Object> = @:privateAccess map.chunks[0].parts[map.underPass];
+		Assert.equals(1, wallFramesIn(map, under, names).length, "the door on the ground, under the actors");
+		// the levels are as they were: the side and its metadata are the cell's, the door's metadata over it
+		Assert.equals(2, map.sideAt(3, 1));
+		Assert.isTrue(map.metadataAt(3, 1).getBoolOrDefault("wall", false));
+		Assert.isTrue(map.metadataAt(3, 1).getBoolOrDefault("door", false));
+		Assert.equals(1, map.sideAt(3, 3));
+		// taken away while the game runs: the side drawn again there
+		map.setCell("openings", 3, 1, " ");
+		map.redraw();
+		Assert.same(["edgeL", "isoFace", "isoFace", "isoFace", "edgeR", "isoDoor:0"], wallFramesIn(map, groundPart(map), names));
+		Assert.same(["edgeL", "isoFace", "isoFace", "isoFace", "edgeR"], wallFramesIn(map, map.actors, names));
+		// put back
+		map.setCell("openings", 3, 1, "d");
+		map.redraw();
+		Assert.same(["edgeL", "isoFace", "isoDoor:1", "isoFace", "edgeR", "isoDoor:0"], wallFramesIn(map, groundPart(map), names));
+
+		// an object of several cells: drawn once at its anchor, standing on its footprint, no piece of
+		// the side under any cell it covers; the cell after it goes on with the run
+		final gated = wallsMap("grid: isometric, 32, 16  lift: 16", rise, ["0000000", "0111110", "0000000"], ["       ", " g     ", "       "]);
+		Assert.same(["gate", "isoFace", "isoFace", "edgeR"], wallFramesIn(gated, groundPart(gated), names));
+		Assert.equals(0, wallFramesIn(gated, gated.actors, names).length, "one level: nothing on the columns");
+		Assert.equals(1, gated.sideAt(2, 1), "the covered cell keeps its side");
+	}
+
+	public function testACellDrawnInPlaceOfASideOnTheHexGrids() {
+		final names = ["hexFace", "hexDrain"];
+		for (grid in ["grid: hex, 32, 28, pointy, odd, 12  lift: 12", "grid: hex, 28, 32, flat, odd, 12  lift: 12"]) {
+			final map = wallsMap(grid, 'rise any { side: "hexFace" }', ["00000", "01110", "00000"], ["     ", "  o  ", "     "]);
+			final ground = wallFramesIn(map, groundPart(map), names);
+			Assert.equals(2, ground.filter(n -> n == "hexFace").length, '$grid: the wall\'s side beside the drain');
+			Assert.equals(1, ground.filter(n -> n == "hexDrain").length, '$grid: the drain in its place');
+			Assert.equals(1, map.sideAt(2, 1), grid);
+			map.setCell("openings", 2, 1, " ");
+			map.redraw();
+			Assert.same(["hexFace", "hexFace", "hexFace"], wallFramesIn(map, groundPart(map), names), '$grid: taken away, the side is drawn there');
+		}
+	}
 }

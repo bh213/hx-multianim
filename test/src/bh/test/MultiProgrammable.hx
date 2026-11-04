@@ -182,6 +182,18 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/169-tilemapLifted/tilemapLifted.manim", "tilemapLifted")
 	public var tilemapLifted;
 
+	@:manim("test/examples/170-tilemapIgnore/tilemapIgnore.manim", "tilemapIgnore")
+	public var tilemapIgnore;
+
+	@:manim("test/examples/171-tilemapSunkenFloor/tilemapSunkenFloor.manim", "tilemapSunkenFloor")
+	public var tilemapSunkenFloor;
+
+	@:manim("test/examples/177-tilemapSideCells/tilemapSideCells.manim", "tilemapSideCells")
+	public var tilemapSideCells;
+
+	@:manim("test/examples/178-tilemapSideCellsLifted/tilemapSideCellsLifted.manim", "tilemapSideCellsLifted")
+	public var tilemapSideCellsLifted;
+
 	@:manim("test/examples/54-codegenPaletteReplace/codegenPaletteReplace.manim", "codegenPaletteReplace")
 	public var paletteReplace;
 
@@ -997,4 +1009,40 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/167-exportDocs/exportDocsPack.manim", "knight")
 	public var exportDocsKnight;
+
+	@:manim("test/examples/173-indexExpression/indexExpression.manim", "ixGrid")
+	public var ixGrid;
+
+	@:manim("test/examples/173-indexExpression/indexExpression.manim", "ixNames")
+	public var ixNames;
+
+	@:manim("test/examples/173-indexExpression/indexExpression.manim", "ixArms")
+	public var ixArms;
+
+	@:manim("test/examples/173-indexExpression/indexExpression.manim", "ixParamGrid")
+	public var ixParamGrid;
+
+	@:manim("test/examples/174-stateAnimFrame/stateAnimFrame.manim", "stateAnimFrame")
+	public var stateAnimFrame;
+
+	@:manim("test/examples/174-stateAnimFrame/stateAnimFrame.manim", "stateAnimFrameParams")
+	public var stateAnimFrameParams;
+
+	@:manim("test/examples/174-stateAnimFrame/stateAnimFrame.manim", "stateAnimProgressParams")
+	public var stateAnimProgressParams;
+
+	@:manim("test/examples/175-stateAnimHide/stateAnimHide.manim", "stateAnimHide")
+	public var stateAnimHide;
+
+	@:manim("test/examples/175-stateAnimHide/stateAnimHide.manim", "stateAnimHideRefs")
+	public var stateAnimHideRefs;
+
+	@:manim("test/examples/175-stateAnimHide/stateAnimHide.manim", "stateAnimHideArms")
+	public var stateAnimHideArms;
+
+	@:manim("test/examples/175-stateAnimHide/stateAnimHide.manim", "stateAnimHideBad")
+	public var stateAnimHideBad;
+
+	@:manim("test/examples/176-stateAnimConstructName/stateAnimConstructName.manim", "stateAnimConstructName")
+	public var stateAnimConstructName;
 }

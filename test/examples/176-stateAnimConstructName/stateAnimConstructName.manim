@@ -1,0 +1,14 @@
+version: 1.0
+
+// stateanim construct with a tile name built from parameters: in single quotes ('…${dir}…') or
+// with +, an enum parameter by its value's name; and an initial state an enum parameter names.
+// externallyDriven, so the first frame stays and the builder and macro screenshots match.
+
+#stateAnimConstructName programmable(dir:[l, r]=r, pose:[idle, hit]=hit) {
+    stateanim construct("idle", externallyDriven, "idle" => sheet "crew2", 'marine_${dir}_idle', 4, loop): 30, 50
+    stateanim construct("go", externallyDriven, "go" => sheet "crew2", 'marine_l_${pose}', 4, loop): 120, 50
+    stateanim construct($pose, externallyDriven,
+        "idle" => sheet "crew2", "marine_" + $dir + "_idle", 4, loop
+        "hit" => sheet "crew2", 'marine_${dir}_killed', 4
+    ): 210, 50
+}

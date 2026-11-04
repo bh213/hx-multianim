@@ -176,6 +176,7 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.IncrementalReviewTest());
 		testRunner.addCase(new bh.test.examples.RefsSlotsReviewTest());
 		testRunner.addCase(new bh.test.examples.CodegenParityReviewTest());
+		testRunner.addCase(new bh.test.examples.IndexExpressionTest());
 		testRunner.addCase(new bh.test.examples.LifecycleReviewTest());
 		testRunner.addCase(new bh.test.examples.AllocationSmokeTest());
 		testRunner.addCase(new bh.test.examples.NinePatchModesTest());

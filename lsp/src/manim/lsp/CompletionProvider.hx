@@ -24,6 +24,7 @@ class CompletionProvider {
 			case AnimatedPathBody: animatedPathCompletions();
 			case SettingsBody: settingsCompletions();
 			case TransitionBody: transitionCompletions();
+			case TilesetTransitionBody: tilesetTransitionCompletions();
 			case FilterPosition: filterCompletions();
 			case ProgrammableParams: paramTypeCompletions();
 			case DataBody: dataCompletions();
@@ -162,6 +163,15 @@ class CompletionProvider {
 				items.push(kw(name, desc));
 		}
 		return items;
+	}
+
+	/** A tileset's `transition a, b { … }`: its autotile (one a frame) and the terrains that count as `b`. */
+	static function tilesetTransitionCompletions():Array<LspCompletionItem> {
+		return [
+			snippet("autotile", "autotile: ${1:name}", "The autotile drawn over b's own where b meets a (one a frame when b is animated)"),
+			snippet("ignore", "ignore: ${1:terrain}",
+				"Terrains below b that count as b: a cell of b that also touches them still meets a, and no edge faces them"),
+		];
 	}
 
 	static function filterCompletions():Array<LspCompletionItem> {

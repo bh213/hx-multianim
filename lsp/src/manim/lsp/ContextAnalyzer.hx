@@ -22,6 +22,7 @@ enum CursorContext {
 	FlowBody;
 	SettingsBody;
 	TransitionBody;
+	TilesetTransitionBody; // Inside a tileset's `transition a, b { … }`
 	FilterPosition;
 	DataBody;
 	RepeatableBody;
@@ -201,8 +202,11 @@ class ContextAnalyzer {
 						pending = declared;
 				}
 
-				// Remember meaningful keywords
-				if (keyword != null) {
+				// Remember meaningful keywords. A tileset's `transition a, b {` names its terrains
+				// before its brace; a programmable's `transition {` names none
+				if (keyword == "transition" && namesFollow(textToCursor, j)) {
+					lastKeyword = "tilesetTransition";
+				} else if (keyword != null) {
 					lastKeyword = keyword;
 				}
 
@@ -279,6 +283,7 @@ class ContextAnalyzer {
 			case "flow": FlowBody;
 			case "settings": SettingsBody;
 			case "transition": TransitionBody;
+			case "tilesetTransition": TilesetTransitionBody;
 			case "data": DataBody;
 			case "repeatable" | "repeatable2d": RepeatableBody;
 			default:
@@ -416,6 +421,14 @@ class ContextAnalyzer {
 			default:
 				null;
 		};
+	}
+
+	/** Whether a name follows position `from` (spaces skipped) before any `{`: `transition grass, water {`. */
+	static function namesFollow(text:String, from:Int):Bool {
+		var i = from;
+		while (i < text.length && (text.charCodeAt(i) == " ".code || text.charCodeAt(i) == "\t".code))
+			i++;
+		return i < text.length && (isIdentStart(text.charCodeAt(i)) || text.charCodeAt(i) == "\"".code);
 	}
 
 	static function isIdentStart(c:Int):Bool {

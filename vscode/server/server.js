@@ -2281,6 +2281,38 @@ var bh_multianim_MacroManimParser = function(tokens,sourceName,resourceLoader,do
 	}
 };
 bh_multianim_MacroManimParser.__name__ = true;
+bh_multianim_MacroManimParser.nestedRepeatHint = function(name,innerVar,outer) {
+	var p = outer;
+	while(p != null) {
+		var _g = p.type;
+		if(_g._hx_index == 19) {
+			var _g1 = _g.repeatType;
+			var outerVar = _g.varName;
+			return " (nested in repeatable($" + outerVar + "): number them as one list, #" + name + "[$" + outerVar + " * N + $" + innerVar + "] with N the inner count, or #" + name + "[$" + innerVar + ", $" + outerVar + "])";
+		}
+		p = p.parent;
+	}
+	return "";
+};
+bh_multianim_MacroManimParser.finalExprInScope = function(name,parent) {
+	var p = parent;
+	while(p != null) {
+		var i = p.children.length - 1;
+		while(i >= 0) {
+			var _g = p.children[i].type;
+			if(_g._hx_index == 41) {
+				var n = _g.name;
+				var e = _g.value;
+				if(n == name) {
+					return e;
+				}
+			}
+			--i;
+		}
+		p = p.parent;
+	}
+	return null;
+};
 bh_multianim_MacroManimParser.joinDocLines = function(lines) {
 	var from = 0;
 	var to = lines.length;
@@ -2773,6 +2805,185 @@ bh_multianim_MacroManimParser.prototype = {
 			var other = _g;
 			this.error("" + kind + "($" + name + "): \"" + name + "\" is a " + bh_multianim_MacroManimParser.definitionTypeName(other) + " parameter, and only a string or enum parameter names the programmable to place. To place the programmable " + name + ", write " + kind + "(" + name + ", ...) without the $" + ", or give the parameter another name");
 		}
+	}
+	,parseIndexedName: function(name,parent,currentDefs) {
+		var xAt = this.tokens[this.tpos];
+		var x = this.parseNameIndexExpr(name);
+		var yAt = null;
+		var y = null;
+		if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
+			yAt = this.tokens[this.tpos];
+			y = this.parseNameIndexExpr(name);
+		}
+		this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TBracketClosed);
+		var named = y == null ? bh_multianim_UpdatableNameType.UNTIndexed(name,x) : bh_multianim_UpdatableNameType.UNTIndexed2D(name,x,y);
+		this.checkNameIndex(named,x,xAt,parent,currentDefs);
+		if(y != null && yAt != null) {
+			this.checkNameIndex(named,y,yAt,parent,currentDefs);
+		}
+		return named;
+	}
+	,parseNameIndexExpr: function(name) {
+		switch(this.tokens[this.tpos].type._hx_index) {
+		case 4:case 7:
+			return this.error("#" + name + "[]: expected an index inside the brackets: #" + name + "[$" + "i], #" + name + "[$" + "row * 3 + $" + "c] or #" + name + "[$" + "x, $" + "y], with the loop variables of the repeatables around the element");
+		default:
+		}
+		var savedDefs = this.activeDefs;
+		this.activeDefs = null;
+		var index;
+		try {
+			index = this.parseExpression(0,bh_multianim__$MacroManimParser_ExprType.EInt);
+		} catch( _g ) {
+			var e = haxe_Exception.caught(_g).unwrap();
+			this.activeDefs = savedDefs;
+			throw haxe_Exception.thrown(e);
+		}
+		this.activeDefs = savedDefs;
+		return index;
+	}
+	,checkNameIndex: function(named,index,at,parent,currentDefs) {
+		var _gthis = this;
+		var name = bh_multianim_MultiAnimParser_getNameString(named);
+		var uses = function() {
+			return "An index is a whole number worked out from the loop variables of the repeatables around the element, numbers and @finals of those, with + - * / % div and parentheses: #" + name + "[$" + "i], #" + name + "[$" + "row * 3 + $" + "c], #" + name + "[$" + "x, $" + "y]";
+		};
+		var fixedWhenBuilt = function() {
+			return "an index is fixed when the element is built and a parameter can change after. Use loop variables, numbers and @finals of those (@final cols = 3, then #" + name + "[$" + "row * $" + "cols + $" + "c]), or a 2-D index #" + name + "[$" + "x, $" + "y]";
+		};
+		var fail = function(msg) {
+			_gthis.errorAtLine(at.line,at.col,"" + bh_multianim_MultiAnimParser_indexedNameText(named) + ": " + msg);
+		};
+		var describe = function(rv) {
+			switch(rv._hx_index) {
+			case 0:
+				var _g = rv.index;
+				var a = rv.arrayRef;
+				return "$" + a + "[…]";
+			case 1:
+				var s = rv.s;
+				return "\"" + s + "\" (a string)";
+			case 3:
+				var _g = rv.refArr;
+				return "an array";
+			case 4:
+				var _g = rv.refArr;
+				return "an array";
+			case 5:
+				var f = rv.f;
+				return "" + f + " (not a whole number)";
+			case 7:
+				var r = rv.ref;
+				var p = rv.property;
+				return "$" + r + "." + p;
+			case 8:
+				var _g = rv.args;
+				var r = rv.ref;
+				var m = rv.method;
+				return "$" + r + "." + m + "(…)";
+			case 9:
+				var _g = rv.base;
+				var _g = rv.args;
+				var m = rv.method;
+				return "." + m + "(…)";
+			case 11:
+				var _g = rv.name;
+				var _g = rv.index;
+				var _g = rv.defaultValue;
+				return "a callback(…)";
+			case 12:
+				var _g = rv.name;
+				var _g = rv.defaultValue;
+				return "a callback(…)";
+			case 13:
+				var _g = rv.externalReference;
+				var _g = rv.palette;
+				var _g = rv.x;
+				var _g = rv.y;
+				return "a palette colour";
+			case 14:
+				var _g = rv.externalReference;
+				var _g = rv.palette;
+				var _g = rv.index;
+				return "a palette colour";
+			case 15:
+				var _g = rv.condition;
+				var _g = rv.ifTrue;
+				var _g = rv.ifFalse;
+				return "a ?(…) … : … choice";
+			case 16:
+				var _g = rv.op;
+				var _g = rv.e1;
+				var _g = rv.e2;
+				return "\"" + bh_multianim_MultiAnimParser_indexText(rv) + "\" (a comparison)";
+			default:
+				return bh_multianim_MultiAnimParser_indexText(rv);
+			}
+		};
+		var walk = null;
+		walk = function(rv,finalName,chain) {
+			switch(rv._hx_index) {
+			case 2:
+				var _g = rv.i;
+				break;
+			case 6:
+				var v = rv.ref;
+				if(currentDefs != null && Object.prototype.hasOwnProperty.call(currentDefs.h,v)) {
+					if(finalName == null) {
+						fail("$" + v + " is a parameter, and " + fixedWhenBuilt());
+					} else {
+						fail("@final $" + finalName + " uses the parameter $" + v + ", and " + fixedWhenBuilt());
+					}
+				}
+				var finalExpr = bh_multianim_MacroManimParser.finalExprInScope(v,parent);
+				if(finalExpr != null) {
+					if(chain.indexOf(v) < 0) {
+						walk(finalExpr,v,chain.concat([v]));
+					}
+				} else if(_gthis.scopeVars == null || _gthis.scopeVars.indexOf(v) == -1) {
+					if(finalName == null) {
+						fail("index variable $" + v + " is not a known loop variable or @final in this scope. " + uses());
+					} else {
+						fail("@final $" + finalName + " uses $" + v + ", which is no loop variable or @final here. " + uses());
+					}
+				}
+				break;
+			case 10:
+				var e = rv.e;
+				walk(e,finalName,chain);
+				break;
+			case 16:
+				var _g = rv.e1;
+				var _g1 = rv.e2;
+				switch(rv.op._hx_index) {
+				case 0:case 1:case 2:case 3:case 4:case 5:
+					var a = _g;
+					var b = _g1;
+					walk(a,finalName,chain);
+					walk(b,finalName,chain);
+					break;
+				default:
+					if(finalName == null) {
+						fail("" + describe(rv) + " cannot be an index. " + uses());
+					} else {
+						fail("@final $" + finalName + " uses " + describe(rv) + ", which cannot be part of an index. " + uses());
+					}
+				}
+				break;
+			case 17:
+				var _g = rv.op;
+				var e = rv.e;
+				walk(e,finalName,chain);
+				break;
+			default:
+				if(finalName == null) {
+					fail("" + describe(rv) + " cannot be an index. " + uses());
+				} else {
+					fail("@final $" + finalName + " uses " + describe(rv) + ", which cannot be part of an index. " + uses());
+				}
+			}
+		};
+		walk(index,null,[]);
 	}
 	,iteratorOutputVars: function(rt) {
 		switch(rt._hx_index) {
@@ -6168,13 +6379,13 @@ bh_multianim_MacroManimParser.prototype = {
 			nameStr = n;
 			break;
 		case 2:
-			var _g = updatableName.indexVar;
+			var _g = updatableName.index;
 			var n = updatableName.name;
 			nameStr = n;
 			break;
 		case 3:
-			var _g = updatableName.indexVarX;
-			var _g = updatableName.indexVarY;
+			var _g = updatableName.indexX;
+			var _g = updatableName.indexY;
 			var n = updatableName.name;
 			nameStr = n;
 			break;
@@ -6567,36 +6778,7 @@ bh_multianim_MacroManimParser.prototype = {
 				}
 				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
 			} else if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TBracketOpen)) {
-				var _g = this.tokens[this.tpos].type;
-				if(_g._hx_index == 34) {
-					var indexVar1 = _g.s;
-					this.advance();
-					if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
-						var _g = this.tokens[this.tpos].type;
-						if(_g._hx_index == 34) {
-							var indexVar2 = _g.s;
-							this.advance();
-							if(this.scopeVars == null || this.scopeVars.indexOf(indexVar1) == -1) {
-								this.error("#name[$" + indexVar1 + ", $" + indexVar2 + "]: index variable $" + indexVar1 + " is not a known loop variable in this scope");
-							}
-							if(this.scopeVars == null || this.scopeVars.indexOf(indexVar2) == -1) {
-								this.error("#name[$" + indexVar1 + ", $" + indexVar2 + "]: index variable $" + indexVar2 + " is not a known loop variable in this scope");
-							}
-							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TBracketClosed);
-							updatableName = bh_multianim_UpdatableNameType.UNTIndexed2D(name,indexVar1,indexVar2);
-						} else {
-							this.error("expected $" + "variable for second index in #name[$" + "x, $" + "y]");
-						}
-					} else {
-						if(this.scopeVars == null || this.scopeVars.indexOf(indexVar1) == -1) {
-							this.error("#name[$" + indexVar1 + "]: index variable $" + indexVar1 + " is not a known loop variable in this scope");
-						}
-						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TBracketClosed);
-						updatableName = bh_multianim_UpdatableNameType.UNTIndexed(name,indexVar1);
-					}
-				} else {
-					this.error("expected $" + "variable inside #name[...]");
-				}
+				updatableName = this.parseIndexedName(name,parent,currentDefs);
 			}
 			switch(updatableName._hx_index) {
 			case 0:
@@ -6608,7 +6790,7 @@ bh_multianim_MacroManimParser.prototype = {
 					case 19:
 						var _g1 = _g.repeatType;
 						var varName = _g.varName;
-						this.error("#" + name + " requires indexed form #" + name + "[$" + varName + "] inside repeatable");
+						this.error("#" + name + " requires indexed form #" + name + "[$" + varName + "] inside repeatable" + bh_multianim_MacroManimParser.nestedRepeatHint(name,varName,checkNode.parent));
 						break;
 					case 20:
 						var _g2 = _g.repeatTypeX;
@@ -6631,7 +6813,7 @@ bh_multianim_MacroManimParser.prototype = {
 					case 19:
 						var _g1 = _g.repeatType;
 						var varName = _g.varName;
-						this.error("#" + name + " requires indexed form #" + name + "[$" + varName + "] inside repeatable");
+						this.error("#" + name + " requires indexed form #" + name + "[$" + varName + "] inside repeatable" + bh_multianim_MacroManimParser.nestedRepeatHint(name,varName,checkNode.parent));
 						break;
 					case 20:
 						var _g2 = _g.repeatTypeX;
@@ -7375,13 +7557,13 @@ bh_multianim_MacroManimParser.prototype = {
 																			break;
 																		case 2:
 																			var _g = updatableName.name;
-																			var _g = updatableName.indexVar;
+																			var _g = updatableName.index;
 																			n1 = bh_multianim_UpdatableNameType.UNTObject(bh_multianim_MacroManimParser.defaultLayoutNodeName);
 																			break;
 																		case 3:
 																			var _g = updatableName.name;
-																			var _g = updatableName.indexVarX;
-																			var _g = updatableName.indexVarY;
+																			var _g = updatableName.indexX;
+																			var _g = updatableName.indexY;
 																			n1 = bh_multianim_UpdatableNameType.UNTObject(bh_multianim_MacroManimParser.defaultLayoutNodeName);
 																			break;
 																		}
@@ -7416,11 +7598,18 @@ bh_multianim_MacroManimParser.prototype = {
 																				var progRef = this.expectReferenceOrIdentifierAsRV();
 																				this.validateRefTargetParam("staticRef",extRef,progRef,refToken,currentDefs);
 																				var params = new haxe_ds_StringMap();
+																				var hidden = null;
 																				if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
-																					params = this.parseReferenceParams();
+																					var args = this.parseReferenceParams("staticRef");
+																					params = args.params;
+																					hidden = args.hidden;
 																				}
 																				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
-																				node = this.createNode(bh_multianim_NodeType.STATIC_REF(extRef,progRef,params),parent,conditional,scale,rotation,alpha,tint,layerIndex,updatableName);
+																				var refNode = this.createNode(bh_multianim_NodeType.STATIC_REF(extRef,progRef,params),parent,conditional,scale,rotation,alpha,tint,layerIndex,updatableName);
+																				if(hidden != null) {
+																					refNode.hiddenLayers = hidden;
+																				}
+																				node = refNode;
 																			} else {
 																				var s = _g1;
 																				if(bh_multianim_MacroManimParser.isKeyword(s,"dynamicRef")) {
@@ -7442,11 +7631,18 @@ bh_multianim_MacroManimParser.prototype = {
 																					var progRef = this.expectReferenceOrIdentifierAsRV();
 																					this.validateRefTargetParam("dynamicRef",extRef,progRef,refToken,currentDefs);
 																					var params = new haxe_ds_StringMap();
+																					var hidden = null;
 																					if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
-																						params = this.parseReferenceParams();
+																						var args = this.parseReferenceParams("dynamicRef");
+																						params = args.params;
+																						hidden = args.hidden;
 																					}
 																					this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
-																					node = this.createNode(bh_multianim_NodeType.DYNAMIC_REF(extRef,progRef,params),parent,conditional,scale,rotation,alpha,tint,layerIndex,updatableName);
+																					var refNode = this.createNode(bh_multianim_NodeType.DYNAMIC_REF(extRef,progRef,params),parent,conditional,scale,rotation,alpha,tint,layerIndex,updatableName);
+																					if(hidden != null) {
+																						refNode.hiddenLayers = hidden;
+																					}
+																					node = refNode;
 																				} else {
 																					var s = _g1;
 																					if(bh_multianim_MacroManimParser.isKeyword(s,"placeholder")) {
@@ -7609,14 +7805,39 @@ bh_multianim_MacroManimParser.prototype = {
 																											this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 																											var initialState = this.parseStringOrReference();
 																											var selector = new haxe_ds_StringMap();
+																											var seek = null;
+																											var hidden = null;
 																											while(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
+																												var keyLine = this.tokens[this.tpos].line;
 																												var key = this.expectIdentifierOrString();
+																												if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TColon)) {
+																													var isFrame = bh_multianim_MacroManimParser.isKeyword(key,"frame");
+																													if(!isFrame && !bh_multianim_MacroManimParser.isKeyword(key,"progress")) {
+																														this.error("stateanim: unknown argument \"" + key + ":\" (frame: $" + "k or progress: $" + "t hold it at a frame); a state of the .anim is selected with " + key + " => value");
+																													}
+																													if(seek != null) {
+																														this.error("stateanim: frame: and progress: say where it is held: give one of them, once");
+																													}
+																													seek = isFrame ? bh_multianim_StateAnimSeek.SAFrame(this.parseIntegerOrReference()) : bh_multianim_StateAnimSeek.SAProgress(this.parseFloatOrReference());
+																													continue;
+																												}
 																												this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TArrow);
+																												if(bh_multianim_MacroManimParser.isKeyword(key,"hide") && this.tokens[this.tpos].type._hx_index == 3) {
+																													if(hidden != null) {
+																														this.error("stateanim: hide => [...] given twice: name every layer in one list");
+																													}
+																													hidden = this.parseHiddenLayers("stateanim",keyLine);
+																													continue;
+																												}
 																												var val = this.parseStringOrReference();
 																												selector.h[key] = val;
 																											}
 																											this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
-																											node = this.createNode(bh_multianim_NodeType.STATEANIM(filename,initialState,selector),parent,conditional,scale,rotation,alpha,tint,layerIndex,updatableName);
+																											var animNode = this.createNode(bh_multianim_NodeType.STATEANIM(filename,initialState,selector,seek),parent,conditional,scale,rotation,alpha,tint,layerIndex,updatableName);
+																											if(hidden != null) {
+																												animNode.hiddenLayers = hidden;
+																											}
+																											node = animNode;
 																										}
 																									} else {
 																										this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
@@ -7624,14 +7845,39 @@ bh_multianim_MacroManimParser.prototype = {
 																										this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 																										var initialState = this.parseStringOrReference();
 																										var selector = new haxe_ds_StringMap();
+																										var seek = null;
+																										var hidden = null;
 																										while(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
+																											var keyLine = this.tokens[this.tpos].line;
 																											var key = this.expectIdentifierOrString();
+																											if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TColon)) {
+																												var isFrame = bh_multianim_MacroManimParser.isKeyword(key,"frame");
+																												if(!isFrame && !bh_multianim_MacroManimParser.isKeyword(key,"progress")) {
+																													this.error("stateanim: unknown argument \"" + key + ":\" (frame: $" + "k or progress: $" + "t hold it at a frame); a state of the .anim is selected with " + key + " => value");
+																												}
+																												if(seek != null) {
+																													this.error("stateanim: frame: and progress: say where it is held: give one of them, once");
+																												}
+																												seek = isFrame ? bh_multianim_StateAnimSeek.SAFrame(this.parseIntegerOrReference()) : bh_multianim_StateAnimSeek.SAProgress(this.parseFloatOrReference());
+																												continue;
+																											}
 																											this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TArrow);
+																											if(bh_multianim_MacroManimParser.isKeyword(key,"hide") && this.tokens[this.tpos].type._hx_index == 3) {
+																												if(hidden != null) {
+																													this.error("stateanim: hide => [...] given twice: name every layer in one list");
+																												}
+																												hidden = this.parseHiddenLayers("stateanim",keyLine);
+																												continue;
+																											}
 																											var val = this.parseStringOrReference();
 																											selector.h[key] = val;
 																										}
 																										this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
-																										node = this.createNode(bh_multianim_NodeType.STATEANIM(filename,initialState,selector),parent,conditional,scale,rotation,alpha,tint,layerIndex,updatableName);
+																										var animNode = this.createNode(bh_multianim_NodeType.STATEANIM(filename,initialState,selector,seek),parent,conditional,scale,rotation,alpha,tint,layerIndex,updatableName);
+																										if(hidden != null) {
+																											animNode.hiddenLayers = hidden;
+																										}
+																										node = animNode;
 																									}
 																								} else {
 																									var s = _g1;
@@ -7826,13 +8072,13 @@ bh_multianim_MacroManimParser.prototype = {
 																																			break;
 																																		case 2:
 																																			var _g = updatableName.name;
-																																			var _g = updatableName.indexVar;
+																																			var _g = updatableName.index;
 																																			n1 = bh_multianim_UpdatableNameType.UNTObject(bh_multianim_MacroManimParser.defaultPathNodeName);
 																																			break;
 																																		case 3:
 																																			var _g = updatableName.name;
-																																			var _g = updatableName.indexVarX;
-																																			var _g = updatableName.indexVarY;
+																																			var _g = updatableName.indexX;
+																																			var _g = updatableName.indexY;
 																																			n1 = bh_multianim_UpdatableNameType.UNTObject(bh_multianim_MacroManimParser.defaultPathNodeName);
 																																			break;
 																																		}
@@ -7877,13 +8123,13 @@ bh_multianim_MacroManimParser.prototype = {
 																																					break;
 																																				case 2:
 																																					var _g = updatableName.name;
-																																					var _g = updatableName.indexVar;
+																																					var _g = updatableName.index;
 																																					n1 = bh_multianim_UpdatableNameType.UNTObject(bh_multianim_MacroManimParser.defaultCurveNodeName);
 																																					break;
 																																				case 3:
 																																					var _g = updatableName.name;
-																																					var _g = updatableName.indexVarX;
-																																					var _g = updatableName.indexVarY;
+																																					var _g = updatableName.indexX;
+																																					var _g = updatableName.indexY;
 																																					n1 = bh_multianim_UpdatableNameType.UNTObject(bh_multianim_MacroManimParser.defaultCurveNodeName);
 																																					break;
 																																				}
@@ -9378,25 +9624,70 @@ bh_multianim_MacroManimParser.prototype = {
 		}
 		return emitters;
 	}
-	,parseReferenceParams: function() {
+	,parseReferenceParams: function(what) {
 		var params = new haxe_ds_StringMap();
+		var hidden = null;
 		while(true) {
 			var _g = this.tokens[this.tpos].type;
 			switch(_g._hx_index) {
 			case 2:
-				return params;
+				return { params : params, hidden : hidden};
 			case 32:
 				var name = _g.s;
+				var nameLine = this.tokens[this.tpos].line;
 				this.advance();
 				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TArrow);
-				var value = this.parseAnything();
-				params.h[name] = value;
+				if(bh_multianim_MacroManimParser.isKeyword(name,"hide") && this.tokens[this.tpos].type._hx_index == 3) {
+					if(hidden != null) {
+						this.error("" + what + ": hide => [...] given twice: name every layer in one list");
+					}
+					hidden = this.parseHiddenLayers(what,nameLine);
+				} else {
+					var value = this.parseAnything();
+					params.h[name] = value;
+				}
 				this.eatComma();
 				break;
 			default:
-				return params;
+				return { params : params, hidden : hidden};
 			}
 		}
+	}
+	,parseHiddenLayers: function(what,line) {
+		this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TBracketOpen);
+		var names = [];
+		while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TBracketClosed)) {
+			if(names.length > 0) {
+				this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
+				if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TBracketClosed)) {
+					break;
+				}
+			}
+			var _g = this.tokens[this.tpos].type;
+			switch(_g._hx_index) {
+			case 32:
+				var _g1 = _g.s;
+				break;
+			case 34:
+				var r = _g.s;
+				this.error("" + what + ": hide => [...] names layers as the .anim's layers: line writes them, not $" + r + ": hide => [weapon_front, weapon_back]");
+				break;
+			case 35:
+				var _g2 = _g.s;
+				break;
+			default:
+				this.error("" + what + ": hide => [...] takes the names of layers of the .anim: hide => [weapon_front, weapon_back]");
+			}
+			var name = this.expectIdentifierOrString();
+			if(names.indexOf(name) != -1) {
+				this.error("" + what + ": hide => [...] names layer \"" + name + "\" twice");
+			}
+			names.push(name);
+		}
+		if(names.length == 0) {
+			this.error("" + what + ": hide => [] hides nothing: name the layers, hide => [weapon_front, weapon_back], or leave it out");
+		}
+		return { names : names, line : line};
 	}
 	,parseInteractiveMetadata: function() {
 		var metadata = [];
@@ -9913,13 +10204,13 @@ bh_multianim_MacroManimParser.prototype = {
 																		n2 = n4;
 																		break;
 																	case 2:
-																		var _g5 = _g4.indexVar;
+																		var _g5 = _g4.index;
 																		var n5 = _g4.name;
 																		n2 = n5;
 																		break;
 																	case 3:
-																		var _g6 = _g4.indexVarX;
-																		var _g7 = _g4.indexVarY;
+																		var _g6 = _g4.indexX;
+																		var _g7 = _g4.indexY;
 																		var n6 = _g4.name;
 																		n2 = n6;
 																		break;
@@ -9963,54 +10254,25 @@ bh_multianim_MacroManimParser.prototype = {
 					}
 					this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
 				} else if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TBracketOpen)) {
-					var _g9 = this.tokens[this.tpos].type;
-					if(_g9._hx_index == 34) {
-						var indexVar1 = _g9.s;
-						this.advance();
-						if(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma)) {
-							var _g10 = this.tokens[this.tpos].type;
-							if(_g10._hx_index == 34) {
-								var indexVar2 = _g10.s;
-								this.advance();
-								if(this.scopeVars == null || this.scopeVars.indexOf(indexVar1) == -1) {
-									this.error("#name[$" + indexVar1 + ", $" + indexVar2 + "]: index variable $" + indexVar1 + " is not a known loop variable in this scope");
-								}
-								if(this.scopeVars == null || this.scopeVars.indexOf(indexVar2) == -1) {
-									this.error("#name[$" + indexVar1 + ", $" + indexVar2 + "]: index variable $" + indexVar2 + " is not a known loop variable in this scope");
-								}
-								this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TBracketClosed);
-								nameType = bh_multianim_UpdatableNameType.UNTIndexed2D(name,indexVar1,indexVar2);
-							} else {
-								this.error("expected $" + "variable for second index in #name[$" + "x, $" + "y]");
-							}
-						} else {
-							if(this.scopeVars == null || this.scopeVars.indexOf(indexVar1) == -1) {
-								this.error("#name[$" + indexVar1 + "]: index variable $" + indexVar1 + " is not a known loop variable in this scope");
-							}
-							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TBracketClosed);
-							nameType = bh_multianim_UpdatableNameType.UNTIndexed(name,indexVar1);
-						}
-					} else {
-						this.error("expected $" + "variable inside #name[...]");
-					}
+					nameType = this.parseIndexedName(name,node,defs);
 				}
 				switch(nameType._hx_index) {
 				case 0:
-					var _g11 = nameType.name;
+					var _g9 = nameType.name;
 					var checkNode = node;
 					while(checkNode != null) {
-						var _g12 = checkNode.type;
-						switch(_g12._hx_index) {
+						var _g10 = checkNode.type;
+						switch(_g10._hx_index) {
 						case 19:
-							var _g13 = _g12.repeatType;
-							var varName = _g12.varName;
-							this.error("#" + name + " requires indexed form #" + name + "[$" + varName + "] inside repeatable");
+							var _g11 = _g10.repeatType;
+							var varName = _g10.varName;
+							this.error("#" + name + " requires indexed form #" + name + "[$" + varName + "] inside repeatable" + bh_multianim_MacroManimParser.nestedRepeatHint(name,varName,checkNode.parent));
 							break;
 						case 20:
-							var _g14 = _g12.repeatTypeX;
-							var _g15 = _g12.repeatTypeY;
-							var varNameX = _g12.varNameX;
-							var varNameY = _g12.varNameY;
+							var _g12 = _g10.repeatTypeX;
+							var _g13 = _g10.repeatTypeY;
+							var varNameX = _g10.varNameX;
+							var varNameY = _g10.varNameY;
 							this.error("#" + name + " requires indexed form #" + name + "[$" + varNameX + ", $" + varNameY + "] inside repeatable2d");
 							break;
 						default:
@@ -10019,21 +10281,21 @@ bh_multianim_MacroManimParser.prototype = {
 					}
 					break;
 				case 1:
-					var _g16 = nameType.name;
+					var _g14 = nameType.name;
 					var checkNode1 = node;
 					while(checkNode1 != null) {
-						var _g17 = checkNode1.type;
-						switch(_g17._hx_index) {
+						var _g15 = checkNode1.type;
+						switch(_g15._hx_index) {
 						case 19:
-							var _g18 = _g17.repeatType;
-							var varName1 = _g17.varName;
-							this.error("#" + name + " requires indexed form #" + name + "[$" + varName1 + "] inside repeatable");
+							var _g16 = _g15.repeatType;
+							var varName1 = _g15.varName;
+							this.error("#" + name + " requires indexed form #" + name + "[$" + varName1 + "] inside repeatable" + bh_multianim_MacroManimParser.nestedRepeatHint(name,varName1,checkNode1.parent));
 							break;
 						case 20:
-							var _g19 = _g17.repeatTypeX;
-							var _g20 = _g17.repeatTypeY;
-							var varNameX1 = _g17.varNameX;
-							var varNameY1 = _g17.varNameY;
+							var _g17 = _g15.repeatTypeX;
+							var _g18 = _g15.repeatTypeY;
+							var varNameX1 = _g15.varNameX;
+							var varNameY1 = _g15.varNameY;
 							this.error("#" + name + " requires indexed form #" + name + "[$" + varNameX1 + ", $" + varNameY1 + "] inside repeatable2d");
 							break;
 						default:
@@ -10044,9 +10306,9 @@ bh_multianim_MacroManimParser.prototype = {
 				default:
 				}
 				var exported = false;
-				var _g21 = this.tokens[this.tpos].type;
-				if(_g21._hx_index == 32) {
-					var s12 = _g21.s;
+				var _g19 = this.tokens[this.tpos].type;
+				if(_g19._hx_index == 32) {
+					var s12 = _g19.s;
 					if(bh_multianim_MacroManimParser.isKeyword(s12,"export")) {
 						if(node != null) {
 							this.error("#" + name + ": only a root block can be exported — export goes between a root block's #name and its kind: #name export programmable(...)");
@@ -10075,25 +10337,25 @@ bh_multianim_MacroManimParser.prototype = {
 				if(newNode2 != null) {
 					if(node == null) {
 						var n7;
-						var _g22 = newNode2.updatableName;
-						switch(_g22._hx_index) {
+						var _g20 = newNode2.updatableName;
+						switch(_g20._hx_index) {
 						case 0:
-							var n8 = _g22.name;
+							var n8 = _g20.name;
 							n7 = n8;
 							break;
 						case 1:
-							var n9 = _g22.name;
+							var n9 = _g20.name;
 							n7 = n9;
 							break;
 						case 2:
-							var _g23 = _g22.indexVar;
-							var n10 = _g22.name;
+							var _g21 = _g20.index;
+							var n10 = _g20.name;
 							n7 = n10;
 							break;
 						case 3:
-							var _g24 = _g22.indexVarX;
-							var _g25 = _g22.indexVarY;
-							var n11 = _g22.name;
+							var _g22 = _g20.indexX;
+							var _g23 = _g20.indexY;
+							var n11 = _g20.name;
 							n7 = n11;
 							break;
 						}
@@ -10651,22 +10913,27 @@ bh_multianim_MacroManimParser.prototype = {
 			var sheet = this.expectIdentifierOrString();
 			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 			var name = this.parseStringOrReference();
+			var _g1 = this.tokens[this.tpos].type;
+			if(_g1._hx_index == 34) {
+				var _g2 = _g1.s;
+				this.error("stateanim construct \"" + stateName + "\": a tile name built from parameters is a single-quoted string, 'body_$" + "{dir}_human' (or \"body_\" + $" + "dir); written bare, the name ends where its $" + " starts");
+			}
 			this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
 			var fps = this.parseIntegerOrReference();
 			this.eatComma();
 			var loop = false;
 			var center = false;
 			while(true) {
-				var _g1 = this.tokens[this.tpos].type;
-				if(_g1._hx_index == 32) {
-					var _g2 = _g1.s;
-					var s1 = _g2;
+				var _g3 = this.tokens[this.tpos].type;
+				if(_g3._hx_index == 32) {
+					var _g4 = _g3.s;
+					var s1 = _g4;
 					if(bh_multianim_MacroManimParser.isKeyword(s1,"loop")) {
 						this.advance();
 						loop = true;
 						this.eatComma();
 					} else {
-						var s2 = _g2;
+						var s2 = _g4;
 						if(bh_multianim_MacroManimParser.isKeyword(s2,"center")) {
 							this.advance();
 							center = true;
@@ -12868,6 +13135,7 @@ bh_multianim_MacroManimParser.prototype = {
 		var edges = new haxe_ds_StringMap();
 		var terrains = [];
 		var transitions = [];
+		var transitionIgnoreAt = [];
 		var rises = [];
 		var platforms = [];
 		var cells = [];
@@ -13029,25 +13297,58 @@ bh_multianim_MacroManimParser.prototype = {
 												}
 												this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyOpen);
 												var autotiles = [];
+												var ignore = [];
+												var ignoreAt = [];
+												var ignoreSet = false;
 												while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed)) {
 													var _g4 = this.tokens[this.tpos].type;
 													if(_g4._hx_index == 32) {
-														var s21 = _g4.s;
+														var _g5 = _g4.s;
+														var s21 = _g5;
 														if(bh_multianim_MacroManimParser.isKeyword(s21,"autotile")) {
 															this.advance();
 															this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
 															this.parseNameList(autotiles);
 														} else {
-															this.error("unexpected transition property: " + Std.string(this.tokens[this.tpos].type) + " (a transition has autotile: only)");
+															var s22 = _g5;
+															if(bh_multianim_MacroManimParser.isKeyword(s22,"ignore")) {
+																this.advance();
+																this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
+																if(ignoreSet) {
+																	this.error("transition " + from + ", " + to + ": ignore: is given twice; name every terrain in one (ignore: a, b)");
+																}
+																ignoreSet = true;
+																do {
+																	var at = this.tokens[this.tpos];
+																	var name = this.expectIdentifierOrString();
+																	if(name == "none") {
+																		this.errorAtLine(at.line,at.col,"transition " + from + ", " + to + ": ignore: none - none is no terrain (the map's edge and its none cells are not ignored); ignore: names terrains below " + to);
+																	}
+																	if(name == to) {
+																		this.errorAtLine(at.line,at.col,"transition " + from + ", " + to + ": ignore: " + to + " is the transition's own terrain; leave it out (ignore: names terrains below " + to + " that count as " + to + ")");
+																	}
+																	if(name == from) {
+																		this.errorAtLine(at.line,at.col,"transition " + from + ", " + to + ": ignore: " + from + " is the terrain the edge is drawn toward; leave it out of ignore:");
+																	}
+																	if(ignore.indexOf(name) != -1) {
+																		this.errorAtLine(at.line,at.col,"transition " + from + ", " + to + ": ignore: names " + name + " twice; name it once");
+																	}
+																	ignore.push(name);
+																	ignoreAt.push(at);
+																} while(this.match(bh_multianim__$MacroManimParser_MacroTokenType.TComma));
+															} else {
+																this.error("unexpected transition property: " + Std.string(this.tokens[this.tpos].type) + " (a transition has autotile: only, or autotile: and ignore:)");
+															}
 														}
 													} else {
-														this.error("unexpected transition property: " + Std.string(this.tokens[this.tpos].type) + " (a transition has autotile: only)");
+														this.error("unexpected transition property: " + Std.string(this.tokens[this.tpos].type) + " (a transition has autotile: only, or autotile: and ignore:)");
 													}
 												}
 												if(autotiles.length == 0) {
 													this.error("transition " + from + ", " + to + " needs autotile:");
 												}
-												transitions.push({ from : from, to : to, autotiles : autotiles});
+												transitionIgnoreAt.push(ignoreAt);
+												transitions.push({ from : from, to : to, autotiles : autotiles, ignore : ignore});
 											} else {
 												var s8 = _g1;
 												if(bh_multianim_MacroManimParser.isKeyword(s8,"rise")) {
@@ -13058,10 +13359,10 @@ bh_multianim_MacroManimParser.prototype = {
 													if(bh_multianim_MacroManimParser.isKeyword(s9,"platform")) {
 														this.advance();
 														var platformName = this.expectIdentifierOrString();
-														var _g5 = 0;
-														while(_g5 < platforms.length) {
-															var p = platforms[_g5];
-															++_g5;
+														var _g6 = 0;
+														while(_g6 < platforms.length) {
+															var p = platforms[_g6];
+															++_g6;
 															if(p.name == platformName) {
 																this.error("platform " + platformName + " is defined twice");
 															}
@@ -13069,11 +13370,11 @@ bh_multianim_MacroManimParser.prototype = {
 														this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyOpen);
 														var platformEdge = null;
 														while(!this.match(bh_multianim__$MacroManimParser_MacroTokenType.TCurlyClosed)) {
-															var _g6 = this.tokens[this.tpos].type;
-															if(_g6._hx_index == 32) {
-																var _g7 = _g6.s;
-																var s22 = _g7;
-																if(bh_multianim_MacroManimParser.isKeyword(s22,"edge")) {
+															var _g7 = this.tokens[this.tpos].type;
+															if(_g7._hx_index == 32) {
+																var _g8 = _g7.s;
+																var s23 = _g8;
+																if(bh_multianim_MacroManimParser.isKeyword(s23,"edge")) {
 																	this.advance();
 																	this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TColon);
 																	if(platformEdge != null) {
@@ -13081,8 +13382,8 @@ bh_multianim_MacroManimParser.prototype = {
 																	}
 																	platformEdge = this.expectIdentifierOrString();
 																} else {
-																	var s23 = _g7;
-																	if(bh_multianim_MacroManimParser.isKeyword(s23,"rise")) {
+																	var s24 = _g8;
+																	if(bh_multianim_MacroManimParser.isKeyword(s24,"rise")) {
 																		this.advance();
 																		parseRise(platformName);
 																	} else {
@@ -13099,10 +13400,10 @@ bh_multianim_MacroManimParser.prototype = {
 														if(bh_multianim_MacroManimParser.isKeyword(s10,"cell")) {
 															this.advance();
 															var cellName = this.expectIdentifierOrString();
-															var _g8 = 0;
-															while(_g8 < cells.length) {
-																var c = cells[_g8];
-																++_g8;
+															var _g9 = 0;
+															while(_g9 < cells.length) {
+																var c = cells[_g9];
+																++_g9;
 																if(c.name == cellName) {
 																	this.error("cell " + cellName + " is defined twice");
 																}
@@ -13237,9 +13538,10 @@ bh_multianim_MacroManimParser.prototype = {
 			return (a.rise == 0 ? 2147483647 : a.rise) - (b.rise == 0 ? 2147483647 : b.rise);
 		});
 		var _g = 0;
-		while(_g < transitions.length) {
-			var t = [transitions[_g]];
-			++_g;
+		var _g1 = transitions.length;
+		while(_g < _g1) {
+			var ti = _g++;
+			var t = [transitions[ti]];
 			var toIndex = Lambda.findIndex(terrains,(function(t) {
 				return function(x) {
 					return x.name == t[0].to;
@@ -13266,6 +13568,34 @@ bh_multianim_MacroManimParser.prototype = {
 				}
 				if(fromIndex >= toIndex) {
 					this.error("transition " + t[0].from + ", " + t[0].to + ": " + t[0].from + " is drawn over " + t[0].to + "; a transition is from the terrain below to the one above it");
+				}
+			}
+			var _g2 = 0;
+			var _g3 = t[0].ignore.length;
+			while(_g2 < _g3) {
+				var k = _g2++;
+				var name = [t[0].ignore[k]];
+				var at = transitionIgnoreAt[ti][k];
+				var ignoredIndex = Lambda.findIndex(terrains,(function(name) {
+					return function(x) {
+						return x.name == name[0];
+					};
+				})(name));
+				if(ignoredIndex < 0) {
+					var at1 = at.line;
+					var at2 = at.col;
+					var tmp = "transition " + t[0].from + ", " + t[0].to + ": ignore: tileset has no terrain " + name[0] + " (it has ";
+					var _g4 = [];
+					var _g5 = 0;
+					while(_g5 < terrains.length) {
+						var x = terrains[_g5];
+						++_g5;
+						_g4.push(x.name);
+					}
+					this.errorAtLine(at1,at2,tmp + _g4.join(", ") + ")");
+				}
+				if(ignoredIndex > toIndex) {
+					this.errorAtLine(at.line,at.col,"transition " + t[0].from + ", " + t[0].to + ": ignore: " + name[0] + " is drawn over " + t[0].to + ", so it counts as " + t[0].to + " already; leave it out of ignore:");
 				}
 			}
 		}
@@ -13534,8 +13864,8 @@ bh_multianim_MacroManimParser.prototype = {
 	}
 	,parseTilemapDraw: function(what) {
 		var where = this.expectIdentifierOrString();
-		if(where != "under" && where != "over" && where != "top" && where != "actors") {
-			this.error("" + what + ": draw: is under (the actors), over (them), top (above everything) or actors (among them, sorted by its feet), got " + where);
+		if(where != "under" && where != "over" && where != "top" && where != "actors" && where != "side") {
+			this.error("" + what + ": draw: is under (the actors), over (them), top (above everything), side (in place of a rise's side it covers) or actors (among them, sorted by its feet), got " + where);
 		}
 		return where;
 	}
@@ -15881,8 +16211,8 @@ bh_multianim_PlaceholderReplacementSource.__constructs__ = [bh_multianim_Placeho
 var bh_multianim_UpdatableNameType = $hxEnums["bh.multianim.UpdatableNameType"] = { __ename__:true,__constructs__:null
 	,UNTObject: ($_=function(name) { return {_hx_index:0,name:name,__enum__:"bh.multianim.UpdatableNameType",toString:$estr}; },$_._hx_name="UNTObject",$_.__params__ = ["name"],$_)
 	,UNTUpdatable: ($_=function(name) { return {_hx_index:1,name:name,__enum__:"bh.multianim.UpdatableNameType",toString:$estr}; },$_._hx_name="UNTUpdatable",$_.__params__ = ["name"],$_)
-	,UNTIndexed: ($_=function(name,indexVar) { return {_hx_index:2,name:name,indexVar:indexVar,__enum__:"bh.multianim.UpdatableNameType",toString:$estr}; },$_._hx_name="UNTIndexed",$_.__params__ = ["name","indexVar"],$_)
-	,UNTIndexed2D: ($_=function(name,indexVarX,indexVarY) { return {_hx_index:3,name:name,indexVarX:indexVarX,indexVarY:indexVarY,__enum__:"bh.multianim.UpdatableNameType",toString:$estr}; },$_._hx_name="UNTIndexed2D",$_.__params__ = ["name","indexVarX","indexVarY"],$_)
+	,UNTIndexed: ($_=function(name,index) { return {_hx_index:2,name:name,index:index,__enum__:"bh.multianim.UpdatableNameType",toString:$estr}; },$_._hx_name="UNTIndexed",$_.__params__ = ["name","index"],$_)
+	,UNTIndexed2D: ($_=function(name,indexX,indexY) { return {_hx_index:3,name:name,indexX:indexX,indexY:indexY,__enum__:"bh.multianim.UpdatableNameType",toString:$estr}; },$_._hx_name="UNTIndexed2D",$_.__params__ = ["name","indexX","indexY"],$_)
 };
 bh_multianim_UpdatableNameType.__constructs__ = [bh_multianim_UpdatableNameType.UNTObject,bh_multianim_UpdatableNameType.UNTUpdatable,bh_multianim_UpdatableNameType.UNTIndexed,bh_multianim_UpdatableNameType.UNTIndexed2D];
 var bh_multianim_SettingValueType = $hxEnums["bh.multianim.SettingValueType"] = { __ename__:true,__constructs__:null
@@ -16213,6 +16543,33 @@ var bh_multianim_StateAnimConstruct = $hxEnums["bh.multianim.StateAnimConstruct"
 	,IndexedSheet: ($_=function(sheet,name,fps,loop,center) { return {_hx_index:0,sheet:sheet,name:name,fps:fps,loop:loop,center:center,__enum__:"bh.multianim.StateAnimConstruct",toString:$estr}; },$_._hx_name="IndexedSheet",$_.__params__ = ["sheet","name","fps","loop","center"],$_)
 };
 bh_multianim_StateAnimConstruct.__constructs__ = [bh_multianim_StateAnimConstruct.IndexedSheet];
+var bh_multianim_StateAnimSeek = $hxEnums["bh.multianim.StateAnimSeek"] = { __ename__:true,__constructs__:null
+	,SAFrame: ($_=function(frame) { return {_hx_index:0,frame:frame,__enum__:"bh.multianim.StateAnimSeek",toString:$estr}; },$_._hx_name="SAFrame",$_.__params__ = ["frame"],$_)
+	,SAProgress: ($_=function(progress) { return {_hx_index:1,progress:progress,__enum__:"bh.multianim.StateAnimSeek",toString:$estr}; },$_._hx_name="SAProgress",$_.__params__ = ["progress"],$_)
+};
+bh_multianim_StateAnimSeek.__constructs__ = [bh_multianim_StateAnimSeek.SAFrame,bh_multianim_StateAnimSeek.SAProgress];
+var bh_multianim_StateAnimSeekTools = function() { };
+bh_multianim_StateAnimSeekTools.__name__ = true;
+bh_multianim_StateAnimSeekTools.value = function(seek) {
+	switch(seek._hx_index) {
+	case 0:
+		var v = seek.frame;
+		return v;
+	case 1:
+		var v = seek.progress;
+		return v;
+	}
+};
+bh_multianim_StateAnimSeekTools.reason = function(seek) {
+	switch(seek._hx_index) {
+	case 0:
+		var _g = seek.frame;
+		return "stateanim frame";
+	case 1:
+		var _g = seek.progress;
+		return "stateanim progress";
+	}
+};
 var bh_multianim_DataValueType = $hxEnums["bh.multianim.DataValueType"] = { __ename__:true,__constructs__:null
 	,DVTInt: {_hx_name:"DVTInt",_hx_index:0,__enum__:"bh.multianim.DataValueType",toString:$estr}
 	,DVTFloat: {_hx_name:"DVTFloat",_hx_index:1,__enum__:"bh.multianim.DataValueType",toString:$estr}
@@ -16240,7 +16597,7 @@ var bh_multianim_NodeType = $hxEnums["bh.multianim.NodeType"] = { __ename__:true
 	,SPACER: ($_=function(width,height) { return {_hx_index:1,width:width,height:height,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="SPACER",$_.__params__ = ["width","height"],$_)
 	,BITMAP: ($_=function(tileSource,hAlign,vAlign) { return {_hx_index:2,tileSource:tileSource,hAlign:hAlign,vAlign:vAlign,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="BITMAP",$_.__params__ = ["tileSource","hAlign","vAlign"],$_)
 	,POINT: {_hx_name:"POINT",_hx_index:3,__enum__:"bh.multianim.NodeType",toString:$estr}
-	,STATEANIM: ($_=function(filename,initialState,selector) { return {_hx_index:4,filename:filename,initialState:initialState,selector:selector,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="STATEANIM",$_.__params__ = ["filename","initialState","selector"],$_)
+	,STATEANIM: ($_=function(filename,initialState,selector,seek) { return {_hx_index:4,filename:filename,initialState:initialState,selector:selector,seek:seek,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="STATEANIM",$_.__params__ = ["filename","initialState","selector","seek"],$_)
 	,STATEANIM_CONSTRUCT: ($_=function(initialState,construct,externallyDriven) { return {_hx_index:5,initialState:initialState,construct:construct,externallyDriven:externallyDriven,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="STATEANIM_CONSTRUCT",$_.__params__ = ["initialState","construct","externallyDriven"],$_)
 	,PIXELS: ($_=function(shapes) { return {_hx_index:6,shapes:shapes,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="PIXELS",$_.__params__ = ["shapes"],$_)
 	,TEXT: ($_=function(textDef) { return {_hx_index:7,textDef:textDef,__enum__:"bh.multianim.NodeType",toString:$estr}; },$_._hx_name="TEXT",$_.__params__ = ["textDef"],$_)
@@ -16802,14 +17159,134 @@ function bh_multianim_MultiAnimParser_getNameString(updatableNameType) {
 		var name = updatableNameType.name;
 		return name;
 	case 2:
-		var _g = updatableNameType.indexVar;
+		var _g = updatableNameType.index;
 		var name = updatableNameType.name;
 		return name;
 	case 3:
-		var _g = updatableNameType.indexVarX;
-		var _g = updatableNameType.indexVarY;
+		var _g = updatableNameType.indexX;
+		var _g = updatableNameType.indexY;
 		var name = updatableNameType.name;
 		return name;
+	}
+}
+function bh_multianim_MultiAnimParser_indexText(index) {
+	switch(index._hx_index) {
+	case 2:
+		var i = index.i;
+		return "" + i;
+	case 6:
+		var r = index.ref;
+		return "$" + r;
+	case 10:
+		var e = index.e;
+		return "(" + bh_multianim_MultiAnimParser_indexText(e) + ")";
+	case 16:
+		var op = index.op;
+		var a = index.e1;
+		var b = index.e2;
+		var opText;
+		switch(op._hx_index) {
+		case 0:
+			opText = "+";
+			break;
+		case 1:
+			opText = "*";
+			break;
+		case 2:
+			opText = "-";
+			break;
+		case 3:
+			opText = "/";
+			break;
+		case 4:
+			opText = "div";
+			break;
+		case 5:
+			opText = "%";
+			break;
+		case 6:
+			opText = "==";
+			break;
+		case 7:
+			opText = "!=";
+			break;
+		case 8:
+			opText = "<";
+			break;
+		case 9:
+			opText = ">";
+			break;
+		case 10:
+			opText = "<=";
+			break;
+		case 11:
+			opText = ">=";
+			break;
+		}
+		return "" + bh_multianim_MultiAnimParser_indexText(a) + " " + opText + " " + bh_multianim_MultiAnimParser_indexText(b);
+	case 17:
+		var _g = index.op;
+		var e = index.e;
+		return "-" + bh_multianim_MultiAnimParser_indexText(e);
+	default:
+		return "…";
+	}
+}
+function bh_multianim_MultiAnimParser_indexedNameText(updatableNameType) {
+	switch(updatableNameType._hx_index) {
+	case 0:
+		var name = updatableNameType.name;
+		return "#" + name;
+	case 1:
+		var name = updatableNameType.name;
+		return "#" + name;
+	case 2:
+		var name = updatableNameType.name;
+		var index = updatableNameType.index;
+		return "#" + name + "[" + bh_multianim_MultiAnimParser_indexText(index) + "]";
+	case 3:
+		var name = updatableNameType.name;
+		var x = updatableNameType.indexX;
+		var y = updatableNameType.indexY;
+		return "#" + name + "[" + bh_multianim_MultiAnimParser_indexText(x) + ", " + bh_multianim_MultiAnimParser_indexText(y) + "]";
+	}
+}
+function bh_multianim_MultiAnimParser_indexCollisionHint(updatableNameType) {
+	switch(updatableNameType._hx_index) {
+	case 0:
+		var _g = updatableNameType.name;
+		return "";
+	case 1:
+		var _g = updatableNameType.name;
+		return "";
+	case 2:
+		var _g = updatableNameType.name;
+		var _g1 = updatableNameType.index;
+		if(_g1._hx_index == 6) {
+			var _g2 = _g1.ref;
+			var name = _g;
+			return "Give the inner loop a unique index, number nested repeatables as one list (#" + name + "[$" + "row * N + $" + "col], N the inner loop's count), or use a 2-D indexed name (#" + name + "[indexX, indexY]).";
+		} else {
+			var name = _g;
+			return "" + bh_multianim_MultiAnimParser_indexedNameText(updatableNameType) + " gives that index to more than one element: make the expression count each element once (nested repeatables of N per row: #" + name + "[$" + "row * N + $" + "col]), or use a 2-D indexed name (#" + name + "[indexX, indexY]).";
+		}
+		break;
+	case 3:
+		var _g = updatableNameType.name;
+		var _g = updatableNameType.indexX;
+		var _g1 = updatableNameType.indexY;
+		if(_g._hx_index == 6) {
+			var _g2 = _g.ref;
+			if(_g1._hx_index == 6) {
+				var _g = _g1.ref;
+				return "Ensure each (indexX, indexY) is unique.";
+			} else {
+				return "" + bh_multianim_MultiAnimParser_indexedNameText(updatableNameType) + " gives that index pair to more than one element: ensure each (indexX, indexY) is unique.";
+			}
+		} else {
+			return "" + bh_multianim_MultiAnimParser_indexedNameText(updatableNameType) + " gives that index pair to more than one element: ensure each (indexX, indexY) is unique.";
+		}
+		break;
 	}
 }
 var bh_multianim_ParseUtils = function() { };
@@ -21837,23 +22314,25 @@ manim_lsp_CompletionProvider.getCompletions = function(ctx) {
 	case 10:
 		return manim_lsp_CompletionProvider.transitionCompletions();
 	case 11:
-		return manim_lsp_CompletionProvider.filterCompletions();
+		return manim_lsp_CompletionProvider.tilesetTransitionCompletions();
 	case 12:
+		return manim_lsp_CompletionProvider.filterCompletions();
+	case 13:
 		return manim_lsp_CompletionProvider.dataCompletions();
-	case 1:case 13:
+	case 1:case 14:
 		return manim_lsp_CompletionProvider.elementCompletions();
-	case 14:
-		return [];
 	case 15:
+		return [];
+	case 16:
 		var prefix = _g.prefix;
 		return manim_lsp_CompletionProvider.referenceCompletions(ctx.paramNames,prefix);
-	case 16:
-		return manim_lsp_CompletionProvider.conditionalCompletions();
 	case 17:
-		return manim_lsp_CompletionProvider.paramNameCompletions(ctx.paramNames);
+		return manim_lsp_CompletionProvider.conditionalCompletions();
 	case 18:
-		return manim_lsp_CompletionProvider.easingCompletions();
+		return manim_lsp_CompletionProvider.paramNameCompletions(ctx.paramNames);
 	case 19:
+		return manim_lsp_CompletionProvider.easingCompletions();
+	case 20:
 		return manim_lsp_CompletionProvider.elementCompletions();
 	}
 };
@@ -22060,6 +22539,9 @@ manim_lsp_CompletionProvider.transitionCompletions = function() {
 	}
 	return items;
 };
+manim_lsp_CompletionProvider.tilesetTransitionCompletions = function() {
+	return [manim_lsp_CompletionProvider.snippet("autotile","autotile: ${1:name}","The autotile drawn over b's own where b meets a (one a frame when b is animated)"),manim_lsp_CompletionProvider.snippet("ignore","ignore: ${1:terrain}","Terrains below b that count as b: a cell of b that also touches them still meets a, and no edge faces them")];
+};
 manim_lsp_CompletionProvider.filterCompletions = function() {
 	var _g = [];
 	var _g1 = 0;
@@ -22158,17 +22640,18 @@ var manim_lsp_CursorContext = $hxEnums["manim.lsp.CursorContext"] = { __ename__:
 	,FlowBody: {_hx_name:"FlowBody",_hx_index:8,__enum__:"manim.lsp.CursorContext",toString:$estr}
 	,SettingsBody: {_hx_name:"SettingsBody",_hx_index:9,__enum__:"manim.lsp.CursorContext",toString:$estr}
 	,TransitionBody: {_hx_name:"TransitionBody",_hx_index:10,__enum__:"manim.lsp.CursorContext",toString:$estr}
-	,FilterPosition: {_hx_name:"FilterPosition",_hx_index:11,__enum__:"manim.lsp.CursorContext",toString:$estr}
-	,DataBody: {_hx_name:"DataBody",_hx_index:12,__enum__:"manim.lsp.CursorContext",toString:$estr}
-	,RepeatableBody: {_hx_name:"RepeatableBody",_hx_index:13,__enum__:"manim.lsp.CursorContext",toString:$estr}
-	,InteractiveParams: {_hx_name:"InteractiveParams",_hx_index:14,__enum__:"manim.lsp.CursorContext",toString:$estr}
-	,AfterDollar: ($_=function(prefix) { return {_hx_index:15,prefix:prefix,__enum__:"manim.lsp.CursorContext",toString:$estr}; },$_._hx_name="AfterDollar",$_.__params__ = ["prefix"],$_)
-	,AfterAt: {_hx_name:"AfterAt",_hx_index:16,__enum__:"manim.lsp.CursorContext",toString:$estr}
-	,AfterConditionalOpen: {_hx_name:"AfterConditionalOpen",_hx_index:17,__enum__:"manim.lsp.CursorContext",toString:$estr}
-	,EasingPosition: {_hx_name:"EasingPosition",_hx_index:18,__enum__:"manim.lsp.CursorContext",toString:$estr}
-	,Unknown: {_hx_name:"Unknown",_hx_index:19,__enum__:"manim.lsp.CursorContext",toString:$estr}
+	,TilesetTransitionBody: {_hx_name:"TilesetTransitionBody",_hx_index:11,__enum__:"manim.lsp.CursorContext",toString:$estr}
+	,FilterPosition: {_hx_name:"FilterPosition",_hx_index:12,__enum__:"manim.lsp.CursorContext",toString:$estr}
+	,DataBody: {_hx_name:"DataBody",_hx_index:13,__enum__:"manim.lsp.CursorContext",toString:$estr}
+	,RepeatableBody: {_hx_name:"RepeatableBody",_hx_index:14,__enum__:"manim.lsp.CursorContext",toString:$estr}
+	,InteractiveParams: {_hx_name:"InteractiveParams",_hx_index:15,__enum__:"manim.lsp.CursorContext",toString:$estr}
+	,AfterDollar: ($_=function(prefix) { return {_hx_index:16,prefix:prefix,__enum__:"manim.lsp.CursorContext",toString:$estr}; },$_._hx_name="AfterDollar",$_.__params__ = ["prefix"],$_)
+	,AfterAt: {_hx_name:"AfterAt",_hx_index:17,__enum__:"manim.lsp.CursorContext",toString:$estr}
+	,AfterConditionalOpen: {_hx_name:"AfterConditionalOpen",_hx_index:18,__enum__:"manim.lsp.CursorContext",toString:$estr}
+	,EasingPosition: {_hx_name:"EasingPosition",_hx_index:19,__enum__:"manim.lsp.CursorContext",toString:$estr}
+	,Unknown: {_hx_name:"Unknown",_hx_index:20,__enum__:"manim.lsp.CursorContext",toString:$estr}
 };
-manim_lsp_CursorContext.__constructs__ = [manim_lsp_CursorContext.TopLevel,manim_lsp_CursorContext.ProgrammableBody,manim_lsp_CursorContext.ProgrammableParams,manim_lsp_CursorContext.ParticlesBody,manim_lsp_CursorContext.CurvesBody,manim_lsp_CursorContext.CurveBody,manim_lsp_CursorContext.PathsBody,manim_lsp_CursorContext.AnimatedPathBody,manim_lsp_CursorContext.FlowBody,manim_lsp_CursorContext.SettingsBody,manim_lsp_CursorContext.TransitionBody,manim_lsp_CursorContext.FilterPosition,manim_lsp_CursorContext.DataBody,manim_lsp_CursorContext.RepeatableBody,manim_lsp_CursorContext.InteractiveParams,manim_lsp_CursorContext.AfterDollar,manim_lsp_CursorContext.AfterAt,manim_lsp_CursorContext.AfterConditionalOpen,manim_lsp_CursorContext.EasingPosition,manim_lsp_CursorContext.Unknown];
+manim_lsp_CursorContext.__constructs__ = [manim_lsp_CursorContext.TopLevel,manim_lsp_CursorContext.ProgrammableBody,manim_lsp_CursorContext.ProgrammableParams,manim_lsp_CursorContext.ParticlesBody,manim_lsp_CursorContext.CurvesBody,manim_lsp_CursorContext.CurveBody,manim_lsp_CursorContext.PathsBody,manim_lsp_CursorContext.AnimatedPathBody,manim_lsp_CursorContext.FlowBody,manim_lsp_CursorContext.SettingsBody,manim_lsp_CursorContext.TransitionBody,manim_lsp_CursorContext.TilesetTransitionBody,manim_lsp_CursorContext.FilterPosition,manim_lsp_CursorContext.DataBody,manim_lsp_CursorContext.RepeatableBody,manim_lsp_CursorContext.InteractiveParams,manim_lsp_CursorContext.AfterDollar,manim_lsp_CursorContext.AfterAt,manim_lsp_CursorContext.AfterConditionalOpen,manim_lsp_CursorContext.EasingPosition,manim_lsp_CursorContext.Unknown];
 var manim_lsp_ContextAnalyzer = function() { };
 manim_lsp_ContextAnalyzer.__name__ = true;
 manim_lsp_ContextAnalyzer.analyze = function(text,line,character) {
@@ -22323,7 +22806,9 @@ manim_lsp_ContextAnalyzer.scan = function(text,line,character) {
 					pending = declared;
 				}
 			}
-			if(keyword != null) {
+			if(keyword == "transition" && manim_lsp_ContextAnalyzer.namesFollow(textToCursor,j)) {
+				lastKeyword = "tilesetTransition";
+			} else if(keyword != null) {
 				lastKeyword = keyword;
 			}
 			i = j;
@@ -22396,6 +22881,8 @@ manim_lsp_ContextAnalyzer.determineContext = function(stack,lastKeyword,prefix) 
 		return manim_lsp_CursorContext.RepeatableBody;
 	case "settings":
 		return manim_lsp_CursorContext.SettingsBody;
+	case "tilesetTransition":
+		return manim_lsp_CursorContext.TilesetTransitionBody;
 	case "transition":
 		return manim_lsp_CursorContext.TransitionBody;
 	default:
@@ -22528,6 +23015,19 @@ manim_lsp_ContextAnalyzer.contextKeyword = function(word) {
 		return lower;
 	default:
 		return null;
+	}
+};
+manim_lsp_ContextAnalyzer.namesFollow = function(text,from) {
+	var i = from;
+	while(i < text.length && (HxOverrides.cca(text,i) == 32 || HxOverrides.cca(text,i) == 9)) ++i;
+	if(i < text.length) {
+		if(!manim_lsp_ContextAnalyzer.isIdentStart(HxOverrides.cca(text,i))) {
+			return HxOverrides.cca(text,i) == 34;
+		} else {
+			return true;
+		}
+	} else {
+		return false;
 	}
 };
 manim_lsp_ContextAnalyzer.isIdentStart = function(c) {
@@ -22877,6 +23377,15 @@ manim_lsp_HoverProvider.lookupKeyword = function(word) {
 		}
 	}
 	var _g = 0;
+	var _g1 = bh_multianim_ManimKeywordInfo.stateAnimArguments;
+	while(_g < _g1.length) {
+		var arg = _g1[_g];
+		++_g;
+		if(arg.name == word) {
+			return "**" + word + "** — " + arg.description + "\n\n```manim\n" + arg.usage + "\n```";
+		}
+	}
+	var _g = 0;
 	var _g1 = bh_multianim_ManimKeywordInfo.allTransitions;
 	while(_g < _g1.length) {
 		var trans = _g1[_g];
@@ -22908,6 +23417,8 @@ manim_lsp_HoverProvider.lookupKeyword = function(word) {
 		return "**$grid** — Grid coordinate system\n\n`$grid.pos(x, y)`, `$grid.width`, `$grid.height`";
 	case "hex":
 		return "**$hex** — Hexagonal coordinate system\n\n`$hex.cube(q, r, s)`, `$hex.corner(index, scale)`";
+	case "ignore":
+		return "**ignore** — In a tileset's `transition a, b { }`: terrains below `b` that count as `b`. A cell of `b` that also touches them still meets `a`, and no edge is drawn toward them\n\n```manim\ntransition land, shallows { autotile: coast  ignore: sea }\n```";
 	case "import":
 		return "**import** — Import external .manim file\n\n```manim\nimport \"file.manim\" as \"name\"\n```";
 	case "record":
@@ -22917,7 +23428,7 @@ manim_lsp_HoverProvider.lookupKeyword = function(word) {
 	case "@switch":case "switch":
 		return "**@switch** — Switch block on parameter\n\n```manim\n@switch(param) {\n  value1: element(...);\n  value2 | value3: element(...);\n  <= 10: element(...);\n  0..100: element(...);\n  default: element(...);\n}\n```";
 	case "transition":
-		return "**transition** — Animated transitions for parameter changes\n\n```manim\ntransition {\n  param: crossfade(0.1, easeOutQuad)\n}\n```";
+		return "**transition** — Animated transitions for parameter changes\n\n```manim\ntransition {\n  param: crossfade(0.1, easeOutQuad)\n}\n```\n\nIn a tileset, where terrain `b` meets terrain `a` (below it, or `none`), an autotile drawn over `b`'s own:\n\n```manim\ntransition land, shallows { autotile: coast  ignore: sea }\n```";
 	case "version":
 		return "**version** — File version header: `version: 1.0`";
 	default:
@@ -23220,7 +23731,7 @@ manim_lsp_ManimAnalyzer.getChildSymbols = function(node,text) {
 			children.push({ name : "#" + name1, kind : kind1, range : range1, selectionRange : range1, detail : manim_lsp_ManimAnalyzer.nodeTypeName(child.type)});
 			break;
 		case 2:
-			var _g19 = _g2.indexVar;
+			var _g19 = _g2.index;
 			var name2 = _g2.name;
 			var range2 = manim_lsp_ManimAnalyzer.findNameInText(text,"#" + name2);
 			var kind2;
@@ -23245,8 +23756,8 @@ manim_lsp_ManimAnalyzer.getChildSymbols = function(node,text) {
 			children.push({ name : "#" + name2, kind : kind2, range : range2, selectionRange : range2, detail : manim_lsp_ManimAnalyzer.nodeTypeName(child.type)});
 			break;
 		case 3:
-			var _g28 = _g2.indexVarX;
-			var _g29 = _g2.indexVarY;
+			var _g28 = _g2.indexX;
+			var _g29 = _g2.indexY;
 			var name3 = _g2.name;
 			var range3 = manim_lsp_ManimAnalyzer.findNameInText(text,"#" + name3);
 			var kind3;
@@ -23410,6 +23921,7 @@ manim_lsp_ManimAnalyzer.nodeTypeName = function(type) {
 		var _g = type.filename;
 		var _g = type.initialState;
 		var _g = type.selector;
+		var _g = type.seek;
 		return "stateanim";
 	case 5:
 		var _g = type.initialState;
@@ -23919,7 +24431,7 @@ bh_multianim_ManimKeywordInfo.elementDescriptions = (function($this) {
 	_g.h["SPACER"] = "Empty space: spacer(w, h)";
 	_g.h["BITMAP"] = "Display image: bitmap(source, [center])";
 	_g.h["POINT"] = "Positioning point for coordinate reference";
-	_g.h["STATEANIM"] = "State animation from .anim file";
+	_g.h["STATEANIM"] = "State animation from .anim file: stateanim(file, state, key => value, …); frame: $k or progress: $t holds it at a frame, hide => [layer, …] leaves layers out";
 	_g.h["STATEANIM_CONSTRUCT"] = "Inline state animation construct";
 	_g.h["PIXELS"] = "Pixel-level drawing primitives";
 	_g.h["TEXT"] = "Simple text element (h2d.Text)";
@@ -23992,6 +24504,7 @@ bh_multianim_ManimKeywordInfo.elementSnippets = (function($this) {
 }(this));
 bh_multianim_ManimKeywordInfo.topLevelElements = ["PROGRAMMABLE","DATA","CURVES","PATHS","ANIMATED_PATH","ATLAS2","PALETTE","FINAL_VAR","RELATIVE_LAYOUTS","TILESET","TILEMAP","CURSORS","SOUNDS","MIX","MUSIC"];
 bh_multianim_ManimKeywordInfo.childElements = ["BITMAP","TEXT","RICHTEXT","NINEPATCH","FLOW","LAYERS","MASK","TILEGROUP","INTERACTIVE","SLOT","SLOT_CONTENT","SPACER","POINT","APPLY","GRAPHICS","PIXELS","PARTICLES","REPEAT","REPEAT2D","STATIC_REF","DYNAMIC_REF","PLACEHOLDER","STATEANIM","STATEANIM_CONSTRUCT","AUTOTILE","FINAL_VAR","SWITCH","TILEMAP_REF","TILEMAP_FILL"];
+bh_multianim_ManimKeywordInfo.stateAnimArguments = [{ name : "frame", usage : "stateanim(\"hero.anim\", \"walk\", frame: $k)", description : "Holds the stateanim at frame k of the animation playing (0 the first, only frames counted, clamped), off its own clock; setParameter moves it (AnimationSM.seekFrame)"},{ name : "progress", usage : "stateanim(\"hero.anim\", \"walk\", progress: $t)", description : "Holds the stateanim t of the way through the animation playing (0 the first frame, 1 the last, frames weighed by their durations), off its own clock; setParameter moves it (AnimationSM.seekProgress)"},{ name : "hide", usage : "stateanim(\"hero.anim\", \"slash\", hide => [weapon_front, weapon_back])", description : "Leaves those layers of the layered .anim out (its layers:), as sm.layer(name).visible = false; on a staticRef or dynamicRef, of every stateanim it draws. A name the .anim has not is an error naming it"}];
 bh_multianim_ManimKeywordInfo.exportKeyword = "export";
 bh_multianim_ManimKeywordInfo.exportDescription = "Marks a root block as exported: #name export programmable(...), any kind of root block. The file's exported names are MultiAnimResult.exports (in the order written); an import still reaches every block";
 bh_multianim_ManimKeywordInfo.docCommentDescription = "Doc comment: the /// lines directly above a root block, a parameter, an enum choice, a sound of a sounds block or a track of a music block, or one trailing a parameter, a choice, a sound or a track on its line, are kept as its doc (MultiAnimResultTools.docOf, soundDocOf); several lines join with newlines. Any other /// is a plain comment";

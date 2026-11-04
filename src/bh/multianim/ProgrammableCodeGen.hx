@@ -1527,7 +1527,7 @@ class ProgrammableCodeGen {
 				} else
 					for (other in group)
 						if (!bh.multianim.ConditionalArms.exclusive(other.node, entry.node))
-							haxe.macro.Context.error('indexed name "${name}[${entry.index}]" is generated more than once with the same index — a 1-D indexed name whose index recurs (nested loops, or a duplicate-value iterator) collides. Give the inner loop a unique index or use a 2-D indexed name (#name[indexX, indexY]).', pos);
+							haxe.macro.Context.error('indexed name "${name}[${entry.index}]" is generated more than once with the same index — a 1-D indexed name whose index recurs (nested loops, or a duplicate-value iterator) collides. ${indexCollisionHint(entry.node.updatableName)}', pos);
 				group.push(entry);
 			}
 			for (index in order) {
@@ -1563,7 +1563,7 @@ class ProgrammableCodeGen {
 			for (entry in indexedList) {
 				final k2d = entry.indexX + "," + entry.indexY;
 				if (seen2D.exists(k2d))
-					haxe.macro.Context.error('indexed name "${name}[${entry.indexX},${entry.indexY}]" is generated more than once with the same index pair — the indices collide. Ensure each (indexX, indexY) is unique.', pos);
+					haxe.macro.Context.error('indexed name "${name}[${entry.indexX},${entry.indexY}]" is generated more than once with the same index pair — the indices collide. ${indexCollisionHint(entry.node.updatableName)}', pos);
 				seen2D.set(k2d, true);
 				final fieldRef = macro $p{["this", entry.fieldName]};
 				ifExprs.push(macro if (x == $v{entry.indexX} && y == $v{entry.indexY}) return $fieldRef.parent != null ? $fieldRef : null);
@@ -1616,7 +1616,7 @@ class ProgrammableCodeGen {
 		for (entry in slotEntries) {
 			final handleField = entry.handleField;
 			if (seenSlotFields.exists(handleField))
-				haxe.macro.Context.error('slot field "${handleField}" is generated more than once — a slot name that recurs (nested loops, a duplicate-value iterator, or two sites shown together) collides. Give the inner loop a unique index, use a 2-D indexed slot (#name[indexX, indexY]), or put the sites in mutually exclusive @()/@else arms.', pos);
+				haxe.macro.Context.error('slot field "${handleField}" is generated more than once — a slot name that recurs (nested loops, a duplicate-value iterator, or two sites shown together) collides. Give the inner loop a unique index, number nested repeatables as one list (#name[$$row * N + $$col], N the inner loop\'s count; ${indexedNameText(entry.node.updatableName)} here), use a 2-D indexed slot (#name[indexX, indexY]), or put the sites in mutually exclusive @()/@else arms.', pos);
 			seenSlotFields.set(handleField, true);
 			instanceFields.push(makeField(handleField, FVar(macro :bh.multianim.MultiAnimBuilder.SlotHandle, null), [APrivate], pos));
 		}
@@ -2254,7 +2254,7 @@ class ProgrammableCodeGen {
 		final kindOk = switch node.type {
 			case BITMAP(_, _, _) | TEXT(_) | RICHTEXT(_) | NINEPATCH(_, _, _, _, _, _, _) | GRAPHICS(_) | PIXELS(_) | POINT | LAYERS
 				| MASK(_, _) | FLOW(_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _) | SPACER(_, _)
-				| STATEANIM(_, _, _) | STATEANIM_CONSTRUCT(_, _, _) | STATIC_REF(_, _, _) | PLACEHOLDER(_, _) | INTERACTIVE(_, _, _, _, _)
+				| STATEANIM(_, _, _, _) | STATEANIM_CONSTRUCT(_, _, _) | STATIC_REF(_, _, _) | PLACEHOLDER(_, _) | INTERACTIVE(_, _, _, _, _)
 				| FINAL_VAR(_, _):
 				true;
 			default: false;
@@ -2533,7 +2533,7 @@ class ProgrammableCodeGen {
 					}
 					list.push(fieldName);
 				}
-			case UNTIndexed(name, indexVar):
+			case UNTIndexed(name, indexRV):
 				if (name != null && name != "") {
 					// Also store in regular namedElements for backward compat (get_name returns all)
 					var list = namedElements.get(name);
@@ -2543,7 +2543,7 @@ class ProgrammableCodeGen {
 					}
 					list.push(fieldName);
 					// Store indexed mapping for get_name(index) accessor
-					final currentIndex = loopVarSubstitutions.exists(indexVar) ? loopVarSubstitutions.get(indexVar) : 0;
+					final currentIndex = unrolledIndexOr0(node, indexRV, pos);
 					var indexedList = indexedNamedElements.get(name);
 					if (indexedList == null) {
 						indexedList = [];
@@ -2551,7 +2551,7 @@ class ProgrammableCodeGen {
 					}
 					indexedList.push({index: currentIndex, fieldName: fieldName, node: node});
 				}
-			case UNTIndexed2D(name, indexVarX, indexVarY):
+			case UNTIndexed2D(name, indexRVX, indexRVY):
 				if (name != null && name != "") {
 					var list = namedElements.get(name);
 					if (list == null) {
@@ -2559,8 +2559,8 @@ class ProgrammableCodeGen {
 						namedElements.set(name, list);
 					}
 					list.push(fieldName);
-					final currentX = loopVarSubstitutions.exists(indexVarX) ? loopVarSubstitutions.get(indexVarX) : 0;
-					final currentY = loopVarSubstitutions.exists(indexVarY) ? loopVarSubstitutions.get(indexVarY) : 0;
+					final currentX = unrolledIndexOr0(node, indexRVX, pos);
+					final currentY = unrolledIndexOr0(node, indexRVY, pos);
 					var indexedList = indexed2DNamedElements.get(name);
 					if (indexedList == null) {
 						indexedList = [];
@@ -2577,14 +2577,14 @@ class ProgrammableCodeGen {
 				// Capture current loop variable values for parameterized slots
 				final capturedLoopVars:Map<String, Int> = hp ? [for (k => v in loopVarSubstitutions) k => v] : new Map();
 				switch (node.updatableName) {
-					case UNTIndexed(baseName, ref) if (loopVarSubstitutions.exists(ref)):
-						final currentIndex = loopVarSubstitutions.get(ref);
+					case UNTIndexed(baseName, indexRV) if (unrolledIndex(node, indexRV, pos) != null):
+						final currentIndex:Int = unrolledIndex(node, indexRV, pos);
 						final key:MacroSlotKey = Indexed(baseName, currentIndex);
 						slotEntries.push({key: key, fieldName: fieldName, hasParams: hp, loopVars: capturedLoopVars,
 							handleField: siteSlotHandleField(key, node), node: node});
-					case UNTIndexed2D(baseName, refX, refY) if (loopVarSubstitutions.exists(refX) && loopVarSubstitutions.exists(refY)):
-						final currentX = loopVarSubstitutions.get(refX);
-						final currentY = loopVarSubstitutions.get(refY);
+					case UNTIndexed2D(baseName, indexRVX, indexRVY) if (unrolledIndex(node, indexRVX, pos) != null && unrolledIndex(node, indexRVY, pos) != null):
+						final currentX:Int = unrolledIndex(node, indexRVX, pos);
+						final currentY:Int = unrolledIndex(node, indexRVY, pos);
 						final key:MacroSlotKey = Indexed2D(baseName, currentX, currentY);
 						slotEntries.push({key: key, fieldName: fieldName, hasParams: hp, loopVars: capturedLoopVars,
 							handleField: siteSlotHandleField(key, node), node: node});
@@ -2611,9 +2611,12 @@ class ProgrammableCodeGen {
 				// Indexed #name[$i] in a static-unrolled repeat: register the resolved "base idx" key
 				// against this iteration's per-site result field, so each iteration stays addressable
 				// (the shared _comp_<prog> field is last-writer-wins). Mirrors the slot path above.
+				// #name[$x, $y] keys "base x y", as the builder's resolveDynamicRefKey
 				final indexedKey = switch node.updatableName {
-					case UNTIndexed(base, ref) if (loopVarSubstitutions.exists(ref)):
-						'${base} ${loopVarSubstitutions.get(ref)}';
+					case UNTIndexed(base, indexRV) if (unrolledIndex(node, indexRV, pos) != null):
+						'${base} ${unrolledIndex(node, indexRV, pos)}';
+					case UNTIndexed2D(base, indexRVX, indexRVY) if (unrolledIndex(node, indexRVX, pos) != null && unrolledIndex(node, indexRVY, pos) != null):
+						'${base} ${unrolledIndex(node, indexRVX, pos)} ${unrolledIndex(node, indexRVY, pos)}';
 					default: null;
 				};
 				if (indexedKey != null) {
@@ -2623,7 +2626,7 @@ class ProgrammableCodeGen {
 					// runtime builder's "duplicate dynamicRef name" BuilderError and the indexed
 					// name (seenIndices) / slot (seenSlotFields) guards in the finalize pass.
 					if (indexedDynamicRefFields.exists(indexedKey))
-						Context.error('indexed dynamicRef "${indexedKey}" is generated more than once with the same index — a 1-D indexed dynamicRef whose index recurs (nested loops, or a duplicate-value iterator) collides. Give the inner loop a unique index or use a 2-D indexed name (#name[indexX, indexY]).', pos);
+						Context.error('indexed dynamicRef "${indexedKey}" is generated more than once with the same index — an indexed dynamicRef whose index recurs (nested loops, or a duplicate-value iterator) collides. ${indexCollisionHint(node.updatableName)}', pos);
 					indexedDynamicRefFields.set(indexedKey, "_dynref_lit_" + fieldName);
 				}
 				switch programmableRef {
@@ -3033,6 +3036,49 @@ class ProgrammableCodeGen {
 				loopVarSubstitutions.get(ref);
 			default: null;
 		};
+	}
+
+	/** The index one coordinate of `#name[...]` gives in this unrolled copy, as the builder's
+	 *  indexValueFor works it out: a loop variable's value, a constant @final, or an expression of
+	 *  those (the parser lets nothing else in) with resolveAsInteger's whole-number steps — the
+	 *  quotient of / and div truncated, % of whole numbers. A macro-time constant, since the index
+	 *  keys a field (get_name, a slot handle, a dynamicRef result), so not rvToExprInt. Null when
+	 *  it cannot be worked out here (a loop variable this copy does not substitute). */
+	static function unrolledIndex(node:Node, index:ReferenceableValue, pos:Position):Null<Int> {
+		return switch index {
+			case RVInteger(i): i;
+			case RVReference(ref) if (loopVarSubstitutions.exists(ref)): loopVarSubstitutions.get(ref);
+			case RVReference(ref) if (finalVarExprs.exists(ref) && !paramDefs.exists(ref)): unrolledIndex(node, finalVarExprs.get(ref), pos);
+			case RVParenthesis(e): unrolledIndex(node, e, pos);
+			case EUnaryOp(OpNeg, e):
+				final v = unrolledIndex(node, e, pos);
+				v == null ? null : -v;
+			case EBinop(op, e1, e2):
+				final l = unrolledIndex(node, e1, pos);
+				final r = unrolledIndex(node, e2, pos);
+				if (l == null || r == null) null else switch op {
+					case OpAdd: l + r;
+					case OpSub: l - r;
+					case OpMul: l * r;
+					case OpDiv | OpIntegerDiv:
+						if (r == 0) Context.error('${indexedNameText(node.updatableName)}: the index divides by zero', pos);
+						Std.int(l / r);
+					case OpMod:
+						if (r == 0) Context.error('${indexedNameText(node.updatableName)}: the index takes % 0 (modulo by zero)', pos);
+						l % r;
+					default: null;
+				};
+			default: null;
+		};
+	}
+
+	/** unrolledIndex for a named element's get_name: a plain loop variable this copy does not
+	 *  substitute is index 0, as it always was; an expression must be worked out here. */
+	static function unrolledIndexOr0(node:Node, index:ReferenceableValue, pos:Position):Int {
+		final value = unrolledIndex(node, index, pos);
+		if (value != null) return value;
+		if (index.match(RVReference(_))) return 0;
+		return Context.error('${indexedNameText(node.updatableName)}: the index cannot be worked out where the element is generated — it uses the loop variables of the repeatables around the element, numbers and @finals of those', pos);
 	}
 
 	/** Resolve repeat iterator info. staticCount is null when the count is param-dependent;
@@ -4540,6 +4586,11 @@ class ProgrammableCodeGen {
 		for (pn in paramNames) {
 			mapExprs.push(macro _rt_pp.set($v{pn}, $p{["this", "_" + pn]}));
 		}
+		// The loop variables of unrolled repeatables around this one, each this copy's value: the
+		// builder reads them where the element uses them (`#card[$row * 3 + $c]`, a position)
+		for (loopVar => loopValue in loopVarSubstitutions)
+			if (!runtimeLoopVars.exists(loopVar))
+				mapExprs.push(macro _rt_pp.set($v{loopVar}, $v{loopValue}));
 		for (loopVar => loopIdent in runtimeLoopVars) {
 			mapExprs.push(macro _rt_pp.set($v{loopVar}, $i{loopIdent}));
 		}
@@ -4583,12 +4634,14 @@ class ProgrammableCodeGen {
 						filterAndRecord(collectParamRefs(entry.value), "interactive metadata value");
 					}
 				}
-			case STATEANIM(filename, _, selectorReferences):
+			case STATEANIM(filename, _, selectorReferences, seek):
 				filterAndRecord(collectParamRefs(filename), "stateanim file");
 				if (selectorReferences != null) {
 					for (k => v in selectorReferences)
 						filterAndRecord(collectParamRefs(v), 'stateanim selector "$k"');
 				}
+				if (seek != null)
+					filterAndRecord(collectParamRefs(StateAnimSeekTools.value(seek)), StateAnimSeekTools.reason(seek));
 			case STATEANIM_CONSTRUCT(_, construct, _):
 				if (construct != null) {
 					for (key => value in construct) {
@@ -5271,8 +5324,8 @@ class ProgrammableCodeGen {
 			case PARTICLES(particlesDef):
 				generateParticlesCreate(node, fieldName, particlesDef, pos);
 
-			case STATEANIM(filename, initialState, selectorReferences):
-				generateStateAnimCreate(node, fieldName, filename, initialState, selectorReferences, pos);
+			case STATEANIM(filename, initialState, selectorReferences, seek):
+				generateStateAnimCreate(node, fieldName, filename, initialState, selectorReferences, seek, pos);
 
 			case STATEANIM_CONSTRUCT(initialState, construct, externallyDriven):
 				generateStateAnimConstructCreate(node, fieldName, initialState, construct, externallyDriven, pos);
@@ -5292,10 +5345,25 @@ class ProgrammableCodeGen {
 
 	// ==================== StaticRef ====================
 
+	/** A stateanim's or a ref's `hide => [...]` as an argument of the ProgrammableBuilder call that
+	 *  makes it (`HiddenLayers`), or `null`. */
+	static function hiddenLayersExpr(node:Node):Expr {
+		final hidden = node.hiddenLayers;
+		return hidden != null ? macro {names: $v{hidden.names}, line: $v{hidden.line}} : macro null;
+	}
+
+	/** The .manim the instance is made from, which the error for a layer the .anim has not names
+	 *  after its line (the builder's names the node); `null` with no `hide => [...]`. */
+	static function hiddenWhereExpr(node:Node):Expr {
+		return node.hiddenLayers != null ? macro $v{currentManimPath} : macro null;
+	}
+
 	static function generateStaticRefCreate(node:Node, fieldName:String, externalReference:Null<String>,
 			programmableRefRV:ReferenceableValue, refNameExpr:Expr, parameters:Map<String, ReferenceableValue>, pos:Position):CreateResult {
 		final fieldRef = macro $p{["this", fieldName]};
 		final createExprs:Array<Expr> = [];
+		final hiddenArg = hiddenLayersExpr(node);
+		final whereArg = hiddenWhereExpr(node);
 
 		// Build parameter map at runtime: new Map<String,Dynamic>()
 		final mapBuildExprs:Array<Expr> = [macro final _refParams = new Map<String, Dynamic>()];
@@ -5335,7 +5403,7 @@ class ProgrammableCodeGen {
 
 		if (refs.length == 0) {
 			mapBuildExprs.push(macro {
-				final _result = this._pb.buildStaticRef($refNameExpr, _refParams, $extRefExpr, $v{currentProgrammableName});
+				final _result = this._pb.buildStaticRef($refNameExpr, _refParams, $extRefExpr, $v{currentProgrammableName}, $hiddenArg, $whereArg);
 				$fieldRef = _result != null ? _result.object : new h2d.Object();
 			});
 			// Its own children go inside it. Builder parity (MultiAnimBuilder STATIC_REF): a target
@@ -5368,7 +5436,7 @@ class ProgrammableCodeGen {
 		createExprs.push(macro $b{mapBuildExprs.concat([
 			macro {
 				final _name:String = $refNameExpr;
-				final _result = this._pb.buildStaticRef(_name, _refParams, $extRefExpr, $v{currentProgrammableName});
+				final _result = this._pb.buildStaticRef(_name, _refParams, $extRefExpr, $v{currentProgrammableName}, $hiddenArg, $whereArg);
 				final _container = new h2d.Object();
 				_container.addChild(_result != null ? _result.object : new h2d.Object());
 				$fieldRef = _container;
@@ -5390,7 +5458,7 @@ class ProgrammableCodeGen {
 								break;
 							}
 					if (!_same) {
-						final _result = this._pb.buildStaticRef(_name, _refParams, $extRefExpr, $v{currentProgrammableName});
+						final _result = this._pb.buildStaticRef(_name, _refParams, $extRefExpr, $v{currentProgrammableName}, $hiddenArg, $whereArg);
 						$fieldRef.removeChildren();
 						$fieldRef.addChild(_result != null ? _result.object : new h2d.Object());
 						$p{["this", valsField]} = _vals;
@@ -5414,6 +5482,8 @@ class ProgrammableCodeGen {
 		final fieldRef = macro $p{["this", fieldName]};
 		final createExprs:Array<Expr> = [];
 		final refNameExpr:Expr = macro $v{programmableRef};
+		final hiddenArg = hiddenLayersExpr(node);
+		final whereArg = hiddenWhereExpr(node);
 
 		final resultField = "_comp_" + programmableRef;
 
@@ -5430,7 +5500,7 @@ class ProgrammableCodeGen {
 		// Indexed #name[$i] sites need their own per-site field too (regardless of forwarded refs):
 		// the shared _comp_<programmableRef> field is last-writer-wins, so getDynamicRef("base idx")
 		// must resolve to this iteration's result. The tracking pass keyed "base idx" -> this field.
-		final isIndexedSite = node.updatableName.match(UNTIndexed(_, _));
+		final isIndexedSite = node.updatableName.match(UNTIndexed(_, _) | UNTIndexed2D(_, _, _));
 		// An explicit #name site is looked up by its own field too: one name may be shared by sites
 		// in mutually exclusive arms, each keeping its own result (registerDynamicRefKey)
 		final hasExplicitName = !isIndexedSite && !node.updatableName.match(UNTObject(null));
@@ -5457,20 +5527,20 @@ class ProgrammableCodeGen {
 			// _comp_<prog> field may not even be declared when no unnamed site registers it.
 			// Writing only siteResultField keeps each site distinct and addressable.
 			mapBuildExprs.push(macro {
-				final _result = this._pb.buildDynamicRef($refNameExpr, _refParams, $dynExtRefExpr, this._fireRebuildListeners, $v{currentProgrammableName});
+				final _result = this._pb.buildDynamicRef($refNameExpr, _refParams, $dynExtRefExpr, this._fireRebuildListeners, $v{currentProgrammableName}, $hiddenArg, $whereArg);
 				$fieldRef = _result != null ? _result.object : new h2d.Object();
 				$p{["this", siteResultField]} = _result;
 			});
 		} else if (siteResultField != null) {
 			mapBuildExprs.push(macro {
-				final _result = this._pb.buildDynamicRef($refNameExpr, _refParams, $dynExtRefExpr, this._fireRebuildListeners, $v{currentProgrammableName});
+				final _result = this._pb.buildDynamicRef($refNameExpr, _refParams, $dynExtRefExpr, this._fireRebuildListeners, $v{currentProgrammableName}, $hiddenArg, $whereArg);
 				$fieldRef = _result != null ? _result.object : new h2d.Object();
 				$p{["this", resultField]} = _result;
 				$p{["this", siteResultField]} = _result;
 			});
 		} else {
 			mapBuildExprs.push(macro {
-				final _result = this._pb.buildDynamicRef($refNameExpr, _refParams, $dynExtRefExpr, this._fireRebuildListeners, $v{currentProgrammableName});
+				final _result = this._pb.buildDynamicRef($refNameExpr, _refParams, $dynExtRefExpr, this._fireRebuildListeners, $v{currentProgrammableName}, $hiddenArg, $whereArg);
 				$fieldRef = _result != null ? _result.object : new h2d.Object();
 				$p{["this", resultField]} = _result;
 			});
@@ -5570,6 +5640,8 @@ class ProgrammableCodeGen {
 			templateRV:ReferenceableValue, parameters:Map<String, ReferenceableValue>, pos:Position):CreateResult {
 		final fieldRef = macro $p{["this", fieldName]};
 		final createExprs:Array<Expr> = [];
+		final hiddenArg = hiddenLayersExpr(node);
+		final whereArg = hiddenWhereExpr(node);
 		final resultField = "_dynref_" + fieldName;
 		final containerField = "_dynref_container_" + fieldName;
 		final nameField = "_dynref_name_" + fieldName;
@@ -5596,7 +5668,7 @@ class ProgrammableCodeGen {
 			mapBuildExprs.push(macro {
 				final _templateName:String = $resolveNameExpr;
 				$p{["this", nameField]} = _templateName;
-				final _result = this._pb.buildDynamicRef(_templateName, _refParams, $extRefExpr, this._fireRebuildListeners, $v{currentProgrammableName});
+				final _result = this._pb.buildDynamicRef(_templateName, _refParams, $extRefExpr, this._fireRebuildListeners, $v{currentProgrammableName}, $hiddenArg, $whereArg);
 				final _container = new h2d.Object();
 				if (_result != null && _result.object != null) _container.addChild(_result.object);
 				$fieldRef = _container;
@@ -5607,7 +5679,7 @@ class ProgrammableCodeGen {
 			mapBuildExprs.push(macro {
 				final _templateName:String = $resolveNameExpr;
 				$p{["this", nameField]} = _templateName;
-				final _result = this._pb.buildDynamicRef(_templateName, _refParams, $extRefExpr, this._fireRebuildListeners, $v{currentProgrammableName});
+				final _result = this._pb.buildDynamicRef(_templateName, _refParams, $extRefExpr, this._fireRebuildListeners, $v{currentProgrammableName}, $hiddenArg, $whereArg);
 				$fieldRef = _result != null && _result.object != null ? _result.object : new h2d.Object();
 				$p{["this", resultField]} = _result;
 			});
@@ -5627,7 +5699,7 @@ class ProgrammableCodeGen {
 			if (_newName != $p{["this", nameField]}) {
 				// Build first: a template that throws (a forwarded param it does not declare)
 				// leaves the old one in place, and the name field on it, so going back is a no-op.
-				final _result = this._pb.buildDynamicRef(_newName, _refParams, $extRefExpr, this._fireRebuildListeners, $v{currentProgrammableName});
+				final _result = this._pb.buildDynamicRef(_newName, _refParams, $extRefExpr, this._fireRebuildListeners, $v{currentProgrammableName}, $hiddenArg, $whereArg);
 				$p{["this", containerField]}.removeChildren();
 				if (_result != null && _result.object != null) $p{["this", containerField]}.addChild(_result.object);
 				$p{["this", resultField]} = _result;
@@ -7114,7 +7186,7 @@ class ProgrammableCodeGen {
 	// ==================== State Anim ====================
 
 	static function generateStateAnimCreate(node:Node, fieldName:String, filename:ReferenceableValue, initialState:ReferenceableValue,
-			selectorReferences:Map<String, ReferenceableValue>, pos:Position):CreateResult {
+			selectorReferences:Map<String, ReferenceableValue>, seek:Null<StateAnimSeek>, pos:Position):CreateResult {
 		final fieldRef = macro $p{["this", fieldName]};
 		// The file is a string as any other; one built from parameters is frozen at create (as the
 		// builder's): changing such a parameter throws untracked_param
@@ -7133,7 +7205,24 @@ class ProgrammableCodeGen {
 			final valExpr = rvToExpr(v, true);
 			mapBuildExprs.push(macro _selMap.set($keyExpr, Std.string($valExpr)));
 		}
-		mapBuildExprs.push(macro $fieldRef = this._pb.buildStateAnim($filenameExpr, _selMap, Std.string($initialStateExpr)));
+		// `hide => [...]`: the names and their line, checked against the .anim when it is made; the
+		// error names this .manim too (the builder's names the node)
+		final hiddenExpr = hiddenLayersExpr(node);
+		final whereExpr = hiddenWhereExpr(node);
+		mapBuildExprs.push(macro $fieldRef = this._pb.buildStateAnim($filenameExpr, _selMap, Std.string($initialStateExpr), $hiddenExpr, $whereExpr));
+
+		// `frame:` / `progress:`: held there, off its own clock (builder: MultiAnimBuilder.seekStateAnim),
+		// and held again after a replay or a state change
+		final seekExpr:Expr = switch seek {
+			case null: macro {};
+			case SAFrame(v): macro (cast $fieldRef : bh.stateanim.AnimationSM).seekFrame(${rvToExprInt(v)});
+			case SAProgress(v): macro (cast $fieldRef : bh.stateanim.AnimationSM).seekProgress(${rvToExpr(v)});
+		};
+		if (seek != null)
+			mapBuildExprs.push(macro {
+				(cast $fieldRef : bh.stateanim.AnimationSM).externallyDriven = true;
+				$seekExpr;
+			});
 
 		// initialState replays; a selector changes that state in place (AnimationSM.setState); the
 		// filename stays frozen (would require full rebuild).
@@ -7143,7 +7232,10 @@ class ProgrammableCodeGen {
 		if (initRefs.length > 0) {
 			updatesSA.push({
 				fieldName: fieldName,
-				updateExpr: macro (cast $fieldRef : bh.stateanim.AnimationSM).play(Std.string($initialStateExpr)),
+				updateExpr: macro {
+					(cast $fieldRef : bh.stateanim.AnimationSM).play(Std.string($initialStateExpr));
+					$seekExpr;
+				},
 				paramRefs: initRefs,
 			});
 		}
@@ -7155,9 +7247,21 @@ class ProgrammableCodeGen {
 			final valExpr = rvToExpr(v, true);
 			updatesSA.push({
 				fieldName: fieldName,
-				updateExpr: macro (cast $fieldRef : bh.stateanim.AnimationSM).setState($keyExpr, Std.string($valExpr)),
+				updateExpr: macro {
+					(cast $fieldRef : bh.stateanim.AnimationSM).setState($keyExpr, Std.string($valExpr));
+					$seekExpr;
+				},
 				paramRefs: selRefs,
 			});
+		}
+		if (seek != null) {
+			final seekRefs = collectParamRefs(StateAnimSeekTools.value(seek));
+			if (seekRefs.length > 0)
+				updatesSA.push({
+					fieldName: fieldName,
+					updateExpr: seekExpr,
+					paramRefs: seekRefs,
+				});
 		}
 
 		return {
@@ -7173,7 +7277,9 @@ class ProgrammableCodeGen {
 	static function generateStateAnimConstructCreate(node:Node, fieldName:String, initialState:ReferenceableValue,
 			construct:Map<String, StateAnimConstruct>, externallyDriven:Bool, pos:Position):CreateResult {
 		final fieldRef = macro $p{["this", fieldName]};
-		final initialStateExpr = rvToExpr(initialState);
+		// As strings: an enum parameter is its value's name, as in the builder (not its index), in the
+		// initial state and in a tile name built from parameters ('body_${dir}_human')
+		final initialStateExpr = rvToExpr(initialState, true);
 
 		// Build construct data array expression
 		final constructExprs:Array<Expr> = [];
@@ -7182,7 +7288,7 @@ class ProgrammableCodeGen {
 				case IndexedSheet(sheet, animName, fps, loop, center):
 					final keyExpr:Expr = macro $v{key};
 					final sheetExpr:Expr = macro $v{sheet};
-					final animNameExpr = rvToExpr(animName);
+					final animNameExpr = rvToExpr(animName, true);
 					final fpsExpr = rvToExpr(fps);
 					final loopExpr:Expr = macro $v{loop};
 					final centerExpr:Expr = macro $v{center};
@@ -10270,10 +10376,11 @@ class ProgrammableCodeGen {
 					// it uses the params of its value (builder parity)
 					value(v);
 					true;
-				case STATEANIM(filename, initialState, selector):
+				case STATEANIM(filename, initialState, selector, seek):
 					value(filename);
 					value(initialState);
 					if (selector != null) for (_ => v in selector) value(v);
+					if (seek != null) value(StateAnimSeekTools.value(seek));
 					true;
 				case STATEANIM_CONSTRUCT(initialState, construct, _):
 					value(initialState);

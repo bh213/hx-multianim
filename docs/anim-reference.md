@@ -234,6 +234,12 @@ In code, `sm.layer("hat")` is a layer's clip (to hide, tint, read); `sm.clip` is
 `sm.setState("hat", "cap")` changes the hat while walking, and `sm.detachLayer("shadow", mapShadows)`
 draws the shadow in another object so every shadow is under every character (see the API below).
 
+In `.manim`, `stateanim("hero.anim", "slash", direction=>$d, hide => [weapon_front, weapon_back])`
+draws the figure without those layers, as `sm.layer(name).visible = false` does: an overlay pack
+draws its own weapon on a library figure that has no `none` value for it. On a `staticRef` or a
+`dynamicRef` of a figure, `hide => [...]` hides them in every stateanim it draws. A name the .anim
+has not is an error naming it and the layers it has (see `docs/manim-reference.md`).
+
 ---
 
 ## Playlist Elements
@@ -506,7 +512,12 @@ is `animations.<i>` with `.name`, its modifiers, and `.playlist#0.0.sheet`.
 | `removeEventListener(listener)` | `Bool` | Whether it was there; a method is matched by `Reflect.compareMethods`. Safe from inside a listener: the event being told still reaches every listener it started with (one added meanwhile hears the next event) |
 | `setState(name, value)` | `Void` | Changes one state while playing. The animations are reloaded for the new states; if the one playing has as many frames and events as before it goes on from the same frame and time, otherwise it starts again. A load that fails (frames the sheet has not for the new states) throws and leaves the machine as it was, playing what it played. Needs a machine made by `createAnimSM` |
 | `setStates(map)` | `Void` | Several states at once |
-| `seek(stateIndex)` | `Void` | Shows the playing animation at a state and stays there, paused (scrubbing): the frame at or before it on every layer, the per-frame filters up to it, no event |
+| `seek(stateIndex)` | `Void` | Shows the playing animation at a state and stays there, paused (scrubbing): the frame at or before it on every layer, the per-frame filters up to it, no event. A state is any step of the playlist (a frame, an event, a `filter` line): `seekFrame` counts frames alone |
+| `frameCount()` | `Int` | The frames of the playing animation (a layered file's: its timeline's), as `seekFrame` counts them; 0 when none plays |
+| `seekFrame(n)` | `Void` | Shows frame `n` of the playing animation and stays there, paused, as `seek` does: 0 its first frame, only frames counted (not events or `filter` lines); before the first or past the last, the first or the last. Every layer on that frame, the per-frame filters up to it applied, no event fired. Allocates nothing: a game may call it every frame. `.manim`: `stateanim(…, frame: $k)` |
+| `seekProgress(t)` | `Void` | Shows the playing animation `t` of the way through it and stays there, paused: the frame showing that far into it when it plays, its frames weighed by their durations; 0 (and before, or NaN) the first frame, 1 and past it the last (a cycle that comes round again is `t % 1`). Allocates nothing. `.manim`: `stateanim(…, progress: $t)` |
+| `AnimationSM.hideLayerIn(root, name)` | `Bool` | Static: hides layer `name` of every state machine in `root` (itself and everything under it), as `layer(name).visible = false`; whether any has it. What `.manim`'s `hide => […]` does |
+| `AnimationSM.layerNamesIn(root)` | `Array<String>` | Static: the layers of every state machine in `root`, each once |
 | `currentSelector` | `AnimationStateSelector` | The states it plays |
 | `clip` | `AnimationClip` | The clip drawing the frames; in a layered file, the playing animation's timeline |
 | `layerNames` | `Array<String>` | A layered file's `layers:`, bottom first |
