@@ -1791,7 +1791,9 @@ interactive(200, 30, "background", eventPriority:int => 0)
 |-----|------|---------|-------------|
 | `eventPriority` | `int` | `0` | Higher values receive events first when overlapping |
 
-When multiple interactives overlap at the cursor position, `UIDefaultController` sorts by `eventPriority` (descending), with registration order as tiebreaker for equal priorities. By default, the first element consumes the event (no bubbling).
+When multiple interactives overlap at the cursor position, `UIDefaultController` sorts by `eventPriority` (descending); among equal priorities the one drawn on top comes first (the later in the scene's draw order: a higher layer of an `h2d.Layers`, a later sibling, a child over its parent), wherever it is declared, and registration order decides only for two with no draw order between them. By default, the first element consumes the event (no bubbling). So a full-screen blocker declared before the buttons drawn over it does not take their clicks, and an interactive meant to catch what the others miss is declared first or given a lower `eventPriority`.
+
+**A finger is a pointer at its own place** — a touch's press, move and release are placed where the finger is (`hxd.Event.relX`/`relY` through the scene), not where the mouse last was. A press arrives first (`OnEnter`, so a hover state and a `#ui` hover sound come with a tap) and a lift leaves (`OnLeave`), so nothing stays lit after the finger is gone. One hover per controller: several fingers share it.
 
 **Only what shows takes the pointer** — an element (a widget or an interactive) whose object or any parent of it is not visible is not under the pointer: a click, a move, the wheel and a key pass to the next one there (`UIDefaultController.isShown(object)`). So two controls swapped in one place (Deal and Hit, Play and Pause, one hidden with `getObject().visible = false`) need no check of which sent the click, and an interactive in an `@()` arm that is not shown takes none. A widget that holds the mouse (a slider dragged) keeps it until its release, as before.
 

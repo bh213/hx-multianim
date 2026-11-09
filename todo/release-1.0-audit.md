@@ -361,7 +361,7 @@ before assigning a new ID.
 **UI:**
 - [ ] `PERF-10` `getBounds()`-allocating `containsPoint` for every widget on every mouse move (only
   UIInteractiveWrapper is alloc-free); `ControllerEventHandler` allocates per input event
-  (Lambda.map + Point + wrapper); drop-zone scan ~200 allocs/drag-move on a 10×10 grid; targeting
+  (Point + wrapper); drop-zone scan ~200 allocs/drag-move on a 10×10 grid; targeting
   arrow re-normalizes its path per mouse move; `addCell/removeCell` O(cells) refresh → grid
   `beginBatch()/endBatch()`.
 

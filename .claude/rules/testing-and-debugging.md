@@ -59,6 +59,7 @@ Hot-path classes carry static `creationCount` counters (incremented in their con
 | `bh.ui.UICardHandTypes.CardLayoutPosition` | `src/bh/ui/UICardHandTypes.hx` | hover hit-test on hand |
 | `bh.ui.UICardHandLayout.scratchArrayAllocationCount` | `src/bh/ui/UICardHandLayout.hx` | path-layout sample buffers |
 | `bh.ui.UIMultiAnimGridTypes.CellCoord` | `src/bh/ui/UIMultiAnimGridTypes.hx` | grid hit-test per mouse-move / drag-tick |
+| `bh.ui.ControllerEventHandler.controllerListCount` | `src/bh/ui/ControllerEventHandler.hx` | every input event: lists of controllers made (0 per event but one raised during another) |
 
 **Convention for adding a new counter:**
 

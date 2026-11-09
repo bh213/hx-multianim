@@ -125,14 +125,51 @@ class UIDefaultController implements UIController {
 	var _hitsPos:Null<Point> = null;
 	final _hitsCallback:UIElement->Void;
 
-	// Stable sort comparator: higher eventPriority first, registration order as
-	// tiebreaker. Hoisted to a static field so it's allocated once per program
-	// rather than per getEventElements call.
+	// Stable sort comparator: higher eventPriority first, then the one drawn on top, registration
+	// order for two with no draw order between them. Hoisted to a static field so it's allocated
+	// once per program rather than per getEventElements call.
 	static final _priorityComparator:(UIElement, UIElement) -> Int = (a, b) -> {
 		final pa = Std.isOfType(a, UIElementPriority) ? (cast(a, UIElementPriority)).eventPriority : 0;
 		final pb = Std.isOfType(b, UIElementPriority) ? (cast(b, UIElementPriority)).eventPriority : 0;
-		return pb - pa;
+		return pa != pb ? pb - pa : compareDrawOrder(a.getObject(), b.getObject());
 	};
+
+	/**
+		Negative when `a` is drawn over `b`, positive when under it, 0 when neither can be told (no
+		object, or two objects in no one tree). Children are drawn in order, so of two under one parent
+		the later is on top (an `h2d.Layers` keeps its children sorted by layer), and a child over its
+		own parent.
+	**/
+	static function compareDrawOrder(a:Null<h2d.Object>, b:Null<h2d.Object>):Int {
+		if (a == null || b == null || a == b)
+			return 0;
+		final depthA = depthOf(a);
+		final depthB = depthOf(b);
+		var x:h2d.Object = a;
+		var y:h2d.Object = b;
+		for (_ in depthB...depthA)
+			x = x.parent;
+		for (_ in depthA...depthB)
+			y = y.parent;
+		if (x == y)
+			return depthB - depthA;
+		while (x.parent != y.parent) {
+			x = x.parent;
+			y = y.parent;
+		}
+		final parent = x.parent;
+		return parent == null ? 0 : parent.getChildIndex(y) - parent.getChildIndex(x);
+	}
+
+	static function depthOf(object:h2d.Object):Int {
+		var depth = 0;
+		var o = object.parent;
+		while (o != null) {
+			depth++;
+			o = o.parent;
+		}
+		return depth;
+	}
 
 	public function new(integration) {
 		this.integration = integration;
@@ -208,6 +245,10 @@ class UIDefaultController implements UIController {
 	}
 
 	public function handleClick(mousePoint:Point, button:Int, release:Bool, eventWrapper:EventWrapper) {
+		final touch = PointerEvent.isTouch(eventWrapper.sourceEvent);
+		// A finger arrives with its press: no move brought it over the control, as a mouse's does
+		if (touch && !release)
+			handleMove(mousePoint, eventWrapper);
 		final elements = getEventElements(mousePoint);
 		final topElement = elements.length > 0 ? elements[0] : null;
 		if (integration.dispatchMouseClick(mousePoint, button, release) == false) {
@@ -218,6 +259,8 @@ class UIDefaultController implements UIController {
 				for (value in triggeredElements)
 					handleEvent(value, OnReleaseOutside(button), mousePoint);
 			}
+			if (touch && release)
+				endHover(mousePoint);
 			return;
 		}
 		if (release) {
@@ -230,6 +273,17 @@ class UIDefaultController implements UIController {
 			if (handleEvent(element, release ? OnRelease(button) : OnPush(button), mousePoint))
 				break;
 		}
+		if (touch && release)
+			endHover(mousePoint);
+	}
+
+	/** A lifted finger is nowhere: unlike a mouse it will not move off what it was over. */
+	function endHover(pos:Point) {
+		final over = currentOver;
+		if (over == null)
+			return;
+		currentOver = null;
+		handleEvent(over, OnLeave, pos);
 	}
 
 	public function handleMouseWheel(mousePoint:Point, wheelDelta:Float, eventWrapper:EventWrapper) {

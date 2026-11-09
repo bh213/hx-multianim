@@ -6,6 +6,10 @@ import bh.ui.UIElement;
 import bh.ui.controllers.UIController;
 import bh.ui.controllers.UIDefaultController;
 import bh.ui.screens.UIScreen.LayersEnum;
+import bh.ui.screens.ScreenManager;
+import bh.ui.ControllerEventHandler;
+import bh.test.UITestHarness.UITestScreen;
+import hxd.Event.EventKind;
 
 /**
  * Mock element with configurable hit area, priority, and consumed behavior.
@@ -46,6 +50,51 @@ private class MockInteractive implements UIElement implements StandardUIElementE
 
 	public function clearReceived():Void {
 		receivedEvents = [];
+	}
+}
+
+/**
+ * Mock element standing in a real scene graph, so what is drawn over what can be told.
+ */
+private class MockDrawnInteractive extends MockInteractive {
+	final object:h2d.Object;
+
+	public function new(name:String, parent:h2d.Object) {
+		super(name, 0, 0, 100, 100);
+		this.object = new h2d.Object(parent);
+	}
+
+	override public function getObject():h2d.Object return object;
+}
+
+/**
+ * Controller that only records where the screens' event handler says a pointer event happened.
+ */
+private class PointRecordingController extends UIDefaultController {
+	public final points:Array<Point> = [];
+	public var onClick:Null<Void->Void> = null;
+
+	override public function handleClick(mousePoint:Point, button:Int, release:Bool, eventWrapper:EventWrapper):Void {
+		points.push(mousePoint.clone());
+		if (onClick != null)
+			onClick();
+	}
+
+	override public function handleMove(mousePoint:Point, eventWrapper:EventWrapper):Void {
+		points.push(mousePoint.clone());
+	}
+}
+
+private class PointRecordingScreen extends UITestScreen {
+	public final recording:PointRecordingController;
+
+	public function new() {
+		super();
+		recording = new PointRecordingController(new MockIntegration());
+	}
+
+	override public function getController():UIController {
+		return recording;
 	}
 }
 
@@ -139,6 +188,8 @@ private class MockCapturingWidget implements UIElement implements StandardUIElem
 private class MockIntegration implements UIControllerScreenIntegration {
 	public var elements:Array<UIElement> = [];
 	public var dispatchedEvents:Array<UIScreenEvent> = [];
+	/** A component takes the release, as a card hand does at the end of a drag. */
+	public var consumeRelease:Bool = false;
 
 	public function new() {}
 
@@ -153,7 +204,7 @@ private class MockIntegration implements UIControllerScreenIntegration {
 	public function onKey(keyCode:Int, release:Bool):Bool return true;
 	public function dispatchMouseMove(pos:Point):Bool return true;
 	public function onMouseWheel(pos:Point, delta:Float):Bool return true;
-	public function dispatchMouseClick(pos:Point, button:Int, release:Bool):Bool return true;
+	public function dispatchMouseClick(pos:Point, button:Int, release:Bool):Bool return !(release && consumeRelease);
 }
 
 /**
@@ -221,12 +272,52 @@ class EventPriorityTest extends utest.Test {
 		controller = new UIDefaultController(integration);
 	}
 
+	final disposals:Array<Void->Void> = [];
+
+	function teardown():Void {
+		for (dispose in disposals)
+			dispose();
+		disposals.resize(0);
+	}
+
 	static function eventWrapper():EventWrapper {
 		return {
 			sourceEvent: new hxd.Event(hxd.Event.EventKind.EPush),
 			mousePoint: new Point(0, 0),
 			scene: null
 		};
+	}
+
+	static function touchWrapper(kind:EventKind):EventWrapper {
+		final event = new hxd.Event(kind);
+		event.touchId = 1;
+		return {sourceEvent: event, mousePoint: new Point(0, 0), scene: null};
+	}
+
+	static function eventNames(element:MockInteractive):Array<String> {
+		return [for (e in element.receivedEvents) Type.enumConstructor(e)];
+	}
+
+	/** The screens' event handler over a scene zoomed by 2, and where it says each event happened. */
+	function handlerOverZoomedScene():{scene:h2d.Scene, handler:ControllerEventHandler, manager:ScreenManager, points:Array<Point>} {
+		final sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
+		final scene = new h2d.Scene();
+		scene.scaleMode = h2d.Scene.ScaleMode.Zoom(2);
+		scene.syncOnly(0);
+		final handler = new ControllerEventHandler(scene, hxd.Window.getInstance(), sm);
+		disposals.push(() -> {
+			handler.dispose();
+			sm.dispose();
+		});
+		final screen = new PointRecordingScreen();
+		@:privateAccess sm.activeScreenControllers = [screen];
+		return {scene: scene, handler: handler, manager: sm, points: screen.recording.points};
+	}
+
+	static function recordingScreens(manager:ScreenManager, count:Int):Array<PointRecordingScreen> {
+		final screens = [for (_ in 0...count) new PointRecordingScreen()];
+		@:privateAccess manager.activeScreenControllers = [for (s in screens) (s : bh.ui.screens.UIScreen)];
+		return screens;
 	}
 
 	// ==================== Priority Ordering ====================
@@ -267,6 +358,74 @@ class EventPriorityTest extends utest.Test {
 		// Both at priority 0, first registered wins (consumed by default)
 		Assert.equals(1, first.receivedEvents.length);
 		Assert.equals(0, second.receivedEvents.length);
+	}
+
+	// ==================== Draw Order Among Equal Priorities ====================
+
+	@Test
+	public function testEqualPriorityTheOneDrawnOnTopTakesTheClick():Void {
+		final root = new h2d.Object();
+		// Made first, so registered first, and drawn under what is made after it
+		final blocker = new MockDrawnInteractive("blocker", root);
+		final button = new MockDrawnInteractive("button", root);
+		integration.elements = [blocker, button];
+
+		controller.handleClick(new Point(50, 50), 0, false, eventWrapper());
+
+		Assert.equals(1, button.receivedEvents.length, "the button is drawn over the blocker: the click is the button's");
+		Assert.equals(0, blocker.receivedEvents.length, "the blocker drawn under the button takes nothing");
+	}
+
+	@Test
+	public function testEqualPriorityDrawOrderFollowsLayersAndNesting():Void {
+		final root = new h2d.Layers();
+		final upper = new h2d.Object();
+		final lower = new h2d.Object();
+		// Added first, on the higher layer: drawn last
+		root.add(upper, 5);
+		root.add(lower, 1);
+		final under = new MockDrawnInteractive("under", lower);
+		final over = new MockDrawnInteractive("over", new h2d.Object(upper));
+		integration.elements = [under, over];
+
+		controller.handleClick(new Point(50, 50), 0, false, eventWrapper());
+
+		Assert.equals(1, over.receivedEvents.length, "what stands in the higher layer is drawn on top, however deep");
+		Assert.equals(0, under.receivedEvents.length, "what stands in the lower layer takes nothing");
+	}
+
+	@Test
+	public function testEqualPriorityAnOverlaysButtonAnswersWithABlockerDeclaredBeforeIt():Void {
+		final result = bh.test.BuilderTestBase.buildFromSource('
+			#test programmable() {
+				interactive(100, 100, "confirm-block"): 0, 0
+				interactive(40, 20, "begin"): 10, 10
+			}
+		', "test");
+		for (obj in result.interactives)
+			integration.elements.push(new bh.ui.UIInteractiveWrapper(obj, null));
+
+		controller.handleClick(new Point(20, 15), 0, false, eventWrapper());
+
+		final pushed:Array<String> = [];
+		for (e in integration.dispatchedEvents)
+			switch e {
+				case UIInteractiveEvent(UIPush, id, _): pushed.push(id);
+				default:
+			}
+		Assert.same(["begin"], pushed, "the button declared after the full-screen blocker is drawn on it and takes the press");
+	}
+
+	@Test
+	public function testEqualPriorityAChildIsDrawnOverItsParent():Void {
+		final parent = new MockDrawnInteractive("parent", new h2d.Object());
+		final child = new MockDrawnInteractive("child", parent.getObject());
+		integration.elements = [parent, child];
+
+		controller.handleClick(new Point(50, 50), 0, false, eventWrapper());
+
+		Assert.equals(1, child.receivedEvents.length, "a child is drawn after its parent, so it is on top");
+		Assert.equals(0, parent.receivedEvents.length, "the parent under its child takes nothing");
 	}
 
 	// ==================== Consumed Bubbling ====================
@@ -494,6 +653,127 @@ class EventPriorityTest extends utest.Test {
 		for (e in bottom.receivedEvents) switch e { case OnEnter: bottomHasEnter = true; default: }
 		Assert.isFalse(bottomHasEnter);
 	}
+
+	// ==================== Touch ====================
+
+	@Test
+	public function testATouchArrivesWithItsPressAndLeavesNoHoverWhenItLifts():Void {
+		final button = new MockInteractive("button", 0, 0, 100, 100);
+		integration.elements = [button];
+		final finger = new Point(50, 50);
+
+		controller.handleClick(finger, 0, false, touchWrapper(EPush));
+		controller.handleClick(finger, 0, true, touchWrapper(ERelease));
+
+		Assert.same(["OnMouseMove", "OnEnter", "OnPush", "OnRelease", "OnLeave"], eventNames(button),
+			"a tap is a pointer that arrives, presses, releases and goes: nothing stays lit after the finger lifts");
+	}
+
+	@Test
+	public function testALiftAComponentConsumesStillLeavesNoHover():Void {
+		final button = new MockInteractive("button", 0, 0, 100, 100);
+		integration.elements = [button];
+		integration.consumeRelease = true;
+		final finger = new Point(50, 50);
+
+		controller.handleClick(finger, 0, false, touchWrapper(EPush));
+		controller.handleClick(finger, 0, true, touchWrapper(ERelease));
+
+		Assert.equals("OnLeave", eventNames(button).pop(), "a release taken by a component (a card hand's drag) still ends the hover");
+	}
+
+	@Test
+	public function testAMouseReleaseKeepsTheHover():Void {
+		final button = new MockInteractive("button", 0, 0, 100, 100);
+		integration.elements = [button];
+		final at = new Point(50, 50);
+
+		controller.handleMove(at, eventWrapper());
+		controller.handleClick(at, 0, false, eventWrapper());
+		controller.handleClick(at, 0, true, eventWrapper());
+
+		Assert.same(["OnMouseMove", "OnEnter", "OnPush", "OnRelease"], eventNames(button),
+			"a mouse is still there after its click, and so is its hover");
+	}
+
+	@Test
+	public function testATouchTakesItsOwnPlaceThroughTheScene():Void {
+		final zoomed = handlerOverZoomedScene();
+
+		for (kind in [EPush, EMove, ERelease]) {
+			final touch = new hxd.Event(kind, 100, 60);
+			touch.touchId = 1;
+			zoomed.handler.handleEvents(touch);
+			Assert.floatEquals(100, touch.relX, "the event goes on to Heaps' own scene events as it came");
+		}
+
+		Assert.equals(3, zoomed.points.length);
+		for (point in zoomed.points) {
+			Assert.floatEquals(50, point.x, "the finger at 100 in the window is at 50 in a scene zoomed by 2");
+			Assert.floatEquals(30, point.y, "the finger at 60 in the window is at 30 in a scene zoomed by 2");
+		}
+	}
+
+	@Test
+	public function testAMouseEventKeepsTheMousesPlace():Void {
+		final zoomed = handlerOverZoomedScene();
+
+		zoomed.handler.handleEvents(new hxd.Event(EPush, 100, 60));
+
+		Assert.equals(1, zoomed.points.length);
+		Assert.floatEquals(zoomed.scene.mouseX, zoomed.points[0].x, "a mouse event is placed where the mouse is");
+		Assert.floatEquals(zoomed.scene.mouseY, zoomed.points[0].y, "a mouse event is placed where the mouse is");
+	}
+
+	// ==================== The Event Handler's Controllers ====================
+
+	@Test
+	public function testAScreenLeavingDuringAnEventStillLetsTheRestHearIt():Void {
+		final zoomed = handlerOverZoomedScene();
+		final screens = recordingScreens(zoomed.manager, 3);
+		// What a screen switch does from a click handler
+		screens[0].recording.onClick = () -> {
+			@:privateAccess zoomed.manager.activeScreenControllers.remove(screens[0]);
+		};
+
+		zoomed.handler.handleEvents(new hxd.Event(EPush, 10, 10));
+
+		for (i in 0...3)
+			Assert.equals(1, screens[i].recording.points.length, 'screen $i hears the event as the event found the screens');
+	}
+
+	@Test
+	public function testAnEventRaisedDuringAnEventLeavesTheOuterOneWhole():Void {
+		final zoomed = handlerOverZoomedScene();
+		final screens = recordingScreens(zoomed.manager, 2);
+		var raised = false;
+		screens[0].recording.onClick = () -> {
+			if (!raised) {
+				raised = true;
+				zoomed.handler.handleEvents(new hxd.Event(EPush, 20, 20));
+			}
+		};
+
+		zoomed.handler.handleEvents(new hxd.Event(EPush, 10, 10));
+
+		Assert.equals(2, screens[0].recording.points.length, "the first screen hears the outer event and the one it raised");
+		Assert.equals(2, screens[1].recording.points.length, "the second screen hears the raised event and still the outer one");
+	}
+
+	#if MULTIANIM_ALLOC_TRACK
+	@Test
+	public function testTheEventHandlerMakesNoControllerListPerEvent():Void {
+		final zoomed = handlerOverZoomedScene();
+		zoomed.handler.handleEvents(new hxd.Event(EMove, 10, 10)); // warm-up
+
+		final baseline = ControllerEventHandler.controllerListCount;
+		for (_ in 0...50)
+			zoomed.handler.handleEvents(new hxd.Event(EMove, 10, 10));
+
+		final made = ControllerEventHandler.controllerListCount - baseline;
+		Assert.equals(0, made, "every mouse move comes through handleEvents, which must reuse its list of controllers. Got " + made + " across 50 events.");
+	}
+	#end
 
 	// ==================== eventPriority from .manim metadata ====================
 
