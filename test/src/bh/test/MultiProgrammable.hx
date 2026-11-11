@@ -965,6 +965,30 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/164-codegenParityReview/codegenParityReview.manim", "cpEllipse")
 	public var cpEllipse;
 
+	@:manim("test/examples/164-codegenParityReview/codegenParityReview.manim", "cpStringArith")
+	public var cpStringArith;
+
+	@:manim("test/examples/152-codegenCompileErrors/cg-string-arith.manim", "stringArith")
+	public var stringArith;
+
+	@:manim("test/examples/164-codegenParityReview/codegenParityReview.manim", "cpArrayRepeat")
+	public var cpArrayRepeat;
+
+	@:manim("test/examples/164-codegenParityReview/codegenParityReview.manim", "cpRepeatBodyText")
+	public var cpRepeatBodyText;
+
+	@:manim("test/examples/164-codegenParityReview/codegenParityReview.manim", "cpRepeatBodyTile")
+	public var cpRepeatBodyTile;
+
+	@:manim("test/examples/164-codegenParityReview/codegenParityReview.manim", "cpRepeatGate")
+	public var cpRepeatGate;
+
+	@:manim("test/examples/164-codegenParityReview/codegenParityReview.manim", "cpRepeat2dGate")
+	public var cpRepeat2dGate;
+
+	@:manim("test/examples/164-codegenParityReview/codegenParityReview.manim", "cpAlignedInStep")
+	public var cpAlignedInStep;
+
 	@:manim("test/examples/163-refsSlotsReview/refsSlotsReview.manim", "rsExclRef")
 	public var rsExclRef;
 

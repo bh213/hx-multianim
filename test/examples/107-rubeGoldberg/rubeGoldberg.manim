@@ -130,9 +130,10 @@ curves {
     }
     text(f3x5, "flow", #AAAAAA): 200, 130
 
-    // Row 5: repeatable with $loopVar conditionals
+    // Row 5: repeatable with $loopVar conditionals. The first box is the accent's default written
+    // out: a param in the body of a repeat whose count is a param could not be set afterwards
     repeatable($i, step($count, dx: 35)) {
-        @($i => 0) bitmap(generated(color(20, 20, $accent))): 0, 150
+        @($i => 0) bitmap(generated(color(20, 20, #FF8800))): 0, 150
         @($i >= 1) bitmap(generated(color(20, 20, #00FFFF))): 0, 150
     }
     text(f3x5, "repeatable", #AAAAAA): 0, 175

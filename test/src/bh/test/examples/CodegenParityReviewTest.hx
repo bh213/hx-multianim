@@ -1146,4 +1146,155 @@ class CodegenParityReviewTest extends BuilderTestBase {
 		inst.setParameter("a", 0.8);
 		Assert.floatEquals(0.8, point.alpha, 0.001, "codegen: a change of $a applies it");
 	}
+
+	// ==================== Arithmetic where a string is wanted ====================
+
+	/** The text of each h2d.Text under `root`, in scene-graph order. */
+	static function texts(root:h2d.Object):String {
+		return [for (t in BuilderTestBase.findAllTextDescendants(root)) t.text].join(",");
+	}
+
+	/** The value of `key` in the metadata of the first interactive of `live`, as text. */
+	static function metadataText(live:bh.multianim.LiveProgrammable, key:String):String {
+		final hits = live.getInteractives();
+		if (hits.length == 0) return "no interactive";
+		return switch hits[0].multiAnimType {
+			case MAInteractive(_, _, _, metadata):
+				if (metadata == null) "no metadata" else switch metadata.get(key) {
+					case RSVString(s): s;
+					case other: "not a string: " + Std.string(other);
+				}
+			default: "not an interactive";
+		};
+	}
+
+	@Test
+	public function testArithmeticInAStringContext_CodegenGivesTheBuildersInteger():Void {
+		final built = BuilderTestBase.buildFromFile(FIXTURE, "cpStringArith", null, Incremental);
+		final inst:Dynamic = createMp().cpStringArith.create();
+		Assert.equals("2", metadataText(built, "half"), "builder: 5 / 2 where a string is wanted is the integer 2");
+		Assert.equals("4", metadataText(built, "twice"), "builder: 2.5 * 2 there is 4, the operand truncated first");
+		for (key in ["half", "twice", "rest", "less"])
+			Assert.equals(metadataText(built, key), metadataText(cast inst, key), 'codegen: "$key" reads as in the builder');
+	}
+
+	/** The same in a text's content, where a number written out is kept as text ("2"). The builder
+	 *  side of test/examples/152-codegenCompileErrors/hosts/CgStringArithHost.hx, which checks
+	 *  that codegen compiles the same programmable. */
+	@Test
+	public function testArithmeticInATextWithAWrittenNumber_Builder_IsAnInteger():Void {
+		final built = BuilderTestBase.buildFromFile("test/examples/152-codegenCompileErrors/cg-string-arith.manim", "stringArith", null, Incremental);
+		Assert.equals("10,2,4,2,2,2.5,6", texts(built.object), "builder: 5 * 2, 5 / 2, 5 - 1, 5 % 3 and 5 div 2, then (5 / 2) and (5 + 1) as numbers");
+	}
+
+	@Test
+	public function testArithmeticInATextWithAWrittenNumber_Codegen_IsTheBuildersInteger():Void {
+		final inst:Dynamic = createMp().stringArith.create();
+		Assert.equals("10,2,4,2,2,2.5,6", texts(cast inst), "codegen: as the builder");
+		inst.setParameter("a", 9);
+		Assert.equals("18,4,8,0,4,4.5,10", texts(cast inst), "codegen: and when $a changes");
+	}
+
+	// ==================== A repeat over an array parameter ====================
+
+	@Test
+	public function testArrayRepeat_Builder_IsBuiltAgainWhenTheArrayIsSet():Void {
+		final built = BuilderTestBase.buildFromFile(FIXTURE, "cpArrayRepeat", null, Incremental);
+		Assert.equals("one,two,three", texts(built.object), "builder: one text an item");
+		built.setParameter("items", ["a", "b"]);
+		Assert.equals("a,b", texts(built.object), "builder: fewer items, other values");
+		built.setParameter("items", ["x", "y", "z", "w"]);
+		Assert.equals("x,y,z,w", texts(built.object), "builder: more items");
+	}
+
+	@Test
+	public function testArrayRepeat_Codegen_IsBuiltAgainWhenTheArrayIsSet():Void {
+		final inst:Dynamic = createMp().cpArrayRepeat.create(["one", "two", "three"]);
+		Assert.equals("one,two,three", texts(cast inst), "codegen: one text an item");
+		inst.setParameter("items", ["a", "b"]);
+		Assert.equals("a,b", texts(cast inst), "codegen: fewer items, other values, as the builder builds them again");
+		inst.setItems(["x", "y", "z", "w"]);
+		Assert.equals("x,y,z,w", texts(cast inst), "codegen: more items, through the typed setter");
+	}
+
+	// ==================== A parameter only the body of a param-count repeat uses ====================
+
+	@Test
+	public function testBodyOnlyTextParamInAParamCountRepeat_Builder_IsRefused():Void {
+		final built = BuilderTestBase.buildFromFile(FIXTURE, "cpRepeatBodyText", null, Incremental);
+		final err = errorOf(() -> built.setParameter("label", "b"));
+		Assert.isTrue(isUntrackedParamError(err),
+			'builder: the body is built again only when $$n changes, so setting $$label is refused (untracked_param), not left stale; got $err, the texts read "' + texts(built.object) + '"');
+	}
+
+	@Test
+	public function testBodyOnlyTextParamInAParamCountRepeat_Codegen_IsRefused():Void {
+		final inst:Dynamic = createMp().cpRepeatBodyText.create();
+		final err = errorOf(() -> inst.setParameter("label", "b"));
+		Assert.isTrue(isUntrackedParamError(err),
+			'codegen: setting $$label is refused as in the builder, not left stale; got $err, the texts read "' + texts(cast inst) + '"');
+	}
+
+	@Test
+	public function testBodyOnlyTileParamInAParamCountRepeat_Builder_IsRefused():Void {
+		final built = BuilderTestBase.buildFromFile(FIXTURE, "cpRepeatBodyTile", null, Incremental);
+		final err = errorOf(() -> built.setParameter("w", 7));
+		Assert.isTrue(isUntrackedParamError(err),
+			'builder: setting $$w, a tile\'s size in the body, is refused (untracked_param), not left stale; got $err, the widths are ' + widths(built.object));
+	}
+
+	@Test
+	public function testBodyOnlyTileParamInAParamCountRepeat_Codegen_IsRefused():Void {
+		final inst:Dynamic = createMp().cpRepeatBodyTile.create();
+		final err = errorOf(() -> inst.setParameter("w", 7));
+		Assert.isTrue(isUntrackedParamError(err),
+			'codegen: setting $$w is refused as in the builder, not left stale; got $err, the widths are ' + widths(cast inst));
+	}
+
+	// ==================== A constant repeat with a conditional on a parameter in its body ====================
+
+	@Test
+	public function testConstantRepeatWithAGate_Builder_BodyFollowsEveryParamItUses():Void {
+		final built = BuilderTestBase.buildFromFile(FIXTURE, "cpRepeatGate", null, Incremental);
+		Assert.equals("3", widths(built.object), "builder: one item shown, 3 wide");
+		Assert.isNull(errorOf(() -> built.setParameter("w", 7)), "builder: $w can be set");
+		Assert.equals("7", widths(built.object), "builder: the body follows $w");
+	}
+
+	@Test
+	public function testConstantRepeat2dWithAGate_Builder_BodyFollowsEveryParamItUses():Void {
+		final built = BuilderTestBase.buildFromFile(FIXTURE, "cpRepeat2dGate", null, Incremental);
+		Assert.equals("3,3", widths(built.object), "builder: one column of two shown, 3 wide");
+		final err = errorOf(() -> built.setParameter("w", 7));
+		Assert.isNull(err, 'builder: $$w can be set, as in a repeat of one dimension; got $err');
+		Assert.equals("7,7", widths(built.object), "builder: the body follows $w, as in a repeat of one dimension");
+	}
+
+	@Test
+	public function testConstantRepeatWithAGate_Codegen_BodyFollowsEveryParamItUses():Void {
+		final one:Dynamic = createMp().cpRepeatGate.create();
+		one.setParameter("w", 7);
+		Assert.equals("7", widths(cast one), "codegen: the body follows $w");
+		final two:Dynamic = createMp().cpRepeat2dGate.create();
+		two.setParameter("w", 7);
+		Assert.equals("7,7", widths(cast two), "codegen: and in two dimensions");
+	}
+
+	// ==================== An aligned layout point inside a repeat with step offsets ====================
+
+	@Test
+	public function testAlignedLayoutPointInAStepRepeat_CodegenPlacesEachItemAsTheBuilderDoes():Void {
+		final s2d = bh.test.VisualTestBase.appInstance.s2d;
+		final builder = BuilderTestBase.builderFromFile(FIXTURE);
+		final built = builder.buildWithParameters("cpAlignedInStep", new Map(), {scene: s2d}, null, true);
+		// A codegen instance takes its aligned positions when it is added to a scene
+		final inst:h2d.Object = cast createMp().cpAlignedInStep.create();
+		s2d.addChild(inst);
+		final builderXs = bitmapXs(built.object);
+		final codegenXs = bitmapXs(inst);
+		inst.remove();
+		final right = Std.int(s2d.width) - 40;
+		Assert.equals([right, right + 20, right + 40].join(","), builderXs, "builder: 40 in from the right edge, each item 20 further");
+		Assert.equals(builderXs, codegenXs, "codegen: each item keeps its step offset from the aligned point");
+	}
 }

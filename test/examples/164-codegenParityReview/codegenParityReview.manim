@@ -9,6 +9,8 @@ layouts {
     point: 300, 200
     point: 500, 200
   }
+  // 40 in from the right edge of the scene
+  #cpFromRight point: 40, 10 align: right
 }
 
 // A layout point picked by a param: the bitmap sits on point $idx and moves with it.
@@ -432,4 +434,46 @@ layouts {
 // An ellipse is centred on its position, its radii 20 and 10, as a circle is (request 37)
 #cpEllipse programmable() {
   #shape graphics(ellipse(#FFFFFF, filled, 20, 10): 0, 0): 50, 50
+}
+// Arithmetic where a string is wanted (an interactive's metadata value) is worked out as an
+// integer, each operand truncated first: 5 / 2 is "2", 2.5 * 2 is "4"
+#cpStringArith programmable(a:int=5, f:float=2.5) {
+  interactive(10, 10, "hit", half => $a / 2, twice => $f * 2, rest => $a % 3, less => $a - 1): 0, 0
+}
+// A repeat over an array parameter is built again when the array is set
+#cpArrayRepeat programmable(items:array=[one, two, three]) {
+  repeatable($i, array($v, $items)) {
+    text(dd, $v, white, left): 0, $i * 12
+  }
+}
+// A repeat whose count is a parameter: its body is built again only when the count changes, so a
+// parameter only the body uses (a text, a tile's size) cannot be set afterwards
+#cpRepeatBodyText programmable(n:uint=2, label:string="a") {
+  repeatable($i, step($n, dx: 10)) {
+    text(dd, $label, white, left): 0, 0
+  }
+}
+#cpRepeatBodyTile programmable(n:uint=2, w:uint=4) {
+  repeatable($i, step($n, dx: 10)) {
+    bitmap(generated(color($w, 4, #FFFFFF))): 0, 20
+  }
+}
+// A constant repeat with a conditional on a parameter in its body: the body follows every
+// parameter it uses, in one dimension and in two
+#cpRepeatGate programmable(level:uint=1, w:uint=3) {
+  repeatable($x, step(2, dx: 10)) {
+    @($x < $level) bitmap(generated(color($w, 4, #FFFFFF))): 0, 0
+  }
+}
+#cpRepeat2dGate programmable(level:uint=1, w:uint=3) {
+  repeatable2d($x, $y, step(2, dx: 10), step(2, dy: 10)) {
+    @($x < $level) bitmap(generated(color($w, 4, #FFFFFF))): 0, 0
+  }
+}
+// An element on an aligned layout point inside a repeat with step offsets: each item is moved by
+// its own offset from the point
+#cpAlignedInStep programmable() {
+  repeatable($i, step(3, dx: 20)) {
+    bitmap(generated(color(4, 4, #FFFFFF))): layout(cpFromRight)
+  }
 }

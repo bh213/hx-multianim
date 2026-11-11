@@ -1450,6 +1450,11 @@ class IncrementalUpdateContext {
 		}
 	}
 
+	/** Whether setting `paramName` is refused (markParamUntracked). */
+	public function isParamUntracked(paramName:String):Bool {
+		return untrackedParams.exists(paramName);
+	}
+
 	/** A rejected value (untracked_param, unknown_param, invalid_param_value) throws before
 	 *  anything is stored. Inside a batch the batch stays open, as in codegen: the values set
 	 *  before and after the throw are applied by the caller's endUpdate. */
@@ -7900,6 +7905,7 @@ class MultiAnimBuilder {
 					// repeatParamRefs above) MUST be excluded — they are not stale.
 					for (childNode in node.children)
 						markUntrackedParamsInSubtree(childNode, savedIncrementalCtx, varName, repeatParamRefs);
+					markUntrackedBodyParams(node.children, savedIncrementalCtx, repeatParamRefs);
 					incrementalMode = false;
 				}
 
@@ -8314,8 +8320,26 @@ class MultiAnimBuilder {
 				collectIteratorRefs(repeatTypeY);
 				// Also collect param refs from conditions inside children (e.g. @($x < $level)
 				// references $level) so changing them triggers a rebuild even with constant counts.
-				if (incrementalMode && incrementalContext != null) {
+				final repeat2dCtx = incrementalContext;
+				if (incrementalMode && repeat2dCtx != null) {
+					// The context's own params among the refs so far (a loop variable is none)
+					inline function ownParamCount():Int {
+						var n = 0;
+						for (r in expandFinalAliases(repeatParamRefs))
+							if (r != varNameX && r != varNameY && repeat2dCtx.hasParameter(r)) n++;
+						return n;
+					}
+					final countParamCount = ownParamCount();
 					collectChildConditionalParamRefs(node.children, repeatParamRefs);
+					// Constant counts rebuilt whole for such a conditional: every param the body uses
+					// triggers the rebuild too, as in REPEAT (codegen tracks each). Param-dependent
+					// counts keep rejecting body-only params.
+					if (countParamCount == 0 && ownParamCount() > 0) {
+						final bodyRefs:Array<String> = [];
+						collectSubtreeParamRefs(node.children, bodyRefs);
+						for (r in expandFinalAliases(bodyRefs))
+							if (repeat2dCtx.hasParameter(r) && repeatParamRefs.indexOf(r) < 0) repeatParamRefs.push(r);
+					}
 					repeatParamRefs.remove(varNameX); // exclude loop variables — not settable parameters
 					repeatParamRefs.remove(varNameY);
 				}
@@ -8332,6 +8356,7 @@ class MultiAnimBuilder {
 					final excludeRefs = repeatParamRefs.concat([varNameY]);
 					for (childNode in node.children)
 						markUntrackedParamsInSubtree(childNode, savedIncrementalCtx, varNameX, excludeRefs);
+					markUntrackedBodyParams(node.children, savedIncrementalCtx, repeatParamRefs);
 					incrementalMode = false;
 				}
 
@@ -11516,6 +11541,25 @@ class MultiAnimBuilder {
 		if (node.children != null) {
 			for (child in node.children)
 				markUntrackedParamsInSubtree(child, ctx, excludeVar, rebuildRefs);
+		}
+	}
+
+	/** After markUntrackedParamsInSubtree, which names the slot for the kinds it knows: every other
+	 *  param the body of a param-dependent repeat uses (a text, a tile, a size, a graphics value…;
+	 *  collectNodeParamRefs reads every kind) is frozen as well, built again only when a param in
+	 *  `rebuildRefs` changes. A name that is no param of the context (a loop variable, an inner
+	 *  repeat's) is left alone. */
+	function markUntrackedBodyParams(children:Array<Node>, ctx:IncrementalUpdateContext, rebuildRefs:Array<String>):Void {
+		if (children == null || ctx == null) return;
+		final bodyRefs:Array<String> = [];
+		for (child in children)
+			for (r in collectNodeParamRefs(child))
+				if (bodyRefs.indexOf(r) < 0) bodyRefs.push(r);
+		for (r in expandFinalAliases(bodyRefs)) {
+			if (indexedParams.get(r)?.match(ExpressionAlias(_)) == true) continue;
+			if (rebuildRefs.indexOf(r) >= 0) continue;
+			if (!ctx.hasParameter(r) || ctx.isParamUntracked(r)) continue;
+			ctx.markParamUntracked(r, "param-dep repeat: a value in its body");
 		}
 	}
 

@@ -3415,6 +3415,7 @@ class ProgrammableCodeGen {
 			final rebuildTriggeredRefs = countParamRefs.concat(forcedRefs);
 			for (child in node.children)
 				recordUntrackedParamsInSubtree(child, rebuildTriggeredRefs);
+			recordUntrackedBodyParams(node.children, rebuildTriggeredRefs);
 		}
 
 		// Persistent sink holding slots / dynamicRefs / indexed names produced by the runtime
@@ -3989,14 +3990,50 @@ class ProgrammableCodeGen {
 				final arrayRef = macro $p{["this", arrayField]};
 				final valAssign:Expr = macro final _rt_val = arr[_rt_i];
 				final arrayLoopBody:Expr = {expr: EBlock([valAssign, loopBody]), pos: pos};
-				ctorExprs.push(macro {
-					final arr:Array<String> = $arrayRef;
-					if (arr != null) {
-						for (_rt_i in 0...arr.length) {
-							$arrayLoopBody;
-						}
-					}
-				});
+				// The array is the repeat's count (builder parity): the items are built again when it
+				// is set, and when a conditional in the body flips. Any other param the body uses is
+				// frozen, as in a repeat whose count is a param.
+				final condRefs:Array<String> = [];
+				if (node.children != null)
+					for (child in node.children)
+						collectSubtreeConditionalRefs(child, condRefs);
+				final forcedRefs = [for (r in condRefs) if (r != arrayName) r];
+				if (node.children != null) {
+					final rebuildTriggeredRefs = [arrayName].concat(forcedRefs);
+					for (child in node.children)
+						recordUntrackedParamsInSubtree(child, rebuildTriggeredRefs);
+					recordUntrackedBodyParams(node.children, rebuildTriggeredRefs);
+				}
+				final rebuildMethodName = "_rebuildArrayRepeat_" + containerName;
+				final builtField = rebuildMethodName + "_built";
+				final builtArrayField = rebuildMethodName + "_arr";
+				fields.push(makeField(builtField, FVar(macro :Bool, macro false), [APrivate], pos));
+				fields.push(makeField(builtArrayField, FVar(macro :Array<String>, null), [APrivate], pos));
+				final rebuildBody:Array<Expr> = [];
+				rebuildBody.push(macro final arr:Array<String> = $arrayRef);
+				rebuildBody.push(macro if (!_rt_force && $p{["this", builtField]} && arr == $p{["this", builtArrayField]}) return);
+				if (inFlow) {
+					// Held, with its items, by a hidden enclosing spliced repeat: built by the pass that
+					// shows it (the trackers stay as they are), as rebuildRepeatChildren does
+					rebuildBody.push(macro if ($containerRef.parent == null && $containerRef.held.length == 0) return);
+				}
+				rebuildBody.push(macro $p{["this", builtField]} = true);
+				rebuildBody.push(macro $p{["this", builtArrayField]} = arr);
+				rebuildBody.push(inFlow ? macro $containerRef.removeItems() : macro $containerRef.removeChildren());
+				rebuildBody.push(macro if (arr != null) for (_rt_i in 0...arr.length) $arrayLoopBody);
+				if (inFlow)
+					rebuildBody.push(macro $containerRef.spliceChildren());
+				fields.push(makeMethod(rebuildMethodName, rebuildBody, [{name: "_rt_force", type: macro :Bool}], macro :Void, [APrivate], pos));
+				ctorExprs.push(macro $i{rebuildMethodName}(false));
+				var forceExpr:Expr = macro false;
+				if (forcedRefs.length > 0) {
+					repeatForceUsesChangedParam = true;
+					forceExpr = macro _changedParam == null;
+					for (r in forcedRefs)
+						forceExpr = macro $forceExpr || _changedParam == $v{r};
+				}
+				repeatRebuildEntries.push({callExpr: macro $i{rebuildMethodName}($forceExpr)});
+				return;
 
 			default:
 		}
@@ -4706,6 +4743,19 @@ class ProgrammableCodeGen {
 		}
 	}
 
+	/** After recordUntrackedParamsInSubtree, which names the slot for the kinds it knows: every other
+	 *  param the body of a runtime-rebuilt repeat uses (a text, a tile, a size, a graphics value…;
+	 *  collectArmParamRefs reads every kind) is frozen as well, the body built again only when a
+	 *  param in `rebuildRefs` changes. Mirrors MultiAnimBuilder.markUntrackedBodyParams. */
+	static function recordUntrackedBodyParams(children:Array<Node>, rebuildRefs:Array<String>):Void {
+		if (children == null) return;
+		final refs:Array<String> = [];
+		collectArmParamRefs(children, refs);
+		final kept = [for (r in refs) if (rebuildRefs.indexOf(r) < 0 && !untrackedParamRefs.exists(r)) r];
+		if (kept.length > 0)
+			recordUntrackedParams(kept, "param-dep repeat: a value in its body");
+	}
+
 	/** Fallback for unsupported repeat iterator types — empty container */
 	static function processRepeatFallback(node:Node, parentField:String, fields:Array<Field>, ctorExprs:Array<Expr>, siblings:Array<{node:Node, fieldName:String}>, pos:Position):Void {
 		final fieldName = "_e" + (elementCounter++);
@@ -4985,6 +5035,7 @@ class ProgrammableCodeGen {
 			final rebuildTriggeredRefs = triggerRefs2D.concat(forcedRefs2D);
 			for (child in node.children)
 				recordUntrackedParamsInSubtree(child, rebuildTriggeredRefs);
+			recordUntrackedBodyParams(node.children, rebuildTriggeredRefs);
 		}
 
 		// Persistent sink for slots / dynamicRefs / indexed names produced by the runtime fallback
@@ -8765,6 +8816,13 @@ class ProgrammableCodeGen {
 		return switch (rv) {
 			case RVInteger(i): macro $v{i};
 			case RVFloat(f): macro $v{Std.int(f)};
+			case RVString(s):
+				// A number written where a string is parsed is kept as text (builder: stringToInt)
+				final written = bh.multianim.ParseUtils.int32OrNull(s);
+				if (written != null) {
+					final n:Int = written;
+					macro $v{n};
+				} else macro Std.int(${rvToExpr(rv)});
 			case RVParenthesis(e): rvToExprInt(e);
 			case EUnaryOp(_, e): macro -(${rvToExprInt(e)});
 			case RVTernary(cond, ifTrue, ifFalse):
@@ -8882,6 +8940,11 @@ class ProgrammableCodeGen {
 					final left = rvToExpr(e1, forString);
 					final right = rvToExpr(e2, forString);
 					macro($left + $right);
+				} else if (forString && (op == OpSub || op == OpMul || op == OpDiv || op == OpMod || op == OpIntegerDiv)) {
+					// Where a string is wanted the builder works arithmetic out as an integer
+					// (resolveAsString: '' + resolveAsInteger): each operand truncated first, a
+					// number written out, kept there as the text "2", read as one.
+					macro Std.string(${rvToExprInt(rv)});
 				} else {
 					final left = rvToExpr(e1, false);
 					final right = rvToExpr(e2, false);
@@ -9439,6 +9502,14 @@ class ProgrammableCodeGen {
 	static function withIterationOffset(posExpr:Null<Expr>, fieldName:String, parentField:Null<String>):Null<Expr> {
 		if (parentField == null || parentField != iterationOffsetParent || (iterationOffsetX == 0 && iterationOffsetY == 0))
 			return posExpr;
+		// An aligned layout point is set when the instance is added to a scene (LayoutAlignRoot.onAdd
+		// sets the whole position): the offset goes with the entry, after the alignment
+		if (posExpr != null)
+			switch posExpr.expr {
+				case ECall({expr: EField(_, "addAlignEntry", _)}, [target, baseX, baseY, alignX, alignY, postX, postY]):
+					return macro this.addAlignEntry($target, $baseX, $baseY, $alignX, $alignY, $postX + $v{iterationOffsetX}, $postY + $v{iterationOffsetY});
+				default:
+			}
 		final fieldRef = macro $p{["this", fieldName]};
 		final shift = macro {
 			$fieldRef.x += $v{iterationOffsetX};
