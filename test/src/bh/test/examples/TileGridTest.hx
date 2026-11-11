@@ -121,7 +121,7 @@ class TileGridTest extends utest.Test {
 					final c = g.center(cx, cy);
 					final back = g.toCell(c.x, c.y);
 					if (back.x != cx || back.y != cy) {
-						if (wrong++ == 0) first = 'centre of ($cx, $cy) went to (${back.x}, ${back.y})';
+						if (wrong++ == 0) first = 'centre of ($cx, $cy) went to (' + back.x + ', ' + back.y + ')';
 					}
 					// a grid of points over the box: those inside the drawn shape go to the cell
 					final steps = 12;
@@ -133,11 +133,11 @@ class TileGridTest extends utest.Test {
 								continue;
 							final p = g.toCell(x, y);
 							if (p.x != cx || p.y != cy) {
-								if (wrong++ == 0) first = 'point $x, $y of ($cx, $cy) went to (${p.x}, ${p.y})';
+								if (wrong++ == 0) first = 'point $x, $y of ($cx, $cy) went to (' + p.x + ', ' + p.y + ')';
 							}
 						}
 				}
-			Assert.equals(0, wrong, '${entry.name}: $first');
+			Assert.equals(0, wrong, entry.name + ': $first');
 		}
 	}
 
@@ -154,8 +154,8 @@ class TileGridTest extends utest.Test {
 						final nb = around[d];
 						// the opposite direction leads back
 						final opposite = (d + Std.int(n / 2)) % n;
-						Assert.equals(cx, g.neighbourX(nb.x, nb.y, opposite), '${entry.name}: ($cx, $cy) ${g.directionName(d)} and back, x');
-						Assert.equals(cy, g.neighbourY(nb.x, nb.y, opposite), '${entry.name}: ($cx, $cy) ${g.directionName(d)} and back, y');
+						Assert.equals(cx, g.neighbourX(nb.x, nb.y, opposite), entry.name + ': ($cx, $cy) ' + g.directionName(d) + ' and back, x');
+						Assert.equals(cy, g.neighbourY(nb.x, nb.y, opposite), entry.name + ': ($cx, $cy) ' + g.directionName(d) + ' and back, y');
 					}
 					if (g.kind == Hex) {
 						// the six are the six nearest cells: their middles all within reach of a step
@@ -163,7 +163,7 @@ class TileGridTest extends utest.Test {
 						for (nb in around) {
 							final o = g.center(nb.x, nb.y);
 							final dist = Math.sqrt((o.x - c.x) * (o.x - c.x) + (o.y - c.y) * (o.y - c.y));
-							Assert.isTrue(dist < Math.max(g.tileWidth, g.tileHeight) * 1.01, '${entry.name}: ($cx, $cy) to (${nb.x}, ${nb.y}) is $dist');
+							Assert.isTrue(dist < Math.max(g.tileWidth, g.tileHeight) * 1.01, entry.name + ': ($cx, $cy) to (' + nb.x + ', ' + nb.y + ') is $dist');
 						}
 					}
 				}
@@ -344,7 +344,7 @@ class TileGridTest extends utest.Test {
 				if (s < 0 || s >= strips.length)
 					continue;
 				final after = map.actors.getChildIndex(actors[i]) > map.actors.getChildIndex(strips[s]);
-				Assert.equals(cell.inFront, after, 'the actor on (${cell.x}, ${cell.y}) and the strip of half column $k');
+				Assert.equals(cell.inFront, after, 'the actor on (' + cell.x + ', ' + cell.y + ') and the strip of half column $k');
 			}
 		}
 	}
@@ -427,8 +427,8 @@ class TileGridTest extends utest.Test {
 						differ++;
 					}
 				}
-			Assert.isTrue(drawn > 5000, '${m.name}: the map draws ($drawn pixels)');
-			Assert.equals(0, differ, '${m.name}: the trimmed sheet draws as the whole one ($first)');
+			Assert.isTrue(drawn > 5000, m.name + ': the map draws ($drawn pixels)');
+			Assert.equals(0, differ, m.name + ': the trimmed sheet draws as the whole one ($first)');
 		}
 	}
 
@@ -448,7 +448,7 @@ class TileGridTest extends utest.Test {
 				$rise
 				$more
 			}
-			#m tilemap { tileset: t size: ${levels[0].length}, ${levels.length} legend { ".": ground } terrain: [$rows] levels: [${[for (r in levels) '"$r"'].join(", ")}] }
+			#m tilemap { tileset: t size: ' + levels[0].length + ', ' + levels.length + ' legend { ".": ground } terrain: [$rows] levels: [' + ([for (r in levels) '"$r"'].join(", ")) + '] }
 		').buildTilemap("m");
 		return map;
 	}
@@ -522,8 +522,8 @@ class TileGridTest extends utest.Test {
 				ground: 0, 0, 32, 42  side: 32, 0, 32, 42  L: 64, 0, 32, 42  R: 96, 0, 32, 42  S: 128, 0, 32, 42  tower: 0, 42, 80, 100
 			}
 			#t tileset { $grid tileOffset: 0, 14 atlas: "blocks" terrain ground { cells: "ground" } $rise $more }
-			#m tilemap { tileset: t size: ${levels[0].length}, ${levels.length} legend { ".": ground } terrain: [$rows]
-				levels: [${[for (r in levels) '"$r"'].join(", ")}] $layer }
+			#m tilemap { tileset: t size: ' + levels[0].length + ', ' + levels.length + ' legend { ".": ground } terrain: [$rows]
+				levels: [' + ([for (r in levels) '"$r"'].join(", ")) + '] $layer }
 		').buildTilemap("m");
 		map.redraw();
 		return map;
@@ -608,7 +608,7 @@ class TileGridTest extends utest.Test {
 		for (i in 0...cells.length)
 			for (s in 0...2) {
 				final after = map.actors.getChildIndex(actors[i]) > map.actors.getChildIndex(strips[s]);
-				Assert.equals(cells[i].inFront[s], after, 'the actor on (${cells[i].x}, ${cells[i].y}) and strip $s');
+				Assert.equals(cells[i].inFront[s], after, 'the actor on (' + cells[i].x + ', ' + cells[i].y + ') and strip $s');
 			}
 	}
 
@@ -654,7 +654,7 @@ class TileGridTest extends utest.Test {
 		').buildTilemap("m");
 		roofed.redraw();
 		for (cell in [[1, 1], [2, 1], [1, 2], [2, 2]])
-			Assert.equals(2, count(roofed, cell[0], cell[1]), 'the roof\'s top on (${cell[0]}, ${cell[1]})');
+			Assert.equals(2, count(roofed, cell[0], cell[1]), 'the roof\'s top on (' + cell[0] + ', ' + cell[1] + ')');
 	}
 
 	public function testAnAnimatedTerrainIsDrawnInItsPlaceBackToFront() {
@@ -777,8 +777,8 @@ class TileGridTest extends utest.Test {
 		final map = (rows:Array<String>) -> builderFromSource('
 			#t tileset { grid: isometric, 132, 66 tileOffset: 0, 33 atlas: "isohex/isoCity"
 				terrain grass_bed { cells: "plaza" } terrain asphalt { cells: "asphalt" } terrain park { cells: "treeBlock" } }
-			#m tilemap { tileset: t size: ${rows[0].length}, ${rows.length} legend { "g": grass_bed, "a": asphalt, "t": park, " ": none }
-				terrain: [${[for (r in rows) '"$r"'].join(", ")}] }
+			#m tilemap { tileset: t size: ' + rows[0].length + ', ' + rows.length + ' legend { "g": grass_bed, "a": asphalt, "t": park, " ": none }
+				terrain: [' + ([for (r in rows) '"$r"'].join(", ")) + '] }
 		').buildTilemap("m");
 		final x = 210.0, y = 20.0;
 		final grid = map(["ag", "ga"]).grid;
@@ -806,7 +806,7 @@ class TileGridTest extends utest.Test {
 				];
 				final alone = drawnPixels(map(behind), x, y, 420, 320);
 				// 4 pixels in from the diamond's edge: an asphalt top's soft edge shows what is behind it
-				Assert.equals(0, differInside(whole, alone, grid, x, y, [[cx, cy]], 4), '($cx, $cy), a ${rows[cy].charAt(cx)}: its top drawn over what is behind it');
+				Assert.equals(0, differInside(whole, alone, grid, x, y, [[cx, cy]], 4), '($cx, $cy), a ' + rows[cy].charAt(cx) + ': its top drawn over what is behind it');
 			}
 	}
 
@@ -836,8 +836,8 @@ class TileGridTest extends utest.Test {
 				front.push([2, 2]);
 			final flat = drawnPixels(k.flat, k.x, k.y, 140, 120);
 			final raised = drawnPixels(k.raised, k.x, k.y, 140, 120);
-			Assert.equals(0, differInside(flat, raised, grid, k.x, k.y, front), '${k.name}: the tops of the cells in front of the raised one');
-			Assert.isTrue(differInside(flat, raised, grid, k.x, k.y, [[1, 1]]) > 0, '${k.name}: the raised cell is drawn lifted');
+			Assert.equals(0, differInside(flat, raised, grid, k.x, k.y, front), k.name + ': the tops of the cells in front of the raised one');
+			Assert.isTrue(differInside(flat, raised, grid, k.x, k.y, [[1, 1]]) > 0, k.name + ': the raised cell is drawn lifted');
 		}
 	}
 
@@ -928,15 +928,15 @@ class TileGridTest extends utest.Test {
 			#t tileset {
 				$grid
 				atlas: "walls"
-				terrain floor { cells: "${grid.indexOf("isometric") >= 0 ? "isoFloor" : "hexFloor"}" }
+				terrain floor { cells: "' + (grid.indexOf("isometric") >= 0 ? "isoFloor" : "hexFloor") + '" }
 				$rise
 				cell isoDoor { draw: side metadata { door:bool => true } }
 				cell gate { size: 2, 1 draw: side }
 				cell hexDrain { draw: side }
 			}
-			#m tilemap { tileset: t size: ${levels[0].length}, ${levels.length} legend { ".": floor } terrain: [${rows(levels, ".")}]
-				levels: [${rows(levels, "")}]
-				layer openings { legend { "d": isoDoor, "g": gate, "o": hexDrain } rows: [${rows(layer, "")}] } }
+			#m tilemap { tileset: t size: ' + levels[0].length + ', ' + levels.length + ' legend { ".": floor } terrain: [' + rows(levels, ".") + ']
+				levels: [' + rows(levels, "") + ']
+				layer openings { legend { "d": isoDoor, "g": gate, "o": hexDrain } rows: [' + rows(layer, "") + '] } }
 		').buildTilemap("m");
 		map.redraw();
 		return map;

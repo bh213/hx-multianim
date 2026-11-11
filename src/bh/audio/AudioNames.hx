@@ -65,14 +65,14 @@ class AudioNames {
 			switch node.type {
 				case SOUNDS(def):
 					for (s in def.sounds)
-						add(blockName, s.name, '$blockName.${s.name}');
+						add(blockName, s.name, '$blockName.' + s.name);
 					for (p in def.params) {
 						add("PARAM", p.name, p.name);
-						add("PARAM", '${blockName}_${p.name}', '$blockName.${p.name}');
+						add("PARAM", blockName + '_' + p.name, '$blockName.' + p.name);
 					}
 				case MUSIC(def):
 					for (t in def.tracks)
-						add(blockName, t.name, '$blockName.${t.name}');
+						add(blockName, t.name, '$blockName.' + t.name);
 				case MIX(def):
 					for (b in def.buses)
 						add("BUS", b.name, b.name);

@@ -90,7 +90,7 @@ class FilterManager {
 			factory: params -> {
 				final made = bh.base.shaders.BuiltinShaders.make(lower, params);
 				if (made == null)
-					throw 'The engine describes the shader "${info.name}" but has none by that name.';
+					throw 'The engine describes the shader "' + info.name + '" but has none by that name.';
 				made;
 			},
 			builtin: true,
@@ -147,7 +147,7 @@ class FilterManager {
 					throw 'Filter "$name": an argument by position cannot follow one by name.';
 				index = i;
 				if (index >= params.length)
-					throw 'Filter "$name" accepts at most ${params.length} argument(s), got ${names.length}.';
+					throw 'Filter "$name" accepts at most ' + params.length + ' argument(s), got ' + names.length + '.';
 			} else {
 				named = true;
 				final lower = argName.toLowerCase();
@@ -155,10 +155,10 @@ class FilterManager {
 					if (params[j].name.toLowerCase() == lower)
 						index = j;
 				if (index < 0)
-					throw 'Filter "$name" has no parameter "$argName"; it has ${[for (p in params) p.name].join(", ")}.';
+					throw 'Filter "$name" has no parameter "$argName"; it has ' + ([for (p in params) p.name].join(", ")) + '.';
 			}
 			if (indexes.contains(index))
-				throw 'Filter "$name": "${params[index].name}" is given twice.';
+				throw 'Filter "$name": "' + params[index].name + '" is given twice.';
 			indexes.push(index);
 		}
 		return indexes;
@@ -170,18 +170,18 @@ class FilterManager {
 		for (ref in refs) {
 			final reg = getFilter(ref.name);
 			if (reg == null) {
-				throw 'Unknown custom filter "${ref.name}" at ${ref.pos}. Register it via FilterManager.registerFilter().';
+				throw 'Unknown custom filter "' + ref.name + '" at ' + ref.pos + '. Register it via FilterManager.registerFilter().';
 			}
-			final indexes = try argIndexes(ref.name, reg.params, [for (a in ref.args) a.name]) catch (e:String) throw '$e At ${ref.pos}.';
+			final indexes = try argIndexes(ref.name, reg.params, [for (a in ref.args) a.name]) catch (e:String) throw '$e At ' + ref.pos + '.';
 			// Every parameter with no default is given: by position, as many as those; by name, each
 			var requiredCount = 0;
 			for (p in reg.params)
 				if (p.defaultValue == null) requiredCount++;
 			if (ref.args.length < requiredCount && !Lambda.exists(ref.args, a -> a.name != null))
-				throw 'Custom filter "${ref.name}" requires at least $requiredCount argument(s), got ${ref.args.length} at ${ref.pos}.';
+				throw 'Custom filter "' + ref.name + '" requires at least $requiredCount argument(s), got ' + ref.args.length + ' at ' + ref.pos + '.';
 			for (j in 0...reg.params.length)
 				if (reg.params[j].defaultValue == null && !indexes.contains(j))
-					throw 'Custom filter "${ref.name}" needs "${reg.params[j].name}" at ${ref.pos}.';
+					throw 'Custom filter "' + ref.name + '" needs "' + reg.params[j].name + '" at ' + ref.pos + '.';
 			// Types of what is written as it is ($param references are resolved when built)
 			for (i in 0...ref.args.length) {
 				final arg = ref.args[i];
@@ -189,7 +189,7 @@ class FilterManager {
 					continue;
 				final param = reg.params[indexes[i]];
 				if (!fits(arg, param.type))
-					throw 'Custom filter "${ref.name}" argument "${param.name}" expects ${param.type}, got ${arg.type} at ${ref.pos}.';
+					throw 'Custom filter "' + ref.name + '" argument "' + param.name + '" expects ' + param.type + ', got ' + arg.type + ' at ' + ref.pos + '.';
 				final choices = param.choices;
 				if (choices != null && arg.type == CFWord) {
 					final word = switch arg.value {
@@ -197,7 +197,7 @@ class FilterManager {
 						default: null;
 					};
 					if (word != null && !choices.contains(word))
-						throw 'Custom filter "${ref.name}" argument "${param.name}" is one of ${choices.join(", ")}, not "$word" at ${ref.pos}.';
+						throw 'Custom filter "' + ref.name + '" argument "' + param.name + '" is one of ' + choices.join(", ") + ', not "$word" at ' + ref.pos + '.';
 				}
 			}
 		}
@@ -261,7 +261,7 @@ class FilterManager {
 			final raw:Dynamic = given == null ? def.defaultValue : takesWord && given.word != null ? given.word : given.value;
 			if (raw == null) {
 				if (at < 0)
-					throw 'Custom filter "$name" missing required argument "${def.name}".';
+					throw 'Custom filter "$name" missing required argument "' + def.name + '".';
 				continue;
 			}
 			switch def.type {
@@ -277,14 +277,14 @@ class FilterManager {
 					final word = Std.string(raw);
 					final choices = def.choices;
 					if (choices != null && !choices.contains(word))
-						throw 'Custom filter "$name" argument "${def.name}" is one of ${choices.join(", ")}, not "$word".';
+						throw 'Custom filter "$name" argument "' + def.name + '" is one of ' + choices.join(", ") + ', not "$word".';
 					values[def.name] = word;
 				case CFPalette:
 					if (raw is Array)
 						values[def.name] = raw;
 					else {
 						if (palette == null)
-							throw 'Custom filter "$name" argument "${def.name}" names a palette, and none can be read here.';
+							throw 'Custom filter "$name" argument "' + def.name + '" names a palette, and none can be read here.';
 						values[def.name] = palette(Std.string(raw));
 					}
 			}

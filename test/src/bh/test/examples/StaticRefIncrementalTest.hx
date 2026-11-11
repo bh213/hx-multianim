@@ -91,7 +91,7 @@ class StaticRefIncrementalTest extends BuilderTestBase {
 					y += o.y;
 					o = o.parent;
 				}
-				'${Std.int(b.tile.width)}x${Std.int(b.tile.height)}@${Std.int(x)},${Std.int(y)}';
+				(Std.int(b.tile.width) + 'x' + Std.int(b.tile.height) + '@' + Std.int(x) + ',' + Std.int(y));
 			}
 		].join(" ");
 	}

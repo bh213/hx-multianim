@@ -1770,7 +1770,7 @@ class DevBridgeTest extends BuilderTestBase {
 		Assert.equals("devtest/reload-box.manim", same.file);
 
 		var changed:Dynamic = bridge.dispatch("reload", {file: "devtest/reload-box.manim", content: RELOAD_V2});
-		Assert.isTrue(changed.success, 'reload failed: ${haxe.Json.stringify(changed.errors)}');
+		Assert.isTrue(changed.success, 'reload failed: ' + haxe.Json.stringify(changed.errors));
 		var newBuilder:Null<MultiAnimBuilder> = null;
 		for (_ => b in bridge.screenManager.builders) newBuilder = b;
 		var rebuilt = newBuilder.buildWithParameters("box", new Map());
@@ -1793,7 +1793,7 @@ class DevBridgeTest extends BuilderTestBase {
 		Assert.isFalse(report.success);
 		var errors:Array<Dynamic> = report.errors;
 		Assert.equals(1, errors.length);
-		Assert.equals("parse", errors[0].errorType, 'got ${haxe.Json.stringify(errors[0])}');
+		Assert.equals("parse", errors[0].errorType, 'got ' + haxe.Json.stringify(errors[0]));
 		Assert.equals(3, errors[0].line);
 		Assert.equals("devtest/reload-broken.manim", errors[0].file);
 	}

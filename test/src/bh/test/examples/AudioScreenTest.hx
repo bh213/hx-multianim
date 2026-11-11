@@ -163,7 +163,7 @@ class AudioScreenTest extends utest.Test {
 		Assert.isNull(m.sm.audio.musicPlaying, "a click on the track that plays stops the music");
 		Assert.equals(1, m.log.stops("music.play").length);
 
-		final said = [for (l in m.sm.audio.history.slice(before)) if (l.kind == "music") '${l.name} ${l.detail}'];
+		final said = [for (l in m.sm.audio.history.slice(before)) if (l.kind == "music") (l.name + ' ' + l.detail)];
 		Assert.equals(3, said.length, 'the history says each: $said');
 		Assert.isTrue(StringTools.startsWith(said[0], "music.title crossfade"));
 		Assert.isTrue(StringTools.startsWith(said[1], "music.play crossfade"));

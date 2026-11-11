@@ -94,7 +94,7 @@ class NinePatchModesTest extends BuilderTestBase {
 	public function testBuilder_TilesByDefaultStretchesByWord():Void {
 		final result = BuilderTestBase.buildFromFile(FIXTURE, "ninePatchModes", null);
 		final grids = scaleGrids(result.object);
-		Assert.isTrue(grids.length >= 7, 'the fixture draws seven grids, got ${grids.length}');
+		Assert.isTrue(grids.length >= 7, 'the fixture draws seven grids, got ' + grids.length);
 		Assert.isTrue(grids[0].tileCenter && grids[0].tileBorders, "a ninepatch with no word tiles, as before");
 		Assert.isFalse(grids[1].tileCenter || grids[1].tileBorders, "`stretch` stretches the middle and the edges");
 		Assert.isTrue(grids[2].tileCenter && grids[2].tileBorders, "`tile` tiles");
@@ -160,7 +160,7 @@ class NinePatchModesTest extends BuilderTestBase {
 	public function testCodegen_ModesMatchTheBuilder():Void {
 		final inst:Dynamic = createMp().ninePatchModes.create();
 		final grids = scaleGrids(cast inst);
-		Assert.isTrue(grids.length >= 7, 'codegen draws seven grids, got ${grids.length}');
+		Assert.isTrue(grids.length >= 7, 'codegen draws seven grids, got ' + grids.length);
 		Assert.isTrue(grids[0].tileCenter && grids[0].tileBorders, "codegen: no word tiles");
 		Assert.isFalse(grids[1].tileCenter || grids[1].tileBorders, "codegen: `stretch` stretches");
 		Assert.isTrue(grids[2].tileCenter && grids[2].tileBorders, "codegen: `tile` tiles");

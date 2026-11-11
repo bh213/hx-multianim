@@ -156,7 +156,7 @@ class DataRegistry {
 			name: pick.name,
 			kind: "pick",
 			over: pick.table.name,
-			by: pick.through != null ? '${pick.through}.${pick.by}' : pick.by,
+			by: pick.through != null ? pick.through + '.' + pick.by : pick.by,
 			chance: pick.chance,
 			draws: pick.draws,
 			repeats: pick.repeats,

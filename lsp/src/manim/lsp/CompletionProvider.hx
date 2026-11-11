@@ -62,7 +62,7 @@ class CompletionProvider {
 		items.push(snippet("settings", "settings {\n\t$0\n}", "Component settings block"));
 		items.push(snippet("transition", "transition {\n\t$0\n}", "Animated parameter transitions"));
 		for (prop in ["filter:", "blendMode:", "scale:", "alpha:", "rotation:", "tint:", "layer:"])
-			items.push(kw(prop, 'Set ${prop.substr(0, prop.length - 1)}'));
+			items.push(kw(prop, 'Set ' + prop.substr(0, prop.length - 1)));
 		return items;
 	}
 

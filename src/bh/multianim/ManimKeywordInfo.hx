@@ -193,7 +193,7 @@ class ManimKeywordInfo {
 			case PPTArray: "array";
 			case PPTHexDirection: "hexDirection";
 			case PPTGridDirection: "gridDirection";
-			case PPTEnum(values): '[${values.join(",")}]';
+			case PPTEnum(values): '[' + values.join(",") + ']';
 			case PPTRange(from, to): '$from..$to';
 			case PPTFlags(bits): 'flags($bits)';
 		};
@@ -265,7 +265,7 @@ class ManimKeywordInfo {
 	/** One of the engine's shaders in a line: where it goes, what it does, and how it is written with its parameters by name. */
 	public static function shaderDescription(info:ShaderCatalog.ShaderInfo):String {
 		final params = [for (p in info.params) p.name].join(", ");
-		return 'Shader (${info.places.join(" or ")}): ${info.says}. ${info.name}($params), each by name or position'
+		return 'Shader (' + info.places.join(" or ") + '): ' + info.says + '. ' + info.name + '($params), each by name or position'
 			+ (info.time ? "; moves with the game's clock" : "");
 	}
 

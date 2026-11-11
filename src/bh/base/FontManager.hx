@@ -14,7 +14,7 @@ class FontManager {
 	public static function registerFont(name:String, font:h2d.Font, offsetX:Float = 0, offsetY:Float = 0) {
 		var lowerName = name.toLowerCase();
 		if (fontRegistry.exists(lowerName)) {
-			throw 'Font "${name}" is already registered. Use a different name or unregister the existing font first.';
+			throw 'Font "$name" is already registered. Use a different name or unregister the existing font first.';
 		}
 		if (offsetX != 0 || offsetY != 0) {
 			fontOffsets.set(lowerName, {wasX: @:privateAccess font.offsetX, wasY: @:privateAccess font.offsetY, offsetY: offsetY});
@@ -45,7 +45,7 @@ class FontManager {
 	public static function getFontByName(name:String):h2d.Font {
 		var font = fontRegistry.get(name.toLowerCase());
 		if (font == null) {
-			throw 'Font not found: ${name}. Make sure to register the font first using registerFont().';
+			throw 'Font not found: $name. Make sure to register the font first using registerFont().';
 		}
 		return font;
 	}

@@ -61,7 +61,7 @@ class IndexExpressionTest extends BuilderTestBase {
 			Assert.notNull(ref, '$label: card $k is there');
 			if (ref != null)
 				Assert.equals(((k % 3) * 20) + "," + (Std.int(k / 3) * 14), offsetToRoot(ref.object, root),
-					'$label: card $k is column ${k % 3} of row ${Std.int(k / 3)}');
+					'$label: card $k is column ' + (k % 3) + ' of row ' + Std.int(k / 3));
 		}
 		Assert.isFalse(live.hasDynamicRef("card " + count), '$label: no card $count');
 	}
@@ -108,10 +108,10 @@ class IndexExpressionTest extends BuilderTestBase {
 				final handle = slot("cell", cell);
 				Assert.notNull(handle, '$label: getSlot("cell", $cell)');
 				final pip = live.getNamedDrawn("pip", c + 1, row * 2);
-				Assert.notNull(pip, '$label: pip [${c + 1}, ${row * 2}]');
+				Assert.notNull(pip, '$label: pip [' + (c + 1) + ', ' + (row * 2) + ']');
 				if (pip != null)
-					Assert.equals((c * 10) + "," + (row * 10 + 80), offsetToRoot(pip, root), '$label: pip [${c + 1}, ${row * 2}] at its column and row');
-				Assert.isTrue(dyn.hasDynamicRef('ref2 $c ${row + 1}'), '$label: dynamicRef "ref2 $c ${row + 1}"');
+					Assert.equals((c * 10) + "," + (row * 10 + 80), offsetToRoot(pip, root), '$label: pip [' + (c + 1) + ', ' + (row * 2) + '] at its column and row');
+				Assert.isTrue(dyn.hasDynamicRef('ref2 $c ' + (row + 1)), '$label: dynamicRef "ref2 $c ' + (row + 1) + '"');
 				final mark = live.getNamedDrawn("mark", k);
 				Assert.notNull(mark, '$label: mark $k (a @final k = $$row * 3 + $$c as the index)');
 				if (mark != null)

@@ -535,12 +535,12 @@ class ParameterizedSlotTest extends BuilderTestBase {
 
 		final initial = slot.getInteractives();
 		Assert.equals(1, initial.length,
-			'expected 1 interactive (card_drop) initially with highlighted=false, got ${initial.length}');
+			'expected 1 interactive (card_drop) initially with highlighted=false, got ' + initial.length);
 
 		slot.setParameter("highlighted", true);
 		final afterFlip = slot.getInteractives();
 		Assert.equals(2, afterFlip.length,
-			'expected 2 interactives after highlighted=true (card_drop + card_glow), got ${afterFlip.length}');
+			'expected 2 interactives after highlighted=true (card_drop + card_glow), got ' + afterFlip.length);
 	}
 
 	@Test

@@ -481,7 +481,7 @@ private class MacroLexer {
 
 			// Unknown character — error loudly; silently skipping made typos
 			// (stray backticks, smart quotes) vanish without a diagnostic.
-			throw '$sourceName:$startLine:$startCol: Unknown character "${String.fromCharCode(c)}" (code $c)';
+			throw '$sourceName:$startLine:$startCol: Unknown character "' + String.fromCharCode(c) + '" (code $c)';
 		}
 		return new Token(TEof, line, pos - lineStart + 1);
 	}
@@ -602,7 +602,7 @@ class MacroManimParser {
 		switch def.type {
 			case PPTString | PPTEnum(_):
 			case other:
-				error('$kind($$$name): "$name" is a ${definitionTypeName(other)} parameter, and only a string or enum parameter names the programmable to place. To place the programmable $name, write $kind($name, ...) without the $$, or give the parameter another name');
+				error('$kind($$$name): "$name" is a ' + definitionTypeName(other) + ' parameter, and only a string or enum parameter names the programmable to place. To place the programmable $name, write $kind($name, ...) without the $$, or give the parameter another name');
 		}
 	}
 
@@ -672,7 +672,7 @@ class MacroManimParser {
 		function fixedWhenBuilt():String
 			return 'an index is fixed when the element is built and a parameter can change after. Use loop variables, numbers and @finals of those (@final cols = 3, then #$name[$$row * $$cols + $$c]), or a 2-D index #$name[$$x, $$y]';
 		function fail(msg:String):Void {
-			errorAtLine(at.line, at.col, '${indexedNameText(named)}: $msg');
+			errorAtLine(at.line, at.col, indexedNameText(named) + ': $msg');
 		}
 		function describe(rv:ReferenceableValue):String {
 			return switch rv {
@@ -686,7 +686,7 @@ class MacroManimParser {
 				case RVCallbacks(_, _) | RVCallbacksWithIndex(_, _, _): "a callback(…)";
 				case RVColor(_, _) | RVColorXY(_, _, _): "a palette colour";
 				case RVArray(_) | RVArrayReference(_): "an array";
-				case EBinop(_, _, _): '"${indexText(rv)}" (a comparison)';
+				case EBinop(_, _, _): '"' + indexText(rv) + '" (a comparison)';
 				default: indexText(rv);
 			}
 		}
@@ -702,9 +702,9 @@ class MacroManimParser {
 				case RVReference(v):
 					if (currentDefs != null && currentDefs.exists(v)) {
 						if (finalName == null)
-							fail('$$$v is a parameter, and ${fixedWhenBuilt()}');
+							fail('$$$v is a parameter, and ' + fixedWhenBuilt());
 						else
-							fail('@final $$$finalName uses the parameter $$$v, and ${fixedWhenBuilt()}');
+							fail('@final $$$finalName uses the parameter $$$v, and ' + fixedWhenBuilt());
 					}
 					final finalExpr = finalExprInScope(v, parent);
 					if (finalExpr != null) {
@@ -712,15 +712,15 @@ class MacroManimParser {
 							walk(finalExpr, v, chain.concat([v]));
 					} else if (scopeVars == null || !scopeVars.contains(v)) {
 						if (finalName == null)
-							fail('index variable $$$v is not a known loop variable or @final in this scope. ${uses()}');
+							fail('index variable $$$v is not a known loop variable or @final in this scope. ' + uses());
 						else
-							fail('@final $$$finalName uses $$$v, which is no loop variable or @final here. ${uses()}');
+							fail('@final $$$finalName uses $$$v, which is no loop variable or @final here. ' + uses());
 					}
 				default:
 					if (finalName == null)
-						fail('${describe(rv)} cannot be an index. ${uses()}');
+						fail(describe(rv) + ' cannot be an index. ' + uses());
 					else
-						fail('@final $$$finalName uses ${describe(rv)}, which cannot be part of an index. ${uses()}');
+						fail('@final $$$finalName uses ' + describe(rv) + ', which cannot be part of an index. ' + uses());
 			}
 		}
 		walk(index, null, []);
@@ -783,7 +783,7 @@ class MacroManimParser {
 			case TIdentifier(s) if (isKeyword(s, keyword)):
 				advance();
 			default:
-				error('expected "$keyword", got ${peek()}');
+				error('expected "$keyword", got ' + peek());
 		}
 	}
 
@@ -802,7 +802,7 @@ class MacroManimParser {
 
 	function posString():String {
 		final t = peekToken();
-		return '$sourceName:${t.line}:${t.col}';
+		return '$sourceName:' + t.line + ':' + t.col;
 	}
 
 	// ---- Utility ----
@@ -816,7 +816,7 @@ class MacroManimParser {
 	}
 
 	function generateUniqueName(id:Int, name:String, typeName:String):String {
-		return '${name}_${typeName}_${id}';
+		return name + '_' + typeName + '_$id';
 	}
 
 	// ---- Doc comments (`///`) ----
@@ -899,8 +899,8 @@ class MacroManimParser {
 			if (!importPaths.exists(e.alias)) {
 				final known = [for (k in importPaths.keys()) k];
 				known.sort(Reflect.compare);
-				errorAtLine(e.line, e.col, 'external(${e.alias}): the file imports no "${e.alias}" (import "file.manim" as "${e.alias}")'
-					+ (known.length > 0 ? '; it imports ${known.join(", ")}' : ""));
+				errorAtLine(e.line, e.col, 'external(' + e.alias + '): the file imports no "' + e.alias + '" (import "file.manim" as "' + e.alias + '")'
+					+ (known.length > 0 ? '; it imports ' + known.join(", ") : ""));
 			}
 	}
 
@@ -1096,7 +1096,7 @@ class MacroManimParser {
 				expect(TClosed);
 				return RVParenthesis(e);
 			default:
-				return error('expected integer or expression, got ${peek()}');
+				return error('expected integer or expression, got ' + peek());
 		}
 	}
 
@@ -1138,7 +1138,7 @@ class MacroManimParser {
 				expect(TClosed);
 				return RVParenthesis(e);
 			default:
-				return error('expected float or expression, got ${peek()}');
+				return error('expected float or expression, got ' + peek());
 		}
 	}
 
@@ -1270,7 +1270,7 @@ class MacroManimParser {
 				expect(TClosed);
 				return RVParenthesis(e);
 			default:
-				return error('expected string or reference, got ${peek()}');
+				return error('expected string or reference, got ' + peek());
 		}
 	}
 
@@ -1344,7 +1344,7 @@ class MacroManimParser {
 				}
 				return RVArray(arr);
 			default:
-				return error('expected value or expression, got ${peek()}');
+				return error('expected value or expression, got ' + peek());
 		}
 	}
 
@@ -1843,7 +1843,7 @@ class MacroManimParser {
 				advance();
 				return stringToInt("0x" + n);
 			default:
-				return error('expected integer, got ${peek()}');
+				return error('expected integer, got ' + peek());
 		}
 	}
 
@@ -1855,7 +1855,7 @@ class MacroManimParser {
 				advance();
 				return sign * stringToFloat(n);
 			default:
-				return error('expected number, got ${peek()}');
+				return error('expected number, got ' + peek());
 		}
 	}
 
@@ -1915,7 +1915,7 @@ class MacroManimParser {
 				advance();
 				return s;
 			default:
-				return error('expected identifier or string, got ${peek()}');
+				return error('expected identifier or string, got ' + peek());
 		}
 	}
 
@@ -1925,7 +1925,7 @@ class MacroManimParser {
 				advance();
 				return s;
 			default:
-				return error('expected $$reference, got ${peek()}');
+				return error('expected $$reference, got ' + peek());
 		}
 	}
 
@@ -1938,7 +1938,7 @@ class MacroManimParser {
 				advance();
 				return s;
 			default:
-				return error('expected reference or identifier, got ${peek()}');
+				return error('expected reference or identifier, got ' + peek());
 		}
 	}
 
@@ -1951,7 +1951,7 @@ class MacroManimParser {
 				advance();
 				return RVString(s);
 			default:
-				return error('expected reference or identifier, got ${peek()}');
+				return error('expected reference or identifier, got ' + peek());
 		}
 	}
 
@@ -2126,7 +2126,7 @@ class MacroManimParser {
 			final def = parseDefine();
 			final doc = itemDoc(first, tpos - 1);
 			if (doc != null) def.doc = doc;
-			if (defines.exists(def.name)) error('parameter ${def.name} already defined');
+			if (defines.exists(def.name)) error('parameter ' + def.name + ' already defined');
 			defines.set(def.name, def);
 			order.push(def.name);
 			if (match(TClosed)) return {defs: defines, order: order};
@@ -2223,7 +2223,7 @@ class MacroManimParser {
 							enumNames.push(s);
 							lastWasComma = false;
 						default:
-							error('unexpected token in enum definition: ${peek()}');
+							error('unexpected token in enum definition: ' + peek());
 					}
 				}
 				def.type = PPTEnum(enumNames);
@@ -2244,7 +2244,7 @@ class MacroManimParser {
 				final to = parseInteger();
 				def.type = PPTRange(from, to);
 			default:
-				error('unknown parameter type: ${peek()}');
+				error('unknown parameter type: ' + peek());
 		}
 		// Default value
 		parseDefaultParameterValue(def);
@@ -2255,7 +2255,7 @@ class MacroManimParser {
 		if (!match(TEquals)) return;
 		switch (param.type) {
 			case PPTTile:
-				error('tile parameter "${param.name}" cannot have a default value');
+				error('tile parameter "' + param.name + '" cannot have a default value');
 			case PPTColor:
 				final c = tryParseColor();
 				if (c != null) { param.defaultValue = Value(c); return; }
@@ -2300,13 +2300,13 @@ class MacroManimParser {
 						s = n.split("_").join("");
 						fraction = true;
 					default:
-						error('unexpected default value: ${peek()}');
+						error('unexpected default value: ' + peek());
 				}
-				if (s == null) error('unexpected default value: ${peek()}');
+				if (s == null) error('unexpected default value: ' + peek());
 				final _s:String = s ?? "";
 				switch (param.type) {
 					case PPTInt | PPTUnsignedInt | PPTRange(_, _) | PPTHexDirection | PPTGridDirection | PPTFlags(_) if (fraction):
-						error('parameter "${param.name}" takes an integer: its default $_s is not one');
+						error('parameter "' + param.name + '" takes an integer: its default $_s is not one');
 					case PPTFloat if (hex):
 						param.defaultValue = ValueF(int32(_s));
 						return;
@@ -2380,13 +2380,13 @@ class MacroManimParser {
 		final names:Null<Array<String>> = def == null ? null : switch (def.type) {
 			case PPTEnum(values): values;
 			case PPTInt | PPTUnsignedInt | PPTRange(_, _) | PPTFloat | PPTFlags(_) | PPTHexDirection | PPTGridDirection | PPTColor: null;
-			default: error('$what needs a numeric or enum parameter: "$paramName" is ${definitionTypeName(def.type)}');
+			default: error('$what needs a numeric or enum parameter: "$paramName" is ' + definitionTypeName(def.type));
 		}
 		if (rv == null)
 			return null;
 		return switch (rv) {
 			case RVString(s) if (names != null && names.contains(s)): RVInteger(names.indexOf(s));
-			case RVString(s) if (names != null): error('$what of "$paramName": "$s" is not one of its values (${names.join(", ")}), a number or a $$reference');
+			case RVString(s) if (names != null): error('$what of "$paramName": "$s" is not one of its values (' + names.join(", ") + '), a number or a $$reference');
 			case RVString(s): error('$what of "$paramName": "$s" is not a number or a $$reference');
 			default: rv;
 		}
@@ -2399,7 +2399,7 @@ class MacroManimParser {
 			switch (def.type) {
 				case PPTInt | PPTUnsignedInt | PPTRange(_, _) | PPTFlags(_) | PPTHexDirection | PPTGridDirection:
 				default:
-					error('bit[] tests an integer parameter: "$paramName" is ${definitionTypeName(def.type)}');
+					error('bit[] tests an integer parameter: "$paramName" is ' + definitionTypeName(def.type));
 			}
 	}
 
@@ -2410,7 +2410,7 @@ class MacroManimParser {
 			case PPTEnum(members):
 				for (v in values)
 					if (!members.contains(v))
-						error('conditional value "$v" is not a valid value for enum parameter "$paramName", expected one of: ${members.join(", ")}');
+						error('conditional value "$v" is not a valid value for enum parameter "$paramName", expected one of: ' + members.join(", "));
 			default:
 		}
 	}
@@ -2581,7 +2581,7 @@ class MacroManimParser {
 				advance();
 				return s;
 			default:
-				return error('expected conditional value, got ${peek()}');
+				return error('expected conditional value, got ' + peek());
 		}
 	}
 
@@ -2676,7 +2676,7 @@ class MacroManimParser {
 			case RVInteger(i): Std.string(i);
 			case RVFloat(f): Std.string(f);
 			case RVString(s): s;
-			default: error('expected simple value for conditional, got ${rv}');
+			default: error('expected simple value for conditional, got $rv');
 		}
 	}
 
@@ -2980,7 +2980,7 @@ class MacroManimParser {
 				});
 				return FilterCustom(filterName, args);
 			default:
-				return error('unknown filter type: ${peek()}');
+				return error('unknown filter type: ' + peek());
 		}
 	}
 
@@ -3143,7 +3143,7 @@ class MacroManimParser {
 					advance();
 					return layouts;
 				default:
-					error('unexpected token in layouts: ${peek()}');
+					error('unexpected token in layouts: ' + peek());
 			}
 		}
 	}
@@ -3206,7 +3206,7 @@ class MacroManimParser {
 					advance();
 					return;
 				default:
-					error('unexpected token in layout entries: ${peek()}');
+					error('unexpected token in layout entries: ' + peek());
 			}
 		}
 	}
@@ -3286,7 +3286,7 @@ class MacroManimParser {
 				layouts.set(name, {name: name, type: cast layoutType, grid: grid, hex: hex, offset: foldOffsets(offsets),
 					alignX: align.alignX, alignY: align.alignY});
 			default:
-				error('expected layout name (#name), got ${peek()}');
+				error('expected layout name (#name), got ' + peek());
 		}
 	}
 
@@ -3337,7 +3337,7 @@ class MacroManimParser {
 							alignY = LayoutAlignY.Bottom;
 							setY = true;
 						default:
-							if (count == 0) error('unknown align value: ${peek()}');
+							if (count == 0) error('unknown align value: ' + peek());
 							break;
 					}
 					count++;
@@ -3721,7 +3721,7 @@ class MacroManimParser {
 							expect(TColon);
 							npFps = parseFloatOrReference();
 						default:
-							error('ninepatch: expected stretch, tile, index: or fps: after the size, got ${peek()}');
+							error('ninepatch: expected stretch, tile, index: or fps: after the size, got ' + peek());
 					}
 				}
 				expect(TClosed);
@@ -3902,7 +3902,7 @@ class MacroManimParser {
 							final styleNames = [for (st in styles) st.name];
 							for (ref in TextMarkupConverter.extractStyleReferences(s)) {
 								if (styleNames.indexOf(ref) < 0) {
-									error('unknown style "[$ref]" in text markup; defined styles: [${styleNames.join(", ")}]');
+									error('unknown style "[$ref]" in text markup; defined styles: [' + styleNames.join(", ") + ']');
 								}
 							}
 						default:
@@ -4066,7 +4066,7 @@ class MacroManimParser {
 					if (match(TClosed)) break;
 					if (!isNamedParamNext()) {
 						if (!match(TComma)) {
-							error('unexpected token in flow parameters: ${peek()}');
+							error('unexpected token in flow parameters: ' + peek());
 						}
 						continue;
 					}
@@ -4102,7 +4102,7 @@ class MacroManimParser {
 								switch (peek()) {
 									case TIdentifier(w) if (isKeyword(w, "stretch")): advance(); bgMode = NPStretch;
 									case TIdentifier(w) if (isKeyword(w, "tile")): advance(); bgMode = NPTile;
-									default: error('flow background: expected stretch or tile, got ${peek()}');
+									default: error('flow background: expected stretch or tile, got ' + peek());
 								}
 							}
 							expect(TClosed);
@@ -4729,7 +4729,7 @@ class MacroManimParser {
 					: "only a root block can be exported — export goes between a root block's #name and its kind: #name export programmable(...)");
 
 			default:
-				error('expected valid node type, got ${peek()}');
+				error('expected valid node type, got ' + peek());
 		}
 
 		// Apply per-element flow properties parsed from @ prefix
@@ -4779,7 +4779,7 @@ class MacroManimParser {
 			case TEof:
 				error("unexpected end of file");
 			default:
-				error('expected : or { or ;, got ${peek()}');
+				error('expected : or { or ;, got ' + peek());
 		}
 
 		// Restore the outer scope saved by a parameterized slot — must run for ALL
@@ -4990,7 +4990,7 @@ class MacroManimParser {
 			}
 			if (!isNamedParamNext()) {
 				if (!match(TComma) && !match(TSemiColon)) {
-					error('unexpected token in particles block: ${peek()}');
+					error('unexpected token in particles block: ' + peek());
 				}
 				continue;
 			}
@@ -5087,7 +5087,7 @@ class MacroManimParser {
 		while (!match(TCurlyClosed)) {
 			if (!isNamedParamNext()) {
 				if (!match(TComma) && !match(TSemiColon)) {
-					error('unexpected token in shutdown block: ${peek()}');
+					error('unexpected token in shutdown block: ' + peek());
 				}
 				continue;
 			}
@@ -5483,7 +5483,7 @@ class MacroManimParser {
 					expect(TClosed);
 					fields.push(FFPathGuide(pathName, attractStrength, flowStrength, radius));
 				default:
-					error('unknown force field type: ${peek()}');
+					error('unknown force field type: ' + peek());
 			}
 		}
 		return fields;
@@ -5507,7 +5507,7 @@ class MacroManimParser {
 				advance();
 				return BMNone;
 			default:
-				return error('unknown bounds mode: ${peek()}');
+				return error('unknown bounds mode: ' + peek());
 		}
 	}
 
@@ -5563,7 +5563,7 @@ class MacroManimParser {
 					if (p.boundsLines == null) p.boundsLines = [];
 					p.boundsLines.push({x1: x1, y1: y1, x2: x2, y2: y2});
 				default:
-					error('expected box() or line() in bounds definition, got: ${peek()}');
+					error('expected box() or line() in bounds definition, got: ' + peek());
 			}
 		}
 	}
@@ -6093,7 +6093,7 @@ class MacroManimParser {
 					eatSemicolon();
 					if (importPaths.exists(importName))
 						errorAtLine(aliasAt.line, aliasAt.col,
-							'import alias "$importName" is already taken by import "${importPaths.get(importName)}": give each import its own alias');
+							'import alias "$importName" is already taken by import "' + importPaths.get(importName) + '": give each import its own alias');
 					// kept with or without a loader, so a tool lists what the file imports from the parse alone
 					importPaths.set(importName, file);
 					if (resourceLoader != null) {
@@ -6172,7 +6172,7 @@ class MacroManimParser {
 							}
 							if (n == null) {
 								final at = tokens[firstIndex];
-								errorAtLine(at.line, at.col, 'a root element needs a #name (#name ${elementWord(firstIndex)}…), or goes inside a programmable');
+								errorAtLine(at.line, at.col, 'a root element needs a #name (#name ' + elementWord(firstIndex) + '…), or goes inside a programmable');
 							}
 							addNode(n, newNode);
 							markRootBlock(newNode, n, firstIndex, false);
@@ -6319,7 +6319,7 @@ class MacroManimParser {
 						return "";
 				}
 			default:
-				error('expected value in switch arm, got ${peek()}');
+				error('expected value in switch arm, got ' + peek());
 				return "";
 		}
 	}
@@ -6381,7 +6381,7 @@ class MacroManimParser {
 		switch (peek()) {
 			case TEof:
 			default:
-				error('unexpected content after main body: ${peek()}');
+				error('unexpected content after main body: ' + peek());
 		}
 		checkExternalAliases();
 
@@ -6428,7 +6428,7 @@ class MacroManimParser {
 				case TSemiColon:
 					advance();
 				default:
-					error('expected graphics element or ), got ${peek()}');
+					error('expected graphics element or ), got ' + peek());
 					return elements;
 			}
 		}
@@ -6611,7 +6611,7 @@ class MacroManimParser {
 					final color = parseColorOrReference();
 					shapes.push(PIXEL({pos: pos, color: color}));
 				default:
-					error('unexpected pixel shape: ${peek()}');
+					error('unexpected pixel shape: ' + peek());
 			}
 		}
 		return shapes;
@@ -6823,7 +6823,7 @@ class MacroManimParser {
 							}
 						}
 					default:
-						error('unexpected path element: ${peek()}');
+						error('unexpected path element: ' + peek());
 				}
 			}
 			if (paths.exists(pathName))
@@ -6935,7 +6935,7 @@ class MacroManimParser {
 							final cpName = expectIdentifierOrString();
 							at = Checkpoint(cpName);
 						default:
-							error('expected rate, checkpoint, type, speed, path, or duration, got ${peek()}');
+							error('expected rate, checkpoint, type, speed, path, or duration, got ' + peek());
 							return {mode: mode, speed: speed, duration: duration, pathName: pathName != null ? pathName : "", curveAssignments: curveAssignments, events: events, loop: loop, pingPong: pingPong};
 					}
 					expect(TColon);
@@ -6970,7 +6970,7 @@ class MacroManimParser {
 			switch (ca.at) {
 				case Checkpoint(cpName):
 					if (pathCheckpoints.indexOf(cpName) < 0)
-						error('checkpoint "$cpName" not found in path "$pathName" (available: ${pathCheckpoints.join(", ")})');
+						error('checkpoint "$cpName" not found in path "$pathName" (available: ' + pathCheckpoints.join(", ") + ')');
 				default:
 			}
 		}
@@ -6978,7 +6978,7 @@ class MacroManimParser {
 			switch (ev.at) {
 				case Checkpoint(cpName):
 					if (pathCheckpoints.indexOf(cpName) < 0)
-						error('checkpoint "$cpName" not found in path "$pathName" (available: ${pathCheckpoints.join(", ")})');
+						error('checkpoint "$cpName" not found in path "$pathName" (available: ' + pathCheckpoints.join(", ") + ')');
 				default:
 			}
 		}
@@ -7046,7 +7046,7 @@ class MacroManimParser {
 					final c = parseCurveNameOrEasing();
 					curveAssignments.push({at: at, slot: APCustom(customName), curveName: c.curveName, inlineEasing: c.inlineEasing});
 				default:
-					error('expected curve assignment or event, got ${peek()}');
+					error('expected curve assignment or event, got ' + peek());
 					return;
 			}
 			// Check for comma to continue parsing more actions at this time point
@@ -7083,7 +7083,7 @@ class MacroManimParser {
 				expect(TClosed);
 				return CubicBezier(x1, y1, x2, y2);
 			default:
-				return error('expected easing type, got ${peek()}');
+				return error('expected easing type, got ' + peek());
 		}
 	}
 
@@ -7146,7 +7146,7 @@ class MacroManimParser {
 				expect(TClosed);
 				return TransSlide(dir, dur, dist, eas);
 			default:
-				return error('expected transition type (none, fade, crossfade, flipX, flipY, slide), got ${peek()}');
+				return error('expected transition type (none, fade, crossfade, flipX, flipY, slide), got ' + peek());
 		}
 	}
 
@@ -7165,7 +7165,7 @@ class MacroManimParser {
 			case TIdentifier(s) if (isKeyword(s, "right")): advance(); return TDRight;
 			case TIdentifier(s) if (isKeyword(s, "up")): advance(); return TDUp;
 			case TIdentifier(s) if (isKeyword(s, "down")): advance(); return TDDown;
-			default: return error('expected direction (left, right, up, down), got ${peek()}');
+			default: return error('expected direction (left, right, up, down), got ' + peek());
 		}
 	}
 
@@ -7240,7 +7240,7 @@ class MacroManimParser {
 						segExplicit.push(explicit[0]);
 						eatComma(); // segments may be comma-separated (documented form)
 					default:
-						error('expected easing, points, multiply, apply, invert, scale, or segment [start..end] in curve definition, got ${peek()}');
+						error('expected easing, points, multiply, apply, invert, scale, or segment [start..end] in curve definition, got ' + peek());
 				}
 			}
 			if (operation != null && (easing != null || points != null || segments != null))
@@ -7414,9 +7414,9 @@ class MacroManimParser {
 						region.push(parseIntegerOrReference());
 					}
 					if (region.length != 4)
-						error('autotile region: expects [x, y, width, height], got ${region.length} values');
+						error('autotile region: expects [x, y, width, height], got ' + region.length + ' values');
 				default:
-					error('unexpected autotile property: ${peek()}');
+					error('unexpected autotile property: ' + peek());
 			}
 		}
 
@@ -7454,7 +7454,7 @@ class MacroManimParser {
 			};
 			for (key => target in mapping) {
 				if (key < 0 || key >= indexCount)
-					error('autotile mapping key $key is not a valid index for this format (0-${indexCount - 1})');
+					error('autotile mapping key $key is not a valid index for this format (0-' + (indexCount - 1) + ')');
 				if (target < 0)
 					error('autotile mapping $key:$target - source index must be >= 0');
 			}
@@ -7578,9 +7578,9 @@ class MacroManimParser {
 		if (unit == "")
 			unit = bare;
 		if (!allowed.contains(unit))
-			error('$what: expected a number in ${allowed.join(" or ")}, got "$unit"');
+			error('$what: expected a number in ' + allowed.join(" or ") + ', got "$unit"');
 		if (a.unit != "" && b.unit != "" && a.unit != b.unit)
-			error('$what: both ends of a range take the same unit, got ${a.unit} and ${b.unit}');
+			error('$what: both ends of a range take the same unit, got ' + a.unit + ' and ' + b.unit);
 		final min = a.value, max = b.value;
 		if (max < min)
 			error('$what: a range runs low to high, got $min..$max');
@@ -7914,7 +7914,7 @@ class MacroManimParser {
 							switch (peek()) {
 								case TMinus | TInteger(_) | TFloat(_):
 									final n = parseUnitNumber();
-									if (n.unit != "db" && n.unit != "") error('$where: $key: a level is in db, got "${n.unit}"');
+									if (n.unit != "db" && n.unit != "") error('$where: $key: a level is in db, got "' + n.unit + '"');
 									changes.push(ChangeVolume(n.value));
 								case TIdentifier(w) if (isKeyword(w, "pause")):
 									advance();
@@ -7936,7 +7936,7 @@ class MacroManimParser {
 								case TIdentifier(_) | TQuotedString(_) if (isPropertyColon()):
 									break;
 								default:
-									error('$where: $key: expected pause, a level in db, lowpass <share> or pitch clock, got ${peek()}');
+									error('$where: $key: expected pause, a level in db, lowpass <share> or pitch clock, got ' + peek());
 							}
 						}
 						if (changes.length == 0) error('$where: $key: says nothing (pause, -6db, lowpass 0.3, pitch clock)');
@@ -7945,7 +7945,7 @@ class MacroManimParser {
 					if (snap.buses.length == 0) error('$where: changes no bus');
 					def.snapshots.push(snap);
 				default:
-					error('$blockName: expected bus, vca or snapshot, got ${peek()}');
+					error('$blockName: expected bus, vca or snapshot, got ' + peek());
 			}
 		}
 		if (def.buses.length == 0) error('$blockName: mix block has no buses (bus sfx)');
@@ -8004,7 +8004,7 @@ class MacroManimParser {
 					if (doc != null) track.doc = doc;
 					def.tracks.push(track);
 				default:
-					error('$blockName: expected bus: or track name { }, got ${peek()}');
+					error('$blockName: expected bus: or track name { }, got ' + peek());
 			}
 		}
 		if (def.tracks.length == 0) error('$blockName: music block has no tracks (track title { file: "…" })');
@@ -8047,7 +8047,7 @@ class MacroManimParser {
 			parsed.platform = platform;
 			for (r in rises)
 				if (r.rise == rise && r.toward == parsed.toward && r.terrain == riseTerrain && r.platform == platform)
-					error('rise $riseName toward ${parsed.toward} is defined twice');
+					error('rise $riseName toward ' + parsed.toward + ' is defined twice');
 			rises.push(parsed);
 		}
 		var grid:Null<TilesetGridDef> = null;
@@ -8148,7 +8148,7 @@ class MacroManimParser {
 									ignoreAt.push(at);
 								} while (match(TComma));
 							default:
-								error('unexpected transition property: ${peek()} (a transition has autotile: only, or autotile: and ignore:)');
+								error('unexpected transition property: ' + peek() + ' (a transition has autotile: only, or autotile: and ignore:)');
 						}
 					}
 					if (autotiles.length == 0) error('transition $from, $to needs autotile:');
@@ -8175,7 +8175,7 @@ class MacroManimParser {
 								advance();
 								parseRise(platformName);
 							default:
-								error('unexpected platform property: ${peek()} (edge: and rise <n> { })');
+								error('unexpected platform property: ' + peek() + ' (edge: and rise <n> { })');
 						}
 					}
 					platforms.push({name: platformName, edge: platformEdge});
@@ -8187,7 +8187,7 @@ class MacroManimParser {
 					expect(TCurlyOpen);
 					cells.push(parseTilesetCell(cellName));
 				default:
-					error('unexpected tileset property: ${peek()}');
+					error('unexpected tileset property: ' + peek());
 			}
 		}
 		if (tileSize == null && grid == null) error("tileset requires tileSize (or grid:)");
@@ -8203,12 +8203,12 @@ class MacroManimParser {
 		};
 		for (r in rises) {
 			if (!towards.contains(r.toward))
-				error('rise ${r.rise == 0 ? "any" : Std.string(r.rise)}: toward: on the $gridKind grid is ${towards.slice(0, -1).join(", ")} or ${towards[towards.length - 1]}, got ${r.toward}');
+				error('rise ' + (r.rise == 0 ? "any" : Std.string(r.rise)) + ': toward: on the $gridKind grid is ' + towards.slice(0, -1).join(", ") + ' or ' + towards[towards.length - 1] + ', got ' + r.toward);
 			if (r.toward == "lower")
 				r.toward = "down";
 			if (r.span == 0) {
 				if (gridKind == "orthogonal")
-					error('rise ${r.rise == 0 ? "any" : Std.string(r.rise)} needs side: and span:');
+					error('rise ' + (r.rise == 0 ? "any" : Std.string(r.rise)) + ' needs side: and span:');
 				r.span = 1;
 			}
 		}
@@ -8216,7 +8216,7 @@ class MacroManimParser {
 			for (j in 0...i)
 				if (rises[i].rise == rises[j].rise && rises[i].toward == rises[j].toward && rises[i].terrain == rises[j].terrain
 					&& rises[i].platform == rises[j].platform)
-					error('rise ${rises[i].rise == 0 ? "any" : Std.string(rises[i].rise)} toward ${rises[i].toward} is defined twice');
+					error('rise ' + (rises[i].rise == 0 ? "any" : Std.string(rises[i].rise)) + ' toward ' + rises[i].toward + ' is defined twice');
 		// A tileset of things to place only (trees, houses, furniture) has no terrain: its maps are
 		// all `none`, with its cells in layers, drawn over another tileset's ground.
 		// (off the square grid a raised cell is lifted and shows its sides: no outline is needed)
@@ -8227,27 +8227,27 @@ class MacroManimParser {
 		for (r in rises) {
 			final riseTerrain = r.terrain;
 			if (riseTerrain != null && Lambda.findIndex(terrains, x -> x.name == riseTerrain) < 0)
-				error('rise ${r.rise == 0 ? "any" : Std.string(r.rise)} $riseTerrain: tileset has no terrain $riseTerrain');
+				error('rise ' + (r.rise == 0 ? "any" : Std.string(r.rise)) + ' $riseTerrain: tileset has no terrain $riseTerrain');
 		}
 		for (p in platforms)
 			if (p.edge == null && !Lambda.exists(rises, r -> r.platform == p.name))
-				error('platform ${p.name} needs edge: (the autotile its top is drawn with) or a rise');
+				error('platform ' + p.name + ' needs edge: (the autotile its top is drawn with) or a rise');
 		// by rise, the smallest first, `any` last
 		rises.sort((a, b) -> (a.rise == 0 ? 0x7FFFFFFF : a.rise) - (b.rise == 0 ? 0x7FFFFFFF : b.rise));
 		for (ti in 0...transitions.length) {
 			final t = transitions[ti];
 			final toIndex = Lambda.findIndex(terrains, x -> x.name == t.to);
-			if (toIndex < 0) error('transition ${t.from}, ${t.to}: tileset has no terrain ${t.to}');
+			if (toIndex < 0) error('transition ' + t.from + ', ' + t.to + ': tileset has no terrain ' + t.to);
 			final to = terrains[toIndex];
 			if (to.autotiles.length == 0)
-				error('transition ${t.from}, ${t.to}: terrain ${t.to} is drawn from cells:, not an autotile, so it has no edge to draw otherwise');
+				error('transition ' + t.from + ', ' + t.to + ': terrain ' + t.to + ' is drawn from cells:, not an autotile, so it has no edge to draw otherwise');
 			if (t.autotiles.length != to.autotiles.length)
-				error('transition ${t.from}, ${t.to}: ${t.autotiles.length} autotile(s) for terrain ${t.to}, which has ${to.autotiles.length} (one a frame)');
+				error('transition ' + t.from + ', ' + t.to + ': ' + t.autotiles.length + ' autotile(s) for terrain ' + t.to + ', which has ' + to.autotiles.length + ' (one a frame)');
 			if (t.from != "none") {
 				final fromIndex = Lambda.findIndex(terrains, x -> x.name == t.from);
-				if (fromIndex < 0) error('transition ${t.from}, ${t.to}: tileset has no terrain ${t.from} (or none)');
+				if (fromIndex < 0) error('transition ' + t.from + ', ' + t.to + ': tileset has no terrain ' + t.from + ' (or none)');
 				if (fromIndex >= toIndex)
-					error('transition ${t.from}, ${t.to}: ${t.from} is drawn over ${t.to}; a transition is from the terrain below to the one above it');
+					error('transition ' + t.from + ', ' + t.to + ': ' + t.from + ' is drawn over ' + t.to + '; a transition is from the terrain below to the one above it');
 			}
 			for (k in 0...t.ignore.length) {
 				final name = t.ignore[k];
@@ -8255,10 +8255,10 @@ class MacroManimParser {
 				final ignoredIndex = Lambda.findIndex(terrains, x -> x.name == name);
 				if (ignoredIndex < 0)
 					errorAtLine(at.line, at.col,
-						'transition ${t.from}, ${t.to}: ignore: tileset has no terrain $name (it has ${[for (x in terrains) x.name].join(", ")})');
+						'transition ' + t.from + ', ' + t.to + ': ignore: tileset has no terrain $name (it has ' + ([for (x in terrains) x.name].join(", ")) + ')');
 				if (ignoredIndex > toIndex)
 					errorAtLine(at.line, at.col,
-						'transition ${t.from}, ${t.to}: ignore: $name is drawn over ${t.to}, so it counts as ${t.to} already; leave it out of ignore:');
+						'transition ' + t.from + ', ' + t.to + ': ignore: $name is drawn over ' + t.to + ', so it counts as ' + t.to + ' already; leave it out of ignore:');
 			}
 		}
 		return {
@@ -8287,7 +8287,7 @@ class MacroManimParser {
 		final width = parseInteger();
 		expect(TComma);
 		final height = parseInteger();
-		if (width <= 0 || height <= 0) error('grid: a cell is 1 pixel or more a side, got ${width}x$height');
+		if (width <= 0 || height <= 0) error('grid: a cell is 1 pixel or more a side, got ' + width + 'x$height');
 		if (kind != "hex")
 			return {kind: kind, width: width, height: height};
 		expect(TComma);
@@ -8295,14 +8295,14 @@ class MacroManimParser {
 		if (orientation != "pointy" && orientation != "flat") error('grid: a hex is pointy or flat, got $orientation');
 		expect(TComma);
 		final parity = expectIdentifierOrString().toLowerCase();
-		if (parity != "odd" && parity != "even") error('grid: a hex grid pushes the odd or the even ${orientation == "pointy" ? "rows" : "columns"}, got $parity');
+		if (parity != "odd" && parity != "even") error('grid: a hex grid pushes the odd or the even ' + (orientation == "pointy" ? "rows" : "columns") + ', got $parity');
 		final pointy = orientation == "pointy";
 		var side:Null<Int> = null;
 		if (match(TComma)) {
 			final across = pointy ? height : width;
 			final length = parseInteger();
 			if (length < 0 || length >= across)
-				error('grid: a $orientation hex ${across} pixels ${pointy ? "high" : "wide"} has sides of 0 to ${across - 1} pixels, got $length');
+				error('grid: a $orientation hex $across pixels ' + (pointy ? "high" : "wide") + ' has sides of 0 to ' + (across - 1) + ' pixels, got $length');
 			side = length;
 		}
 		return {kind: kind, width: width, height: height, pointy: pointy, odd: parity == "odd", side: side};
@@ -8340,7 +8340,7 @@ class MacroManimParser {
 					advance();
 					metadata = parseTileMetadata();
 				default:
-					error('unexpected terrain property: ${peek()}');
+					error('unexpected terrain property: ' + peek());
 			}
 		}
 		if ((autotiles.length == 0) == (cells == null))
@@ -8398,7 +8398,7 @@ class MacroManimParser {
 					advance();
 					metadata = parseTileMetadata();
 				default:
-					error('unexpected rise property: ${peek()}');
+					error('unexpected rise property: ' + peek());
 			}
 		}
 		// span: may be left out on the isometric and hex grids (a piece a level); the tileset says which it is on
@@ -8450,7 +8450,7 @@ class MacroManimParser {
 					advance();
 					metadata = parseTileMetadata();
 				default:
-					error('unexpected cell property: ${peek()}');
+					error('unexpected cell property: ' + peek());
 			}
 		}
 		if (anchorX != null && width == null)
@@ -8465,7 +8465,7 @@ class MacroManimParser {
 			final ax:Int = anchorX;
 			final ay:Int = anchorY ?? 0;
 			if (ax < 0 || ay < 0 || ax >= w || ay >= h)
-				error('cell $name: anchor $ax, $ay is outside its ${w}x$h cells (from 0, 0 at the top left)');
+				error('cell $name: anchor $ax, $ay is outside its ' + w + 'x$h cells (from 0, 0 at the top left)');
 			if (draw == null)
 				draw = "actors";
 		}
@@ -8545,7 +8545,7 @@ class MacroManimParser {
 					}
 					if (isCols) cols = value else rows = value;
 				default:
-					error('tilemap(fill($tileset)): expected terrain:, cols: or rows:, got ${peek()}');
+					error('tilemap(fill($tileset)): expected terrain:, cols: or rows:, got ' + peek());
 			}
 		}
 		expect(TClosed);
@@ -8608,7 +8608,7 @@ class MacroManimParser {
 									expect(TColon);
 									parseTilemapRows(def.levels, levelsPos);
 								default:
-									error('unexpected levels property: ${peek()} (legend { } and rows: [ ])');
+									error('unexpected levels property: ' + peek() + ' (legend { } and rows: [ ])');
 							}
 						}
 					} else {
@@ -8642,7 +8642,7 @@ class MacroManimParser {
 								expect(TColon);
 								parseTilemapRows(layer.rows, rowsAt);
 							default:
-								error('unexpected tilemap layer property: ${peek()}');
+								error('unexpected tilemap layer property: ' + peek());
 						}
 					}
 					def.layers.push(layer);
@@ -8671,7 +8671,7 @@ class MacroManimParser {
 						eatSemicolon();
 					}
 				default:
-					error('unexpected tilemap property: ${peek()}');
+					error('unexpected tilemap property: ' + peek());
 			}
 		}
 		if (def.tileset == "") error("tilemap requires tileset:");
@@ -8684,13 +8684,13 @@ class MacroManimParser {
 		for (l in def.layers) {
 			final legend = l.legend;
 			final rowsAt = layerPos.get(l.name) ?? [];
-			checkTilemapRows(def, 'layer ${l.name}', l.rows, rowsAt, c -> c == " " || legend.exists(c), "is not in the layer's legend (a space is no cell)");
+			checkTilemapRows(def, 'layer ' + l.name, l.rows, rowsAt, c -> c == " " || legend.exists(c), "is not in the layer's legend (a space is no cell)");
 		}
 		for (m in def.marks) {
 			final w = m.w != null ? m.w : 1;
 			final h = m.h != null ? m.h : 1;
 			if (m.x < 0 || m.y < 0 || m.x + w > def.width || m.y + h > def.height)
-				error('mark ${m.name} is outside the ${def.width}x${def.height} map');
+				error('mark ' + m.name + ' is outside the ' + def.width + 'x' + def.height + ' map');
 		}
 	}
 
@@ -8766,16 +8766,16 @@ class MacroManimParser {
 	function checkTilemapRows(def:TilemapDef, what:String, rows:Array<String>, pos:Array<TilemapRowAt>, ok:String->Bool, bad:String):Void {
 		if (rows.length != def.height) {
 			final at = pos.length > 0 ? pos[pos.length - 1] : {line: def.line != null ? def.line : 0, col: 1};
-			errorAtLine(at.line, at.col, '$what has ${rows.length} rows, the map is ${def.height} high');
+			errorAtLine(at.line, at.col, '$what has ' + rows.length + ' rows, the map is ' + def.height + ' high');
 		}
 		for (r in 0...rows.length) {
 			final row = rows[r];
 			if (row.length != def.width)
-				errorAtLine(pos[r].line, pos[r].col, '$what row ${r + 1} is ${row.length} characters, the map is ${def.width} wide');
+				errorAtLine(pos[r].line, pos[r].col, '$what row ' + (r + 1) + ' is ' + row.length + ' characters, the map is ' + def.width + ' wide');
 			for (i in 0...row.length) {
 				final c = row.charAt(i);
 				if (!ok(c))
-					errorAtLine(pos[r].line, pos[r].col + 1 + i, '$what row ${r + 1}: "$c" $bad');
+					errorAtLine(pos[r].line, pos[r].col + 1 + i, '$what row ' + (r + 1) + ': "$c" $bad');
 			}
 		}
 	}
@@ -9127,11 +9127,11 @@ class MacroManimParser {
 						case DVString(_): true;
 						default: false;
 					} : false;
-					if (!word) error('@${m.name} on $where takes one word or string: @${m.name}("…")');
+					if (!word) error('@' + m.name + ' on $where takes one word or string: @' + m.name + '("…")');
 				case "default":
 					if (field == null) error('@default on $where: a field of the block is written with its value; a default is for an optional field of a record');
 					else {
-						if (!field.optional) error('@default on $where: a field every row has has no default; make it optional: ?${field.name}');
+						if (!field.optional) error('@default on $where: a field every row has has no default; make it optional: ?' + field.name);
 						if (m.args.length != 1) error('@default on $where takes one value');
 						m.args[0] = dataDefaultOf(where, field.type, m.args[0], enums);
 					}
@@ -9306,7 +9306,7 @@ class MacroManimParser {
 		// Validate all required fields present (optional fields can be omitted, and take their @default)
 		for (rf in recordDef.fields) {
 			if (fieldValues.exists(rf.name)) continue;
-			if (!rf.optional) error('missing required field "${rf.name}" in record "$recordName"');
+			if (!rf.optional) error('missing required field "' + rf.name + '" in record "$recordName"');
 			final fallback = dataMetaOf(rf.meta, "default");
 			if (fallback != null && fallback.args.length == 1) fieldValues.set(rf.name, fallback.args[0]);
 		}
@@ -9390,7 +9390,7 @@ class MacroManimParser {
 			if (keyed != null) {
 				final id = DataSchema.rowId(value, keyed);
 				if (id != null) {
-					if (seen.exists(id)) errorAtLine(rowAt.line, rowAt.col, '"$id" is the id of two rows of ${keyed.name}');
+					if (seen.exists(id)) errorAtLine(rowAt.line, rowAt.col, '"$id" is the id of two rows of ' + keyed.name);
 					seen.set(id, true);
 				}
 			}
@@ -9425,12 +9425,12 @@ class MacroManimParser {
 			final ids = holders.get(ref.record);
 			final tables = ids == null ? null : ids.get(ref.id);
 			if (ids == null)
-				errorAtLine(ref.line, ref.col, 'ref ${ref.record} "${ref.id}": this data block has no table of ${ref.record} rows');
+				errorAtLine(ref.line, ref.col, 'ref ' + ref.record + ' "' + ref.id + '": this data block has no table of ' + ref.record + ' rows');
 			else if (tables == null)
-				errorAtLine(ref.line, ref.col, 'ref ${ref.record} "${ref.id}": no ${ref.record} row has that id');
+				errorAtLine(ref.line, ref.col, 'ref ' + ref.record + ' "' + ref.id + '": no ' + ref.record + ' row has that id');
 			else if (tables.length > 1)
 				errorAtLine(ref.line, ref.col,
-					'ref ${ref.record} "${ref.id}": ${tables.join(" and ")} both have a row of that id, so the ref could name either; give one of them another id');
+					'ref ' + ref.record + ' "' + ref.id + '": ' + tables.join(" and ") + ' both have a row of that id, so the ref could name either; give one of them another id');
 		}
 		dataRefs = [];
 	}
@@ -9492,15 +9492,15 @@ class MacroManimParser {
 	/** A pick draws from a table of this block, by a number of its rows (or of the rows they link
 	 *  to), and chances add up to 1 at most: what they leave is the otherwise row's, or nothing. */
 	function checkDataPick(pick:DataPickDef, data:DataDef):Void {
-		final fail = (msg:String) -> errorAtLine(pick.line, 1, 'pick ${pick.name}: $msg');
+		final fail = (msg:String) -> errorAtLine(pick.line, 1, 'pick ' + pick.name + ': $msg');
 		final table = DataSchema.fieldNamed(data, pick.over);
 		if (table == null) {
-			fail('there is no field "${pick.over}" to draw from');
+			fail('there is no field "' + pick.over + '" to draw from');
 			return;
 		}
 		final def = DataSchema.tableRecord(data, table);
 		if (def == null) {
-			fail('${pick.over} is not a table: a pick draws from an array of a record with a key');
+			fail(pick.over + ' is not a table: a pick draws from an array of a record with a key');
 			return;
 		}
 		// Whose rows hold the number: the table's own, or those a ref field links them to, in any table
@@ -9512,7 +9512,7 @@ class MacroManimParser {
 			final target = DataSchema.throughRecord(data, pick);
 			final targetDef = target == null ? null : data.records.get(target);
 			if (target == null || targetDef == null) {
-				fail('${def.name} has no ref field "$through" to read ${pick.by} through');
+				fail(def.name + ' has no ref field "$through" to read ' + pick.by + ' through');
 				return;
 			}
 			holder = targetDef;
@@ -9531,13 +9531,13 @@ class MacroManimParser {
 		for (f in holder.fields)
 			if (f.name == pick.by) column = f;
 		if (column == null) {
-			fail('${holder.name} has no field "${pick.by}"');
+			fail(holder.name + ' has no field "' + pick.by + '"');
 			return;
 		}
 		switch (column.type) {
 			case DVTInt | DVTFloat:
 			default:
-				fail('${holder.name}.${pick.by} is not a number, so it cannot be a ${pick.chance ? "chance" : "weight"}');
+				fail(holder.name + '.' + pick.by + ' is not a number, so it cannot be a ' + (pick.chance ? "chance" : "weight"));
 		}
 		final rows = DataSchema.rowsOf(table);
 		final otherwise = pick.otherwise;
@@ -9545,7 +9545,7 @@ class MacroManimParser {
 			var found = false;
 			for (row in rows)
 				if (DataSchema.rowId(row, def) == otherwise) found = true;
-			if (!found) fail('otherwise "$otherwise" is not a row of ${pick.over}');
+			if (!found) fail('otherwise "$otherwise" is not a row of ' + pick.over);
 		}
 		if (!pick.chance) return;
 		// The chances besides otherwise add up to 1 at most.
@@ -9568,14 +9568,14 @@ class MacroManimParser {
 			};
 			if (share != null && share > 0) sum += share;
 		}
-		if (sum > 1 + 1e-9) fail('the chances add up to ${Math.round(sum * 1000) / 1000}, more than 1');
+		if (sum > 1 + 1e-9) fail('the chances add up to ' + (Math.round(sum * 1000) / 1000) + ', more than 1');
 	}
 
 	function validateEnumValue(enumName:String, value:String, enums:Map<String, DataEnumDef>):Void {
 		final def = enums.get(enumName);
 		if (def == null) { error('unknown enum type "$enumName"'); return; }
 		if (!def.values.contains(value))
-			error('invalid value "$value" for enum "$enumName", expected one of: ${def.values.join(", ")}');
+			error('invalid value "$value" for enum "$enumName", expected one of: ' + def.values.join(", "));
 	}
 
 	function parseDataArrayInferred(records:Map<String, DataRecordDef>):Array<DataValue> {
@@ -9620,7 +9620,7 @@ class MacroManimParser {
 				type = DVTFloat;
 				continue;
 			}
-			errorAtLine(at.line, at.col, 'data field "$fieldName": a mixed array of ${dataTypeWord(type)} and ${dataTypeWord(t)}');
+			errorAtLine(at.line, at.col, 'data field "$fieldName": a mixed array of ' + dataTypeWord(type) + ' and ' + dataTypeWord(t));
 		}
 		if (type == DVTFloat)
 			for (i in 0...elements.length)

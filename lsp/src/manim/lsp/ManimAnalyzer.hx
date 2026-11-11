@@ -69,8 +69,8 @@ class ManimAnalyzer {
 				final range = defined.end.character > 0 ? defined : findNameInText(text, name);
 				final symbol:LspSymbolInformation = switch (node.type) {
 					case PROGRAMMABLE(_, parameters, _):
-						final paramList = [for (pname => def in parameters) '$pname:${defTypeName(def.type)}'];
-						final detail = paramList.length > 0 ? '(${paramList.join(", ")})' : null;
+						final paramList = [for (pname => def in parameters) ('$pname:' + defTypeName(def.type))];
+						final detail = paramList.length > 0 ? '(' + paramList.join(", ") + ')' : null;
 						makeSymbol(name, SymbolKind.Class, range, detail, getChildSymbols(node, text));
 					case DATA(dataDef):
 						makeSymbol(name, SymbolKind.Struct, range, null, getDataChildren(dataDef, text));
@@ -197,7 +197,7 @@ class ManimAnalyzer {
 				kind: SymbolKind.Enum,
 				range: range,
 				selectionRange: range,
-				detail: 'enum(${enumDef.values.join(", ")})'
+				detail: 'enum(' + enumDef.values.join(", ") + ')'
 			});
 		}
 
@@ -209,7 +209,7 @@ class ManimAnalyzer {
 				kind: SymbolKind.Struct,
 				range: range,
 				selectionRange: range,
-				detail: 'record(${fieldNames.join(", ")})'
+				detail: 'record(' + fieldNames.join(", ") + ')'
 			});
 		}
 
@@ -235,7 +235,7 @@ class ManimAnalyzer {
 			case DVTBool: "bool";
 			case DVTEnum(name): name;
 			case DVTRecord(name): name;
-			case DVTArray(elemType): '${dataTypeName(elemType)}[]';
+			case DVTArray(elemType): dataTypeName(elemType) + '[]';
 			case DVTRef(name): 'ref $name';
 		};
 	}
@@ -284,7 +284,7 @@ class ManimAnalyzer {
 			case PPTString: "string";
 			case PPTColor: "color";
 			case PPTTile: "tile";
-			case PPTEnum(values): '[${values.join(",")}]';
+			case PPTEnum(values): '[' + values.join(",") + ']';
 			case PPTRange(from, to): '$from..$to';
 			case PPTFlags(_): "flags";
 			case PPTArray: "array";

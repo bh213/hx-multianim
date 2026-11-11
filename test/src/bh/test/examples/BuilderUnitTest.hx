@@ -146,7 +146,7 @@ class BuilderUnitTest extends BuilderTestBase {
 		final bitmaps = findVisibleBitmapDescendants(result.object);
 		Assert.equals(1, bitmaps.length);
 		final f = Std.downcast(bitmaps[0].filter, h2d.filter.ColorMatrix);
-		Assert.notNull(f, 'expected a ColorMatrix filter, got ${bitmaps[0].filter}');
+		Assert.notNull(f, 'expected a ColorMatrix filter, got ' + bitmaps[0].filter);
 		return f == null ? null : f.matrix;
 	}
 
@@ -163,8 +163,8 @@ class BuilderUnitTest extends BuilderTestBase {
 		final m = firstBitmapColorMatrix(result);
 		if (m == null) return;
 		// Multiplier semantics: diagonal 0.5, no additive offset.
-		Assert.floatEquals(0.5, m._11, 0.001, 'brightness(0.5) must SCALE channels by 0.5 (got _11=${m._11}) — not add an offset');
-		Assert.floatEquals(0.0, m._41, 0.001, 'brightness(0.5) must not add a constant offset (got _41=${m._41})');
+		Assert.floatEquals(0.5, m._11, 0.001, 'brightness(0.5) must SCALE channels by 0.5 (got _11=' + m._11 + ') — not add an offset');
+		Assert.floatEquals(0.0, m._41, 0.001, 'brightness(0.5) must not add a constant offset (got _41=' + m._41 + ')');
 	}
 
 	@Test
@@ -180,7 +180,7 @@ class BuilderUnitTest extends BuilderTestBase {
 		final mNormal = firstBitmapColorMatrix(normal);
 		if (mNormal == null) return;
 		Assert.floatEquals(1.0, mNormal._11, 0.001,
-			'saturate(1.0) is documented as NORMAL saturation — expected identity matrix, got _11=${mNormal._11}');
+			'saturate(1.0) is documented as NORMAL saturation — expected identity matrix, got _11=' + mNormal._11);
 
 		final gray = buildFromSource("
 			#test programmable() {
@@ -194,7 +194,7 @@ class BuilderUnitTest extends BuilderTestBase {
 		if (mGray == null) return;
 		// Full desaturation: _11 collapses to the red luminance weight (~0.21).
 		Assert.isTrue(mGray._11 < 0.5,
-			'saturate(0.0) is documented as GRAYSCALE — expected _11 ≈ lumR (~0.21), got _11=${mGray._11}');
+			'saturate(0.0) is documented as GRAYSCALE — expected _11 ≈ lumR (~0.21), got _11=' + mGray._11);
 	}
 
 	@Test
@@ -211,7 +211,7 @@ class BuilderUnitTest extends BuilderTestBase {
 		if (m == null) return;
 		// colorHue(π/2): _11 = cos(-π/2) + (1 - cos(-π/2)) / 3 = 1/3.
 		Assert.floatEquals(1.0 / 3.0, m._11, 0.01,
-			'hue(90) is documented as 90 DEGREES — expected _11 = 1/3 (rotation by π/2 rad), got _11=${m._11}');
+			'hue(90) is documented as 90 DEGREES — expected _11 = 1/3 (rotation by π/2 rad), got _11=' + m._11);
 	}
 
 	// ==================== Root-level tint on non-Drawable ====================
@@ -1568,7 +1568,7 @@ class BuilderUnitTest extends BuilderTestBase {
 			Assert.equals(1, bitmaps.length);
 			Assert.equals(20, Std.int(bitmaps[0].x));
 		} catch (e:Dynamic) {
-			Assert.fail('incremental build with the @else arm losing must not evaluate its expressions, got: ${Std.string(e)}');
+			Assert.fail('incremental build with the @else arm losing must not evaluate its expressions, got: ' + Std.string(e));
 		}
 	}
 
@@ -1988,7 +1988,7 @@ class BuilderUnitTest extends BuilderTestBase {
 			case TileSourceValue(TSTile(t)):
 				Assert.equals(tile, t, "tile should be wrapped as TileSourceValue(TSTile(...))");
 			default:
-				Assert.fail('expected TileSourceValue(TSTile(...)), got: ${converted}');
+				Assert.fail('expected TileSourceValue(TSTile(...)), got: $converted');
 		}
 	}
 
@@ -2017,9 +2017,9 @@ class BuilderUnitTest extends BuilderTestBase {
 		// 'Can't cast String to hl.types.ArrayObj' — opaque, no mention of the param type or
 		// the source. The fix should produce a structured BuilderError matching the PPTTile arm.
 		Assert.isTrue(msg.indexOf("PPTArray") >= 0,
-			'thrown error must come from the dynamicToResolvedWithDef PPTArray arm (mention "PPTArray"); got: ${msg}');
+			'thrown error must come from the dynamicToResolvedWithDef PPTArray arm (mention "PPTArray"); got: $msg');
 		Assert.isTrue(msg.indexOf("requires") >= 0,
-			'thrown error must mention "requires" (matching PPTTile sibling shape); got: ${msg}');
+			'thrown error must mention "requires" (matching PPTTile sibling shape); got: $msg');
 
 		// Sanity: a real Array still round-trips through the conversion.
 		final arr:Array<String> = ["a", "b", "c"];
@@ -2031,7 +2031,7 @@ class BuilderUnitTest extends BuilderTestBase {
 				Assert.equals(3, a.length, "array length preserved");
 				Assert.equals("a", a[0]);
 			default:
-				Assert.fail('expected ArrayString(...), got: ${converted}');
+				Assert.fail('expected ArrayString(...), got: $converted');
 		}
 	}
 
@@ -3647,12 +3647,12 @@ class BuilderUnitTest extends BuilderTestBase {
 				final actual = pl.data.getPixel(x, y);
 				if (x < filledWidth && y < PIXEL_H) {
 					if (actual != expectedColor) {
-						Assert.fail('$label: pixel($x,$y) expected filled 0x${StringTools.hex(expectedColor, 8)} but got 0x${StringTools.hex(actual, 8)}');
+						Assert.fail('$label: pixel($x,$y) expected filled 0x' + StringTools.hex(expectedColor, 8) + ' but got 0x' + StringTools.hex(actual, 8));
 						return;
 					}
 				} else {
 					if (actual != 0) {
-						Assert.fail('$label: pixel($x,$y) expected transparent but got 0x${StringTools.hex(actual, 8)}');
+						Assert.fail('$label: pixel($x,$y) expected transparent but got 0x' + StringTools.hex(actual, 8));
 						return;
 					}
 				}
@@ -5492,8 +5492,8 @@ class BuilderUnitTest extends BuilderTestBase {
 		final texts = findAllTextDescendants(result.object);
 		Assert.equals(1, texts.length);
 		final ht:h2d.HtmlText = cast texts[0];
-		Assert.isTrue(ht.text.indexOf("<damage>") >= 0, 'HTML should contain <damage>, got: ${ht.text}');
-		Assert.isTrue(ht.text.indexOf("</damage>") >= 0, 'HTML should contain </damage>, got: ${ht.text}');
+		Assert.isTrue(ht.text.indexOf("<damage>") >= 0, 'HTML should contain <damage>, got: ' + ht.text);
+		Assert.isTrue(ht.text.indexOf("</damage>") >= 0, 'HTML should contain </damage>, got: ' + ht.text);
 	}
 
 	@Test
@@ -5507,8 +5507,8 @@ class BuilderUnitTest extends BuilderTestBase {
 		final texts = findAllTextDescendants(result.object);
 		Assert.equals(1, texts.length);
 		final ht:h2d.HtmlText = cast texts[0];
-		Assert.isTrue(ht.text.indexOf("<warn>") >= 0, 'HTML should contain <warn>, got: ${ht.text}');
-		Assert.isTrue(ht.text.indexOf("</warn>") >= 0, 'HTML should contain </warn>, got: ${ht.text}');
+		Assert.isTrue(ht.text.indexOf("<warn>") >= 0, 'HTML should contain <warn>, got: ' + ht.text);
+		Assert.isTrue(ht.text.indexOf("</warn>") >= 0, 'HTML should contain </warn>, got: ' + ht.text);
 	}
 
 	@Test
@@ -5522,7 +5522,7 @@ class BuilderUnitTest extends BuilderTestBase {
 		final texts = findAllTextDescendants(result.object);
 		Assert.equals(1, texts.length);
 		final ht:h2d.HtmlText = cast texts[0];
-		Assert.isTrue(ht.text.indexOf("<_s_bold>") >= 0, 'HTML should contain <_s_bold> (escaped reserved tag), got: ${ht.text}');
+		Assert.isTrue(ht.text.indexOf("<_s_bold>") >= 0, 'HTML should contain <_s_bold> (escaped reserved tag), got: ' + ht.text);
 	}
 
 	@Test
@@ -5536,7 +5536,7 @@ class BuilderUnitTest extends BuilderTestBase {
 		final texts = findAllTextDescendants(result.object);
 		Assert.equals(1, texts.length);
 		final ht:h2d.HtmlText = cast texts[0];
-		Assert.isTrue(ht.text.indexOf("<img src=") >= 0, 'HTML should contain img src, got: ${ht.text}');
+		Assert.isTrue(ht.text.indexOf("<img src=") >= 0, 'HTML should contain img src, got: ' + ht.text);
 	}
 
 	@Test
@@ -5549,8 +5549,8 @@ class BuilderUnitTest extends BuilderTestBase {
 		final texts = findAllTextDescendants(result.object);
 		Assert.equals(1, texts.length);
 		final ht:h2d.HtmlText = cast texts[0];
-		Assert.isTrue(ht.text.indexOf("<p align=") >= 0, 'HTML should contain p align, got: ${ht.text}');
-		Assert.isTrue(ht.text.indexOf("</p>") >= 0, 'HTML should contain </p>, got: ${ht.text}');
+		Assert.isTrue(ht.text.indexOf("<p align=") >= 0, 'HTML should contain p align, got: ' + ht.text);
+		Assert.isTrue(ht.text.indexOf("</p>") >= 0, 'HTML should contain </p>, got: ' + ht.text);
 	}
 
 	@Test
@@ -5563,8 +5563,8 @@ class BuilderUnitTest extends BuilderTestBase {
 		final texts = findAllTextDescendants(result.object);
 		Assert.equals(1, texts.length);
 		final ht:h2d.HtmlText = cast texts[0];
-		Assert.isTrue(ht.text.indexOf("<a href=") >= 0, 'HTML should contain a href, got: ${ht.text}');
-		Assert.isTrue(ht.text.indexOf("</a>") >= 0, 'HTML should contain </a>, got: ${ht.text}');
+		Assert.isTrue(ht.text.indexOf("<a href=") >= 0, 'HTML should contain a href, got: ' + ht.text);
+		Assert.isTrue(ht.text.indexOf("</a>") >= 0, 'HTML should contain </a>, got: ' + ht.text);
 	}
 
 	@Test
@@ -5648,9 +5648,9 @@ class BuilderUnitTest extends BuilderTestBase {
 		final texts = findAllTextDescendants(result.object);
 		Assert.equals(1, texts.length);
 		final ht:h2d.HtmlText = cast texts[0];
-		Assert.isTrue(ht.text.indexOf("<damage>") >= 0, 'HTML should contain <damage>, got: ${ht.text}');
-		Assert.isTrue(ht.text.indexOf("75") >= 0, 'HTML should contain interpolated value 75, got: ${ht.text}');
-		Assert.isTrue(ht.text.indexOf("</damage>") >= 0, 'HTML should contain </damage>, got: ${ht.text}');
+		Assert.isTrue(ht.text.indexOf("<damage>") >= 0, 'HTML should contain <damage>, got: ' + ht.text);
+		Assert.isTrue(ht.text.indexOf("75") >= 0, 'HTML should contain interpolated value 75, got: ' + ht.text);
+		Assert.isTrue(ht.text.indexOf("</damage>") >= 0, 'HTML should contain </damage>, got: ' + ht.text);
 	}
 
 	@Test
@@ -5687,7 +5687,7 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.equals(1, texts.length);
 		// richText always creates HtmlText; [[ converts to literal [
 		Assert.isTrue(Std.isOfType(texts[0], h2d.HtmlText), "richText should always create HtmlText");
-		Assert.isTrue(texts[0].text.indexOf("[") >= 0, 'Text should contain literal [, got: ${texts[0].text}');
+		Assert.isTrue(texts[0].text.indexOf("[") >= 0, 'Text should contain literal [, got: ' + texts[0].text);
 	}
 
 	@Test
@@ -5707,10 +5707,10 @@ class BuilderUnitTest extends BuilderTestBase {
 		Assert.isTrue(Std.isOfType(texts[0], h2d.HtmlText), "Should create HtmlText for markup");
 		final ht:h2d.HtmlText = cast texts[0];
 		// After TextMarkupConverter: [dmgStyle]75[/] → <dmgStyle>75</dmgStyle>, [dragon] → <dragon>
-		Assert.isTrue(ht.text.indexOf("75") >= 0, 'Should contain interpolated int 75, got: ${ht.text}');
-		Assert.isTrue(ht.text.indexOf("<dmgStyle>") >= 0, 'Should contain <dmgStyle> tag, got: ${ht.text}');
-		Assert.isTrue(ht.text.indexOf("</dmgStyle>") >= 0, 'Should contain </dmgStyle> tag, got: ${ht.text}');
-		Assert.isTrue(ht.text.indexOf("Dragon") >= 0, 'Should contain Dragon, got: ${ht.text}');
+		Assert.isTrue(ht.text.indexOf("75") >= 0, 'Should contain interpolated int 75, got: ' + ht.text);
+		Assert.isTrue(ht.text.indexOf("<dmgStyle>") >= 0, 'Should contain <dmgStyle> tag, got: ' + ht.text);
+		Assert.isTrue(ht.text.indexOf("</dmgStyle>") >= 0, 'Should contain </dmgStyle> tag, got: ' + ht.text);
+		Assert.isTrue(ht.text.indexOf("Dragon") >= 0, 'Should contain Dragon, got: ' + ht.text);
 	}
 
 	// ==================== Multi-value match @(param=>[v1,v2]) ====================
@@ -6167,14 +6167,14 @@ class BuilderUnitTest extends BuilderTestBase {
 		// most of the way through its hide tween.
 		tm.update(D * 0.7);
 		Assert.isTrue(wrapperA.alpha < 0.5,
-			'A should be well past half-faded at t=0.7*D, got ${wrapperA.alpha}');
+			'A should be well past half-faded at t=0.7*D, got ' + wrapperA.alpha);
 		Assert.floatEquals(0.0, wrapperB.alpha, 0.001,
-			'B must still be fully invisible during the first half, got ${wrapperB.alpha}');
+			'B must still be fully invisible during the first half, got ' + wrapperB.alpha);
 
 		// Advance past 2*D so both tweens complete: A removed from graph,
 		// B at its target alpha 1.0.
 		tm.update(D * 1.4);
-		Assert.floatEquals(1.0, wrapperB.alpha, 0.05, 'B alpha after 2*D expected ~1, got ${wrapperB.alpha}');
+		Assert.floatEquals(1.0, wrapperB.alpha, 0.05, 'B alpha after 2*D expected ~1, got ' + wrapperB.alpha);
 		Assert.isNull(wrapperA.parent, "A should be removed from graph after crossfade completes");
 	}
 
@@ -6380,9 +6380,9 @@ class BuilderUnitTest extends BuilderTestBase {
 		result.setParameter("visible", true);
 
 		Assert.floatEquals(userX, wrapper.x, 0.001,
-			'wrapper.x must retain user-set value after transition cancellation, got ${wrapper.x} (expected $userX)');
+			'wrapper.x must retain user-set value after transition cancellation, got ' + wrapper.x + ' (expected $userX)');
 		Assert.floatEquals(userY, wrapper.y, 0.001,
-			'wrapper.y must retain user-set value after transition cancellation, got ${wrapper.y} (expected $userY)');
+			'wrapper.y must retain user-set value after transition cancellation, got ' + wrapper.y + ' (expected $userY)');
 	}
 
 	@Test
@@ -6439,12 +6439,12 @@ class BuilderUnitTest extends BuilderTestBase {
 		// The tween must still be active on the same target — the unrelated
 		// setParameter must not cancel it.
 		Assert.isTrue(tm.hasTweens(fadingIn),
-			'in-flight transition was cancelled by unrelated setParameter (no tweens after paramB change; midAlpha=$midAlpha, post-alpha=${fadingIn.alpha})');
+			'in-flight transition was cancelled by unrelated setParameter (no tweens after paramB change; midAlpha=$midAlpha, post-alpha=' + fadingIn.alpha + ')');
 
 		// Finish the fade — alpha must reach ~1.0 within the remaining duration.
 		tm.update(D * 0.7); // ~0.6*D remaining + margin
 		Assert.floatEquals(1.0, fadingIn.alpha, 0.05,
-			'fade-in should complete on its original schedule, got alpha=${fadingIn.alpha}');
+			'fade-in should complete on its original schedule, got alpha=' + fadingIn.alpha);
 	}
 
 	@Test
@@ -6512,7 +6512,7 @@ class BuilderUnitTest extends BuilderTestBase {
 		tm.update(0.0); // skipFirstDt
 		tm.update(D * 0.4); // ~40% through, alpha ≈ 0.6
 		Assert.isTrue(wrapper.alpha < 0.9 && wrapper.alpha > 0.1,
-			'expected mid-fade alpha in (0.1, 0.9), got ${wrapper.alpha}');
+			'expected mid-fade alpha in (0.1, 0.9), got ' + wrapper.alpha);
 
 		// Reverse mid-fade. cancelActiveTransition runs before the new fade-in starts.
 		result.setParameter("visible", true);
@@ -6522,7 +6522,7 @@ class BuilderUnitTest extends BuilderTestBase {
 		tm.update(D * 1.2);
 
 		Assert.floatEquals(1.0, wrapper.alpha, 0.01,
-			'alpha must recover to original 1.0 after mid-fade cancel; got ${wrapper.alpha}');
+			'alpha must recover to original 1.0 after mid-fade cancel; got ' + wrapper.alpha);
 	}
 
 	@Test
@@ -6551,7 +6551,7 @@ class BuilderUnitTest extends BuilderTestBase {
 		tm.update(0.0); // skipFirstDt
 		tm.update(0.2); // 40% of 0.5s
 		Assert.isTrue(obj.alpha < 0.9 && obj.alpha > 0.1,
-			'expected mid-fade alpha in (0.1, 0.9), got ${obj.alpha}');
+			'expected mid-fade alpha in (0.1, 0.9), got ' + obj.alpha);
 
 		// Reverse mid-fade — internally calls cancelActiveTransition before starting
 		// the show. Without restoration of the captured pre-state, the show's preAlpha
@@ -6563,7 +6563,7 @@ class BuilderUnitTest extends BuilderTestBase {
 		tm.update(0.6); // past full duration
 
 		Assert.floatEquals(1.0, obj.alpha, 0.01,
-			'alpha must recover to original 1.0 after mid-fade cancel; got ${obj.alpha}');
+			'alpha must recover to original 1.0 after mid-fade cancel; got ' + obj.alpha);
 	}
 
 	@Test
@@ -6589,7 +6589,7 @@ class BuilderUnitTest extends BuilderTestBase {
 		tm.update(0.0);
 		tm.update(0.1);
 		Assert.isTrue(obj.scaleX < 0.9 && obj.scaleX > 0.1,
-			'expected mid-shrink scaleX in (0.1, 0.9), got ${obj.scaleX}');
+			'expected mid-shrink scaleX in (0.1, 0.9), got ' + obj.scaleX);
 
 		helper.setPresenceWithTransition(obj, true, "v", parent, sentinel);
 
@@ -6598,7 +6598,7 @@ class BuilderUnitTest extends BuilderTestBase {
 		tm.update(0.5); // past full duration
 
 		Assert.floatEquals(1.0, obj.scaleX, 0.01,
-			'scaleX must recover to original 1.0 after mid-flipX cancel; got ${obj.scaleX}');
+			'scaleX must recover to original 1.0 after mid-flipX cancel; got ' + obj.scaleX);
 	}
 
 	@Test
@@ -6627,9 +6627,9 @@ class BuilderUnitTest extends BuilderTestBase {
 		tm.update(0.0);
 		tm.update(0.2); // 40% of 0.5s, x ≈ 80, alpha ≈ 0.6
 		Assert.isTrue(obj.x < 95.0 && obj.x > 55.0,
-			'expected mid-slide x in (55, 95), got ${obj.x}');
+			'expected mid-slide x in (55, 95), got ' + obj.x);
 		Assert.isTrue(obj.alpha < 0.9 && obj.alpha > 0.1,
-			'expected mid-slide alpha in (0.1, 0.9), got ${obj.alpha}');
+			'expected mid-slide alpha in (0.1, 0.9), got ' + obj.alpha);
 
 		helper.setPresenceWithTransition(obj, true, "v", parent, sentinel);
 
@@ -6637,11 +6637,11 @@ class BuilderUnitTest extends BuilderTestBase {
 		tm.update(0.6);
 
 		Assert.floatEquals(100.0, obj.x, 0.5,
-			'x must recover to original 100.0 after mid-slide cancel; got ${obj.x}');
+			'x must recover to original 100.0 after mid-slide cancel; got ' + obj.x);
 		Assert.floatEquals(50.0, obj.y, 0.5,
-			'y must recover to original 50.0 after mid-slide cancel; got ${obj.y}');
+			'y must recover to original 50.0 after mid-slide cancel; got ' + obj.y);
 		Assert.floatEquals(1.0, obj.alpha, 0.01,
-			'alpha must recover to 1.0 after mid-slide cancel; got ${obj.alpha}');
+			'alpha must recover to 1.0 after mid-slide cancel; got ' + obj.alpha);
 	}
 
 	@Test
@@ -6678,7 +6678,7 @@ class BuilderUnitTest extends BuilderTestBase {
 		// how the child stays fresh for the flip-back.
 		result.setParameter("val", 7);
 		Assert.isTrue(childRebuildCount > hideRebuildCount,
-			'Hidden dynamicRef must still receive propagated param updates to avoid stale state on flip-back; got ${childRebuildCount - hideRebuildCount} extra rebuilds');
+			'Hidden dynamicRef must still receive propagated param updates to avoid stale state on flip-back; got ' + (childRebuildCount - hideRebuildCount) + ' extra rebuilds');
 	}
 
 	@Test
@@ -6714,7 +6714,7 @@ class BuilderUnitTest extends BuilderTestBase {
 		final afterTexts = findAllTextDescendants(result.object);
 		Assert.equals(1, afterTexts.length, "text element should be back in graph after reveal");
 		Assert.equals("v2", afterTexts[0].text,
-			'Text must reflect latest $$msg value after hide/change/reveal cycle; got "${afterTexts[0].text}"');
+			'Text must reflect latest $$msg value after hide/change/reveal cycle; got "' + afterTexts[0].text + '"');
 	}
 
 	// ==================== extraPoint coordinates ====================
@@ -8377,7 +8377,7 @@ class BuilderUnitTest extends BuilderTestBase {
 			result.setParameter("visible", true);
 		}
 		Assert.equals(1, countInteractives(result),
-			'interactive registrations leaked across deferred re-materialize: expected 1, got ${countInteractives(result)}');
+			'interactive registrations leaked across deferred re-materialize: expected 1, got ' + countInteractives(result));
 	}
 
 	@Test
@@ -8402,7 +8402,7 @@ class BuilderUnitTest extends BuilderTestBase {
 			result.setParameter("label", "n" + i);
 		}
 		Assert.equals(1, countInteractives(result),
-			'interactive registrations leaked across tracked-expression rebuild: expected 1, got ${countInteractives(result)}');
+			'interactive registrations leaked across tracked-expression rebuild: expected 1, got ' + countInteractives(result));
 	}
 
 	@Test
@@ -8429,7 +8429,7 @@ class BuilderUnitTest extends BuilderTestBase {
 			result.setParameter("visible", true);
 		}
 		Assert.equals(1, result.slots.length,
-			'slot registrations leaked across deferred re-materialize: expected 1, got ${result.slots.length}');
+			'slot registrations leaked across deferred re-materialize: expected 1, got ' + result.slots.length);
 	}
 
 	#if MULTIANIM_DEV
@@ -8541,7 +8541,7 @@ class BuilderUnitTest extends BuilderTestBase {
 		ctx.cleanupDestroyedSubtree(ir, result.object);
 
 		Assert.equals(0, ctx.getConditionalEntriesCount(),
-			'conditional entries leaked after subtree cleanup: ${ctx.getConditionalEntriesCount()} survived. The detached deferred wrapper has obj.parent == null, so the isDescendantOf check is short-circuited; cleanup must also walk the entry\'s anchored sentinel.');
+			'conditional entries leaked after subtree cleanup: ' + ctx.getConditionalEntriesCount() + ' survived. The detached deferred wrapper has obj.parent == null, so the isDescendantOf check is short-circuited; cleanup must also walk the entry\'s anchored sentinel.');
 	}
 
 	@Test
@@ -9592,10 +9592,10 @@ class BuilderUnitTest extends BuilderTestBase {
 			return null;
 		} catch (e:bh.multianim.BuilderError) {
 			Assert.equals("tilegroup_conditional", e.code,
-				'Expected BuilderError code="tilegroup_conditional", got "${e.code}" with message: ${e.message}');
+				'Expected BuilderError code="tilegroup_conditional", got "' + e.code + '" with message: ' + e.message);
 			return e.message;
 		} catch (e:Dynamic) {
-			Assert.fail('Expected BuilderError, got: ${Std.string(e)}');
+			Assert.fail('Expected BuilderError, got: ' + Std.string(e));
 			return null;
 		}
 	}
@@ -9631,10 +9631,10 @@ class BuilderUnitTest extends BuilderTestBase {
 				}
 			", "test", null, Incremental);
 		} catch (e:bh.multianim.BuilderError) {
-			Assert.equals("tilegroup_conditional", e.code, 'code should be tilegroup_conditional, got "${e.code}"');
+			Assert.equals("tilegroup_conditional", e.code, 'code should be tilegroup_conditional, got "' + e.code + '"');
 			msg = e.message;
 		} catch (e:Dynamic) {
-			Assert.fail('Expected BuilderError, got: ${Std.string(e)}');
+			Assert.fail('Expected BuilderError, got: ' + Std.string(e));
 		}
 		Assert.notNull(msg, "Incremental build of tileGroup + @()/@else on a param must throw");
 	}
@@ -9667,11 +9667,11 @@ class BuilderUnitTest extends BuilderTestBase {
 		} catch (e:bh.multianim.BuilderError) {
 			caught = e;
 		} catch (e:Dynamic) {
-			Assert.fail('Expected BuilderError, got: ${Std.string(e)}');
+			Assert.fail('Expected BuilderError, got: ' + Std.string(e));
 		}
 		Assert.notNull(caught, "incremental root-form tilegroup build with a param conditional must throw");
 		if (caught != null)
-			Assert.equals("tilegroup_conditional", caught.code, 'code should be tilegroup_conditional, got "${caught.code}"');
+			Assert.equals("tilegroup_conditional", caught.code, 'code should be tilegroup_conditional, got "' + caught.code + '"');
 	}
 
 	@Test
@@ -9917,7 +9917,7 @@ class BuilderUnitTest extends BuilderTestBase {
 		}
 		Assert.notNull(caught, "Array value on declared param must throw");
 		Assert.equals("invalid_param_value", caught.code);
-		Assert.isTrue(caught.message.indexOf("\"x\"") >= 0, 'Message should name the param, got: ${caught.message}');
+		Assert.isTrue(caught.message.indexOf("\"x\"") >= 0, 'Message should name the param, got: ' + caught.message);
 	}
 
 	@Test
@@ -10111,7 +10111,7 @@ class BuilderUnitTest extends BuilderTestBase {
 				final bitmaps = findVisibleBitmapDescendants(builder.buildWithParameters(host, [], params).object);
 				width = bitmaps.length == 1 ? Std.int(bitmaps[0].tile.width) : -2;
 			} catch (e:Dynamic) {
-				Assert.fail('$host: the argument\'s callback is the host build\'s, got ${Std.string(e)}');
+				Assert.fail('$host: the argument\'s callback is the host build\'s, got ' + Std.string(e));
 			}
 			Assert.equals(7, width, '$host: w => callback("width") is the host\'s callback answer');
 		}
@@ -10139,16 +10139,16 @@ class BuilderUnitTest extends BuilderTestBase {
 		} catch (e:bh.multianim.BuilderError) {
 			caught = e;
 		} catch (e:Dynamic) {
-			Assert.fail('Expected BuilderError, got: ${Std.string(e)}');
+			Assert.fail('Expected BuilderError, got: ' + Std.string(e));
 		}
 		Assert.notNull(caught, "Self-referencing staticRef (A→A) must throw a structured BuilderError, not stack-overflow");
 		if (caught != null) {
 			Assert.equals("circular_reference", caught.code,
-				'Expected code="circular_reference", got "${caught.code}" with message: ${caught.message}');
+				'Expected code="circular_reference", got "' + caught.code + '" with message: ' + caught.message);
 			Assert.isTrue(caught.message.toLowerCase().indexOf("circular") >= 0,
-				'Expected "circular" in error message, got: ${caught.message}');
+				'Expected "circular" in error message, got: ' + caught.message);
 			Assert.isTrue(caught.message.indexOf("a") >= 0,
-				'Expected the offending programmable name "a" in the message, got: ${caught.message}');
+				'Expected the offending programmable name "a" in the message, got: ' + caught.message);
 		}
 	}
 
@@ -10167,14 +10167,14 @@ class BuilderUnitTest extends BuilderTestBase {
 		} catch (e:bh.multianim.BuilderError) {
 			caught = e;
 		} catch (e:Dynamic) {
-			Assert.fail('Expected BuilderError, got: ${Std.string(e)}');
+			Assert.fail('Expected BuilderError, got: ' + Std.string(e));
 		}
 		Assert.notNull(caught, "Mutual staticRef cycle (A→B→A) must throw a structured BuilderError, not stack-overflow");
 		if (caught != null) {
 			Assert.equals("circular_reference", caught.code,
-				'Expected code="circular_reference", got "${caught.code}" with message: ${caught.message}');
+				'Expected code="circular_reference", got "' + caught.code + '" with message: ' + caught.message);
 			Assert.isTrue(caught.message.toLowerCase().indexOf("circular") >= 0,
-				'Expected "circular" in error message, got: ${caught.message}');
+				'Expected "circular" in error message, got: ' + caught.message);
 		}
 	}
 
@@ -10193,14 +10193,14 @@ class BuilderUnitTest extends BuilderTestBase {
 		} catch (e:bh.multianim.BuilderError) {
 			caught = e;
 		} catch (e:Dynamic) {
-			Assert.fail('Expected BuilderError, got: ${Std.string(e)}');
+			Assert.fail('Expected BuilderError, got: ' + Std.string(e));
 		}
 		Assert.notNull(caught, "Mutual dynamicRef cycle (A→B→A) must throw a structured BuilderError, not stack-overflow");
 		if (caught != null) {
 			Assert.equals("circular_reference", caught.code,
-				'Expected code="circular_reference", got "${caught.code}" with message: ${caught.message}');
+				'Expected code="circular_reference", got "' + caught.code + '" with message: ' + caught.message);
 			Assert.isTrue(caught.message.toLowerCase().indexOf("circular") >= 0,
-				'Expected "circular" in error message, got: ${caught.message}');
+				'Expected "circular" in error message, got: ' + caught.message);
 		}
 	}
 
@@ -10422,7 +10422,7 @@ class BuilderUnitTest extends BuilderTestBase {
 		for (i in 0...5)
 			result.setParameter("level", 5);
 		Assert.equals(firesAfterFirst, fires,
-			'no-op setParameter must not fire rebuild listeners (codegen-symmetric); fired ${fires - firesAfterFirst} extra times');
+			'no-op setParameter must not fire rebuild listeners (codegen-symmetric); fired ' + (fires - firesAfterFirst) + ' extra times');
 
 		// Sanity: a real change still fires.
 		result.setParameter("level", 7);
@@ -10451,7 +10451,7 @@ class BuilderUnitTest extends BuilderTestBase {
 		for (i in 0...5)
 			result.setParameter("level", 3);
 		Assert.equals(baseline, fires,
-			'tracked-expression re-eval must short-circuit on no-op setParameter; ${fires - baseline} extra fires');
+			'tracked-expression re-eval must short-circuit on no-op setParameter; ' + (fires - baseline) + ' extra fires');
 	}
 
 	// applyUpdates wraps the parameter-change pass in pushBuilderState/popBuilderState;
@@ -10478,7 +10478,7 @@ class BuilderUnitTest extends BuilderTestBase {
 		}
 		final delta = bh.multianim.MultiAnimBuilder.pushBuilderStateResetCount - baseline;
 		Assert.equals(0, delta,
-			'setParameter must not invoke the resetting pushBuilderState (its empty Map + anonymous struct are immediately overwritten); got ${delta} reset allocations across ${iterations} setParameter calls');
+			'setParameter must not invoke the resetting pushBuilderState (its empty Map + anonymous struct are immediately overwritten); got $delta reset allocations across $iterations setParameter calls');
 	}
 
 	// applyUpdates pushes a snapshot via pushBuilderStateNoReset, then immediately
@@ -10508,7 +10508,7 @@ class BuilderUnitTest extends BuilderTestBase {
 		}
 		final delta = bh.multianim.MultiAnimBuilder.pushBuilderStateNoResetAllocCount - baseline;
 		Assert.equals(0, delta,
-			'pushBuilderStateNoReset must reuse pooled state objects on the setParameter hot path; got ${delta} fresh anon-struct allocations across ${iterations} setParameter calls');
+			'pushBuilderStateNoReset must reuse pooled state objects on the setParameter hot path; got $delta fresh anon-struct allocations across $iterations setParameter calls');
 	}
 
 	// applyUpdates re-evaluates tracked expressions by walking the full trackedExpressions array

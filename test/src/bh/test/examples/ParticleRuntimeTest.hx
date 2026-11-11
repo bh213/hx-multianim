@@ -464,9 +464,9 @@ class ParticleRuntimeTest extends utest.Test {
 		var e = g.batch.first;
 		Assert.notNull(e);
 		Assert.isTrue(e.y > 1.0,
-			'gravityAngle=π/2 (down) must accelerate the particle downward; got y=${e.y}, x=${e.x}');
+			'gravityAngle=π/2 (down) must accelerate the particle downward; got y=' + e.y + ', x=' + e.x);
 		Assert.isTrue(Math.abs(e.x) < 0.01,
-			'gravityAngle=π/2 (down) must not push the particle sideways; got x=${e.x}');
+			'gravityAngle=π/2 (down) must not push the particle sideways; got x=' + e.x);
 	}
 
 	@Test
@@ -487,8 +487,8 @@ class ParticleRuntimeTest extends utest.Test {
 
 		var e = g.batch.first;
 		Assert.notNull(e);
-		Assert.isTrue(e.y > 1.0, 'default gravity must fall down; got y=${e.y}, x=${e.x}');
-		Assert.isTrue(Math.abs(e.x) < 0.01, 'default gravity must not drift sideways; got x=${e.x}');
+		Assert.isTrue(e.y > 1.0, 'default gravity must fall down; got y=' + e.y + ', x=' + e.x);
+		Assert.isTrue(Math.abs(e.x) < 0.01, 'default gravity must not drift sideways; got x=' + e.x);
 	}
 
 	// ==================== emitBurstAt must not enable child-draw of the batch ====================
@@ -756,7 +756,7 @@ class ParticleRuntimeTest extends utest.Test {
 		advanceGroup(g, 0.5);
 
 		Assert.equals(deathTile, particle.t,
-			'Expected onDeath override to switch tile to deathTile at lifecycle death; got ${particle.t}');
+			'Expected onDeath override to switch tile to deathTile at lifecycle death; got ' + particle.t);
 	}
 
 	@Test
@@ -801,7 +801,7 @@ class ParticleRuntimeTest extends utest.Test {
 		// Past the end of the impact window: the pin releases and lifetime advance resumes.
 		advanceGroup(g, 0.5); // ~0.8 total, past dying's 0.7 startLifeRate
 		Assert.equals(dyingTile, particle.t,
-			'onBounce override must release so the particle advances to its dying state; got ${particle.t}');
+			'onBounce override must release so the particle advances to its dying state; got ' + particle.t);
 	}
 
 	// ==================== Shutdown ====================
@@ -973,7 +973,7 @@ class ParticleRuntimeTest extends utest.Test {
 		// Check a particle has reduced alpha
 		var e = g.batch.first;
 		if (e != null) {
-			Assert.isTrue(e.alpha < 0.9, 'Expected reduced alpha during shutdown, got ${e.alpha}');
+			Assert.isTrue(e.alpha < 0.9, 'Expected reduced alpha during shutdown, got ' + e.alpha);
 		}
 	}
 
@@ -1578,7 +1578,7 @@ class ParticleRuntimeTest extends utest.Test {
 		advanceGroup(mainGroup, 0.5);
 
 		Assert.equals(0, countParticles(sparks),
-			'Rejected particles must not trigger OnBirth/OnDeath sub-emitters (got ${countParticles(sparks)} sparks)');
+			'Rejected particles must not trigger OnBirth/OnDeath sub-emitters (got ' + countParticles(sparks) + ' sparks)');
 	}
 
 	@Test
@@ -1608,7 +1608,7 @@ class ParticleRuntimeTest extends utest.Test {
 		advanceGroup(g, 0.05);
 
 		Assert.equals(0, g.liveCount,
-			'Rejected bursts must not drift liveCount; expected 0 after all stillborn particles freed, got ${g.liveCount}');
+			'Rejected bursts must not drift liveCount; expected 0 after all stillborn particles freed, got ' + g.liveCount);
 	}
 
 	@Test

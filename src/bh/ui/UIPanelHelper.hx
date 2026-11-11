@@ -129,7 +129,7 @@ class UIPanelHelper {
 		screen.addObjectToLayer(result.object, layer);
 
 		// Register panel interactives with a prefix so the screen can identify them
-		final prefix = '${interactiveId}.$buildName';
+		final prefix = '$interactiveId.$buildName';
 		// Registered even with no interactives yet: ones a later rebuild adds get wired too, raised
 		// above the content like the rest.
 		screen.addInteractives(result, prefix, UIEventPriority.Overlay);
@@ -270,7 +270,7 @@ class UIPanelHelper {
 		UIPositionHelper.position(result.object, wrapper.interactive, position, offset);
 		screen.addObjectToLayer(result.object, layer);
 
-		final prefix = '${slot}.${interactiveId}.$buildName';
+		final prefix = '$slot.$interactiveId.$buildName';
 		// Registered even with no interactives yet: ones a later rebuild adds get wired too, raised
 		// above the content like the rest.
 		screen.addInteractives(result, prefix, UIEventPriority.Overlay);

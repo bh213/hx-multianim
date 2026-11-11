@@ -128,7 +128,7 @@ throw builderError('invalid tile format');  // code optional
 
 // Inside MultiAnimBuilder methods, explicit-node sites (e.g. macro-codegen
 // helpers walking a passed-in subtree). Was: 'msg' + MacroUtils.nodePos(node)
-throw builderErrorAt(node, 'invalid param types ${a}, ${b}');
+throw builderErrorAt(node, 'invalid param types $a, $b');
 
 // Inside helper classes that don't have a Node (BuilderResult, SlotHandle,
 // BuilderResolvedSettings) — use the static factory

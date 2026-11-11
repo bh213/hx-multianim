@@ -1617,7 +1617,7 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 		final binding:CardHandBinding = {
 			cardHand: cardHand,
 			accepts: accepts,
-			targetPrefix: 'grid${cardTargetId}ch${cardHandBindingCounter++}',
+			targetPrefix: 'grid' + cardTargetId + 'ch' + (cardHandBindingCounter++),
 			eventListener: null,
 			hook: null,
 		};
@@ -2151,7 +2151,7 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 		final prefix = binding.targetPrefix;
 		for (_ => entry in cells) {
 			final coord = entry.coord;
-			final targetId = '${prefix}_${coord.col}_${coord.row}';
+			final targetId = prefix + '_' + coord.col + '_' + coord.row;
 			final cellSize = getCellBoundingSize();
 
 			// Create a synthetic MAObject with MAInteractive for the card hand system
@@ -2278,7 +2278,7 @@ class UIMultiAnimGrid<T> implements UIHigherOrderComponent {
 	function parseCardTargetId(targetId:String):Null<CellCoord> {
 		// Target IDs have format: grid{cardTargetId}ch{N}_{col}_{row}
 		// Match any binding's prefix by checking grid instance prefix
-		final gridPrefix = 'grid${cardTargetId}ch';
+		final gridPrefix = 'grid' + cardTargetId + 'ch';
 		if (!StringTools.startsWith(targetId, gridPrefix))
 			return null;
 		// Find the col_row suffix: last two underscore-separated parts

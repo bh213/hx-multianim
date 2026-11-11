@@ -96,7 +96,7 @@ class Updatable implements IUpdatable {
 					t.text = newText;
 				default:
 					if (throwIfAnyFails)
-						throw BuilderError.of('invalid updateText: expected HeapsText but got ${v.object}');
+						throw BuilderError.of('invalid updateText: expected HeapsText but got ' + v.object);
 			}
 		}
 	}
@@ -108,7 +108,7 @@ class Updatable implements IUpdatable {
 					b.tile = newTile;
 				default:
 					if (throwIfAnyFails)
-						throw BuilderError.of('invalid updateTile: expected HeapsBitmap but got ${v.object}');
+						throw BuilderError.of('invalid updateTile: expected HeapsBitmap but got ' + v.object);
 			}
 		}
 	}
@@ -184,7 +184,7 @@ class BuilderResolvedSettings {
 			throw BuilderError.of('settings not found, was looking for $settingName');
 		final r = settings[settingName];
 		if (r == null)
-			throw BuilderError.of('expected string setting ${settingName} to be present but was not');
+			throw BuilderError.of('expected string setting $settingName to be present but was not');
 		return switch r {
 			case RSVString(s): s;
 			case RSVInt(i): '$i';
@@ -199,12 +199,12 @@ class BuilderResolvedSettings {
 			throw BuilderError.of('settings not found, was looking for $settingName');
 		var r = settings[settingName];
 		if (r == null)
-			throw BuilderError.of('expected int setting ${settingName} to be present but was not');
+			throw BuilderError.of('expected int setting $settingName to be present but was not');
 		return switch r {
 			case RSVInt(i): i;
-			case RSVColor(c): throw BuilderError.of('expected int setting ${settingName} but was color $c — use getColorOrException for color settings');
-			case RSVFloat(f): throw BuilderError.of('expected int setting ${settingName} to valid int number but was float $f');
-			case RSVString(s): throw BuilderError.of('expected int setting ${settingName} to valid int number but was string $s');
+			case RSVColor(c): throw BuilderError.of('expected int setting $settingName but was color $c — use getColorOrException for color settings');
+			case RSVFloat(f): throw BuilderError.of('expected int setting $settingName to valid int number but was float $f');
+			case RSVString(s): throw BuilderError.of('expected int setting $settingName to valid int number but was string $s');
 			case RSVBool(b): b ? 1 : 0;
 		};
 	}
@@ -217,9 +217,9 @@ class BuilderResolvedSettings {
 			return defaultValue;
 		return switch r {
 			case RSVInt(i): i;
-			case RSVColor(c): throw BuilderError.of('expected int setting ${settingName} but was color $c — use getColorOrDefault for color settings');
-			case RSVFloat(f): throw BuilderError.of('expected int setting ${settingName} to valid int number but was float $f');
-			case RSVString(s): throw BuilderError.of('expected int setting ${settingName} to valid int number but was string $s');
+			case RSVColor(c): throw BuilderError.of('expected int setting $settingName but was color $c — use getColorOrDefault for color settings');
+			case RSVFloat(f): throw BuilderError.of('expected int setting $settingName to valid int number but was float $f');
+			case RSVString(s): throw BuilderError.of('expected int setting $settingName to valid int number but was string $s');
 			case RSVBool(b): b ? 1 : 0;
 		};
 	}
@@ -229,12 +229,12 @@ class BuilderResolvedSettings {
 			throw BuilderError.of('settings not found, was looking for $settingName');
 		var r = settings[settingName];
 		if (r == null)
-			throw BuilderError.of('expected float setting ${settingName} to be present but was not');
+			throw BuilderError.of('expected float setting $settingName to be present but was not');
 		return switch r {
 			case RSVFloat(f): f;
 			case RSVInt(i): cast i;
-			case RSVColor(c): throw BuilderError.of('expected float setting ${settingName} but was color $c — use getColorOrException for color settings');
-			case RSVString(s): throw BuilderError.of('expected float setting ${settingName} to valid float number but was string $s');
+			case RSVColor(c): throw BuilderError.of('expected float setting $settingName but was color $c — use getColorOrException for color settings');
+			case RSVString(s): throw BuilderError.of('expected float setting $settingName to valid float number but was string $s');
 			case RSVBool(b): b ? 1.0 : 0.0;
 		};
 	}
@@ -248,8 +248,8 @@ class BuilderResolvedSettings {
 		return switch r {
 			case RSVFloat(f): f;
 			case RSVInt(i): cast i;
-			case RSVColor(c): throw BuilderError.of('expected float setting ${settingName} but was color $c — use getColorOrDefault for color settings');
-			case RSVString(s): throw BuilderError.of('expected float setting ${settingName} to valid float number but was string $s');
+			case RSVColor(c): throw BuilderError.of('expected float setting $settingName but was color $c — use getColorOrDefault for color settings');
+			case RSVString(s): throw BuilderError.of('expected float setting $settingName to valid float number but was string $s');
 			case RSVBool(b): b ? 1.0 : 0.0;
 		};
 	}
@@ -259,13 +259,13 @@ class BuilderResolvedSettings {
 			throw BuilderError.of('settings not found, was looking for $settingName');
 		var r = settings[settingName];
 		if (r == null)
-			throw BuilderError.of('expected color setting ${settingName} to be present but was not');
+			throw BuilderError.of('expected color setting $settingName to be present but was not');
 		return switch r {
 			case RSVColor(c): c;
 			case RSVInt(i): i;
-			case RSVFloat(f): throw BuilderError.of('expected color setting ${settingName} but was float $f');
-			case RSVString(s): throw BuilderError.of('expected color setting ${settingName} but was string $s');
-			case RSVBool(b): throw BuilderError.of('expected color setting ${settingName} but was bool $b');
+			case RSVFloat(f): throw BuilderError.of('expected color setting $settingName but was float $f');
+			case RSVString(s): throw BuilderError.of('expected color setting $settingName but was string $s');
+			case RSVBool(b): throw BuilderError.of('expected color setting $settingName but was bool $b');
 		};
 	}
 
@@ -278,9 +278,9 @@ class BuilderResolvedSettings {
 		return switch r {
 			case RSVColor(c): c;
 			case RSVInt(i): i;
-			case RSVFloat(f): throw BuilderError.of('expected color setting ${settingName} but was float $f');
-			case RSVString(s): throw BuilderError.of('expected color setting ${settingName} but was string $s');
-			case RSVBool(b): throw BuilderError.of('expected color setting ${settingName} but was bool $b');
+			case RSVFloat(f): throw BuilderError.of('expected color setting $settingName but was float $f');
+			case RSVString(s): throw BuilderError.of('expected color setting $settingName but was string $s');
+			case RSVBool(b): throw BuilderError.of('expected color setting $settingName but was bool $b');
 		};
 	}
 
@@ -1457,7 +1457,7 @@ class IncrementalUpdateContext {
 	public function setParameter(name:String, value:Dynamic):Void {
 		final untrackedReasons = untrackedParams.get(name);
 		if (untrackedReasons != null) {
-			throw BuilderError.of('setParameter("$name", ...) rejected: this param is referenced in incremental-unsupported slot(s) [${untrackedReasons.join(", ")}]. Changing it would leave the rendered state inconsistent. Either rebuild the programmable or avoid runtime mutation of this param.',
+			throw BuilderError.of('setParameter("$name", ...) rejected: this param is referenced in incremental-unsupported slot(s) [' + untrackedReasons.join(", ") + ']. Changing it would leave the rendered state inconsistent. Either rebuild the programmable or avoid runtime mutation of this param.',
 				"untracked_param");
 		}
 		// Look up the parameter type definition for type-aware conversion (flags need special handling).
@@ -1468,7 +1468,7 @@ class IncrementalUpdateContext {
 		final paramDef = getParamDefinition(name);
 		if (paramDef == null) {
 			final available = getAvailableParamNames();
-			throw BuilderError.of('setParameter("$name", ...) rejected: unknown parameter. Available: ${available.join(", ")}',
+			throw BuilderError.of('setParameter("$name", ...) rejected: unknown parameter. Available: ' + available.join(", "),
 				"unknown_param");
 		}
 		final paramType = paramDef.type;
@@ -1538,7 +1538,7 @@ class IncrementalUpdateContext {
 			// which always returns or throws. Defensive net for future edits.
 			final typeDesc = value == null ? "null" : Type.getClassName(Type.getClass(value));
 			if (typeDesc == null) {
-				throw BuilderError.of('setParameter("$name", ...) rejected: value type not convertible to a parameter shape (got ${Std.string(value)}). Accepted: Int, Float, String, Bool, ResolvedIndexParameters, h2d.Tile.',
+				throw BuilderError.of('setParameter("$name", ...) rejected: value type not convertible to a parameter shape (got ' + Std.string(value) + '). Accepted: Int, Float, String, Bool, ResolvedIndexParameters, h2d.Tile.',
 					"invalid_param_value");
 			}
 			throw BuilderError.of('setParameter("$name", ...) rejected: value type not convertible to a parameter shape (got $typeDesc). Accepted: Int, Float, String, Bool, ResolvedIndexParameters, h2d.Tile.',
@@ -2756,8 +2756,8 @@ class SlotHandle {
 	 *  name is absent or when the slot has no per-slot IR (runtime BuilderResult path). */
 	public function getUpdatable(name:String, ?index:Null<Int>, ?indexY:Null<Int>):Null<h2d.Object> {
 		if (ir == null) return null;
-		final key = if (indexY != null) '${name} ${index} ${indexY}'
-			else if (index != null) '${name} ${index}'
+		final key = if (indexY != null) '$name $index $indexY'
+			else if (index != null) '$name $index'
 			else name;
 		final arr = ir.names.get(key);
 		if (arr == null || arr.length == 0) return null;
@@ -3054,16 +3054,16 @@ class BuilderResult implements bh.multianim.LiveProgrammable {
 	public function getSingleItemByName(name:String):NamedBuildResult {
 		var items = this.names[name];
 		if (items == null)
-			throw BuilderError.of('builder result name ${name} not found');
+			throw BuilderError.of('builder result name $name not found');
 		if (items.length != 1)
-			throw BuilderError.of('builder result name ${name} expected single item but got ${items.length}');
+			throw BuilderError.of('builder result name $name expected single item but got ' + items.length);
 		return items[0];
 	}
 
 	public function getUpdatable(name) {
 		final namesArray = names[name];
 		if (namesArray == null)
-			throw BuilderError.of('Name ${name} not found in BuilderResult');
+			throw BuilderError.of('Name $name not found in BuilderResult');
 		return new Updatable(namesArray);
 	}
 
@@ -3124,11 +3124,11 @@ class BuilderResult implements bh.multianim.LiveProgrammable {
 	}
 
 	public function hasNameByIndex(name:String, index:Int):Bool {
-		return names.exists('${name} ${index}');
+		return names.exists('$name $index');
 	}
 
 	public function getUpdatableByIndex(name:String, index:Int):Updatable {
-		return getUpdatable('${name} ${index}');
+		return getUpdatable('$name $index');
 	}
 
 	/** Existence check companion to `getSlot`. Returns false (never throws) when no slots
@@ -3186,7 +3186,7 @@ class BuilderResult implements bh.multianim.LiveProgrammable {
 	/** Convenience for indexed `#name[$i] dynamicRef(...)` — resolves the `"name idx"` key the
 	 *  builder stores per repeatable iteration. Mirrors getUpdatableByIndex. */
 	public function getDynamicRefByIndex(name:String, index:Int):BuilderResult {
-		return getDynamicRef('${name} ${index}');
+		return getDynamicRef('$name $index');
 	}
 
 	public function getSlot(name:String, ?index:Null<Int>, ?indexY:Null<Int>):SlotHandle {
@@ -3357,11 +3357,11 @@ class SwitchArmResults {
 	}
 
 	public function getUpdatableByIndex(name:String, index:Int):Null<h2d.Object> {
-		return getUpdatable('${name} ${index}');
+		return getUpdatable('$name $index');
 	}
 
 	public function getUpdatable2D(name:String, x:Int, y:Int):Null<h2d.Object> {
-		return getUpdatable('${name} ${x} ${y}');
+		return getUpdatable('$name $x $y');
 	}
 
 	/** Every object built under a names-map key (one per `@()` arm that declares the name), for
@@ -3536,7 +3536,7 @@ class MultiAnimBuilder {
 	/** Returns position string for error messages when MULTIANIM_DEV is enabled */
 	inline function currentNodePos():String {
 		#if MULTIANIM_DEV
-		return if (currentNode != null) ' at ${currentNode.parserPos}' else '';
+		return if (currentNode != null) (' at ' + currentNode.parserPos) else '';
 		#else
 		return '';
 		#end
@@ -3578,13 +3578,13 @@ class MultiAnimBuilder {
 		if (missing == null || !strict)
 			return null;
 		final there = AnimationSM.layerNamesIn(root);
-		final list = 'hide => [${hidden.names.join(", ")}]';
+		final list = 'hide => [' + hidden.names.join(", ") + ']';
 		return if (ofStateAnim)
 			there.length == 0 ? '$what: $list: the .anim has no layers (no layers: line), so there is no layer "$missing" to hide; leave hide out'
-				: '$what: $list: the .anim has no layer "$missing" (its layers: ${there.join(", ")})';
+				: '$what: $list: the .anim has no layer "$missing" (its layers: ' + there.join(", ") + ')';
 		else
 			there.length == 0 ? '$what: $list: it draws no stateanim with layers, so there is no layer "$missing" to hide; leave hide out'
-				: '$what: $list: no stateanim it draws has a layer "$missing" (their layers: ${there.join(", ")})';
+				: '$what: $list: no stateanim it draws has a layer "$missing" (their layers: ' + there.join(", ") + ')';
 	}
 
 	/** A ref's `hide => [...]` on what it built: an error at the ref (`kind`: staticRef or dynamicRef)
@@ -3593,7 +3593,7 @@ class MultiAnimBuilder {
 		final hidden:Null<HiddenLayers> = node.hiddenLayers;
 		if (hidden == null)
 			return;
-		final error = hideAnimLayers(root, hidden, false, '$kind($reference) on line ${hidden.line}', strict);
+		final error = hideAnimLayers(root, hidden, false, '$kind($reference) on line ' + hidden.line, strict);
 		if (error != null)
 			throw builderErrorAt(node, error, "hide_layer");
 	}
@@ -3625,7 +3625,7 @@ class MultiAnimBuilder {
 	}
 
 	public function toString():String {
-		return 'MultiAnimBuilder( multiParserResult: ${multiParserResult.nodes.keys()}, indexedParams: ${indexedParams}, builderParams: ${builderParams}, currentNode: ${currentNode}, stateStack: ${stateStack.length} items)';
+		return 'MultiAnimBuilder( multiParserResult: ' + multiParserResult.nodes.keys() + ', indexedParams: $indexedParams, builderParams: $builderParams, currentNode: $currentNode, stateStack: ' + stateStack.length + ' items)';
 	}
 
 	private function new(data, resourceLoader, sourceName) {
@@ -3641,7 +3641,7 @@ class MultiAnimBuilder {
 	function popBuilderState() {
 		final state = stateStack.pop();
 		if (state == null)
-			throw builderError('builder state stack is empty, sourceName: ${sourceName}');
+			throw builderError('builder state stack is empty, sourceName: $sourceName');
 
 		this.indexedParams = state.indexedParams;
 		this.builderParams = state.builderParams;
@@ -3838,15 +3838,15 @@ class MultiAnimBuilder {
 					case ArrayString(arrayVal):
 						var index = resolveAsInteger(indexRef);
 						if (index < 0 || index >= arrayVal.length)
-							throw builderError('index out of bounds ${index} for array ${arrayVal.toString()}');
+							throw builderError('index out of bounds $index for array ' + arrayVal.toString());
 						return arrayVal[index];
-					case null: throw builderError('array reference ${arrayRef}[$indexRef] does not exist', "missing_ref");
-					default: throw builderError('element of array reference ${arrayRef}[$indexRef] is not an array but ${arrayRef}');
+					case null: throw builderError('array reference $arrayRef[$indexRef] does not exist', "missing_ref");
+					default: throw builderError('element of array reference $arrayRef[$indexRef] is not an array but $arrayRef');
 				}
 				case RVTernary(condition, ifTrue, ifFalse):
 					return if (resolveAsBool(condition)) resolveAsArrayElement(ifTrue) else resolveAsArrayElement(ifFalse);
 			default:
-				throw builderError('expected array element but got ${v}');
+				throw builderError('expected array element but got $v');
 		}
 	}
 
@@ -3860,14 +3860,14 @@ class MultiAnimBuilder {
 				switch arrayVal {
 					case ArrayString(strArray): return strArray;
 					case ExpressionAlias(expr): return resolveAsArray(expr);
-					default: throw builderError('array reference ${refArr} is not an array but ${arrayVal}');
+					default: throw builderError('array reference $refArr is not an array but $arrayVal');
 				}
 			case RVParenthesis(e):
 				return resolveAsArray(e);
 			case RVTernary(condition, ifTrue, ifFalse):
 				return if (resolveAsBool(condition)) resolveAsArray(ifTrue) else resolveAsArray(ifFalse);
 			default:
-				throw builderError('expected array but got ${v}');
+				throw builderError('expected array but got $v');
 		}
 	}
 
@@ -3876,7 +3876,7 @@ class MultiAnimBuilder {
 		final animSM = animParser.createAnimSM(selector);
 		final descriptor = animSM.animationStates.get(animationName);
 		if (descriptor == null) {
-			throw builderError('animation "${animationName}" not found in "${animFilename}"', "missing_ref");
+			throw builderError('animation "$animationName" not found in "$animFilename"', "missing_ref");
 		}
 		var result:Array<TileSource> = [];
 		for (state in descriptor.states) {
@@ -4150,7 +4150,7 @@ class MultiAnimBuilder {
 				case CBRNoResult:
 					if (defaultValue != null) resolveAsInteger(defaultValue); else throw builderError('no default value for $input');
 
-				case _: throw builderError('callback should return int but was ${result} for $input');
+				case _: throw builderError('callback should return int but was $result for $input');
 			}
 		}
 
@@ -4164,7 +4164,7 @@ class MultiAnimBuilder {
 			case RVColorXY(_, _, _) | RVColor(_, _): resolveAsColorInteger(v);
 			case RVReference(ref):
 				if (!indexedParams.exists(ref)) {
-					throw builderError('reference ${ref} does not exist, available ${indexedParams}', "missing_ref");
+					throw builderError('reference $ref does not exist, available $indexedParams', "missing_ref");
 				}
 
 				final val = indexedParams.get(ref);
@@ -4174,8 +4174,8 @@ class MultiAnimBuilder {
 					case Flag(val): return val;
 					case StringValue(s): stringToInt(s);
 					case ExpressionAlias(expr): resolveAsInteger(expr);
-					case null: throw builderError('reference ${ref} is null');
-					default: throw builderError('reference ${ref} is not a value but ${val}');
+					case null: throw builderError('reference $ref is null');
+					default: throw builderError('reference $ref is not a value but $val');
 				}
 			case RVParenthesis(e): resolveAsInteger(e);
 			case RVPropertyAccess(ref, property): Std.int(resolveRVPropertyAccess(ref, property));
@@ -4235,20 +4235,20 @@ class MultiAnimBuilder {
 			case RVFloat(f): f;
 			case RVString(s):
 				final f = Std.parseFloat(s);
-				if (Math.isNaN(f)) throw builderError('expected number, got ${s}', "not_a_number");
+				if (Math.isNaN(f)) throw builderError('expected number, got $s', "not_a_number");
 				f;
 			case RVColorXY(_, _, _) | RVColor(_, _): throw builderError('reference is a color but needs to be float', "not_a_number");
 			case RVReference(ref):
 				if (!indexedParams.exists(ref))
-					throw builderError('reference ${ref} does not exist (resolveAsNumber), available ${indexedParams}', "missing_ref");
+					throw builderError('reference $ref does not exist (resolveAsNumber), available $indexedParams', "missing_ref");
 
 				final val = indexedParams.get(ref);
 				switch val {
 					case Value(val): return val;
 					case ValueF(val): return val;
 					case ExpressionAlias(expr): resolveAsNumber(expr);
-					case null: throw builderError('reference ${ref} is null');
-					default: throw builderError('reference ${ref} is not a value but ${val}');
+					case null: throw builderError('reference $ref is null');
+					default: throw builderError('reference $ref is not a value but $val');
 				}
 			case RVParenthesis(e): resolveAsNumber(e);
 			case RVPropertyAccess(ref, property): resolveRVPropertyAccess(ref, property);
@@ -4262,7 +4262,7 @@ class MultiAnimBuilder {
 
 				switch result {
 					case CBRInteger(val): cast(val, Float);
-					case CBRString(val): throw builderError('callback should return number but was ${val}', "not_a_number");
+					case CBRString(val): throw builderError('callback should return number but was $val', "not_a_number");
 					case CBRFloat(val): val;
 					case CBRObject(_): throw builderError('callback should return number but was CBRObject for $input');
 					case CBRNoResult: resolveAsNumber(defaultValue);
@@ -4273,7 +4273,7 @@ class MultiAnimBuilder {
 				final result = builderParams.callback(input);
 				switch result {
 					case CBRInteger(val): cast(val, Float);
-					case CBRString(val): throw builderError('callback should return number but was ${result} for $input', "not_a_number");
+					case CBRString(val): throw builderError('callback should return number but was $result for $input', "not_a_number");
 					case CBRFloat(val): val;
 					case CBRNoResult: resolveAsNumber(defaultValue);
 					case CBRObject(_): throw builderError('callback should return number but was CBRObject $result for $input');
@@ -4468,9 +4468,9 @@ class MultiAnimBuilder {
 			case UNTObject(name) | UNTUpdatable(name): name;
 			case UNTIndexed(name, index):
 				final idx = indexValueFor(index);
-				'${name} ${idx}';
+				'$name $idx';
 			case UNTIndexed2D(name, indexX, indexY):
-				'${name} ${indexValueFor(indexX)} ${indexValueFor(indexY)}';
+				'$name ' + indexValueFor(indexX) + ' ' + indexValueFor(indexY);
 		};
 	}
 
@@ -4512,8 +4512,8 @@ class MultiAnimBuilder {
 	function resolveAsString(v:ReferenceableValue):String {
 		function handleCallback(result, input:CallbackRequest, defaultValue) {
 			return switch result {
-				case CBRInteger(val): '${val}';
-				case CBRFloat(val): '${val}';
+				case CBRInteger(val): '$val';
+				case CBRFloat(val): '$val';
 				case CBRString(val): val;
 				case CBRObject(_): throw builderError('callback should return string but was CBRObject for $input');
 				case CBRNoResult:
@@ -4527,8 +4527,8 @@ class MultiAnimBuilder {
 				resolveAsArrayElement(v);
 			case RVArray(refArray): throw builderError('RVArray not supported');
 			case RVArrayReference(refArray): throw builderError('RVArrayReference not supported');
-			case RVInteger(i): return '${i}';
-			case RVFloat(f): return '${f}';
+			case RVInteger(i): return '$i';
+			case RVFloat(f): return '$f';
 			case RVString(s): return s;
 			case RVColorXY(_, _, _) | RVColor(_, _):
 				var color = resolveAsColorInteger(v);
@@ -4536,16 +4536,16 @@ class MultiAnimBuilder {
 
 			case RVReference(ref):
 				if (!indexedParams.exists(ref))
-					throw builderError('reference ${ref} does not exist (resolveAsString), available ${indexedParams}', "missing_ref");
+					throw builderError('reference $ref does not exist (resolveAsString), available $indexedParams', "missing_ref");
 
 				final val:ResolvedIndexParameters = indexedParams.get(ref);
 				switch val {
-					case Value(val): return '${val}';
-					case ValueF(val): return '${val}';
+					case Value(val): return '$val';
+					case ValueF(val): return '$val';
 					case StringValue(s): return s;
 					case Index(_, value): return value;
 					case ExpressionAlias(expr): return resolveAsString(expr);
-					default: throw builderError('invalid reference value ${ref}, expected string got ${val}');
+					default: throw builderError('invalid reference value $ref, expected string got $val');
 				}
 			case RVParenthesis(e):
 				// Parenthesized expressions (from ${...} interpolation) should evaluate
@@ -4560,8 +4560,8 @@ class MultiAnimBuilder {
 					if (err.code == "not_a_number") return resolveAsString(e);
 					throw err;
 				}
-			case RVPropertyAccess(_, _) | RVMethodCall(_, _, _): '${resolveAsNumber(v)}';
-			case RVChainedMethodCall(base, property, _): '${resolveRVChainedMethodCall(base, property)}';
+			case RVPropertyAccess(_, _) | RVMethodCall(_, _, _): '' + resolveAsNumber(v);
+			case RVChainedMethodCall(base, property, _): '' + resolveRVChainedMethodCall(base, property);
 			case RVCallbacks(name, defaultValue):
 				final input = Name(resolveAsString(name));
 				final result = builderParams.callback(input);
@@ -4575,7 +4575,7 @@ class MultiAnimBuilder {
 					case OpAdd:
 						return resolveAsString(e1) + resolveAsString(e2);
 					case OpMul, OpSub, OpDiv, OpMod, OpIntegerDiv:
-						return '${resolveAsInteger(v)}';
+						return '' + resolveAsInteger(v);
 					case OpEq:
 						return resolveAsString(e1) == resolveAsString(e2) ? "1" : "0";
 					case OpNotEq:
@@ -4942,7 +4942,7 @@ class MultiAnimBuilder {
 						if (!a.contains(Std.string(val))) return false;
 					case StringValue(s):
 						if (!a.contains(s)) return false;
-					default: throw builderError('invalid param types ${currentValue}, ${condValue}');
+					default: throw builderError('invalid param types $currentValue, $condValue');
 				}
 			case CoRange(from, to, fromExclusive, toExclusive):
 				final fromF:Null<Float> = from != null ? resolveAsNumber(from) : null;
@@ -4971,20 +4971,20 @@ class MultiAnimBuilder {
 						// comparison against a non-number silently does not match,
 						// symmetric with the no-match contract for `@(status=>v)` arms.
 						return false;
-					default: throw builderError('invalid param types ${currentValue}, ${condValue}');
+					default: throw builderError('invalid param types $currentValue, $condValue');
 				}
 
 			case CoIndex(idx, value):
 				switch currentValue {
 					case Index(i, value): if (idx != i) return false;
 					case StringValue(s): if (s != value) return false;
-					default: throw builderError('invalid param types ${currentValue}, ${condValue}');
+					default: throw builderError('invalid param types $currentValue, $condValue');
 				}
 			case CoValue(val):
 				switch currentValue {
 					case Value(iVal): if (val != iVal) return false;
 					case Flag(iVal): if (val != iVal) return false;
-					default: throw builderError('invalid param types ${currentValue}, ${condValue}');
+					default: throw builderError('invalid param types $currentValue, $condValue');
 				}
 			case CoFlag(f):
 				// bit[N] tests a bit of a flags param, and of an int param or loop variable as well
@@ -4993,7 +4993,7 @@ class MultiAnimBuilder {
 					case Flag(i): if (f & i != f) return false;
 					case Value(i): if (f & i != f) return false;
 					case Index(i, _): if (f & i != f) return false;
-					default: throw builderError('invalid param types ${currentValue}, ${condValue}');
+					default: throw builderError('invalid param types $currentValue, $condValue');
 				}
 			case CoAny:
 			case CoStringValue(s):
@@ -5001,7 +5001,7 @@ class MultiAnimBuilder {
 					case Index(idx, value): if (value != s) return false;
 					case StringValue(sv): if (s != sv) return false;
 					case Value(val): if (Std.string(val) != s) return false;
-					default: throw builderError('invalid param types ${currentValue}, ${condValue}');
+					default: throw builderError('invalid param types $currentValue, $condValue');
 				}
 		}
 		return true;
@@ -5937,7 +5937,7 @@ class MultiAnimBuilder {
 				final freshResult = target.buildWithParameters(reference, parameters, capturedBP, live, false, this);
 				final fresh = freshResult?.object;
 				if (fresh == null)
-					throw builderErrorAt(node, 'could not build staticRef ${reference}');
+					throw builderErrorAt(node, 'could not build staticRef $reference');
 				// another target may have other layers: the names checked again
 				hideRefLayers(node, "staticRef", reference, fresh, true);
 				ctx.cleanupDestroyedSubtree(ir, current);
@@ -6332,10 +6332,10 @@ class MultiAnimBuilder {
 	function resolveExtraPointRef(elementName:String, pointName:String, fallback:Null<Coordinates>,
 			gridCoordinateSystem:Null<GridCoordinateSystem>, hexCoordinateSystem:Null<HexCoordinateSystem>):FPoint {
 		if (currentInternalResults == null)
-			throw builderError('extraPoint reference $$${elementName}.extraPoint("$pointName"): no build context available');
+			throw builderError('extraPoint reference $$$elementName.extraPoint("$pointName"): no build context available');
 		final named = currentInternalResults.names.get(elementName);
 		if (named == null || named.length == 0)
-			throw builderError('extraPoint reference $$${elementName}.extraPoint("$pointName"): element "$elementName" not found. '
+			throw builderError('extraPoint reference $$$elementName.extraPoint("$pointName"): element "$elementName" not found. '
 				+ 'Ensure it is defined before this element');
 		// Of a name in several @() arms, the one drawn (in the scene graph); the first when none is yet
 		var entry = named[0];
@@ -6346,15 +6346,15 @@ class MultiAnimBuilder {
 			}
 		final animSM = switch entry.object {
 			case StateAnim(a): a;
-			default: throw builderError('extraPoint reference $$${elementName}.extraPoint("$pointName"): "$elementName" is not a stateanim element');
+			default: throw builderError('extraPoint reference $$$elementName.extraPoint("$pointName"): "$elementName" is not a stateanim element');
 		}
 		final pt = animSM.getExtraPoint(pointName);
 		if (pt != null)
 			return extraPointWhereDrawn(animSM, pt.x, pt.y);
 		if (fallback != null)
 			return calculatePosition(fallback, gridCoordinateSystem, hexCoordinateSystem);
-		throw builderError('extraPoint $$${elementName}.extraPoint("$pointName"): point "$pointName" not found in current animation '
-			+ '"${animSM.current != null ? animSM.current.name : "(none)"}"');
+		throw builderError('extraPoint $$$elementName.extraPoint("$pointName"): point "$pointName" not found in current animation '
+			+ '"' + (animSM.current != null ? animSM.current.name : "(none)") + '"');
 	}
 
 	/** An element's point (`x`, `y` in its own space) where the element draws it: placed, scaled and
@@ -6628,7 +6628,7 @@ class MultiAnimBuilder {
 				if (tileFilter != null) {
 					final frames = sheet.getAnim(tileFilter);
 					if (frames == null) {
-						throw builderErrorAt(node, 'Tile "${tileFilter}" not found in sheet "${sheetName}". The tile filter must be an exact tile name (key) in the atlas.');
+						throw builderErrorAt(node, 'Tile "$tileFilter" not found in sheet "$sheetName". The tile filter must be an exact tile name (key) in the atlas.');
 					}
 					for (frame in frames) {
 						if (frame != null && frame.tile != null) {
@@ -6816,7 +6816,7 @@ class MultiAnimBuilder {
 			case FINAL_VAR(name, expr):
 				evaluateAndStoreFinal(name, expr, node);
 				null;
-			default: throw builderErrorAt(node, 'unsupported node ${node.uniqueNodeName} ${node.type} in tileGroup mode');
+			default: throw builderErrorAt(node, 'unsupported node ' + node.uniqueNodeName + ' ' + node.type + ' in tileGroup mode');
 		}
 
 		addToTileGroup(node, currentPos, tileGroupTile, tileGroup);
@@ -6836,9 +6836,9 @@ class MultiAnimBuilder {
 			final scale = node.scale == null ? 1.0 : resolveAsNumber(node.scale);
 			tileGroup.setDefaultColor(0xFFFFFF, node.alpha != null ? resolveAsNumber(node.alpha) : 1.0);
 			if (node.filter != null && node.filter != FilterNone)
-				throw builderErrorAt(node, 'tileGroup does not support filters for ${node.type}');
+				throw builderErrorAt(node, 'tileGroup does not support filters for ' + node.type);
 			if (node.blendMode != null && node.blendMode != MBAlpha)
-				throw builderErrorAt(node, 'tileGroup does not support blendMode other than Alpha for ${node.type}');
+				throw builderErrorAt(node, 'tileGroup does not support blendMode other than Alpha for ' + node.type);
 			tileGroup.addTransform(currentPos.x, currentPos.y, scale, scale, 0, tileGroupTile);
 		}
 	}
@@ -6849,16 +6849,16 @@ class MultiAnimBuilder {
 			currentPos:Point, tileGroup:h2d.TileGroup, index:Int = 0, tiled:Bool = false):Void {
 		final atlasSheet = getOrLoadSheet(sheet);
 		if (atlasSheet == null)
-			throw builderError('sheet ${sheet} could not be loaded');
+			throw builderError('sheet $sheet could not be loaded');
 		final entries = atlasSheet.getContents().get(tilename);
 		if (entries == null || entries.length == 0 || entries[0] == null)
-			throw builderError('tile ${tilename} in sheet ${sheet} could not be loaded');
+			throw builderError('tile $tilename in sheet $sheet could not be loaded');
 		if (index < 0 || index >= entries.length || entries[index] == null)
-			throw builderError('tile ${tilename} in sheet ${sheet} has no frame $index');
+			throw builderError('tile $tilename in sheet $sheet has no frame $index');
 		final entry = entries[index];
 		final srcTile = entry.t;
 		if (entry.split == null || entry.split.length != 4)
-			throw builderError('tile ${tilename} in sheet ${sheet} is not a valid 9-patch (needs split with 4 values)');
+			throw builderError('tile $tilename in sheet $sheet is not a valid 9-patch (needs split with 4 values)');
 
 		final bl:Float = entry.split[0]; // border left
 		final br:Float = entry.split[1]; // border right
@@ -6870,9 +6870,9 @@ class MultiAnimBuilder {
 		final scale:Float = node.scale == null ? 1.0 : resolveAsNumber(node.scale);
 
 		if (node.filter != null && node.filter != FilterNone)
-			throw builderErrorAt(node, 'tileGroup does not support filters for ${node.type}');
+			throw builderErrorAt(node, 'tileGroup does not support filters for ' + node.type);
 		if (node.blendMode != null && node.blendMode != MBAlpha)
-			throw builderErrorAt(node, 'tileGroup does not support blendMode other than Alpha for ${node.type}');
+			throw builderErrorAt(node, 'tileGroup does not support blendMode other than Alpha for ' + node.type);
 
 		tileGroup.setDefaultColor(0xFFFFFF, node.alpha != null ? resolveAsNumber(node.alpha) : 1.0);
 
@@ -7024,7 +7024,7 @@ class MultiAnimBuilder {
 				if (layersParent != null)
 					layersParent.add(toAdd, node.layer);
 				else
-					throw builderErrorAt(node, 'No layers parent for ${node.uniqueNodeName}-${node.type}');
+					throw builderErrorAt(node, 'No layers parent for ' + node.uniqueNodeName + '-' + node.type);
 			} else if (current != null) {
 				final anchor = spliceAnchor;
 				if (anchor != null && anchor.parent == current) {
@@ -7370,7 +7370,7 @@ class MultiAnimBuilder {
 								case PVObject(obj):
 									#if MULTIANIM_DEV
 									if (settings != null)
-										trace('Warning: PVObject placeholder "${resolveAsString(callbackName)}" ignores .manim settings — use PVFactory instead to receive settings');
+										trace('Warning: PVObject placeholder "' + resolveAsString(callbackName) + '" ignores .manim settings — use PVFactory instead to receive settings');
 									#end
 									obj;
 								case PVFactory(factoryMethod):
@@ -7400,7 +7400,7 @@ class MultiAnimBuilder {
 							final tile = loadTileSource(source);
 							HeapsBitmap(new h2d.Bitmap(tile));
 						case PHNothing: HeapsObject(new h2d.Object());
-						case PHError: throw builderErrorAt(node, 'placeholder ${node.updatableName}, type ${node.type} configured in error mode, no input from $source');
+						case PHError: throw builderErrorAt(node, 'placeholder ' + node.updatableName + ', type ' + node.type + ' configured in error mode, no input from $source');
 					}
 				} else {
 					HeapsObject(callbackResultH2dObject);
@@ -7414,7 +7414,7 @@ class MultiAnimBuilder {
 				var result = builder.buildWithParameters(reference, parameters, builderParams, indexedParams, false, this);
 				var object = result?.object;
 				if (object == null)
-					throw builderErrorAt(node, 'could not build staticRef ${reference}');
+					throw builderErrorAt(node, 'could not build staticRef $reference');
 				// `hide => [...]`: layers of the stateanims it draws left out (codegen: ProgrammableBuilder.buildStaticRef)
 				hideRefLayers(node, "staticRef", reference, object, true);
 				// The target's interactives belong to the enclosing result: the nested build is a
@@ -7454,7 +7454,7 @@ class MultiAnimBuilder {
 				var result = builder.buildWithParameters(reference, parameters, builderParams, indexedParams, true, this);
 				var object = result?.object;
 				if (object == null)
-					throw builderErrorAt(node, 'could not build dynamicRef ${reference}');
+					throw builderErrorAt(node, 'could not build dynamicRef $reference');
 				// `hide => [...]`: layers of the stateanims it draws left out, and of those it draws after a
 				// rebuild of its own (codegen: ProgrammableBuilder.buildDynamicRef)
 				hideDynamicRefLayers(node, reference, result);
@@ -7699,7 +7699,7 @@ class MultiAnimBuilder {
 				}
 				final hidden:Null<HiddenLayers> = node.hiddenLayers;
 				if (hidden != null) {
-					final error = hideAnimLayers(animSM, hidden, true, 'stateanim("$file") on line ${hidden.line}', true);
+					final error = hideAnimLayers(animSM, hidden, true, 'stateanim("$file") on line ' + hidden.line, true);
 					if (error != null)
 						throw builderErrorAt(node, error, "hide_layer");
 				}
@@ -7726,7 +7726,7 @@ class MultiAnimBuilder {
 				}
 				final initialStateResolved = resolveAsString(initialState);
 				if (animSM.animationStates.exists(initialStateResolved) == false)
-					throw builderErrorAt(node, 'initialState ${initialStateResolved} does not exist in constructed stateanim');
+					throw builderErrorAt(node, 'initialState $initialStateResolved does not exist in constructed stateanim');
 
 				animSM.play(initialStateResolved);
 				if (externallyDriven) animSM.externallyDriven = true;
@@ -7770,7 +7770,7 @@ class MultiAnimBuilder {
 						if (tileFilter != null) {
 							final frames = sheet.getAnim(tileFilter);
 							if (frames == null) {
-								throw builderErrorAt(node, 'Tile "${tileFilter}" not found in sheet "${sheetName}". The tile filter must be an exact tile name (key) in the atlas.');
+								throw builderErrorAt(node, 'Tile "$tileFilter" not found in sheet "$sheetName". The tile filter must be an exact tile name (key) in the atlas.');
 							}
 							for (frame in frames) {
 								if (frame != null && frame.tile != null) {
@@ -8051,7 +8051,7 @@ class MultiAnimBuilder {
 								if (tileFilter != null) {
 									final frames = sheet.getAnim(tileFilter);
 									if (frames == null) {
-										throw builderErrorAt(capturedNode, 'Tile "${tileFilter}" not found in sheet "${sheetName}". The tile filter must be an exact tile name (key) in the atlas.');
+										throw builderErrorAt(capturedNode, 'Tile "$tileFilter" not found in sheet "$sheetName". The tile filter must be an exact tile name (key) in the atlas.');
 									}
 									for (frame in frames) {
 										if (frame != null && frame.tile != null) {
@@ -8510,7 +8510,7 @@ class MultiAnimBuilder {
 					// A plain loop variable missing from this pass registers nothing, as it never did
 					if (indexInPass(index)) {
 						final idx = indexValueFor(index);
-						final indexedKey = '${name} ${idx}';
+						final indexedKey = '$name $idx';
 						// A 1-D indexed name must resolve to a unique index per build pass.
 						// When its index recurs (e.g. #name[$j] inside nested repeatables,
 						// or a duplicate-value array iterator), the key collides and the
@@ -8519,7 +8519,7 @@ class MultiAnimBuilder {
 						// (The same key from mutually exclusive arms is no recurrence: only one is shown.)
 						final existingNamed = names.get(indexedKey);
 						if (existingNamed != null && !allInExclusiveArms(existingNamed, node))
-							throw builderError('indexed name "${name}[${idx}]" is built more than once with the same index — a 1-D indexed name whose index recurs (nested loops, or a duplicate-value iterator) collides. ${indexCollisionHint(updatableName)}',
+							throw builderError('indexed name "$name[$idx]" is built more than once with the same index — a 1-D indexed name whose index recurs (nested loops, or a duplicate-value iterator) collides. ' + indexCollisionHint(updatableName),
 								"indexed_name_collision");
 						if (existingNamed != null)
 							existingNamed.push(toNamedResult(updatableName, builtObject, node));
@@ -8530,10 +8530,10 @@ class MultiAnimBuilder {
 					if (indexInPass(indexX) && indexInPass(indexY)) {
 						final idxX = indexValueFor(indexX);
 						final idxY = indexValueFor(indexY);
-						final indexedKey = '${name} ${idxX} ${idxY}';
+						final indexedKey = '$name $idxX $idxY';
 						final existingNamed = names.get(indexedKey);
 						if (existingNamed != null && !allInExclusiveArms(existingNamed, node))
-							throw builderError('indexed name "${name}[${idxX},${idxY}]" is built more than once with the same index pair — the indices collide. ${indexCollisionHint(updatableName)}',
+							throw builderError('indexed name "$name[$idxX,$idxY]" is built more than once with the same index pair — the indices collide. ' + indexCollisionHint(updatableName),
 								"indexed_name_collision");
 						if (existingNamed != null)
 							existingNamed.push(toNamedResult(updatableName, builtObject, node));
@@ -8654,11 +8654,11 @@ class MultiAnimBuilder {
 				switch node.updatableName {
 					case UNTIndexed(baseName, indexRV):
 						final index = slotIndexFor(indexRV);
-						{ for (__se in internalResults.slots) switch __se.key { case Indexed(n, i) if (n == baseName && i == index && !inExclusiveArms(__se.handle.siteNode, node)): throw builderError('indexed slot "${baseName}[${index}]" is built more than once with the same index — a 1-D indexed slot whose index recurs (nested loops, or a duplicate-value iterator) collides. ${indexCollisionHint(node.updatableName)}', "indexed_slot_collision"); default: } } internalResults.slots.push({key: Indexed(baseName, index), handle: handle});
+						{ for (__se in internalResults.slots) switch __se.key { case Indexed(n, i) if (n == baseName && i == index && !inExclusiveArms(__se.handle.siteNode, node)): throw builderError('indexed slot "$baseName[$index]" is built more than once with the same index — a 1-D indexed slot whose index recurs (nested loops, or a duplicate-value iterator) collides. ' + indexCollisionHint(node.updatableName), "indexed_slot_collision"); default: } } internalResults.slots.push({key: Indexed(baseName, index), handle: handle});
 					case UNTIndexed2D(baseName, indexRVX, indexRVY):
 						final indexX = slotIndexFor(indexRVX);
 						final indexY = slotIndexFor(indexRVY);
-						{ for (__se in internalResults.slots) switch __se.key { case Indexed2D(n, ix, iy) if (n == baseName && ix == indexX && iy == indexY && !inExclusiveArms(__se.handle.siteNode, node)): throw builderError('indexed slot "${baseName}[${indexX},${indexY}]" is built more than once with the same index pair — the indices collide. ${indexCollisionHint(node.updatableName)}', "indexed_slot_collision"); default: } } internalResults.slots.push({key: Indexed2D(baseName, indexX, indexY), handle: handle});
+						{ for (__se in internalResults.slots) switch __se.key { case Indexed2D(n, ix, iy) if (n == baseName && ix == indexX && iy == indexY && !inExclusiveArms(__se.handle.siteNode, node)): throw builderError('indexed slot "$baseName[$indexX,$indexY]" is built more than once with the same index pair — the indices collide. ' + indexCollisionHint(node.updatableName), "indexed_slot_collision"); default: } } internalResults.slots.push({key: Indexed2D(baseName, indexX, indexY), handle: handle});
 					case UNTObject(name) | UNTUpdatable(name):
 						internalResults.slots.push({key: Named(name), handle: handle});
 					default:
@@ -8750,7 +8750,7 @@ class MultiAnimBuilder {
 				// h2d.Layers programmable root, flow/layers/mask, etc.) don't have.
 				// Silently dropping it hides the mistake — fail fast instead.
 				throw builderError('tint requires a Drawable target (bitmap/text/...); '
-					+ 'cannot apply to ${Std.string(Type.typeof(object))}', "tint_requires_drawable");
+					+ 'cannot apply to ' + (Std.string(Type.typeof(object))), "tint_requires_drawable");
 			}
 		}
 	}
@@ -8898,7 +8898,7 @@ class MultiAnimBuilder {
 				return d;
 			default:
 				if (throwIfNotProgrammable)
-					throw builderErrorAt(node, 'buildWithParameters require programmable node, was ${node.type}');
+					throw builderErrorAt(node, 'buildWithParameters require programmable node, was ' + node.type);
 				else
 					return [];
 		}
@@ -9090,7 +9090,7 @@ class MultiAnimBuilder {
 	function buildPalettes(name:String):Palette {
 		var node = multiParserResult.nodes.get(name);
 		if (node == null)
-			throw builderError('could not get palette node #${name}');
+			throw builderError('could not get palette node #$name');
 		return switch node.type {
 			case PALETTE(paletteType):
 				return switch paletteType {
@@ -9098,7 +9098,7 @@ class MultiAnimBuilder {
 					case PaletteColors2D(colors, width):
 						final resolved = resolveColorList(colors);
 						if (width <= 0 || resolved.length % width != 0)
-							throw builderErrorAt(node, 'palette #$name: ${resolved.length} colors do not fill rows of width $width');
+							throw builderErrorAt(node, 'palette #$name: ' + resolved.length + ' colors do not fill rows of width $width');
 						new Palette(resolved, width);
 					case PaletteImageFile(filename):
 						var filenameResolved = resolveAsString(filename);
@@ -9206,7 +9206,7 @@ class MultiAnimBuilder {
 					if (found == null) {
 						var easing = MacroManimParser.tryMatchEasingName(s.curveName);
 						if (easing == null)
-							throw builderError('color curve not found: ${s.curveName}');
+							throw builderError('color curve not found: ' + s.curveName);
 						found = new bh.paths.Curve(null, easing, null);
 						curves.set(s.curveName, found);
 					}
@@ -9337,7 +9337,7 @@ class MultiAnimBuilder {
 				var animName = asDef.animName;
 				var descriptor = animSM.animationStates.get(animName);
 				if (descriptor == null)
-					throw builderError('particle animation "${animName}" not found in "${particlesDef.animFile}"');
+					throw builderError('particle animation "$animName" not found in "' + particlesDef.animFile + '"');
 
 				// Extract tiles from animation frames
 				var frameTiles:Array<h2d.Tile> = [];
@@ -9376,7 +9376,7 @@ class MultiAnimBuilder {
 						// The event override references an anim that wasn't added as a lifetime state — add it
 						var descriptor = animSM.animationStates.get(eo.animName);
 						if (descriptor == null)
-							throw builderError('particle event animation "${eo.animName}" not found in "${particlesDef.animFile}"');
+							throw builderError('particle event animation "' + eo.animName + '" not found in "' + particlesDef.animFile + '"');
 
 						var frameTiles:Array<h2d.Tile> = [];
 						for (state in descriptor.states) {
@@ -9422,7 +9422,7 @@ class MultiAnimBuilder {
 	public function createParticles(name:String, ?builderParams:BuilderParameters):bh.base.Particles {
 		var node = multiParserResult.nodes.get(name);
 		if (node == null)
-			throw builderError('could not get particles node #${name}');
+			throw builderError('could not get particles node #$name');
 		switch node.type {
 			case PARTICLES(particlesDef):
 				return createParticleImpl(particlesDef, name);
@@ -9436,7 +9436,7 @@ class MultiAnimBuilder {
 	public function addParticleGroupTo(name:String, particles:bh.base.Particles):Void {
 		var node = multiParserResult.nodes.get(name);
 		if (node == null)
-			throw builderError('could not get particles node #${name}');
+			throw builderError('could not get particles node #$name');
 		switch node.type {
 			case PARTICLES(particlesDef):
 				createParticleImpl(particlesDef, name, particles);
@@ -9500,7 +9500,7 @@ class MultiAnimBuilder {
 	public function getData(name:String):Dynamic {
 		var node = multiParserResult.nodes.get(name);
 		if (node == null)
-			throw builderError('could not get data node #${name}');
+			throw builderError('could not get data node #$name');
 		switch node.type {
 			case DATA(dataDef):
 				return resolveDataDef(dataDef, name);
@@ -9520,7 +9520,7 @@ class MultiAnimBuilder {
 			}
 			final rows:Array<Dynamic> = DataSchema.plainValue(field.value);
 			Reflect.setField(result, field.name,
-				new DataTable<Dynamic>('$blockName.${field.name}', key, rows, DataSchema.tableInfo(dataDef, field, record, sourceName, blockName)));
+				new DataTable<Dynamic>('$blockName.' + field.name, key, rows, DataSchema.tableInfo(dataDef, field, record, sourceName, blockName)));
 		}
 		if (dataDef.picks != null) {
 			for (pick in dataDef.picks) {
@@ -9537,7 +9537,7 @@ class MultiAnimBuilder {
 					return holder == null ? 0.0 : DataPick.shareValue(Reflect.field(holder, by));
 				};
 				Reflect.setField(result, pick.name,
-					new DataPick<Dynamic>('$blockName.${pick.name}', table, share, DataSchema.pickInfo(pick, sourceName, blockName)));
+					new DataPick<Dynamic>('$blockName.' + pick.name, table, share, DataSchema.pickInfo(pick, sourceName, blockName)));
 			}
 		}
 		return result;
@@ -9548,7 +9548,7 @@ class MultiAnimBuilder {
 	public function createAnimatedPath(name:String, ?normalization:bh.paths.MultiAnimPaths.PathNormalization):bh.paths.AnimatedPath {
 		var node = multiParserResult.nodes.get(name);
 		if (node == null)
-			throw builderError('could not get animatedPath node #${name}');
+			throw builderError('could not get animatedPath node #$name');
 		switch node.type {
 			case ANIMATED_PATH(pathDef):
 				// Resolve path from paths block, apply optional transforms
@@ -9590,7 +9590,7 @@ class MultiAnimBuilder {
 						if (resolved == null) {
 							var easing = MacroManimParser.tryMatchEasingName(ca.curveName);
 							if (easing == null)
-								throw builderErrorAt(node, 'curve not found: ${ca.curveName}');
+								throw builderErrorAt(node, 'curve not found: ' + ca.curveName);
 							resolved = new bh.paths.Curve(null, easing, null);
 							allCurves.set(ca.curveName, resolved);
 						}
@@ -9640,7 +9640,7 @@ class MultiAnimBuilder {
 			case RELATIVE_LAYOUTS(layoutsDef):
 				return new MultiAnimLayouts(layoutsDef, this);
 			default:
-				throw builderErrorAt(node, 'layouts block is of unexpected type ${node.type}');
+				throw builderErrorAt(node, 'layouts block is of unexpected type ' + node.type);
 		}
 	}
 
@@ -9652,7 +9652,7 @@ class MultiAnimBuilder {
 			case PATHS(pathsDef):
 				return new bh.paths.MultiAnimPaths(pathsDef, this);
 			default:
-				throw builderErrorAt(node, 'paths is of unexpected type ${node.type}');
+				throw builderErrorAt(node, 'paths is of unexpected type ' + node.type);
 		}
 	}
 
@@ -9729,7 +9729,7 @@ class MultiAnimBuilder {
 				for (name => _ in curvesDef) resolveCurve(name);
 				return result;
 			default:
-				throw builderErrorAt(node, 'curves is of unexpected type ${node.type}');
+				throw builderErrorAt(node, 'curves is of unexpected type ' + node.type);
 		}
 	}
 
@@ -9755,7 +9755,7 @@ class MultiAnimBuilder {
 			if (curve == null) {
 				var easing = MacroManimParser.tryMatchEasingName(ref.curveName);
 				if (easing == null)
-					throw builderError('curve not found: ${ref.curveName}');
+					throw builderError('curve not found: ' + ref.curveName);
 				curve = new bh.paths.Curve(null, easing, null);
 				curves.set(ref.curveName, curve);
 			}
@@ -9897,7 +9897,7 @@ class MultiAnimBuilder {
 	function autotilePlacement(name:String, at:{node:Node, def:AutotileDef}, index:Int, x:Int, y:Int):Null<AutotileTile> {
 		final tiles = getAutotileTiles(name, at.node, at.def);
 		if (index < 0 || index >= tiles.length)
-			throw builderErrorAt(at.node, 'autotile "$name": index $index is out of range for ${autotileFormatName(at.def.format)} (0-${tiles.length - 1})', "autotile_index");
+			throw builderErrorAt(at.node, 'autotile "$name": index $index is out of range for ' + autotileFormatName(at.def.format) + ' (0-' + (tiles.length - 1) + ')', "autotile_index");
 		final variants = tiles[index];
 		return variants == null ? null : variants[bh.base.Autotile.variantAt(x, y, variants.length)];
 	}
@@ -10025,7 +10025,7 @@ class MultiAnimBuilder {
 		}
 		final current = map.sourceDef;
 		if (current.fill != true)
-			throw builderErrorAt(node, 'tilemap ${map.mapName} is not a fill: tilemap(fill(…)) makes one', "tilemap_fill");
+			throw builderErrorAt(node, 'tilemap ' + map.mapName + ' is not a fill: tilemap(fill(…)) makes one', "tilemap_fill");
 		if (current.width == cols + 2 && current.height == rows + 2 && current.legend.get(FILL_CELL) == terrain)
 			return;
 		final def = tilemapFillDef(current.tileset, current.tilesetImport, terrain, cols, rows, node);
@@ -10035,14 +10035,14 @@ class MultiAnimBuilder {
 
 	/** The rows a fill is made of: a ring of none, the terrain inside it. */
 	function tilemapFillDef(tileset:String, tilesetImport:Null<String>, terrain:String, cols:Int, rows:Int, node:Null<Node>):TilemapDef {
-		final what = 'tilemap(fill(${tilesetImport != null ? 'external($tilesetImport), ' : ""}$tileset, terrain: $terrain, cols: $cols, rows: $rows))';
+		final what = 'tilemap(fill(' + (tilesetImport != null ? 'external($tilesetImport), ' : "") + '$tileset, terrain: $terrain, cols: $cols, rows: $rows))';
 		if (cols < 1 || rows < 1)
 			throw builderErrorAt(node, '$what: a fill is 1 cell or more a side', "tilemap_size");
 		final ts = try importedBuilder(tilesetImport, node).getTilesetDef(tileset).def catch (e:BuilderError)
-			throw builderErrorAt(node, '$what: ${e.message}', e.code);
+			throw builderErrorAt(node, '$what: ' + e.message, e.code);
 		final names = [for (t in ts.terrains) t.name];
 		if (!names.contains(terrain))
-			throw builderErrorAt(node, '$what: tileset $tileset has no terrain $terrain (${names.length > 0 ? names.join(", ") : "it has no terrain"})', "tilemap_terrain");
+			throw builderErrorAt(node, '$what: tileset $tileset has no terrain $terrain (' + (names.length > 0 ? names.join(", ") : "it has no terrain") + ')', "tilemap_terrain");
 		final ring = StringTools.rpad("", " ", cols + 2);
 		final inside = " " + StringTools.rpad("", FILL_CELL, cols) + " ";
 		return {
@@ -10162,7 +10162,7 @@ class MultiAnimBuilder {
 		// `layersOwn`: a layer's own sheet, found from the map's file
 		function framesIn(sheet:String, cell:String, layersOwn = false):Null<Array<bh.base.TileMap.MapFrame>> {
 			return try (layersOwn && tiles.layerFrames != null ? tiles.layerFrames(sheet, cell) : tiles.frames(sheet, cell)) catch (e:Dynamic)
-				throw builderErrorAt(node, 'tilemap $name: sheet $sheet cannot be loaded: ${Std.string(e)}', "tilemap_sheet");
+				throw builderErrorAt(node, 'tilemap $name: sheet $sheet cannot be loaded: ' + Std.string(e), "tilemap_sheet");
 		}
 		function has(sheet:String, cell:String, layersOwn = false):Bool {
 			final frames = framesIn(sheet, cell, layersOwn);
@@ -10186,22 +10186,22 @@ class MultiAnimBuilder {
 		}
 		for (c => platform in def.levelPlatforms)
 			if (!Lambda.exists(ts.platforms, p -> p.name == platform))
-				throw builderErrorAt(node, 'tilemap $name: "$c" in the levels legend is platform $platform, which tileset ${def.tileset} has not (${[for (p in ts.platforms) p.name].join(", ")})', "tilemap_platform");
+				throw builderErrorAt(node, 'tilemap $name: "$c" in the levels legend is platform $platform, which tileset ' + def.tileset + ' has not (' + ([for (p in ts.platforms) p.name].join(", ")) + ')', "tilemap_platform");
 		final terrainNames = [for (t in ts.terrains) t.name];
 		for (c => terrain in def.legend)
 			if (terrain != "none" && !terrainNames.contains(terrain))
-				throw builderErrorAt(node, 'tilemap $name: "$c" is terrain $terrain, which tileset ${def.tileset} has not (${terrainNames.join(", ")}, or none)', "tilemap_terrain");
+				throw builderErrorAt(node, 'tilemap $name: "$c" is terrain $terrain, which tileset ' + def.tileset + ' has not (' + terrainNames.join(", ") + ', or none)', "tilemap_terrain");
 		for (t in ts.terrains) {
 			final cells = t.cells;
 			if (cells != null && !has(ts.atlas, cells))
-				throw builderErrorAt(node, 'tileset ${def.tileset}: terrain ${t.name}: sheet ${ts.atlas} has no cell $cells', "tilemap_missing_cell");
+				throw builderErrorAt(node, 'tileset ' + def.tileset + ': terrain ' + t.name + ': sheet ' + ts.atlas + ' has no cell $cells', "tilemap_missing_cell");
 		}
 		for (l in def.layers) {
 			final sheet = l.sheet != null ? l.sheet : ts.atlas;
 			final layersOwn = l.sheet != null;
 			for (c => cell in l.legend) {
 				if (!has(sheet, cell, layersOwn))
-					throw builderErrorAt(node, 'tilemap $name: layer ${l.name}: "$c" is $cell, which sheet $sheet has not', "tilemap_missing_cell");
+					throw builderErrorAt(node, 'tilemap $name: layer ' + l.name + ': "$c" is $cell, which sheet $sheet has not', "tilemap_missing_cell");
 				// an object of several cells is as big as its size says, in every frame
 				// (on the square grid: off it an object's frame stands on its footprint, as tall as it is)
 				final sized = Lambda.find(ts.cells, x -> x.name == cell && x.width != null);
@@ -10212,7 +10212,7 @@ class MultiAnimBuilder {
 					if (frames != null)
 						for (f in frames)
 							if (f.width != w || f.height != h)
-								throw builderErrorAt(node, 'tileset ${def.tileset}: cell $cell is ${sized.width}x${sized.height} cells, ${w}x$h pixels, but sheet $sheet draws it ${f.width}x${f.height}', "tilemap_cell_size");
+								throw builderErrorAt(node, 'tileset ' + def.tileset + ': cell $cell is ' + sized.width + 'x' + sized.height + ' cells, ' + w + 'x$h pixels, but sheet $sheet draws it ' + f.width + 'x' + f.height, "tilemap_cell_size");
 				}
 			}
 		}
@@ -10220,7 +10220,7 @@ class MultiAnimBuilder {
 			for (r in ts.rises)
 				for (piece in (r.sides : Array<Null<String>>).concat([r.left, r.right, r.single]))
 					if (piece != null && !has(ts.atlas, piece))
-						throw builderErrorAt(node, 'tileset ${def.tileset}: rise ${r.rise == 0 ? "any" : Std.string(r.rise)}: sheet ${ts.atlas} has no cell $piece', "tilemap_missing_cell");
+						throw builderErrorAt(node, 'tileset ' + def.tileset + ': rise ' + (r.rise == 0 ? "any" : Std.string(r.rise)) + ': sheet ' + ts.atlas + ' has no cell $piece', "tilemap_missing_cell");
 			// every rise the map has, in a direction the tileset draws sides toward, needs its rise
 			final towards:Array<String> = [];
 			for (r in ts.rises)
@@ -10255,7 +10255,7 @@ class MultiAnimBuilder {
 							if (platform != null && !Lambda.exists(ts.rises, r -> r.toward == toward && r.platform == platform))
 								continue;
 							if (rise > 0 && bh.base.TileMap.riseFor(ts, rise, toward, terrainAt(cx, cy), platform) < 0)
-								throw builderErrorAt(node, 'tilemap $name: the cell at column ${cx + 1}, row ${cy + 1} is $rise level(s) above its neighbour $toward, and tileset ${def.tileset} has no rise $rise toward $toward${platform != null ? ' for platform $platform' : ""}',
+								throw builderErrorAt(node, 'tilemap $name: the cell at column ' + (cx + 1) + ', row ' + (cy + 1) + ' is $rise level(s) above its neighbour $toward, and tileset ' + def.tileset + ' has no rise $rise toward $toward' + (platform != null ? ' for platform $platform' : ""),
 									"tilemap_rise");
 						}
 				}
@@ -10278,7 +10278,7 @@ class MultiAnimBuilder {
 							final terrain = terrainAt(cx, cy);
 							final ownPlatform = platform != null;
 							final own = !ownPlatform && terrain != null && Lambda.exists(ts.rises, r -> r.toward == toward && r.terrain == terrain && r.platform == null);
-							throw builderErrorAt(node, 'tilemap $name: the cell at column ${cx + 1}, row ${cy + 1} is $rise level(s) above its neighbour $toward, and tileset ${def.tileset} has no rise $rise toward $toward${ownPlatform ? ' for platform $platform' : own ? ' for $terrain' : ""}',
+							throw builderErrorAt(node, 'tilemap $name: the cell at column ' + (cx + 1) + ', row ' + (cy + 1) + ' is $rise level(s) above its neighbour $toward, and tileset ' + def.tileset + ' has no rise $rise toward $toward' + (ownPlatform ? ' for platform $platform' : own ? ' for $terrain' : ""),
 								"tilemap_rise");
 						}
 					}
@@ -10335,7 +10335,7 @@ class MultiAnimBuilder {
 			mapping = explicitMapping;
 		} else {
 			if (source.exact && source.count > count)
-				throw builderErrorAt(node, 'autotile "$name": ${source.desc} lists ${source.count} tiles but $formatName has only $count indices (0-${count - 1}) - add a mapping: to pick tiles', "autotile_index");
+				throw builderErrorAt(node, 'autotile "$name": ' + source.desc + ' lists ' + source.count + ' tiles but $formatName has only $count indices (0-' + (count - 1) + ') - add a mapping: to pick tiles', "autotile_index");
 			mapping = new Map();
 			final n = source.count < 0 ? count : Std.int(Math.min(count, source.count));
 			for (i in 0...n)
@@ -10371,7 +10371,7 @@ class MultiAnimBuilder {
 					tiles.push(null);
 					continue;
 				}
-				final where = explicitMapping != null ? "mapping: has no entry for it" : '${source.desc} does not provide it';
+				final where = explicitMapping != null ? "mapping: has no entry for it" : source.desc + ' does not provide it';
 				final hint = format == AutotileFormat.Blob47 || format == AutotileFormat.Hex64 ? " (or set allowPartialMapping: true to use the closest mapped tile)" : "";
 				throw builderErrorAt(node, 'autotile "$name": no tile for $formatName index $i - $where$hint', "autotile_missing_tile");
 			}
@@ -10380,14 +10380,14 @@ class MultiAnimBuilder {
 			for (k in 0...found.sources.length) {
 				final j = found.sources[k];
 				if (source.count >= 0 && j >= source.count)
-					throw builderErrorAt(node, 'autotile "$name": $formatName index $i maps to source tile $j, but ${source.desc} has only ${source.count} tiles (0-${source.count - 1})', "autotile_index");
+					throw builderErrorAt(node, 'autotile "$name": $formatName index $i maps to source tile $j, but ' + source.desc + ' has only ' + source.count + ' tiles (0-' + (source.count - 1) + ')', "autotile_index");
 				final frame = source.get(j);
 				if (frame == null) {
 					if (i == optionalIndex) {
 						missing = true;
 						break;
 					}
-					throw builderErrorAt(node, 'autotile "$name": ${source.desc} has no source tile $j (needed for $formatName index $i)', "autotile_missing_tile");
+					throw builderErrorAt(node, 'autotile "$name": ' + source.desc + ' has no source tile $j (needed for $formatName index $i)', "autotile_missing_tile");
 				}
 				final turned = found.turned[k];
 				final tile = frame.tile;
@@ -10432,7 +10432,7 @@ class MultiAnimBuilder {
 				{count: demo.length, exact: true, desc: "demo:", get: j -> whole(demo[j])};
 			case ATSTiles(list):
 				final loaded = [for (ts in list) loadTileSourceFrame(ts)];
-				{count: loaded.length, exact: true, desc: 'tiles: (${loaded.length} tiles)', get: j -> loaded[j]};
+				{count: loaded.length, exact: true, desc: 'tiles: (' + loaded.length + ' tiles)', get: j -> loaded[j]};
 			case ATSFile(filename):
 				final file = resolveAsString(filename);
 				final base = resourceLoader.loadTile(file);
@@ -10443,7 +10443,7 @@ class MultiAnimBuilder {
 				{
 					count: regionCount,
 					exact: false,
-					desc: 'file: "$file" region [${r.x}, ${r.y}, ${r.w}, ${r.h}]' + (r.margin != 0 || r.spacing != 0 ? ' margin ${r.margin} spacing ${r.spacing}' : ""),
+					desc: 'file: "$file" region [' + r.x + ', ' + r.y + ', ' + r.w + ', ' + r.h + ']' + (r.margin != 0 || r.spacing != 0 ? ' margin ' + r.margin + ' spacing ' + r.spacing : ""),
 					get: j -> whole(base.sub(r.x + r.margin + (j % cols) * pitch, r.y + r.margin + Std.int(j / cols) * pitch, tileSize, tileSize))
 				};
 			case ATSAtlas(sheet, prefix):
@@ -10505,7 +10505,7 @@ class MultiAnimBuilder {
 			final cols = tilesAcross(imageW);
 			final rows = tilesAcross(imageH);
 			if (cols <= 0 || rows <= 0)
-				throw builderErrorAt(node, 'autotile "$name": the ${imageW}x${imageH} image holds no ${tileSize}px tile with margin $margin and spacing $spacing', "autotile_region");
+				throw builderErrorAt(node, 'autotile "$name": the ' + imageW + 'x$imageH image holds no ' + tileSize + 'px tile with margin $margin and spacing $spacing', "autotile_region");
 			return {x: 0, y: 0, w: spanOf(cols), h: spanOf(rows), margin: margin, spacing: spacing};
 		}
 
@@ -10518,12 +10518,12 @@ class MultiAnimBuilder {
 			spacing: spacing,
 		};
 		if (r.x < 0 || r.y < 0 || r.w <= 0 || r.h <= 0 || r.x + r.w > imageW || r.y + r.h > imageH)
-			throw builderErrorAt(node, 'autotile "$name": region [${r.x}, ${r.y}, ${r.w}, ${r.h}] does not fit the ${imageW}x${imageH} image', "autotile_region");
+			throw builderErrorAt(node, 'autotile "$name": region [' + r.x + ', ' + r.y + ', ' + r.w + ', ' + r.h + '] does not fit the ' + imageW + 'x$imageH image', "autotile_region");
 		final cols = tilesAcross(r.w);
 		final rows = tilesAcross(r.h);
 		if (cols <= 0 || rows <= 0 || spanOf(cols) != r.w || spanOf(rows) != r.h)
-			throw builderErrorAt(node, 'autotile "$name": region size ${r.w}x${r.h} is not a whole number of ${tileSize}px tiles'
-				+ (margin != 0 || spacing != 0 ? ' with margin $margin and spacing $spacing (n tiles take ${2 * margin} + n * $pitch - $spacing)' : ""), "autotile_region");
+			throw builderErrorAt(node, 'autotile "$name": region size ' + r.w + 'x' + r.h + ' is not a whole number of ' + tileSize + 'px tiles'
+				+ (margin != 0 || spacing != 0 ? ' with margin $margin and spacing $spacing (n tiles take ' + (2 * margin) + ' + n * $pitch - $spacing)' : ""), "autotile_region");
 		return r;
 	}
 
@@ -10801,7 +10801,7 @@ class MultiAnimBuilder {
 		if (parameters != null)
 			for (key in parameters.keys())
 				if (!definitions.exists(key))
-					fail('$name has no parameter "$key" (its parameters: ${[for (k in definitions.keys()) k].join(", ")})');
+					fail('$name has no parameter "$key" (its parameters: ' + ([for (k in definitions.keys()) k].join(", ")) + ')');
 		for (key => def in definitions)
 			if (def.defaultValue == null && !def.type.match(PPTTile) && (parameters == null || !parameters.exists(key)))
 				fail('$name\'s parameter "$key" has no default and is not given');
@@ -10845,7 +10845,7 @@ class MultiAnimBuilder {
 			final type = definitions.get(key)?.type;
 			if (type == null) {
 				final availableParams = [for (k in definitions.keys()) k];
-				throw builderErrorAt(node, 'Setting "$key" does not match any parameter of programmable "#${node.uniqueNodeName}". Available parameters: ${availableParams.join(", ")}');
+				throw builderErrorAt(node, 'Setting "$key" does not match any parameter of programmable "#' + node.uniqueNodeName + '". Available parameters: ' + availableParams.join(", "));
 			}
 			return type;
 		}
@@ -10962,7 +10962,7 @@ class MultiAnimBuilder {
 				builderParams.callback = defaultCallback;
 			var node = multiParserResult.nodes.get(name);
 			if (node == null) {
-				throw BuilderError.of('buildWithParameters ${inputParameters}: could not find element "$name" to build', "missing_ref");
+				throw BuilderError.of('buildWithParameters $inputParameters: could not find element "$name" to build', "missing_ref");
 			}
 
 			final hasParams = inputParameters != null && inputParameters.count() > 0;
@@ -11257,7 +11257,7 @@ class MultiAnimBuilder {
 			case PPTArray:
 				#if !macro
 				if (value != null && !Std.isOfType(value, Array))
-					throw BuilderError.of('PPTArray parameter requires Array, got: ${value}');
+					throw BuilderError.of('PPTArray parameter requires Array, got: $value');
 				#end
 				ArrayString(cast value);
 			case PPTTile:
@@ -11267,7 +11267,7 @@ class MultiAnimBuilder {
 				else if (Std.isOfType(value, ResolvedIndexParameters))
 					cast value;
 				else
-					throw BuilderError.of('PPTTile parameter requires h2d.Tile, got: ${value}');
+					throw BuilderError.of('PPTTile parameter requires h2d.Tile, got: $value');
 				#else
 				StringValue(Std.string(value));
 				#end
@@ -11595,19 +11595,19 @@ class MultiAnimBuilder {
 	function loadTileImpl(sheetName:String, tilename:String, ?index:Int) {
 		final sheet = getOrLoadSheet(sheetName);
 		if (sheet == null)
-			throw builderError('sheet ${sheetName} could not be loaded');
+			throw builderError('sheet $sheetName could not be loaded');
 
 		final tile = if (index != null) {
 			final arr = sheet.getAnim(tilename);
 			if (arr == null)
-				throw builderError('tile ${tilename}, index $index sheet ${sheetName} could not be loaded');
+				throw builderError('tile $tilename, index $index sheet $sheetName could not be loaded');
 			if (index < 0 || index >= arr.length)
-				throw builderError('tile $tilename from sheet $sheetName does not have tile index $index, should be [0, ${arr.length - 1}]');
+				throw builderError('tile $tilename from sheet $sheetName does not have tile index $index, should be [0, ' + (arr.length - 1) + ']');
 			arr[index];
 		} else {
 			final t = sheet.get(tilename);
 			if (t == null)
-				throw builderError('tile ${tilename} in sheet ${sheetName} could not be loaded');
+				throw builderError('tile $tilename in sheet $sheetName could not be loaded');
 			t;
 		}
 
@@ -11618,11 +11618,11 @@ class MultiAnimBuilder {
 	function load9Patch(sheetName:String, tilename:String, index:Int = 0):h2d.ScaleGrid {
 		final sheet = getOrLoadSheet(sheetName);
 		if (sheet == null)
-			throw builderError('sheet ${sheetName} could not be loaded');
+			throw builderError('sheet $sheetName could not be loaded');
 
-		final ninePatch = try sheet.getNinePatch(tilename, index) catch (e:String) throw builderError('tile ${tilename} in sheet ${sheetName}: $e');
+		final ninePatch = try sheet.getNinePatch(tilename, index) catch (e:String) throw builderError('tile $tilename in sheet $sheetName: $e');
 		if (ninePatch == null)
-			throw builderError(index == 0 ? 'tile ${tilename} in sheet ${sheetName} could not be loaded' : 'tile ${tilename} in sheet ${sheetName} has no frame $index');
+			throw builderError(index == 0 ? 'tile $tilename in sheet $sheetName could not be loaded' : 'tile $tilename in sheet $sheetName has no frame $index');
 		return ninePatch;
 	}
 
@@ -11630,7 +11630,7 @@ class MultiAnimBuilder {
 	function load9PatchAnimated(sheetName:String, tilename:String, fps:Float):bh.base.AnimatedScaleGrid {
 		final sheet = getOrLoadSheet(sheetName);
 		if (sheet == null)
-			throw builderError('sheet ${sheetName} could not be loaded');
+			throw builderError('sheet $sheetName could not be loaded');
 		return try bh.base.AnimatedScaleGrid.fromAtlas(sheet, sheetName, tilename, fps) catch (e:String) throw builderError(e);
 	}
 
@@ -11641,7 +11641,7 @@ class MultiAnimBuilder {
 	public function buildCursors(name:String):Map<String, hxd.Cursor> {
 		final node = multiParserResult.nodes.get(name);
 		if (node == null)
-			throw builderError('could not get cursor node #${name}');
+			throw builderError('could not get cursor node #$name');
 		return switch node.type {
 			case CURSORS(cursors):
 				final out = new Map<String, hxd.Cursor>();
@@ -11651,7 +11651,7 @@ class MultiAnimBuilder {
 					try {
 						out.set(def.name, bh.base.CursorManager.cursorFromTile(tile, def.hotX, def.hotY));
 					} catch (e:String) {
-						throw builderErrorAt(node, 'cursor "${def.name}": $e', "cursor_tile");
+						throw builderErrorAt(node, 'cursor "' + def.name + '": $e', "cursor_tile");
 					}
 				}
 				out;
@@ -11666,7 +11666,7 @@ class MultiAnimBuilder {
 	public function buildSounds(name:String):SoundsDef {
 		final node = multiParserResult.nodes.get(name);
 		if (node == null)
-			throw builderError('could not get sounds node #${name}');
+			throw builderError('could not get sounds node #$name');
 		return switch node.type {
 			case SOUNDS(def): def;
 			default: throw builderErrorAt(node, '$name has to be a sounds block');
@@ -11677,7 +11677,7 @@ class MultiAnimBuilder {
 	public function buildMix(name:String):MixDef {
 		final node = multiParserResult.nodes.get(name);
 		if (node == null)
-			throw builderError('could not get mix node #${name}');
+			throw builderError('could not get mix node #$name');
 		return switch node.type {
 			case MIX(def): def;
 			default: throw builderErrorAt(node, '$name has to be a mix block');
@@ -11688,7 +11688,7 @@ class MultiAnimBuilder {
 	public function buildMusic(name:String):MusicDef {
 		final node = multiParserResult.nodes.get(name);
 		if (node == null)
-			throw builderError('could not get music node #${name}');
+			throw builderError('could not get music node #$name');
 		return switch node.type {
 			case MUSIC(def): def;
 			default: throw builderErrorAt(node, '$name has to be a music block');
@@ -11779,7 +11779,7 @@ class MultiAnimBuilder {
 						try {
 							bh.base.CursorManager.registerTileCursor(def.name, tile, def.hotX, def.hotY, sourceName);
 						} catch (e:String) {
-							throw builderErrorAt(node, 'cursor "${def.name}": $e', "cursor_tile");
+							throw builderErrorAt(node, 'cursor "' + def.name + '": $e', "cursor_tile");
 						}
 						registered.push(def.name);
 						count++;
@@ -11819,7 +11819,7 @@ class MultiAnimBuilder {
 					case A2SSheet(sheetName):
 						final sheet = resourceLoader.loadSheet2(resolveAsString(sheetName));
 						if (sheet == null)
-							throw builderError('atlas2: could not load sheet "${resolveAsString(sheetName)}"');
+							throw builderError('atlas2: could not load sheet "' + resolveAsString(sheetName) + '"');
 						sheet.getSourceTile();
 				}
 

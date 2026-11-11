@@ -27,7 +27,7 @@ private class CaptureEventsImpl implements CaptureEventsControl {
 	}
 
 	public function toString() {
-		return 'start:${start}, stop:${stop}, target:${target}';
+		return 'start:$start, stop:$stop, target:$target';
 	}
 
 	public function isCapturing() {

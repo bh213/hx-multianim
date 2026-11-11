@@ -2674,8 +2674,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		final macroTime = haxe.Timer.stamp() - macroStart;
 
 		final speedup = builderTime / macroTime;
-		trace('Performance: builder=${Std.int(builderTime * 1000)}ms, macro=${Std.int(macroTime * 1000)}ms, speedup=${Std.string(speedup).substr(0, 5)}x (${iterations} iterations)');
-		Assert.isTrue(macroTime < builderTime, 'Macro should be faster than builder: macro=${macroTime}s, builder=${builderTime}s');
+		trace('Performance: builder=' + Std.int(builderTime * 1000) + 'ms, macro=' + Std.int(macroTime * 1000) + 'ms, speedup=' + Std.string(speedup).substr(0, 5) + 'x ($iterations iterations)');
+		Assert.isTrue(macroTime < builderTime, 'Macro should be faster than builder: macro=' + macroTime + 's, builder=' + builderTime + 's');
 	}
 
 	// ==================== Data block: unit tests ====================
@@ -3521,7 +3521,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 		// Child should use its OWN defaults (a=10, b=20, c=30), not parent values (50, 60, 70)
 		final bitmaps = findVisibleBitmapDescendants(childResult.object);
-		Assert.equals(3, bitmaps.length, 'Expected 3 bitmaps, got ${bitmaps.length}');
+		Assert.equals(3, bitmaps.length, 'Expected 3 bitmaps, got ' + bitmaps.length);
 		Assert.equals(10, Std.int(bitmaps[0].tile.width), "Bitmap a width should be child default 10, not parent 50");
 		Assert.equals(20, Std.int(bitmaps[1].tile.width), "Bitmap b width should be child default 20, not parent 60");
 		Assert.equals(30, Std.int(bitmaps[2].tile.width), "Bitmap c width should be child default 30, not parent 70");
@@ -3544,7 +3544,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 		// Child should have the explicitly passed values
 		final bitmaps = findVisibleBitmapDescendants(childResult.object);
-		Assert.equals(3, bitmaps.length, 'Expected 3 bitmaps, got ${bitmaps.length}');
+		Assert.equals(3, bitmaps.length, 'Expected 3 bitmaps, got ' + bitmaps.length);
 		Assert.equals(50, Std.int(bitmaps[0].tile.width), "Bitmap a width should be 50");
 		Assert.equals(60, Std.int(bitmaps[1].tile.width), "Bitmap b width should be 60");
 		Assert.equals(70, Std.int(bitmaps[2].tile.width), "Bitmap c width should be 70");
@@ -3861,9 +3861,9 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 			'setParameter("icon", String) on a tile param must throw');
 		// Match the other primitive arms' message shape — explicit, sourced from setParameter.
 		Assert.isTrue(caught != null && caught.indexOf("setParameter") >= 0,
-			'thrown error must come from the setParameter dispatcher; got: ${caught}');
+			'thrown error must come from the setParameter dispatcher; got: $caught');
 		Assert.isTrue(caught != null && caught.indexOf("h2d.Tile") >= 0,
-			'thrown error must mention the required type (h2d.Tile); got: ${caught}');
+			'thrown error must mention the required type (h2d.Tile); got: $caught');
 
 		// Field-corruption probe: re-applying the *original* tile must be a no-op (which
 		// the setter's identity guard short-circuits with no _applyVisibility call). If
@@ -3899,9 +3899,9 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		}
 		Assert.notNull(caught, "setIcon(String) on a tile param must throw");
 		Assert.isTrue(caught != null && caught.indexOf("setIcon") >= 0,
-			'thrown error must come from the typed setter; got: ${caught}');
+			'thrown error must come from the typed setter; got: $caught');
 		Assert.isTrue(caught != null && caught.indexOf("h2d.Tile") >= 0,
-			'thrown error must mention the required type (h2d.Tile); got: ${caught}');
+			'thrown error must mention the required type (h2d.Tile); got: $caught');
 
 		// Same field-corruption probe as the setParameter test.
 		final bitmapsBefore = findVisibleBitmapDescendants(inst);
@@ -3933,9 +3933,9 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		Assert.notNull(caught,
 			'setParameter("items", String) on an array param must throw');
 		Assert.isTrue(caught != null && caught.indexOf("setParameter") >= 0,
-			'thrown error must come from the setParameter dispatcher; got: ${caught}');
+			'thrown error must come from the setParameter dispatcher; got: $caught');
 		Assert.isTrue(caught != null && caught.indexOf("Array") >= 0,
-			'thrown error must mention the required type (Array); got: ${caught}');
+			'thrown error must mention the required type (Array); got: $caught');
 	}
 
 	// ==================== ColorDiv: generated(color()) with / division ====================
@@ -3952,7 +3952,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		// Verify the division-computed bitmap has correct integer width.
 		// Default: value=75, maxValue=100, barWidth=200  →  75*200/100 = 150
 		final bitmaps = findVisibleBitmapDescendants(inst);
-		Assert.isTrue(bitmaps.length >= 3, 'Expected at least 3 bitmaps, got ${bitmaps.length}');
+		Assert.isTrue(bitmaps.length >= 3, 'Expected at least 3 bitmaps, got ' + bitmaps.length);
 		if (bitmaps.length >= 3) {
 			// Second bitmap: width = 75*200/100 = 150
 			Assert.equals(150, Std.int(bitmaps[1].tile.width), "Division-computed width should be 150");
@@ -4129,7 +4129,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		// The root object should have wrapper objects for each iteration.
 		// Each wrapper is positioned at the layout point and contains 3 bitmap children.
 		final bitmaps = findVisibleBitmapDescendants(result.object);
-		Assert.equals(18, bitmaps.length, 'Expected 18 bitmaps (6 iterations x 3), got ${bitmaps.length}');
+		Assert.equals(18, bitmaps.length, 'Expected 18 bitmaps (6 iterations x 3), got ' + bitmaps.length);
 
 		// Verify triples of bitmaps share the same parent wrapper (same layout point).
 		var i = 0;
@@ -4137,8 +4137,8 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 			final parent1 = bitmaps[i].parent;
 			final parent2 = bitmaps[i + 1].parent;
 			final parent3 = bitmaps[i + 2].parent;
-			Assert.equals(parent1, parent2, 'Bitmaps at index $i and ${i + 1} should share a parent (same layout point)');
-			Assert.equals(parent1, parent3, 'Bitmaps at index $i and ${i + 2} should share a parent (same layout point)');
+			Assert.equals(parent1, parent2, 'Bitmaps at index $i and ' + (i + 1) + ' should share a parent (same layout point)');
+			Assert.equals(parent1, parent3, 'Bitmaps at index $i and ' + (i + 2) + ' should share a parent (same layout point)');
 			i += 3;
 		}
 	}
@@ -5088,7 +5088,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 
 		Assert.equals(userContainer, conditional.parent, "user reparent must be preserved past completion");
 		Assert.isTrue(conditional.x < preX - 10.0,
-			'x should reflect slide tween end state (preX - slideOffset), not be restored to preX. preX=$preX got x=${conditional.x}');
+			'x should reflect slide tween end state (preX - slideOffset), not be restored to preX. preX=$preX got x=' + conditional.x);
 	}
 
 	// ==================== @switch + repeatable: codegen incremental ====================
@@ -5913,7 +5913,7 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 				thrown = Std.string(e);
 			}
 			Assert.isNull(thrown,
-				'codegen setParameter("outlineColor", ${Std.string(input)}) must not throw (runtime path accepts it); threw: $thrown');
+				'codegen setParameter("outlineColor", ' + Std.string(input) + ') must not throw (runtime path accepts it); threw: $thrown');
 		}
 	}
 
@@ -5958,10 +5958,10 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 		function check(name:String, x:Float, y:Float):Void {
 			for (i in 0...live.length) {
 				final obj = live[i].getNamedDrawn(name);
-				Assert.notNull(obj, '${labels[i]}: $name drawn');
+				Assert.notNull(obj, labels[i] + ': $name drawn');
 				if (obj == null) continue;
-				Assert.floatEquals(x, obj.x, 0.01, '${labels[i]}: x of $name');
-				Assert.floatEquals(y, obj.y, 0.01, '${labels[i]}: y of $name');
+				Assert.floatEquals(x, obj.x, 0.01, labels[i] + ': x of $name');
+				Assert.floatEquals(y, obj.y, 0.01, labels[i] + ': y of $name');
 			}
 		}
 

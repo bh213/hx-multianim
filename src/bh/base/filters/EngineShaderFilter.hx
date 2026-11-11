@@ -43,7 +43,7 @@ class EngineShaderFilter extends h2d.filter.Filter {
 		this.apply = apply;
 		this.boundsOf = boundsOf;
 		this.pass = new h3d.pass.ScreenFx(shader);
-		this.target = 'engineShader${made++}';
+		this.target = 'engineShader' + (made++);
 	}
 
 	/** A shader made into a filter with its first values: what a registered filter's factory returns. **/

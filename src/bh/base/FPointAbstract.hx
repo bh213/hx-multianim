@@ -29,6 +29,6 @@ abstract FPoint(h2d.col.Point) from h2d.col.Point to h2d.col.Point{
 		return new h2d.col.Point(Math.round(this.x), Math.round(this.y));
 	}
 	public function toString() {
-		return '${this.x}, ${this.y}';
+		return this.x + ', ' + this.y;
 	}
 }

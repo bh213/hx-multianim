@@ -954,7 +954,7 @@ class TileMap extends h2d.Object {
 		final i = cy * width + cx;
 		if (cover[i] >= 0 && cover[i] != i) {
 			final a = cover[i];
-			throw BuilderError.of('tilemap $mapName: layer $layer: column $cx, row $cy is covered by ${entries[at[a]].name} at column ${a % width}, row ${Std.int(a / width)}: change it there',
+			throw BuilderError.of('tilemap $mapName: layer $layer: column $cx, row $cy is covered by ' + (entries[at[a]].name) + ' at column ' + (a % width) + ', row ' + Std.int(a / width) + ': change it there',
 				"tilemap_object_covered");
 		}
 		// the old object's cells freed; put back if the new one cannot be placed
@@ -988,7 +988,7 @@ class TileMap extends h2d.Object {
 
 	function checkInside(cx:Int, cy:Int):Void {
 		if (!inside(cx, cy))
-			throw BuilderError.of('tilemap $mapName: column $cx, row $cy is outside the map (${width}x$height)', "tilemap_outside");
+			throw BuilderError.of('tilemap $mapName: column $cx, row $cy is outside the map (' + width + 'x$height)', "tilemap_outside");
 	}
 
 	function layerIndex(name:String):Int {
@@ -1040,13 +1040,13 @@ class TileMap extends h2d.Object {
 	function placeCover(cover:Array<Int>, li:Int, name:String, cx:Int, cy:Int, r:CellRect):Void {
 		final layer = def.layers[li].name;
 		if (r.x0 < 0 || r.y0 < 0 || r.x1 > width || r.y1 > height)
-			throw BuilderError.of('tilemap $mapName: layer $layer: $name at column $cx, row $cy covers columns ${r.x0} to ${r.x1 - 1}, rows ${r.y0} to ${r.y1 - 1}, outside the map (${width}x$height)',
+			throw BuilderError.of('tilemap $mapName: layer $layer: $name at column $cx, row $cy covers columns ' + r.x0 + ' to ' + (r.x1 - 1) + ', rows ' + r.y0 + ' to ' + (r.y1 - 1) + ', outside the map (' + width + 'x$height)',
 				"tilemap_object_outside");
 		for (y in r.y0...r.y1)
 			for (x in r.x0...r.x1) {
 				final other = cover[y * width + x];
 				if (other >= 0)
-					throw BuilderError.of('tilemap $mapName: layer $layer: $name at column $cx, row $cy covers column $x, row $y, where ${entryAt(li, other).name} at column ${other % width}, row ${Std.int(other / width)} is already',
+					throw BuilderError.of('tilemap $mapName: layer $layer: $name at column $cx, row $cy covers column $x, row $y, where ' + entryAt(li, other).name + ' at column ' + (other % width) + ', row ' + Std.int(other / width) + ' is already',
 						"tilemap_object_overlap");
 			}
 		fillCover(cover, r, cy * width + cx);
@@ -2148,7 +2148,7 @@ class TileMap extends h2d.Object {
 			final format = tiles.autotileFormat(autotile);
 			final mask = autotileMask(i, format);
 			if ((format == Corner || format == Connect16) && grid.kind == Hex)
-				throw BuilderError.of('tilemap $mapName: terrain ${terrain.name}: autotile $autotile is of the ${format == Corner ? "corner" : "connect16"} format, which has no hex form (blob47, cross or hex64 are)',
+				throw BuilderError.of('tilemap $mapName: terrain ' + terrain.name + ': autotile $autotile is of the ' + (format == Corner ? "corner" : "connect16") + ' format, which has no hex form (blob47, cross or hex64 are)',
 					"tilemap_grid");
 			final where = drawnPositions(mask, format, positionsOf(c, format));
 			if (where == null)

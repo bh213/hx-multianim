@@ -340,7 +340,7 @@ class UICardHandHelper implements UIHigherOrderComponent {
 		handLayer = config != null && config.handLayer != null ? config.handLayer : DefaultLayer;
 		dragLayer = config != null && config.dragLayer != null ? config.dragLayer : ModalLayer;
 		helperInstanceId = helperInstanceCounter++;
-		interactivePrefix = config != null && config.interactivePrefix != null ? config.interactivePrefix : 'card${helperInstanceId}';
+		interactivePrefix = config != null && config.interactivePrefix != null ? config.interactivePrefix : 'card$helperInstanceId';
 
 		// Path layout
 		layoutPathName = config != null ? config.layoutPathName : null;
@@ -878,7 +878,7 @@ class UICardHandHelper implements UIHigherOrderComponent {
 		pivotWrapper.addChild(result.object);
 
 		// Generate unique interactive ID and register with screen
-		var interactiveId = '${interactivePrefix}_${nextCardSeq}';
+		var interactiveId = interactivePrefix + '_$nextCardSeq';
 		nextCardSeq++;
 
 		// Register interactives from the card's BuilderResult
@@ -1562,7 +1562,7 @@ class UICardHandHelper implements UIHigherOrderComponent {
 
 	function validatePathName(name:Null<String>, configField:String):Void {
 		if (name != null && !builder.hasNode(name))
-			throw 'CardHandHelper: ${configField} "${name}" not found in .manim';
+			throw 'CardHandHelper: $configField "$name" not found in .manim';
 	}
 
 	// === Internal: Animation via .manim paths ===

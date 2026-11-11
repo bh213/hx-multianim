@@ -902,20 +902,20 @@ class TilemapTest extends BuilderTestBase {
 		final ignoredMask = [[0, 0, 0, 0, 0], [1, 1, 1, 1, 1], [1, 1, 1, 1, 1]];
 		for (g in [{grid: "isometric, 32, 16", format: "blob47", size: 32}, {grid: "hex, 16, 16, pointy, odd", format: "hex64", size: 16}]) {
 			final without = coastTilesOffTheSquareGrid(g.grid, g.format, g.size, "");
-			Assert.equals(0, without.placed.filter(p -> p.name == "coast").length, '${g.format}: no coast without ignore:');
+			Assert.equals(0, without.placed.filter(p -> p.name == "coast").length, g.format + ': no coast without ignore:');
 			final ignoring = coastTilesOffTheSquareGrid(g.grid, g.format, g.size, "ignore: sea");
 			final coast = ignoring.placed.filter(p -> p.name == "coast");
-			Assert.same(["1,1", "2,1", "3,1"], [for (p in coast) '${p.x},${p.y}'], '${g.format}: on the shallow cells inside the map, back to front');
+			Assert.same(["1,1", "2,1", "3,1"], [for (p in coast) (p.x + ',' + p.y)], g.format + ': on the shallow cells inside the map, back to front');
 			for (p in coast) {
 				final expected = g.format == "hex64" ? Autotile.getHexIndex(ignoredMask, p.x, p.y, ignoring.map.grid, 0, 0) : Autotile.getBlob47Index(Autotile.getNeighborMask8(ignoredMask, p.x, p.y));
-				Assert.equals(expected, p.index, '${g.format}: the coast at ${p.x},${p.y} is indexed over the shallows and the sea');
+				Assert.equals(expected, p.index, g.format + ': the coast at ' + p.x + ',' + p.y + ' is indexed over the shallows and the sea');
 			}
 			final own = ignoring.placed.filter(p -> p.name == "shallow" && p.x == 2);
 			Assert.equals(1, own.length);
 			final ownMask = [[0, 0, 0, 0, 0], [1, 1, 1, 1, 1], [0, 0, 0, 0, 0]];
 			if (own.length == 1)
 				Assert.equals(g.format == "hex64" ? Autotile.getHexIndex(ownMask, 2, 1, ignoring.map.grid, 0, 0) : Autotile.getBlob47Index(Autotile.getNeighborMask8(ownMask, 2, 1)),
-					own[0].index, '${g.format}: the shallows\' own tile is indexed over their own cells');
+					own[0].index, g.format + ': the shallows\' own tile is indexed over their own cells');
 		}
 	}
 
@@ -1325,7 +1325,7 @@ class TilemapTest extends BuilderTestBase {
 
 	@Test
 	public function testCullingHidesTheChunksOutOfView() {
-		final map = chunked('layer roofs { legend { "r": roof } rows: [${rows("          ", 5)}, "         r"] }');
+		final map = chunked('layer roofs { legend { "r": roof } rows: [' + rows("          ", 5) + ', "         r"] }');
 		map.cull(0, 0, 10, 10); // a chunk is 4 cells of 8px: 32px
 		Assert.isTrue(map.isChunkVisible(0, 0));
 		Assert.isFalse(map.isChunkVisible(2, 1), "the far chunk is out of view");
@@ -1385,8 +1385,8 @@ class TilemapTest extends BuilderTestBase {
 		Assert.isTrue(@:privateAccess map.chunks[4].dirty && @:privateAccess map.chunks[2].dirty, "and no other");
 		Assert.isTrue(asked.length > 0, "the dirt's autotile is drawn");
 		for (a in asked) {
-			Assert.isTrue(intsOf(a.grid) <= 16, 'the mask holds the chunk and a cell around it: ${intsOf(a.grid)} ints for 3 by 3 cells');
-			Assert.isTrue(intsOf(a.where) <= 16, 'the positions drawn are the chunk\'s own: ${intsOf(a.where)} ints for 4 by 4 corners');
+			Assert.isTrue(intsOf(a.grid) <= 16, 'the mask holds the chunk and a cell around it: ' + intsOf(a.grid) + ' ints for 3 by 3 cells');
+			Assert.isTrue(intsOf(a.where) <= 16, 'the positions drawn are the chunk\'s own: ' + intsOf(a.where) + ' ints for 4 by 4 corners');
 		}
 	}
 
@@ -1397,14 +1397,14 @@ class TilemapTest extends BuilderTestBase {
 		// the run's start, which must be found once a run, not by walking back from every cell.
 		final width = 64;
 		final map = builderFromSource(source('#m tilemap { tileset: plains size: $width, 2 legend { ".": grass }
-			terrain: ["${StringTools.rpad("", ".", width)}", "${StringTools.rpad("", ".", width)}"]
-			levels: ["0${StringTools.rpad("", "2", width - 2)}0", "${StringTools.rpad("", "0", width)}"] }',
+			terrain: ["' + StringTools.rpad("", ".", width) + '", "' + StringTools.rpad("", ".", width) + '"]
+			levels: ["0' + StringTools.rpad("", "2", width - 2) + '0", "' + StringTools.rpad("", "0", width) + '"] }',
 			'rise 2 { side: "stairs", "flower" span: 1 }')).buildTilemap("m");
 		TileMap.riseLookups = 0;
 		map.redraw();
 		final lookups = TileMap.riseLookups;
 		final budget = 8 * width * 2;
-		Assert.isTrue(lookups <= budget, 'a few lookups a cell: $lookups for ${width * 2} cells, the budget is $budget');
+		Assert.isTrue(lookups <= budget, 'a few lookups a cell: $lookups for ' + (width * 2) + ' cells, the budget is $budget');
 		Assert.equals(2, map.sideAt(30, 1), "the side is there");
 		#else
 		Assert.pass("counts need MULTIANIM_ALLOC_TRACK");
@@ -1422,9 +1422,9 @@ class TilemapTest extends BuilderTestBase {
 			terrain: ["....", "....", "...."]
 			layer deco { legend { "f": flower } rows: ["ffff", "ff  ", "    "] }
 		}'));
-		Assert.equals(1, flowers.filter(n -> n == "flower").length, 'flower asked for once, got ${flowers.filter(n -> n == "flower").length} times');
+		Assert.equals(1, flowers.filter(n -> n == "flower").length, 'flower asked for once, got ' + flowers.filter(n -> n == "flower").length + ' times');
 		final plateau = cellsDrawn(build(PLATEAU));
-		Assert.equals(1, plateau.filter(n -> n == "face").length, 'the side piece asked for once, got ${plateau.filter(n -> n == "face").length} times');
+		Assert.equals(1, plateau.filter(n -> n == "face").length, 'the side piece asked for once, got ' + plateau.filter(n -> n == "face").length + ' times');
 	}
 
 	@Test
@@ -1486,7 +1486,7 @@ class TilemapTest extends BuilderTestBase {
 			for (x in 0...whole.width)
 				if (chunked.getPixel(x, y) != whole.getPixel(x, y)) {
 					if (differ == 0)
-						first = 'pixel $x, $y (cell ${Std.int(x / map.tileSize)}, ${Std.int(y / map.tileSize)})';
+						first = 'pixel $x, $y (cell ' + Std.int(x / map.tileSize) + ', ' + Std.int(y / map.tileSize) + ')';
 					differ++;
 				}
 		return differ == 0 ? null : '$differ pixels differ, the first at $first';
@@ -1503,17 +1503,17 @@ class TilemapTest extends BuilderTestBase {
 		// row of corners reach over the last column and row of the chunk before it: whatever that
 		// chunk drew on its cells there (layer cells, sides, a terrain of cells above an autotile
 		// one, an object reaching across) must still be drawn over the next chunk's terrain.
-		final dirt = '#m tilemap { tileset: plains size: 8, 8 legend { "d": dirt } terrain: [${rows("dddddddd", 8)}]';
-		Assert.isNull(chunkBorderDifference(source(dirt + ' layer deco { legend { "f": flower } rows: [${rows("   f    ", 3)}, "ffffffff", ${rows("   f    ", 4)}] } }'), 4),
+		final dirt = '#m tilemap { tileset: plains size: 8, 8 legend { "d": dirt } terrain: [' + rows("dddddddd", 8) + ']';
+		Assert.isNull(chunkBorderDifference(source(dirt + ' layer deco { legend { "f": flower } rows: [' + rows("   f    ", 3) + ', "ffffffff", ' + rows("   f    ", 4) + '] } }'), 4),
 			"a layer's cells on the last column and row of a chunk are drawn over the next chunk's terrain");
-		Assert.isNull(chunkBorderDifference(source(dirt + ' levels: [${rows("00000000", 2)}, "11111111", ${rows("00000000", 5)}] }'), 4),
+		Assert.isNull(chunkBorderDifference(source(dirt + ' levels: [' + rows("00000000", 2) + ', "11111111", ' + rows("00000000", 5) + '] }'), 4),
 			"a side landing on the last row of a chunk is drawn over the next chunk's terrain");
-		Assert.isNull(chunkBorderDifference(source('#m tilemap { tileset: plains size: 8, 8 legend { "s": stone } terrain: [${rows("ssssssss", 8)}] }',
+		Assert.isNull(chunkBorderDifference(source('#m tilemap { tileset: plains size: 8, 8 legend { "s": stone } terrain: [' + rows("ssssssss", 8) + '] }',
 			'terrain stone { cells: "roof" }'), 4),
 			"a terrain of cells above autotile terrains is drawn over every chunk's autotiles under it");
-		Assert.isNull(chunkBorderDifference(source('#m tilemap { tileset: plains size: 8, 8 legend { ".": grass } terrain: [${rows("........", 8)}]
-			layer a { legend { "f": flower } rows: ["        ", "    f   ", ${rows("        ", 6)}] }
-			layer b { legend { "t": tree } rows: [${rows("        ", 2)}, "   t    ", ${rows("        ", 5)}] } }',
+		Assert.isNull(chunkBorderDifference(source('#m tilemap { tileset: plains size: 8, 8 legend { ".": grass } terrain: [' + rows("........", 8) + ']
+			layer a { legend { "f": flower } rows: ["        ", "    f   ", ' + rows("        ", 6) + '] }
+			layer b { legend { "t": tree } rows: [' + rows("        ", 2) + ', "   t    ", ' + rows("        ", 5) + '] } }',
 			'cell tree { size: 2, 2 draw: under }'), 4),
 			"a later layer's object reaching into the next chunk is drawn over an earlier layer's cell there");
 	}
@@ -1526,8 +1526,8 @@ class TilemapTest extends BuilderTestBase {
 		// row 5. A view of rows 0 to 5 sees its top, so the chunk it stands in is shown and drawn.
 		final was = TileMap.defaultChunkSize;
 		TileMap.defaultChunkSize = 4;
-		final map = try builderFromSource(source('#m tilemap { tileset: plains size: 4, 12 legend { ".": grass } terrain: [${rows("....", 12)}]
-			layer props { legend { "p": pole } rows: [${rows("    ", 8)}, " p  ", ${rows("    ", 3)}] } }',
+		final map = try builderFromSource(source('#m tilemap { tileset: plains size: 4, 12 legend { ".": grass } terrain: [' + rows("....", 12) + ']
+			layer props { legend { "p": pole } rows: [' + rows("    ", 8) + ', " p  ", ' + rows("    ", 3) + '] } }',
 			'cell pole { size: 1, 4 }', 'pole: 0, 0, 8, 32')).buildTilemap("m") catch (e:Dynamic) {
 			TileMap.defaultChunkSize = was;
 			throw e;
@@ -1544,7 +1544,7 @@ class TilemapTest extends BuilderTestBase {
 
 	@Test
 	public function testAnObjectAmongTheActorsGoesWithItsChunk() {
-		final map = chunked('layer props { legend { "t": tree } rows: [${rows("          ", 5)}, "        t "] }', 'cell tree { size: 2, 2 }');
+		final map = chunked('layer props { legend { "t": tree } rows: [' + rows("          ", 5) + ', "        t "] }', 'cell tree { size: 2, 2 }');
 		final tree:h2d.Object = (@:privateAccess map.chunks[5].objects : Array<h2d.Object>)[0];
 		Assert.isTrue(tree.visible);
 		map.cull(0, 0, 1, 1);
@@ -1570,7 +1570,7 @@ class TilemapTest extends BuilderTestBase {
 			layer s { legend { "s": stairs } rows: ["ssssssss", "ssssssss"] } }')).buildTilemap("m");
 		TileMap.metadataKeyStrings = 0;
 		map.redraw(); // its first draw
-		Assert.equals(0, TileMap.metadataKeyStrings, 'strings built for metadata keys: ${TileMap.metadataKeyStrings} for 16 cells');
+		Assert.equals(0, TileMap.metadataKeyStrings, 'strings built for metadata keys: ' + TileMap.metadataKeyStrings + ' for 16 cells');
 		Assert.isTrue(map.metadataAt(1, 0).getBoolOrDefault("climb", false), "the stairs' metadata");
 		Assert.equals(1, map.metadataAt(1, 0).getIntOrDefault("cost", 0), "over the grass's");
 		Assert.equals(2, map.metadataAt(0, 0).getIntOrDefault("cost", 0), "or the dirt's");
@@ -1588,8 +1588,8 @@ class TilemapTest extends BuilderTestBase {
 		// along the run finds where the run starts without walking back to it.
 		final width = 64;
 		final src = source('#m tilemap { tileset: plains size: $width, 2 legend { ".": grass }
-			terrain: ["${StringTools.rpad("", ".", width)}", "${StringTools.rpad("", ".", width)}"]
-			levels: ["0${StringTools.rpad("", "2", width - 2)}0", "${StringTools.rpad("", "0", width)}"] }',
+			terrain: ["' + StringTools.rpad("", ".", width) + '", "' + StringTools.rpad("", ".", width) + '"]
+			levels: ["0' + StringTools.rpad("", "2", width - 2) + '0", "' + StringTools.rpad("", "0", width) + '"] }',
 			'rise 2 { side: "stairs", "flower" span: 1 }');
 		for (size in [32, 4]) {
 			final map = builderFromSource(src).buildTilemap("m");
@@ -1606,7 +1606,7 @@ class TilemapTest extends BuilderTestBase {
 			}
 			TileMap.riseLookups = 0;
 			map.redraw();
-			Assert.isTrue(TileMap.riseLookups <= budget, 'chunks of $size: ${TileMap.riseLookups} rise lookups, one a cell scanned is $budget');
+			Assert.isTrue(TileMap.riseLookups <= budget, 'chunks of $size: ' + TileMap.riseLookups + ' rise lookups, one a cell scanned is $budget');
 			Assert.equals(2, map.sideAt(30, 1), "the side is there");
 		}
 		#else
@@ -1630,7 +1630,7 @@ class TilemapTest extends BuilderTestBase {
 		final was = TileMap.defaultChunkSize;
 		TileMap.defaultChunkSize = 4;
 		final row = StringTools.rpad("", ".", 64);
-		final map = try builderFromSource(source('#m tilemap { tileset: plains size: 64, 64 legend { ".": grass } terrain: [${rows(row, 64)}] }'))
+		final map = try builderFromSource(source('#m tilemap { tileset: plains size: 64, 64 legend { ".": grass } terrain: [' + rows(row, 64) + '] }'))
 			.buildTilemap("m") catch (e:Dynamic) {
 			TileMap.defaultChunkSize = was;
 			throw e;
@@ -1643,7 +1643,7 @@ class TilemapTest extends BuilderTestBase {
 		TileMap.chunkChecks = 0;
 		for (_ in 0...10)
 			@:privateAccess map.drawDirty(true);
-		Assert.isTrue(TileMap.chunkChecks <= 10 * 4, 'chunks looked at in 10 frames: ${TileMap.chunkChecks}, the view reaches 1');
+		Assert.isTrue(TileMap.chunkChecks <= 10 * 4, 'chunks looked at in 10 frames: ' + TileMap.chunkChecks + ', the view reaches 1');
 		#else
 		Assert.pass("counts need MULTIANIM_ALLOC_TRACK");
 		#end
@@ -1655,8 +1655,8 @@ class TilemapTest extends BuilderTestBase {
 		// holds, so the key is a string there; the cells' metadata merges and is shared as with an
 		// Int key.
 		final chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWX";
-		final legend = [for (i in 0...chars.length) '"${chars.charAt(i)}": stairs'].join(", ");
-		final layers = [for (l in 0...5) 'layer l$l { legend { $legend } rows: ["${chars.charAt(l)}${chars.charAt(l)}${chars.charAt(l + 10)}"] }'].join("\n");
+		final legend = [for (i in 0...chars.length) ('"' + chars.charAt(i) + '": stairs')].join(", ");
+		final layers = [for (l in 0...5) ('layer l$l { legend { $legend } rows: ["' + chars.charAt(l) + chars.charAt(l) + chars.charAt(l + 10) + '"] }')].join("\n");
 		final map = builderFromSource(source('#m tilemap { tileset: plains size: 3, 1 legend { ".": grass, "d": dirt } terrain: ["..d"] $layers }'))
 			.buildTilemap("m");
 		Assert.isFalse(@:privateAccess map.intMetadataKeys, "precondition: the combinations do not fit an Int");
@@ -1681,8 +1681,8 @@ class TilemapTest extends BuilderTestBase {
 		// row 7, so a view of rows 6 and 7 shows the first chunk, which draws it.
 		final was = TileMap.defaultChunkSize;
 		TileMap.defaultChunkSize = 4;
-		final map = try builderFromSource(source('#m tilemap { tileset: plains size: 4, 12 legend { ".": grass } terrain: [${rows("....", 12)}]
-			layer props { legend { "p": post } rows: [${rows("    ", 3)}, " p  ", ${rows("    ", 8)}] } }', "", 'post: 0, 0, 8, 40'))
+		final map = try builderFromSource(source('#m tilemap { tileset: plains size: 4, 12 legend { ".": grass } terrain: [' + rows("....", 12) + ']
+			layer props { legend { "p": post } rows: [' + rows("    ", 3) + ', " p  ", ' + rows("    ", 8) + '] } }', "", 'post: 0, 0, 8, 40'))
 			.buildTilemap("m") catch (e:Dynamic) {
 			TileMap.defaultChunkSize = was;
 			throw e;
@@ -1749,7 +1749,7 @@ class TilemapTest extends BuilderTestBase {
 		final ring = '"' + StringTools.rpad("", " ", cols + 2) + '"';
 		final inside = '" ' + StringTools.rpad("", "x", cols) + ' "';
 		final rowsOf = [for (cy in 0...rows + 2) cy == 0 || cy == rows + 1 ? ring : inside].join(", ");
-		return '#$name tilemap { tileset: $tileset size: ${cols + 2}, ${rows + 2} legend { "x": $terrain, " ": none } terrain: [$rowsOf] }\n';
+		return '#$name tilemap { tileset: $tileset size: ' + (cols + 2) + ', ' + (rows + 2) + ' legend { "x": $terrain, " ": none } terrain: [$rowsOf] }\n';
 	}
 
 	/** The first tile map in a built programmable. **/
@@ -1783,11 +1783,11 @@ class TilemapTest extends BuilderTestBase {
 		if (a == null || b == null)
 			return "no map";
 		if (a.width != b.width || a.height != b.height)
-			return '${a.width}x${a.height} and ${b.width}x${b.height}';
+			return a.width + 'x' + a.height + ' and ' + b.width + 'x' + b.height;
 		for (cy in 0...a.height)
 			for (cx in 0...a.width)
 				if (a.terrainAt(cx, cy) != b.terrainAt(cx, cy))
-					return 'column $cx, row $cy is ${a.terrainAt(cx, cy)} and ${b.terrainAt(cx, cy)}';
+					return 'column $cx, row $cy is ' + a.terrainAt(cx, cy) + ' and ' + b.terrainAt(cx, cy);
 		final pa = pixelsInPlace(a);
 		final pb = pixelsInPlace(b);
 		var differ = 0;
@@ -2038,7 +2038,7 @@ class TilemapTest extends BuilderTestBase {
 			for (change in changes) {
 				built.setParameter(change.param, change.value);
 				generated.setParameter(change.param, change.value);
-				Assert.isNull(difference(a, b), '$name: after ${change.param} => ${change.value}');
+				Assert.isNull(difference(a, b), '$name: after ' + change.param + ' => ' + change.value);
 			}
 			Assert.isTrue(b == tilemapIn(generated), '$name: codegen makes it again in place');
 			// cols 5 and rows 1 in a ring of none; fillFinal's (5 + 1) by (1 * 2)
@@ -2141,9 +2141,9 @@ class TilemapTest extends BuilderTestBase {
 			for (f in ORTHOGONAL_FIXTURES) {
 				final hash = pixelHash(pixelsOf(builderFromSource(f.source).buildTilemap("m")));
 				if (f.hash == "")
-					trace('ORTHO_HASH ${f.name}: $hash');
+					trace('ORTHO_HASH ' + f.name + ': $hash');
 				else
-					Assert.equals(f.hash, hash, '${f.name}: the same pixels as before the grids');
+					Assert.equals(f.hash, hash, f.name + ': the same pixels as before the grids');
 			}
 		} catch (e:Dynamic) {
 			TileMap.defaultChunkSize = was;

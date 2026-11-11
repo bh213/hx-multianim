@@ -119,9 +119,9 @@ class UIStandardMultiAnimSlider implements UIElement implements UIElementDisabla
 					params.set(key, value);
 			this.currentResult = builder.buildWithParameters(buildName, params, null, null, true);
 			if (currentResult == null)
-				throw 'could not build #${buildName}';
+				throw 'could not build #$buildName';
 			if (currentResult.object == null)
-				throw 'build #${buildName} returned null object';
+				throw 'build #$buildName returned null object';
 			root.addChild(this.currentResult.object);
 		} else {
 			currentResult.beginUpdate();

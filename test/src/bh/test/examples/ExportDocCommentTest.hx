@@ -93,8 +93,8 @@ class ExportDocCommentTest extends BuilderTestBase {
 			Assert.isNull(node.doc, '$name has no doc');
 		}
 		for (def in defsOf(a, "a")) {
-			Assert.isNull(def.doc, '${def.name} has no doc');
-			Assert.isNull(def.choiceDocs, '${def.name} has no choice docs');
+			Assert.isNull(def.doc, def.name + ' has no doc');
+			Assert.isNull(def.choiceDocs, def.name + ' has no choice docs');
 		}
 		Assert.isNull(MultiAnimResultTools.docOf(a, "a"));
 		Assert.isNull(MultiAnimResultTools.docOf(a, "a", "state"));
@@ -155,18 +155,18 @@ class ExportDocCommentTest extends BuilderTestBase {
 		for (k in kinds) {
 			final source = k.before + "/// the " + k.kind + " block\n" + k.block;
 			final err = errorOf(source);
-			Assert.isNull(err, '${k.kind}: #b export … parses; got $err');
+			Assert.isNull(err, k.kind + ': #b export … parses; got $err');
 			if (err != null) continue;
 			final r = parse(source);
 			final node = r.nodes.get("b");
-			Assert.notNull(node, '${k.kind}: the block is kept under its name');
+			Assert.notNull(node, k.kind + ': the block is kept under its name');
 			if (node == null) continue;
-			Assert.equals(k.kind, Type.enumConstructor(node.type), '${k.kind}: the block is of its kind');
-			Assert.isTrue(node.exported == true, '${k.kind}: the block is exported');
-			Assert.same(["b"], r.exports, '${k.kind}: the only export');
-			Assert.equals("the " + k.kind + " block", node.doc, '${k.kind}: the doc above #b export is the block\'s');
+			Assert.equals(k.kind, Type.enumConstructor(node.type), k.kind + ': the block is of its kind');
+			Assert.isTrue(node.exported == true, k.kind + ': the block is exported');
+			Assert.same(["b"], r.exports, k.kind + ': the only export');
+			Assert.equals("the " + k.kind + " block", node.doc, k.kind + ': the doc above #b export is the block\'s');
 			for (name => other in r.nodes)
-				if (name != "b") Assert.isTrue(other.exported != true, '${k.kind}: $name is not exported');
+				if (name != "b") Assert.isTrue(other.exported != true, k.kind + ': $name is not exported');
 		}
 	}
 
@@ -447,7 +447,7 @@ class ExportDocCommentTest extends BuilderTestBase {
 				Assert.equals("lit or not", defs.get("lit").doc);
 				Assert.equals("glowing", defs.get("lit").choiceDocs?.get("on"));
 			default:
-				Assert.fail('expected a parameterized slot, got ${slot.type}');
+				Assert.fail('expected a parameterized slot, got ' + slot.type);
 		}
 	}
 

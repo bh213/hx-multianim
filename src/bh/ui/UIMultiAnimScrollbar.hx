@@ -110,7 +110,7 @@ class UIMultiAnimScrollbar implements UIElement implements UIElementDisablable i
 		final params = buildParams(builder, name, panelLength, scrollableLength, position, direction, extraParams);
 		final result = builder.buildWithParameters(name, params, null, null, true);
 		if (result == null)
-			throw 'could not build #${name}';
+			throw 'could not build #$name';
 		return new UIMultiAnimScrollbar(result, panelLength, scrollableLength, position, direction);
 	}
 

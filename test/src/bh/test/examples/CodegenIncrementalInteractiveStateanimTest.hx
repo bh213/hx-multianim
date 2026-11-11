@@ -384,12 +384,12 @@ class CodegenIncrementalInteractiveStateanimTest extends BuilderTestBase {
 		final builderMeta = interactiveMetadata(findMAObject(result.object));
 		final codegenMeta = interactiveMetadata(findMAObject(inst));
 		for (entry in [{key: "selected", value: "true"}, {key: "locked", value: "false"}, {key: "typed", value: "true"}]) {
-			Assert.equals(entry.value, boolSetting(builderMeta, entry.key), 'builder: metadata ${entry.key}');
-			Assert.equals(entry.value, boolSetting(codegenMeta, entry.key), 'codegen: metadata ${entry.key}');
+			Assert.equals(entry.value, boolSetting(builderMeta, entry.key), 'builder: metadata ' + entry.key);
+			Assert.equals(entry.value, boolSetting(codegenMeta, entry.key), 'codegen: metadata ' + entry.key);
 		}
 		for (entry in [{key: "autoOpen", value: "true"}, {key: "closeOnPick", value: "false"}]) {
-			Assert.equals(entry.value, boolSetting(builderSettings, entry.key), 'builder: setting ${entry.key}');
-			Assert.equals(entry.value, boolSetting(codegenSettings, entry.key), 'codegen: setting ${entry.key}');
+			Assert.equals(entry.value, boolSetting(builderSettings, entry.key), 'builder: setting ' + entry.key);
+			Assert.equals(entry.value, boolSetting(codegenSettings, entry.key), 'codegen: setting ' + entry.key);
 		}
 	}
 }

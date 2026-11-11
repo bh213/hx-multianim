@@ -1610,7 +1610,7 @@ class Particles extends h2d.Drawable {
 		@returns Added ParticleGroup instance.
 	**/
 	public function addGroup( g : ParticleGroup ):ParticleGroup {
-		if (groups.exists(g.id)) throw 'group ${g.id} already exists';
+		if (groups.exists(g.id)) throw 'group ' + g.id + ' already exists';
 		groups.set(g.id, g);
 		groupList.push(g);
 		return g;

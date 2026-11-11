@@ -184,7 +184,7 @@ class CachingResourceLoader implements ResourceLoader {
     public function loadMultiAnim(resourceFilename:String):MultiAnimBuilder {
 
         var key = resourceFilename;
-        if (multiAnimCycleDetection.contains(key)) throw 'cyclic dependency in multiAnim $key: path ${multiAnimCycleDetection}';
+        if (multiAnimCycleDetection.contains(key)) throw 'cyclic dependency in multiAnim $key: path $multiAnimCycleDetection';
         multiAnimCycleDetection.push(key);
 
         var retVal = try {

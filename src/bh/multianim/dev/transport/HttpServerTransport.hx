@@ -79,7 +79,7 @@ class HttpServerTransport implements IDevBridgeTransport {
 		}
 
 		if (!bound) {
-			trace('[DevBridge] Failed to bind after 10 attempts (tried ports $port-${port + 9})');
+			trace('[DevBridge] Failed to bind after 10 attempts (tried ports $port-' + (port + 9) + ')');
 			serverSocket = null;
 			return false;
 		}
@@ -103,7 +103,7 @@ class HttpServerTransport implements IDevBridgeTransport {
 				trace('[DevBridge] Port $tryPort busy, trying next...');
 				bindNextPort(tryPort + 1, attemptsLeft - 1);
 			} else {
-				trace('[DevBridge] Failed to bind after 10 attempts (tried ports $port-${port + 9}): $msg');
+				trace('[DevBridge] Failed to bind after 10 attempts (tried ports $port-' + (port + 9) + '): $msg');
 				serverSocket = null;
 				actualPort = 0;
 			}
@@ -161,7 +161,7 @@ class HttpServerTransport implements IDevBridgeTransport {
 			sseClients.remove(clientSocket);
 			try clientSocket.close() catch (_:Dynamic) {};
 		};
-		trace('[DevBridge] SSE client connected (${sseClients.length} total)');
+		trace('[DevBridge] SSE client connected (' + sseClients.length + ' total)');
 	}
 
 	public function pushEvent(event:String, data:Dynamic):Void {
@@ -347,7 +347,7 @@ class HttpServerTransport implements IDevBridgeTransport {
 			+ 'Access-Control-Allow-Methods: POST, OPTIONS\r\n'
 			+ (token == null ? 'Access-Control-Allow-Headers: Content-Type\r\n' : 'Access-Control-Allow-Headers: Content-Type, Authorization, X-HX-Dev-Token\r\n')
 			+ 'Connection: close\r\n'
-			+ 'Content-Length: ${bodyBytes.length}\r\n'
+			+ 'Content-Length: ' + bodyBytes.length + '\r\n'
 			+ '\r\n';
 
 		var headerBytes = haxe.io.Bytes.ofString(header);

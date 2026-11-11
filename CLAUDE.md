@@ -163,6 +163,7 @@ animation animationName {
 4. **Document complex parsing**: Add comments explaining parsing patterns
 5. **Update related files**: Changes to parser may require builder/UI updates
 6. **Add tests for new features**: See `.claude/rules/testing-and-debugging.md`
+7. **No `${…}` in a Haxe string, anywhere in the repo** (`src/`, `test/`, `lsp/`): write `'… ' + a.b + ' …'`, or `$name` for a plain name. Haxe parses each `${…}` in time that grows with the block's offset in its file (over 10 ms each late in a big file); the 944 in `src/` once cost every project that uses the library about 6 s a compile. `$name` is free. A `.manim` file's own `${…}` is another thing, read by the library's parser, and stays.
 
 ## Documentation References
 

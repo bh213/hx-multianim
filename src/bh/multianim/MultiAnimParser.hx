@@ -108,8 +108,8 @@ function indexText(index:ReferenceableValue):String {
 	return switch index {
 		case RVInteger(i): '$i';
 		case RVReference(r): "$" + r;
-		case RVParenthesis(e): '(${indexText(e)})';
-		case EUnaryOp(OpNeg, e): '-${indexText(e)}';
+		case RVParenthesis(e): '(' + indexText(e) + ')';
+		case EUnaryOp(OpNeg, e): '-' + indexText(e);
 		case EBinop(op, a, b):
 			final opText = switch op {
 				case OpAdd: "+";
@@ -125,7 +125,7 @@ function indexText(index:ReferenceableValue):String {
 				case OpLessEq: "<=";
 				case OpGreaterEq: ">=";
 			};
-			'${indexText(a)} $opText ${indexText(b)}';
+			(indexText(a) + ' $opText ' + indexText(b));
 		default: "…";
 	}
 }
@@ -133,8 +133,8 @@ function indexText(index:ReferenceableValue):String {
 /** `#name[...]` as written, its index or indices included (`#card[$row * 3 + $c]`), for messages. */
 function indexedNameText(updatableNameType:UpdatableNameType):String {
 	return switch updatableNameType {
-		case UNTIndexed(name, index): '#$name[${indexText(index)}]';
-		case UNTIndexed2D(name, x, y): '#$name[${indexText(x)}, ${indexText(y)}]';
+		case UNTIndexed(name, index): '#$name[' + indexText(index) + ']';
+		case UNTIndexed2D(name, x, y): '#$name[' + indexText(x) + ', ' + indexText(y) + ']';
 		case UNTObject(name) | UNTUpdatable(name): '#$name';
 	}
 }
@@ -146,11 +146,11 @@ function indexCollisionHint(updatableNameType:UpdatableNameType):String {
 		case UNTIndexed(name, RVReference(_)):
 			'Give the inner loop a unique index, number nested repeatables as one list (#$name[$$row * N + $$col], N the inner loop\'s count), or use a 2-D indexed name (#$name[indexX, indexY]).';
 		case UNTIndexed(name, _):
-			'${indexedNameText(updatableNameType)} gives that index to more than one element: make the expression count each element once (nested repeatables of N per row: #$name[$$row * N + $$col]), or use a 2-D indexed name (#$name[indexX, indexY]).';
+			indexedNameText(updatableNameType) + ' gives that index to more than one element: make the expression count each element once (nested repeatables of N per row: #$name[$$row * N + $$col]), or use a 2-D indexed name (#$name[indexX, indexY]).';
 		case UNTIndexed2D(_, RVReference(_), RVReference(_)):
 			'Ensure each (indexX, indexY) is unique.';
 		case UNTIndexed2D(_, _, _):
-			'${indexedNameText(updatableNameType)} gives that index pair to more than one element: ensure each (indexX, indexY) is unique.';
+			indexedNameText(updatableNameType) + ' gives that index pair to more than one element: ensure each (indexX, indexY) is unique.';
 		case UNTObject(_) | UNTUpdatable(_): "";
 	}
 }
@@ -175,7 +175,7 @@ function getBuiltHeapsObject(NamedBuildResult:NamedBuildResult) {
 function asStateAnim(NamedBuildResult:NamedBuildResult) {
 	return switch NamedBuildResult.object {
 		case StateAnim(a): return a;
-		default: throw 'expected stateAnim, got ${NamedBuildResult.object.getName()}';
+		default: throw 'expected stateAnim, got ' + NamedBuildResult.object.getName();
 	};
 }
 
@@ -224,7 +224,7 @@ class MultiAnimUnexpected<Token> extends ParseUnexpected<Token> {
 	}
 
 	override public function toString() {
-		return '${message}: unexpected $token at ${this.pos.format()}';
+		return '$message: unexpected $token at ' + this.pos.format();
 	}
 }
 
@@ -236,7 +236,7 @@ class InvalidSyntax extends ParseError {
 	public var error:String;
 	public function new(error, pos:ParsePosition) {
 		super(pos);
-		this.error = 'Error ${error}, ${pos.format()}';
+		this.error = 'Error $error, ' + pos.format();
 	}
 
 	public override function toString() {
@@ -1884,7 +1884,7 @@ class MultiAnimParser {
 			}
 			final i = Std.parseInt(dynValue);
 			if (i != null) return i;
-			err('expected integer-ish in dynamicToInt, got parseInt error for ${dynValue}');
+			err('expected integer-ish in dynamicToInt, got parseInt error for $dynValue');
 		}
 		else if (Std.isOfType(dynValue, Bool)) {
 			if (dynValue == true) return 1;
@@ -1894,11 +1894,11 @@ class MultiAnimParser {
 			final v:ResolvedIndexParameters = cast dynValue;
 			return switch v {
 				case Value(i): i;
-				default: err('expected integer-ish in dynamicToInt as ParameterValue, got ${dynValue}');
+				default: err('expected integer-ish in dynamicToInt as ParameterValue, got $dynValue');
 			}
 		}
 
-		return err('expected integer-ish in dynamicToInt, got ${dynValue}');
+		return err('expected integer-ish in dynamicToInt, got $dynValue');
 	}
 
 	public static function getGridCoordinateSystem(node:Node):Null<GridCoordinateSystem> {

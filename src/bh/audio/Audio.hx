@@ -275,7 +275,7 @@ class Audio {
 		bankParams.set(name, own);
 		ensureBus(def.bus);
 		for (s in def.sounds) {
-			final full = '$name.${s.name}';
+			final full = '$name.' + s.name;
 			var list = entries.get(full);
 			if (list == null) {
 				list = [];
@@ -331,7 +331,7 @@ class Audio {
 				cut++;
 			}
 		if (cut > 0)
-			note("stop", '${name}.*', '$cut');
+			note("stop", '$name.*', '$cut');
 		for (full in [for (k in entries.keys()) k]) {
 			final kept = entries.get(full).filter(e -> e.block != name);
 			if (kept.length == 0)
@@ -405,7 +405,7 @@ class Audio {
 	/** Sets a VCA, 0 to 1 (what a settings slider gives), over every bus it names. */
 	public function setVca(name:String, value:Float):Void {
 		if (!vcaValues.exists(name))
-			throw 'audio: no vca "$name" (${vcaNames().join(", ")})';
+			throw 'audio: no vca "$name" (' + vcaNames().join(", ") + ')';
 		value = hxd.Math.clamp(value, 0, 1);
 		if (vcaValues.get(name) == value)
 			return;
@@ -420,7 +420,7 @@ class Audio {
 	public function getVca(name:String):Float {
 		final v = vcaValues.get(name);
 		if (v == null)
-			throw 'audio: no vca "$name" (${vcaNames().join(", ")})';
+			throw 'audio: no vca "$name" (' + vcaNames().join(", ") + ')';
 		return v;
 	}
 
@@ -430,7 +430,7 @@ class Audio {
 	public function snapshot(name:String, on:Bool):Void {
 		final def = snapshotDef(name);
 		if (def == null)
-			throw 'audio: no snapshot "$name" (${snapshotNames().join(", ")})';
+			throw 'audio: no snapshot "$name" (' + snapshotNames().join(", ") + ')';
 		if (snapshotsOn.contains(name) == on)
 			return;
 		if (on)
@@ -572,7 +572,7 @@ class Audio {
 		musicOwners.set(name, source);
 		ensureBus(def.bus ?? MUSIC_BUS);
 		for (t in def.tracks) {
-			tracks.set('$name.${t.name}', {def: t, bus: def.bus ?? MUSIC_BUS});
+			tracks.set('$name.' + t.name, {def: t, bus: def.bus ?? MUSIC_BUS});
 			backend.prepare(t.file);
 		}
 	}
@@ -612,7 +612,7 @@ class Audio {
 	public function playMusic(name:String, ?crossfade:Float):Void {
 		final track = tracks.get(name);
 		if (track == null)
-			throw 'audio: no track "$name" (the tracks are: ${trackNames().join(", ")})';
+			throw 'audio: no track "$name" (the tracks are: ' + trackNames().join(", ") + ')';
 		if (musicPlaying == name && musicVoice != null && musicVoice.isPlaying())
 			return;
 		final fade = crossfade ?? MUSIC_CROSSFADE;
@@ -627,7 +627,7 @@ class Audio {
 		if (track.def.loop && track.def.loopFrom != null)
 			start.loopFrom = track.def.loopFrom;
 		musicVoice = backend.play(start);
-		note("music", name, 'crossfade $fade' + (start.loopFrom != null ? ', repeats from ${start.loopFrom}s' : ""));
+		note("music", name, 'crossfade $fade' + (start.loopFrom != null ? ', repeats from ' + start.loopFrom + 's' : ""));
 	}
 
 	/** Whether a track is heard now: `name`, or any when null (a track that does not loop has ended). */
@@ -670,7 +670,7 @@ class Audio {
 		if (ambiencePlaying == name && ambienceVoice != null && ambienceVoice.isAlive())
 			return;
 		if (!has(name))
-			throw 'audio: no sound "$name" (the sounds are: ${soundNames().join(", ")})';
+			throw 'audio: no sound "$name" (the sounds are: ' + soundNames().join(", ") + ')';
 		if (ambienceVoice != null)
 			ambienceVoice.stop(fade);
 		ambiencePlaying = name;
@@ -736,9 +736,9 @@ class Audio {
 				throw 'audio: no sounds block "$bank" (param "$param")';
 			final p = own.get(param.substr(dot + 1));
 			if (p == null)
-				throw 'audio: sounds block "$bank" declares no param "${param.substr(dot + 1)}"';
+				throw 'audio: sounds block "$bank" declares no param "' + param.substr(dot + 1) + '"';
 			if (!p.values.contains(value))
-				throw 'audio: param "$param" takes ${p.values.join(", ")}, not "$value"';
+				throw 'audio: param "$param" takes ' + p.values.join(", ") + ', not "$value"';
 			p.value = value;
 			note("param", param, value);
 			return;
@@ -753,10 +753,10 @@ class Audio {
 				p.value = value;
 				changed++;
 			} else
-				takes.push('${p.values.join(", ")} ($bank)');
+				takes.push(p.values.join(", ") + ' ($bank)');
 		}
 		if (changed == 0)
-			throw takes.length == 0 ? 'audio: no sounds block declares param "$param"' : 'audio: param "$param" takes ${takes.join("; ")}, not "$value"';
+			throw takes.length == 0 ? 'audio: no sounds block declares param "$param"' : 'audio: param "$param" takes ' + takes.join("; ") + ', not "$value"';
 		note("param", param, value);
 	}
 
@@ -810,7 +810,7 @@ class Audio {
 	public function play(name:String):Null<SoundInstance> {
 		final list = entries.get(name);
 		if (list == null)
-			throw 'audio: no sound "$name" (the sounds are: ${soundNames().join(", ")})';
+			throw 'audio: no sound "$name" (the sounds are: ' + soundNames().join(", ") + ')';
 		final entry = pickVariant(list);
 		if (entry == null) {
 			note("drop", name, "no variant matches and no default");
@@ -826,7 +826,7 @@ class Audio {
 			while (live.length >= def.voices) {
 				switch def.steal {
 					case StealNone:
-						note("drop", name, 'at ${def.voices} voices');
+						note("drop", name, 'at ' + def.voices + ' voices');
 						return null;
 					case StealOldest:
 						var oldest = live[0];
@@ -867,7 +867,7 @@ class Audio {
 		if (stopLayers)
 			instance.onStop = i -> startStopLayers(i, entry, bus);
 		instances.push(instance);
-		note("play", name, starts.length == 1 ? starts[0].start.path : '${starts.length} layers');
+		note("play", name, starts.length == 1 ? starts[0].start.path : starts.length + ' layers');
 		for (s in starts)
 			startVoice(instance, s, false);
 		return instance;

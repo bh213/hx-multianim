@@ -71,7 +71,7 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 		this.result = this.builder.builder.buildWithParameters(builder.name, inputParams, {callback: @:nullSafety(Off) callback}, null, true);
 		// checked now: it is written to only when the choice changes
 		if (result.names.get("selectedName") == null)
-			throw 'dropdown #${builder.name} has no #selectedName: the text the chosen item\'s name is shown in';
+			throw 'dropdown #' + builder.name + ' has no #selectedName: the text the chosen item\'s name is shown in';
 
 		transitionTimerBase = result.rootSettings.getFloatOrDefault("transitionTimer", 1.0);
 		root.addChild(result.object);
@@ -103,7 +103,7 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 
 	function set_currentItemIndex(value:Int):Int {
 		if (value < 0 || value >= items.length)
-			throw 'currentItemIndex ${value} is out of bounds [0..${items.length}].';
+			throw 'currentItemIndex $value is out of bounds [0..' + items.length + '].';
 		if (this.currentItemIndex != value) {
 			this.currentItemIndex = value;
 			result.getUpdatable("selectedName").updateText(items[this.currentItemIndex].name);
@@ -151,13 +151,13 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 			case Name(name):
 				return switch (name) {
 					case "selectedName": CBRString(this.items[currentItemIndex].name);
-					default: throw 'unexpected name ${name}';
+					default: throw 'unexpected name $name';
 				}
 
 			case NameWithIndex(name, index):
 				return switch (name) {
 					case "itemName": CBRString(this.items[index].name);
-					default: throw 'unexpected name ${name}';
+					default: throw 'unexpected name $name';
 				}
 			case Placeholder(name):
 			case PlaceholderWithIndex(name, index):

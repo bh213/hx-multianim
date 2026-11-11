@@ -112,7 +112,7 @@ class DataTablesTest extends utest.Test {
 		}
 		for (id => chance in odds.chances) {
 			final seen = (counts.exists(id) ? counts.get(id) : 0) / n;
-			Assert.isTrue(Math.abs(seen - chance) < 0.01, '$id came up ${seen}, its odds are $chance');
+			Assert.isTrue(Math.abs(seen - chance) < 0.01, '$id came up $seen, its odds are $chance');
 		}
 	}
 
@@ -245,7 +245,7 @@ class DataTablesTest extends utest.Test {
 		Assert.equals("Weapons", entry.name);
 		Assert.equals(2, entry.rows);
 		// Where it is: this file and the line of the call that registered it.
-		Assert.isTrue(Std.string(entry.source.code).indexOf("DataTablesTest.hx") >= 0, 'source: ${entry.source.code}');
+		Assert.isTrue(Std.string(entry.source.code).indexOf("DataTablesTest.hx") >= 0, 'source: ' + entry.source.code);
 		Assert.equals(line, entry.source.line);
 		Assert.equals("testRegistryTakesATableBuiltInCode", entry.source.method);
 		final got:Dynamic = DataRegistry.get("Weapons");

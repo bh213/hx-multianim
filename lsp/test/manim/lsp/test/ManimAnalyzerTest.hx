@@ -32,7 +32,7 @@ class ManimAnalyzerTest {
 		final lines = head.split("\n");
 		final items = ManimAnalyzer.getCompletions(head, lines.length - 1, lines[lines.length - 1].length);
 		final labels = [for (item in items) item.label];
-		LspTestRunner.assert(labels.contains("ignore") && labels.contains("autotile"), 'A tileset transition completes autotile and ignore (got ${labels.join(", ")})');
+		LspTestRunner.assert(labels.contains("ignore") && labels.contains("autotile"), 'A tileset transition completes autotile and ignore (got ' + labels.join(", ") + ')');
 		LspTestRunner.assert(!labels.contains("crossfade"), "and not a programmable transition's animations");
 		final text = head + "autotile: c\n\t\tignore: sea\n\t}\n}\n";
 		final ignoreLine = text.split("\n")[10];
@@ -41,7 +41,7 @@ class ManimAnalyzerTest {
 		LspTestRunner.assertEqual(ManimAnalyzer.getDiagnostics(text, "t.manim").length, 0, "ignore: sea is a terrain below shallows: no diagnostics");
 		final wrong = ManimAnalyzer.getDiagnostics(StringTools.replace(text, "ignore: sea", "ignore: lava"), "t.manim");
 		LspTestRunner.assert(wrong.length > 0 && wrong[0].message.indexOf("tileset has no terrain lava") >= 0 && wrong[0].range.start.line == 10,
-			'An ignored terrain the tileset has not is an error on its line (got ${wrong.length > 0 ? wrong[0].message + " at " + wrong[0].range.start.line : "none"})');
+			'An ignored terrain the tileset has not is an error on its line (got ' + (wrong.length > 0 ? wrong[0].message + " at " + wrong[0].range.start.line : "none") + ')');
 	}
 
 	/** The parser on JS (the LSP, a browser build) reads integers as HashLink does. */

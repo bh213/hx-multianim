@@ -17,9 +17,9 @@ class TestResourceLoader {
 		final loader = new bh.base.ResourceLoader.CachingResourceLoader();
 
 		loader.loadSheet2Impl = sheetName -> {
-			if (debugMode) trace('Loading atlas2: ${sheetName}.atlas2');
+			if (debugMode) trace('Loading atlas2: $sheetName.atlas2');
 			// Use hxd.Res to load the atlas2 file so it can properly resolve the PNG
-			return hxd.Res.load('${sheetName}.atlas2').toAtlas2();
+			return hxd.Res.load('$sheetName.atlas2').toAtlas2();
 		};
 
 		loader.loadSheetImpl = sheetName -> {
@@ -27,22 +27,22 @@ class TestResourceLoader {
 		};
 
 		loader.loadHXDResourceImpl = filename -> {
-			if (debugMode) trace('Loading hxd resource: ${filename}');
+			if (debugMode) trace('Loading hxd resource: $filename');
 			return hxd.Res.load(filename);
 		}
 
 		loader.loadAnimSMImpl = filename -> {
-			if (debugMode) trace('Loading stateanim: ${filename}');
+			if (debugMode) trace('Loading stateanim: $filename');
 			final byteData = hxd.Res.load(filename).entry.getBytes();
-			if (debugMode) trace('Loaded ${byteData.length} bytes for ${filename}');
+			if (debugMode) trace('Loaded ' + byteData.length + ' bytes for $filename');
 			return AnimParser.parseFile(ByteData.ofBytes(byteData), filename, loader);
 		}
 
 		loader.loadMultiAnimImpl = resourceFilename -> {
-			if (debugMode) trace('Loading manim: ${resourceFilename}');
+			if (debugMode) trace('Loading manim: $resourceFilename');
 			// Try direct path first (for full paths like "test/examples/36-.../file.manim"),
 			// then fall back to test/examples/ prefix
-			var fullPath = if (FileSystem.exists(resourceFilename)) resourceFilename else 'test/examples/${resourceFilename}';
+			var fullPath = if (FileSystem.exists(resourceFilename)) resourceFilename else 'test/examples/$resourceFilename';
 			if (!FileSystem.exists(fullPath)) {
 				throw 'File not found: $resourceFilename (tried direct and test/examples/ prefix)';
 			}
@@ -51,7 +51,7 @@ class TestResourceLoader {
 		}
 
 		loader.loadFontImpl = fontName -> {
-			if (debugMode) trace('Loading font: ${fontName}');
+			if (debugMode) trace('Loading font: $fontName');
 			return FontManager.getFontByName(fontName);
 		}
 

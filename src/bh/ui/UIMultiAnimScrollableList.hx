@@ -187,12 +187,12 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 		// The panel's parts, checked as it is made: with no mask placed the list shows nothing, and
 		// with no scrollbar point it fails only once its items overflow
 		if (mask.parent == null || mask.parent == maskWasIn)
-			throw 'list panel #${this.panelBuilder.name} has no placeholder(…, builderParameter("mask")): the items are drawn in it';
+			throw 'list panel #' + this.panelBuilder.name + ' has no placeholder(…, builderParameter("mask")): the items are drawn in it';
 		final scrollbarPoints = builtPanel.names.get(scrollbarInPanelName);
 		if (scrollbarPoints == null)
-			throw 'could not find scrollbar #${scrollbarInPanelName} in panel ${this.panelBuilder.name}';
+			throw 'could not find scrollbar #$scrollbarInPanelName in panel ' + this.panelBuilder.name;
 		if (scrollbarPoints.length > 1)
-			throw 'found multiple scrollbars #${scrollbarInPanelName} in panel ${this.panelBuilder.name}';
+			throw 'found multiple scrollbars #$scrollbarInPanelName in panel ' + this.panelBuilder.name;
 		root.removeChildren();
 		root.addChild(builtPanel.object);
 		return builtPanel;
@@ -213,7 +213,7 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 					default: null;
 				};
 				if (id != '$index')
-					throw 'list item #${itemBuilder.name} $index: an interactive in an item has the item\'s index as its id (interactive(w, h, $$index)), not "$id"';
+					throw 'list item #' + itemBuilder.name + ' $index: an interactive in an item has the item\'s index as its id (interactive(w, h, $$index)), not "$id"';
 			}
 
 			var itemHeight = result.rootSettings.getFloatOrException("height");
@@ -258,10 +258,10 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 
 			var objs = this.panelResults.names.get(scrollbarInPanelName);
 			if (objs == null) {
-				throw 'could not find scrollbar #${scrollbarInPanelName} in panel ${this.panelBuilder.name}';
+				throw 'could not find scrollbar #$scrollbarInPanelName in panel ' + this.panelBuilder.name;
 			}
 			else if (objs.length > 1) {
-				throw 'found multiple scrollbars #${scrollbarInPanelName} in panel ${this.panelBuilder.name}';
+				throw 'found multiple scrollbars #$scrollbarInPanelName in panel ' + this.panelBuilder.name;
 			}
 			else objs[0].getBuiltHeapsObject().toh2dObject().addChild(this.scrollbar);
 		}
@@ -324,7 +324,7 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 			case MAInteractive(width, height, identifier, _):
 				var ident = Std.parseInt(identifier);
 				if (ident == null)
-					throw 'could not parse interactive id ${identifier}';
+					throw 'could not parse interactive id $identifier';
 				return ident;
 			case MADraggable(width, height):
 				// For draggable objects, we can use a default ID or throw an error
@@ -472,7 +472,7 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 
 	function set_currentPressedIndex(value:Int):Int {
 		if (value < -1 || value >= items.length)
-			throw 'currentPressedIndex ${value} is out of bounds [-1..${items.length}].';
+			throw 'currentPressedIndex $value is out of bounds [-1..' + items.length + '].';
 		if (this.currentPressedIndex != value) {
 			if (this.currentPressedIndex != -1)
 				setItemStatus(this.currentPressedIndex, getBaseStatus(this.currentPressedIndex));
@@ -486,7 +486,7 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 
 	function set_currentHoverIndex(value:Int):Int {
 		if (value < -1 || value >= items.length)
-			throw 'currentHoverIndex ${value} is out of bounds [-1..${items.length}].';
+			throw 'currentHoverIndex $value is out of bounds [-1..' + items.length + '].';
 		if (this.currentHoverIndex != value) {
 			if (this.currentHoverIndex != -1)
 				setItemStatus(this.currentHoverIndex, getBaseStatus(this.currentHoverIndex));
@@ -500,7 +500,7 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 
 	function set_currentItemIndex(value:Int):Int {
 		if (value < -1 || value >= items.length)
-			throw 'currentItemIndex ${value} is out of bounds [-1..${items.length - 1}].';
+			throw 'currentItemIndex $value is out of bounds [-1..' + (items.length - 1) + '].';
 		if (this.currentItemIndex != value) {
 			if (this.currentItemIndex != -1)
 				setItemSelected(this.currentItemIndex, false);

@@ -31,7 +31,7 @@ class CellCoord {
 	}
 
 	public inline function toString():String {
-		return '${col}_${row}';
+		return col + '_$row';
 	}
 
 	public inline function equals(other:CellCoord):Bool {

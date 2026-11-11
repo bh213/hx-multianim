@@ -1365,7 +1365,7 @@ class ProgrammableCodeGen {
 							else if (Std.isOfType(_value, String))
 								$strSwitch;
 							else
-								throw 'setParameter("' + $v{name} + '", ...) requires Int or String, got ${_value}';
+								throw 'setParameter("' + $v{name} + '", ...) requires Int or String, got $_value';
 							$p{["this", setterName]}(_idx);
 						};
 					case PPTBool:
@@ -1381,7 +1381,7 @@ class ProgrammableCodeGen {
 									default: throw 'setParameter("' + $v{name} + '", ...) got unknown string for Bool (expected true|yes|1|false|no|0): ' + _value;
 								};
 							} else
-								throw 'setParameter("' + $v{name} + '", ...) requires Bool, got ${_value}';
+								throw 'setParameter("' + $v{name} + '", ...) requires Bool, got $_value';
 							$p{["this", setterName]}(_b);
 						};
 					case PPTInt | PPTUnsignedInt | PPTHexDirection | PPTGridDirection | PPTRange(_, _) | PPTFlags(_):
@@ -1395,7 +1395,7 @@ class ProgrammableCodeGen {
 								if (_p == null) throw 'setParameter("' + $v{name} + '", ...) could not parse String as Int: ' + _value;
 								_p;
 							} else
-								throw 'setParameter("' + $v{name} + '", ...) requires Int, got ${_value}';
+								throw 'setParameter("' + $v{name} + '", ...) requires Int, got $_value';
 							$p{["this", setterName]}(_i);
 						};
 					case PPTColor:
@@ -1419,7 +1419,7 @@ class ProgrammableCodeGen {
 									_p;
 								}
 							} else
-								throw 'setParameter("' + $v{name} + '", ...) requires Int or color String, got ${_value}';
+								throw 'setParameter("' + $v{name} + '", ...) requires Int or color String, got $_value';
 							$p{["this", setterName]}(_i);
 						};
 					case PPTFloat:
@@ -1429,13 +1429,13 @@ class ProgrammableCodeGen {
 							else if (Std.isOfType(_value, Int))
 								(cast _value : Int);
 							else
-								throw 'setParameter("' + $v{name} + '", ...) requires Float, got ${_value}';
+								throw 'setParameter("' + $v{name} + '", ...) requires Float, got $_value';
 							$p{["this", setterName]}(_f);
 						};
 					case PPTString:
 						macro {
 							if (!Std.isOfType(_value, String))
-								throw 'setParameter("' + $v{name} + '", ...) requires String, got ${_value}';
+								throw 'setParameter("' + $v{name} + '", ...) requires String, got $_value';
 							$p{["this", setterName]}(cast _value);
 						};
 					case PPTTile:
@@ -1527,7 +1527,7 @@ class ProgrammableCodeGen {
 				} else
 					for (other in group)
 						if (!bh.multianim.ConditionalArms.exclusive(other.node, entry.node))
-							haxe.macro.Context.error('indexed name "${name}[${entry.index}]" is generated more than once with the same index — a 1-D indexed name whose index recurs (nested loops, or a duplicate-value iterator) collides. ${indexCollisionHint(entry.node.updatableName)}', pos);
+							haxe.macro.Context.error('indexed name "$name[' + entry.index + ']" is generated more than once with the same index — a 1-D indexed name whose index recurs (nested loops, or a duplicate-value iterator) collides. ' + indexCollisionHint(entry.node.updatableName), pos);
 				group.push(entry);
 			}
 			for (index in order) {
@@ -1563,7 +1563,7 @@ class ProgrammableCodeGen {
 			for (entry in indexedList) {
 				final k2d = entry.indexX + "," + entry.indexY;
 				if (seen2D.exists(k2d))
-					haxe.macro.Context.error('indexed name "${name}[${entry.indexX},${entry.indexY}]" is generated more than once with the same index pair — the indices collide. ${indexCollisionHint(entry.node.updatableName)}', pos);
+					haxe.macro.Context.error('indexed name "$name[' + entry.indexX + ',' + entry.indexY + ']" is generated more than once with the same index pair — the indices collide. ' + indexCollisionHint(entry.node.updatableName), pos);
 				seen2D.set(k2d, true);
 				final fieldRef = macro $p{["this", entry.fieldName]};
 				ifExprs.push(macro if (x == $v{entry.indexX} && y == $v{entry.indexY}) return $fieldRef.parent != null ? $fieldRef : null);
@@ -1616,7 +1616,7 @@ class ProgrammableCodeGen {
 		for (entry in slotEntries) {
 			final handleField = entry.handleField;
 			if (seenSlotFields.exists(handleField))
-				haxe.macro.Context.error('slot field "${handleField}" is generated more than once — a slot name that recurs (nested loops, a duplicate-value iterator, or two sites shown together) collides. Give the inner loop a unique index, number nested repeatables as one list (#name[$$row * N + $$col], N the inner loop\'s count; ${indexedNameText(entry.node.updatableName)} here), use a 2-D indexed slot (#name[indexX, indexY]), or put the sites in mutually exclusive @()/@else arms.', pos);
+				haxe.macro.Context.error('slot field "$handleField" is generated more than once — a slot name that recurs (nested loops, a duplicate-value iterator, or two sites shown together) collides. Give the inner loop a unique index, number nested repeatables as one list (#name[$$row * N + $$col], N the inner loop\'s count; ' + indexedNameText(entry.node.updatableName) + ' here), use a 2-D indexed slot (#name[indexX, indexY]), or put the sites in mutually exclusive @()/@else arms.', pos);
 			seenSlotFields.set(handleField, true);
 			instanceFields.push(makeField(handleField, FVar(macro :bh.multianim.MultiAnimBuilder.SlotHandle, null), [APrivate], pos));
 		}
@@ -2614,9 +2614,9 @@ class ProgrammableCodeGen {
 				// #name[$x, $y] keys "base x y", as the builder's resolveDynamicRefKey
 				final indexedKey = switch node.updatableName {
 					case UNTIndexed(base, indexRV) if (unrolledIndex(node, indexRV, pos) != null):
-						'${base} ${unrolledIndex(node, indexRV, pos)}';
+						'$base ' + unrolledIndex(node, indexRV, pos);
 					case UNTIndexed2D(base, indexRVX, indexRVY) if (unrolledIndex(node, indexRVX, pos) != null && unrolledIndex(node, indexRVY, pos) != null):
-						'${base} ${unrolledIndex(node, indexRVX, pos)} ${unrolledIndex(node, indexRVY, pos)}';
+						'$base ' + unrolledIndex(node, indexRVX, pos) + ' ' + unrolledIndex(node, indexRVY, pos);
 					default: null;
 				};
 				if (indexedKey != null) {
@@ -2626,7 +2626,7 @@ class ProgrammableCodeGen {
 					// runtime builder's "duplicate dynamicRef name" BuilderError and the indexed
 					// name (seenIndices) / slot (seenSlotFields) guards in the finalize pass.
 					if (indexedDynamicRefFields.exists(indexedKey))
-						Context.error('indexed dynamicRef "${indexedKey}" is generated more than once with the same index — an indexed dynamicRef whose index recurs (nested loops, or a duplicate-value iterator) collides. ${indexCollisionHint(node.updatableName)}', pos);
+						Context.error('indexed dynamicRef "$indexedKey" is generated more than once with the same index — an indexed dynamicRef whose index recurs (nested loops, or a duplicate-value iterator) collides. ' + indexCollisionHint(node.updatableName), pos);
 					indexedDynamicRefFields.set(indexedKey, "_dynref_lit_" + fieldName);
 				}
 				switch programmableRef {
@@ -3061,10 +3061,10 @@ class ProgrammableCodeGen {
 					case OpSub: l - r;
 					case OpMul: l * r;
 					case OpDiv | OpIntegerDiv:
-						if (r == 0) Context.error('${indexedNameText(node.updatableName)}: the index divides by zero', pos);
+						if (r == 0) Context.error(indexedNameText(node.updatableName) + ': the index divides by zero', pos);
 						Std.int(l / r);
 					case OpMod:
-						if (r == 0) Context.error('${indexedNameText(node.updatableName)}: the index takes % 0 (modulo by zero)', pos);
+						if (r == 0) Context.error(indexedNameText(node.updatableName) + ': the index takes % 0 (modulo by zero)', pos);
 						l % r;
 					default: null;
 				};
@@ -3078,7 +3078,7 @@ class ProgrammableCodeGen {
 		final value = unrolledIndex(node, index, pos);
 		if (value != null) return value;
 		if (index.match(RVReference(_))) return 0;
-		return Context.error('${indexedNameText(node.updatableName)}: the index cannot be worked out where the element is generated — it uses the loop variables of the repeatables around the element, numbers and @finals of those', pos);
+		return Context.error(indexedNameText(node.updatableName) + ': the index cannot be worked out where the element is generated — it uses the loop variables of the repeatables around the element, numbers and @finals of those', pos);
 	}
 
 	/** Resolve repeat iterator info. staticCount is null when the count is param-dependent;
@@ -6606,7 +6606,7 @@ class ProgrammableCodeGen {
 				else
 					return macro $ptExpr.y;
 			default:
-				Context.error('Runtime .${component} extraction not supported for method .$method()', Context.currentPos());
+				Context.error('Runtime .$component extraction not supported for method .$method()', Context.currentPos());
 				return macro 0;
 		}
 	}
@@ -8435,7 +8435,7 @@ class ProgrammableCodeGen {
 	/** Create a sentinel field and emit constructor code to add it before a conditional element. Returns sentinel field name, or null if not conditional. */
 	static function createSentinelIfConditional(node:Node, parentField:String, fields:Array<Field>, ctorExprs:Array<Expr>, pos:Position):Null<String> {
 		if (node.conditionals.match(NoConditional)) return null;
-		final sentinelName = '_sentinel_${sentinelCounter++}';
+		final sentinelName = '_sentinel_' + (sentinelCounter++);
 		fields.push(makeField(sentinelName, FVar(macro :h2d.Object, null), [APrivate], pos));
 		final sentinelRef = macro $p{["this", sentinelName]};
 		final parentRef = if (parentField != null) macro $p{["this", parentField]} else macro this;
@@ -10005,7 +10005,7 @@ class ProgrammableCodeGen {
 	/** Create a unique key for a hex layout based on orientation + size */
 	static function hexLayoutKey(hl:bh.base.Hex.HexLayout):String {
 		final o = switch (hl.orientation) { case POINTY: "P"; case FLAT: "F"; };
-		return '${o}_${hl.size.x}_${hl.size.y}';
+		return o + '_' + hl.size.x + '_' + hl.size.y;
 	}
 
 	/** Get or create a hex layout field, returns the field name */
@@ -10014,7 +10014,7 @@ class ProgrammableCodeGen {
 		final key = hexLayoutKey(hexLayout);
 		if (hexLayoutFieldMap.exists(key))
 			return hexLayoutFieldMap.get(key);
-		final fieldName = hexLayoutFieldCount == 0 ? "_hexLayout" : '_hexLayout${hexLayoutFieldCount}';
+		final fieldName = hexLayoutFieldCount == 0 ? "_hexLayout" : '_hexLayout$hexLayoutFieldCount';
 		hexLayoutFieldCount++;
 		hexLayoutFieldMap.set(key, fieldName);
 		fields.push(makeField(fieldName, FVar(macro :bh.base.Hex.HexLayout, null), [APrivate], pos));
@@ -11135,7 +11135,7 @@ class ProgrammableCodeGen {
 				// A table: its rows found by id, and what tools read of it (DataRegistry)
 				final rowCT = dataTypeToComplexType(DVTRecord(record.name), enumTypeMap, recordTypeMap);
 				final info = DataSchema.tableInfo(dataDef, field, record, manimPath, dataName);
-				final tableName = '$dataName.${field.name}';
+				final tableName = '$dataName.' + field.name;
 				final tableCT:ComplexType = TPath({pack: ["bh", "multianim", "data"], name: "DataTable", params: [TPType(rowCT)]});
 				final newTable:Expr = {
 					expr: ENew({pack: ["bh", "multianim", "data"], name: "DataTable", params: [TPType(rowCT)]},
@@ -11169,7 +11169,7 @@ class ProgrammableCodeGen {
 		if (dataDef.picks != null) {
 			for (pick in dataDef.picks) {
 				final overRecord = DataSchema.overRecord(dataDef, pick);
-				if (overRecord == null) Context.fatalError('data "$dataName": pick ${pick.name} draws from ${pick.over}, which is not a table', pos);
+				if (overRecord == null) Context.fatalError('data "$dataName": pick ' + pick.name + ' draws from ' + pick.over + ', which is not a table', pos);
 				final rowCT = dataTypeToComplexType(DVTRecord(overRecord.name), enumTypeMap, recordTypeMap);
 				final pickExprs:Array<Expr> = [];
 				final through = pick.through;
@@ -11181,7 +11181,7 @@ class ProgrammableCodeGen {
 				} else {
 					final target = DataSchema.throughRecord(dataDef, pick);
 					final tables = target == null ? [] : DataSchema.tablesOf(dataDef, target);
-					if (tables.length == 0) Context.fatalError('data "$dataName": pick ${pick.name} reads ${pick.by} through ${through}, which links to no table', pos);
+					if (tables.length == 0) Context.fatalError('data "$dataName": pick ' + pick.name + ' reads ' + pick.by + ' through $through, which links to no table', pos);
 					final tableExprs:Array<Expr> = [for (t in tables) ({expr: EField(macro this, t.name), pos: pos} : Expr)];
 					pickExprs.push(macro final linkedTables = [$a{tableExprs}]);
 					final idExpr:Expr = {expr: EField(macro row, through), pos: pos};
@@ -11195,7 +11195,7 @@ class ProgrammableCodeGen {
 					expr: EFunction(FAnonymous, {args: [{name: "row", type: rowCT}], ret: macro :Float, expr: shareBody}),
 					pos: pos,
 				};
-				final pickName = '$dataName.${pick.name}';
+				final pickName = '$dataName.' + pick.name;
 				final pickCT:ComplexType = TPath({pack: ["bh", "multianim", "data"], name: "DataPick", params: [TPType(rowCT)]});
 				dataFields.push({
 					name: pick.name,
@@ -11226,7 +11226,7 @@ class ProgrammableCodeGen {
 					for (i in 0...rows.length) {
 						final id = DataSchema.rowId(rows[i], record);
 						final row:Expr = {expr: EArray({expr: EField(here, "rows"), pos: pos}, macro $v{i}), pos: pos};
-						stampReads(row, rows[i], DVTRecord(record.name), '${field.name}[${id != null ? id : Std.string(i)}]', dataDef.records, ctorExprs, pos);
+						stampReads(row, rows[i], DVTRecord(record.name), field.name + '[' + (id != null ? id : Std.string(i)) + ']', dataDef.records, ctorExprs, pos);
 					}
 				} else if (holdsRecords(field.type))
 					stampReads(here, field.value, field.type, field.name, dataDef.records, ctorExprs, pos);
@@ -11364,7 +11364,7 @@ class ProgrammableCodeGen {
 			if (differ.length > 0) {
 				differ.sort(Reflect.compare);
 				Context.fatalError('data "$dataName": $typePath is made already, by another @:data of a block "$dataName" in this package, '
-					+ 'and its $recordName ids are not these (${differ.join(", ")}); read one of the blocks into another package', pos);
+					+ 'and its $recordName ids are not these (' + differ.join(", ") + '); read one of the blocks into another package', pos);
 			}
 			return;
 		}
@@ -11389,14 +11389,14 @@ class ProgrammableCodeGen {
 		var parts:Array<String> = [];
 		for (rf in recordDef.fields) {
 			final opt = rf.optional ? "?" : "";
-			parts.push('$opt${rf.name}:${dataValueTypeSignature(rf.type)}');
+			parts.push('$opt' + rf.name + ':' + dataValueTypeSignature(rf.type));
 		}
 		return parts.join(",");
 	}
 
 	/** Build a signature string for an enum definition (for mergeTypes dedup) */
 	static function enumSignature(enumDef:DataEnumDef):String {
-		return 'Enum(${enumDef.values.join(",")})';
+		return 'Enum(' + enumDef.values.join(",") + ')';
 	}
 
 	static function dataValueTypeSignature(type:DataValueType):String {
@@ -11407,7 +11407,7 @@ class ProgrammableCodeGen {
 			case DVTBool: "Bool";
 			case DVTEnum(enumName): 'Enum($enumName)';
 			case DVTRecord(recordName): 'Record($recordName)';
-			case DVTArray(elemType): 'Array<${dataValueTypeSignature(elemType)}>';
+			case DVTArray(elemType): 'Array<' + dataValueTypeSignature(elemType) + '>';
 			case DVTRef(recordName): 'Ref($recordName)';
 		};
 	}

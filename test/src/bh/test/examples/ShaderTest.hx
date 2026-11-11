@@ -45,15 +45,15 @@ class ShaderTest extends utest.Test {
 	public function testEveryShaderIsDescribedAndMade():Void {
 		Assert.equals(19, ShaderCatalog.shaders.length);
 		for (info in ShaderCatalog.shaders) {
-			Assert.isTrue(info.says.length > 0, '${info.name} says what it does');
-			Assert.isTrue(info.places.length > 0, '${info.name} says where it goes');
+			Assert.isTrue(info.says.length > 0, info.name + ' says what it does');
+			Assert.isTrue(info.places.length > 0, info.name + ' says where it goes');
 			for (p in info.params) {
-				Assert.notNull(p.label, '${info.name}.${p.name} has a label');
+				Assert.notNull(p.label, info.name + '.' + p.name + ' has a label');
 				switch p.type {
 					case CFFloat | CFInt:
-						Assert.isTrue(p.min != null && p.max != null && p.step != null, '${info.name}.${p.name} has a range');
+						Assert.isTrue(p.min != null && p.max != null && p.step != null, info.name + '.' + p.name + ' has a range');
 						final d:Float = p.defaultValue;
-						Assert.isTrue(d >= p.min && d <= p.max, '${info.name}.${p.name}: its default is in its range');
+						Assert.isTrue(d >= p.min && d <= p.max, info.name + '.' + p.name + ': its default is in its range');
 					default:
 				}
 			}
@@ -61,7 +61,7 @@ class ShaderTest extends utest.Test {
 			final made = shaderOf(FilterManager.buildCustomFilter(info.name, []));
 			Assert.equals(info.name.toLowerCase(), made.shaderName);
 			for (p in info.params)
-				Assert.isTrue(made.values.exists(p.name), '${info.name} was given ${p.name}');
+				Assert.isTrue(made.values.exists(p.name), info.name + ' was given ' + p.name);
 		}
 	}
 

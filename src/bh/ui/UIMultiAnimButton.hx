@@ -71,7 +71,7 @@ class UIStandardMultiAnimButton implements UIElement implements UIElementDisabla
 			result.beginUpdate();
 			result.setParameter("status", value ? "disabled" : "normal");
 			if (result.hasParameter("disabled"))
-				result.setParameter("disabled", '${value}');
+				result.setParameter("disabled", '$value');
 			result.endUpdate();
 		}
 		return value;

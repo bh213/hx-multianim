@@ -616,7 +616,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 			return;
 		for (key in settings.keys()) {
 			if (!allowedSettings.contains(key)) {
-				throw 'Unknown setting "$key" for ${elementName}';
+				throw 'Unknown setting "$key" for $elementName';
 			}
 		}
 	}
@@ -923,7 +923,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 			if (extraParams == null)
 				extraParams = new Map();
 			for (key => value in tabPanelParams)
-				extraParams.set('panel${key.charAt(0).toUpperCase()}${key.substr(1)}', value);
+				extraParams.set('panel' + key.charAt(0).toUpperCase() + key.substr(1), value);
 		}
 
 		// Forward tab button height to tabBar so .manim can compute panelOffset from it
@@ -1054,8 +1054,8 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 			final s = result.rootSettings;
 			if (s == null) return;
 			final p = settingsPrefix.length > 0 ? settingsPrefix + "." : "";
-			if (s.has('${p}originX') || s.has('${p}originY'))
-				grid.setOrigin(s.getFloatOrDefault('${p}originX', 0), s.getFloatOrDefault('${p}originY', 0));
+			if (s.has(p + 'originX') || s.has(p + 'originY'))
+				grid.setOrigin(s.getFloatOrDefault(p + 'originX', 0), s.getFloatOrDefault(p + 'originY', 0));
 		};
 	}
 
@@ -1069,8 +1069,8 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 			final s = result.rootSettings;
 			if (s == null) return;
 			final p = settingsPrefix.length > 0 ? settingsPrefix + "." : "";
-			if (s.has('${p}anchorX') || s.has('${p}anchorY'))
-				cardHand.setAnchor(s.getFloatOrDefault('${p}anchorX', 640), s.getFloatOrDefault('${p}anchorY', 680));
+			if (s.has(p + 'anchorX') || s.has(p + 'anchorY'))
+				cardHand.setAnchor(s.getFloatOrDefault(p + 'anchorX', 640), s.getFloatOrDefault(p + 'anchorY', 680));
 		};
 	}
 	#end
@@ -1731,6 +1731,6 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 					return enumLayer;
 			}
 		}
-		throw 'layer not found for object $obj. layers ${this.layers}';
+		throw 'layer not found for object $obj. layers ' + this.layers;
 	}
 }

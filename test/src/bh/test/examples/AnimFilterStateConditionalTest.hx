@@ -207,9 +207,9 @@ class AnimFilterStateConditionalTest extends utest.Test {
 		Assert.notNull(cm, "brightness must produce a ColorMatrix");
 		if (cm == null) return;
 		Assert.floatEquals(0.5, cm.matrix._11, 0.001,
-			'brightness(0.5) must SCALE channels by 0.5 (got _11=${cm.matrix._11}) — not add an offset');
+			'brightness(0.5) must SCALE channels by 0.5 (got _11=' + cm.matrix._11 + ') — not add an offset');
 		Assert.floatEquals(0.0, cm.matrix._41, 0.001,
-			'brightness(0.5) must not add a constant offset (got _41=${cm.matrix._41})');
+			'brightness(0.5) must not add a constant offset (got _41=' + cm.matrix._41 + ')');
 	}
 
 	@Test
@@ -218,12 +218,12 @@ class AnimFilterStateConditionalTest extends utest.Test {
 		Assert.notNull(normal, "saturate must produce a ColorMatrix");
 		if (normal == null) return;
 		Assert.floatEquals(1.0, normal.matrix._11, 0.001,
-			'saturate(1.0) is documented as NORMAL saturation — expected identity, got _11=${normal.matrix._11}');
+			'saturate(1.0) is documented as NORMAL saturation — expected identity, got _11=' + normal.matrix._11);
 
 		final gray = Std.downcast(AnimParser.buildAnimFilter(AFSaturate(0.0)), h2d.filter.ColorMatrix);
 		if (gray == null) return;
 		Assert.isTrue(gray.matrix._11 < 0.5,
-			'saturate(0.0) is documented as GRAYSCALE — expected _11 ≈ lumR (~0.21), got _11=${gray.matrix._11}');
+			'saturate(0.0) is documented as GRAYSCALE — expected _11 ≈ lumR (~0.21), got _11=' + gray.matrix._11);
 	}
 
 	@Test
@@ -233,7 +233,7 @@ class AnimFilterStateConditionalTest extends utest.Test {
 		if (cm == null) return;
 		// colorHue(π/2): _11 = cos(-π/2) + (1 - cos(-π/2)) / 3 = 1/3.
 		Assert.floatEquals(1.0 / 3.0, cm.matrix._11, 0.01,
-			'hue(90) is documented as 90 DEGREES — expected _11 = 1/3 (rotation by π/2 rad), got _11=${cm.matrix._11}');
+			'hue(90) is documented as 90 DEGREES — expected _11 = 1/3 (rotation by π/2 rad), got _11=' + cm.matrix._11);
 	}
 
 	@Test
@@ -598,7 +598,7 @@ animation {
 		final group:h2d.filter.Group = cast result.filter;
 		@:privateAccess {
 			Assert.equals(2, group.filters.length,
-				'Expected Group of 2 (brightness + outline), got ${group.filters.length} — @else pixelOutline must not stack');
+				'Expected Group of 2 (brightness + outline), got ' + group.filters.length + ' — @else pixelOutline must not stack');
 		}
 	}
 }

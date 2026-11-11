@@ -274,8 +274,8 @@ class TestApp extends hxd.App {
 		// Safety timeout: exit after 60 seconds wall-clock
 		var elapsed = Sys.time() - startTime;
 		if (elapsed >= WALL_CLOCK_TIMEOUT_SEC) {
-			trace('Warning: Safety timeout reached (elapsed: ${Math.round(elapsed)}s, frames: $frameCount), '
-				+ 'pending visual tests: ${VisualTestBase.pendingVisualTests}');
+			trace('Warning: Safety timeout reached (elapsed: ' + Math.round(elapsed) + 's, frames: $frameCount), '
+				+ 'pending visual tests: ' + VisualTestBase.pendingVisualTests);
 			if (!poolDrained && VisualTestBase.imagePool != null) {
 				if (!testsCompleted) {
 					// Timeout before captures finished — start processing what we have
@@ -332,9 +332,9 @@ class TestApp extends hxd.App {
 			var testNum = Std.parseInt(testNumStr);
 			if (testNum != null) {
 				var padded = testNum < 10 ? '0$testNum' : '$testNum';
-				runner.globalPattern = new EReg('test${padded}_', '');
+				runner.globalPattern = new EReg('test' + padded + '_', '');
 				#if VERBOSE
-				trace('Single test mode: running test #$testNum (pattern: test${padded}_)');
+				trace('Single test mode: running test #$testNum (pattern: test' + padded + '_)');
 				#end
 			}
 		}

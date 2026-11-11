@@ -124,7 +124,7 @@ class ScreenManagerDialogTransitionTest extends utest.Test {
 
 		final d2Results = main.dialogResults.filter(n -> n == "d2");
 		Assert.equals(1, d2Results.length,
-			'closing the top dialog must deliver exactly one OnDialogResult("d2"); caller received: ${main.dialogResults}');
+			'closing the top dialog must deliver exactly one OnDialogResult("d2"); caller received: ' + main.dialogResults);
 
 		main.getSceneRoot().remove();
 		d1.getSceneRoot().remove();
@@ -156,7 +156,7 @@ class ScreenManagerDialogTransitionTest extends utest.Test {
 		sm.updateScreenMode(sm.mode);
 
 		Assert.equals(0, main.dialogResults.length,
-			'refreshing the current mode must not deliver a phantom OnDialogResult; caller received: ${main.dialogResults}');
+			'refreshing the current mode must not deliver a phantom OnDialogResult; caller received: ' + main.dialogResults);
 		Assert.notNull(sm.modalOverlay, "modal overlay must survive a same-dialog mode refresh (reload with dialog open)");
 		Assert.isFalse(d1.leavingObserved, "open dialog must not receive spurious UILeaving on a same-dialog mode refresh");
 
@@ -233,7 +233,7 @@ class ScreenManagerDialogTransitionTest extends utest.Test {
 		sm.update(1 / 60);
 
 		Assert.equals(0, main.dialogResults.length,
-			'a reopened dialog must not deliver the result of its previous opening; caller received: ${main.dialogResults}');
+			'a reopened dialog must not deliver the result of its previous opening; caller received: ' + main.dialogResults);
 		Assert.isTrue(sm.isShowing(d), "the reopened dialog must stay open");
 
 		removeRoots([main, d]);
@@ -256,7 +256,7 @@ class ScreenManagerDialogTransitionTest extends utest.Test {
 		sm.update(1 / 60);
 
 		Assert.equals(0, main.dialogResults.length,
-			'a reopened dialog must not deliver the result of its previous opening; caller received: ${main.dialogResults}');
+			'a reopened dialog must not deliver the result of its previous opening; caller received: ' + main.dialogResults);
 		Assert.isTrue(sm.isShowing(d), "the reopened dialog must stay open");
 
 		removeRoots([main, d]);
@@ -282,7 +282,7 @@ class ScreenManagerDialogTransitionTest extends utest.Test {
 		sm.modalDialog(d, other, "d");
 		sm.update(1 / 60);
 		Assert.equals(0, other.dialogResults.length + main.dialogResults.length,
-			'after an animated switch closed it, a reopened dialog must not deliver its old result; caller received: ${other.dialogResults}');
+			'after an animated switch closed it, a reopened dialog must not deliver its old result; caller received: ' + other.dialogResults);
 		Assert.isTrue(sm.isShowing(d), "the dialog reopened after an animated switch must stay open");
 
 		d.setExitCode(true);
@@ -291,7 +291,7 @@ class ScreenManagerDialogTransitionTest extends utest.Test {
 		sm.modalDialog(d, main, "d");
 		sm.update(1 / 60);
 		Assert.equals(0, main.dialogResults.length,
-			'after an instant switch closed it, a reopened dialog must not deliver its old result; caller received: ${main.dialogResults}');
+			'after an instant switch closed it, a reopened dialog must not deliver its old result; caller received: ' + main.dialogResults);
 		Assert.isTrue(sm.isShowing(d), "the dialog reopened after an instant switch must stay open");
 
 		removeRoots([main, other, d]);
@@ -318,7 +318,7 @@ class ScreenManagerDialogTransitionTest extends utest.Test {
 		sm.update(1 / 60);
 
 		Assert.equals(0, main.dialogResults.length,
-			'the revived dialog must not deliver its already-delivered result again; caller received: ${main.dialogResults}');
+			'the revived dialog must not deliver its already-delivered result again; caller received: ' + main.dialogResults);
 		Assert.isTrue(sm.isShowing(d1), "the revived dialog must stay open");
 
 		removeRoots([main, d1, d2]);
@@ -350,7 +350,7 @@ class ScreenManagerDialogTransitionTest extends utest.Test {
 		a.setExitCode("ok");
 		sm.update(1 / 60);
 
-		Assert.equals("A", main.dialogResults.join(","), 'A\'s result must be delivered once; caller received: ${main.dialogResults}');
+		Assert.equals("A", main.dialogResults.join(","), 'A\'s result must be delivered once; caller received: ' + main.dialogResults);
 		Assert.isTrue(sm.isShowing(b), "B, opened from A's result, must be showing");
 		Assert.notNull(b.getSceneRoot().parent, "B must be in the scene");
 		Assert.isNull(a.getSceneRoot().parent, "A is closed");
@@ -384,7 +384,7 @@ class ScreenManagerDialogTransitionTest extends utest.Test {
 		a.setExitCode("ok");
 		sm.closeDialogWithTransition();
 
-		Assert.equals("A", main.dialogResults.join(","), 'A\'s result must be delivered once; caller received: ${main.dialogResults}');
+		Assert.equals("A", main.dialogResults.join(","), 'A\'s result must be delivered once; caller received: ' + main.dialogResults);
 		Assert.isTrue(sm.isShowing(b), "B, opened from A's result, must be showing");
 		Assert.notNull(b.getSceneRoot().parent, "B must be in the scene");
 		Assert.isNull(a.getSceneRoot().parent, "A is closed");
@@ -481,7 +481,7 @@ class ScreenManagerDialogTransitionTest extends utest.Test {
 		sm.update(0.016);
 		sm.update(0.3); // the interrupted open fade would have ended here
 		Assert.equals(0, main.dialogResults.length,
-			'the result must arrive when the close ends, not when the interrupted open fade ends; caller received: ${main.dialogResults}');
+			'the result must arrive when the close ends, not when the interrupted open fade ends; caller received: ' + main.dialogResults);
 		Assert.isTrue(sm.isTransitioning, "the close is still running");
 
 		sm.finalizeTransition();

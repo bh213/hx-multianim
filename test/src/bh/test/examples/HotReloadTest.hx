@@ -1453,7 +1453,7 @@ class HotReloadTest extends BuilderTestBase {
 		var thrown:Null<String> = null;
 		try {
 			reloadInPlace("hotreload-untracked-tmp.manim", v1, v2, "host", (sm, result, report) -> {
-				Assert.isTrue(report.success, 'a param used in an interactive id must not break the reload: ${report.errors}');
+				Assert.isTrue(report.success, 'a param used in an interactive id must not break the reload: ' + report.errors);
 				Assert.equals(99, itemWidth(result));
 			}, ["n" => 2]);
 		} catch (e:Dynamic) {
@@ -1556,7 +1556,7 @@ class HotReloadTest extends BuilderTestBase {
 			Assert.isFalse(sm.audio.hasSnapshot("dialog"));
 			sys.io.File.saveContent(filePath, after);
 			final report = sm.hotReload();
-			Assert.isTrue(report.success, 'the reload: ${report.errors}');
+			Assert.isTrue(report.success, 'the reload: ' + report.errors);
 			Assert.same(["ui.click", "ui.hover"], sm.audio.soundNames(), "the bank is taken again");
 			sm.audio.play("ui.click");
 			Assert.equals("sound/click2.wav", log.plays()[0].path, "with the new file");
@@ -1585,7 +1585,7 @@ class HotReloadTest extends BuilderTestBase {
 			Assert.isFalse(sm.audio.hasSnapshot("dialog"));
 			sys.io.File.saveContent(filePath, after);
 			final report = sm.hotReload();
-			Assert.isTrue(report.success, 'the reload: ${report.errors}');
+			Assert.isTrue(report.success, 'the reload: ' + report.errors);
 			Assert.floatEquals(0.3, sm.audio.getVca("Music"), "the player's level stays");
 			Assert.isTrue(sm.audio.isSnapshotOn("quiet"), "a snapshot on stays on");
 			Assert.isTrue(sm.audio.isSnapshotOn("dialog"), "the dialog snapshot the reload added goes on under the open dialog");

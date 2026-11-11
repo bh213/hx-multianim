@@ -66,9 +66,9 @@ class UIMultiAnimProgressBar implements UIElement implements UIElementNumberValu
 				params.set(key, value);
 		this.currentResult = builder.buildWithParameters(buildName, params, null, null, incremental);
 		if (this.currentResult == null)
-			throw 'could not build #${buildName}';
+			throw 'could not build #$buildName';
 		if (this.currentResult.object == null)
-			throw 'build #${buildName} returned null object';
+			throw 'build #$buildName returned null object';
 		lastBuiltValue = currentValue;
 		root.addChild(this.currentResult.object);
 	}

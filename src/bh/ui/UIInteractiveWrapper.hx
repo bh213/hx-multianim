@@ -65,7 +65,7 @@ class UIInteractiveWrapper implements UIElement implements StandardUIElementEven
 	function rebind(obj:MAObject):Void {
 		final extracted = extractInteractiveData(obj, prefix);
 		if (extracted.id != id)
-			throw 'UIInteractiveWrapper.rebind: "${extracted.id}" is not "$id"';
+			throw 'UIInteractiveWrapper.rebind: "' + extracted.id + '" is not "$id"';
 		// Everything that can refuse (an unknown cursor, a cursor key) is resolved before anything
 		// is changed: a refused rebind leaves the wrapper as it was
 		final newMetadata = extracted.metadata;

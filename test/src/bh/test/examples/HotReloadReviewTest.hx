@@ -145,7 +145,7 @@ class HotReloadReviewTest extends BuilderTestBase {
 		final v1 = "version: 1.0\n#host programmable(w:uint=10) {\n\tbitmap(generated(color($w, 10, #ff0000))): 0, 0\n}\n";
 		final v2 = "version: 1.0\n#host programmable(w:uint=99) {\n\tbitmap(generated(color($w, 10, #ff0000))): 0, 0\n}\n";
 		reloadInPlace("review-default-tmp.manim", v1, v2, "host", (sm, result, report) -> {
-			Assert.isTrue(report.success, 'sanity: the reload succeeds: ${report.errors}');
+			Assert.isTrue(report.success, 'sanity: the reload succeeds: ' + report.errors);
 			Assert.equals("99x10", sizeOf(result.object), "a default edited in the file applies to a value that was never set");
 		});
 	}
@@ -153,7 +153,7 @@ class HotReloadReviewTest extends BuilderTestBase {
 	@Test
 	public function testInPlaceReloadKeepsAValueSetThroughSetParameterAndAppliesTheOtherEditedDefaults():Void {
 		reloadInPlace("review-setparam-tmp.manim", hostWH(10, 10), hostWH(99, 20), "host", (sm, result, report) -> {
-			Assert.isTrue(report.success, 'sanity: the reload succeeds: ${report.errors}');
+			Assert.isTrue(report.success, 'sanity: the reload succeeds: ' + report.errors);
 			Assert.equals("30x20", sizeOf(result.object),
 				"w, set through setParameter, stays 30; h, never set, takes its edited default 20");
 		}, null, result -> result.setParameter("w", 30));
@@ -162,7 +162,7 @@ class HotReloadReviewTest extends BuilderTestBase {
 	@Test
 	public function testInPlaceReloadKeepsABuildInputAndAppliesTheOtherEditedDefaults():Void {
 		reloadInPlace("review-input-tmp.manim", hostWH(10, 10), hostWH(99, 20), "host", (sm, result, report) -> {
-			Assert.isTrue(report.success, 'sanity: the reload succeeds: ${report.errors}');
+			Assert.isTrue(report.success, 'sanity: the reload succeeds: ' + report.errors);
 			Assert.equals("30x20", sizeOf(result.object),
 				"w, passed to buildWithParameters, stays 30; h, never given, takes its edited default 20");
 		}, ["w" => 30]);
@@ -171,7 +171,7 @@ class HotReloadReviewTest extends BuilderTestBase {
 	@Test
 	public function testInPlaceReloadAppliesAnEditedDynamicRefArgument():Void {
 		reloadInPlace("review-refarg-tmp.manim", barHost("w=>10"), barHost("w=>99"), "host", (sm, result, report) -> {
-			Assert.isTrue(report.success, 'sanity: the reload succeeds: ${report.errors}');
+			Assert.isTrue(report.success, 'sanity: the reload succeeds: ' + report.errors);
 			Assert.equals("99x12", sizeOf(result.object), "the dynamicRef argument edited in the file applies to the child");
 		});
 	}
@@ -179,7 +179,7 @@ class HotReloadReviewTest extends BuilderTestBase {
 	@Test
 	public function testInPlaceReloadKeepsAValueSetOnADynamicRefChildAndAppliesItsOtherEditedArguments():Void {
 		reloadInPlace("review-refset-tmp.manim", barHost("w=>10, h=>12"), barHost("w=>10, h=>20"), "host", (sm, result, report) -> {
-			Assert.isTrue(report.success, 'sanity: the reload succeeds: ${report.errors}');
+			Assert.isTrue(report.success, 'sanity: the reload succeeds: ' + report.errors);
 			Assert.equals("30x20", sizeOf(result.object),
 				"w, set on the child through setParameter, stays 30; h takes the argument edited in the file, 20");
 		}, null, result -> result.getDynamicRef("bar").setParameter("w", 30));
@@ -194,7 +194,7 @@ class HotReloadReviewTest extends BuilderTestBase {
 				+ "#host programmable() {\n\tbitmap(generated(color(" + hostWidth + ", 5, #0000ff))): 0, 0\n\tdynamicRef(mid): 0, 20\n}\n";
 		}
 		reloadInPlace("review-nested-tmp.manim", nested(5), nested(6), "host", (sm, result, report) -> {
-			Assert.isTrue(report.success, 'sanity: the reload succeeds: ${report.errors}');
+			Assert.isTrue(report.success, 'sanity: the reload succeeds: ' + report.errors);
 			Assert.equals(6, widthOfDrawn(result.object, 5), "sanity: the host's edit shows");
 			Assert.equals(30, widthOfDrawn(result.object, 12), "the value set on the inner child, two dynamicRefs down, survives the reload");
 		}, null, result -> result.getDynamicRef("mid").getDynamicRef("leaf").setParameter("w", 30));
@@ -208,7 +208,7 @@ class HotReloadReviewTest extends BuilderTestBase {
 		final v2 = "version: 1.0\n#host programmable() {\n\tbitmap(generated(color(99, 10, #ff0000))): 0, 0\n\t#s slot: 0, 20\n}\n";
 		var kept:Null<SlotHandle> = null;
 		reloadInPlace("review-keptslot-tmp.manim", v1, v2, "host", (sm, result, report) -> {
-			Assert.isTrue(report.success, 'sanity: the reload succeeds: ${report.errors}');
+			Assert.isTrue(report.success, 'sanity: the reload succeeds: ' + report.errors);
 			final content = new h2d.Object();
 			kept.setContent(content);
 			Assert.isTrue(containsObject(result.object, content),
@@ -221,7 +221,7 @@ class HotReloadReviewTest extends BuilderTestBase {
 	public function testADynamicRefHandleKeptFromBeforeAnInPlaceReloadStaysLive():Void {
 		var kept:Null<BuilderResult> = null;
 		reloadInPlace("review-keptref-tmp.manim", hostWithBar(5), hostWithBar(6), "host", (sm, result, report) -> {
-			Assert.isTrue(report.success, 'sanity: the reload succeeds: ${report.errors}');
+			Assert.isTrue(report.success, 'sanity: the reload succeeds: ' + report.errors);
 			kept.setParameter("w", 50);
 			Assert.equals(50, widthOfDrawn(result.object, 12),
 				"setParameter on a dynamicRef child kept from before the reload changes what the live result draws");
@@ -233,7 +233,7 @@ class HotReloadReviewTest extends BuilderTestBase {
 		final slot = "\t#s slot: 0, 20\n";
 		final content = new h2d.Object();
 		reloadInPlace("review-refslot-tmp.manim", hostWithBar(5, slot), hostWithBar(6, slot), "host", (sm, result, report) -> {
-			Assert.isTrue(report.success, 'sanity: the reload succeeds: ${report.errors}');
+			Assert.isTrue(report.success, 'sanity: the reload succeeds: ' + report.errors);
 			Assert.isTrue(containsObject(result.object, content), "the content of a slot inside a dynamicRef child stays under the live result");
 			Assert.equals(content, result.getDynamicRef("bar").getSlot("s").getContent(), "in the child's slot");
 		}, null, result -> result.getDynamicRef("bar").getSlot("s").setContent(content));
@@ -259,7 +259,7 @@ class HotReloadReviewTest extends BuilderTestBase {
 
 			sys.io.File.saveContent(filePath, file(6, 99));
 			final report = sm.hotReload();
-			Assert.isTrue(report.success, 'sanity: the reload succeeds: ${report.errors}');
+			Assert.isTrue(report.success, 'sanity: the reload succeeds: ' + report.errors);
 			Assert.equals(6, widthOfDrawn(host.object, 5), "sanity: the host's edit shows");
 			Assert.equals(99, widthOfDrawn(item.object, 12), "the result in the slot is rebuilt from the edited file too");
 			Assert.isTrue(containsObject(host.object, item.object), "and stays in the host's slot");
@@ -278,7 +278,7 @@ class HotReloadReviewTest extends BuilderTestBase {
 		}
 		final contents = [for (i in 0...3) new h2d.Object()];
 		reloadInPlace("review-repeatrefs-tmp.manim", file(5), file(6), "host", (sm, result, report) -> {
-			Assert.isTrue(report.success, 'sanity: the reload succeeds: ${report.errors}');
+			Assert.isTrue(report.success, 'sanity: the reload succeeds: ' + report.errors);
 			Assert.equals(6, widthOfDrawn(result.object, 5), "sanity: the host's edit shows");
 			final children = result.dynamicRefs.get("bar");
 			Assert.equals(3, children.length, "sanity: three children");
@@ -307,7 +307,7 @@ class HotReloadReviewTest extends BuilderTestBase {
 		}
 		var shown:Null<BuilderResult> = null;
 		reloadInPlace("review-exclref-tmp.manim", file(5), file(6), "host", (sm, result, report) -> {
-			Assert.isTrue(report.success, 'the reload succeeds (arm a\'s values are not set on arm b\'s panel): ${report.errors}');
+			Assert.isTrue(report.success, 'the reload succeeds (arm a\'s values are not set on arm b\'s panel): ' + report.errors);
 			Assert.equals(6, widthOfDrawn(result.object, 5), "sanity: the host's edit shows");
 			Assert.equals(33, widthOfDrawn(result.object, 12), "the shown arm's panel keeps the value set on it");
 			Assert.equals(shown, result.getDynamicRef("panel"), "the handle the game kept is the one that answers");
@@ -340,7 +340,7 @@ class HotReloadReviewTest extends BuilderTestBase {
 
 			sys.io.File.saveContent(barPath, bar(13));
 			final report = sm.hotReload();
-			Assert.isTrue(report.success, 'sanity: the reload succeeds: ${report.errors}');
+			Assert.isTrue(report.success, 'sanity: the reload succeeds: ' + report.errors);
 			Assert.equals(30, widthOfDrawn(result.object, 13), "the edited default applies and the site's argument stays");
 
 			result.setParameter("hw", 44);
@@ -406,7 +406,7 @@ class HotReloadReviewTest extends BuilderTestBase {
 				for (error in report.errors)
 					if (error.file.indexOf(fileA) >= 0)
 						errorsOfA++;
-				Assert.isTrue(errorsOfA > 0, 'the report carries the error of $fileA, got: ${report.errors}');
+				Assert.isTrue(errorsOfA > 0, 'the report carries the error of $fileA, got: ' + report.errors);
 				Assert.isTrue(report.rebuiltCount > 0, "and what the other file rebuilt");
 			});
 		});
@@ -428,13 +428,13 @@ class HotReloadReviewTest extends BuilderTestBase {
 			for (round in 0...3) {
 				sys.io.File.saveContent(filePath, round % 2 == 0 ? v2 : v1);
 				final report = sm.hotReload();
-				Assert.isTrue(report.success, 'sanity: reload ${round + 1} succeeds: ${report.errors}');
+				Assert.isTrue(report.success, 'sanity: reload ' + (round + 1) + ' succeeds: ' + report.errors);
 				final handles = sm.hotReloadRegistry.getHandles(fileName);
-				Assert.equals(before, handles.length, 'after reload ${round + 1} the registry lists as many handles as before');
+				Assert.equals(before, handles.length, 'after reload ' + (round + 1) + ' the registry lists as many handles as before');
 				final liveChild = result.getDynamicRef("bar");
 				for (handle in handles)
 					Assert.isTrue(handle.result == result || handle.result == liveChild,
-						'after reload ${round + 1} a handle of "${handle.programmableName}" is the result or its live child, not a discarded one');
+						'after reload ' + (round + 1) + ' a handle of "' + handle.programmableName + '" is the result or its live child, not a discarded one');
 			}
 		});
 	}

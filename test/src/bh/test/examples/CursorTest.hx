@@ -195,7 +195,7 @@ class CursorTest extends BuilderTestBase {
 		}
 		Assert.notNull(threw);
 		if (threw != null)
-			Assert.isTrue(threw.message.indexOf("no_such_cell") >= 0, 'the error names the cell: ${threw.message}');
+			Assert.isTrue(threw.message.indexOf("no_such_cell") >= 0, 'the error names the cell: ' + threw.message);
 		Assert.isNull(CursorManager.getCursor("bad"));
 	}
 

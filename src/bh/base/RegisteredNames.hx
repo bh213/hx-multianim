@@ -13,7 +13,7 @@ class RegisteredNames {
 	public static function clash(kind:String, name:String, owner:Null<String>, source:Null<String>):Null<String> {
 		if (source != null && owner == source)
 			return null;
-		return '$kind "$name" is registered by ${by(owner)}, and ${by(source)} registers it too: a name is one $kind for the whole game. Rename one, or remove the first';
+		return '$kind "$name" is registered by ' + by(owner) + ', and ' + by(source) + ' registers it too: a name is one $kind for the whole game. Rename one, or remove the first';
 	}
 
 	static function by(source:Null<String>):String {

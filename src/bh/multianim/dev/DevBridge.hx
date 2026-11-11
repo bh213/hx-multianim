@@ -233,7 +233,7 @@ class DevBridge implements IDevBridgeHost {
 			return;
 		}
 		installBrowserErrorCapture();
-		trace('[DevBridge] Ready: ${[for (t in transports) t.describe].join(", ")}');
+		trace('[DevBridge] Ready: ' + ([for (t in transports) t.describe].join(", ")));
 		#else
 		trace('[DevBridge] No transport for this target');
 		restoreTrace();
@@ -333,8 +333,8 @@ class DevBridge implements IDevBridgeHost {
 				code = de.code;
 				httpStatus = de.httpStatus;
 			}
-			trace('[DevBridge] >> $method ERROR [$code]: ${e.message}');
-			if (code == "internal") trace('[DevBridge]    Stack: ${e.stack}');
+			trace('[DevBridge] >> $method ERROR [$code]: ' + e.message);
+			if (code == "internal") trace('[DevBridge]    Stack: ' + e.stack);
 			return {status: httpStatus, body: {ok: false, error: e.message, code: code}};
 		} catch (e:Dynamic) {
 			trace('[DevBridge] >> $method ERROR (dynamic): $e');
@@ -363,7 +363,7 @@ class DevBridge implements IDevBridgeHost {
 			if (!self.traceCapturing) return;
 			// Buffer the message
 			var msg = if (infos != null)
-				'${infos.fileName}:${infos.lineNumber}: $v'
+				(infos.fileName + ':' + infos.lineNumber + ': $v')
 			else
 				'$v';
 			if (self.traceBuffer.length >= TRACE_BUFFER_SIZE) {
@@ -412,13 +412,13 @@ class DevBridge implements IDevBridgeHost {
 			if (e.message == null && target != null && target != window) {
 				// A resource that failed to load (seen in the capture phase: img, script, link).
 				final src:Dynamic = target.src != null ? target.src : target.href;
-				reportError('[browser] failed to load ${target.tagName} $src', "");
+				reportError('[browser] failed to load ' + target.tagName + ' $src', "");
 				return;
 			}
-			final where = e.filename != null && e.filename != "" ? ' (${e.filename}:${e.lineno}:${e.colno})' : "";
+			final where = e.filename != null && e.filename != "" ? ' (' + e.filename + ':' + e.lineno + ':' + e.colno + ')' : "";
 			final err:Dynamic = e.error;
 			final stack:String = err != null && err.stack != null ? Std.string(err.stack) : "";
-			reportError('[browser] ${e.message}$where', stack);
+			reportError('[browser] ' + e.message + '$where', stack);
 		};
 		browserRejectionListener = (event:js.html.Event) -> {
 			final reason:Dynamic = (event : Dynamic).reason;
@@ -908,7 +908,7 @@ class DevBridge implements IDevBridgeHost {
 				throw DevBridgeError.invalidParams("reload with content needs file: the resource path it replaces (e.g. \"ui/menu.manim\")");
 			var contentReport = screenManager.hotReloadContent(file, content);
 			if (contentReport == null)
-				throw DevBridgeError.notFound('No loaded .manim with resource path "$file". Loaded: ${screenManager.loadedManimPaths().join(", ")}');
+				throw DevBridgeError.notFound('No loaded .manim with resource path "$file". Loaded: ' + screenManager.loadedManimPaths().join(", "));
 			return reloadReportToPayload(contentReport);
 		}
 		#if (js && !hxnodejs)
@@ -924,7 +924,7 @@ class DevBridge implements IDevBridgeHost {
 			// A file no screen or build loaded has nothing to reload: say so instead of "success".
 			final path = resource.entry.path;
 			if (!screenManager.loadedManimPaths().contains(path))
-				throw DevBridgeError.notFound('No loaded .manim with resource path "$path". Loaded: ${screenManager.loadedManimPaths().join(", ")}');
+				throw DevBridgeError.notFound('No loaded .manim with resource path "$path". Loaded: ' + screenManager.loadedManimPaths().join(", "));
 		}
 
 		var report = screenManager.hotReload(resource);
@@ -1342,7 +1342,7 @@ class DevBridge implements IDevBridgeHost {
 		} catch (e:DevBridgeError) {
 			throw e;
 		} catch (e:haxe.Exception) {
-			throw new DevBridgeError("internal", 'Handler for "$op" threw: ${e.message}', 500);
+			throw new DevBridgeError("internal", 'Handler for "$op" threw: ' + e.message, 500);
 		}
 	}
 
@@ -1717,22 +1717,22 @@ class DevBridge implements IDevBridgeHost {
 			if (params.value == null)
 				throw DevBridgeError.invalidParams("audio_set: a vca takes a value, 0 to 1");
 			audio.setVca(params.vca, params.value);
-			done.push('vca ${params.vca} = ${audio.getVca(params.vca)}');
+			done.push('vca ' + params.vca + ' = ' + audio.getVca(params.vca));
 		}
 		if (params.snapshot != null) {
 			final on:Bool = params.on != null ? params.on : true;
 			audio.snapshot(params.snapshot, on);
-			done.push('snapshot ${params.snapshot} ${on ? "on" : "off"}');
+			done.push('snapshot ' + params.snapshot + ' ' + (on ? "on" : "off"));
 		}
 		if (params.param != null) {
 			if (params.value == null)
 				throw DevBridgeError.invalidParams("audio_set: a param takes a value, one of its labels");
 			audio.set(params.param, Std.string(params.value));
-			done.push('param ${params.param} = ${params.value}');
+			done.push('param ' + params.param + ' = ' + params.value);
 		}
 		if (params.play != null) {
 			final played = audio.play(params.play);
-			done.push(played != null ? 'played ${params.play}' : 'dropped ${params.play}');
+			done.push(played != null ? 'played ' + params.play : 'dropped ' + params.play);
 		}
 		if (params.stop != null) {
 			final n = params.stop == "*" ? audio.stopAll() : audio.stop(params.stop);
@@ -1743,14 +1743,14 @@ class DevBridge implements IDevBridgeHost {
 				audio.stopMusic();
 			else
 				audio.playMusic(params.music);
-			done.push('music ${params.music}');
+			done.push('music ' + params.music);
 		}
 		if (params.ambience != null) {
 			if (params.ambience == "none")
 				audio.stopAmbience();
 			else
 				audio.playAmbience(params.ambience);
-			done.push('ambience ${params.ambience}');
+			done.push('ambience ' + params.ambience);
 		}
 		if (done.length == 0)
 			throw DevBridgeError.invalidParams("audio_set: nothing to do (vca+value, snapshot+on, param+value, play, stop, music, ambience)");
@@ -2097,7 +2097,7 @@ class DevBridge implements IDevBridgeHost {
 			if (!includeHidden && child.alpha == 0) continue;
 			var bounds = child.getBounds();
 			if (bounds == null || bounds.isEmpty()) continue;
-			var name = child.name != null ? child.name : '[$i]${Type.getClassName(Type.getClass(child))}';
+			var name = child.name != null ? child.name : '[$i]' + (Type.getClassName(Type.getClass(child)));
 			siblings.push({obj: child, bounds: bounds, name: name});
 		}
 

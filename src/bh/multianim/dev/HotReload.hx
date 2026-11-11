@@ -628,7 +628,7 @@ class PlaceholderReuser {
 		final byNameIndex:Map<String, h2d.Object> = new Map();
 		for (entry in captured) {
 			if (entry.index != null)
-				byNameIndex.set('${entry.name}_${entry.index}', entry.object);
+				byNameIndex.set(entry.name + '_' + entry.index, entry.object);
 			else
 				byName.set(entry.name, entry.object);
 		}
@@ -669,7 +669,7 @@ class PlaceholderReuser {
 						return CBRObject(cached);
 					}
 				case PlaceholderWithIndex(name, index):
-					final cached = byNameIndex.get('${name}_${index}');
+					final cached = byNameIndex.get(name + '_$index');
 					if (cached != null) {
 						safeDetach(cached);
 						cached.x = 0;

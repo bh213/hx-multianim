@@ -846,7 +846,7 @@ class DynamicRefTest extends BuilderTestBase {
 		// Per-key writer array for "templateA" must reflect that only one writer remains.
 		final arrAfter = result.dynamicRefs.get("templateA");
 		Assert.isTrue(arrAfter == null || arrAfter.length <= 1,
-			'writer count for "templateA" must be <=1 after rename; got: ${arrAfter == null ? null : arrAfter.length}');
+			'writer count for "templateA" must be <=1 after rename; got: ' + (arrAfter == null ? null : arrAfter.length));
 
 		// And getDynamicRef("templateA") must no longer throw the collision error.
 		var afterErr:String = null;
@@ -889,7 +889,7 @@ class DynamicRefTest extends BuilderTestBase {
 		// Per-key writer array for "templateB" must reflect two writers.
 		final arrAfter = result.dynamicRefs.get("templateB");
 		Assert.isTrue(arrAfter != null && arrAfter.length >= 2,
-			'writer count for "templateB" must be >=2 after rename; got: ${arrAfter == null ? null : arrAfter.length}');
+			'writer count for "templateB" must be >=2 after rename; got: ' + (arrAfter == null ? null : arrAfter.length));
 
 		// And getDynamicRef("templateB") must throw the collision error.
 		var err:String = null;

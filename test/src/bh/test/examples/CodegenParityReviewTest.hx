@@ -272,7 +272,7 @@ class CodegenParityReviewTest extends BuilderTestBase {
 					y += n.y;
 					n = n.parent;
 				}
-				'${depthUnder(b, root)}@$x,$y';
+				(depthUnder(b, root) + '@$x,$y');
 			}
 		].join(" ");
 	}
@@ -366,7 +366,7 @@ class CodegenParityReviewTest extends BuilderTestBase {
 			final sm = Std.downcast(live.getNamedDrawn(name), bh.stateanim.AnimationSM);
 			Assert.notNull(sm, '$backend: $name is a stateanim');
 			if (sm != null)
-				Assert.isTrue(sm.animationStates.exists("fire-up"), '$backend: $name plays marine.anim, its file built from ${name == "byFinal" ? "a @final" : "the parameter"}');
+				Assert.isTrue(sm.animationStates.exists("fire-up"), '$backend: $name plays marine.anim, its file built from ' + (name == "byFinal" ? "a @final" : "the parameter"));
 		}
 		final joined = Std.downcast(live.getNamedDrawn("joined"), bh.stateanim.AnimationSM);
 		if (joined != null)
@@ -406,10 +406,10 @@ class CodegenParityReviewTest extends BuilderTestBase {
 		final inst:Dynamic = createMp().cpEllipse.create();
 		for (pair in [{backend: "builder", root: built.object}, {backend: "codegen", root: (cast inst : h2d.Object)}]) {
 			final b = pair.root.getBounds(pair.root);
-			Assert.floatEquals(30, b.xMin, 0.5, '${pair.backend}: 20 to the left of its middle at 50');
-			Assert.floatEquals(70, b.xMax, 0.5, '${pair.backend}: and 20 to the right');
-			Assert.floatEquals(40, b.yMin, 0.5, '${pair.backend}: 10 above');
-			Assert.floatEquals(60, b.yMax, 0.5, '${pair.backend}: and 10 below');
+			Assert.floatEquals(30, b.xMin, 0.5, pair.backend + ': 20 to the left of its middle at 50');
+			Assert.floatEquals(70, b.xMax, 0.5, pair.backend + ': and 20 to the right');
+			Assert.floatEquals(40, b.yMin, 0.5, pair.backend + ': 10 above');
+			Assert.floatEquals(60, b.yMax, 0.5, pair.backend + ': and 10 below');
 		}
 	}
 
@@ -725,7 +725,7 @@ class CodegenParityReviewTest extends BuilderTestBase {
 		final mp = createMp();
 		final insts:Array<Dynamic> = [mp.cpLayoutHidden.create(), mp.cpLayoutHiddenNested.create()];
 		for (inst in insts)
-			checkHiddenLayout((k, v) -> inst.setParameter(k, v), cast inst, 'codegen ${Type.getClassName(Type.getClass(inst))}');
+			checkHiddenLayout((k, v) -> inst.setParameter(k, v), cast inst, 'codegen ' + (Type.getClassName(Type.getClass(inst))));
 	}
 
 	/** One change hides the element and would move it past the layout's end: the move is never looked up. */
@@ -928,7 +928,7 @@ class CodegenParityReviewTest extends BuilderTestBase {
 	}
 
 	static function nestedFlowLayout(root:h2d.Object):String {
-		return 'w10:${xsOfWidth(root, 10)} w6:${xsOfWidth(root, 6)} w7:${xsOfWidth(root, 7)}';
+		return 'w10:' + xsOfWidth(root, 10) + ' w6:' + xsOfWidth(root, 6) + ' w7:' + xsOfWidth(root, 7);
 	}
 
 	@Test

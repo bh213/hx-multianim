@@ -407,7 +407,7 @@ class OffsetCoord
     }
 
     public function toString() {
-        return '${col},${row}';
+        return '$col,$row';
     }
 
 }

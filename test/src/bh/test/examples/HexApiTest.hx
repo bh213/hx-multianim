@@ -28,8 +28,8 @@ class HexApiTest extends utest.Test {
 		for (hex in samples) {
 			final oc = hex.toOffsetCoordinates();
 			final back = OffsetCoord.qoffsetToCube(OffsetCoord.ODD, oc);
-			Assert.equals(hex.q, back.q, 'q must round-trip for hex ${hex.toString()}, got ${back.toString()}');
-			Assert.equals(hex.r, back.r, 'r must round-trip for hex ${hex.toString()} through odd-q offset coordinates, got ${back.toString()}');
+			Assert.equals(hex.q, back.q, 'q must round-trip for hex ' + hex.toString() + ', got ' + back.toString());
+			Assert.equals(hex.r, back.r, 'r must round-trip for hex ' + hex.toString() + ' through odd-q offset coordinates, got ' + back.toString());
 		}
 	}
 

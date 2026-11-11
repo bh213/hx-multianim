@@ -51,10 +51,10 @@ class UIMultiAnimRadioButtons implements UIElement implements UIElementDisablabl
 					c.onInternalToggle = onSingleToggle.bind(index);
 					return CBRObject(c.getObject());
 				} else
-					throw 'invalid callback ${request}';
+					throw 'invalid callback $request';
 
 			default:
-				throw 'unsupported callback ${request}';
+				throw 'unsupported callback $request';
 		}
 	}
 

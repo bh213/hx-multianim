@@ -81,7 +81,7 @@ class LiveProgrammableTools {
 
 	/** The `names`-map key for a name with optional indices. */
 	public static inline function namedKey(name:String, ?index:Null<Int>, ?indexY:Null<Int>):String {
-		return if (indexY != null) '${name} ${index} ${indexY}' else if (index != null) '${name} ${index}' else name;
+		return if (indexY != null) '$name $index $indexY' else if (index != null) '$name $index' else name;
 	}
 
 	/** The plain-value form of a resolved parameter: the enum value's name, the number, the string,

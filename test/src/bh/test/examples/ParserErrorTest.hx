@@ -4866,7 +4866,7 @@ class ParserErrorTest extends utest.Test {
 					case RVInteger(n):
 						Assert.equals(-255, n, 'Expected -0xFF to resolve to -255, got $n');
 					default:
-						Assert.fail('Expected RVInteger, got ${entry.value}');
+						Assert.fail('Expected RVInteger, got ' + entry.value);
 				}
 			default:
 				Assert.fail("Expected INTERACTIVE");
@@ -5601,13 +5601,13 @@ class ParserErrorTest extends utest.Test {
 			}
 		").getParameterDefinitions("test");
 		Assert.isTrue(Type.enumEq(ResolvedIndexParameters.Value(1000), defs.get("n").defaultValue),
-			'n:int=1_000 must default to 1000, got ${defs.get("n").defaultValue}');
+			'n:int=1_000 must default to 1000, got ' + defs.get("n").defaultValue);
 		Assert.isTrue(Type.enumEq(ResolvedIndexParameters.Value(-2000), defs.get("neg").defaultValue),
-			'neg:int=-2_000 must default to -2000, got ${defs.get("neg").defaultValue}');
+			'neg:int=-2_000 must default to -2000, got ' + defs.get("neg").defaultValue);
 		Assert.isTrue(Type.enumEq(ResolvedIndexParameters.ValueF(1000.5), defs.get("f").defaultValue),
-			'f:float=1_000.5 must default to 1000.5, got ${defs.get("f").defaultValue}');
+			'f:float=1_000.5 must default to 1000.5, got ' + defs.get("f").defaultValue);
 		Assert.isTrue(Type.enumEq(ResolvedIndexParameters.Value(0xFF00FF00), defs.get("c").defaultValue),
-			'c:color=0xFF_00FF00 must default to 0xFF00FF00, got ${defs.get("c").defaultValue}');
+			'c:color=0xFF_00FF00 must default to 0xFF00FF00, got ' + defs.get("c").defaultValue);
 	}
 
 	// ===== The documented comma-separated subEmitters form parses =====

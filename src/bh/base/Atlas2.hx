@@ -27,10 +27,10 @@ function ninePatchOfEntry(name:String, entries:Null<Array<AtlasEntry>>, index:In
 	final splitLen = t.split.length;
 	if (splitLen > 0) {
 		if (splitLen != 4)
-			throw '${name} has invalid 9-patch: ${t.split}';
+			throw '$name has invalid 9-patch: ' + t.split;
 		return new ScaleGrid(t.t, t.split[0], t.split[2], t.split[1], t.split[3]);
 	}
-	throw '${name} is not a 9-patch';
+	throw '$name is not a 9-patch';
 }
 
 class InlineAtlas2 implements IAtlas2 {
@@ -150,7 +150,7 @@ class Atlas2 extends hxd.res.Resource.Resource implements IAtlas2 {
 			if ( line == "" ) continue;
             final tileFilename = basePath + line;
 			var tileFile = hxd.res.Loader.currentInstance.load(tileFilename)?.toTile();
-			if (tileFile == null) throw 'Could not load tile ${tileFilename}';
+			if (tileFile == null) throw 'Could not load tile $tileFilename';
 			sourceTiles.push(tileFile);
 			while( i < count ) {
 				if( lines[i].indexOf(":") < 0 ) break;
@@ -160,7 +160,7 @@ class Atlas2 extends hxd.res.Resource.Resource implements IAtlas2 {
 					var wh = line[1].split(",");
 					var parsedWidth = Std.parseInt(wh[0]);
                     var parsedHeight = Std.parseInt(wh[1]);
-					if (parsedWidth != tileFile.width || parsedHeight != tileFile.height) throw 'file ${tileFilename} does not match';
+					if (parsedWidth != tileFile.width || parsedHeight != tileFile.height) throw 'file $tileFilename does not match';
 				default:
 				}
 			}
@@ -201,7 +201,7 @@ class Atlas2 extends hxd.res.Resource.Resource implements IAtlas2 {
 					case "split":
 						split = v.split(", ").map(x->{
 							var num = Std.parseInt(x);
-							if (num == null) throw 'not a number ${x}';
+							if (num == null) throw 'not a number $x';
 							return cast (num, Int);
 						});
 					case "index":

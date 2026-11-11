@@ -242,7 +242,7 @@ class AutotileTest extends BuilderTestBase {
 		try {
 			built = builder.buildAutotile("t", [[1, 1], [1, 1]]);
 		} catch (e:BuilderError) {
-			Assert.fail('allowPartialMapping must fall back for frames the atlas does not have: ${e.message}');
+			Assert.fail('allowPartialMapping must fall back for frames the atlas does not have: ' + e.message);
 		}
 		if (built != null)
 			Assert.equals(4, built.count(), "one tile per filled cell");
@@ -560,12 +560,12 @@ class AutotileTest extends BuilderTestBase {
 		// not drawn under the pond as a ground is under the terrains above it
 		final rows = [for (r in ROAD) '"$r"'];
 		rows[0] = '"..#~."';
-		final source = (grid:String) -> '
+		final source = (grid:String) -> ('
 			#fp atlas2("$TILESET") { grass: 32, 24, 8, 8  water: 40, 24, 8, 8 }
 			#road autotile { format: connect16 tileSize: 8 demo: #554433, #AA9966 }
 			#t tileset { $grid atlas: "fp" terrain grass { cells: "grass" } terrain road { autotile: road } terrain pond { cells: "water" } }
-			#m tilemap { tileset: t size: 5, 5 legend { ".": grass, "#": road, "~": pond } terrain: [${rows.join(", ")}] }
-		';
+			#m tilemap { tileset: t size: 5, 5 legend { ".": grass, "#": road, "~": pond } terrain: [' + rows.join(", ") + '] }
+		');
 		// the square grid: one road tile a road cell, over the grass
 		final square = builderFromSource(source("tileSize: 8")).buildTilemap("m");
 		final drawnRoad = autotileCount(square, "road");
@@ -628,7 +628,7 @@ class AutotileTest extends BuilderTestBase {
 			fn();
 			Assert.fail('expected BuilderError "$expectedCode"', pos);
 		} catch (e:BuilderError) {
-			Assert.equals(expectedCode, e.code, 'wrong error: ${e.message}', pos);
+			Assert.equals(expectedCode, e.code, 'wrong error: ' + e.message, pos);
 		}
 	}
 }

@@ -78,7 +78,7 @@ class LspTransport {
 				try {
 					onMessage(msg);
 				} catch (e:Dynamic) {
-					logError('Unhandled error while processing "${msg.method}": $e');
+					logError('Unhandled error while processing "' + msg.method + '": $e');
 				}
 			}
 		}

@@ -37,7 +37,7 @@ class UIStandardMultiCheckbox implements UIElement implements UIElementDisablabl
 			result.beginUpdate();
 			result.setParameter("status", value ? "disabled" : "normal");
 			if (result.hasParameter("disabled"))
-				result.setParameter("disabled", '${value}');
+				result.setParameter("disabled", '$value');
 			result.endUpdate();
 		}
 		return value;
@@ -46,7 +46,7 @@ class UIStandardMultiCheckbox implements UIElement implements UIElementDisablabl
 	public function set_selected(value:Bool):Bool {
 		if (this.selected != value) {
 			this.selected = value;
-			result.setParameter("checked", '${value}');
+			result.setParameter("checked", '$value');
 		}
 		return value;
 	}
@@ -56,7 +56,7 @@ class UIStandardMultiCheckbox implements UIElement implements UIElementDisablabl
 	}
 
 	function new(builder:MultiAnimBuilder, name:String, startsChecked:Bool, ?extraParams:Null<Map<String, Dynamic>>) {
-		var params:Map<String, Dynamic> = ["status" => "normal", "disabled" => "false", "checked" => '${startsChecked}'];
+		var params:Map<String, Dynamic> = ["status" => "normal", "disabled" => "false", "checked" => '$startsChecked'];
 		if (extraParams != null)
 			for (key => value in extraParams)
 				params.set(key, value);
@@ -81,7 +81,7 @@ class UIStandardMultiCheckbox implements UIElement implements UIElementDisablabl
 					this.selected = !this.selected;
 					result.beginUpdate();
 					result.setParameter("status", "pressed");
-					result.setParameter("checked", '${this.selected}');
+					result.setParameter("checked", '' + this.selected);
 					result.endUpdate();
 					triggerToggle(this.selected, wrapper.control);
 				}

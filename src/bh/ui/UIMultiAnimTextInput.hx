@@ -238,7 +238,7 @@ class UIMultiAnimTextInput implements UIElement implements UIElementDisablable i
 			result.beginUpdate();
 			result.setParameter("status", value ? "disabled" : "normal");
 			if (result.hasParameter("disabled"))
-				result.setParameter("disabled", '${value}');
+				result.setParameter("disabled", '$value');
 			result.endUpdate();
 			textInput.canEdit = !value;
 			if (value && focused)

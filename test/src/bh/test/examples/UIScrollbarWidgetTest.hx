@@ -310,7 +310,7 @@ class UIScrollbarWidgetTest extends BuilderTestBase {
 
 	function createDragList():UIMultiAnimScrollableList {
 		ensureTestFont();
-		final items:Array<UIElementListItem> = [for (i in 0...20) {name: 'Item ${i + 1}'}];
+		final items:Array<UIElementListItem> = [for (i in 0...20) {name: 'Item ' + (i + 1)}];
 		final builder = BuilderTestBase.builderFromSource(DRAG_LIST_MANIM);
 		return UIMultiAnimScrollableList.createWithSingleBuilder(builder, "list-panel", "list-item", "scrollbar", "scrollbar", 120, 200, items, 0, 0);
 	}
@@ -364,7 +364,7 @@ class UIScrollbarWidgetTest extends BuilderTestBase {
 	@Test
 	public function testSetItemsRebuildsTheDraggedScrollbar():Void {
 		final list = createDragList();
-		list.setItems([for (i in 0...30) {name: 'Item ${i + 1}'}], 0);
+		list.setItems([for (i in 0...30) {name: 'Item ' + (i + 1)}], 0);
 		Assert.notNull(list.scrollbarWidget);
 		Assert.equals(600, list.scrollbarWidget.scrollableLength);
 		list.setItems([{name: "one"}, {name: "two"}], 0);
@@ -376,7 +376,7 @@ class UIScrollbarWidgetTest extends BuilderTestBase {
 		// `font`/`fontColor` go to every sub-builder of a list; the scrollbar draws no text and
 		// declares neither, which must not be a build error. `scrollbar.font` written out is.
 		ensureTestFont();
-		final items:Array<UIElementListItem> = [for (i in 0...20) {name: 'Item ${i + 1}'}];
+		final items:Array<UIElementListItem> = [for (i in 0...20) {name: 'Item ' + (i + 1)}];
 		final builder = BuilderTestBase.builderFromSource(DRAG_LIST_MANIM);
 		final screen = new bh.test.UITestHarness.UITestScreen();
 		final settings:bh.multianim.MultiAnimParser.ResolvedSettings = ["font" => RSVString("testfont"), "fontColor" => RSVInt(0xFFFFFFFF)];
@@ -429,7 +429,7 @@ class UIScrollbarWidgetTest extends BuilderTestBase {
 	@Test
 	public function testAListsOtherSettingsReachItsPanel():Void {
 		ensureTestFont();
-		final items:Array<UIElementListItem> = [for (i in 0...3) {name: 'Item ${i + 1}'}];
+		final items:Array<UIElementListItem> = [for (i in 0...3) {name: 'Item ' + (i + 1)}];
 		final builder = BuilderTestBase.builderFromSource(PADDED_LIST_MANIM);
 		final screen = new bh.test.UITestHarness.UITestScreen();
 		final settings:bh.multianim.MultiAnimParser.ResolvedSettings = ["pad" => RSVInt(9), "font" => RSVString("testfont")];
@@ -477,7 +477,7 @@ class UIScrollbarWidgetTest extends BuilderTestBase {
 	@Test
 	public function testTheOldListContractStillWorks():Void {
 		ensureTestFont();
-		final items:Array<UIElementListItem> = [for (i in 0...20) {name: 'Item ${i + 1}'}];
+		final items:Array<UIElementListItem> = [for (i in 0...20) {name: 'Item ' + (i + 1)}];
 		final builder = BuilderTestBase.builderFromSource(OLD_LIST_MANIM);
 		final list = UIMultiAnimScrollableList.createWithSingleBuilder(builder, "list-panel", "list-item", "scrollbar", "scrollbar", 120, 200, items, 0, 0);
 		Assert.isNull(list.scrollbarWidget, "a position-only #scrollbar is not dragged");

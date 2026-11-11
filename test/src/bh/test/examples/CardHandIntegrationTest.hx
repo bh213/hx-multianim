@@ -93,7 +93,7 @@ class CardHandIntegrationTest extends BuilderTestBase {
 		var h = createHelper();
 		h.helper.setHand([desc("a"), desc("b")]);
 		for (entry in h.helper.cards) {
-			Assert.isTrue(entry.state == InHand, 'Card ${entry.descriptor.id} should be InHand');
+			Assert.isTrue(entry.state == InHand, 'Card ' + entry.descriptor.id + ' should be InHand');
 		}
 	}
 
@@ -1611,7 +1611,7 @@ class CardHandIntegrationTest extends BuilderTestBase {
 		var prev = -1;
 		for (entry in h.helper.cards) {
 			final idx = h.helper.handContainer.getChildIndex(entry.container);
-			Assert.isTrue(idx > prev, 'card ${entry.descriptor.id} must render above the cards before it in the hand');
+			Assert.isTrue(idx > prev, 'card ' + entry.descriptor.id + ' must render above the cards before it in the hand');
 			prev = idx;
 		}
 	}
@@ -1710,7 +1710,7 @@ class CardHandIntegrationTest extends BuilderTestBase {
 		var h = createHelper(); // no drawPathName: the draw completes synchronously
 		h.helper.drawCard({id: "a", buildName: "card", enabled: false});
 		Assert.isTrue(h.helper.cards[0].state == Disabled,
-			'a card drawn with enabled: false must stay Disabled once the draw ends, got ${h.helper.cards[0].state}');
+			'a card drawn with enabled: false must stay Disabled once the draw ends, got ' + h.helper.cards[0].state);
 		Assert.isFalse(h.helper.isCardInHand("a"), "a card drawn disabled must not count as playable");
 	}
 
@@ -1722,7 +1722,7 @@ class CardHandIntegrationTest extends BuilderTestBase {
 			h.helper.update(0.1);
 		Assert.equals(0, h.helper.activeAnimations.length, "precondition: the draw animation has finished");
 		Assert.isTrue(h.helper.cards[0].state == Disabled,
-			'a card drawn with enabled: false must stay Disabled after its draw animation, got ${h.helper.cards[0].state}');
+			'a card drawn with enabled: false must stay Disabled after its draw animation, got ' + h.helper.cards[0].state);
 		Assert.isFalse(h.helper.isCardInHand("a"), "a card drawn disabled must not count as playable");
 	}
 
@@ -1745,7 +1745,7 @@ class CardHandIntegrationTest extends BuilderTestBase {
 		for (_ in 0...30)
 			h.helper.update(0.1);
 		Assert.isTrue(h.helper.cards[0].state == InHand,
-			'a card drawn disabled and enabled during its draw must land InHand, got ${h.helper.cards[0].state}');
+			'a card drawn disabled and enabled during its draw must land InHand, got ' + h.helper.cards[0].state);
 	}
 
 	@Test
@@ -1790,13 +1790,13 @@ class CardHandIntegrationTest extends BuilderTestBase {
 			helper.setHand([{id: "a", buildName: card.buildName}]);
 			final entry = helper.cards[0];
 			final remainingId = entry.interactiveId + "." + card.remaining;
-			Assert.isTrue(helper.interactiveHelper.hasBinding(remainingId), '${card.buildName}: precondition: $remainingId is bound');
+			Assert.isTrue(helper.interactiveHelper.hasBinding(remainingId), card.buildName + ': precondition: $remainingId is bound');
 
 			helper.setCardEnabled("a", false);
 			final wrapper = screen.getInteractive(remainingId);
-			Assert.notNull(wrapper, '${card.buildName}: $remainingId survives the rebuild');
+			Assert.notNull(wrapper, card.buildName + ': $remainingId survives the rebuild');
 			if (wrapper != null)
-				Assert.isTrue(wrapper.disabled, '${card.buildName}: disabling the card must disable $remainingId too');
+				Assert.isTrue(wrapper.disabled, card.buildName + ': disabling the card must disable $remainingId too');
 		}
 	}
 

@@ -240,7 +240,7 @@ class ProgrammableBuilder {
 			() -> target.buildWithParameters(name, parameters, refBuilderParams()));
 		// `hide => [...]`: as the builder's STATIC_REF
 		if (hidden != null && result != null)
-			hideOrThrow(result.object, hidden, false, 'staticRef($name) on line ${hidden.line}', where);
+			hideOrThrow(result.object, hidden, false, 'staticRef($name) on line ' + hidden.line, where);
 		return result;
 	}
 
@@ -266,7 +266,7 @@ class ProgrammableBuilder {
 		var listener:Null<Void -> Void> = onChildRebuilt;
 		if (hidden != null && result != null) {
 			final layers:MultiAnimParser.HiddenLayers = hidden;
-			hideOrThrow(result.object, layers, false, 'dynamicRef($name) on line ${layers.line}', where);
+			hideOrThrow(result.object, layers, false, 'dynamicRef($name) on line ' + layers.line, where);
 			final root = result.object;
 			final then = onChildRebuilt;
 			listener = () -> {
@@ -312,7 +312,7 @@ class ProgrammableBuilder {
 		if (allParticles.length == 0)
 			throw new BuilderError('no particles found in programmable: $programmableName', progNode);
 		if (index >= allParticles.length)
-			throw new BuilderError('particles index $index out of range (found ${allParticles.length}) in programmable: $programmableName', progNode);
+			throw new BuilderError('particles index $index out of range (found ' + allParticles.length + ') in programmable: $programmableName', progNode);
 		final particlesNode = allParticles[index];
 		return switch particlesNode.type {
 			case PARTICLES(particlesDef):
@@ -360,7 +360,7 @@ class ProgrammableBuilder {
 		animSM.play(initialState);
 		// `hide => [...]`: as the builder's STATEANIM
 		if (hidden != null)
-			hideOrThrow(animSM, hidden, true, 'stateanim("$filename") on line ${hidden.line}', where);
+			hideOrThrow(animSM, hidden, true, 'stateanim("$filename") on line ' + hidden.line, where);
 		return animSM;
 	}
 
@@ -372,7 +372,7 @@ class ProgrammableBuilder {
 			final loadedSheet = getSheet(entry.sheet);
 			final anim = loadedSheet.getAnim(entry.animName);
 			if (anim == null)
-				throw BuilderError.of('Animation "${entry.animName}" not found in sheet "${entry.sheet}"');
+				throw BuilderError.of('Animation "' + entry.animName + '" not found in sheet "' + entry.sheet + '"');
 			// as the builder: the untrimmed frame's middle at the origin, a trimmed frame in its place
 			final animStates = [
 				for (a in anim)
@@ -402,7 +402,7 @@ class ProgrammableBuilder {
 		final tileGroups:Array<h2d.Object> = [];
 		findAllTileGroupsInTree(result.object, tileGroups);
 		if (index >= tileGroups.length)
-			throw new BuilderError('tileGroup index $index out of range (found ${tileGroups.length}) in programmable: $programmableName', progNode);
+			throw new BuilderError('tileGroup index $index out of range (found ' + tileGroups.length + ') in programmable: $programmableName', progNode);
 		return tileGroups[index];
 	}
 

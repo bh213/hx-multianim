@@ -86,9 +86,9 @@ class CursorManager {
 		final w = tile.iwidth;
 		final h = tile.iheight;
 		if (w <= 0 || h <= 0)
-			throw 'a cursor needs a tile with pixels, got ${w}x${h}';
+			throw 'a cursor needs a tile with pixels, got ' + w + 'x$h';
 		if (hotX < 0 || hotY < 0 || hotX >= w || hotY >= h)
-			throw 'cursor hot point $hotX, $hotY is outside its ${w}x${h} tile';
+			throw 'cursor hot point $hotX, $hotY is outside its ' + w + 'x$h tile';
 		if (tile.getTexture() == null)
 			throw 'a cursor needs a tile with a texture';
 		// Drawn to a texture of the tile's size and read back: works for a cell of an atlas and

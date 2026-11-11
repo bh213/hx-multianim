@@ -48,10 +48,10 @@ class CodegenRepeatParamParityTest extends BuilderTestBase {
 	}
 
 	static function assertXs(expected:Array<Float>, actual:Array<Float>, msg:String):Void {
-		Assert.equals(expected.length, actual.length, '$msg — expected ${expected.length} bitmaps, got ${actual.length} at $actual');
+		Assert.equals(expected.length, actual.length, '$msg — expected ' + expected.length + ' bitmaps, got ' + actual.length + ' at $actual');
 		if (expected.length == actual.length)
 			for (i in 0...expected.length)
-				Assert.floatEquals(expected[i], actual[i], '$msg — position $i: expected ${expected[i]}, got ${actual[i]} (all: $actual)');
+				Assert.floatEquals(expected[i], actual[i], '$msg — position $i: expected ' + expected[i] + ', got ' + actual[i] + ' (all: $actual)');
 	}
 
 	/** First h2d.Flow descendant. */
@@ -167,9 +167,9 @@ class CodegenRepeatParamParityTest extends BuilderTestBase {
 			} catch (e:Dynamic) {
 				error = e;
 			}
-			Assert.isTrue(Std.isOfType(error, bh.multianim.BuilderError), '${b.name}: range(0, 5, $$stepv) with stepv=0 must throw a BuilderError, got: $error');
+			Assert.isTrue(Std.isOfType(error, bh.multianim.BuilderError), b.name + ': range(0, 5, $$stepv) with stepv=0 must throw a BuilderError, got: $error');
 			if (error != null)
-				Assert.stringContains("step", Std.string(error), '${b.name}: the error must name the step, got: $error');
+				Assert.stringContains("step", Std.string(error), b.name + ': the error must name the step, got: $error');
 		}
 	}
 

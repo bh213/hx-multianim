@@ -2384,9 +2384,9 @@ animation {
 }
 ');
 		Assert.equals(0xFF, meta.getColorOrException("tint") >>> 24,
-			'#FF0000 must carry baked opaque alpha (0xFFFF0000), got 0x${StringTools.hex(meta.getColorOrException("tint"), 8)}');
+			'#FF0000 must carry baked opaque alpha (0xFFFF0000), got 0x' + (StringTools.hex(meta.getColorOrException("tint"), 8)));
 		Assert.equals(0xFF, meta.getColorOrException("shade") >>> 24,
-			'#F00 must carry baked opaque alpha (0xFFFF0000), got 0x${StringTools.hex(meta.getColorOrException("shade"), 8)}');
+			'#F00 must carry baked opaque alpha (0xFFFF0000), got 0x' + (StringTools.hex(meta.getColorOrException("shade"), 8)));
 	}
 
 	@Test
@@ -2408,7 +2408,7 @@ animation {
 }
 ');
 		Assert.equals(0x80, meta.getColorOrException("glow") >>> 24,
-			'#FF000080 must keep its explicit alpha 0x80, got 0x${StringTools.hex(meta.getColorOrException("glow"), 8)}');
+			'#FF000080 must keep its explicit alpha 0x80, got 0x' + (StringTools.hex(meta.getColorOrException("glow"), 8)));
 	}
 
 	// ===== Per-instance extraPoints / filters (load cache must not share mutable state) =====
@@ -2426,7 +2426,7 @@ fps: 4
 animation walk {
     fps: 4
     loop: yes
-    playlist { sheet: "marine_${"${direction}"}_idle" }
+    playlist { sheet: "marine_' + ("${direction}") + '_idle" }
     extrapoints { pt: 3, 4 }
     filters { brightness: 0.8 }
 }

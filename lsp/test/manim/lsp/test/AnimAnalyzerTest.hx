@@ -27,8 +27,8 @@ class AnimAnalyzerTest {
 		final events:Array<String> = [];
 		for (a in loaded.animations[0].playlist[0].anims)
 			switch a {
-				case PlaylistPointEvent(name, p): events.push('$name@${p.x},${p.y}');
-				case PlaylistRandomPointEvent(name, p, r): events.push('$name@${p.x},${p.y}~$r');
+				case PlaylistPointEvent(name, p): events.push('$name@' + p.x + ',' + p.y);
+				case PlaylistRandomPointEvent(name, p, r): events.push('$name@' + p.x + ',' + p.y + '~$r');
 				case PlaylistTrigger(name): events.push(name);
 				default:
 			}

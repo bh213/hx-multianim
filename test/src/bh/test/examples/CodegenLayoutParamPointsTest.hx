@@ -44,11 +44,11 @@ class CodegenLayoutParamPointsTest extends BuilderTestBase {
 
 	static function assertXs(expected:Array<Float>, actual:Array<Float>, msg:String):Void {
 		Assert.equals(expected.length, actual.length,
-			'$msg — expected ${expected.length} bitmaps, got ${actual.length} at $actual');
+			'$msg — expected ' + expected.length + ' bitmaps, got ' + actual.length + ' at $actual');
 		if (expected.length == actual.length)
 			for (i in 0...expected.length)
 				Assert.floatEquals(expected[i], actual[i],
-					'$msg — position $i: expected ${expected[i]}, got ${actual[i]} (all: $actual)');
+					'$msg — position $i: expected ' + expected[i] + ', got ' + actual[i] + ' (all: $actual)');
 	}
 
 	/** Builder baseline: $gap=30 spaces the three layout points 0/30/60. */

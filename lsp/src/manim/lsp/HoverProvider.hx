@@ -85,7 +85,7 @@ class HoverProvider {
 		for (d in defs) {
 			final choiceDoc = d.choiceDocs?.get(name);
 			if (choiceDoc != null)
-				return '**$name** — choice of `$$${d.name}`\n\n$choiceDoc';
+				return '**$name** — choice of `$$' + d.name + '`\n\n$choiceDoc';
 		}
 		return null;
 	}
@@ -99,7 +99,7 @@ class HoverProvider {
 				final documented = [
 					for (p in order) {
 						final d = defs.get(p);
-						if (d != null && d.doc != null) '- `$p:${ManimKeywordInfo.paramTypeName(d.type)}` — ${oneLine(d.doc)}';
+						if (d != null && d.doc != null) ('- `$p:' + ManimKeywordInfo.paramTypeName(d.type) + '` — ' + oneLine(d.doc));
 					}
 				];
 				if (documented.length > 0) parts.push(documented.join("\n"));
@@ -109,13 +109,13 @@ class HoverProvider {
 	}
 
 	static function paramHover(def:Definition):String {
-		final parts = ['**Parameter** `$$${def.name}`: `${ManimKeywordInfo.paramTypeName(def.type)}`'];
+		final parts = ['**Parameter** `$$' + def.name + '`: `' + ManimKeywordInfo.paramTypeName(def.type) + '`'];
 		if (def.doc != null) parts.push(def.doc);
 		final choiceDocs = def.choiceDocs;
 		if (choiceDocs != null)
 			switch def.type {
 				case PPTEnum(values):
-					parts.push([for (v in values) if (choiceDocs.exists(v)) '- `$v` — ${oneLine(choiceDocs.get(v))}'].join("\n"));
+					parts.push([for (v in values) if (choiceDocs.exists(v)) ('- `$v` — ' + (oneLine(choiceDocs.get(v))))].join("\n"));
 				default:
 			}
 		return parts.join("\n\n");
@@ -199,47 +199,47 @@ class HoverProvider {
 		// Try element names (from NodeType via ManimKeywordInfo)
 		for (ctor in ManimKeywordInfo.allElementCtors) {
 			if (ManimKeywordInfo.elementName(ctor) == word) {
-				return '**${word}** — ${ManimKeywordInfo.elementDescription(ctor)}';
+				return '**$word** — ' + ManimKeywordInfo.elementDescription(ctor);
 			}
 		}
 
 		// Try filter names (from FilterType — exhaustive switch)
 		for (filterType in ManimKeywordInfo.completableFilters) {
 			if (ManimKeywordInfo.filterName(filterType) == word) {
-				return '**${word}** filter — ${ManimKeywordInfo.filterDescription(filterType)}';
+				return '**$word** filter — ' + ManimKeywordInfo.filterDescription(filterType);
 			}
 		}
 
 		// The engine's shaders, by name in any case
 		final shader = bh.multianim.ShaderCatalog.find(word);
 		if (shader != null)
-			return '**${shader.name}** — ${ManimKeywordInfo.shaderDescription(shader)}';
+			return '**' + shader.name + '** — ' + ManimKeywordInfo.shaderDescription(shader);
 
 		// Try param types (from DefinitionType — exhaustive switch)
 		for (defType in ManimKeywordInfo.simpleParamTypes) {
 			if (ManimKeywordInfo.paramTypeName(defType) == word) {
-				return '**${word}** — ${ManimKeywordInfo.paramTypeDescription(defType)}';
+				return '**$word** — ' + ManimKeywordInfo.paramTypeDescription(defType);
 			}
 		}
 
 		// Try easing names (from EasingType — exhaustive switch)
 		for (easing in ManimKeywordInfo.allEasings) {
 			if (ManimKeywordInfo.easingName(easing) == word) {
-				return '**${word}** — Easing function';
+				return '**$word** — Easing function';
 			}
 		}
 
 		// stateanim's own arguments (frame:, progress:, hide => [...])
 		for (arg in ManimKeywordInfo.stateAnimArguments) {
 			if (arg.name == word) {
-				return '**${word}** — ${arg.description}\n\n```manim\n${arg.usage}\n```';
+				return '**$word** — ' + arg.description + '\n\n```manim\n' + arg.usage + '\n```';
 			}
 		}
 
 		// Try transition types (from TransitionType — exhaustive switch)
 		for (trans in ManimKeywordInfo.allTransitions) {
 			if (ManimKeywordInfo.transitionName(trans) == word) {
-				return '**${word}** — ${ManimKeywordInfo.transitionDescription(trans)}';
+				return '**$word** — ' + ManimKeywordInfo.transitionDescription(trans);
 			}
 		}
 
@@ -251,7 +251,7 @@ class HoverProvider {
 			case "transition": "**transition** — Animated transitions for parameter changes\n\n```manim\ntransition {\n  param: crossfade(0.1, easeOutQuad)\n}\n```\n\nIn a tileset, where terrain `b` meets terrain `a` (below it, or `none`), an autotile drawn over `b`'s own:\n\n```manim\ntransition land, shallows { autotile: coast  ignore: sea }\n```";
 			case "ignore": "**ignore** — In a tileset's `transition a, b { }`: terrains below `b` that count as `b`. A cell of `b` that also touches them still meets `a`, and no edge is drawn toward them\n\n```manim\ntransition land, shallows { autotile: coast  ignore: sea }\n```";
 			case "import": "**import** — Import external .manim file\n\n```manim\nimport \"file.manim\" as \"name\"\n```";
-			case "export": '**export** — ${ManimKeywordInfo.exportDescription}\n\n```manim\n/// The knight, walking or standing\n#knight export programmable(state:[idle, walk]=idle) {\n  ...\n}\n```';
+			case "export": '**export** — ' + ManimKeywordInfo.exportDescription + '\n\n```manim\n/// The knight, walking or standing\n#knight export programmable(state:[idle, walk]=idle) {\n  ...\n}\n```';
 			case "version": "**version** — File version header: `version: 1.0`";
 			case "@final" | "final": "**@final** — Immutable named constant: `@final NAME = 42`";
 			case "@else" | "else": "**@else** — Matches when preceding @() didn't match\n\nBlock form: `@else { ... }` or `@else(cond) { ... }`";

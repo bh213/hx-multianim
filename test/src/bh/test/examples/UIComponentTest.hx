@@ -1604,7 +1604,7 @@ class UIComponentTest extends BuilderTestBase {
 	}
 
 	function createManyScrollableListItems(count:Int):Array<UIElementListItem> {
-		return [for (i in 0...count) {name: 'Item ${i + 1}'}];
+		return [for (i in 0...count) {name: 'Item ' + (i + 1)}];
 	}
 
 	function createScrollableList(?items:Array<UIElementListItem>, initialIndex:Int = 0,

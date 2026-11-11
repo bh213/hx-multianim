@@ -646,7 +646,7 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 		// The grid's chained listener should convert this to CellCardPlayed.
 		// Target ID format: grid{N}ch{M}_{col}_{row}
 		@:privateAccess var prefix = grid.registeredCardHands[0].targetPrefix;
-		var targetId = '${prefix}_1_0';
+		var targetId = prefix + '_1_0';
 		@:privateAccess cardHand.emitEvent(CardHandEvent.CardPlayed("testCard", TargetingResult.TargetZone(targetId)));
 
 		Assert.notNull(receivedEvent);
@@ -694,12 +694,12 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 		};
 
 		@:privateAccess var prefixA = gridA.registeredCardHands[0].targetPrefix;
-		@:privateAccess cardHand.emitEvent(CardHandEvent.CardPlayed("testCard", TargetingResult.TargetZone('${prefixA}_1_0')));
+		@:privateAccess cardHand.emitEvent(CardHandEvent.CardPlayed("testCard", TargetingResult.TargetZone(prefixA + '_1_0')));
 		Assert.equals(1, playedOnA, "the cell removed from the handler gets CellCardPlayed once");
 		Assert.isFalse(gridA.hasCell(1, 0), "and is gone");
 
 		@:privateAccess var prefixB = gridB.registeredCardHands[0].targetPrefix;
-		@:privateAccess cardHand.emitEvent(CardHandEvent.CardPlayed("testCard", TargetingResult.TargetZone('${prefixB}_0_0')));
+		@:privateAccess cardHand.emitEvent(CardHandEvent.CardPlayed("testCard", TargetingResult.TargetZone(prefixB + '_0_0')));
 		Assert.equals(1, cardPlayedSeenByB, "the second grid still gets the cards played on it");
 		Assert.equals(1, playedOnA, "and the first grid does not get the second grid's card");
 	}
@@ -937,21 +937,21 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 		@:privateAccess var prefix = grid.registeredCardHands[0].targetPrefix;
 
 		// Cell (0,0): local pos = (0, 0). Interactive should be at (0, 0).
-		var i00 = '${prefix}_0_0';
+		var i00 = prefix + '_0_0';
 		@:privateAccess var obj00 = grid.cardTargetInteractives.get(i00);
 		Assert.notNull(obj00);
 		Assert.floatEquals(0.0, obj00.x);
 		Assert.floatEquals(0.0, obj00.y);
 
 		// Cell (1,0): local pos = (52, 0). Interactive should be at (52, 0).
-		var i10 = '${prefix}_1_0';
+		var i10 = prefix + '_1_0';
 		@:privateAccess var obj10 = grid.cardTargetInteractives.get(i10);
 		Assert.notNull(obj10);
 		Assert.floatEquals(52.0, obj10.x);
 		Assert.floatEquals(0.0, obj10.y);
 
 		// Cell (0,1): local pos = (0, 52). Interactive should be at (0, 52).
-		var i01 = '${prefix}_0_1';
+		var i01 = prefix + '_0_1';
 		@:privateAccess var obj01 = grid.cardTargetInteractives.get(i01);
 		Assert.notNull(obj01);
 		Assert.floatEquals(0.0, obj01.x);
@@ -975,7 +975,7 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 		grid.registerAsCardTarget(cardHand);
 
 		@:privateAccess var prefix = grid.registeredCardHands[0].targetPrefix;
-		var i00 = '${prefix}_0_0';
+		var i00 = prefix + '_0_0';
 		@:privateAccess var obj00 = grid.cardTargetInteractives.get(i00);
 		Assert.notNull(obj00);
 
@@ -1010,7 +1010,7 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 				final cell = grid.cellAtPoint(x, y);
 				if (cell != null) {
 					checked++;
-					final expected = '${prefix}_${cell.col}_${cell.row}';
+					final expected = prefix + '_' + cell.col + '_' + cell.row;
 					final actual = targeting.hitTestTargets(x, y, "card");
 					if (actual != expected)
 						wrong.push('($x, $y): $actual, not $expected');
@@ -1020,7 +1020,7 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 			y += 3.0;
 		}
 		Assert.isTrue(checked > 100, "precondition: the samples cross the cells");
-		Assert.equals(0, wrong.length, 'the target is the hex under the cursor: ${wrong.length} of $checked wrong, e.g. ${wrong.slice(0, 4).join("; ")}');
+		Assert.equals(0, wrong.length, 'the target is the hex under the cursor: ' + wrong.length + ' of $checked wrong, e.g. ' + wrong.slice(0, 4).join("; "));
 	}
 
 	// ============== Card target callbacks on the card hand ==============
@@ -1787,7 +1787,7 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 
 	static function assertApprox(expected:Float, actual:Float, ?msg:String, tolerance:Float = 1.0):Void {
 		if (Math.abs(expected - actual) > tolerance)
-			Assert.fail('Expected ~$expected but got $actual (tolerance $tolerance)${msg != null ? ": " + msg : ""}');
+			Assert.fail('Expected ~$expected but got $actual (tolerance $tolerance)' + (msg != null ? ": " + msg : ""));
 		else
 			Assert.pass();
 	}
@@ -2571,7 +2571,7 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 			} catch (e:Dynamic) {
 				threw = e;
 			}
-			Assert.isNull(threw, 'disposing linked grids mid-swap (${aFirst ? "source" : "target"} first) must not throw, got: $threw');
+			Assert.isNull(threw, 'disposing linked grids mid-swap (' + (aFirst ? "source" : "target") + ' first) must not throw, got: $threw');
 		}
 	}
 
@@ -2589,7 +2589,7 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 			} catch (e:Dynamic) {
 				threw = e;
 			}
-			Assert.isNull(threw, 'updating the ${disposeSource ? "target" : "source"} grid after the other was disposed mid-swap must not throw, got: $threw');
+			Assert.isNull(threw, 'updating the ' + (disposeSource ? "target" : "source") + ' grid after the other was disposed mid-swap must not throw, got: $threw');
 			@:privateAccess Assert.equals(0, alive.activeSwapAnims.length, "the surviving grid's swap animation finishes");
 			alive.dispose();
 		}
@@ -3424,9 +3424,9 @@ class UIMultiAnimGridTest extends BuilderTestBase {
 
 		Assert.equals(coords.length, grid.cellCount());
 		for (c in coords) {
-			Assert.isTrue(grid.hasCell(c[0], c[1]), 'cell (${c[0]}, ${c[1]}) should exist');
+			Assert.isTrue(grid.hasCell(c[0], c[1]), 'cell (' + c[0] + ', ' + c[1] + ') should exist');
 			Assert.equals(c[0] + ":" + c[1], grid.get(c[0], c[1]).tag,
-				'cell (${c[0]}, ${c[1]}) returned the wrong data — key collision');
+				'cell (' + c[0] + ', ' + c[1] + ') returned the wrong data — key collision');
 		}
 		grid.dispose();
 	}

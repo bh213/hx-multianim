@@ -155,7 +155,7 @@ class AnimationSM extends h2d.Object {
 	public function getExtraPointForAnim(extraPointName:String, animState:String):Null<h2d.col.IPoint> {
 		final selectedState = animationStates[animState];
 		if (selectedState == null)
-			throw 'animState ${animState} not found';
+			throw 'animState $animState not found';
 		return selectedState.extraPoints.get(extraPointName);
 	}
 
@@ -175,7 +175,7 @@ class AnimationSM extends h2d.Object {
 	public function addAnimationState(name:String, states:Array<AnimationFrameState>, loopCount:Int, extraPoints:Map<String, h2d.col.IPoint>,
 			?filter:Null<h2d.filter.Filter>, ?tintColor:Null<Int>, ?layers:Null<AnimationLayerFrames>) {
 		if (animationStates.exists(name))
-			throw 'animation state ${name} already exists';
+			throw 'animation state $name already exists';
 
 		var ordinals:Null<Array<Int>> = null;
 		if (layers != null) {
@@ -207,7 +207,7 @@ class AnimationSM extends h2d.Object {
 	public function play(name:String):Void {
 		var state = animationStates.get(name);
 		if (state == null)
-			throw 'unknown animation ${name}';
+			throw 'unknown animation $name';
 
 		current = state;
 		playCount++;
@@ -242,9 +242,9 @@ class AnimationSM extends h2d.Object {
 		for (key => value in values) {
 			final allowed = parser.definedStates.get(key);
 			if (allowed == null)
-				throw 'setState: no state "$key" (states: ${[for (k in parser.definedStates.keys()) k].join(", ")})';
+				throw 'setState: no state "$key" (states: ' + ([for (k in parser.definedStates.keys()) k].join(", ")) + ')';
 			if (!allowed.contains(value))
-				throw 'setState: "$value" is not a value of state "$key" (${allowed.join(", ")})';
+				throw 'setState: "$value" is not a value of state "$key" (' + allowed.join(", ") + ')';
 			if (next.get(key) != value) changed = true;
 			next.set(key, value);
 		}
@@ -548,7 +548,7 @@ class AnimationSM extends h2d.Object {
 	function layerIndex(name:String):Int {
 		final i = layerNames.indexOf(name);
 		if (i < 0)
-			throw 'no layer "$name" (layers: ${layerNames.join(", ")})';
+			throw 'no layer "$name" (layers: ' + layerNames.join(", ") + ')';
 		return i;
 	}
 
@@ -785,7 +785,7 @@ class AnimationSM extends h2d.Object {
 		}
 
 		if (iterations >= maxIterations)
-			throw 'animation loop detected in ${current.name}';
+			throw 'animation loop detected in ' + current.name;
 	}
 
 	override function sync(ctx:RenderContext) {
@@ -914,8 +914,8 @@ enum AnimationFrameState {
 
 function animationFrameStateToString(frame:AnimationFrameState):String {
 	return switch frame {
-		case Frame(frame): 'Frame("${frame.tile.getTexture().name}", ${frame.width} x ${frame.height})';
-		case Event(event): 'Event(${event})';
-		case SetFilter(filter, tintColor): 'SetFilter(filter=${filter != null}, tint=${tintColor})';
+		case Frame(frame): 'Frame("' + frame.tile.getTexture().name + '", ' + frame.width + ' x ' + frame.height + ')';
+		case Event(event): 'Event($event)';
+		case SetFilter(filter, tintColor): 'SetFilter(filter=' + (filter != null) + ', tint=$tintColor)';
 	}
 }

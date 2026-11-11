@@ -18,7 +18,7 @@ class DataReadsTest extends utest.Test {
 	static function sorted(reads:Map<String, Int>):String {
 		final keys = [for (k in reads.keys()) k];
 		keys.sort(Reflect.compare);
-		return [for (k in keys) '$k ${reads.get(k)}'].join(", ");
+		return [for (k in keys) ('$k ' + reads.get(k))].join(", ");
 	}
 
 	public function testAValueReadIsCountedByItsPath():Void {

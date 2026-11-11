@@ -129,9 +129,9 @@ class WebSocketTransport implements IDevBridgeTransport {
 			socket = null;
 			if (e.code == CLOSE_UNAUTHORIZED) {
 				backoffMs = MAX_BACKOFF_MS;
-				logFailure('relay $url refused this game: ${e.reason} (check HX_DEV_TOKEN / ?token=)');
+				logFailure('relay $url refused this game: ' + e.reason + ' (check HX_DEV_TOKEN / ?token=)');
 			} else if (!stopped) {
-				logFailure('relay $url closed (code ${e.code}), retrying');
+				logFailure('relay $url closed (code ' + e.code + '), retrying');
 			}
 			scheduleReconnect();
 		};
@@ -158,9 +158,9 @@ class WebSocketTransport implements IDevBridgeTransport {
 				send(result);
 			case "welcome":
 				// The relay accepted the hello; calls follow.
-				trace('[DevBridge] Connected to relay $url as ${frame.instance}');
+				trace('[DevBridge] Connected to relay $url as ' + frame.instance);
 			default:
-				trace('[DevBridge] Relay sent an unknown frame kind "${frame.kind}"; ignored');
+				trace('[DevBridge] Relay sent an unknown frame kind "' + frame.kind + '"; ignored');
 		}
 	}
 

@@ -63,7 +63,7 @@ class AnimatedPathTest extends BuilderTestBase {
 		// position 1.0, where the multiplier is ~1.0 -> speed ~100 px/s.
 		state = ap.update(0.001);
 		Assert.isTrue(state.speed > 75.0,
-			'speed at the start of the reversed cycle must reflect the curve at path position ~1.0 (multiplier ~1.0, speed ~100); got ${state.speed} — evaluating at forward progress ~0 gives ~50');
+			'speed at the start of the reversed cycle must reflect the curve at path position ~1.0 (multiplier ~1.0, speed ~100); got ' + state.speed + ' — evaluating at forward progress ~0 gives ~50');
 	}
 
 	@Test
@@ -93,15 +93,15 @@ class AnimatedPathTest extends BuilderTestBase {
 			ap.update(step);
 		}
 
-		Assert.equals(2, positions.length, 'event at 0.75 must fire once per cycle over 2 cycles; fired ${positions.length} times');
+		Assert.equals(2, positions.length, 'event at 0.75 must fire once per cycle over 2 cycles; fired ' + positions.length + ' times');
 		if (positions.length == 2) {
 			// Forward cycle: fires at position 75 around t=0.75.
-			Assert.floatEquals(75.0, positions[0], 2.0, 'forward-cycle event must fire at position 75, got ${positions[0]}');
+			Assert.floatEquals(75.0, positions[0], 2.0, 'forward-cycle event must fire at position 75, got ' + positions[0]);
 			// Reversed cycle: the object starts at 100 and moves back — it passes
 			// position 75 at ~25% of the cycle (t ≈ 1.25), not at 75% (t ≈ 1.75).
-			Assert.floatEquals(75.0, positions[1], 2.0, 'reversed-cycle event must fire AT path position 75, got ${positions[1]}');
+			Assert.floatEquals(75.0, positions[1], 2.0, 'reversed-cycle event must fire AT path position 75, got ' + positions[1]);
 			Assert.isTrue(times[1] < 1.5,
-				'reversed-cycle event at path position 75 must fire when the object passes it (~t=1.25), got t=${times[1]}');
+				'reversed-cycle event at path position 75 must fire when the object passes it (~t=1.25), got t=' + times[1]);
 		}
 	}
 
@@ -130,11 +130,11 @@ class AnimatedPathTest extends BuilderTestBase {
 			ap.update(step);
 		}
 
-		Assert.equals(1, startCycles.length, 'expected exactly one cycleStart in 0.7s of a 0.5s loop; got ${startCycles.length}');
+		Assert.equals(1, startCycles.length, 'expected exactly one cycleStart in 0.7s of a 0.5s loop; got ' + startCycles.length);
 		if (startCycles.length == 1) {
-			Assert.equals(1, startCycles[0], 'cycleStart must carry the NEW cycle index (1), got ${startCycles[0]}');
+			Assert.equals(1, startCycles[0], 'cycleStart must carry the NEW cycle index (1), got ' + startCycles[0]);
 			Assert.isTrue(startPositions[0] < 10.0,
-				'cycleStart of a loop must carry the new cycle\'s start position (~0), got ${startPositions[0]} — the previous cycle\'s end state is 100');
+				'cycleStart of a loop must carry the new cycle\'s start position (~0), got ' + startPositions[0] + ' — the previous cycle\'s end state is 100');
 		}
 	}
 
@@ -234,7 +234,7 @@ class AnimatedPathTest extends BuilderTestBase {
 		var line = new SinglePath(new FPoint(0, 0), new FPoint(0, 100), Line);
 		var path = new Path([zero, line]);
 		var start = path.getPoint(0.0);
-		Assert.isFalse(Math.isNaN(start.x) || Math.isNaN(start.y), 'start of the path must not be NaN, got (${start.x}, ${start.y})');
+		Assert.isFalse(Math.isNaN(start.x) || Math.isNaN(start.y), 'start of the path must not be NaN, got (' + start.x + ', ' + start.y + ')');
 		Assert.floatEquals(0.0, start.y);
 		Assert.floatEquals(Math.PI / 2, path.getTangentAngle(0.0), null, "tangent at the start follows the first real segment (down)");
 		Assert.floatEquals(50.0, path.getPoint(0.5).y);

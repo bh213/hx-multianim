@@ -339,9 +339,9 @@ class ScreenManager {
 
 		loader.loadSheet2Impl = sheetName -> {
 			#if hl
-			return hxd.Res.load('${sheetName}.atlas2').toAtlas2();
+			return hxd.Res.load('$sheetName.atlas2').toAtlas2();
 			#elseif js
-			var resourceName = '${sheetName}.atlas2';
+			var resourceName = '$sheetName.atlas2';
 			if (hxd.Res.loader.exists(resourceName)) {
 				return hxd.Res.load(resourceName).toAtlas2();
 			} else {
@@ -356,9 +356,9 @@ class ScreenManager {
 
 		loader.loadSheetImpl = sheetName -> {
 			#if hl
-			return hxd.Res.loader.loadCache('${sheetName}.atlas', hxd.res.Atlas);
+			return hxd.Res.loader.loadCache('$sheetName.atlas', hxd.res.Atlas);
 			#elseif js
-			var resourceName = '${sheetName}.atlas';
+			var resourceName = '$sheetName.atlas';
 			if (hxd.Res.loader.exists(resourceName)) {
 				return hxd.Res.loader.loadCache(resourceName, hxd.res.Atlas);
 			} else {
@@ -409,13 +409,13 @@ class ScreenManager {
 			#if hl
 			var r = hxd.Res.load(s);
 			if (r == null)
-				throw 'failed to load multianim ${s}';
+				throw 'failed to load multianim $s';
 			byteData = ByteData.ofBytes(r.entry.getBytes());
 			#elseif js
 			if (hxd.Res.loader.exists(s)) {
 				var r = hxd.Res.load(s);
 				if (r == null)
-					throw 'failed to load multianim ${s}';
+					throw 'failed to load multianim $s';
 				byteData = ByteData.ofBytes(r.entry.getBytes());
 			} else {
 				var bytes = FileLoader.load(s);
@@ -558,12 +558,12 @@ class ScreenManager {
 
 		var built = loader.loadMultiAnim(resource.entry.path);
 		if (built == null)
-			throw 'failed to load multianim ${resource.name}';
+			throw 'failed to load multianim ' + resource.name;
 		// Auto-inject TweenManager for transition support in incremental builds
 		built.tweenManager = tweens;
 		takeFileBlocks(built);
 		#if MULTIANIM_TRACE
-		trace('Built ${resource.entry.name} with reload $enableReload');
+		trace('Built ' + resource.entry.name + ' with reload $enableReload');
 		#end
 		builders.set(resource, built);
 		#if MULTIANIM_DEV
@@ -690,7 +690,7 @@ class ScreenManager {
 				#end
 				failedScreens[name] = e.toString();
 				#if MULTIANIM_DEV
-				trace('Failed to reload screen ${name}: ${e}');
+				trace('Failed to reload screen $name: $e');
 				#end
 				return {
 					success: false,
@@ -704,7 +704,7 @@ class ScreenManager {
 		}
 		updateScreenMode(this.mode);
 		#if MULTIANIM_DEV
-		trace('reloaded ${reloadedScreenNames.join(",")}');
+		trace('reloaded ' + reloadedScreenNames.join(","));
 		#end
 		return {
 			success: true,
@@ -717,7 +717,7 @@ class ScreenManager {
 
 	public function addScreen(name:String, screen:UIScreen) {
 		if (configuredScreens.exists(name))
-			throw 'screen ${name} already exists';
+			throw 'screen $name already exists';
 		configuredScreens[name] = screen;
 		try {
 			#if MULTIANIM_DEV
@@ -737,7 +737,7 @@ class ScreenManager {
 			#end
 			failedScreens[name] = e.toString();
 			#if MULTIANIM_DEV
-			trace('Failed to load screen ${name}: ${e}');
+			trace('Failed to load screen $name: $e');
 			#end
 		}
 		return screen;
@@ -746,7 +746,7 @@ class ScreenManager {
 	public function getScreen(screenName:String):UIScreen {
 		final screen = configuredScreens[screenName];
 		if (screen == null)
-			throw 'screen ${screenName} does not exist';
+			throw 'screen $screenName does not exist';
 		return screen;
 	}
 
@@ -815,7 +815,7 @@ class ScreenManager {
 	public function reenter(screen:UIScreen, ?data:Dynamic):Void {
 		finalizeTransition();
 		if (!isShowing(screen))
-			throw 'reenter: screen "${resolveScreenName(screen)}" is not showing';
+			throw 'reenter: screen "' + resolveScreenName(screen) + '" is not showing';
 		screen.getController().lifecycleEvent(LifecycleControllerFinished);
 		screen.onScreenEvent(UILeaving, null);
 		screen.onScreenEvent(UIOnControllerEvent(Leaving), null);
@@ -830,7 +830,7 @@ class ScreenManager {
 		if (error != null) {
 			for (name => s in configuredScreens) {
 				if (s == screen) {
-					throw 'cannot activate failed screen "${name}": ${error}';
+					throw 'cannot activate failed screen "$name": $error';
 				}
 			}
 		}
@@ -1871,7 +1871,7 @@ class ScreenManager {
 				try {
 					newBuilder.refreshTilemap(map);
 				} catch (e:Dynamic) {
-					replacedErrors.push(makeHotReloadFailError(path, 'tilemap:${map.mapName}', e));
+					replacedErrors.push(makeHotReloadFailError(path, 'tilemap:' + map.mapName, e));
 				}
 			});
 		}
@@ -1882,7 +1882,7 @@ class ScreenManager {
 
 		if (screensForFile != null && screensForFile.length > 0) {
 			// Per-file nuclear: clear + reload only affected screens
-			trace('[HotReload] Reloading ${screensForFile.length} screen(s) for ${path}');
+			trace('[HotReload] Reloading ' + screensForFile.length + ' screen(s) for $path');
 
 			// Unregister all handles for this path to prevent stale sentinel firing during clear
 			for (handle in handles)
@@ -1901,8 +1901,8 @@ class ScreenManager {
 							failedScreens.remove(name);
 						} catch (e:Dynamic) {
 							failedScreens[name] = Std.string(e);
-							trace('[HotReload] Failed to reload screen ${name}: ${e}');
-							screenErrors.push(makeHotReloadFailError(path, 'screen:${name}', e));
+							trace('[HotReload] Failed to reload screen $name: $e');
+							screenErrors.push(makeHotReloadFailError(path, 'screen:$name', e));
 						}
 						currentlyLoadingScreen = null;
 						break;
@@ -1943,7 +1943,7 @@ class ScreenManager {
 
 		if (handles.length == 0) {
 			// No screens and no handles: transient builds only, builder already replaced
-			trace('[HotReload] Builder replaced for ${path} (no screens or handles)');
+			trace('[HotReload] Builder replaced for $path (no screens or handles)');
 			final elapsed = (haxe.Timer.stamp() - startTime) * 1000;
 			final report:bh.multianim.dev.HotReload.ReloadReport = {
 				success: replacedErrors.length == 0,
@@ -2095,7 +2095,7 @@ class ScreenManager {
 					try {
 						reloadCb(stableResult, report);
 					} catch (cbError) {
-						trace('[HotReload] onReload callback threw: ${cbError}');
+						trace('[HotReload] onReload callback threw: $cbError');
 					}
 				});
 			}
@@ -2192,7 +2192,7 @@ class ScreenManager {
 			};
 		} else {
 			final ex:Null<haxe.Exception> = Std.downcast(e, haxe.Exception);
-			final msg = ex != null ? '${ex.message}\n${ex.stack}' : Std.string(e);
+			final msg = ex != null ? ex.message + '\n' + ex.stack : Std.string(e);
 			return {
 				message: msg,
 				file: path,
@@ -2242,20 +2242,20 @@ class ScreenManager {
 		e = thrownValue(e);
 		if (Std.isOfType(e, ParseError)) {
 			final err = cast(e, ParseError);
-			msg.add('file: ${err.pos.psource}\n');
-			msg.add('line: ${err.pos.line}\n');
-			msg.add('col: ${err.pos.col}\n');
-			msg.add('error: ${err.toString()}\n');
+			msg.add('file: ' + err.pos.psource + '\n');
+			msg.add('line: ' + err.pos.line + '\n');
+			msg.add('col: ' + err.pos.col + '\n');
+			msg.add('error: ' + err.toString() + '\n');
 		} else if (Std.isOfType(e, BuilderError)) {
 			final err = cast(e, BuilderError);
 			final pos = err.parsedPos();
 			if (pos != null) {
-				msg.add('file: ${pos.file}\n');
-				msg.add('line: ${pos.line}\n');
-				msg.add('col: ${pos.col}\n');
+				msg.add('file: ' + pos.file + '\n');
+				msg.add('line: ' + pos.line + '\n');
+				msg.add('col: ' + pos.col + '\n');
 			}
-			if (err.code != null) msg.add('code: ${err.code}\n');
-			msg.add('error: ${err.toString()}\n');
+			if (err.code != null) msg.add('code: ' + err.code + '\n');
+			msg.add('error: ' + err.toString() + '\n');
 		} else {
 			msg.add('error: $e\n');
 		}

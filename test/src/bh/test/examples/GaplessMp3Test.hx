@@ -56,7 +56,7 @@ class GaplessMp3Test extends utest.Test {
 				at = i;
 			}
 		}
-		Assert.isTrue(worst < 0.05, 'every sample as encoded (the worst ${Math.round(worst * 1000) / 1000} at $at)');
+		Assert.isTrue(worst < 0.05, 'every sample as encoded (the worst ' + (Math.round(worst * 1000) / 1000) + ' at $at)');
 		// the seam of a loop: the last samples and then the first, as the sound manager asks for them
 		final end = decoded(data, LENGTH - 200, 200);
 		final start = decoded(data, 0, 200);
@@ -65,7 +65,7 @@ class GaplessMp3Test extends utest.Test {
 			seam = Math.max(seam, Math.abs(end.getFloat(i * 4) - ideal(LENGTH - 200 + i)));
 			seam = Math.max(seam, Math.abs(start.getFloat(i * 4) - ideal(LENGTH + i)));
 		}
-		Assert.isTrue(seam < 0.05, 'the loop joins with no gap (the worst ${Math.round(seam * 1000) / 1000})');
+		Assert.isTrue(seam < 0.05, 'the loop joins with no gap (the worst ' + (Math.round(seam * 1000) / 1000) + ')');
 		// past its end: silence, never a frame the file has not
 		final past = decoded(data, LENGTH - 10, 2000);
 		Assert.floatEquals(0, past.getFloat(1500 * 4), "silence after the end");

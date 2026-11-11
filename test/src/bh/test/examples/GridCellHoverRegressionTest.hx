@@ -512,8 +512,8 @@ class GridCellHoverRegressionTest extends BuilderTestBase {
 			final vis = grid.getCellVisual(coord.col, coord.row);
 			final afterArea = totalGraphicsArea(vis.object);
 			Assert.floatEquals(initialAreas[i], afterArea,
-				'After hex sweep, cell (${coord.col},${coord.row}) total Graphics bounds area ' +
-				'changed: initial=${initialAreas[i]}, after=${afterArea}. This is the playground ' +
+				'After hex sweep, cell (' + coord.col + ',' + coord.row + ') total Graphics bounds area ' +
+				'changed: initial=' + initialAreas[i] + ', after=$afterArea. This is the playground ' +
 				'regression — h2d.Graphics draw commands cleared and not re-fired.');
 		}
 	}
@@ -548,7 +548,7 @@ class GridCellHoverRegressionTest extends BuilderTestBase {
 				final vis = grid.getCellVisual(col, row);
 				final after = totalGraphicsArea(vis.object);
 				Assert.floatEquals(initial[idx], after,
-					'After rect sweep, cell ($col,$row) Graphics area: initial=${initial[idx]} after=${after}');
+					'After rect sweep, cell ($col,$row) Graphics area: initial=' + initial[idx] + ' after=$after');
 				idx++;
 			}
 	}
@@ -586,9 +586,9 @@ class GridCellHoverRegressionTest extends BuilderTestBase {
 			final coord = cellCoords[i];
 			final vis = grid.getCellVisual(coord.col, coord.row);
 			Assert.isNull(vis.object.filter,
-				'After hex sweep, hexCell (${coord.col},${coord.row}) must have no filter');
+				'After hex sweep, hexCell (' + coord.col + ',' + coord.row + ') must have no filter');
 			Assert.equals(initialCounts[i], countVisibleDescendants(vis.object),
-				'After hex sweep, hexCell (${coord.col},${coord.row}) visible descendants ' +
+				'After hex sweep, hexCell (' + coord.col + ',' + coord.row + ') visible descendants ' +
 				'must match initial (playground regression)');
 		}
 	}

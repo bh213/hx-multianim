@@ -451,7 +451,7 @@ private class AnimLexerHC {
 
 		// Unknown character — error loudly; silently skipping made typos
 		// (stray backticks, smart quotes) vanish without a diagnostic.
-		throw '$sourceName:$startLine:$startCol: Unknown character "${String.fromCharCode(c)}" (code $c)';
+		throw '$sourceName:$startLine:$startCol: Unknown character "' + String.fromCharCode(c) + '" (code $c)';
 	}
 
 	static inline function isIdentStart(c:Int):Bool {
@@ -631,22 +631,22 @@ class AnimMetadata {
 		return switch value {
 			case MVInt(i): i;
 			case MVFloat(f): Std.int(f);
-			case MVString(s): throw 'expected int for metadata key ${key} but was string $s';
-			case MVColor(c): throw 'expected int for metadata key ${key} but was color $c';
-			case MVList(vs): throw 'expected int for metadata key ${key} but was list $vs';
+			case MVString(s): throw 'expected int for metadata key $key but was string $s';
+			case MVColor(c): throw 'expected int for metadata key $key but was color $c';
+			case MVList(vs): throw 'expected int for metadata key $key but was list $vs';
 		};
 	}
 
 	public function getIntOrException(key:String, ?stateSelector:AnimationStateSelector):Int {
 		final value = findBestMatch(key, stateSelector);
 		if (value == null)
-			throw 'metadata key ${key} not found';
+			throw 'metadata key $key not found';
 		return switch value {
 			case MVInt(i): i;
 			case MVFloat(f): Std.int(f);
-			case MVString(s): throw 'expected int for metadata key ${key} but was string $s';
-			case MVColor(c): throw 'expected int for metadata key ${key} but was color $c';
-			case MVList(vs): throw 'expected int for metadata key ${key} but was list $vs';
+			case MVString(s): throw 'expected int for metadata key $key but was string $s';
+			case MVColor(c): throw 'expected int for metadata key $key but was color $c';
+			case MVList(vs): throw 'expected int for metadata key $key but was list $vs';
 		};
 	}
 
@@ -657,22 +657,22 @@ class AnimMetadata {
 		return switch value {
 			case MVInt(i): i;
 			case MVFloat(f): f;
-			case MVString(s): throw 'expected float for metadata key ${key} but was string $s';
-			case MVColor(c): throw 'expected float for metadata key ${key} but was color $c';
-			case MVList(vs): throw 'expected float for metadata key ${key} but was list $vs';
+			case MVString(s): throw 'expected float for metadata key $key but was string $s';
+			case MVColor(c): throw 'expected float for metadata key $key but was color $c';
+			case MVList(vs): throw 'expected float for metadata key $key but was list $vs';
 		};
 	}
 
 	public function getFloatOrException(key:String, ?stateSelector:AnimationStateSelector):Float { // (#6)
 		final value = findBestMatch(key, stateSelector);
 		if (value == null)
-			throw 'metadata key ${key} not found';
+			throw 'metadata key $key not found';
 		return switch value {
 			case MVInt(i): i;
 			case MVFloat(f): f;
-			case MVString(s): throw 'expected float for metadata key ${key} but was string $s';
-			case MVColor(c): throw 'expected float for metadata key ${key} but was color $c';
-			case MVList(vs): throw 'expected float for metadata key ${key} but was list $vs';
+			case MVString(s): throw 'expected float for metadata key $key but was string $s';
+			case MVColor(c): throw 'expected float for metadata key $key but was color $c';
+			case MVList(vs): throw 'expected float for metadata key $key but was list $vs';
 		};
 	}
 
@@ -684,7 +684,7 @@ class AnimMetadata {
 			case MVString(s): s;
 			case MVInt(i): '$i';
 			case MVFloat(f): '$f';
-			case MVColor(c): '#${StringTools.hex(c, 6)}';
+			case MVColor(c): '#' + StringTools.hex(c, 6);
 			case MVList(vs): vs.join(", ");
 		};
 	}
@@ -692,12 +692,12 @@ class AnimMetadata {
 	public function getStringOrException(key:String, ?stateSelector:AnimationStateSelector):String {
 		final value = findBestMatch(key, stateSelector);
 		if (value == null)
-			throw 'metadata key ${key} not found';
+			throw 'metadata key $key not found';
 		return switch value {
 			case MVString(s): s;
 			case MVInt(i): '$i';
 			case MVFloat(f): '$f';
-			case MVColor(c): '#${StringTools.hex(c, 6)}';
+			case MVColor(c): '#' + StringTools.hex(c, 6);
 			case MVList(vs): vs.join(", ");
 		};
 	}
@@ -709,22 +709,22 @@ class AnimMetadata {
 		return switch value {
 			case MVColor(c): c;
 			case MVInt(i): i;
-			case MVString(s): throw 'expected color for metadata key ${key} but was string $s';
-			case MVFloat(f): throw 'expected color for metadata key ${key} but was float $f';
-			case MVList(vs): throw 'expected color for metadata key ${key} but was list $vs';
+			case MVString(s): throw 'expected color for metadata key $key but was string $s';
+			case MVFloat(f): throw 'expected color for metadata key $key but was float $f';
+			case MVList(vs): throw 'expected color for metadata key $key but was list $vs';
 		};
 	}
 
 	public function getColorOrException(key:String, ?stateSelector:AnimationStateSelector):Int { // (#11)
 		final value = findBestMatch(key, stateSelector);
 		if (value == null)
-			throw 'metadata key ${key} not found';
+			throw 'metadata key $key not found';
 		return switch value {
 			case MVColor(c): c;
 			case MVInt(i): i;
-			case MVString(s): throw 'expected color for metadata key ${key} but was string $s';
-			case MVFloat(f): throw 'expected color for metadata key ${key} but was float $f';
-			case MVList(vs): throw 'expected color for metadata key ${key} but was list $vs';
+			case MVString(s): throw 'expected color for metadata key $key but was string $s';
+			case MVFloat(f): throw 'expected color for metadata key $key but was float $f';
+			case MVList(vs): throw 'expected color for metadata key $key but was list $vs';
 		};
 	}
 
@@ -739,7 +739,7 @@ class AnimMetadata {
 	public function getListOrException(key:String, ?stateSelector:AnimationStateSelector):Array<String> {
 		final value = findBestMatch(key, stateSelector);
 		if (value == null)
-			throw 'metadata key ${key} not found';
+			throw 'metadata key $key not found';
 		return listOf(key, value);
 	}
 
@@ -747,9 +747,9 @@ class AnimMetadata {
 		return switch value {
 			case MVList(vs): vs.copy();
 			case MVString(s): [s];
-			case MVInt(i): throw 'expected list for metadata key ${key} but was int $i';
-			case MVFloat(f): throw 'expected list for metadata key ${key} but was float $f';
-			case MVColor(c): throw 'expected list for metadata key ${key} but was color $c';
+			case MVInt(i): throw 'expected list for metadata key $key but was int $i';
+			case MVFloat(f): throw 'expected list for metadata key $key but was float $f';
+			case MVColor(c): throw 'expected list for metadata key $key but was color $c';
 		};
 	}
 }
@@ -865,7 +865,7 @@ class AnimUnexpected<Token> extends ParseUnexpected<Token> {
 	}
 
 	override public function toString() {
-		return '${message}: unexpected $token at ${this.pos.format()}';
+		return '$message: unexpected $token at ' + this.pos.format();
 	}
 }
 
@@ -875,7 +875,7 @@ class InvalidSyntax extends ParseError {
 
 	public function new(error, pos:ParsePosition) {
 		super(pos);
-		this.error = 'Error ${error}, ${pos.format()}';
+		this.error = 'Error $error, ' + pos.format();
 	}
 
 	public override function toString() {
@@ -964,7 +964,7 @@ class AnimFileParser {
 
 	function expect(type:APToken):Void {
 		if (!Type.enumEq(peek(), type))
-			syntaxError('expected $type, got ${peek()}');
+			syntaxError('expected $type, got ' + peek());
 		advance();
 	}
 
@@ -1141,7 +1141,7 @@ class AnimFileParser {
 							final constName = expectIdentifier();
 							expect(APEquals);
 							final constVal = parseConstantExpr();
-							if (constants.exists(constName)) syntaxError('@final "${constName}" already defined');
+							if (constants.exists(constName)) syntaxError('@final "$constName" already defined');
 							constants.set(constName, constVal);
 						case APIdentifier(_, APElse | APDefault, _):
 							unexpectedError("@else and @default belong to a condition, not the top level");
@@ -1211,11 +1211,11 @@ class AnimFileParser {
 		// Post-parse validation
 		for (anim => _ in holds)
 			if (!animationNames.contains(anim))
-				syntaxError('sounds: hold $anim: no animation $anim (${animationNames.join(", ")})');
+				syntaxError('sounds: hold $anim: no animation $anim (' + animationNames.join(", ") + ')');
 		final allStates = createAllStates(definedStates);
 		#if MULTIANIM_DEV
 		if (allStates.length > 50) {
-			trace('Warning: large number of states in AnimParser: ${allStates.length}');
+			trace('Warning: large number of states in AnimParser: ' + allStates.length);
 		}
 		#end
 
@@ -1238,7 +1238,7 @@ class AnimFileParser {
 
 				var playlist = try findPlaylist(state, anim, definedStates) catch (e:String) syntaxError(e);
 				if (playlist == null)
-					syntaxError(anim.timeline != null ? 'the timeline of ${anim.name}, layer ${anim.timeline}, has no block for ${state}' : 'no playlist for ${state}, id ${anim.name}');
+					syntaxError(anim.timeline != null ? 'the timeline of ' + anim.name + ', layer ' + anim.timeline + ', has no block for $state' : 'no playlist for $state, id ' + anim.name);
 				else playlist.visited = true;
 
 				final animLayers = anim.layers;
@@ -1247,7 +1247,7 @@ class AnimFileParser {
 						if (layerName == anim.timeline) continue;
 						final blocks = animLayers.filter(l -> l.name == layerName);
 						if (blocks.length == 0) continue;
-						final block = try findBestStateMatch(blocks, state, 'layer $layerName of ${anim.name}') catch (e:String) syntaxError(e);
+						final block = try findBestStateMatch(blocks, state, 'layer $layerName of ' + anim.name) catch (e:String) syntaxError(e);
 						if (block != null) block.visited = true;
 					}
 			}
@@ -1257,37 +1257,37 @@ class AnimFileParser {
 		// and `null == false` is false, so `== false` checks can never fire. Compare
 		// against `!= true` so fully-shadowed entries are rejected as intended.
 		for (anim in animations) {
-			if (anim.visited != true) syntaxError('animation ${anim.name} not reachable');
+			if (anim.visited != true) syntaxError('animation ' + anim.name + ' not reachable');
 			for (ek => ev in anim.extraPoint) {
 				for (ePoint in ev) {
 					if (ePoint.visited != true)
-						syntaxError('Extra point ${ek} in anim ${anim.name} not reachable ${ePoint.states}');
+						syntaxError('Extra point $ek in anim ' + anim.name + ' not reachable ' + ePoint.states);
 				}
 			}
 			for (pl in anim.playlist) {
 				if (pl.visited != true)
-					syntaxError('Playlist in anim ${anim.name} not reachable ${pl.states}');
+					syntaxError('Playlist in anim ' + anim.name + ' not reachable ' + pl.states);
 			}
 			final animLayers = anim.layers;
 			if (animLayers != null)
 				for (l in animLayers)
 					if (l.name != anim.timeline && l.visited != true)
-						syntaxError('Layer ${l.name} in anim ${anim.name} not reachable ${l.states}');
+						syntaxError('Layer ' + l.name + ' in anim ' + anim.name + ' not reachable ' + l.states);
 		}
 
 		// Comparison/range conditionals evaluate operands numerically at match
 		// time and silently fail on NaN — an arm comparing a state whose
 		// declared values are all non-numeric can never match. Reject at parse.
 		for (anim in animations) {
-			validateComparisonConditionals(anim.states, 'animation ${anim.name}');
+			validateComparisonConditionals(anim.states, 'animation ' + anim.name);
 			for (pl in anim.playlist)
-				validateComparisonConditionals(pl.states, 'playlist in animation ${anim.name}');
+				validateComparisonConditionals(pl.states, 'playlist in animation ' + anim.name);
 			for (ek => ev in anim.extraPoint)
 				for (ePoint in ev)
-					validateComparisonConditionals(ePoint.states, 'extra point $ek in animation ${anim.name}');
+					validateComparisonConditionals(ePoint.states, 'extra point $ek in animation ' + anim.name);
 			if (anim.filters != null)
 				for (f in anim.filters)
-					validateComparisonConditionals(f.states, 'filter in animation ${anim.name}');
+					validateComparisonConditionals(f.states, 'filter in animation ' + anim.name);
 		}
 		this.metadata = metadataMap.count() > 0 ? new AnimMetadata(metadataMap) : null;
 	}
@@ -1414,7 +1414,7 @@ class AnimFileParser {
 				advance();
 				return s;
 			default:
-				return syntaxError('expected identifier, got ${peek()}');
+				return syntaxError('expected identifier, got ' + peek());
 		}
 	}
 
@@ -1442,7 +1442,7 @@ class AnimFileParser {
 				advance();
 				final refName = s.substring(1);
 				final cv = constants.get(refName);
-				if (cv == null) syntaxError('constant "${refName}" not defined. Defined constants: ${[for (k in constants.keys()) k]}');
+				if (cv == null) syntaxError('constant "$refName" not defined. Defined constants: ' + ([for (k in constants.keys()) k]));
 				return isNeg ? -(cv : Float) : (cv : Float);
 			default:
 				return unexpectedError("expected number or $constant");
@@ -1501,7 +1501,7 @@ class AnimFileParser {
 				advance();
 				expect(APOpen);
 				var list = parseList();
-				if (states.exists(stateName)) syntaxError('State ${stateName} already defined');
+				if (states.exists(stateName)) syntaxError('State $stateName already defined');
 				states.set(stateName, list);
 				definedStatesIndexes.push(stateName);
 				while (match(APComma)) {
@@ -1510,7 +1510,7 @@ class AnimFileParser {
 							advance();
 							expect(APOpen);
 							var l = parseList();
-							if (states.exists(sn)) syntaxError('State ${sn} already defined');
+							if (states.exists(sn)) syntaxError('State $sn already defined');
 							states.set(sn, l);
 							definedStatesIndexes.push(sn);
 						default:
@@ -1556,7 +1556,7 @@ class AnimFileParser {
 		for (v in values)
 			if (!Math.isNaN(Std.parseFloat(v)))
 				return;
-		syntaxError('$context: state "$stateName" has no numeric declared values (${values.join(", ")}) — a comparison/range condition on it can never match');
+		syntaxError('$context: state "$stateName" has no numeric declared values (' + values.join(", ") + ') — a comparison/range condition on it can never match');
 	}
 
 	// (#1) parseStates: handles @(cond), @else, @else(cond), @default
@@ -1698,7 +1698,7 @@ class AnimFileParser {
 		var list:Array<String> = [];
 		while (true) {
 			final ident = expectIdentifier();
-			if (list.contains(ident)) syntaxError('extra point ${ident} already defined');
+			if (list.contains(ident)) syntaxError('extra point $ident already defined');
 			list.push(ident);
 			if (match(APComma)) continue;
 			expect(APBracketClosed);
@@ -1746,7 +1746,7 @@ class AnimFileParser {
 			final existing = metadataMap.get(key);
 			final entry:MetadataEntry = {
 				states: states,
-				value: spanned('metadata.$key#${existing != null ? existing.length : 0}', parseMetadataEntryValue)
+				value: spanned('metadata.$key#' + (existing != null ? existing.length : 0), parseMetadataEntryValue)
 			};
 			if (existing != null) existing.push(entry);
 			else metadataMap[key] = [entry];
@@ -1814,7 +1814,7 @@ class AnimFileParser {
 					expect(APColon);
 					final bodyName = spanned('$path.name', expectIdentifier);
 					if (ret.name != null && ret.name != bodyName)
-						syntaxError('animation name "${ret.name}" (in header) conflicts with name: "${bodyName}" (in body)');
+						syntaxError('animation name "' + ret.name + '" (in header) conflicts with name: "$bodyName" (in body)');
 					ret.name = bodyName;
 					if (!animationNames.contains(ret.name)) animationNames.push(ret.name);
 				case APIdentifier(_, APLoop, AITString):
@@ -1838,7 +1838,7 @@ class AnimFileParser {
 					markSpan('$path.extrapoints', blockToken);
 				case APIdentifier(_, APPlaylist, AITString):
 					final blockToken = tpos;
-					final playlistPath = '$path.playlist#${ret.playlist.length}';
+					final playlistPath = '$path.playlist#' + ret.playlist.length;
 					advance();
 					final playlistStates = parseStates(); // (#1) @else/@default in playlist
 					for (key => value in playlistStates)
@@ -1855,7 +1855,7 @@ class AnimFileParser {
 					if (ret.timeline != null) syntaxError("timeline already set");
 					final timelineName = spanned('$path.timeline', expectIdentifier);
 					if (!layerNames.contains(timelineName))
-						syntaxError('timeline $timelineName is not one of the layers (${layerNames.join(", ")})');
+						syntaxError('timeline $timelineName is not one of the layers (' + layerNames.join(", ") + ')');
 					ret.timeline = timelineName;
 				case APIdentifier(_, APLayer, AITString):
 					final blockToken = tpos;
@@ -1864,7 +1864,7 @@ class AnimFileParser {
 					if (layerNames.length == 0)
 						syntaxError('layer $layerName: the file declares no layers (layers: shadow, body, …)');
 					if (!layerNames.contains(layerName))
-						syntaxError('layer $layerName is not one of the layers (${layerNames.join(", ")})');
+						syntaxError('layer $layerName is not one of the layers (' + layerNames.join(", ") + ')');
 					final layerStates = parseStates();
 					for (key => value in layerStates)
 						parserValidateConditionalState(statesDefinitions, key, value);
@@ -1909,9 +1909,9 @@ class AnimFileParser {
 		if (ret.layers.length > 0)
 			resolveLayers(ret.name, ret);
 		else if (ret.timeline != null)
-			syntaxError('animation ${ret.name}: timeline: needs layer blocks');
+			syntaxError('animation ' + ret.name + ': timeline: needs layer blocks');
 		else if (layerNames.length > 0)
-			syntaxError('animation ${ret.name}: the file has layers, so its frames are written in layer blocks, not a playlist');
+			syntaxError('animation ' + ret.name + ': the file has layers, so its frames are written in layer blocks, not a playlist');
 		if (ret.playlist.length == 0) syntaxError("animation requires playlist (or, in a file with layers, layer blocks)");
 		return ret;
 	}
@@ -1939,9 +1939,9 @@ class AnimFileParser {
 			for (entry in l.anims)
 				switch entry {
 					case SheetFrameAnim(_, d, _) | SheetFrameAnimWithIndex(_, _, _, d, _) | FileSingleFrame(_, d, _):
-						if (d != null) syntaxError('animation $animName, layer ${l.name}: only the timeline ($timeline) sets durations');
+						if (d != null) syntaxError('animation $animName, layer ' + l.name + ': only the timeline ($timeline) sets durations');
 					default:
-						syntaxError('animation $animName, layer ${l.name}: only the timeline ($timeline) has events and filters');
+						syntaxError('animation $animName, layer ' + l.name + ': only the timeline ($timeline) has events and filters');
 				}
 		}
 	}
@@ -1994,7 +1994,7 @@ class AnimFileParser {
 			syntaxError('anim $name: the file has layers, so its animations are written with layer blocks', sheetPos);
 
 		final animFps = overrideFps ?? defaultFps;
-		if (animFps == null) syntaxError('anim shorthand "${name}" requires fps (set in modifiers or file-level default)');
+		if (animFps == null) syntaxError('anim shorthand "$name" requires fps (set in modifiers or file-level default)');
 		final animLoop:Null<Int> = overrideLoop ?? defaultLoop;
 
 		final playlist:Playlist = {anims: [SheetFrameAnim(sheetStr, null)], states: []};
@@ -2021,10 +2021,10 @@ class AnimFileParser {
 			final pointName = expectIdentifier();
 			expect(APColon);
 			final written = extraPoints.get(pointName);
-			final c = spanned('$path.$pointName#${written != null ? written.length : 0}', parseCoordinates);
+			final c = spanned('$path.$pointName#' + (written != null ? written.length : 0), parseCoordinates);
 
 			if (allowedExtraPointsList.contains(pointName) == false)
-				syntaxError('extraPoint ${pointName} not declared in allowedExtraPoints');
+				syntaxError('extraPoint $pointName not declared in allowedExtraPoints');
 			for (key => value in states)
 				parserValidateConditionalState(statesDefinitions, key, value);
 			checkForUnreachableState(animationStates, states);
@@ -2039,7 +2039,7 @@ class AnimFileParser {
 	function parseFrames(anims:Array<AnimPlaylistFrames>, path:String, ?layer:AnimLayer):Void {
 		while (true) {
 			final entryToken = tpos;
-			final entryPath = '$path.${anims.length}';
+			final entryPath = '$path.' + anims.length;
 			switch (peek()) {
 				case APCurlyClosed:
 					advance();
@@ -2050,7 +2050,7 @@ class AnimFileParser {
 					if (layer.blend != null) syntaxError("blend already set");
 					final blend = spanned('$path.blend', expectIdentifier);
 					if (bh.multianim.MacroCompatTypes.MacroBlendModes.fromName(blend) == null)
-						syntaxError('blend: expected one of ${bh.multianim.MacroCompatTypes.MacroBlendModes.NAMES.join(", ")}, got $blend');
+						syntaxError('blend: expected one of ' + bh.multianim.MacroCompatTypes.MacroBlendModes.NAMES.join(", ") + ', got $blend');
 					layer.blend = blend;
 					continue;
 				case APIdentifier(_, APFile, AITString):
@@ -2311,7 +2311,7 @@ class AnimFileParser {
 				expect(APArrow);
 				final replacementColors = parseFilterColorList();
 				if (sourceColors.length != replacementColors.length)
-					syntaxError('replaceColor: source and replacement color lists must have same length (${sourceColors.length} vs ${replacementColors.length})');
+					syntaxError('replaceColor: source and replacement color lists must have same length (' + sourceColors.length + ' vs ' + replacementColors.length + ')');
 				return AFReplaceColor(sourceColors, replacementColors);
 			default:
 				return syntaxError('unknown filter type: $filterName');
@@ -2374,7 +2374,7 @@ class AnimFileParser {
 					if (d <= 0) syntaxError("duration must be greater than 0");
 					return d;
 				} else
-					return syntaxError('expected <int>ms got ${durationStr}');
+					return syntaxError('expected <int>ms got $durationStr');
 			default:
 				return null;
 		}
@@ -2387,10 +2387,10 @@ class AnimFileParser {
 		while (j < name.length) {
 			if (name.charAt(j) == '$' && j + 1 < name.length && name.charAt(j + 1) == '{') {
 				final end = name.indexOf('}', j + 2);
-				if (end == -1) syntaxError('Unclosed $${...} in sheet name "${name}"', pos);
+				if (end == -1) syntaxError('Unclosed $${...} in sheet name "$name"', pos);
 				final stateName = name.substring(j + 2, end);
 				if (!definedStates.exists(stateName))
-					syntaxError('Unknown state "${stateName}" in sheet name "${name}". Defined states: [${[for (k in definedStates.keys()) k].join(", ")}]', pos);
+					syntaxError('Unknown state "$stateName" in sheet name "$name". Defined states: [' + ([for (k in definedStates.keys()) k].join(", ")) + ']', pos);
 				j = end + 1;
 			} else {
 				j++;
@@ -2403,27 +2403,27 @@ class AnimFileParser {
 	static function validateState(definedStates:Map<String, Array<String>>, name:String, value:String) {
 		final vals = definedStates.get(name);
 		if (vals == null)
-			throw 'state ${name} not defined';
+			throw 'state $name not defined';
 		if (vals.contains(value) == false)
-			throw 'state ${name} does not allow value:${value}';
+			throw 'state $name does not allow value:$value';
 	}
 
 	static function validateStateSelector(definedStates:Map<String, Array<String>>, selector:AnimationStateSelector) {
 		if (definedStates.count() != selector.count())
-			throw 'invalid selector ${selector} for defined states ${definedStates}';
+			throw 'invalid selector $selector for defined states $definedStates';
 		for (key => value in definedStates) {
 			final sv = selector.get(key);
 			if (sv == null)
-				throw 'key not defined: ${key}';
+				throw 'key not defined: $key';
 			if (value.contains(sv) == false)
-				throw 'unknown state value ${value} not defined for key: ${key}: ${definedStates}';
+				throw 'unknown state value $value not defined for key: $key: $definedStates';
 		}
 		for (key => value in selector) {
 			final vals = definedStates.get(key);
 			if (vals == null)
-				throw 'unknown state key: ${key}';
+				throw 'unknown state key: $key';
 			if (vals.contains(value) == false)
-				throw 'unknown state value ${value} not defined for key: ${key}: ${definedStates}';
+				throw 'unknown state value $value not defined for key: $key: $definedStates';
 		}
 	}
 
@@ -2445,7 +2445,7 @@ class AnimFileParser {
 				parserValidateConditionalState(animStates, name, inner);
 			case ACVCompare(_, _) | ACVRange(_, _): // (#8) comparison ops: just check state name exists
 				if (!animStates.exists(name))
-					syntaxError('state "${name}" not defined');
+					syntaxError('state "$name" not defined');
 		}
 	}
 
@@ -2458,9 +2458,9 @@ class AnimFileParser {
 			switch [parentValue, childValue] {
 				case [ACVSingle(pv), ACVSingle(cv)]:
 					if (pv != cv)
-						syntaxError('unreachable state ${childState}, limited by ${parentState}');
+						syntaxError('unreachable state $childState, limited by $parentState');
 					else
-						syntaxError('useless state limit ${childState}, limited by ${parentState}');
+						syntaxError('useless state limit $childState, limited by $parentState');
 				case _:
 			}
 		}
@@ -2479,7 +2479,7 @@ class AnimFileParser {
 
 	public static function findPlaylist(stateSelector:AnimationStateSelector, animation:AnimationState, definedStates:Map<String, Array<String>>) {
 		validateStateSelector(definedStates, stateSelector);
-		return findBestStateMatch(animation.playlist, stateSelector, 'playlist: ${animation.name}');
+		return findBestStateMatch(animation.playlist, stateSelector, 'playlist: ' + animation.name);
 	}
 
 	public static function findExtraPoint(extraPointName:String, stateSelector:AnimationStateSelector, animation:AnimationState,
@@ -2520,7 +2520,7 @@ class AnimFileParser {
 			}
 		}
 		if (best != null && best2 != null && best2Score == bestScore)
-			throw 'ambiguous $ambiguityContext: ${best.states} vs ${best2.states} selector: $stateSelector';
+			throw 'ambiguous $ambiguityContext: ' + best.states + ' vs ' + best2.states + ' selector: $stateSelector';
 		return best;
 	}
 
@@ -2596,7 +2596,7 @@ class AnimParser extends AnimFileParser implements AnimParserResult {
 		final _sheetName = sheetName;
 		if (_sheetName == null) throw 'sheet not set';
 		final _fps = anim.fps;
-		if (_fps == null) throw 'fps not set for animation ${anim.name}';
+		if (_fps == null) throw 'fps not set for animation ' + anim.name;
 		final _flipX = anim.flipX == true; // (#13)
 		final _flipY = anim.flipY == true; // (#13)
 
@@ -2675,18 +2675,18 @@ class AnimParser extends AnimFileParser implements AnimParserResult {
 				case SheetFrameAnim(name, overrideDuration, offset):
 					final expandedName = replaceState(name, stateSelector);
 					final sheet = resourceLoader.loadSheet2(_sheetName);
-					if (sheet == null) throw 'sheet ${_sheetName} not found';
+					if (sheet == null) throw 'sheet $_sheetName not found';
 					var tiles = sheet.getAnim(expandedName);
-					if (tiles == null) throw 'tiles ${name}->${expandedName} not found';
+					if (tiles == null) throw 'tiles $name->$expandedName not found';
 					final _od = overrideDuration;
 					var d = _od == null ? duration : _od / 1000.0;
 					retVal = retVal.concat(Lambda.map(tiles, t -> AFtoFrame(t, d, offset)));
 				case SheetFrameAnimWithIndex(name, from, to, overrideDuration, offset):
 					final sheet = resourceLoader.loadSheet2(_sheetName);
-					if (sheet == null) throw 'sheet ${_sheetName} not found';
+					if (sheet == null) throw 'sheet $_sheetName not found';
 					final expandedName = replaceState(name, stateSelector);
 					final animTiles = sheet.getAnim(expandedName);
-					if (animTiles == null) throw 'tiles ${name}->${expandedName} not found';
+					if (animTiles == null) throw 'tiles $name->$expandedName not found';
 					final _od = overrideDuration;
 					var d = _od == null ? duration : _od / 1000.0;
 					for (i in 0...animTiles.length) {
@@ -2711,7 +2711,7 @@ class AnimParser extends AnimFileParser implements AnimParserResult {
 							case MVInt(i): Std.string(i);
 							case MVFloat(f): Std.string(f);
 							case MVString(s): s;
-							case MVColor(c): '#${StringTools.hex(c, 6)}';
+							case MVColor(c): '#' + StringTools.hex(c, 6);
 							case MVList(vs): vs.join(","); // never parsed in an event's data; for completeness
 						});
 					}
@@ -2740,14 +2740,14 @@ class AnimParser extends AnimFileParser implements AnimParserResult {
 							firstW = f.width;
 							firstH = f.height;
 						} else if (f.width != firstW || f.height != firstH) {
-							throw 'anim ${anim.name}: flipX/flipY requires all frames to share untrimmed size '
-								+ '(got ${f.width}x${f.height}, expected ${firstW}x${firstH})';
+							throw 'anim ' + anim.name + ': flipX/flipY requires all frames to share untrimmed size '
+								+ '(got ' + f.width + 'x' + f.height + ', expected ' + firstW + 'x$firstH)';
 						}
 					default:
 				}
 			}
 			if (firstW < 0) {
-				throw 'anim ${anim.name}: flipX/flipY enabled but no Frame states found';
+				throw 'anim ' + anim.name + ': flipX/flipY enabled but no Frame states found';
 			}
 		}
 		return retVal;
@@ -2759,9 +2759,9 @@ class AnimParser extends AnimFileParser implements AnimParserResult {
 		indexes.fill(0, indexes.length, 255);
 		for (key => value in selector) {
 			final idx = definedStatesIndexes.indexOf(key);
-			if (idx == -1) throw 'invalid selector key ${key}';
+			if (idx == -1) throw 'invalid selector key $key';
 			final vals = definedStates.get(key);
-			if (vals == null) throw 'unknown state key: ${key}';
+			if (vals == null) throw 'unknown state key: $key';
 			indexes.set(idx, vals.indexOf(value));
 		}
 		return indexes.toHex();
@@ -2775,7 +2775,7 @@ class AnimParser extends AnimFileParser implements AnimParserResult {
 			final key = definedStatesIndexes[i];
 			final byteValue = indexes.get(i);
 			final vals = definedStates.get(key);
-			if (vals == null) throw 'unknown state key: ${key}';
+			if (vals == null) throw 'unknown state key: $key';
 			selector.set(key, vals[byteValue]);
 		}
 		return selector;
@@ -2888,7 +2888,7 @@ class AnimParser extends AnimFileParser implements AnimParserResult {
 				final anim = AnimFileParser.findAnimation(name, stateSelector, definedStates, animations);
 				if (anim == null) continue; // defined for other states only: not in this machine
 				final playlist = AnimFileParser.findPlaylist(stateSelector, anim, definedStates);
-				if (playlist == null) throw 'null playlist for anim ${name}';
+				if (playlist == null) throw 'null playlist for anim $name';
 				var states = createStates(playlist.anims, anim, stateSelector);
 				final extraPoints = new Map<String, h2d.col.IPoint>();
 				final _flipX = anim.flipX == true; // (#13)
@@ -2910,7 +2910,7 @@ class AnimParser extends AnimFileParser implements AnimParserResult {
 							default:
 						}
 					}
-					if (!found) throw 'anim ${name}: flipX/flipY enabled but no Frame states found';
+					if (!found) throw 'anim $name: flipX/flipY enabled but no Frame states found';
 				}
 				final animCenter:Null<Point> = anim.center ?? center; // the animation's own, else the file's
 				final cx:Float = animCenter != null ? animCenter.x : 0;
@@ -2947,7 +2947,7 @@ class AnimParser extends AnimFileParser implements AnimParserResult {
 		}
 
 		final cacheEntries = cache.get(hex);
-		if (cacheEntries == null) throw 'cache miss for hex ${hex}';
+		if (cacheEntries == null) throw 'cache miss for hex $hex';
 		for (e in cacheEntries) {
 			// Filters and extra points are mutable runtime state — build/copy them
 			// per AnimationSM. Handing out the cached instances let one SM's
@@ -2985,7 +2985,7 @@ class AnimParser extends AnimFileParser implements AnimParserResult {
 		for (li in 0...layerNames.length) {
 			final layerName = layerNames[li];
 			final blocks = animLayers.filter(l -> l.name == layerName);
-			final block = blocks.length == 0 ? null : AnimFileParser.findBestStateMatch(blocks, stateSelector, 'layer $layerName of ${anim.name}');
+			final block = blocks.length == 0 ? null : AnimFileParser.findBestStateMatch(blocks, stateSelector, 'layer $layerName of ' + anim.name);
 			final blendName = block != null ? block.blend : null;
 			blends.push(blendName != null ? blendModeOf(blendName) : null);
 			if (layerName == anim.timeline) {
@@ -3004,7 +3004,7 @@ class AnimParser extends AnimFileParser implements AnimParserResult {
 					default:
 				}
 			if (layerFrames.length != timelineFrames)
-				throw 'anim ${anim.name}: layer $layerName has ${layerFrames.length} frames and the timeline, ${anim.timeline}, has $timelineFrames, for $stateSelector';
+				throw 'anim ' + anim.name + ': layer $layerName has ' + layerFrames.length + ' frames and the timeline, ' + anim.timeline + ', has $timelineFrames, for $stateSelector';
 			frames.push(layerFrames);
 		}
 		return {frames: frames, blends: blends, timeline: timelineIndex};
@@ -3014,7 +3014,7 @@ class AnimParser extends AnimFileParser implements AnimParserResult {
 	static function blendModeOf(name:String):h2d.BlendMode {
 		final mode = bh.multianim.MacroCompatTypes.MacroBlendModes.fromName(name);
 		if (mode == null)
-			throw 'blend: expected one of ${bh.multianim.MacroCompatTypes.MacroBlendModes.NAMES.join(", ")}, got $name';
+			throw 'blend: expected one of ' + bh.multianim.MacroCompatTypes.MacroBlendModes.NAMES.join(", ") + ', got $name';
 		return bh.multianim.MacroCompatTypes.MacroCompatConvert.toH2dBlendMode(mode);
 	}
 

@@ -154,7 +154,7 @@ class AnimatedPathBuilderTest extends BuilderTestBase {
 		// Total path length ~100px over 1000 steps → smooth steps are well under
 		// 1px; the missing lateral offset shows up as a ~10px discontinuity.
 		Assert.isTrue(maxJump < 2.0,
-			'path trace must be continuous across the wave->line boundary; largest step jump was ${maxJump}px (a ~10px jump means the wave endpoint ignored its residual lateral offset)');
+			'path trace must be continuous across the wave->line boundary; largest step jump was ' + maxJump + 'px (a ~10px jump means the wave endpoint ignored its residual lateral offset)');
 	}
 
 	// ==================== Builder: Basic Creation ====================
@@ -212,7 +212,7 @@ class AnimatedPathBuilderTest extends BuilderTestBase {
 		state = ap.update(0.5); // completes second cycle
 		state = ap.update(0.5); // completes third cycle
 		Assert.isFalse(state.done);
-		Assert.isTrue(state.cycle >= 2, 'Expected cycle >= 2, got ${state.cycle}');
+		Assert.isTrue(state.cycle >= 2, 'Expected cycle >= 2, got ' + state.cycle);
 	}
 
 	@Test
@@ -348,7 +348,7 @@ class AnimatedPathBuilderTest extends BuilderTestBase {
 		final ap = builder.createAnimatedPath("leadAnim");
 		final state = ap.seek(0.0);
 		Assert.isFalse(Math.isNaN(state.position.x) || Math.isNaN(state.position.y),
-			'a leading lineTo(0, 0) must not make the start position NaN, got (${state.position.x}, ${state.position.y})');
+			'a leading lineTo(0, 0) must not make the start position NaN, got (' + state.position.x + ', ' + state.position.y + ')');
 		Assert.floatEquals(0.0, state.position.x);
 	}
 
@@ -628,10 +628,10 @@ class AnimatedPathBuilderTest extends BuilderTestBase {
 			} catch (e:Dynamic) {
 				error = Std.string(e);
 			}
-			Assert.isNull(error, '${c.name} before any create() must not throw, got: $error');
+			Assert.isNull(error, c.name + ' before any create() must not throw, got: $error');
 			if (end != null) {
-				Assert.floatEquals(expectedEnd.x, end.x, '${c.name}: end x must match the builder path');
-				Assert.floatEquals(expectedEnd.y, end.y, '${c.name}: end y must match the builder path');
+				Assert.floatEquals(expectedEnd.x, end.x, c.name + ': end x must match the builder path');
+				Assert.floatEquals(expectedEnd.y, end.y, c.name + ': end y must match the builder path');
 			}
 		}
 	}
