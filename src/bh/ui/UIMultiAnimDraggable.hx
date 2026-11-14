@@ -69,8 +69,8 @@ class DropZoneIdTools {
 	public static function format(id:DropZoneId):String {
 		return switch id {
 			case GridCell(_, col, row): 'grid($col,$row)';
-			case SlotZone(name, idx): idx != null ? '${name}_$idx' : name;
-			case SlotZone2D(name, x, y): '${name}_${x}_$y';
+			case SlotZone(name, idx): idx != null ? name + '_$idx' : name;
+			case SlotZone2D(name, x, y): name + '_' + x + '_$y';
 			case Named(name): name;
 		};
 	}

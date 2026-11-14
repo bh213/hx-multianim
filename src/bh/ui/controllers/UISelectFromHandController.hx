@@ -160,6 +160,6 @@ class UISelectFromHandController extends UIInteractionController {
 	}
 
 	override public function getDebugName():String {
-		return 'select-from-hand(${selectedCards.length}/$maxCount)';
+		return 'select-from-hand(' + selectedCards.length + '/$maxCount)';
 	}
 }

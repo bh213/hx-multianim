@@ -1,0 +1,7 @@
+version: 1.0
+
+#codegenOverlappingApply programmable(a:bool=false, b:bool=false) {
+  bitmap(generated(color(40, 40, #4488ff)));
+  @(a=>true) apply { alpha: 0.5 }
+  @(b=>true) apply { alpha: 0.2 }
+}

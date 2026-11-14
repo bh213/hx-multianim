@@ -44,7 +44,7 @@ class UIMultiAnimTabButton implements UIElement implements UIElementDisablable i
 			result.beginUpdate();
 			result.setParameter("status", value ? "disabled" : "normal");
 			if (result.hasParameter("disabled"))
-				result.setParameter("disabled", '${value}');
+				result.setParameter("disabled", '$value');
 			result.endUpdate();
 		}
 		return value;
@@ -55,7 +55,7 @@ class UIMultiAnimTabButton implements UIElement implements UIElementDisablable i
 			this.selected = value;
 			if (value)
 				result.beginUpdate();
-			result.setParameter("checked", '${value}');
+			result.setParameter("checked", '$value');
 			if (value)
 				result.setParameter("status", "normal");
 			if (value)
@@ -94,7 +94,7 @@ class UIMultiAnimTabButton implements UIElement implements UIElementDisablable i
 			return;
 		switch wrapper.event {
 			case OnPush(button):
-				if (!selected) {
+				if (button == 0 && !selected) {
 					result.setParameter("status", "pressed");
 					onInternalClick(wrapper.control);
 				}
@@ -223,10 +223,10 @@ class UIMultiAnimTabs implements UIElement implements UIElementDisablable implem
 						btn.disabled = true;
 					return CBRObject(btn.getObject());
 				} else
-					throw 'invalid tab placeholder: ${name}';
+					throw 'invalid tab placeholder: $name';
 
 			default:
-				throw 'unsupported tab callback: ${request}';
+				throw 'unsupported tab callback: $request';
 		}
 	}
 
@@ -317,7 +317,7 @@ class UIMultiAnimTabs implements UIElement implements UIElementDisablable implem
 		if (populatingTabIndex != -1)
 			throw 'already populating tab $populatingTabIndex';
 		if (tabIndex < 0 || tabIndex >= items.length)
-			throw 'tab index $tabIndex out of range (0..${items.length - 1})';
+			throw 'tab index $tabIndex out of range (0..' + (items.length - 1) + ')';
 		populatingTabIndex = tabIndex;
 		screen.setContentTarget(this);
 	}

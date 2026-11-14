@@ -31,7 +31,7 @@ class MAObject extends h2d.Object {
                     var bitmap = solidBitmap(0x80FF8000, width, height, this);
                     var font = hxd.res.DefaultFont.get();
                     var text = new h2d.Text(font, bitmap);
-                    text.text = 'interactive ${identifier}';
+                    text.text = 'interactive $identifier';
                     text.textAlign = Center;
                     text.y = height/2 - text.textHeight/2;
                     text.maxWidth = width;

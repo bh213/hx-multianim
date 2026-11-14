@@ -4,7 +4,7 @@ version: 1.0
 // BLOB47 FALLBACK TEST - Tests blob47 with partial tileset (uses fallback)
 // =============================================================================
 // Uses Forgotten Plains tileset with blob47 format.
-// Only a few tiles are defined - missing tiles use automatic fallback.
+// 35 of 47 indices are mapped - the rest use automatic fallback.
 // =============================================================================
 
 // Demo autotile for comparison
@@ -14,44 +14,56 @@ version: 1.0
     demo: #66AA44, #886644    // green edges (grass border), brown fill (dirt center)
 }
 
-// Blob47 autotile using Forgotten Plains tileset
-// Only basic tiles defined - corners will fall back to simpler tiles
-// Tileset: Minifantasy - Forgotten Plains by Krishna Palacio
-// Grass tiles at region [56, 24, 24, 40] = 3x5 grid of 8x8 tiles
-#blob47Grass autotile {
+// Blob47 autotile using the Forgotten Plains dirt collection (dirt = terrain, grass around it).
+// Region [8, 8, 80, 96] = tileset columns 1-10, rows 1-12 (index = row * 10 + column). Besides the
+// 3x5 patch (26-28, 36-38, 46-48 = outer corners/edges/center, 56-58 + 66-68 = inner corners and
+// diagonals) it holds an isolated blob (4), strip caps (95/115, 86/88), 1-wide strips (105, 87),
+// 1-wide corners / T-junctions / cross (96-98, 106-108, 116-118) and junction notches (92, 101,
+// 103, 112). 35 of the 47 blob47 indices have an exact tile; the other 12 (an edge plus an inner
+// notch, or three notches) exercise the allowPartialMapping fallback.
+#blob47Dirt autotile {
     format: blob47
     tileSize: 8
     file: "Tileset/Minifantasy_ForgottenPlainsTiles.png"
-    region: [56, 24, 24, 40]
+    region: [8, 8, 80, 96]
     allowPartialMapping: true
-    // Mapping from blob47 index to region tile index using source:target syntax
-    // Blob47: tile index = which neighbors ARE present (grass connects there)
-    // Region: tile name = which side is the EDGE (border/no neighbor)
-    // So blob47 "has N neighbor" needs region "S edge" (connects north, border south)
+    // blob47 index (which neighbours are dirt) -> region tile
     mapping: [
-        0:4,    // 0: isolated -> center tile (best visual)
-        1:7,    // 1: has N neighbor -> S edge (connects up, border down)
-        2:3,    // 2: has E neighbor -> W edge (connects right, border left)
-        3:6,    // 3: has N+E -> SW outer corner
-        4:6,    // 4: has N+NE+E -> SW outer (same, no distinct corner tile)
-        5:1,    // 5: has S neighbor -> N edge (connects down, border up)
-        6:4,    // 6: has N+S -> center (vertical strip)
-        7:0,    // 7: has E+S -> NW outer corner
-        8:3,    // 8: has N+E+S -> W edge (open west)
-        9:3,    // 9: has N+NE+E+S -> W edge
-        10:0,   // 10: has E+SE+S -> NW outer
-        11:3,   // 11: has N+E+SE+S -> W edge
-        12:3,   // 12: has N+NE+E+SE+S -> W edge
-        13:5,   // 13: has W neighbor -> E edge (connects left, border right)
-        14:8,   // 14: has N+W -> SE outer corner
-        15:4,   // 15: has E+W -> center (horizontal strip)
-        16:7,   // 16: has N+E+W -> S edge (open south)
-        17:7,   // 17: has N+NE+E+W -> S edge
-        18:2,   // 18: has S+W -> NE outer corner
-        19:5,   // 19: has N+S+W -> E edge (open east)
-        20:1,   // 20: has E+S+W -> N edge (open north)
-        21:4    // 21: has N+E+S+W -> center
-        // Tiles 22-46 not mapped - will use fallback!
+        0:4,     // isolated               -> single blob
+        1:115,   // N only                 -> vertical strip, bottom cap
+        2:86,    // E only                 -> horizontal strip, left cap
+        3:116,   // N+E                    -> 1-wide corner
+        4:46,    // N+NE+E                 -> patch SW outer
+        5:95,    // S only                 -> vertical strip, top cap
+        6:105,   // N+S                    -> vertical strip
+        7:96,    // E+S                    -> 1-wide corner
+        8:106,   // N+E+S                  -> 1-wide T
+        10:26,   // E+SE+S                 -> patch NW outer
+        12:36,   // N+NE+E+SE+S            -> patch W edge
+        13:88,   // W only                 -> horizontal strip, right cap
+        14:118,  // N+W                    -> 1-wide corner
+        15:87,   // E+W                    -> horizontal strip
+        16:117,  // N+E+W                  -> 1-wide T
+        18:98,   // S+W                    -> 1-wide corner
+        19:108,  // N+S+W                  -> 1-wide T
+        20:97,   // E+S+W                  -> 1-wide T
+        21:107,  // N+E+S+W, no diagonals  -> 1-wide cross
+        25:101,  // all but NW, SW         -> junction, notches W
+        26:28,   // S+SW+W                 -> patch NE outer
+        30:58,   // all but NW, SE         -> diagonal notches
+        31:27,   // E+SE+S+SW+W            -> patch N edge
+        32:92,   // all but NE, NW         -> junction, notches N
+        33:56,   // all but NW             -> inner NW
+        34:48,   // N+W+NW                 -> patch SE outer
+        36:47,   // N+NE+E+W+NW            -> patch S edge
+        39:112,  // all but SE, SW         -> junction, notches S
+        40:68,   // all but NE, SW         -> diagonal notches
+        41:66,   // all but SW             -> inner SW
+        42:38,   // N+S+SW+W+NW            -> patch E edge
+        43:103,  // all but NE, SE         -> junction, notches E
+        44:67,   // all but SE             -> inner SE
+        45:57,   // all but NE             -> inner NE
+        46:37    // all neighbours         -> patch center
     ]
 }
 
@@ -64,7 +76,7 @@ version: 1.0
 
     // Show all 47 tiles: demo shape (top) vs tileset with fallback (bottom)
     // 8x8 tiles scaled 2x = 16x16 display, 20 tiles per row, 36px spacing (16+2+16+2)
-    text(f3x5, "Top: demo shape, Bottom: tileset (fallback for 22-46)", #888888, left):10,10
+    text(f3x5, "Top: demo shape, Bottom: tileset (unmapped indices use fallback)", #888888, left):10,10
 
     // Row labels
     text(f3x5, "0-19:", #666666, right):28,24
@@ -77,8 +89,8 @@ version: 1.0
             pos: 35 + ($i % 20) * 20, 22 + ($i div 20) * 38
             // Demo tile (top) - shows expected shape, scaled 2x
             @scale(2) bitmap(generated(autotile("blob47Demo", $i))):0,0
-            // Tileset tile (bottom) - uses fallback for tiles 22-46, scaled 2x
-            @scale(2) bitmap(generated(autotile("blob47Grass", $i))):0,18
+            // Tileset tile (bottom) - unmapped indices use fallback, scaled 2x
+            @scale(2) bitmap(generated(autotile("blob47Dirt", $i))):0,18
         }
     }
 
@@ -91,6 +103,6 @@ version: 1.0
 
     // Region sheet visualization - shows the tileset region with numbered grid
     // autotileRegionSheet(autotileName, scale, font, fontColor) - scale tiles but not font
-    text(f3x5, "Region Sheet (blob47Grass):", #888888, left):320,142
-    bitmap(generated(autotileRegionSheet("blob47Grass", 4, "f3x5", white))):320,152
+    text(f3x5, "Region Sheet (blob47Dirt):", #888888, left):320,142
+    bitmap(generated(autotileRegionSheet("blob47Dirt", 2, "f3x5", white))):320,152
 }

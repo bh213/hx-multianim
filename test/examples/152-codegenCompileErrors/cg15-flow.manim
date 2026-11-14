@@ -1,0 +1,19 @@
+version: 1.0
+
+// Flow scalar sinks are Int-typed (h2d.Flow / FlowProperties); the codegen
+// lowers them with rvToExpr (Float) instead of rvToExprInt, so any
+// float-producing expression breaks compilation of the generated class.
+// This file is intentionally NOT registered in MultiProgrammable — it is
+// compiled by the isolated compile-error check until the fix lands.
+
+#flowFloat programmable(w:float=100.5) {
+  flow(maxWidth: $w) {
+    bitmap(generated(color(20, 20, #FF0000)));
+  }
+}
+
+#flowSpacer programmable(n:int=9) {
+  flow(layout: horizontal) {
+    spacer(($n / 2), 4);
+  }
+}

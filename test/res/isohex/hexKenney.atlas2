@@ -1,0 +1,40 @@
+hexKenney.png
+size: 606,142
+format: RGBA8888
+filter: Nearest,Nearest
+repeat: none
+grass
+  rotate: false
+  xy: 1, 1
+  size: 120, 140
+  orig: 120, 140
+  offset: 0, 0
+  index: 0
+grass
+  rotate: false
+  xy: 122, 1
+  size: 120, 140
+  orig: 120, 140
+  offset: 0, 0
+  index: 1
+dirt
+  rotate: false
+  xy: 243, 1
+  size: 120, 140
+  orig: 120, 140
+  offset: 0, 0
+  index: 0
+sand
+  rotate: false
+  xy: 364, 1
+  size: 120, 140
+  orig: 120, 140
+  offset: 0, 0
+  index: 0
+stone
+  rotate: false
+  xy: 485, 1
+  size: 120, 140
+  orig: 120, 140
+  offset: 0, 0
+  index: 0

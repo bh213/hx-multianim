@@ -9,12 +9,19 @@ import h2d.col.Point;
 
 @:nullSafety
 class UIStandardMultiCheckbox implements UIElement implements UIElementDisablable implements UIElementSelectable implements StandardUIElementEvents
-		implements UIElementNumberValue implements UIElementCursor {
+		implements UIElementNumberValue implements UIElementCursor implements UIElementRootSettings {
 	final result:BuilderResult;
+
+	public function getRootSettings():Null<bh.multianim.MultiAnimBuilder.BuilderResolvedSettings> {
+		return result.rootSettings;
+	}
 
 	public var disabled(default, set):Bool = false;
 	public var selected(default, set):Bool = false;
 	public var ignoreSelectEvents = false;
+	/** False when a widget made of this checkbox (a radio group's button) says its changes itself:
+	 *  no `UIToggle` is pushed to the screen, `onToggle` still runs. */
+	public var pushesScreenEvents:Bool = true;
 
 	public function clear() {}
 
@@ -30,7 +37,7 @@ class UIStandardMultiCheckbox implements UIElement implements UIElementDisablabl
 			result.beginUpdate();
 			result.setParameter("status", value ? "disabled" : "normal");
 			if (result.hasParameter("disabled"))
-				result.setParameter("disabled", '${value}');
+				result.setParameter("disabled", '$value');
 			result.endUpdate();
 		}
 		return value;
@@ -39,7 +46,7 @@ class UIStandardMultiCheckbox implements UIElement implements UIElementDisablabl
 	public function set_selected(value:Bool):Bool {
 		if (this.selected != value) {
 			this.selected = value;
-			result.setParameter("checked", '${value}');
+			result.setParameter("checked", '$value');
 		}
 		return value;
 	}
@@ -49,7 +56,7 @@ class UIStandardMultiCheckbox implements UIElement implements UIElementDisablabl
 	}
 
 	function new(builder:MultiAnimBuilder, name:String, startsChecked:Bool, ?extraParams:Null<Map<String, Dynamic>>) {
-		var params:Map<String, Dynamic> = ["status" => "normal", "disabled" => "false", "checked" => '${startsChecked}'];
+		var params:Map<String, Dynamic> = ["status" => "normal", "disabled" => "false", "checked" => '$startsChecked'];
 		if (extraParams != null)
 			for (key => value in extraParams)
 				params.set(key, value);
@@ -70,11 +77,11 @@ class UIStandardMultiCheckbox implements UIElement implements UIElementDisablabl
 			return;
 		switch wrapper.event {
 			case OnPush(button):
-				if (!ignoreSelectEvents) {
+				if (button == 0 && !ignoreSelectEvents) {
 					this.selected = !this.selected;
 					result.beginUpdate();
 					result.setParameter("status", "pressed");
-					result.setParameter("checked", '${this.selected}');
+					result.setParameter("checked", '' + this.selected);
 					result.endUpdate();
 					triggerToggle(this.selected, wrapper.control);
 				}
@@ -95,7 +102,8 @@ class UIStandardMultiCheckbox implements UIElement implements UIElementDisablabl
 	function triggerToggle(checked, controllable:Controllable) {
 		onToggle(checked);
 		onInternalToggle(checked, controllable);
-		controllable.pushEvent(UIToggle(checked), this);
+		if (pushesScreenEvents)
+			controllable.pushEvent(UIToggle(checked), this);
 	}
 
 	public dynamic function onToggle(checked:Bool) {}

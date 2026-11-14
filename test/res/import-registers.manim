@@ -1,0 +1,9 @@
+version: 1.0
+
+// A file whose cursor and sounds blocks are all in the file it imports: loaded through
+// ScreenManager.buildFromResource, the import's blocks are taken as the file's own are (CursorTest).
+import "import-registers-pack.manim" as "pack"
+
+#importHost programmable() {
+  staticRef(external("pack"), packUser): 0, 0
+}

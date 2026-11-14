@@ -1,0 +1,19 @@
+version: 1.0
+
+// Fixture: staticRef whose NAME is driven by a parent string param.
+// staticRef($which) — the builder resolves $which to the target programmable
+// name in context (resolveRefName -> indexedParams). Codegen historically
+// collapsed RVReference to a literal "which" and built a nonexistent
+// programmable -> empty object. Mirrors the dynamicRef dynamic-name path.
+
+#srChildRed programmable() {
+  bitmap(generated(color(11, 5, #ff0000))): 0, 0
+}
+
+#srChildBlue programmable() {
+  bitmap(generated(color(22, 5, #0000ff))): 0, 0
+}
+
+#codegenStaticRefDynamicName programmable(which:string="srChildRed") {
+  staticRef($which): 0, 0
+}

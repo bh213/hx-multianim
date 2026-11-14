@@ -1,0 +1,26 @@
+version: 1.0
+
+// Param-count repeat whose body visibility is gated by an unrelated param.
+// The builder rebuilds the repeat when `on` changes; the codegen setter must
+// not reject the change as untracked.
+// Gate states distinguished by tile width: on -> 6px, off -> 4px.
+#condGate programmable(n:int=3, on:bool=false) {
+  repeatable($i, step($n, dx: 8)) {
+    @(on=>true) bitmap(generated(color(6, 6, #00FF00))): 0, 0
+    @else bitmap(generated(color(4, 4, #666666))): 0, 0
+  }
+}
+
+#chipA programmable() {
+  bitmap(generated(color(8, 8, #FF0000))): 0, 0
+}
+
+// dynamicRef($i) inside a statically-unrolled repeat: the loop variable must
+// resolve per iteration (like staticRef does), not be treated as a literal
+// programmable named "i". No programmable named 0/1 exists, so both backends
+// throw — but the missing-target name must be the resolved iteration value.
+#dynRefLoopHost programmable() {
+  repeatable($i, step(2, dx: 20)) {
+    dynamicRef($i): 0, 0
+  }
+}

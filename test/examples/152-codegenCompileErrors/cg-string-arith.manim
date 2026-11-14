@@ -1,0 +1,19 @@
+version: 1.0
+
+// Arithmetic where a string is wanted, with a number written out: the number is kept as the
+// text "2", and codegen lowered `$a * 2` as `_a * "2"`, a String/Int type error in the
+// generated class (reported in ProgrammableCodeGen.hx, not here). The builder works the
+// expression out as an integer. `($a * 2)` in parentheses always compiled.
+// Also registered in MultiProgrammable (CodegenParityReviewTest checks the texts match the
+// builder's).
+
+#stringArith programmable(a:int=5) {
+  text(dd, $a * 2, white, left): 0, 0
+  text(dd, $a / 2, white, left): 0, 12
+  text(dd, $a - 1, white, left): 0, 24
+  text(dd, $a % 3, white, left): 0, 36
+  text(dd, $a div 2, white, left): 0, 48
+  // In parentheses it is the number
+  text(dd, ($a / 2), white, left): 0, 60
+  text(dd, ($a + 1), white, left): 0, 72
+}

@@ -64,11 +64,13 @@ class ManimAnalyzer {
 			final result = MacroManimParser.parseFile(text, uriToName(uri), null);
 
 			for (name => node in result.nodes) {
-				final range = findNameInText(text, name);
+				// By its #name first: the `///` doc above a block often says its name too
+				final defined = findNameInText(text, '#$name');
+				final range = defined.end.character > 0 ? defined : findNameInText(text, name);
 				final symbol:LspSymbolInformation = switch (node.type) {
 					case PROGRAMMABLE(_, parameters, _):
-						final paramList = [for (pname => def in parameters) '$pname:${defTypeName(def.type)}'];
-						final detail = paramList.length > 0 ? '(${paramList.join(", ")})' : null;
+						final paramList = [for (pname => def in parameters) ('$pname:' + defTypeName(def.type))];
+						final detail = paramList.length > 0 ? '(' + paramList.join(", ") + ')' : null;
 						makeSymbol(name, SymbolKind.Class, range, detail, getChildSymbols(node, text));
 					case DATA(dataDef):
 						makeSymbol(name, SymbolKind.Struct, range, null, getDataChildren(dataDef, text));
@@ -85,6 +87,11 @@ class ManimAnalyzer {
 					default:
 						makeSymbol(name, SymbolKind.Variable, range);
 				};
+				// `#name export …`: the outline says so
+				if (node.exported == true) {
+					final detail:Null<String> = Reflect.field(symbol, "detail");
+					Reflect.setField(symbol, "detail", detail == null ? "export" : 'export $detail');
+				}
 				symbols.push(symbol);
 			}
 		} catch (_:Dynamic) {
@@ -108,7 +115,7 @@ class ManimAnalyzer {
 	public static function getHover(text:String, uri:String, line:Int, character:Int):Null<LspHover> {
 		final word = getWordAtPosition(text, line, character);
 		if (word == null || word.length == 0) return null;
-		return HoverProvider.getHover(word, text, uri);
+		return HoverProvider.getHover(word, text, uri, line);
 	}
 
 	/**
@@ -190,7 +197,7 @@ class ManimAnalyzer {
 				kind: SymbolKind.Enum,
 				range: range,
 				selectionRange: range,
-				detail: 'enum(${enumDef.values.join(", ")})'
+				detail: 'enum(' + enumDef.values.join(", ") + ')'
 			});
 		}
 
@@ -202,7 +209,7 @@ class ManimAnalyzer {
 				kind: SymbolKind.Struct,
 				range: range,
 				selectionRange: range,
-				detail: 'record(${fieldNames.join(", ")})'
+				detail: 'record(' + fieldNames.join(", ") + ')'
 			});
 		}
 
@@ -228,7 +235,8 @@ class ManimAnalyzer {
 			case DVTBool: "bool";
 			case DVTEnum(name): name;
 			case DVTRecord(name): name;
-			case DVTArray(elemType): '${dataTypeName(elemType)}[]';
+			case DVTArray(elemType): dataTypeName(elemType) + '[]';
+			case DVTRef(name): 'ref $name';
 		};
 	}
 
@@ -237,8 +245,8 @@ class ManimAnalyzer {
 			case BITMAP(_, _, _): "bitmap";
 			case TEXT(_): "text";
 			case RICHTEXT(_): "richText";
-			case NINEPATCH(_, _, _, _): "ninepatch";
-			case FLOW(_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _): "flow";
+			case NINEPATCH(_, _, _, _, _, _, _): "ninepatch";
+			case FLOW(_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _): "flow";
 			case LAYERS: "layers";
 			case MASK(_, _): "mask";
 			case TILEGROUP: "tilegroup";
@@ -256,7 +264,7 @@ class ManimAnalyzer {
 			case PARTICLES(_): "particles";
 			case APPLY: "apply";
 			case PROGRAMMABLE(_, _, _): "programmable";
-			case STATEANIM(_, _, _): "stateanim";
+			case STATEANIM(_, _, _, _): "stateanim";
 			case STATEANIM_CONSTRUCT(_, _, _): "stateanim";
 			case DATA(_): "data";
 			case ANIMATED_PATH(_): "animatedPath";
@@ -276,7 +284,7 @@ class ManimAnalyzer {
 			case PPTString: "string";
 			case PPTColor: "color";
 			case PPTTile: "tile";
-			case PPTEnum(values): '[${values.join(",")}]';
+			case PPTEnum(values): '[' + values.join(",") + ']';
 			case PPTRange(from, to): '$from..$to';
 			case PPTFlags(_): "flags";
 			case PPTArray: "array";

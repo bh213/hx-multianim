@@ -1,0 +1,49 @@
+version: 1.0
+
+// Tables, picks and a tree in a data block: rows found by id, links between rows, annotations,
+// and how a table is drawn from. Read by DataTablesTest, through @:data and through getData.
+#cards data {
+    #category enum(basic, catalog, chaos)
+    #card record(key id, name: string, category: category, cost: int @range(0, 3) @unit("energy"),
+        ?starter: int @default(0) @says("copies in the starting deck"), ?weight: float @default(1) @tuned(2, "by hand"),
+        ?requires: ref card[])
+
+    @says("every card a meeting can deal")
+    all: card[] [
+        { id: agree, name: "Agree in principle", category: basic, cost: 1, starter: 5, weight: 3 }
+        @by(claude) @note("read from the game") { id: nod-along, name: "Nod along", category: basic, cost: 1, weight: 1, requires: [agree] }
+        { id: flip, name: "Flip the table", category: chaos, cost: 3, weight: 0, requires: [agree, nod-along] }
+        { id: "1-on-1", name: "One on one", category: catalog, cost: 2 }
+    ]
+
+    reward: pick(all, weight: weight, draws: 2)
+
+    #drop record(key id, holds: string, chance: float @range(0, 1))
+    loot: drop[] [
+        { id: coin, holds: "a coin", chance: 0.5 }
+        { id: gem, holds: "a gem", chance: 0.2 }
+        { id: nothing, holds: "nothing", chance: 0.0 }
+    ]
+    lootPick: pick(loot, chance: chance, otherwise: nothing)
+
+    #tier record(key id, weight: int)
+    tiers: tier[] [
+        { id: common, weight: 6 }
+        { id: rare, weight: 1 }
+        { id: "very rare!", weight: 0 }
+    ]
+    // A second table of tiers: a relic's ref finds its tier in whichever table has it.
+    moreTiers: tier[] [
+        { id: legendary, weight: 13 }
+    ]
+    #shade enum(deep_red, pale_gold)
+    #look record(shade: shade, shine: int)
+    #relic record(key id, tier: ref tier, ?look: look)
+    relics: relic[] [
+        { id: amulet, tier: common, look: { shade: deep_red, shine: 2 } }
+        { id: crown, tier: rare }
+        { id: ring, tier: common }
+        { id: halo, tier: legendary }
+    ]
+    relicPick: pick(relics, weight: tier.weight, repeats: true)
+}

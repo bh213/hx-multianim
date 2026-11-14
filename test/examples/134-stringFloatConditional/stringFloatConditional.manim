@@ -1,0 +1,31 @@
+version: 1.0
+
+// Builder vs codegen parity for conditionals on string and float parameters.
+//
+// stringPipeSwitch: a @switch pipe arm on a STRING parameter. The parser routes
+// string pipe arms to CoEnums; codegen's all-enum switch maps each value via
+// findEnumIndex whose default Std.parseInt returns null for non-numeric strings,
+// so the pipe arm is dropped and label="beta" silently falls through to default.
+// The builder matches CoEnums against the string correctly. Pipe arm emits width
+// 10, default emits width 20.
+//
+// stringEqNumeric: a single equality conditional `@(version => 2)` on a STRING
+// parameter, where the value is integer-parseable. Registered only once the
+// parser produces CoStringValue for string params (before that, codegen emits
+// `_version == 2` -> String == Int -> macro compile error, so it cannot be
+// compiled into the test binary).
+
+#stringPipeSwitch programmable(label:string="hello") {
+  @switch(label) {
+    "alpha" | "beta": bitmap(generated(color(10, 6, #00ff00))): 0, 0
+    default: bitmap(generated(color(20, 6, #ff0000))): 0, 0
+  }
+}
+
+// Single equality conditional on a string param with an integer-parseable value.
+// Compiles only once the parser produces CoStringValue for string params (codegen
+// then emits `_version == "2"`); before the fix it emitted `_version == 2`
+// (String == Int, a macro compile error), so it could not exist in the build.
+#stringEqNumeric programmable(version:string="v2") {
+  @(version => 2) bitmap(generated(color(10, 6, #00ff00))): 0, 0
+}

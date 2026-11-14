@@ -24,11 +24,11 @@ version: 1.0
 
   point {
     pos: 10, 10
-    staticRef($applyDemoRef, state=>alpha):200, 20
+    staticRef(applyDemoRef, state=>alpha):200, 20
     @scale(3) text(dd, "state=>alpha, 40% alpha", white, left, 400):500, 60
-    staticRef($applyDemoRef, state=>filter):0, 100
+    staticRef(applyDemoRef, state=>filter):0, 100
     @scale(3) text(dd, "state=>filter, glow", white, left, 400):500, 300
-    staticRef($applyDemoRef, state=>scale):-200, 160
+    staticRef(applyDemoRef, state=>scale):-200, 160
     @scale(3) text(dd, "state=>scale, 70% + x move", white, left, 400):500, 560
   }
 }

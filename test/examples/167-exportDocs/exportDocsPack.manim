@@ -1,0 +1,33 @@
+version: 1.0
+
+// A pack: one exported block with its doc comments, a private helper it places and a private
+// preview. Imported by exportDocs.manim, which places the helper too: an import reaches every
+// block, exported or not. ExportDocCommentTest reads both with the builder and with codegen.
+
+/// A knight that walks and stands.
+/// Drawn from two boxes.
+#knight export programmable(
+	/// What the knight is doing
+	state:[
+		idle,  /// stands still
+		walk   /// 4 frames at 8 fps
+	] = idle,
+	hp:uint = 3, /// hit points, at most 9
+	/// how wide it is drawn
+	w:uint = 10
+) {
+	@(state=>idle) bitmap(generated(color($w, 10, #4060C0))): 0, 0
+	@(state=>walk) bitmap(generated(color($w, 10, #40C060))): 0, 0
+	staticRef(helper, n=>$hp): 0, 12
+}
+
+/// A private helper: not exported, placed by the knight and by the file importing this one.
+#helper programmable(n:uint = 1) {
+	repeatable($i, step($n, dx: 3)) {
+		bitmap(generated(color(2, 2, #FFFFFF))): 0, 0
+	}
+}
+
+#preview programmable() {
+	staticRef(knight, state=>walk): 0, 0
+}

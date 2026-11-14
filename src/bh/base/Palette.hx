@@ -9,12 +9,12 @@ class Palette {
         this.colors = colors;
         this.width = width;
         if (width != null) {
-            if (colors.length % width != 0) throw 'invalid width for palette2d: ${colors.length} % $width != 0';
+            if (colors.length % width != 0) throw 'invalid width for palette2d: ' + colors.length + ' % $width != 0';
         }
     }
 
     public function getColorByIndex(index:Int) {
-        if (index < 0 || index >= colors.length) throw 'color index $index out of range [0, ${colors.length}]';
+        if (index < 0 || index >= colors.length) throw 'color index $index out of range [0, ' + colors.length + ']';
         return colors[index];
     }
     public function getColorByIndexWraparound(index:Int) {
@@ -25,8 +25,13 @@ class Palette {
     public function getColor2D(x:Int, y:Int) {
         if (width == null) throw 'palette is not 2d';
         if (x < 0 || x >= width) throw 'color index x =$x out of range [0, $width]';
-        if (y * width >= colors.length) throw 'color index y = $y out of range [0, ${colors.length/width}]';
+        if (y * width >= colors.length) throw 'color index y = $y out of range [0, ' + (colors.length/width) + ']';
         return colors[x + y*width];
+    }
+
+    /** Every colour of it, in order: what a shader that holds a picture to a palette is given. */
+    public function colorList():Array<Int> {
+        return colors.copy();
     }
 
     public function getRow(y:Int) {

@@ -95,8 +95,8 @@ class HexCoordinateSystemHelper {
 			case ODD: OffsetCoord.ODD;
 		};
 		final hex = switch (system.hexLayout.orientation) {
-			case POINTY: OffsetCoord.qoffsetToCube(parityVal, new OffsetCoord(col, row));
-			case FLAT: OffsetCoord.roffsetToCube(parityVal, new OffsetCoord(col, row));
+			case POINTY: OffsetCoord.roffsetToCube(parityVal, new OffsetCoord(col, row));
+			case FLAT: OffsetCoord.qoffsetToCube(parityVal, new OffsetCoord(col, row));
 		};
 		final pos = system.hexLayout.hexToPixel(hex);
 		return returnPosition(pos.x, pos.y);
@@ -104,8 +104,8 @@ class HexCoordinateSystemHelper {
 
 	public static function resolveHexDoubled(system:HexCoordinateSystem, col:Int, row:Int):FPoint {
 		final hex = switch (system.hexLayout.orientation) {
-			case POINTY: DoubledCoord.qdoubledToCube(new DoubledCoord(col, row));
-			case FLAT: DoubledCoord.rdoubledToCube(new DoubledCoord(col, row));
+			case POINTY: DoubledCoord.rdoubledToCube(new DoubledCoord(col, row));
+			case FLAT: DoubledCoord.qdoubledToCube(new DoubledCoord(col, row));
 		};
 		final pos = system.hexLayout.hexToPixel(hex);
 		return returnPosition(pos.x, pos.y);

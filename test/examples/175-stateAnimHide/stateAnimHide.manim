@@ -1,0 +1,42 @@
+version: 1.0
+
+// hide => [...] leaves layers of a layered .anim out: on a stateanim, and on a staticRef or a
+// dynamicRef of a figure (every stateanim it draws). marineLayers.anim's pose is one frame a layer,
+// so the builder and the macro screenshots show the same picture.
+
+/// A figure: the marine's pose with every layer drawn, a cap and a glow
+#marineFigure programmable(dir:[l, r]=l) {
+    #figure stateanim("marineLayers.anim", "pose", direction=>$dir, hat=>cap, glow=>on): 0, 0
+}
+
+#stateAnimHide programmable() {
+    // body, hat and glow; without the hat; the body alone
+    stateanim("marineLayers.anim", "pose", direction=>l, hat=>cap, glow=>on): 40, 70
+    stateanim("marineLayers.anim", "pose", direction=>l, hat=>cap, glow=>on, hide => [hat]): 110, 70
+    stateanim("marineLayers.anim", "pose", direction=>l, hat=>cap, glow=>on, hide => [hat, glow]): 180, 70
+    // the figure, its staticRef without the glow, its dynamicRef without the hat
+    staticRef(marineFigure, dir=>r): 40, 170
+    staticRef(marineFigure, dir=>r, hide => [glow]): 110, 170
+    dynamicRef(marineFigure, dir=>r, hide => [hat]): 180, 170
+}
+
+// A dynamicRef's hidden layers stay hidden as its parameters change
+#stateAnimHideRefs programmable(dir:[l, r]=l) {
+    #fig dynamicRef(marineFigure, dir=>$dir, hide => [hat]): 0, 0
+    staticRef(marineFigure, dir=>$dir, hide => [glow]): 70, 0
+}
+
+// A figure that draws another stateanim when its parameter changes (an arm built on its first show)
+#marineFigureArms programmable(kind:[pose, walk]=pose) {
+    @(kind=>pose) stateanim("marineLayers.anim", "pose", direction=>l, hat=>cap, glow=>on): 0, 0
+    @else stateanim("marineLayers.anim", "walk", direction=>l, hat=>cap, glow=>on): 0, 0
+}
+
+#stateAnimHideArms programmable(kind:[pose, walk]=pose) {
+    #fig dynamicRef(marineFigureArms, kind=>$kind, hide => [hat]): 0, 0
+}
+
+// An error on purpose (tested, never drawn): marineLayers.anim has no layer cape
+#stateAnimHideBad programmable() {
+    stateanim("marineLayers.anim", "pose", direction=>l, hat=>cap, glow=>on, hide => [hat, cape]): 0, 0
+}
