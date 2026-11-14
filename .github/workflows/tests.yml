@@ -139,6 +139,50 @@ jobs:
       # Local equivalent: test/build-order/sweep.sh [-D MULTIANIM_DEV] (Git Bash on Windows).
       run: bash test/build-order/sweep.sh ${{ matrix.extra-args }}
 
+  compile-server:
+    name: Compile server (${{ matrix.label }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Standard
+            extra-args: ""
+          - label: Dev
+            extra-args: "-D MULTIANIM_DEV"
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Haxe
+      uses: krdlab/setup-haxe@v1
+      with:
+        haxe-version: '4.3.6'
+
+    - name: Setup Lix
+      uses: lix-pm/setup-lix@5d98ddc5d00ee5ebf9bd3095dc36b1c9fb50a98f
+
+    - name: Cache Lix dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/haxe_libraries
+        key: ${{ runner.os }}-lix-${{ hashFiles('**/haxe_libraries/*.hxml') }}
+        restore-keys: |
+          ${{ runner.os }}-lix-
+
+    - name: Install dependencies
+      run: lix download
+
+    - name: Every module compiled three times on one server
+      # A compilation server (`haxe --wait`) keeps a module's typed code between compiles, and
+      # @:nullSafety refused on the second compile what it passed on the first: a local function
+      # that calls itself, an `@:nullSafety(Off)` block around a loop. A game built on a server
+      # failed there and no build here did, since none compiles twice on one server.
+      # Local equivalent: test/compile-server/twice.sh [-D MULTIANIM_DEV] (Git Bash on Windows).
+      run: bash test/compile-server/twice.sh ${{ matrix.extra-args }}
+
   test:
     name: Test (${{ matrix.label }})
     runs-on: ubuntu-latest

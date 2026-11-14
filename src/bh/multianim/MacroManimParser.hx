@@ -666,64 +666,76 @@ class MacroManimParser {
 	// repeatable, each as a whole number, the same in both.
 	function checkNameIndex(named:UpdatableNameType, index:ReferenceableValue, at:Token, parent:Null<Node>,
 			currentDefs:Null<ParametersDefinitions>):Void {
+		walkNameIndex(index, null, [], named, at, parent, currentDefs);
+	}
+
+	static function nameIndexUses(named:UpdatableNameType):String {
 		final name = getNameString(named);
-		function uses():String
-			return 'An index is a whole number worked out from the loop variables of the repeatables around the element, numbers and @finals of those, with + - * / % div and parentheses: #$name[$$i], #$name[$$row * 3 + $$c], #$name[$$x, $$y]';
-		function fixedWhenBuilt():String
-			return 'an index is fixed when the element is built and a parameter can change after. Use loop variables, numbers and @finals of those (@final cols = 3, then #$name[$$row * $$cols + $$c]), or a 2-D index #$name[$$x, $$y]';
-		function fail(msg:String):Void {
-			errorAtLine(at.line, at.col, indexedNameText(named) + ': $msg');
+		return 'An index is a whole number worked out from the loop variables of the repeatables around the element, numbers and @finals of those, with + - * / % div and parentheses: #$name[$$i], #$name[$$row * 3 + $$c], #$name[$$x, $$y]';
+	}
+
+	static function nameIndexFixedWhenBuilt(named:UpdatableNameType):String {
+		final name = getNameString(named);
+		return 'an index is fixed when the element is built and a parameter can change after. Use loop variables, numbers and @finals of those (@final cols = 3, then #$name[$$row * $$cols + $$c]), or a 2-D index #$name[$$x, $$y]';
+	}
+
+	function failNameIndex(named:UpdatableNameType, at:Token, msg:String):Void {
+		errorAtLine(at.line, at.col, indexedNameText(named) + ': $msg');
+	}
+
+	static function describeNameIndexPart(rv:ReferenceableValue):String {
+		return switch rv {
+			case RVFloat(f): '$f (not a whole number)';
+			case RVString(s): '"$s" (a string)';
+			case RVPropertyAccess(r, p): "$" + r + "." + p;
+			case RVMethodCall(r, m, _): "$" + r + "." + m + "(…)";
+			case RVChainedMethodCall(_, m, _): "." + m + "(…)";
+			case RVElementOfArray(a, _): "$" + a + "[…]";
+			case RVTernary(_, _, _): "a ?(…) … : … choice";
+			case RVCallbacks(_, _) | RVCallbacksWithIndex(_, _, _): "a callback(…)";
+			case RVColor(_, _) | RVColorXY(_, _, _): "a palette colour";
+			case RVArray(_) | RVArrayReference(_): "an array";
+			case EBinop(_, _, _): '"' + indexText(rv) + '" (a comparison)';
+			default: indexText(rv);
 		}
-		function describe(rv:ReferenceableValue):String {
-			return switch rv {
-				case RVFloat(f): '$f (not a whole number)';
-				case RVString(s): '"$s" (a string)';
-				case RVPropertyAccess(r, p): "$" + r + "." + p;
-				case RVMethodCall(r, m, _): "$" + r + "." + m + "(…)";
-				case RVChainedMethodCall(_, m, _): "." + m + "(…)";
-				case RVElementOfArray(a, _): "$" + a + "[…]";
-				case RVTernary(_, _, _): "a ?(…) … : … choice";
-				case RVCallbacks(_, _) | RVCallbacksWithIndex(_, _, _): "a callback(…)";
-				case RVColor(_, _) | RVColorXY(_, _, _): "a palette colour";
-				case RVArray(_) | RVArrayReference(_): "an array";
-				case EBinop(_, _, _): '"' + indexText(rv) + '" (a comparison)';
-				default: indexText(rv);
-			}
-		}
-		// `finalName`: the @final whose value is being walked (null for the index itself)
-		function walk(rv:ReferenceableValue, finalName:Null<String>, chain:Array<String>):Void {
-			switch rv {
-				case RVInteger(_):
-				case RVParenthesis(e) | EUnaryOp(_, e):
-					walk(e, finalName, chain);
-				case EBinop(OpAdd | OpSub | OpMul | OpDiv | OpIntegerDiv | OpMod, a, b):
-					walk(a, finalName, chain);
-					walk(b, finalName, chain);
-				case RVReference(v):
-					if (currentDefs != null && currentDefs.exists(v)) {
-						if (finalName == null)
-							fail('$$$v is a parameter, and ' + fixedWhenBuilt());
-						else
-							fail('@final $$$finalName uses the parameter $$$v, and ' + fixedWhenBuilt());
-					}
-					final finalExpr = finalExprInScope(v, parent);
-					if (finalExpr != null) {
-						if (chain.indexOf(v) < 0)
-							walk(finalExpr, v, chain.concat([v]));
-					} else if (scopeVars == null || !scopeVars.contains(v)) {
-						if (finalName == null)
-							fail('index variable $$$v is not a known loop variable or @final in this scope. ' + uses());
-						else
-							fail('@final $$$finalName uses $$$v, which is no loop variable or @final here. ' + uses());
-					}
-				default:
+	}
+
+	// One part of an index, and the parts of it. `finalName`: the @final whose value is being walked
+	// (null for the index itself). A method, not a local function of checkNameIndex: a local function
+	// that calls itself fails null safety on a compilation server's second compile
+	// (test/compile-server/twice.sh).
+	function walkNameIndex(rv:ReferenceableValue, finalName:Null<String>, chain:Array<String>, named:UpdatableNameType, at:Token,
+			parent:Null<Node>, currentDefs:Null<ParametersDefinitions>):Void {
+		switch rv {
+			case RVInteger(_):
+			case RVParenthesis(e) | EUnaryOp(_, e):
+				walkNameIndex(e, finalName, chain, named, at, parent, currentDefs);
+			case EBinop(OpAdd | OpSub | OpMul | OpDiv | OpIntegerDiv | OpMod, a, b):
+				walkNameIndex(a, finalName, chain, named, at, parent, currentDefs);
+				walkNameIndex(b, finalName, chain, named, at, parent, currentDefs);
+			case RVReference(v):
+				if (currentDefs != null && currentDefs.exists(v)) {
 					if (finalName == null)
-						fail(describe(rv) + ' cannot be an index. ' + uses());
+						failNameIndex(named, at, '$$$v is a parameter, and ' + nameIndexFixedWhenBuilt(named));
 					else
-						fail('@final $$$finalName uses ' + describe(rv) + ', which cannot be part of an index. ' + uses());
-			}
+						failNameIndex(named, at, '@final $$$finalName uses the parameter $$$v, and ' + nameIndexFixedWhenBuilt(named));
+				}
+				final finalExpr = finalExprInScope(v, parent);
+				if (finalExpr != null) {
+					if (chain.indexOf(v) < 0)
+						walkNameIndex(finalExpr, v, chain.concat([v]), named, at, parent, currentDefs);
+				} else if (scopeVars == null || !scopeVars.contains(v)) {
+					if (finalName == null)
+						failNameIndex(named, at, 'index variable $$$v is not a known loop variable or @final in this scope. ' + nameIndexUses(named));
+					else
+						failNameIndex(named, at, '@final $$$finalName uses $$$v, which is no loop variable or @final here. ' + nameIndexUses(named));
+				}
+			default:
+				if (finalName == null)
+					failNameIndex(named, at, describeNameIndexPart(rv) + ' cannot be an index. ' + nameIndexUses(named));
+				else
+					failNameIndex(named, at, '@final $$$finalName uses ' + describeNameIndexPart(rv) + ', which cannot be part of an index. ' + nameIndexUses(named));
 		}
-		walk(index, null, []);
 	}
 
 	// The value of the @final `name` in scope where an element of `parent` is being read: the latest

@@ -2294,6 +2294,80 @@ bh_multianim_MacroManimParser.nestedRepeatHint = function(name,innerVar,outer) {
 	}
 	return "";
 };
+bh_multianim_MacroManimParser.nameIndexUses = function(named) {
+	var name = bh_multianim_MultiAnimParser_getNameString(named);
+	return "An index is a whole number worked out from the loop variables of the repeatables around the element, numbers and @finals of those, with + - * / % div and parentheses: #" + name + "[$" + "i], #" + name + "[$" + "row * 3 + $" + "c], #" + name + "[$" + "x, $" + "y]";
+};
+bh_multianim_MacroManimParser.nameIndexFixedWhenBuilt = function(named) {
+	var name = bh_multianim_MultiAnimParser_getNameString(named);
+	return "an index is fixed when the element is built and a parameter can change after. Use loop variables, numbers and @finals of those (@final cols = 3, then #" + name + "[$" + "row * $" + "cols + $" + "c]), or a 2-D index #" + name + "[$" + "x, $" + "y]";
+};
+bh_multianim_MacroManimParser.describeNameIndexPart = function(rv) {
+	switch(rv._hx_index) {
+	case 0:
+		var _g = rv.index;
+		var a = rv.arrayRef;
+		return "$" + a + "[…]";
+	case 1:
+		var s = rv.s;
+		return "\"" + s + "\" (a string)";
+	case 3:
+		var _g = rv.refArr;
+		return "an array";
+	case 4:
+		var _g = rv.refArr;
+		return "an array";
+	case 5:
+		var f = rv.f;
+		return "" + f + " (not a whole number)";
+	case 7:
+		var r = rv.ref;
+		var p = rv.property;
+		return "$" + r + "." + p;
+	case 8:
+		var _g = rv.args;
+		var r = rv.ref;
+		var m = rv.method;
+		return "$" + r + "." + m + "(…)";
+	case 9:
+		var _g = rv.base;
+		var _g = rv.args;
+		var m = rv.method;
+		return "." + m + "(…)";
+	case 11:
+		var _g = rv.name;
+		var _g = rv.index;
+		var _g = rv.defaultValue;
+		return "a callback(…)";
+	case 12:
+		var _g = rv.name;
+		var _g = rv.defaultValue;
+		return "a callback(…)";
+	case 13:
+		var _g = rv.externalReference;
+		var _g = rv.palette;
+		var _g = rv.x;
+		var _g = rv.y;
+		return "a palette colour";
+	case 14:
+		var _g = rv.externalReference;
+		var _g = rv.palette;
+		var _g = rv.index;
+		return "a palette colour";
+	case 15:
+		var _g = rv.condition;
+		var _g = rv.ifTrue;
+		var _g = rv.ifFalse;
+		return "a ?(…) … : … choice";
+	case 16:
+		var _g = rv.op;
+		var _g = rv.e1;
+		var _g = rv.e2;
+		return "\"" + bh_multianim_MultiAnimParser_indexText(rv) + "\" (a comparison)";
+	default:
+		return bh_multianim_MultiAnimParser_indexText(rv);
+	}
+};
 bh_multianim_MacroManimParser.finalExprInScope = function(name,parent) {
 	var p = parent;
 	while(p != null) {
@@ -2843,147 +2917,72 @@ bh_multianim_MacroManimParser.prototype = {
 		return index;
 	}
 	,checkNameIndex: function(named,index,at,parent,currentDefs) {
-		var _gthis = this;
-		var name = bh_multianim_MultiAnimParser_getNameString(named);
-		var uses = function() {
-			return "An index is a whole number worked out from the loop variables of the repeatables around the element, numbers and @finals of those, with + - * / % div and parentheses: #" + name + "[$" + "i], #" + name + "[$" + "row * 3 + $" + "c], #" + name + "[$" + "x, $" + "y]";
-		};
-		var fixedWhenBuilt = function() {
-			return "an index is fixed when the element is built and a parameter can change after. Use loop variables, numbers and @finals of those (@final cols = 3, then #" + name + "[$" + "row * $" + "cols + $" + "c]), or a 2-D index #" + name + "[$" + "x, $" + "y]";
-		};
-		var fail = function(msg) {
-			_gthis.errorAtLine(at.line,at.col,bh_multianim_MultiAnimParser_indexedNameText(named) + (": " + msg));
-		};
-		var describe = function(rv) {
-			switch(rv._hx_index) {
-			case 0:
-				var _g = rv.index;
-				var a = rv.arrayRef;
-				return "$" + a + "[…]";
-			case 1:
-				var s = rv.s;
-				return "\"" + s + "\" (a string)";
-			case 3:
-				var _g = rv.refArr;
-				return "an array";
-			case 4:
-				var _g = rv.refArr;
-				return "an array";
-			case 5:
-				var f = rv.f;
-				return "" + f + " (not a whole number)";
-			case 7:
-				var r = rv.ref;
-				var p = rv.property;
-				return "$" + r + "." + p;
-			case 8:
-				var _g = rv.args;
-				var r = rv.ref;
-				var m = rv.method;
-				return "$" + r + "." + m + "(…)";
-			case 9:
-				var _g = rv.base;
-				var _g = rv.args;
-				var m = rv.method;
-				return "." + m + "(…)";
-			case 11:
-				var _g = rv.name;
-				var _g = rv.index;
-				var _g = rv.defaultValue;
-				return "a callback(…)";
-			case 12:
-				var _g = rv.name;
-				var _g = rv.defaultValue;
-				return "a callback(…)";
-			case 13:
-				var _g = rv.externalReference;
-				var _g = rv.palette;
-				var _g = rv.x;
-				var _g = rv.y;
-				return "a palette colour";
-			case 14:
-				var _g = rv.externalReference;
-				var _g = rv.palette;
-				var _g = rv.index;
-				return "a palette colour";
-			case 15:
-				var _g = rv.condition;
-				var _g = rv.ifTrue;
-				var _g = rv.ifFalse;
-				return "a ?(…) … : … choice";
-			case 16:
-				var _g = rv.op;
-				var _g = rv.e1;
-				var _g = rv.e2;
-				return "\"" + bh_multianim_MultiAnimParser_indexText(rv) + "\" (a comparison)";
-			default:
-				return bh_multianim_MultiAnimParser_indexText(rv);
+		this.walkNameIndex(index,null,[],named,at,parent,currentDefs);
+	}
+	,failNameIndex: function(named,at,msg) {
+		this.errorAtLine(at.line,at.col,bh_multianim_MultiAnimParser_indexedNameText(named) + (": " + msg));
+	}
+	,walkNameIndex: function(rv,finalName,chain,named,at,parent,currentDefs) {
+		switch(rv._hx_index) {
+		case 2:
+			var _g = rv.i;
+			break;
+		case 6:
+			var v = rv.ref;
+			if(currentDefs != null && Object.prototype.hasOwnProperty.call(currentDefs.h,v)) {
+				if(finalName == null) {
+					this.failNameIndex(named,at,"$" + v + " is a parameter, and " + bh_multianim_MacroManimParser.nameIndexFixedWhenBuilt(named));
+				} else {
+					this.failNameIndex(named,at,"@final $" + finalName + " uses the parameter $" + v + ", and " + bh_multianim_MacroManimParser.nameIndexFixedWhenBuilt(named));
+				}
 			}
-		};
-		var walk = null;
-		walk = function(rv,finalName,chain) {
-			switch(rv._hx_index) {
-			case 2:
-				var _g = rv.i;
-				break;
-			case 6:
-				var v = rv.ref;
-				if(currentDefs != null && Object.prototype.hasOwnProperty.call(currentDefs.h,v)) {
-					if(finalName == null) {
-						fail("$" + v + " is a parameter, and " + fixedWhenBuilt());
-					} else {
-						fail("@final $" + finalName + " uses the parameter $" + v + ", and " + fixedWhenBuilt());
-					}
+			var finalExpr = bh_multianim_MacroManimParser.finalExprInScope(v,parent);
+			if(finalExpr != null) {
+				if(chain.indexOf(v) < 0) {
+					this.walkNameIndex(finalExpr,v,chain.concat([v]),named,at,parent,currentDefs);
 				}
-				var finalExpr = bh_multianim_MacroManimParser.finalExprInScope(v,parent);
-				if(finalExpr != null) {
-					if(chain.indexOf(v) < 0) {
-						walk(finalExpr,v,chain.concat([v]));
-					}
-				} else if(_gthis.scopeVars == null || _gthis.scopeVars.indexOf(v) == -1) {
-					if(finalName == null) {
-						fail("index variable $" + v + " is not a known loop variable or @final in this scope. " + uses());
-					} else {
-						fail("@final $" + finalName + " uses $" + v + ", which is no loop variable or @final here. " + uses());
-					}
+			} else if(this.scopeVars == null || this.scopeVars.indexOf(v) == -1) {
+				if(finalName == null) {
+					this.failNameIndex(named,at,"index variable $" + v + " is not a known loop variable or @final in this scope. " + bh_multianim_MacroManimParser.nameIndexUses(named));
+				} else {
+					this.failNameIndex(named,at,"@final $" + finalName + " uses $" + v + ", which is no loop variable or @final here. " + bh_multianim_MacroManimParser.nameIndexUses(named));
 				}
-				break;
-			case 10:
-				var e = rv.e;
-				walk(e,finalName,chain);
-				break;
-			case 16:
-				var _g = rv.e1;
-				var _g1 = rv.e2;
-				switch(rv.op._hx_index) {
-				case 0:case 1:case 2:case 3:case 4:case 5:
-					var a = _g;
-					var b = _g1;
-					walk(a,finalName,chain);
-					walk(b,finalName,chain);
-					break;
-				default:
-					if(finalName == null) {
-						fail(describe(rv) + " cannot be an index. " + uses());
-					} else {
-						fail("@final $" + finalName + " uses " + describe(rv) + ", which cannot be part of an index. " + uses());
-					}
-				}
-				break;
-			case 17:
-				var _g = rv.op;
-				var e = rv.e;
-				walk(e,finalName,chain);
+			}
+			break;
+		case 10:
+			var e = rv.e;
+			this.walkNameIndex(e,finalName,chain,named,at,parent,currentDefs);
+			break;
+		case 16:
+			var _g = rv.e1;
+			var _g1 = rv.e2;
+			switch(rv.op._hx_index) {
+			case 0:case 1:case 2:case 3:case 4:case 5:
+				var a = _g;
+				var b = _g1;
+				this.walkNameIndex(a,finalName,chain,named,at,parent,currentDefs);
+				this.walkNameIndex(b,finalName,chain,named,at,parent,currentDefs);
 				break;
 			default:
 				if(finalName == null) {
-					fail(describe(rv) + " cannot be an index. " + uses());
+					this.failNameIndex(named,at,bh_multianim_MacroManimParser.describeNameIndexPart(rv) + " cannot be an index. " + bh_multianim_MacroManimParser.nameIndexUses(named));
 				} else {
-					fail("@final $" + finalName + " uses " + describe(rv) + ", which cannot be part of an index. " + uses());
+					this.failNameIndex(named,at,"@final $" + finalName + " uses " + bh_multianim_MacroManimParser.describeNameIndexPart(rv) + ", which cannot be part of an index. " + bh_multianim_MacroManimParser.nameIndexUses(named));
 				}
 			}
-		};
-		walk(index,null,[]);
+			break;
+		case 17:
+			var _g = rv.op;
+			var e = rv.e;
+			this.walkNameIndex(e,finalName,chain,named,at,parent,currentDefs);
+			break;
+		default:
+			if(finalName == null) {
+				this.failNameIndex(named,at,bh_multianim_MacroManimParser.describeNameIndexPart(rv) + " cannot be an index. " + bh_multianim_MacroManimParser.nameIndexUses(named));
+			} else {
+				this.failNameIndex(named,at,"@final $" + finalName + " uses " + bh_multianim_MacroManimParser.describeNameIndexPart(rv) + ", which cannot be part of an index. " + bh_multianim_MacroManimParser.nameIndexUses(named));
+			}
+		}
 	}
 	,iteratorOutputVars: function(rt) {
 		switch(rt._hx_index) {

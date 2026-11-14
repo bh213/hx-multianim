@@ -584,20 +584,22 @@ class ScreenManager {
 	 *  taken again, so reloading the file that imports it leaves its sounds playing. Returns how
 	 *  many audio blocks were taken. */
 	function takeFileBlocks(built:MultiAnimBuilder):Int {
-		final seen:Array<MultiAnimBuilder> = [];
-		function take(b:MultiAnimBuilder, isImport:Bool):Int {
-			if (seen.contains(b) || (isImport && importsTaken.contains(b)))
-				return 0;
-			seen.push(b);
-			if (isImport)
-				importsTaken.push(b);
-			var taken = 0;
-			for (imported in b.importedBuilders())
-				taken += take(imported, true);
-			b.registerCursors();
-			return taken + audio.addBanks(b);
-		}
-		return take(built, false);
+		return takeBlocksOf(built, false, []);
+	}
+
+	// A method, not a local function of takeFileBlocks: a local function that calls itself fails
+	// null safety on a compilation server's second compile (test/compile-server/twice.sh).
+	function takeBlocksOf(b:MultiAnimBuilder, isImport:Bool, seen:Array<MultiAnimBuilder>):Int {
+		if (seen.contains(b) || (isImport && importsTaken.contains(b)))
+			return 0;
+		seen.push(b);
+		if (isImport)
+			importsTaken.push(b);
+		var taken = 0;
+		for (imported in b.importedBuilders())
+			taken += takeBlocksOf(imported, true, seen);
+		b.registerCursors();
+		return taken + audio.addBanks(b);
 	}
 
 	public function reload(?resource:hxd.res.Resource = null, throwOnError:Bool = true):{
@@ -1592,13 +1594,16 @@ class ScreenManager {
 		overlay.remove();
 		modalOverlay = null;
 		modalOverlayTargetAlpha = 0.0;
-		// Restore blur filters. `filter` is typed non-null but accepts
-		// null at runtime to clear the filter — `@:nullSafety(Off)` block
-		// covers the analyser's complaint without changing behaviour.
-		@:nullSafety(Off) {
-			for (entry in modalOverlayBlurTargets) {
-				entry.root.filter = entry.saved;
-			}
+		restoreBlurTargets();
+	}
+
+	// Restore blur filters. `filter` is typed non-null but accepts null at runtime to clear the
+	// filter, so null safety is off here. On the method, not on a block around the loop: a
+	// compilation server's second compile no longer honours it there (test/compile-server/twice.sh).
+	@:nullSafety(Off)
+	function restoreBlurTargets():Void {
+		for (entry in modalOverlayBlurTargets) {
+			entry.root.filter = entry.saved;
 		}
 		modalOverlayBlurTargets = [];
 	}
@@ -1762,6 +1767,20 @@ class ScreenManager {
 			rebuiltCount: 0,
 			elapsedMs: 0,
 		};
+	}
+
+	// Only a dynamicRef child is rebuilt with its host: a result the game put in a slot of another
+	// is under it too, but nothing rebuilds it but its own handle. A method, not a local function
+	// of hotReloadFile: a local function that calls itself fails null safety on a compilation
+	// server's second compile (test/compile-server/twice.sh).
+	static function isDynamicRefChildOf(child:BuilderResult, host:BuilderResult):Bool {
+		final refs = host.dynamicRefs;
+		if (refs == null) return false;
+		for (arr in refs)
+			for (r in arr)
+				if (r == child || isDynamicRefChildOf(child, r))
+					return true;
+		return false;
 	}
 
 	/** Reloads one loaded `.manim` from `content`. Returns null when the content is unchanged
@@ -1979,17 +1998,6 @@ class ScreenManager {
 				if (p == ancestor) return true;
 				p = p.parent;
 			}
-			return false;
-		}
-		// Only a dynamicRef child is rebuilt with its host: a result the game put in a slot of another
-		// is under it too, but nothing rebuilds it but its own handle.
-		function isDynamicRefChildOf(child:BuilderResult, host:BuilderResult):Bool {
-			final refs = host.dynamicRefs;
-			if (refs == null) return false;
-			for (arr in refs)
-				for (r in arr)
-					if (r == child || isDynamicRefChildOf(child, r))
-						return true;
 			return false;
 		}
 		final nestedHandles:Array<bh.multianim.dev.HotReload.ReloadableHandle> = [];

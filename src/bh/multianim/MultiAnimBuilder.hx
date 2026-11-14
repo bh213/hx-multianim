@@ -11088,24 +11088,27 @@ class MultiAnimBuilder {
 		final root = multiParserResult.nodes?.get(programmableName);
 		if (root == null)
 			return false;
-		function walk(node:Node):Bool {
-			if (node != root && getNameString(node.updatableName) == elementName)
-				return true;
-			if (node.children != null)
-				for (child in node.children)
-					if (walk(child))
-						return true;
-			switch node.type {
-				case SWITCH(_, arms):
-					for (arm in arms)
-						for (child in arm.children)
-							if (walk(child))
-								return true;
-				default:
-			}
-			return false;
+		return hasNamedElementUnder(root, root, elementName);
+	}
+
+	// A method, not a local function of hasNamedElement: a local function that calls itself fails
+	// null safety on a compilation server's second compile (test/compile-server/twice.sh).
+	static function hasNamedElementUnder(node:Node, root:Node, elementName:String):Bool {
+		if (node != root && getNameString(node.updatableName) == elementName)
+			return true;
+		if (node.children != null)
+			for (child in node.children)
+				if (hasNamedElementUnder(child, root, elementName))
+					return true;
+		switch node.type {
+			case SWITCH(_, arms):
+				for (arm in arms)
+					for (child in arm.children)
+						if (hasNamedElementUnder(child, root, elementName))
+							return true;
+			default:
 		}
-		return walk(root);
+		return false;
 	}
 
 	/** A build that starts inside a programmable (a slot body, a codegen @switch arm, tileGroup,
