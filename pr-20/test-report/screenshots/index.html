@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-11-14 11:29:49</div>
+    <div class="timestamp">Generated: 2026-11-15 22:38:43</div>
     <div class="summary">
         <strong>Summary:</strong> 115 tests,         <span style="color: #4CAF50;">115 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.3s, visual 30.6s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.5s, visual 32.6s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>23086 assertions:</strong>             <span style="color: #4CAF50;">23086 passed</span>
+            <strong>23185 assertions:</strong>             <span style="color: #4CAF50;">23185 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -657,6 +657,8 @@
                 <div class="unit-method pass">testGetPathMidResolutionThrowLeavesBuilderParamsIntact: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testGetPathThrowLeavesBuilderParamsIntact: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testLeadingZeroLengthLineToGivesFiniteStart: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testNormalizedPathKeepsItsCheckpoints: OK <span class="dots">........</span></div>
+                <div class="unit-method pass">testProjectilePathFiresItsCheckpointEvent: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testStretchOntoOnePointIsValidPathAtThatPoint: OK <span class="dots">........</span></div>
                 <div class="unit-method pass">testWaveWithFractionalCountJoinsNextSegmentContinuously: OK <span class="dots">..</span></div>
             </div>
@@ -1600,7 +1602,9 @@
             <div class="unit-class">
                 <div class="unit-class-name">CodegenBatchUpdateParityTest</div>
                 <div class="unit-method pass">testBatchMode_Flag: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testBatch_Builder_ExpressionOfTwoParamsRunsOnce: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testBatch_CoalescesRebuildListenerFires: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testBatch_Codegen_ExpressionOfTwoParamsRunsOnce: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testBatch_DefersVisibilityUntilEndUpdate: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testUnbatched_FiresPerSetter: OK <span class="dots">.</span></div>
             </div>
@@ -1794,6 +1798,8 @@
                 <div class="unit-method pass">testHiddenArmIsBuiltOnItsFirstShow_Codegen: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testHiddenElementExpressions_Builder_AreNotEvaluated: OK <span class="dots">............</span></div>
                 <div class="unit-method pass">testHiddenElementExpressions_Codegen_AreNotEvaluated: OK <span class="dots">............</span></div>
+                <div class="unit-method pass">testIntRefArgument_Builder_TruncatesAtEachOperation: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testIntRefArgument_Codegen_TruncatesAtEachOperation: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testInteractiveIdFromParamFinal_Builder_RejectsSettingTheParam: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testInteractiveIdFromParamFinal_Codegen_RejectsSettingTheParam: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testLayoutPointByParamWithOffset_Builder_FollowsTheParam: OK <span class="dots">..</span></div>
@@ -1822,6 +1828,10 @@
                 <div class="unit-method pass">testTemplateSwapWhileHidden_Codegen_IsDoneAtOnce: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testTileGroupInStaticRepeat_Builder_SeesTheLoopVariable: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testTileGroupInStaticRepeat_Codegen_SeesTheLoopVariable: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testTilesRepeatBody_Builder_FollowsItsParams: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testTilesRepeatBody_Codegen_FollowsItsParams: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testUnnamedRefsInARepeat_Builder_EachButtonDrivesItsOwnChild: OK <span class="dots">.....</span></div>
+                <div class="unit-method pass">testUnnamedRefsInARepeat_Codegen_EachButtonDrivesItsOwnChild: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testValueDependentApply_Builder_UnrelatedParamLeavesTheParent: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testValueDependentApply_Codegen_UnrelatedParamLeavesTheParent: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testValueDependentUnconditionalApply_Builder_UnrelatedParamLeavesTheParent: OK <span class="dots">....</span></div>
@@ -1829,6 +1839,10 @@
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">CodegenRepeat2DParityTest</div>
+                <div class="unit-method pass">testR2dArrayAxis_Builder_FollowsTheArray: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testR2dArrayAxis_Codegen_FollowsTheArray: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testR2dConstCountParamStep_Builder_SpreadsCells: OK <span class="dots">..............</span></div>
+                <div class="unit-method pass">testR2dConstCountParamStep_Codegen_SpreadsCells: OK <span class="dots">..............</span></div>
                 <div class="unit-method pass">testR2dLayoutAxis_Builder_Renders: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testR2dLayoutAxis_Codegen_Renders: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testR2dParamOffsets_Builder_SpreadsColumns: OK <span class="dots">.....</span></div>
@@ -2061,11 +2075,8 @@
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">EnumNumericConditionalTest</div>
-                <div class="unit-method pass">testCodegen_KnownValueAfterUnknownStillWorks: OK <span class="dots">..</span></div>
-                <div class="unit-method pass">testCodegen_UnknownEnumValueDoesNotMatchNumericArms: OK <span class="dots">.....</span></div>
-                <div class="unit-method pass">testRuntime_KnownValueAfterUnknownStillWorks: OK <span class="dots">..</span></div>
-                <div class="unit-method pass">testRuntime_UnknownEnumValueDoesNotMatchNumericArms: OK <span class="dots">..</span></div>
-                <div class="unit-method pass">testRuntime_UnknownEnumValueDoesNotThrowOnNumericConditional: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testCodegen_RefusesValuesOutsideTheEnum: OK <span class="dots">..........</span></div>
+                <div class="unit-method pass">testRuntime_RefusesValuesOutsideTheEnum: OK <span class="dots">..........</span></div>
             </div>
             <div class="unit-class">
                 <div class="unit-class-name">EventPriorityTest</div>
@@ -2224,11 +2235,14 @@
                 <div class="unit-method pass">testApplyOn_Codegen_StaysOnTopOfAParamChange: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testBatchShowingAnArmAndChangingItsRepeat_Builder_BuildsTheRepeatOnce: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testConditionalRepeatWithFlowProps_Builder_HidesAndShows: OK <span class="dots">.......</span></div>
+                <div class="unit-method pass">testDynamicRefInASwitchArmTellsItsHostWhenItRebuilds: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testElementUnderHiddenConditional_Builder_DoesNotEvaluateItsExpressions: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testElseInSwitchArm_BuilderNonIncremental_FollowsItsChain: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testElseInSwitchArm_Builder_FollowsItsChain: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testElseInSwitchArm_Codegen_FollowsItsChain: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testFadingOutElement_Builder_DoesNotEvaluateItsExpressions: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testHiddenSpacerInAFlowShows: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testRepeatable2dOverAnArrayFollowsTheArray: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testRootPosBuiltAtZero_Builder_ComposesWithTheCallersPlacement: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testRootPosBuiltAtZero_Builder_FollowsItsParam: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testRootPos_Builder_FollowsItsParam: OK <span class="dots">...</span></div>
@@ -2240,6 +2254,7 @@
                 <div class="unit-method pass">testShowFade_Builder_EndsAtTheAlphaSetWhileHidden: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testShowSlide_Builder_EndsAtThePositionSetWhileHidden: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testShowSlide_Codegen_EndsAtThePositionSetInTheSameBatch: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testSlotInARebuiltSwitchArmTellsItsHostWhenItRebuilds: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testTransitionOnConditionValueParam_Builder_Animates: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testTransitionOnConditionValueParam_Codegen_Animates: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testUnconditionalApplyPos_Builder_AddsToTheParamDrivenPosition: OK <span class="dots">.........</span></div>
@@ -2297,6 +2312,7 @@
                 <div class="unit-method pass">testSelectFromHandDebugName: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testSelectFromHandDefaultConfig: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSelectFromHandDisablesFilteredCards: OK <span class="dots">......</span></div>
+                <div class="unit-method pass">testSelectFromHandLeavesCardsTheGameDisabledDisabled: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testSelectFromHandStaticStart: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSelectFromHandStaticStartCancel: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testSelectFromHandSuppressesDrag: OK <span class="dots">..</span></div>
@@ -2894,6 +2910,7 @@
                 <div class="unit-method pass">testGravityAngleDownAcceleratesParticlesDownward: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testGravityWithNoAngleSetFallsDown: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testGroupTintColoursWhatIsBornAndABurstWins: OK <span class="dots">.........</span></div>
+                <div class="unit-method pass">testLifeRandomAboveOneStillEndsEveryParticle: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testLineOnlyKillBoundsDoesNotEnforceHiddenDefaultBox: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testNoForceFieldsBaseline: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testNonRelativeBakeWithZeroSizeAndWorldAnchorKeepsVelocityFinite: OK <span class="dots">.......</span></div>
@@ -3082,7 +3099,7 @@
                 <div class="unit-method pass">testCodegenParticlesResolveParamScope: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testCodegenSetColorParamAlphaBaked: OK <span class="dots">..........</span></div>
                 <div class="unit-method pass">testCodegenSetParameterAcceptsColorStringFormats: OK <span class="dots">.......</span></div>
-                <div class="unit-method pass">testCodegenSetParameterUnknownEnumValueDoesNotThrow: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testCodegenSetParameterRefusesAValueTheEnumDoesNotDeclare: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testCodegenSlidePresenceTransitionLeavesReparentedObjectAlone: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testCodegenSlotParamGridContext: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testCodegenSwitchArmCallbackInheritance: OK <span class="dots">...</span></div>
@@ -3759,6 +3776,7 @@
                 <div class="unit-method pass">testButtonCreation: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testButtonDisabledNoClick: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testButtonDisabledState: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testButtonGivesTheDesignOnlyStatusValuesItDeclares: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testButtonOnClickCallback: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testButtonSetStyleParameterAppliesDeclaredParam: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testButtonSetStyleParameterRejectsWidgetManagedParams: OK <span class="dots">.............</span></div>
@@ -3787,6 +3805,7 @@
                 <div class="unit-method pass">testCardHandPathLayoutTangentOrientation: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testCheckboxCreation: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testCheckboxDisabled: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testCheckboxGivesTheDesignOnlyStatusValuesItDeclares: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testCheckboxOnToggleCallback: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testCheckboxToggleOff: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testCheckboxToggleOn: OK <span class="dots">..</span></div>
@@ -3856,6 +3875,7 @@
                 <div class="unit-method pass">testProgressBarClamp: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testProgressBarCreation: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testProgressBarValue: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testRichInteractiveHelperGivesOnlyDeclaredStates: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testScreenAddRemoveElement: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testScreenCreation: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testScreenEventRecording: OK <span class="dots">...</span></div>
@@ -4402,6 +4422,7 @@
                 <div class="unit-method pass">testUnbind: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testUnbindAll: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testUnknownInteractiveReturnsFalse: OK <span class="dots">.</span></div>
+                <div class="unit-method pass">testUnnamedDynamicRefsInARepeatDriveTheirOwnStatus: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testUnregister: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testUnregisterByPrefix: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testUnregisterOnlyRemovesMatchingResult: OK <span class="dots">..</span></div>
