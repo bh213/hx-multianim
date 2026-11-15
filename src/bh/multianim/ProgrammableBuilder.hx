@@ -229,6 +229,12 @@ class ProgrammableBuilder {
 		return getBuilder().importedBuilder(externalRef).parameterTakesText(name, key);
 	}
 
+	/** How a ref's argument is resolved for its target's parameter (`MultiAnimBuilder.refArgumentKind`):
+	 *  text, an integer truncated at each operation, or the raw value. */
+	public function refArgumentKind(name:String, key:String, ?externalRef:String):Int {
+		return getBuilder().importedBuilder(externalRef).refArgumentKind(name, key);
+	}
+
 	/** Build a sub-programmable via the builder (for STATIC_REF nodes). `fromProgrammable` is the
 	 *  programmable the instance builds: a ref back to it is circular, as in the builder. Only in
 	 *  its own file: another file's programmable of that name is another programmable. */

@@ -30,7 +30,7 @@ class UIRichInteractiveHelper {
 
 	/** Shows a binding's state on its result: `pressed` instead while the host holds the key. */
 	function show(interactiveId:String, binding:InteractiveBinding, state:InteractiveState):Void {
-		binding.target.setParameter(binding.stateParam, stateName(state != Disabled && isHeld(interactiveId) ? Pressed : state));
+		UIStatusTools.setStatus(binding.target, stateName(state != Disabled && isHeld(interactiveId) ? Pressed : state), binding.stateParam);
 	}
 
 	function isHeld(interactiveId:String):Bool {
@@ -277,14 +277,11 @@ class UIRichInteractiveHelper {
 	}
 
 	static function findDynamicRefOwner(source:UIInteractiveSource, obj:bh.base.MAObject):Null<UIInteractiveSource> {
+		// Every dynamicRef child, one per site: unnamed sites that share a key (a dynamicRef in a
+		// repeat) are each searched, which getDynamicRef of that key refuses
 		if (!Std.isOfType(source, bh.multianim.LiveProgrammable)) return null;
 		final live:bh.multianim.LiveProgrammable = cast source;
-		for (key in live.getDynamicRefKeys()) {
-			var child:Null<bh.multianim.MultiAnimBuilder.BuilderResult> = null;
-			try {
-				child = (cast source : Dynamic).getDynamicRef(key);
-			} catch (_:Dynamic) {} // unnamed sites colliding on one key: not reachable by key
-			if (child == null) continue;
+		for (child in live.getDynamicRefResults()) {
 			if (child.interactives.indexOf(obj) >= 0) return child;
 			final deeper = findDynamicRefOwner(child, obj);
 			if (deeper != null) return deeper;

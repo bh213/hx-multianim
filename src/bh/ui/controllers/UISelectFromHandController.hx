@@ -50,6 +50,9 @@ class UISelectFromHandController extends UIInteractionController {
 	final filter:Null<CardSelectFilter>;
 
 	var savedCanDragCard:Null<(CardId) -> Bool>;
+	// The cards this controller disabled (the filter's), enabled again when it ends; a card the game
+	// had disabled is not in hand, so the filter never touches it
+	final dimmedCards:Array<CardId> = [];
 
 	public function new(integration:UIControllerScreenIntegration, cardHand:UICardHandHelper, config:SelectFromHandConfig,
 			resultCallback:(Null<Dynamic>) -> Void) {
@@ -78,6 +81,7 @@ class UISelectFromHandController extends UIInteractionController {
 					continue;
 				if (!filter(cardId)) {
 					cardHand.setCardEnabled(cardId, false);
+					dimmedCards.push(cardId);
 				}
 			}
 		}
@@ -94,12 +98,10 @@ class UISelectFromHandController extends UIInteractionController {
 		}
 		selectedCards.resize(0);
 
-		// Re-enable cards that were disabled by filter
-		if (filter != null) {
-			for (cardId in cardHand.getCardIds()) {
-				cardHand.setCardEnabled(cardId, true);
-			}
-		}
+		// Re-enable the cards the filter disabled, and no other
+		for (cardId in dimmedCards)
+			cardHand.setCardEnabled(cardId, true);
+		dimmedCards.resize(0);
 	}
 
 	/** Intercept card interactive events for selection behavior. */

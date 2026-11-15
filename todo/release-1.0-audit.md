@@ -65,6 +65,8 @@ before assigning a new ID.
   *(2026-10-22 build review, two more: a float param given `"1.5"` works in the builder and throws in
   codegen (DevBridge `set_parameter` forwards raw JSON to both); an unknown enum string is reported back
   by the builder's `getParameterValues`, while codegen stores its Int sentinel and leaves the key out.)*
+  *(2026-11-15: the enum part done — both backends take an enum's value by name or checked index and
+  refuse another (`invalid_param_value`); the tile, string, bool and float inputs still differ.)*
 - [ ] `CG-23` Misc: ~~maxWidth-with-param-scale bake~~, ~~`TAWGrid` skipped~~, ~~`$ctx.random` no truncation~~,
   hyperlink exception propagation asymmetry, SWITCH-node tint/filter/blendMode never applied,
   ~~LayoutIterator `$param` points → 0,0~~, ~~generated tile w/h single-truncation~~, ~~dynamicRef forwarded

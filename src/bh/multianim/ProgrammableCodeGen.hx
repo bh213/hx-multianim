@@ -1025,10 +1025,16 @@ class ProgrammableCodeGen {
 			if (update.paramRefs == null || update.paramRefs.length == 0) {
 				exprUpdateExprs.push(body);
 			} else {
-				var orChain:Expr = macro _changedParam == null;
-				for (r in update.paramRefs)
-					orChain = macro $orChain || _changedParam == $v{r};
-				exprUpdateExprs.push(macro if ($orChain) $body);
+				// One param changed, or (no param named) the batch endUpdate passes as __exprBatch: an
+				// entry runs once for the batch when any of its params is in it (builder parity:
+				// applyUpdates fires each tracked expression once per batch); neither, the full pass
+				var oneChanged:Expr = macro false;
+				var inBatch:Expr = macro false;
+				for (r in update.paramRefs) {
+					oneChanged = macro $oneChanged || _changedParam == $v{r};
+					inBatch = macro $inBatch || this.__exprBatch.indexOf($v{r}) >= 0;
+				}
+				exprUpdateExprs.push(macro if (_changedParam == null ? (this.__exprBatch == null || $inBatch) : $oneChanged) $body);
 			}
 		}
 		if (hasGated) {
@@ -1220,6 +1226,8 @@ class ProgrammableCodeGen {
 		// Params whose last apply threw (the setters' same-value guard lets them through)
 		instanceFields.push(makeField("_failedParams", FVar(macro :Null<Array<String>>, macro null), [APrivate], pos));
 		instanceFields.push(makeField("_batchChanged", FVar(macro :Array<String>, macro []), [APrivate], pos));
+		// The batch endUpdate's one _updateExpressions pass is gated on (null otherwise)
+		instanceFields.push(makeField("__exprBatch", FVar(macro :Null<Array<String>>, macro null), [APrivate], pos));
 		// True while a setter's or endUpdate's pass runs: the rebuild listeners wait for its end. Two
 		// underscores: a parameter's backing field is `_<name>`, so a parameter `applying` cannot take it
 		instanceFields.push(makeField("__applying", FVar(macro :Bool, macro false), [APrivate], pos));
@@ -1259,10 +1267,13 @@ class ProgrammableCodeGen {
 				this.__applying = true;
 				try {
 					$batchHides;
-					for (_bp in this._batchChanged)
-						this._updateExpressions(_bp);
+					// One pass for the batch: each expression once, however many of its params changed
+					this.__exprBatch = this._batchChanged;
+					this._updateExpressions();
+					this.__exprBatch = null;
 					$batchVisPass;
 				} catch (e:Dynamic) {
+					this.__exprBatch = null;
 					this.__applying = _wasApplying;
 					// The batch's values stay set: the same values set again apply again, as after
 					// a setter that threw (builder parity: applyUpdates marks the batch's params)
@@ -1339,15 +1350,9 @@ class ProgrammableCodeGen {
 				final setterName = "set" + toPascalCase(name);
 				final callSetter:Expr = switch (def.type) {
 					case PPTEnum(values):
-						// Enum: accept either Int (direct index), String (enum value name), or
-						// UIRichInteractiveHelper-style string like "hover" for status params.
-						// Generate a nested switch over string values. Unknown strings resolve to
-						// the UNKNOWN_ENUM_INDEX sentinel (-2147483648) so no @(p=>v) arm matches
-						// AND no @(p < N)/@(p => N..M) numeric arm matches. Mirrors the runtime
-						// contract — UI widgets (Button/Checkbox/Tabs) call
-						// setParameter("status", "disabled") on every client template, expecting
-						// a no-op match when the template's enum doesn't list "disabled".
-						// Pre-fix sentinel was -1, which silently lit `@(p < 0)` arms.
+						// Enum: one of its values, by name or by its index (builder parity): another name or an
+						// index past the values is refused (`invalid_param_value`), nothing changed. Widgets give a
+						// design only the status values it declares (UIStatusTools.setStatus).
 						final strCases:Array<Case> = [];
 						for (i in 0...values.length) {
 							strCases.push({
@@ -1356,13 +1361,19 @@ class ProgrammableCodeGen {
 							});
 						}
 						final strSwitch:Expr = {
-							expr: ESwitch(macro (_value : String), strCases, macro -2147483648),
+							expr: ESwitch(macro (_value : String), strCases,
+								macro throw bh.multianim.BuilderError.of('setParameter("' + $v{name} + '", "' + _value + '") rejected: the enum has no value "' + _value
+									+ '" (' + $v{values.join(", ")} + ')', "invalid_param_value")),
 							pos: pos,
 						};
 						macro {
-							final _idx:Int = if (Std.isOfType(_value, Int))
-								(cast _value : Int);
-							else if (Std.isOfType(_value, String))
+							final _idx:Int = if (Std.isOfType(_value, Int)) {
+								final _i:Int = cast _value;
+								if (_i < 0 || _i >= $v{values.length})
+									throw bh.multianim.BuilderError.of('setParameter("' + $v{name} + '", ' + _i + ') rejected: the enum has '
+										+ $v{values.length} + ' values (' + $v{values.join(", ")} + ')', "invalid_param_value");
+								_i;
+							} else if (Std.isOfType(_value, String))
 								$strSwitch;
 							else
 								throw 'setParameter("' + $v{name} + '", ...) requires Int or String, got $_value';
@@ -1477,6 +1488,27 @@ class ProgrammableCodeGen {
 			};
 			instanceFields.push(makeMethod("hasParameter", [macro return $hasSwitch],
 				[{name: "_name", type: macro :String}], macro :Bool, [APublic], pos));
+
+			// acceptsParameterValue(name, value) — UIInteractiveSource: declared, and an enum's value one of
+			// its values by name or index (what setParameter takes); any other kind's value setParameter checks
+			final acceptCases:Array<Case> = [];
+			for (name => def in paramDefs) {
+				switch (def.type) {
+					case PPTEnum(values):
+						final nameCases:Array<Case> = [for (v in values) {values: [macro $v{v}], expr: macro true}];
+						final nameSwitch:Expr = {expr: ESwitch(macro (_value : String), nameCases, macro false), pos: pos};
+						acceptCases.push({values: [macro $v{name}], expr: macro {
+							if (Std.isOfType(_value, String)) return $nameSwitch;
+							if (Std.isOfType(_value, Int)) return (cast _value : Int) >= 0 && (cast _value : Int) < $v{values.length};
+							return false;
+						}});
+					default:
+						acceptCases.push({values: [macro $v{name}], expr: macro return true});
+				}
+			}
+			final acceptSwitch:Expr = {expr: ESwitch(macro _name, acceptCases, macro return false), pos: pos};
+			instanceFields.push(makeMethod("acceptsParameterValue", [acceptSwitch],
+				[{name: "_name", type: macro :String}, {name: "_value", type: macro :Dynamic}], macro :Bool, [APublic], pos));
 		}
 
 		// 8b. Transition control methods (on instance)
@@ -2145,6 +2177,19 @@ class ProgrammableCodeGen {
 				body.push(macro for (_k in $p{["this", sf]}.dynamicRefKeys()) if (_out.indexOf(_k) < 0) _out.push(_k));
 			body.push(macro return _out);
 			instanceFields.push(makeMethod("getDynamicRefKeys", body, [], macro :Array<String>, [APublic], pos));
+		}
+
+		// getDynamicRefResults(): every dynamicRef child built, one per site (sites sharing a key too)
+		{
+			final body:Array<Expr> = [macro final _out:Array<bh.multianim.MultiAnimBuilder.BuilderResult> = []];
+			for (fn in literalDynamicRefSiteFields)
+				body.push(macro if ($p{["this", "_dynref_lit_" + fn]} != null) _out.push($p{["this", "_dynref_lit_" + fn]}));
+			for (nameRefEntry in dynamicNameRefFields)
+				body.push(macro if ($p{["this", "_dynref_" + nameRefEntry.fieldName]} != null) _out.push($p{["this", "_dynref_" + nameRefEntry.fieldName]}));
+			for (sf in sinkFields)
+				body.push(macro for (_r in $p{["this", sf]}.dynamicRefResults()) _out.push(_r));
+			body.push(macro return _out);
+			instanceFields.push(makeMethod("getDynamicRefResults", body, [], macro :Array<bh.multianim.MultiAnimBuilder.BuilderResult>, [APublic], pos));
 		}
 
 		// getParameterValues(): the backing fields in the builder's plain form — an enum as its
@@ -3953,37 +3998,69 @@ class ProgrammableCodeGen {
 		else
 			{expr: EBlock(loopBodyExprs), pos: pos};
 
+		// A repeat over a sheet's or an animation's frames: built by a method, and built again when a
+		// param its body (or its frames' selector) uses changes, so the body follows its params as in
+		// the builder (which tracks them); built only once when nothing it uses is a param
+		function emitFrameRepeat(fetchTiles:Expr, iteratorRefs:Array<String>):Void {
+			final refs:Array<String> = [];
+			collectArmParamRefs(node.children, refs);
+			for (r in iteratorRefs)
+				if (paramDefs != null && paramDefs.exists(r) && refs.indexOf(r) < 0) refs.push(r);
+			final rebuildMethodName = "_rebuildFrameRepeat_" + containerName;
+			final builtField = rebuildMethodName + "_built";
+			fields.push(makeField(builtField, FVar(macro :Bool, macro false), [APrivate], pos));
+			final rebuildBody:Array<Expr> = [];
+			rebuildBody.push(macro if (!_rt_force && $p{["this", builtField]}) return);
+			if (inFlow) {
+				// Held, with its items, by a hidden enclosing spliced repeat: built by the pass that shows it
+				rebuildBody.push(macro if ($containerRef.parent == null && $containerRef.held.length == 0) return);
+			}
+			rebuildBody.push(macro $p{["this", builtField]} = true);
+			rebuildBody.push(inFlow ? macro $containerRef.removeItems() : macro $containerRef.removeChildren());
+			rebuildBody.push(macro {
+				final _rt_tiles = $fetchTiles;
+				for (_rt_i in 0..._rt_tiles.length) {
+					$loopBody;
+				}
+			});
+			if (inFlow)
+				rebuildBody.push(macro $containerRef.spliceChildren());
+			fields.push(makeMethod(rebuildMethodName, rebuildBody, [{name: "_rt_force", type: macro :Bool}], macro :Void, [APrivate], pos));
+			ctorExprs.push(macro $i{rebuildMethodName}(false));
+			if (refs.length > 0) {
+				repeatForceUsesChangedParam = true;
+				var forceExpr:Expr = macro _changedParam == null;
+				for (r in refs)
+					forceExpr = macro $forceExpr || _changedParam == $v{r};
+				repeatRebuildEntries.push({callExpr: macro $i{rebuildMethodName}($forceExpr)});
+			}
+		}
+
 		// Generate the tile-fetching code + loop
 		switch (repeatType) {
 			case TilesIterator(bitmapVarName, tilenameVarName, sheetName, tileFilter):
 				final sheetStr = sheetName;
 				final filterExpr:Expr = tileFilter != null ? macro $v{tileFilter} : macro null;
-				ctorExprs.push(macro {
-					final _rt_tiles = this._pb.getSheetTiles($v{sheetStr}, $filterExpr);
-					for (_rt_i in 0..._rt_tiles.length) {
-						$loopBody;
-					}
-				});
+				emitFrameRepeat(macro this._pb.getSheetTiles($v{sheetStr}, $filterExpr), []);
+				return; // spliced into a flow by its method
 
 			case StateAnimIterator(bitmapVarName, animFilename, animationName, selectorRefs):
 				final fileStr = animFilename;
 				final selectorPairs:Array<Expr> = [];
+				final iteratorRefs:Array<String> = collectParamRefs(animationName);
 				for (k => v in selectorRefs) {
 					final keyStr = k;
 					final valExpr = rvToExpr(v);
 					selectorPairs.push(macro $v{keyStr} => Std.string($valExpr));
+					for (r in collectParamRefs(v)) iteratorRefs.push(r);
 				}
 				final selectorMapExpr:Expr = if (selectorPairs.length == 0) macro new Map() else {
 					expr: EArrayDecl(selectorPairs),
 					pos: pos,
 				};
 				final animNameExpr = rvToExpr(animationName);
-				ctorExprs.push(macro {
-					final _rt_tiles = this._pb.getStateAnimTiles($v{fileStr}, Std.string($animNameExpr), $selectorMapExpr);
-					for (_rt_i in 0..._rt_tiles.length) {
-						$loopBody;
-					}
-				});
+				emitFrameRepeat(macro this._pb.getStateAnimTiles($v{fileStr}, Std.string($animNameExpr), $selectorMapExpr), iteratorRefs);
+				return; // spliced into a flow by its method
 
 			case ArrayIterator(valueVariableName, arrayName):
 				final arrayField = "_" + arrayName;
@@ -4807,16 +4884,24 @@ class ProgrammableCodeGen {
 			return;
 		}
 
-		final infoX = resolveRepeatInfo(repeatTypeX);
-		final infoY = resolveRepeatInfo(repeatTypeY);
+		// An array axis: its count is the array's length, read at runtime (the body built again when the
+		// array is set, as in the builder)
+		inline function axisInfo(rt:RepeatType) {
+			return switch (rt) {
+				case ArrayIterator(_, _): {staticCount: null, dx: 0, dy: 0, rangeStart: 0, rangeStep: 1, countRV: null, paramScalars: false};
+				default: resolveRepeatInfo(rt);
+			};
+		}
+		final infoX = axisInfo(repeatTypeX);
+		final infoY = axisInfo(repeatTypeY);
 		if (infoX == null || infoY == null) {
 			// ArrayIterator (and any future kind): fail loudly instead of rendering nothing.
 			Context.error('repeatable2d axis kind not supported in codegen (use step/range/layout axes)', pos);
 			return;
 		}
 
-		if (infoX.staticCount != null && infoY.staticCount != null) {
-			// Both axes static: fully unroll
+		if (infoX.staticCount != null && infoY.staticCount != null && !infoX.paramScalars && !infoY.paramScalars) {
+			// Both axes static, their offsets too (a param step is resolved at runtime, as in 1D): fully unroll
 			unrollRepeat2DChildren(node, varNameX, varNameY, infoX, infoY, containerName, fields, ctorExprs, pos);
 		} else {
 			// At least one axis is param-dependent: runtime rebuild
@@ -4978,6 +5063,9 @@ class ProgrammableCodeGen {
 					final stepExpr = rvToExprInt(step);
 					macro bh.multianim.MultiAnimBuilder.rangeIterationCount($startExpr, $endExpr, $stepExpr);
 				case StepIterator(_, _, repeats): rvToExprInt(repeats);
+				case ArrayIterator(_, arrayName):
+					final arrayRef = macro $p{["this", "_" + arrayName]};
+					macro($arrayRef == null ? 0 : $arrayRef.length);
 				default: macro 0;
 			};
 		}
@@ -5018,6 +5106,17 @@ class ProgrammableCodeGen {
 		final isRangeY = repeatTypeY.match(RangeIterator(_, _, _));
 		runtimeLoopVars.set(varNameX, isRangeX ? "_rt_valx" : "_rt_ix");
 		runtimeLoopVars.set(varNameY, isRangeY ? "_rt_valy" : "_rt_iy");
+		// An array axis's value variable: the item at the axis's index
+		final arrayValueX:Null<{valueVar:String, arrayName:String}> = switch (repeatTypeX) {
+			case ArrayIterator(v, a): {valueVar: v, arrayName: a};
+			default: null;
+		};
+		final arrayValueY:Null<{valueVar:String, arrayName:String}> = switch (repeatTypeY) {
+			case ArrayIterator(v, a): {valueVar: v, arrayName: a};
+			default: null;
+		};
+		if (arrayValueX != null) runtimeLoopVars.set(arrayValueX.valueVar, "_rt_avx");
+		if (arrayValueY != null) runtimeLoopVars.set(arrayValueY.valueVar, "_rt_avy");
 
 		// Rebuild triggers: iterator scalar refs from both axes; body conditional
 		// gates become FORCED triggers (see rebuildRepeatChildren).
@@ -5028,6 +5127,8 @@ class ProgrammableCodeGen {
 		for (child in node.children)
 			collectSubtreeConditionalRefs(child, condRefs2D);
 		final forcedRefs2D = [for (r in condRefs2D) if (!triggerRefs2D.contains(r)) r];
+		for (av in [arrayValueX, arrayValueY])
+			if (av != null && !forcedRefs2D.contains(av.arrayName)) forcedRefs2D.push(av.arrayName);
 
 		// Record untracked param refs in the repeat body (see rebuildRepeatChildren for
 		// rationale) — rebuild-triggered refs are excluded.
@@ -5055,6 +5156,8 @@ class ProgrammableCodeGen {
 
 		runtimeLoopVars.remove(varNameX);
 		runtimeLoopVars.remove(varNameY);
+		if (arrayValueX != null) runtimeLoopVars.remove(arrayValueX.valueVar);
+		if (arrayValueY != null) runtimeLoopVars.remove(arrayValueY.valueVar);
 
 		// Build inner loop body: loop value, children into the repeat's container, each moved by the
 		// cell's step offset (builder parity: no container per cell; the body is built again whole on
@@ -5062,6 +5165,10 @@ class ProgrammableCodeGen {
 		final innerBodyExprs:Array<Expr> = [];
 		if (isRangeX)
 			innerBodyExprs.push(macro final _rt_valx = _rt_startX + _rt_ix * _rt_stepX);
+		if (arrayValueX != null) {
+			final arrRef = macro $p{["this", "_" + arrayValueX.arrayName]};
+			innerBodyExprs.push(macro final _rt_avx:String = $arrRef[_rt_ix]);
+		}
 		final containerFieldRef = macro $p{["this", containerField]};
 		innerBodyExprs.push(macro final _rt_cont:h2d.Object = $containerFieldRef);
 		innerBodyExprs.push(macro final _rt_first = _rt_cont.numChildren);
@@ -5078,13 +5185,15 @@ class ProgrammableCodeGen {
 		});
 		final innerBody:Expr = {expr: EBlock(innerBodyExprs), pos: pos};
 
-		final outerBody:Expr = if (isRangeY)
-			macro {
-				final _rt_valy = _rt_startY + _rt_iy * _rt_stepY;
-				for (_rt_ix in 0..._rt_countX) $innerBody;
-			}
-		else
-			macro for (_rt_ix in 0..._rt_countX) $innerBody;
+		final outerValues:Array<Expr> = [];
+		if (isRangeY)
+			outerValues.push(macro final _rt_valy = _rt_startY + _rt_iy * _rt_stepY);
+		if (arrayValueY != null) {
+			final arrRef = macro $p{["this", "_" + arrayValueY.arrayName]};
+			outerValues.push(macro final _rt_avy:String = $arrRef[_rt_iy]);
+		}
+		outerValues.push(macro for (_rt_ix in 0..._rt_countX) $innerBody);
+		final outerBody:Expr = {expr: EBlock(outerValues), pos: pos};
 
 		// Generate rebuild method with per-scalar tracking fields (count starts at -1
 		// so the first call never early-outs).
@@ -5559,8 +5668,10 @@ class ProgrammableCodeGen {
 		// Per-site result field. `_comp_<programmableRef>` is shared by all sibling sites that
 		// reference the same programmable (last-writer-wins for getDynamicRef lookup), so the
 		// forwarded-param updater needs its own per-site slot to know which child to update.
-		final siteResultField = (hasForwardedRefs || isIndexedSite || hasExplicitName) ? "_dynref_lit_" + fieldName : null;
-		if (hasForwardedRefs || isIndexedSite || hasExplicitName) literalDynamicRefSiteFields.push(fieldName);
+		// Every site has one (unnamed sites sharing a key too): getDynamicRefResults lists each child,
+		// which the shared field alone would lose to the last site built
+		final siteResultField:Null<String> = "_dynref_lit_" + fieldName;
+		literalDynamicRefSiteFields.push(fieldName);
 
 		// Build parameter map at runtime
 		final mapBuildExprs:Array<Expr> = [macro final _refParams = new Map<String, Dynamic>()];
@@ -8694,11 +8805,8 @@ class ProgrammableCodeGen {
 					final toCond = if (toExclusive) macro($paramExpr < $toExpr) else macro($paramExpr <= $toExpr);
 					result = macro($result && $toCond);
 				}
-				// Guard against the UNKNOWN_ENUM_INDEX sentinel for enum-typed params.
-				// `setParameter("status", "disabled")` on a `status:[normal,hover,...]` enum
-				// stores -2147483648 in `_status`; without this guard `@(status < 0)` would
-				// silently fire because the sentinel is numerically less than 0. Symmetric
-				// with the runtime path which now treats StringValue×CoRange as no-match.
+				// An enum field outside its values (setParameter refuses one; a typed setter given
+				// a stray index could hold it) matches no numeric arm, as in the builder.
 				// Loop variables ($i in repeatable) are not in paramDefs — guard skipped.
 				final pdef = paramDefs.get(paramName);
 				if (pdef != null) switch pdef.type {
@@ -8788,6 +8896,10 @@ class ProgrammableCodeGen {
 						final tdef = tparams.get(forwardParamName);
 						return switch tdef?.type {
 							case PPTString | PPTEnum(_): rvToExpr(val, true);
+							// An integer target truncates at each operation, as the builder's resolveAsInteger
+							// (a value of numbers: text given to one is the child's to read, as before)
+							case PPTInt | PPTUnsignedInt | PPTRange(_, _) | PPTFlags(_) | PPTHexDirection | PPTGridDirection if (isNumericRV(val)):
+								rvToExprInt(val);
 							default: rvToExpr(val, false);
 						}
 					default:
@@ -8797,7 +8909,33 @@ class ProgrammableCodeGen {
 		final textExpr = rvToExpr(val, true);
 		final rawExpr = rvToExpr(val, false);
 		final extExpr:Expr = externalReference != null ? macro $v{externalReference} : macro null;
+		// An integer target truncates at each operation, as above; asked only for a value made of
+		// numbers alone (an integer lowering of text would not compile), else the raw value as before
+		if (isNumericRV(val)) {
+			final intExpr = rvToExprInt(val);
+			return macro {
+				final _kind = this._pb.refArgumentKind($targetNameExpr, $v{forwardParamName}, $extExpr);
+				_kind == bh.multianim.MultiAnimBuilder.REF_ARG_TEXT ? ($textExpr : Dynamic) : _kind == bh.multianim.MultiAnimBuilder.REF_ARG_INTEGER ? ($intExpr : Dynamic) : ($rawExpr : Dynamic);
+			};
+		}
 		return macro(this._pb.refArgumentIsText($targetNameExpr, $v{forwardParamName}, $extExpr) ? ($textExpr : Dynamic) : ($rawExpr : Dynamic));
+	}
+
+	/** A value of numbers alone: number literals and numeric parameters, under arithmetic. */
+	static function isNumericRV(rv:ReferenceableValue):Bool {
+		return switch (rv) {
+			case RVInteger(_) | RVFloat(_): true;
+			case RVString(s): bh.multianim.ParseUtils.int32OrNull(s) != null;
+			case RVReference(ref):
+				final def = paramDefs.get(ref);
+				def != null && (switch (def.type) {
+					case PPTInt | PPTUnsignedInt | PPTFloat | PPTRange(_, _) | PPTFlags(_): true;
+					default: false;
+				});
+			case RVParenthesis(e) | EUnaryOp(_, e): isNumericRV(e);
+			case EBinop(_, a, b): isNumericRV(a) && isNumericRV(b);
+			default: false;
+		};
 	}
 
 	/**

@@ -238,6 +238,34 @@ class AnimatedPathBuilderTest extends BuilderTestBase {
 		Assert.isTrue(events.indexOf("atHalf") >= 0);
 	}
 
+	@Test
+	public function testNormalizedPathKeepsItsCheckpoints():Void {
+		// Scale, rotation and translation keep every rate where it was: a checkpoint's rate on a
+		// normalized path is the one on the path as written, whichever normalization made it.
+		final builder = builderFromSource(ANIM_PATH_SOURCE);
+		final paths = builder.getPaths();
+		final raw = paths.getPath("withCheckpoint").getCheckpoint("half");
+		final a = new FPoint(10, 20);
+		final b = new FPoint(210, 120);
+		for (mode in [Stretch(a, b), FitCenter(a, b), Anchor(a, 0.5), FitBounds(a, b)]) {
+			final path = paths.getPath("withCheckpoint", mode);
+			var rate:Null<Float> = null;
+			try rate = path.getCheckpoint("half") catch (e:Dynamic) {}
+			Assert.notNull(rate, "checkpoint lost under " + Std.string(mode));
+			if (rate != null) Assert.floatEquals(raw, rate, "checkpoint rate under " + Std.string(mode));
+		}
+	}
+
+	@Test
+	public function testProjectilePathFiresItsCheckpointEvent():Void {
+		final builder = builderFromSource(ANIM_PATH_SOURCE);
+		final ap = builder.createProjectilePath("withCheckpointEvents", new FPoint(0, 0), new FPoint(200, 50));
+		var events:Array<String> = [];
+		ap.onEvent = (name, _) -> events.push(name);
+		ap.update(1.0);
+		Assert.isTrue(events.indexOf("atHalf") >= 0, "a Stretch-normalized path keeps its checkpoint event");
+	}
+
 	// ==================== Builder: Easing Shorthand ====================
 
 	@Test

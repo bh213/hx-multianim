@@ -617,4 +617,99 @@ class IncrementalReviewTest extends BuilderTestBase {
 		result.setParameter("show", false);
 		Assert.equals("10", widths(result.object), "hidden again");
 	}
+
+	// ==================== Nested contexts, hidden flow children, 2D arrays ====================
+
+	static final SWITCHED_REF = "
+		#btn programmable(m:[a,b]=a) {
+			@switch(m) {
+				a: bitmap(generated(color(4, 4, #f00))): 0, 0;
+				b: bitmap(generated(color(6, 6, #0f0))): 0, 0;
+			}
+		}
+		#host programmable(k:[p,q]=p) {
+			@switch(k) {
+				p: #d dynamicRef(btn): 0, 0;
+				q: bitmap(generated(color(1, 1, #fff))): 0, 0;
+			}
+		}
+	";
+
+	@Test
+	public function testDynamicRefInASwitchArmTellsItsHostWhenItRebuilds():Void {
+		// A dynamicRef child's own rebuild reaches its host's rebuild listeners (the screen resyncs
+		// its interactives on them) wherever the ref sits — in a @switch arm too
+		final result = BuilderTestBase.buildFromSource(SWITCHED_REF, "host", null, Incremental);
+		var rebuilds = 0;
+		result.addRebuildListener(() -> rebuilds++);
+		result.getDynamicRef("d").setParameter("m", "b");
+		Assert.equals(1, rebuilds, "the child's rebuild in the arm built at first");
+
+		result.setParameter("k", "q");
+		result.setParameter("k", "p");
+		rebuilds = 0;
+		result.getDynamicRef("d").setParameter("m", "b"); // the arm's new child starts at its default, a
+		Assert.equals(1, rebuilds, "and in the arm built again");
+	}
+
+	@Test
+	public function testSlotInARebuiltSwitchArmTellsItsHostWhenItRebuilds():Void {
+		final result = BuilderTestBase.buildFromSource("
+			#host programmable(k:[p,q]=p) {
+				@switch(k) {
+					p {
+						#s slot(on:bool=false) {
+							@(on=>true) bitmap(generated(color(8, 8, #00f))): 0, 0
+						}
+					}
+					q: bitmap(generated(color(1, 1, #fff))): 0, 0;
+				}
+			}
+		", "host", null, Incremental);
+		var rebuilds = 0;
+		result.addRebuildListener(() -> rebuilds++);
+		result.getSlot("s").setParameter("on", true);
+		Assert.equals(1, rebuilds, "the slot's rebuild in the arm built at first");
+
+		result.setParameter("k", "q");
+		result.setParameter("k", "p");
+		rebuilds = 0;
+		result.getSlot("s").setParameter("on", true);
+		Assert.equals(1, rebuilds, "and in the arm built again");
+	}
+
+	@Test
+	public function testHiddenSpacerInAFlowShows():Void {
+		final result = BuilderTestBase.buildFromSource("
+			#t programmable(on:bool=false) {
+				flow(layout: horizontal) {
+					@(on=>true) spacer(10, 0);
+					bitmap(generated(color(4, 4, #fff))): 0, 0
+				}
+			}
+		", "t", null, Incremental);
+		final bmp = findBitmapByWidth(result.object, 4);
+		Assert.notNull(bmp);
+		final x0 = bmp == null ? 0.0 : bmp.x;
+		Assert.isNull(errorOf(() -> result.setParameter("on", true)), "showing a spacer in a flow");
+		if (bmp != null) {
+			final flow = Std.downcast(result.object.getChildAt(0), h2d.Flow);
+			if (flow != null) flow.reflow();
+			Assert.floatEquals(x0 + 10, bmp.x, "the shown spacer takes its width in the flow");
+		}
+	}
+
+	@Test
+	public function testRepeatable2dOverAnArrayFollowsTheArray():Void {
+		final result = BuilderTestBase.buildFromSource("
+			#t programmable(items:array=[a, b]) {
+				repeatable2d($x, $y, array($v, $items), step(2, dy: 10)) {
+					bitmap(generated(color(5, 5, #fff))): 0, 0
+				}
+			}
+		", "t", null, Incremental);
+		Assert.equals(4, BuilderTestBase.findVisibleBitmapDescendants(result.object).length, "2 items x 2 rows");
+		result.setParameter("items", ["a", "b", "c"]);
+		Assert.equals(6, BuilderTestBase.findVisibleBitmapDescendants(result.object).length, "3 items x 2 rows");
+	}
 }

@@ -373,6 +373,19 @@ class ParticleRuntimeTest extends utest.Test {
 	}
 
 	@Test
+	public function testLifeRandomAboveOneStillEndsEveryParticle():Void {
+		// lifeRandom past 1 can draw a factor below zero; such a particle must still die, not live forever
+		var p = createParticles();
+		var g = createGroup("main", p);
+		var dg:Dynamic = g;
+		dg.lifeRand = 3.0; // lives 0..4 s
+		advanceGroup(g, 0.05);
+		Assert.isTrue(countParticles(g) > 0, "particles were emitted");
+		advanceGroup(g, 10.0);
+		Assert.equals(0, countParticles(g), "every particle of a non-looping group is dead long after its longest life");
+	}
+
+	@Test
 	public function testEmitBurstReusesParticleInstancesAfterDeath():Void {
 		// Sustained burst emission (sub-emitters, spawnCurve, manual emitBurst) should not
 		// allocate a fresh Particle instance for every spawn. After particles die naturally,

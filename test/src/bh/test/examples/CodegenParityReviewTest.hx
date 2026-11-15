@@ -4,6 +4,8 @@ import utest.Assert;
 import bh.test.BuilderTestBase;
 import bh.multianim.BuilderError;
 import bh.multianim.MultiAnimBuilder.BuilderResult;
+import bh.ui.UIElement;
+import bh.ui.UIElement.UIScreenEvent;
 
 /**
  * The builder (incremental) against codegen (@:manim) on the same programmables:
@@ -1296,5 +1298,74 @@ class CodegenParityReviewTest extends BuilderTestBase {
 		final right = Std.int(s2d.width) - 40;
 		Assert.equals([right, right + 20, right + 40].join(","), builderXs, "builder: 40 in from the right edge, each item 20 further");
 		Assert.equals(builderXs, codegenXs, "codegen: each item keeps its step offset from the aligned point");
+	}
+
+	// ==================== The body of a repeat over a sheet's frames ====================
+
+	/** Every frame's bitmap moves with $gap and hides with $show. */
+	function checkTilesBodyFollows(setParameter:(String, Dynamic) -> Void, root:h2d.Object, label:String):Void {
+		final before = [for (s in bitmapXs(root).split(",")) Std.parseInt(s)];
+		Assert.isTrue(before.length > 1, '$label: one bitmap per frame (got ' + before.length + ')');
+		setParameter("gap", 20);
+		Assert.equals([for (x in before) x + 16].join(","), bitmapXs(root), '$label: every frame follows $$gap');
+		setParameter("show", false);
+		Assert.equals(0, BuilderTestBase.findVisibleBitmapDescendants(root).length, '$label: every frame hides with $$show');
+	}
+
+	@Test
+	public function testTilesRepeatBody_Builder_FollowsItsParams():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "cpTilesBody", null, Incremental);
+		checkTilesBodyFollows(result.setParameter, result.object, "builder");
+	}
+
+	@Test
+	public function testTilesRepeatBody_Codegen_FollowsItsParams():Void {
+		final inst:Dynamic = createMp().cpTilesBody.create();
+		checkTilesBodyFollows((k, v) -> inst.setParameter(k, v), cast inst, "codegen");
+	}
+
+	// ==================== An int argument to a ref ====================
+
+	function checkIntArgumentTruncated(setParameter:(String, Dynamic) -> Void, root:h2d.Object, label:String):Void {
+		Assert.equals("4,4", widths(root), '$label: 5 / 2 * 2 is 4 for an int, at build');
+		setParameter("a", 7);
+		Assert.equals("6,6", widths(root), '$label: 7 / 2 * 2 is 6 for an int, forwarded');
+	}
+
+	@Test
+	public function testIntRefArgument_Builder_TruncatesAtEachOperation():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "cpIntFwd", null, Incremental);
+		checkIntArgumentTruncated(result.setParameter, result.object, "builder");
+	}
+
+	@Test
+	public function testIntRefArgument_Codegen_TruncatesAtEachOperation():Void {
+		final inst:Dynamic = createMp().cpIntFwd.create();
+		checkIntArgumentTruncated((k, v) -> inst.setParameter(k, v), cast inst, "codegen");
+	}
+
+	// ==================== Unnamed dynamicRefs in a repeat, bound ====================
+
+	function checkEachButtonDrivesItsOwnChild(source:bh.ui.UIInteractiveSource, label:String):Void {
+		final screen = new bh.test.UITestHarness.UITestScreen();
+		screen.addInteractives(source);
+		final helper = new bh.ui.UIRichInteractiveHelper(screen);
+		helper.register(source);
+		for (id in ["0", "1"]) {
+			final owner = helper.getSource(id);
+			Assert.notNull(owner, '$label: button $id is bound');
+			Assert.isFalse(owner == source, '$label: button $id is driven through its own child');
+		}
+		Assert.isNull(errorOf(() -> helper.handleEvent(UIInteractiveEvent(UIEntering(), "1", null))), '$label: hovering a button sets its child\'s status');
+	}
+
+	@Test
+	public function testUnnamedRefsInARepeat_Builder_EachButtonDrivesItsOwnChild():Void {
+		checkEachButtonDrivesItsOwnChild(BuilderTestBase.buildFromFile(FIXTURE, "cpBindHost", null, Incremental), "builder");
+	}
+
+	@Test
+	public function testUnnamedRefsInARepeat_Codegen_EachButtonDrivesItsOwnChild():Void {
+		checkEachButtonDrivesItsOwnChild(cast createMp().cpBindHost.create(), "codegen");
 	}
 }

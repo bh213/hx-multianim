@@ -208,6 +208,63 @@ class UIComponentTest extends BuilderTestBase {
 		Assert.notNull(button.getObject());
 	}
 
+	// A widget gives its design a status value the design declares (setParameter refuses others): a
+	// disabled widget whose status has no `disabled` is `normal` (its `disabled:bool` shows it), a
+	// press on one with no `pressed` keeps `hover`
+	@Test
+	public function testButtonGivesTheDesignOnlyStatusValuesItDeclares():Void {
+		final plain = UIStandardMultiAnimButton.create(BuilderTestBase.builderFromSource(BUTTON_MANIM), "button", "Test");
+		plain.disabled = true;
+		@:privateAccess Assert.equals("normal", getStatusParam(plain.result), "no `disabled` in the enum: normal");
+		@:privateAccess Assert.equals("1", getStringParam(plain.result, "disabled"), "the disabled bool says it");
+		plain.disabled = false;
+
+		final withDisabled = UIStandardMultiAnimButton.create(BuilderTestBase.builderFromSource("
+			#button programmable(buttonText:string=Click, status:[normal,hover,pressed,disabled]=normal, disabled:bool=false) {
+				bitmap(generated(color(100, 30, #666666))): 0, 0
+			}
+		"), "button", "Test");
+		withDisabled.disabled = true;
+		@:privateAccess Assert.equals("disabled", getStatusParam(withDisabled.result), "`disabled` in the enum: disabled");
+
+		final hoverOnly = UIStandardMultiAnimButton.create(BuilderTestBase.builderFromSource("
+			#button programmable(buttonText:string=Click, status:[normal,hover]=normal, disabled:bool=false) {
+				bitmap(generated(color(100, 30, #666666))): 0, 0
+			}
+		"), "button", "Test");
+		final mock = new MockControllable();
+		UITestHarness.simulateEnter(hoverOnly, mock);
+		UITestHarness.simulatePush(hoverOnly, mock);
+		@:privateAccess Assert.equals("hover", getStatusParam(hoverOnly.result), "no `pressed` in the enum: a press keeps hover");
+		hoverOnly.disabled = true;
+		@:privateAccess Assert.equals("normal", getStatusParam(hoverOnly.result));
+	}
+
+	@Test
+	public function testCheckboxGivesTheDesignOnlyStatusValuesItDeclares():Void {
+		final checkbox = UIStandardMultiCheckbox.create(BuilderTestBase.builderFromSource(CHECKBOX_MANIM), "checkbox", false);
+		checkbox.disabled = true;
+		@:privateAccess Assert.equals("normal", getStatusParam(checkbox.result), "no `disabled` in the enum: normal");
+	}
+
+	@Test
+	public function testRichInteractiveHelperGivesOnlyDeclaredStates():Void {
+		final screen = new UITestScreen();
+		final result = BuilderTestBase.buildFromSource("
+			#p programmable(status:[normal,hover]=normal) {
+				interactive(10, 10, \"b\", bind => \"status\"): 0, 0
+			}
+		", "p", null, Incremental);
+		screen.addInteractives(result);
+		final helper = new bh.ui.UIRichInteractiveHelper(screen);
+		helper.register(result);
+		helper.handleEvent(UIInteractiveEvent(UIEntering(), "b", null));
+		helper.handleEvent(UIInteractiveEvent(UIPush, "b", null));
+		Assert.equals("hover", getStatusParam(result), "no `pressed` in the enum: a press keeps hover");
+		helper.setDisabled("b", true);
+		Assert.equals("normal", getStatusParam(result), "no `disabled` in the enum: normal");
+	}
+
 	@Test
 	public function testButtonOnClickCallback():Void {
 		var builder = BuilderTestBase.builderFromSource(BUTTON_MANIM);

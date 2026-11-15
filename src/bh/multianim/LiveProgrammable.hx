@@ -43,6 +43,10 @@ interface LiveProgrammable extends bh.ui.UIInteractiveSource {
 	 *  unnamed site, `"name idx"` for an indexed one. */
 	function getDynamicRefKeys():Array<String>;
 
+	/** Every dynamicRef child built now, one per site: unnamed sites sharing a key (a dynamicRef in a
+	 *  repeat) each give theirs, which `getDynamicRef` of that key refuses. Order is not significant. */
+	function getDynamicRefResults():Array<BuilderResult>;
+
 	/** The current value of every parameter, as a plain value: an enum as its value's name, a `bool`
 	 *  as `1` or `0` (the builder's resolved form), numbers as `Int`/`Float`, a color as its
 	 *  `0xAARRGGBB` `Int`, strings as `String`, a word list as `Array<String>`. A tile has no plain

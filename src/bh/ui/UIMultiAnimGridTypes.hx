@@ -201,7 +201,7 @@ class DefaultCellVisual<T> implements CellVisual<T> {
 	}
 
 	public function setStatus(value:String):Void {
-		result.setParameter(statusParam, value);
+		bh.ui.UIInteractiveSource.UIStatusTools.setStatus(result, value, statusParam);
 	}
 
 	public function beginUpdate(?data:T):Void {

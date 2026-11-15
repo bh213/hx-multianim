@@ -114,7 +114,7 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 	public function set_disabled(value:Bool):Bool {
 		if (this.disabled != value) {
 			this.disabled = value;
-			result.setParameter("status", value ? "disabled" : standardUIElementStatusToString(status));
+			bh.ui.UIInteractiveSource.UIStatusTools.setStatus(result, value ? "disabled" : standardUIElementStatusToString(status));
 			// A disabled dropdown hears no click: an open panel would stay open, over what is under it
 			if (value && isOpen())
 				startClose();
@@ -235,7 +235,7 @@ class UIStandardMultiAnimDropdown implements UIElement implements UIElementDisab
 		if (this.status != value) {
 			this.status = value;
 			if (!disabled)
-				result.setParameter("status", standardUIElementStatusToString(value));
+				bh.ui.UIInteractiveSource.UIStatusTools.setStatus(result, standardUIElementStatusToString(value));
 		}
 		return value;
 	}

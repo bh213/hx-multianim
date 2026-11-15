@@ -206,6 +206,9 @@ CG-46 — errors that point at the wrong cause or files the tools accept and the
   bounds (MultiAnimParser.hx:1568-1571); codegen alike. So `"lvl_" + $lvl` can become `lvl_99` while
   needs list only declared values with `fromParameters` false (ManimNeeds.hx:419-428). *Fix:*
   validate ranges and enums (DEC-4), or mark such parameters open.
+  *(2026-11-15: enums done, builder and codegen — `setParameter` refuses a name or index the enum
+  lacks, `invalid_param_value`; widgets send declared values through `UIStatusTools.setStatus`.
+  Ranges and the `dynamicValueToIndex` bound check still open.)*
 
 ## Builder and codegen across files
 

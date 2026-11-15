@@ -69,7 +69,7 @@ class UIStandardMultiAnimButton implements UIElement implements UIElementDisabla
 			this.disabled = value;
 			pressedOn = false;
 			result.beginUpdate();
-			result.setParameter("status", value ? "disabled" : "normal");
+			bh.ui.UIInteractiveSource.UIStatusTools.setStatus(result, value ? "disabled" : "normal");
 			if (result.hasParameter("disabled"))
 				result.setParameter("disabled", '$value');
 			result.endUpdate();
@@ -101,7 +101,7 @@ class UIStandardMultiAnimButton implements UIElement implements UIElementDisabla
 			case OnPush(button):
 				if (button == 0) {
 					pressedOn = true;
-					result.setParameter("status", "pressed");
+					bh.ui.UIInteractiveSource.UIStatusTools.setStatus(result, "pressed");
 				}
 			case OnRelease(button):
 				// A click is a left press and release on the button: not a release after a press
@@ -111,18 +111,18 @@ class UIStandardMultiAnimButton implements UIElement implements UIElementDisabla
 					pressedOn = false;
 					if (wasPressed)
 						triggerClicked(wrapper.control);
-					result.setParameter("status", "hover");
+					bh.ui.UIInteractiveSource.UIStatusTools.setStatus(result, "hover");
 				}
 			case OnReleaseOutside(button):
 				if (button == 0)
 					pressedOn = false;
-				result.setParameter("status", "normal");
+				bh.ui.UIInteractiveSource.UIStatusTools.setStatus(result, "normal");
 			case OnPushOutside(_):
 			case OnEnter:
-				result.setParameter("status", "hover");
+				bh.ui.UIInteractiveSource.UIStatusTools.setStatus(result, "hover");
 				wrapper.control.pushEvent(UIHover(true), this);
 			case OnLeave:
-				result.setParameter("status", "normal");
+				bh.ui.UIInteractiveSource.UIStatusTools.setStatus(result, "normal");
 				wrapper.control.pushEvent(UIHover(false), this);
 			case OnKey(up, key):
 			case OnWheel(dir):

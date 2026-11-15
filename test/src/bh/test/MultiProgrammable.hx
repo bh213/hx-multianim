@@ -616,6 +616,9 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/136-codegenBatchUpdate/batchUpdate.manim", "batchTwoParams")
 	public var batchTwoParams;
 
+	@:manim("test/examples/136-codegenBatchUpdate/batchUpdate.manim", "batchCallbackTwoParams")
+	public var batchCallbackTwoParams;
+
 	@:manim("test/examples/137-codegenRepeatParamParity/repeatParamParity.manim", "stepParamOffsets")
 	public var stepParamOffsets;
 
@@ -688,6 +691,12 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/146-codegenRepeat2dParity/repeat2dParity.manim", "r2dRangeValues")
 	public var r2dRangeValues;
+
+	@:manim("test/examples/146-codegenRepeat2dParity/repeat2dParity.manim", "r2dConstCountParamStep")
+	public var r2dConstCountParamStep;
+
+	@:manim("test/examples/146-codegenRepeat2dParity/repeat2dParity.manim", "r2dArrayAxis")
+	public var r2dArrayAxis;
 
 	@:manim("test/examples/147-codegenTileSource/tileSource.manim", "tileMisbind")
 	public var tileMisbind;
@@ -988,6 +997,15 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/164-codegenParityReview/codegenParityReview.manim", "cpAlignedInStep")
 	public var cpAlignedInStep;
+
+	@:manim("test/examples/164-codegenParityReview/codegenParityReview.manim", "cpTilesBody")
+	public var cpTilesBody;
+
+	@:manim("test/examples/164-codegenParityReview/codegenParityReview.manim", "cpIntFwd")
+	public var cpIntFwd;
+
+	@:manim("test/examples/164-codegenParityReview/codegenParityReview.manim", "cpBindHost")
+	public var cpBindHost;
 
 	@:manim("test/examples/163-refsSlotsReview/refsSlotsReview.manim", "rsExclRef")
 	public var rsExclRef;

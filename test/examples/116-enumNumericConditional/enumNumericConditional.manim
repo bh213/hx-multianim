@@ -1,10 +1,9 @@
 version: 1.0
 
 // Mixes an enum-typed param with sibling numeric-comparison conditionals on the
-// SAME param. Used by EnumNumericConditionalTest to verify runtime and codegen
-// behave identically when setParameter receives an enum value the template does
-// not enumerate (e.g. UI widgets calling setParameter("status", "disabled") on a
-// template whose status enum has no "disabled" member).
+// SAME param. Used by EnumNumericConditionalTest: runtime and codegen refuse a
+// value the enum does not declare (a name or an index) and keep the arms as they
+// were, and take its values by name or index.
 #enumNumericConditional programmable(status:[normal,hover,pressed]=normal) {
     @(status=>normal)  bitmap(generated(color(10, 10, #00ff00))):  0, 0
     @(status=>hover)   bitmap(generated(color(10, 10, #ffff00))):  0, 0

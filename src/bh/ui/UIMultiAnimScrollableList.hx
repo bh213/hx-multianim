@@ -344,7 +344,7 @@ class UIMultiAnimScrollableList implements UIElement implements UIElementDisabla
 	function setItemStatus(index:Int, status:String) {
 		final item = displayItems.get(index);
 		if (item != null)
-			item.setParameter("status", status);
+			bh.ui.UIInteractiveSource.UIStatusTools.setStatus(item, status);
 	}
 
 	function setItemSelected(index:Int, selected:Bool) {

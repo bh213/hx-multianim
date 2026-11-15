@@ -477,3 +477,26 @@ layouts {
     bitmap(generated(color(4, 4, #FFFFFF))): layout(cpFromRight)
   }
 }
+// The body of a repeat over a sheet's frames follows the params it uses
+#cpTilesBody programmable(gap:int=4, show:bool=true) {
+  repeatable($i, tiles($bmp, "crew2", "Arrow_dir0")) {
+    @(show=>true) bitmap($bmp): $gap + $i * 40, 0
+  }
+}
+// An int argument to a ref is the target's int, truncated at each operation: 5 / 2 * 2 is 4
+#cpIntFwdChild programmable(n:int=0) {
+  bitmap(generated(color($n, 4, #FFFFFF))): 0, 0
+}
+// Unnamed dynamicRefs in a repeat (sharing one key): each button's bind drives its own child
+#cpBindBtn programmable(status:[normal,hover,pressed]=normal, n:int=0) {
+  interactive(10, 10, $n, bind => "status"): 0, 0
+}
+#cpBindHost programmable() {
+  repeatable($i, step(2, dx: 20)) {
+    dynamicRef(cpBindBtn, n => $i): 0, 0
+  }
+}
+#cpIntFwd programmable(a:int=5) {
+  #c dynamicRef(cpIntFwdChild, n => $a / 2 * 2): 0, 0
+  staticRef(cpIntFwdChild, n => $a / 2 * 2): 0, 20
+}

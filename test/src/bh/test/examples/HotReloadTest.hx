@@ -1350,6 +1350,29 @@ class HotReloadTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testReloadedBuilderKeepsTheManagersTweens():Void {
+		// A builder made by a reload is the file's builder from then on: a screen built afterwards
+		// animates its transitions with the manager's tweens, as one built before the reload does.
+		final fileName = "hotreload-tweens-tmp.manim";
+		final v1 = "version: 1.0\n#p programmable(on:bool=false) {\n\ttransition { on: fade(0.2) }\n"
+			+ "\t@(on=>true) bitmap(generated(color(10, 10, #ff0000))): 0, 0\n}\n";
+		final v2 = StringTools.replace(v1, "10, 10", "12, 10");
+		withTempManim(fileName, v1, filePath -> {
+			final sm = new bh.ui.screens.ScreenManager(bh.test.VisualTestBase.appInstance);
+			Assert.equals(sm.tweens, sm.buildFromResourceName(fileName, false).tweenManager, "sanity: the first builder has the tweens");
+			sys.io.File.saveContent(filePath, v2);
+			sm.hotReload();
+
+			final builder = sm.buildFromResourceName(fileName, false);
+			Assert.equals(sm.tweens, builder.tweenManager, "the reloaded builder has the manager's tweens");
+			final r = builder.buildWithParameters("p", new Map(), null, null, true);
+			r.setParameter("on", true);
+			Assert.isTrue(subtreeHasTweens(sm.tweens, r.object), "a transition built after the reload animates");
+			sm.dispose();
+		});
+	}
+
+	@Test
 	public function testBuildFromResourceNameKeepsOneEntryPerFile():Void {
 		final fileName = "hotreload-cache-tmp.manim";
 		withTempManim(fileName, ITEM_V1, _ -> {

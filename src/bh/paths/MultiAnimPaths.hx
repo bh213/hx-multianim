@@ -599,7 +599,7 @@ class Path {
 		for (sp in singlePaths) {
 			transformed.push(sp.transform(cosA, sinA, scale, tx, ty));
 		}
-		return new Path(transformed);
+		return withCheckpointsOf(new Path(transformed));
 	}
 
 	/** Translate all segments by (dx, dy). */
@@ -608,7 +608,15 @@ class Path {
 		for (sp in singlePaths) {
 			transformed.push(sp.transform(1.0, 0.0, 1.0, dx, dy));
 		}
-		return new Path(transformed);
+		return withCheckpointsOf(new Path(transformed));
+	}
+
+	/** `path` with this path's checkpoints: they are not segments (the constructor took them out),
+	 *  and a uniform scale, a rotation and a move leave every rate where it was. */
+	function withCheckpointsOf(path:Path):Path {
+		for (name => rate in checkpoints)
+			path.checkpoints.set(name, rate);
+		return path;
 	}
 
 	/** Compute the maximum distance any point on this path is from the origin,

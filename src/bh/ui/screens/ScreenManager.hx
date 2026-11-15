@@ -1862,6 +1862,9 @@ class ScreenManager {
 		// the file dropped is removed, its name free; the mix keeps its VCA levels and snapshots on).
 		// The screens' audio is applied again, as a mode change would: a `dialog` snapshot the
 		// reload added goes on under an open dialog.
+		// The file's builder from now on: what is built from it animates its transitions, as with
+		// the builder buildFromResource made
+		newBuilder.tweenManager = tweens;
 		builders.set(fileEntry.resource, newBuilder);
 		loader.replaceMultiAnim(path, newBuilder);
 		if (takeFileBlocks(newBuilder) > 0)

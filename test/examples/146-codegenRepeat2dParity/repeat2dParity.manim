@@ -31,3 +31,17 @@ layouts {
     bitmap(generated(color(4, 4, #0000FF))): $rx, 0
   }
 }
+
+// An array axis: one column per item (its value in the cell), rebuilt when the array is set
+#r2dArrayAxis programmable(items:array=[a, b]) {
+  repeatable2d($x, $y, array($v, $items), step(2, dy: 10)) {
+    text(dd, $v, white): $x * 20, 0
+  }
+}
+
+// Constant counts, param step offsets: each cell at its own offset, and they follow $gap
+#r2dConstCountParamStep programmable(gap:int=10) {
+  repeatable2d($x, $y, step(3, dx: $gap), step(2, dy: $gap)) {
+    bitmap(generated(color(4, 4, #FF0000))): 0, 0
+  }
+}

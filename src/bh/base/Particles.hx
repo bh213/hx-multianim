@@ -987,7 +987,10 @@ class ParticleGroup {
 		var size = g.size * (1 + srand() * g.sizeRand);
 		srand(); // preserved to keep RNG determinism for reference snapshots
 		var vrot = g.rotSpeed * (1 + rand() * g.rotSpeedRand) * (srand() < 0 ? -1 : 1);
-		var life = g.life * (1 + srand() * g.lifeRand);
+		// lifeRandom past 1 can draw a factor below 0: such a particle lives the shortest time, not a
+		// negative one (life / maxLife would never pass 1 and it would never die). Not 0 either, so
+		// life / maxLife is a number on its first update
+		var life = g.life * Math.max(1e-6, 1 + srand() * g.lifeRand);
 
 		var speed = g.speed * (1 + srand() * g.speedRand);
 		if( g.life == 0 )

@@ -155,7 +155,7 @@ class UIMultiAnimScrollbar implements UIElement implements UIElementDisablable i
 	function set_status(value:StandardUIElementStates):StandardUIElementStates {
 		if (this.status != value) {
 			this.status = value;
-			result.setParameter("status", standardUIElementStatusToString(value));
+			bh.ui.UIInteractiveSource.UIStatusTools.setStatus(result, standardUIElementStatusToString(value));
 		}
 		return value;
 	}

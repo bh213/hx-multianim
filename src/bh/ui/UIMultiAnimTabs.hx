@@ -42,7 +42,7 @@ class UIMultiAnimTabButton implements UIElement implements UIElementDisablable i
 		if (this.disabled != value) {
 			this.disabled = value;
 			result.beginUpdate();
-			result.setParameter("status", value ? "disabled" : "normal");
+			bh.ui.UIInteractiveSource.UIStatusTools.setStatus(result, value ? "disabled" : "normal");
 			if (result.hasParameter("disabled"))
 				result.setParameter("disabled", '$value');
 			result.endUpdate();
@@ -57,7 +57,7 @@ class UIMultiAnimTabButton implements UIElement implements UIElementDisablable i
 				result.beginUpdate();
 			result.setParameter("checked", '$value');
 			if (value)
-				result.setParameter("status", "normal");
+				bh.ui.UIInteractiveSource.UIStatusTools.setStatus(result, "normal");
 			if (value)
 				result.endUpdate();
 		}
@@ -95,21 +95,21 @@ class UIMultiAnimTabButton implements UIElement implements UIElementDisablable i
 		switch wrapper.event {
 			case OnPush(button):
 				if (button == 0 && !selected) {
-					result.setParameter("status", "pressed");
+					bh.ui.UIInteractiveSource.UIStatusTools.setStatus(result, "pressed");
 					onInternalClick(wrapper.control);
 				}
 			case OnRelease(button):
 				if (!selected)
-					result.setParameter("status", "normal");
+					bh.ui.UIInteractiveSource.UIStatusTools.setStatus(result, "normal");
 			case OnReleaseOutside(_):
 			case OnPushOutside(_):
 
 			case OnEnter:
 				if (!selected)
-					result.setParameter("status", "hover");
+					bh.ui.UIInteractiveSource.UIStatusTools.setStatus(result, "hover");
 			case OnLeave:
 				if (!selected)
-					result.setParameter("status", "normal");
+					bh.ui.UIInteractiveSource.UIStatusTools.setStatus(result, "normal");
 			case OnKey(up, key):
 			case OnWheel(dir):
 			case OnMouseMove:

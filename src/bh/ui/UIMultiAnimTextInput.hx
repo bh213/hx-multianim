@@ -124,7 +124,7 @@ class UIMultiAnimTextInput implements UIElement implements UIElementDisablable i
 
 		textInput.onFocus = function(e:hxd.Event) {
 			focused = true;
-			result.setParameter("status", "focused");
+			bh.ui.UIInteractiveSource.UIStatusTools.setStatus(result, "focused");
 			syncPlaceholder();
 			onFocusChange(true);
 			pushScreenEvent(UIFocusChange(true));
@@ -132,7 +132,7 @@ class UIMultiAnimTextInput implements UIElement implements UIElementDisablable i
 
 		textInput.onFocusLost = function(e:hxd.Event) {
 			focused = false;
-			result.setParameter("status", "normal");
+			bh.ui.UIInteractiveSource.UIStatusTools.setStatus(result, "normal");
 			syncPlaceholder();
 			onFocusChange(false);
 			pushScreenEvent(UIFocusChange(false));
@@ -203,10 +203,10 @@ class UIMultiAnimTextInput implements UIElement implements UIElementDisablable i
 		switch wrapper.event {
 			case OnEnter:
 				if (!focused)
-					result.setParameter("status", "hover");
+					bh.ui.UIInteractiveSource.UIStatusTools.setStatus(result, "hover");
 			case OnLeave:
 				if (!focused)
-					result.setParameter("status", "normal");
+					bh.ui.UIInteractiveSource.UIStatusTools.setStatus(result, "normal");
 			case OnPush(_):
 				if (!focused)
 					focusPending = true;
@@ -236,7 +236,7 @@ class UIMultiAnimTextInput implements UIElement implements UIElementDisablable i
 		if (this.disabled != value) {
 			this.disabled = value;
 			result.beginUpdate();
-			result.setParameter("status", value ? "disabled" : "normal");
+			bh.ui.UIInteractiveSource.UIStatusTools.setStatus(result, value ? "disabled" : "normal");
 			if (result.hasParameter("disabled"))
 				result.setParameter("disabled", '$value');
 			result.endUpdate();

@@ -8,3 +8,8 @@ version: 1.0
   @(status=>hover) bitmap(generated(color(6, 6, #ff0000))): 0, 0
   @(disabled=>true) bitmap(generated(color(6, 6, #0000ff))): 0, 10
 }
+
+// A callback whose index reads both params: a batch that changes both asks the game once
+#batchCallbackTwoParams programmable(a:int=0, b:int=0) {
+  text(dd, callback("label", $a + $b), white, left, 200): 0, 0
+}

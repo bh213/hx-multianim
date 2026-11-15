@@ -62,6 +62,45 @@ class CodegenBatchUpdateParityTest extends BuilderTestBase {
 			"endUpdate() applies the accumulated visibility changes (both bitmaps now visible)");
 	}
 
+	/** An expression that reads two params, both changed in one batch, is evaluated once. */
+	static function countingLabel(counter:{n:Int}):bh.multianim.MultiAnimBuilder.CallbackRequest -> bh.multianim.MultiAnimBuilder.CallbackResult {
+		return (request) -> switch request {
+			case NameWithIndex(name, _) if (name == "label"):
+				counter.n++;
+				CBRString("lbl");
+			default:
+				CBRNoResult;
+		};
+	}
+
+	@Test
+	public function testBatch_Builder_ExpressionOfTwoParamsRunsOnce():Void {
+		final calls = {n: 0};
+		final builder = BuilderTestBase.builderFromFile("test/examples/136-codegenBatchUpdate/batchUpdate.manim");
+		final bp:Dynamic = {callback: countingLabel(calls)};
+		final result = builder.buildWithParameters("batchCallbackTwoParams", new Map(), bp, null, true);
+		calls.n = 0;
+		result.beginUpdate();
+		result.setParameter("a", 2);
+		result.setParameter("b", 3);
+		result.endUpdate();
+		Assert.equals(1, calls.n, "builder: one batch, the callback asked once");
+	}
+
+	@Test
+	public function testBatch_Codegen_ExpressionOfTwoParamsRunsOnce():Void {
+		final mp = createMp();
+		final inst:Dynamic = mp.batchCallbackTwoParams.create();
+		final calls = {n: 0};
+		final builder:bh.multianim.MultiAnimBuilder = @:privateAccess cast (mp.batchCallbackTwoParams : Dynamic)._builder;
+		@:privateAccess builder.builderParams = {callback: countingLabel(calls)};
+		inst.beginUpdate();
+		inst.setParameter("a", 2);
+		inst.setParameter("b", 3);
+		inst.endUpdate();
+		Assert.equals(1, calls.n, "codegen: one batch, the callback asked once, as in the builder (not once per changed param)");
+	}
+
 	/** batchMode reflects the open/closed state of a batch. Uses the statically-typed instance
 	 *  (not Dynamic) so the (get, never) property getter is invoked at compile time. */
 	@Test

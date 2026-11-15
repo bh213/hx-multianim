@@ -107,7 +107,7 @@ Every root element has a `#name` (an unnamed `curves`/`paths` block names itself
 | Element | Description |
 |---------|-------------|
 | `repeatable($var, iterator)` | Repeat child elements over an iterator |
-| `repeatable2d($x, $y, iterX, iterY)` | 2D grid repetition with two iterators. Axis kinds: `step`/`range` on both backends; `layout(...)` axes work in the builder and in codegen (codegen unrolls the layout points at macro time and composes the other axis inside each — a param-dependent linear axis combined with a layout axis is a codegen macro error); `array(...)` axes are builder-only (codegen macro error); `tiles(...)`/`stateanim(...)` axes are rejected on both backends |
+| `repeatable2d($x, $y, iterX, iterY)` | 2D grid repetition with two iterators. Axis kinds: `step`/`range` on both backends; `layout(...)` axes work in the builder and in codegen (codegen unrolls the layout points at macro time and composes the other axis inside each — a param-dependent linear axis combined with a layout axis is a codegen macro error); `array(...)` axes work on both backends (one column or row per item, its value in each cell; built again when the array is set); `tiles(...)`/`stateanim(...)` axes are rejected on both backends |
 
 **Loop variable naming** — loop vars and iterator-output vars (`$v` in `array($v, …)`, `$b`/`$t` in `tiles(...)`, `$b` in `stateanim(...)`) must not share a name with a programmable parameter, an outer loop var, or any `@final` constant in scope. `repeatable2d`'s two loop vars must be distinct, and `tiles($b, $t, …)`'s two outputs must be distinct. Violations are parse errors.
 
@@ -669,7 +669,7 @@ Slots with parameters support visual states via conditionals. `slotContent` mark
 - `slot.getInteractives()` — interactives declared inside the slot decoration body (returns a fresh copy each call). Empty for slots built via the runtime `BuilderResult` path
 - `slot.getUpdatable(name, ?index, ?indexY)` — named element declared inside the slot decoration body. Returns null when the name is absent or the slot has no per-slot IR
 - Codegen: `instance.getSlot_name().setParameter("status", "warning")`
-- Either path, through `bh.multianim.LiveProgrammable` (implemented by `BuilderResult` and every `@:manim` instance): `getSlotEntries()` lists every slot present with its `SlotKey` and handle; `getNamedKeys()` / `getNamedDrawn(name, ?index, ?indexY)` the named elements and the one drawn; `getDynamicRefKeys()`, `getParameterValues()`, `getRoot()`, `getProgrammableName()`. What a tool (the DevBridge, a studio) reads without knowing which path built the programmable
+- Either path, through `bh.multianim.LiveProgrammable` (implemented by `BuilderResult` and every `@:manim` instance): `getSlotEntries()` lists every slot present with its `SlotKey` and handle; `getNamedKeys()` / `getNamedDrawn(name, ?index, ?indexY)` the named elements and the one drawn; `getDynamicRefKeys()`, `getDynamicRefResults()` (every dynamicRef child, one per site, unnamed sites sharing a key too), `getParameterValues()`, `getRoot()`, `getProgrammableName()`. What a tool (the DevBridge, a studio) reads without knowing which path built the programmable
 
 **Indexed:** `#name[$i] slot(params)` inside repeatable — combines indexed access with parameters.
 
@@ -1659,7 +1659,7 @@ Builder throws `BuilderError` with `code == "untracked_param"`; codegen throws a
 
 | Code | When thrown |
 |------|-------------|
-| `"invalid_param_value"` | `setParameter(name, value)` on a declared param whose value is not `Int`/`Float`/`String`/`Bool`/`ResolvedIndexParameters`/`h2d.Tile` (covers `null`, arrays, arbitrary objects, unresolved enum values). Message names the param and rejected type |
+| `"invalid_param_value"` | `setParameter(name, value)` on a declared param whose value is not `Int`/`Float`/`String`/`Bool`/`ResolvedIndexParameters`/`h2d.Tile` (covers `null`, arrays, arbitrary objects), and on an enum a name it does not declare or an index past its values (builder and codegen: an enum takes one of its values, by name or by checked index; nothing changes). Message names the param and rejected value. `acceptsParameterValue(name, value)` (BuilderResult and every `@:manim` instance) says beforehand whether a value is taken; widgets give a design only the status values it declares through `UIStatusTools.setStatus` (`pressed` → `hover` → `normal`, else `normal`) |
 | `"unknown_param"` | `setParameter(name, value)` on a name the programmable does not declare; the message lists the ones it does. Code that drives an optional parameter asks `hasParameter(name)` first; the parameters each widget passes are listed with it in `docs/manim.md` (UI Components) |
 | `"nested_begin_update"` | `beginUpdate()` called while already in batch — nested batching is not supported |
 | `"unbalanced_end_update"` | `endUpdate()` called without a matching `beginUpdate()` |

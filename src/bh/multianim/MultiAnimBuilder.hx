@@ -1512,18 +1512,25 @@ class IncrementalUpdateContext {
 				case PPTString if (Std.isOfType(value, String)):
 					StringValue(cast value);
 				case PPTEnum(values) if (Std.isOfType(value, String)):
-					// String → PPTEnum: intentionally tolerant of values not in the enum.
-					// UI widgets (`UIMultiAnimButton`, `UIMultiAnimCheckbox`, `UIMultiAnimTabs`)
-					// call `setParameter("status", "disabled")` on templates whose `status`
-					// enum doesn't declare "disabled", expecting all `@(status=>…)` arms to
-					// fail to match and the parallel `disabled:bool` param to drive visuals.
-					// Known values produce `Index(i, s)` so they match `CoIndex` directly;
-					// unknown values stay as `StringValue(s)` — still matches `CoIndex` via
-					// name comparison in `matchSingleCondition`, just never positively.
+					// An enum takes one of its values, by name (as the build does): another name is
+					// refused, nothing changed. Widgets give a design only the status values it
+					// declares (UIStatusTools.setStatus)
 					{
 						final s:String = cast value;
 						final idx = values.indexOf(s);
-						idx >= 0 ? Index(idx, s) : StringValue(s);
+						if (idx < 0)
+							throw BuilderError.of('setParameter("$name", "$s") rejected: the enum has no value "$s" (' + values.join(", ") + ')',
+								"invalid_param_value");
+						Index(idx, s);
+					};
+				case PPTEnum(values) if (Std.isOfType(value, Int)):
+					// ... or by its index, checked
+					{
+						final i:Int = cast value;
+						if (i < 0 || i >= values.length)
+							throw BuilderError.of('setParameter("$name", $i) rejected: the enum has ' + values.length + ' values (' + values.join(", ") + ')',
+								"invalid_param_value");
+						Index(i, values[i]);
 					};
 				default: null;
 			};
@@ -1613,6 +1620,20 @@ class IncrementalUpdateContext {
 
 	public function hasParameter(name:String):Bool {
 		return getParamDefinition(name) != null;
+	}
+
+	/** `name` is declared, and when it is an enum `value` is one of its values (by name or index), as
+	 *  setParameter takes; another kind's value is setParameter's to check. */
+	public function acceptsParameterValue(name:String, value:Dynamic):Bool {
+		final def = getParamDefinition(name);
+		if (def == null) return false;
+		return switch def.type {
+			case PPTEnum(values):
+				if (Std.isOfType(value, String)) values.indexOf((cast value : String)) >= 0;
+				else if (Std.isOfType(value, Int)) (cast value : Int) >= 0 && (cast value : Int) < values.length;
+				else false;
+			default: true;
+		};
 	}
 
 	function getParamDefinition(name:String):Null<{type:MultiAnimParser.DefinitionType, defaultValue:Null<ResolvedIndexParameters>}> {
@@ -2868,9 +2889,10 @@ class BuilderResult implements bh.multianim.LiveProgrammable {
 		this.htmlTextsWithLinks = other.htmlTextsWithLinks;
 		this.devBuilderParams = other.devBuilderParams;
 		this.devCapturedPlaceholders = other.devCapturedPlaceholders;
-		// Re-inject TweenManager into new incremental context
+		// Re-inject TweenManager into the new incremental context, its dynamicRef children and its
+		// parameterized slots (the rebuilt ones were made with no manager of their own)
 		if (prevTweenManager != null && this.incrementalContext != null)
-			this.incrementalContext.setTweenManager(prevTweenManager);
+			this.setTweenManager(prevTweenManager);
 		final nextContext = this.incrementalContext;
 		if (prevContext != null && nextContext != null && prevContext != nextContext) {
 			prevContext.moveRebuildListenersTo(nextContext);
@@ -3023,6 +3045,13 @@ class BuilderResult implements bh.multianim.LiveProgrammable {
 		return incrementalContext.hasParameter(name);
 	}
 
+	/** UIInteractiveSource: `name` is declared and an enum's value (by name or index) is one of its
+	 *  values; any other kind's value is setParameter's to check. False for non-incremental results. */
+	public function acceptsParameterValue(name:String, value:Dynamic):Bool {
+		if (incrementalContext == null) return false;
+		return incrementalContext.acceptsParameterValue(name, value);
+	}
+
 	public function beginUpdate():Void {
 		if (incrementalContext == null)
 			throw BuilderError.of('beginUpdate requires incremental mode');
@@ -3109,6 +3138,15 @@ class BuilderResult implements bh.multianim.LiveProgrammable {
 		if (dynamicRefs == null)
 			return [];
 		return [for (key => arr in dynamicRefs) if (arr.length > 0) key];
+	}
+
+	public function getDynamicRefResults():Array<BuilderResult> {
+		final out:Array<BuilderResult> = [];
+		if (dynamicRefs != null)
+			for (arr in dynamicRefs)
+				for (r in arr)
+					out.push(r);
+		return out;
 	}
 
 	public function getParameterValues():Map<String, Dynamic> {
@@ -3439,6 +3477,15 @@ class SwitchArmResults {
 	public function dynamicRefKeys():Array<String> {
 		return [for (key => arr in ir.dynamicRefs) if (arr.length > 0) key];
 	}
+
+	/** Every dynamicRef child the body built, one per site (sites sharing a key too). */
+	public function dynamicRefResults():Array<BuilderResult> {
+		final out:Array<BuilderResult> = [];
+		for (arr in ir.dynamicRefs)
+			for (r in arr)
+				out.push(r);
+		return out;
+	}
 }
 
 @:nullSafety
@@ -3448,6 +3495,7 @@ private typedef StoredBuilderState = {
 	currentNode:Null<Node>,
 	incrementalMode:Bool,
 	incrementalContext:Null<IncrementalUpdateContext>,
+	hostContext:Null<IncrementalUpdateContext>,
 	currentInternalResults:Null<InternalBuilderResults>,
 }
 
@@ -3501,6 +3549,17 @@ class MultiAnimBuilder {
 	 *  and not registered as incremental entries; expression tracking stays active. */
 	var suppressConditionalTracking:Bool = false;
 	var incrementalContext:Null<IncrementalUpdateContext> = null;
+	/** While a `@switch` arm or a param-dependent repeat is built again for a result (no tracking, so
+	 *  `incrementalContext` is null): the result's context, which a dynamicRef child or a parameterized
+	 *  slot built there takes as its parent (its own rebuilds reach the result's listeners) and whose
+	 *  tween manager it animates with, as when the arm was built first. Null otherwise. */
+	var hostContext:Null<IncrementalUpdateContext> = null;
+
+	/** The context a dynamicRef child or a parameterized slot built here belongs to: the one being
+	 *  built for (tracked or not), else the one an arm or repeat is built again for. */
+	inline function linkContext():Null<IncrementalUpdateContext> {
+		return incrementalContext != null ? incrementalContext : hostContext;
+	}
 	/** While a `@switch` arm is built for a result that changes later: every node built with a shader
 	 *  (a `filter:`, a ground), what armInPlaceOf picks the arm's own from. Null otherwise. */
 	var armShaderSink:Null<Array<ArmShader>> = null;
@@ -3653,6 +3712,7 @@ class MultiAnimBuilder {
 		this.currentNode = state.currentNode;
 		this.incrementalMode = state.incrementalMode;
 		this.incrementalContext = state.incrementalContext;
+		this.hostContext = state.hostContext;
 		this.currentInternalResults = state.currentInternalResults;
 		// Release reference fields so the pooled record doesn't pin destroyed nodes,
 		// contexts, or InternalBuilderResults during long idle periods. indexedParams
@@ -3660,6 +3720,7 @@ class MultiAnimBuilder {
 		// on the next push, so we leave them alone (next push clobbers them).
 		state.currentNode = null;
 		state.incrementalContext = null;
+		state.hostContext = null;
 		state.currentInternalResults = null;
 		stateStackPool.push(state);
 	}
@@ -3685,6 +3746,7 @@ class MultiAnimBuilder {
 			pooled.currentNode = this.currentNode;
 			pooled.incrementalMode = this.incrementalMode;
 			pooled.incrementalContext = this.incrementalContext;
+			pooled.hostContext = this.hostContext;
 			pooled.currentInternalResults = this.currentInternalResults;
 			stateStack.push(pooled);
 		} else {
@@ -3694,6 +3756,7 @@ class MultiAnimBuilder {
 				currentNode: this.currentNode,
 				incrementalMode: this.incrementalMode,
 				incrementalContext: this.incrementalContext,
+				hostContext: this.hostContext,
 				currentInternalResults: this.currentInternalResults,
 			});
 		}
@@ -3703,6 +3766,8 @@ class MultiAnimBuilder {
 		this.indexedParams = [];
 		this.builderParams = {};
 		this.currentNode = null;
+		// A build of its own: no arm or repeat of another result is built again in it
+		this.hostContext = null;
 	}
 
 	/** Snapshot builder state onto the stack without allocating fresh empty
@@ -3718,6 +3783,7 @@ class MultiAnimBuilder {
 			pooled.currentNode = this.currentNode;
 			pooled.incrementalMode = this.incrementalMode;
 			pooled.incrementalContext = this.incrementalContext;
+			pooled.hostContext = this.hostContext;
 			pooled.currentInternalResults = this.currentInternalResults;
 			stateStack.push(pooled);
 			return;
@@ -3731,6 +3797,7 @@ class MultiAnimBuilder {
 			currentNode: this.currentNode,
 			incrementalMode: this.incrementalMode,
 			incrementalContext: this.incrementalContext,
+			hostContext: this.hostContext,
 			currentInternalResults: this.currentInternalResults,
 		});
 	}
@@ -4971,10 +5038,8 @@ class MultiAnimBuilder {
 						if (fromF != null && (fromExclusive ? val <= fromF : val < fromF)) return false;
 						if (toF != null && (toExclusive ? val >= toF : val > toF)) return false;
 					case StringValue(_):
-						// Unknown enum string set via `setParameter("status", "disabled")`
-						// on a template whose enum doesn't list "disabled". Numeric
-						// comparison against a non-number silently does not match,
-						// symmetric with the no-match contract for `@(status=>v)` arms.
+						// Text compared as a number (setParameter refuses an enum value the enum
+						// does not declare, so no enum gets here): a non-number silently does not match.
 						return false;
 					default: throw builderError('invalid param types $currentValue, $condValue');
 				}
@@ -7050,8 +7115,10 @@ class MultiAnimBuilder {
 		// properties are excluded too: the deferred wrapper is a plain h2d.Object between the
 		// flow and the element, so materialization would apply the props outside a flow parent
 		// and throw — these build eagerly and toggle via remove/add with saved FlowProperties.
+		// A spacer likewise: it is nothing but its flow properties, so it must be the flow's own child.
 		if ((!nodeVisible || chainArmLosing) && incrementalMode && !suppressConditionalTracking && node.conditionals != NoConditional && incrementalContext != null
-				&& !materializing && !node.type.match(APPLY) && !node.type.match(FINAL_VAR(_, _)) && node.flowProperties == null) {
+				&& !materializing && !node.type.match(APPLY) && !node.type.match(FINAL_VAR(_, _)) && !node.type.match(SPACER(_, _))
+				&& node.flowProperties == null) {
 			final sentinel = new h2d.Object();
 			sentinel.visible = false; // keep h2d.Flow from counting the anchor as a layout child
 			addChild(sentinel);
@@ -7495,13 +7562,17 @@ class MultiAnimBuilder {
 
 				// Register parameter bindings for incremental propagation.
 				final forwardingCtx = (incrementalMode && incrementalContext != null) ? incrementalContext : null;
+				// The context the child belongs to, tracked or not (a @switch arm, a param-dependent
+				// repeat: built again with no tracking, the child is still part of the result)
+				final linkCtx = forwardingCtx != null ? forwardingCtx : linkContext();
 				// The child animates its transitions with the enclosing build's manager: an imported
 				// file's builder has none of its own
-				final enclosingTweens = forwardingCtx != null && forwardingCtx.tweenManager != null ? forwardingCtx.tweenManager : tweenManager;
+				final enclosingTweens = linkCtx != null && linkCtx.tweenManager != null ? linkCtx.tweenManager : tweenManager;
 				if (enclosingTweens != null && result.incrementalContext != null && result.incrementalContext.tweenManager == null)
 					result.setTweenManager(enclosingTweens);
-				if (forwardingCtx != null && result.incrementalContext != null)
-					result.incrementalContext.parentContext = forwardingCtx;
+				// Its own rebuilds reach the result's rebuild listeners (a screen resyncs on them)
+				if (linkCtx != null && result.incrementalContext != null)
+					result.incrementalContext.parentContext = linkCtx;
 				#if MULTIANIM_DEV
 				// The child's inputs are this site's arguments: a hot reload applies the file's
 				if (result.incrementalContext != null)
@@ -7670,8 +7741,10 @@ class MultiAnimBuilder {
 							final savedCtx = incrementalContext;
 							final savedSink = armShaderSink;
 							final recorded:Array<ArmShader> = [];
+							final savedHost = hostContext;
 							incrementalMode = false;
 							incrementalContext = null;
+							hostContext = capturedCtx; // what a dynamicRef or slot in the arm links to
 							armShaderSink = recorded;
 							final gcs = MultiAnimParser.getGridCoordinateSystem(node);
 							final hcs = MultiAnimParser.getHexCoordinateSystem(node);
@@ -7680,10 +7753,12 @@ class MultiAnimBuilder {
 									build(child, ObjectMode(capturedContainer), gcs, hcs, capturedIR, capturedBP);
 							} catch (e:Dynamic) {
 								armShaderSink = savedSink;
+								hostContext = savedHost;
 								throw e;
 							}
 							incrementalMode = savedMode;
 							incrementalContext = savedCtx;
+							hostContext = savedHost;
 							armShaderSink = savedSink;
 							armInPlace = armInPlaceOf(newArm, recorded);
 						}
@@ -8098,6 +8173,8 @@ class MultiAnimBuilder {
 						final savedCtx = incrementalContext;
 						incrementalMode = false;
 						incrementalContext = null;
+						final savedHost = hostContext;
+						hostContext = capturedCtx; // what a dynamicRef or slot in an iteration links to
 						final gcs = MultiAnimParser.getGridCoordinateSystem(capturedNode);
 						final hcs = MultiAnimParser.getHexCoordinateSystem(capturedNode);
 						try for (count in 0...newCount) {
@@ -8161,6 +8238,7 @@ class MultiAnimBuilder {
 							spliceAnchor = savedAnchor;
 							incrementalMode = savedMode;
 							incrementalContext = savedCtx;
+							hostContext = savedHost;
 							throw e;
 						}
 						spliceAnchor = savedAnchor;
@@ -8177,6 +8255,7 @@ class MultiAnimBuilder {
 						}
 						incrementalMode = savedMode;
 						incrementalContext = savedCtx;
+						hostContext = savedHost;
 					}, repeatParamRefs, capturedObject, true);
 				}
 
@@ -8313,6 +8392,9 @@ class MultiAnimBuilder {
 							collectParamRefs(start, repeatParamRefs);
 							collectParamRefs(end, repeatParamRefs);
 							collectParamRefs(step, repeatParamRefs);
+						case ArrayIterator(_, arrayName):
+							// an array parameter: its items are the axis's count (as in REPEAT)
+							if (repeatParamRefs.indexOf(arrayName) < 0) repeatParamRefs.push(arrayName);
 						default:
 					}
 				}
@@ -8393,13 +8475,21 @@ class MultiAnimBuilder {
 						capturedObject.removeChildren();
 						final savedMode = incrementalMode;
 						final savedCtx = incrementalContext;
+						final savedHost = hostContext;
 						incrementalMode = false;
 						incrementalContext = null;
-						buildIterations(newXAxis, newYAxis, capturedObject, capturedIR, capturedBP);
+						hostContext = capturedCtx; // what a dynamicRef or slot in a cell links to
+						try buildIterations(newXAxis, newYAxis, capturedObject, capturedIR, capturedBP) catch (e:Dynamic) {
+							incrementalMode = savedMode;
+							incrementalContext = savedCtx;
+							hostContext = savedHost;
+							throw e;
+						}
 						indexedParams.remove(capturedVarNameX);
 						indexedParams.remove(capturedVarNameY);
 						incrementalMode = savedMode;
 						incrementalContext = savedCtx;
+						hostContext = savedHost;
 					}, repeatParamRefs, capturedObject, true);
 				}
 
@@ -8612,6 +8702,8 @@ class MultiAnimBuilder {
 				this.suppressConditionalTracking = false;
 				savedSlotIncrementalMode = this.incrementalMode;
 				savedSlotIncrementalContext = this.incrementalContext;
+				// The result the slot is part of, an arm or repeat built again for it too
+				final slotHostCtx = linkContext();
 				savedSlotIndexedParams = this.indexedParams;
 				// Merge slot parameter defaults into a copy of current params
 				final mergedParams:Map<String, ResolvedIndexParameters> = new Map();
@@ -8624,10 +8716,10 @@ class MultiAnimBuilder {
 				this.indexedParams = mergedParams;
 				slotIncrementalCtx = new IncrementalUpdateContext(this, mergedParams, builderParams, node);
 				slotIncrementalCtx.rootObject = object;
-				slotIncrementalCtx.parentContext = savedSlotIncrementalContext;
+				slotIncrementalCtx.parentContext = slotHostCtx;
 				// The enclosing context's manager when this builder has none (an imported file's, or
 				// one set on the result after its build)
-				final slotTweens = tweenManager != null ? tweenManager : (savedSlotIncrementalContext != null ? savedSlotIncrementalContext.tweenManager : null);
+				final slotTweens = tweenManager != null ? tweenManager : (slotHostCtx != null ? slotHostCtx.tweenManager : null);
 				if (slotTweens != null)
 					slotIncrementalCtx.setTweenManager(slotTweens);
 				this.incrementalMode = true;
@@ -10812,6 +10904,24 @@ class MultiAnimBuilder {
 			default: false;
 		}
 	}
+
+	/** How a ref's argument for parameter `key` of this builder's programmable `name` is resolved, as
+	 *  `resolveAsParameterType` does: `REF_ARG_TEXT` (a string or enum), `REF_ARG_INTEGER` (an int,
+	 *  uint, range, flags or direction: truncated at each operation), else `REF_ARG_RAW`. */
+	public function refArgumentKind(name:String, key:String):Int {
+		final node = multiParserResult.nodes.get(name);
+		if (node == null)
+			return REF_ARG_RAW;
+		return switch getProgrammableParameterDefinitions(node).get(key)?.type {
+			case PPTString | PPTEnum(_): REF_ARG_TEXT;
+			case PPTInt | PPTUnsignedInt | PPTRange(_, _) | PPTFlags(_) | PPTHexDirection | PPTGridDirection: REF_ARG_INTEGER;
+			default: REF_ARG_RAW;
+		}
+	}
+
+	public static inline final REF_ARG_RAW = 0;
+	public static inline final REF_ARG_TEXT = 1;
+	public static inline final REF_ARG_INTEGER = 2;
 
 	/** A ref's arguments against this builder's programmable `name`, which the ref places: one it has
 	 *  not, or a parameter of it with no default that is not given (a tile apart: it has no default),

@@ -104,4 +104,52 @@ class CodegenRepeat2DParityTest extends BuilderTestBase {
 		assertXs([6, 6, 7, 7], bitmapXs(cast inst),
 			"codegen: setParameter(start, 6) must re-derive the 2D loop values");
 	}
+
+	// ==================== array axis ====================
+
+	/** Each cell's text, "x:text" by its x, sorted. */
+	static function cellTexts(root:h2d.Object):String {
+		final out = [for (t in BuilderTestBase.findAllTextDescendants(root)) if (t.visible) Std.int(xToRoot(t, root)) + ":" + t.text];
+		out.sort((a, b) -> a < b ? -1 : (a > b ? 1 : 0));
+		return out.join(",");
+	}
+
+	function checkArrayAxis(setParameter:(String, Dynamic) -> Void, root:h2d.Object, label:String):Void {
+		Assert.equals("0:a,0:a,20:b,20:b", cellTexts(root), '$label: one column per item, its value in each cell');
+		setParameter("items", ["x", "y", "z"]);
+		Assert.equals("0:x,0:x,20:y,20:y,40:z,40:z", cellTexts(root), '$label: the array set again: its items');
+		setParameter("items", ["p", "q", "r"]);
+		Assert.equals("0:p,0:p,20:q,20:q,40:r,40:r", cellTexts(root), '$label: as many items, other values');
+	}
+
+	@Test
+	public function testR2dArrayAxis_Builder_FollowsTheArray():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "r2dArrayAxis", null, Incremental);
+		checkArrayAxis(result.setParameter, result.object, "builder");
+	}
+
+	@Test
+	public function testR2dArrayAxis_Codegen_FollowsTheArray():Void {
+		final inst:Dynamic = createMp().r2dArrayAxis.create();
+		checkArrayAxis((k, v) -> inst.setParameter(k, v), cast inst, "codegen");
+	}
+
+	// ==================== constant counts, param step offsets ====================
+
+	@Test
+	public function testR2dConstCountParamStep_Builder_SpreadsCells():Void {
+		final result = BuilderTestBase.buildFromFile(FIXTURE, "r2dConstCountParamStep", null, Incremental);
+		assertXs([0, 0, 10, 10, 20, 20], bitmapXs(result.object), "builder: step(3, dx: $gap) x step(2, dy: $gap)");
+		result.setParameter("gap", 30);
+		assertXs([0, 0, 30, 30, 60, 60], bitmapXs(result.object), "builder: the cells follow $gap");
+	}
+
+	@Test
+	public function testR2dConstCountParamStep_Codegen_SpreadsCells():Void {
+		final inst:Dynamic = createMp().r2dConstCountParamStep.create();
+		assertXs([0, 0, 10, 10, 20, 20], bitmapXs(cast inst),
+			"codegen: constant counts with a param step must spread the cells, not stack them at 0,0");
+		inst.setParameter("gap", 30);
+		assertXs([0, 0, 30, 30, 60, 60], bitmapXs(cast inst), "codegen: the cells follow $gap");
+	}
 }

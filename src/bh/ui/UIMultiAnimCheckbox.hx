@@ -35,7 +35,7 @@ class UIStandardMultiCheckbox implements UIElement implements UIElementDisablabl
 		if (this.disabled != value) {
 			this.disabled = value;
 			result.beginUpdate();
-			result.setParameter("status", value ? "disabled" : "normal");
+			bh.ui.UIInteractiveSource.UIStatusTools.setStatus(result, value ? "disabled" : "normal");
 			if (result.hasParameter("disabled"))
 				result.setParameter("disabled", '$value');
 			result.endUpdate();
@@ -80,19 +80,19 @@ class UIStandardMultiCheckbox implements UIElement implements UIElementDisablabl
 				if (button == 0 && !ignoreSelectEvents) {
 					this.selected = !this.selected;
 					result.beginUpdate();
-					result.setParameter("status", "pressed");
+					bh.ui.UIInteractiveSource.UIStatusTools.setStatus(result, "pressed");
 					result.setParameter("checked", '' + this.selected);
 					result.endUpdate();
 					triggerToggle(this.selected, wrapper.control);
 				}
 			case OnRelease(button):
-				result.setParameter("status", "normal");
+				bh.ui.UIInteractiveSource.UIStatusTools.setStatus(result, "normal");
 			case OnReleaseOutside(_):
 			case OnPushOutside(_):
 			case OnEnter:
-				result.setParameter("status", "hover");
+				bh.ui.UIInteractiveSource.UIStatusTools.setStatus(result, "hover");
 			case OnLeave:
-				result.setParameter("status", "normal");
+				bh.ui.UIInteractiveSource.UIStatusTools.setStatus(result, "normal");
 			case OnKey(up, key):
 			case OnWheel(dir):
 			case OnMouseMove:

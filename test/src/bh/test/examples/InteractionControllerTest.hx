@@ -219,6 +219,24 @@ class InteractionControllerTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testSelectFromHandLeavesCardsTheGameDisabledDisabled():Void {
+		var h = createCardHand();
+		h.helper.setHand([desc("a"), desc("b"), desc("c")]);
+		h.helper.setCardEnabled("c", false); // the game's own: unplayable this turn
+
+		var ctrl = new UISelectFromHandController(h.screen, h.helper, {
+			maxCount: 1,
+			filter: (id) -> id == "b"
+		}, (_) -> {});
+		ctrl.lifecycleEvent(LifecycleControllerStarted);
+		ctrl.lifecycleEvent(LifecycleControllerFinished);
+
+		Assert.isTrue(h.helper.isCardInHand("a"), "the card the filter dimmed is enabled again");
+		Assert.isTrue(h.helper.isCardInHand("b"));
+		Assert.isFalse(h.helper.isCardInHand("c"), "a card the game disabled stays disabled");
+	}
+
+	@Test
 	public function testSelectFromHandConfirmRequiresMinCount():Void {
 		var h = createCardHand();
 		h.helper.setHand([desc("a"), desc("b")]);

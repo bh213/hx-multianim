@@ -5847,39 +5847,31 @@ class ProgrammableCodeGenTest extends VisualTestBase {
 			async, null, null, 4.0, null, DetachReattach);
 	}
 
-	// Codegen setParameter on a `status:[normal,hover,pressed,...]` enum receives the string
-	// value via the generic dispatcher (8a3 in ProgrammableCodeGen). The dispatcher's
-	// string→index switch must tolerate values that are not declared in the enum, mirroring
-	// the runtime contract documented at MultiAnimBuilder.hx where UI widgets (Button,
-	// Checkbox, Tabs) call setParameter("status", "disabled") on every client template,
-	// expecting all `@(status=>…)` arms to fail to match while a parallel `disabled:bool`
-	// param drives visuals. Codegen currently emits `throw` on unknown values — a card or
-	// button built via @:manim will crash the first time a state machine attempts a value
-	// the template doesn't enumerate.
+	// Codegen setParameter on an enum takes one of its values, by name or index (the builder
+	// likewise): a value the enum does not declare is refused with `invalid_param_value`, and the
+	// instance stays as it was. Widgets give a design only the status values it declares
+	// (UIStatusTools.setStatus).
 	@Test
-	public function testCodegenSetParameterUnknownEnumValueDoesNotThrow():Void {
+	public function testCodegenSetParameterRefusesAValueTheEnumDoesNotDeclare():Void {
 		final mp = createMp();
 		final btn = mp.button.create();
-		// codegenButton declares `status:[hover, pressed, normal]=normal` — "disabled" is NOT
-		// in the enum (the template uses a separate `disabled:[true,false]` param).
-		var thrown:Null<String> = null;
+		// codegenButton declares `status:[hover, pressed, normal]=normal`: no "disabled"
+		var code:Null<String> = null;
 		try {
 			btn.setParameter("status", "disabled");
-		} catch (e:Dynamic) {
-			thrown = Std.string(e);
+		} catch (e:bh.multianim.BuilderError) {
+			code = e.code;
 		}
-		Assert.isNull(thrown,
-			'codegen setParameter must tolerate unknown enum strings (matches runtime contract); threw: $thrown');
+		Assert.equals("invalid_param_value", code, "a value the enum does not declare is refused");
 
-		// Sanity: known values still work after the unknown call.
+		// A value of the enum is taken after it
 		var thrownAfter:Null<String> = null;
 		try {
 			btn.setParameter("status", "hover");
 		} catch (e:Dynamic) {
 			thrownAfter = Std.string(e);
 		}
-		Assert.isNull(thrownAfter,
-			'follow-up setParameter with a known value must still work; threw: $thrownAfter');
+		Assert.isNull(thrownAfter, 'follow-up setParameter with a known value must still work; threw: $thrownAfter');
 	}
 
 	// Codegen setParameter on a `:color` parameter must accept the same String
