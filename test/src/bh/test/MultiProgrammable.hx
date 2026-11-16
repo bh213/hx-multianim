@@ -1090,4 +1090,7 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 
 	@:manim("test/examples/176-stateAnimConstructName/stateAnimConstructName.manim", "stateAnimConstructName")
 	public var stateAnimConstructName;
+
+	@:manim("test/examples/179-fontCapMetrics/fontCapMetrics.manim", "fontCaps")
+	public var fontCaps;
 }

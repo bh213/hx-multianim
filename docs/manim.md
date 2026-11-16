@@ -1056,6 +1056,10 @@ text(font, '${$ref.extraPoint("missing", 99, 88).x}', #00FF00): 0, 0
 * `$ctx.random(min, max)` - random value between min and max
 * `$ctx.font("name").lineHeight` - line height of the named font
 * `$ctx.font("name").baseLine` - baseline offset of the named font
+* `$ctx.font("name").capTop` - where the capital letters' glyph box starts, from the top of the line (the `yoffset` of `H`; `0` if the font has no `H`)
+* `$ctx.font("name").capHeight` - height of the capital letters' glyph box (the `height` of `H`; `baseLine` if the font has no `H`)
+
+To centre text vertically in a box on its capitals, whatever the font's padding, place it at `y = ($h - $ctx.font(f).capHeight) div 2 - $ctx.font(f).capTop` (`lineHeight` sits a pixel font a little high).
 
 Font metrics are resolved at build time and can be used in expressions:
 

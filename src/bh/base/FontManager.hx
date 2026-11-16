@@ -50,6 +50,23 @@ class FontManager {
 		return font;
 	}
 	
+	/** Where the capital letters' glyph box starts, from the top of the line: the `dy` (BMFont
+	 *  `yoffset`) of 'H', a whole number; 0 for a font without 'H'. It includes the offset the font
+	 *  was registered with. `$ctx.font("name").capTop` in `.manim` (builder and codegen both call this). */
+	public static function capTop(font:h2d.Font):Float {
+		if (!font.hasChar("H".code)) return 0;
+		return Math.floor(font.getChar("H".code).t.dy);
+	}
+
+	/** The height of the capital letters' glyph box (BMFont `height` of 'H'), a whole number, so that
+	 *  `capTop + capHeight` is the box's bottom; the font's `baseLine` for a font without 'H'.
+	 *  `$ctx.font("name").capHeight` in `.manim` (builder and codegen both call this). */
+	public static function capHeight(font:h2d.Font):Float {
+		if (!font.hasChar("H".code)) return font.baseLine;
+		final t = font.getChar("H".code).t;
+		return Math.ceil(t.dy + t.height) - Math.floor(t.dy);
+	}
+
 	public static function getRegisteredFontNames():Array<String> {
 		final keys = [for (k in fontRegistry.keys()) k];
 		keys.sort((a, b) -> a < b ? -1 : 1);

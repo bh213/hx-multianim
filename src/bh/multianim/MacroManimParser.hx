@@ -1589,11 +1589,13 @@ class MacroManimParser {
 					// identifier ($grid.pos(1, 2)); extraPoint and $ctx.hex/$ctx.grid
 					// are chains too. A bare property ($grid.width, $ctx.height) is a
 					// scalar — parse it as the X value so the X position accepts the
-					// same expressions the Y position already does.
+					// same expressions the Y position already does. $ctx.font("name").lineHeight
+					// (or .baseLine, .capTop, .capHeight) is a scalar too, despite its argument list.
 					final isCoordChain = switch peek() {
 						case TIdentifier(m):
 							if (isKeyword(m, "extrapoint")) true;
 							else if (s == "ctx" && (m == "hex" || m == "grid")) true;
+							else if (s == "ctx" && m == "font") false;
 							else if (tpos + 1 < tokens.length) switch tokens[tpos + 1].type {
 								case TOpen: true;
 								default: false;

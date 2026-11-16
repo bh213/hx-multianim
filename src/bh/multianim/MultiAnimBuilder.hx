@@ -4064,7 +4064,7 @@ class MultiAnimBuilder {
 						final max = resolveAsInteger(args[1]);
 						return min + Std.random(max - min);
 					case "font":
-						throw builderError('$$ctx.font() must be followed by .lineHeight or .baseLine');
+						throw builderError('$$ctx.font() must be followed by .lineHeight, .baseLine, .capTop or .capHeight');
 					default: throw builderError('$ref.$method() is not a known context method');
 				}
 			default:
@@ -4155,15 +4155,20 @@ class MultiAnimBuilder {
 
 	/** Resolves RVChainedMethodCall for .x/.y extraction from coordinate methods and font property access. */
 	function resolveRVChainedMethodCall(base:ReferenceableValue, property:String):Float {
-		// Font property access: $ctx.font("name").lineHeight / .baseLine
-		if (property == "lineHeight" || property == "baseLine") {
+		// Font property access: $ctx.font("name").lineHeight / .baseLine / .capTop / .capHeight
+		if (property == "lineHeight" || property == "baseLine" || property == "capTop" || property == "capHeight") {
 			switch (base) {
 				case RVMethodCall(ref, method, args):
 					if (ref == "ctx" && method == "font") {
 						if (args.length != 1) throw builderError('$$ctx.font() requires 1 argument (font name)');
 						final fontName = resolveAsString(args[0]);
 						final font = resourceLoader.loadFont(fontName);
-						return if (property == "lineHeight") font.lineHeight else font.baseLine;
+						return switch (property) {
+							case "lineHeight": font.lineHeight;
+							case "baseLine": font.baseLine;
+							case "capTop": bh.base.FontManager.capTop(font);
+							default: bh.base.FontManager.capHeight(font);
+						}
 					}
 				default:
 			}
@@ -4171,7 +4176,7 @@ class MultiAnimBuilder {
 		}
 
 		if (property != "x" && property != "y")
-			throw builderError('unsupported chained property .$property — only .x, .y, .lineHeight, .baseLine are supported');
+			throw builderError('unsupported chained property .$property — only .x, .y, .lineHeight, .baseLine, .capTop, .capHeight are supported');
 
 		switch (base) {
 			case RVMethodCall(ref, method, args):

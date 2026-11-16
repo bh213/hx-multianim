@@ -134,7 +134,7 @@ Works on discrete param types — `enum`, `int`, `uint`, `range`, `string` (quot
 - Named systems: `grid: #name spacingX, spacingY`, `hex: #name flat(w, h)` / `hex: #name pointy(w, h)`
 - Value extraction: `$grid.pos(x, y).x`, `$hex.corner(0, 1.0).y`
 - Offset suffix: `.offset(x, y)` on any coordinate expression adds a pixel offset (e.g., `layout(name).offset(5, 10)`, `$grid.pos(1, 2).offset(3, 4)`)
-- Context: `$ctx.width`, `$ctx.height`, `$ctx.random(min, max)`, `$ctx.font("name").lineHeight`, `$ctx.font("name").baseLine`
+- Context: `$ctx.width`, `$ctx.height`, `$ctx.random(min, max)`, `$ctx.font("name").lineHeight`, `$ctx.font("name").baseLine`, `$ctx.font("name").capTop`, `$ctx.font("name").capHeight` (the 'H' glyph box; centre text in a box with `($h - capHeight) div 2 - capTop`)
 - Layout: `layout(layoutName [, index])` — legacy two-arg `layout("group", "name")` is rejected at parse time; the group identifier was removed
 - Extra point (from named stateanim): `$ref.extraPoint("pointName")`, `$ref.extraPoint("pointName", fallback: x, y)` — where the element draws it (its position, scale and rotation applied; of several `@()` arms, the drawn one), so never add the element's position again
 - Extra point (from .anim file): `extraPoint("file.anim", "animName", "pointName", "key"=>"value"...)`, with optional `fallback: x, y`

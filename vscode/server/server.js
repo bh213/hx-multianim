@@ -3904,7 +3904,7 @@ bh_multianim_MacroManimParser.prototype = {
 				var _g = this.tokens[this.tpos].type;
 				if(_g._hx_index == 32) {
 					var m = _g.s;
-					isCoordChain = bh_multianim_MacroManimParser.isKeyword(m,"extrapoint") ? true : s == "ctx" && (m == "hex" || m == "grid") ? true : this.tpos + 1 < this.tokens.length && this.tokens[this.tpos + 1].type._hx_index == 1;
+					isCoordChain = bh_multianim_MacroManimParser.isKeyword(m,"extrapoint") ? true : s == "ctx" && (m == "hex" || m == "grid") ? true : s == "ctx" && m == "font" ? false : this.tpos + 1 < this.tokens.length && this.tokens[this.tpos + 1].type._hx_index == 1;
 				} else {
 					isCoordChain = false;
 				}

@@ -173,6 +173,7 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.CodegenLayoutParamPointsTest());
 		testRunner.addCase(new bh.test.examples.CodegenForwardStringConcatTest());
 		testRunner.addCase(new bh.test.examples.CodegenSwitchFinalRefsTest());
+		testRunner.addCase(new bh.test.examples.FontCapMetricsTest());
 		testRunner.addCase(new bh.test.examples.IncrementalReviewTest());
 		testRunner.addCase(new bh.test.examples.RefsSlotsReviewTest());
 		testRunner.addCase(new bh.test.examples.CodegenParityReviewTest());

@@ -583,6 +583,10 @@ Note: coordinates are static — resolved from the initial animation state at bu
 | `$ctx.random(min, max)` | Random value |
 | `$ctx.font("name").lineHeight` | Font line height |
 | `$ctx.font("name").baseLine` | Font baseline |
+| `$ctx.font("name").capTop` | Where the capital letters' glyph box starts: the `yoffset` (glyph `dy`) of `H`; `0` for a font without `H` |
+| `$ctx.font("name").capHeight` | Height of the capital letters' glyph box (`H`'s `height`); `baseLine` for a font without `H` |
+
+To centre text vertically in a box of height `$h` on its capitals, for any font (pixel or distance-field, with or without padding): `y = ($h - $ctx.font(f).capHeight) div 2 - $ctx.font(f).capTop`. All four font values are whole numbers, include the offset the font was registered with, and work as the X position too.
 
 `$ctx.width`/`$ctx.height` need a scene to resolve. Runtime builder: pass it via `BuilderParameters.scene` (a missing scene throws a `BuilderError`). Codegen (`@:manim`): the generated constructor resolves through the live scene when the instance is already attached, else through the injectable `ProgrammableBuilder.scene` field (set it on the factory like `tweenManager`), else throws the same structured `BuilderError`.
 

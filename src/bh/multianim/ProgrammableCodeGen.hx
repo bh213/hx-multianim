@@ -9232,7 +9232,7 @@ class ProgrammableCodeGen {
 									macro 0;
 								}
 							case "font":
-								Context.error('$$ctx.font() must be followed by .lineHeight or .baseLine', Context.currentPos());
+								Context.error('$$ctx.font() must be followed by .lineHeight, .baseLine, .capTop or .capHeight', Context.currentPos());
 								macro 0;
 							default:
 								Context.error('Unknown context method: $$ctx.$method()', Context.currentPos());
@@ -9243,16 +9243,19 @@ class ProgrammableCodeGen {
 						macro 0;
 				}
 			case RVChainedMethodCall(base, property, _):
-				if (property == "lineHeight" || property == "baseLine") {
-					// Font property access: $ctx.font("name").lineHeight / .baseLine
+				if (property == "lineHeight" || property == "baseLine" || property == "capTop" || property == "capHeight") {
+					// Font property access: $ctx.font("name").lineHeight / .baseLine / .capTop / .capHeight
+					// (capTop/capHeight through FontManager, as the builder does, so both give the same value)
 					switch (base) {
 						case RVMethodCall(ref, method, args):
 							if (ref == "ctx" && method == "font" && args.length == 1) {
 								final fontNameExpr = rvToExpr(args[0]);
-								if (property == "lineHeight")
-									macro this._pb.loadFont($fontNameExpr).lineHeight;
-								else
-									macro this._pb.loadFont($fontNameExpr).baseLine;
+								switch (property) {
+									case "lineHeight": macro this._pb.loadFont($fontNameExpr).lineHeight;
+									case "baseLine": macro this._pb.loadFont($fontNameExpr).baseLine;
+									case "capTop": macro bh.base.FontManager.capTop(this._pb.loadFont($fontNameExpr));
+									default: macro bh.base.FontManager.capHeight(this._pb.loadFont($fontNameExpr));
+								}
 							} else {
 								Context.error('$$ctx.font("name") is required for .$property access', Context.currentPos());
 								macro 0;
@@ -9262,7 +9265,7 @@ class ProgrammableCodeGen {
 							macro 0;
 					}
 				} else if (property != "x" && property != "y") {
-					Context.error('Unsupported chained property .$property — only .x, .y, .lineHeight, .baseLine are supported', Context.currentPos());
+					Context.error('Unsupported chained property .$property — only .x, .y, .lineHeight, .baseLine, .capTop, .capHeight are supported', Context.currentPos());
 					macro 0;
 				} else {
 					// Try static resolution first
