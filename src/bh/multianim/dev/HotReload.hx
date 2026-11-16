@@ -505,7 +505,8 @@ class StateRestorer {
 			if (now != null && Type.enumEq(now, value))
 				continue;
 			final dynVal = resolvedToDynamic(value);
-			if (dynVal != null)
+			// An enum value the edit removed is not set again: the param keeps its default
+			if (dynVal != null && (result.acceptsParameterValue(name, dynVal) || !result.hasParameter(name)))
 				result.setParameter(name, dynVal);
 		}
 		if (opened) result.endUpdate();
@@ -554,12 +555,25 @@ class StateRestorer {
 		}
 	}
 
-	// Convert ParamSnapshot back to Map<String, Dynamic> for buildWithParameters input.
-	public static function snapshotToInputMap(params:ParamSnapshot):Map<String, Dynamic> {
+	/** False when `def` is an enum that has no `value` (by name or index); true for any other kind. */
+	static function enumStillHas(def:Null<bh.multianim.MultiAnimParser.Definition>, value:Dynamic):Bool {
+		if (def == null) return true;
+		return switch def.type {
+			case PPTEnum(values):
+				if (Std.isOfType(value, String)) values.indexOf((cast value : String)) >= 0;
+				else if (Std.isOfType(value, Int)) (cast value : Int) >= 0 && (cast value : Int) < values.length;
+				else true;
+			default: true;
+		};
+	}
+
+	// Convert ParamSnapshot back to Map<String, Dynamic> for buildWithParameters input. With `defs`
+	// (the reloaded file's), an enum value the edit removed is left out: the param takes its default.
+	public static function snapshotToInputMap(params:ParamSnapshot, ?defs:ParametersDefinitions):Map<String, Dynamic> {
 		final out:Map<String, Dynamic> = new Map();
 		for (k => v in params) {
 			final dyn = resolvedToDynamic(v);
-			if (dyn != null)
+			if (dyn != null && (defs == null || enumStillHas(defs.get(k), dyn)))
 				out.set(k, dyn);
 		}
 		return out;

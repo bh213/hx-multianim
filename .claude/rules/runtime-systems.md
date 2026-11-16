@@ -140,7 +140,7 @@ Modal interaction controllers for common targeting/selection flows. Extend `UIDe
 
 **UIPickTargetController** — pick a target from interactives, grid cells, or cards:
 - Config: `validTargetIds`/`targetPrefix`/`filter` for interactives, `grid`+`cellFilter` for cells, `cardHand`+`cardFilter` for cards
-- Highlights valid grid cells on activation via `setCellParameter()`
+- Highlights valid grid cells on activation via `setCellParameter()` (`highlightParam`/`highlightValue`/`highlightResetValue`, defaults `highlight`/`accept`/`none`: values the cell contract declares)
 - Intercepts `UIInteractiveEvent(UIClick, ...)` for interactive/card targets
 - Overrides `handleClick()` with `grid.cellAtPoint()` for grid cell targets
 - Routes mouse move to grid for hover feedback

@@ -2044,7 +2044,7 @@ class ScreenManager {
 			try {
 				final built = newBuilder.buildWithParameters(
 					handle.programmableName,
-					bh.multianim.dev.HotReload.StateRestorer.snapshotToInputMap(snapshot.params),
+					bh.multianim.dev.HotReload.StateRestorer.snapshotToInputMap(snapshot.params, newBuilder.getParameterDefinitions(handle.programmableName)),
 					reloadBuilderParams,
 					null,
 					true

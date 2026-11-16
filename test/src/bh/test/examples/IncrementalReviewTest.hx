@@ -712,4 +712,21 @@ class IncrementalReviewTest extends BuilderTestBase {
 		result.setParameter("items", ["a", "b", "c"]);
 		Assert.equals(6, BuilderTestBase.findVisibleBitmapDescendants(result.object).length, "3 items x 2 rows");
 	}
+
+	@Test
+	public function testConditionalRepeatWithAParamCountStillTogglesAfterItsCountChanged():Void {
+		final result = BuilderTestBase.buildFromSource("
+			#p programmable(show:bool=true, n:uint=2) {
+				@(show=>true) repeatable($i, step($n, dx: 10)) {
+					bitmap(generated(color(5, 5, #ff0000))): 0, 0
+				}
+			}
+		", "p", null, Incremental);
+		result.setParameter("n", 3);
+		Assert.equals(3, BuilderTestBase.findVisibleBitmapDescendants(result.object).length, "sanity: the count change rebuilt 3 items");
+		result.setParameter("show", false);
+		Assert.equals(0, BuilderTestBase.findVisibleBitmapDescendants(result.object).length, "show=false hides the repeat after its rebuild");
+		result.setParameter("show", true);
+		Assert.equals(3, BuilderTestBase.findVisibleBitmapDescendants(result.object).length, "show=true shows it again");
+	}
 }

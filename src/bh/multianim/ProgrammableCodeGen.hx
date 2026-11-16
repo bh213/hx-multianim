@@ -2722,8 +2722,9 @@ class ProgrammableCodeGen {
 		for (update in createResult.exprUpdates)
 			expressionUpdates.push(update);
 
-		// Children
-		if (createResult.isContainer) {
+		// Children. A drawable's body goes into it too (a child bitmap, an apply onto it), as the
+		// builder builds the children of every element but a few
+		if (createResult.isContainer || bodyGoesIntoLeaf(node)) {
 			if (node.children != null && node.children.length > 0)
 				processChildren(node.children, createResult.childrenParentField != null ? createResult.childrenParentField : fieldName, fields, ctorExprs,
 					[], pos);
@@ -5270,6 +5271,16 @@ class ProgrammableCodeGen {
 	}
 
 	// ==================== Node Creation ====================
+
+	/** A drawable built as one object whose body (child elements, an apply onto it) codegen puts in it,
+	 *  as the builder does: its create result is no container, its children still go under its field. */
+	static function bodyGoesIntoLeaf(node:Node):Bool {
+		return switch node.type {
+			case BITMAP(_, _, _) | TEXT(_) | RICHTEXT(_) | NINEPATCH(_, _, _, _, _, _, _) | GRAPHICS(_) | PIXELS(_)
+				| INTERACTIVE(_, _, _, _, _) | STATEANIM(_, _, _, _) | STATEANIM_CONSTRUCT(_, _, _): true;
+			default: false;
+		};
+	}
 
 	static function generateCreateExpr(node:Node, fieldName:String, pos:Position):Null<CreateResult> {
 		return switch (node.type) {

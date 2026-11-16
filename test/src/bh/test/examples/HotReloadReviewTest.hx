@@ -159,6 +159,23 @@ class HotReloadReviewTest extends BuilderTestBase {
 		}, null, result -> result.setParameter("w", 30));
 	}
 
+	/** A host whose drawn width shows its `state`: a 10, b 20, c 30 (a value `values` leaves out draws nothing). */
+	static function stateHost(values:Array<String>):String {
+		var body = "";
+		final widths = ["a" => 10, "b" => 20, "c" => 30];
+		for (v in values)
+			body += "\t@(state=>" + v + ") bitmap(generated(color(" + widths.get(v) + ", 10, #ff0000))): 0, 0\n";
+		return "version: 1.0\n#host programmable(state:[" + values.join(",") + "]=a) {\n" + body + "}\n";
+	}
+
+	@Test
+	public function testInPlaceReloadThatRemovesTheEnumValueAnElementHoldsFallsBackToTheDefault():Void {
+		reloadInPlace("review-enum-removed-tmp.manim", stateHost(["a", "b", "c"]), stateHost(["a", "b"]), "host", (sm, result, report) -> {
+			Assert.isTrue(report.success, 'the reload succeeds: ' + report.errors);
+			Assert.equals("10x10", sizeOf(result.object), "state, set to a value the edit removed, takes its default a");
+		}, null, result -> result.setParameter("state", "c"));
+	}
+
 	@Test
 	public function testInPlaceReloadKeepsABuildInputAndAppliesTheOtherEditedDefaults():Void {
 		reloadInPlace("review-input-tmp.manim", hostWH(10, 10), hostWH(99, 20), "host", (sm, result, report) -> {

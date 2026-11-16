@@ -1043,19 +1043,22 @@ class IncrementalUpdateContext {
 		}
 	}
 
-	public function cleanupDestroyedSubtree(ir:InternalBuilderResults, container:h2d.Object):Void {
+	/** `keepContainer`: `container` stays (a @switch or repeat rebuilding its children into it), so
+	 *  what is registered on it itself — its own conditional, apply, name, transition — is kept and
+	 *  only its descendants' bookkeeping goes. */
+	public function cleanupDestroyedSubtree(ir:InternalBuilderResults, container:h2d.Object, keepContainer:Bool = false):Void {
 		// 1. Reap discarded dynamicRef children (transition tweens, DEV reload handles,
 		//    forwarding bindings) — must precede the IR cleanup below.
 		pruneDiscardedDynamicRefChildren(ir, container);
 
 		// 2. Clean IR collections via the existing helper.
-		MultiAnimBuilder.removeRegistrationsUnder(ir, container);
+		MultiAnimBuilder.removeRegistrationsUnder(ir, container, keepContainer);
 
 		// 4. Drop dynamicNameBindings whose container is under the destroyed subtree.
 		var ni = 0;
 		while (ni < dynamicNameBindings.length) {
 			final dnbContainer = dynamicNameBindings[ni].container;
-			final isUnder = dnbContainer == container || isDescendantOf(dnbContainer, container);
+			final isUnder = (dnbContainer == container && !keepContainer) || isDescendantOf(dnbContainer, container);
 			if (isUnder) dynamicNameBindings.splice(ni, 1);
 			else ni++;
 		}
@@ -1088,7 +1091,9 @@ class IncrementalUpdateContext {
 			final entry = conditionalEntries[ci];
 			final obj = entry.object;
 			final sentinel = entry.sentinel;
-			final isUnder = obj == container || isDescendantOf(obj, container)
+			final isUnder = if (keepContainer) obj != container && sentinel != container
+				&& (isDescendantOf(obj, container) || isDescendantOf(sentinel, container));
+			else obj == container || isDescendantOf(obj, container)
 				|| sentinel == container || isDescendantOf(sentinel, container);
 			if (isUnder) { conditionalEntries.splice(ci, 1); entriesChanged = true; }
 			else ci++;
@@ -1104,7 +1109,7 @@ class IncrementalUpdateContext {
 		var applyChanged = false;
 		while (ai < conditionalApplyEntries.length) {
 			final parent = conditionalApplyEntries[ai].parent;
-			final isUnder = parent == container || isDescendantOf(parent, container);
+			final isUnder = (parent == container && !keepContainer) || isDescendantOf(parent, container);
 			if (isUnder) { conditionalApplyEntries.splice(ai, 1); applyChanged = true; }
 			else ai++;
 		}
@@ -1112,7 +1117,7 @@ class IncrementalUpdateContext {
 		final baselineParents:Array<h2d.Object> = [];
 		for (parent in conditionalApplyBaselines.keys()) baselineParents.push(parent);
 		for (parent in baselineParents) {
-			final isUnder = parent == container || isDescendantOf(parent, container);
+			final isUnder = (parent == container && !keepContainer) || isDescendantOf(parent, container);
 			if (isUnder) conditionalApplyBaselines.remove(parent);
 		}
 
@@ -1123,7 +1128,9 @@ class IncrementalUpdateContext {
 			final entry = deferredEntries[di];
 			final wrapper = entry.wrapper;
 			final sentinel = entry.sentinel;
-			final isUnder = wrapper == container || isDescendantOf(wrapper, container)
+			final isUnder = if (keepContainer) wrapper != container && sentinel != container
+				&& (isDescendantOf(wrapper, container) || isDescendantOf(sentinel, container));
+			else wrapper == container || isDescendantOf(wrapper, container)
 				|| sentinel == container || isDescendantOf(sentinel, container);
 			if (isUnder) deferredEntries.splice(di, 1);
 			else di++;
@@ -1135,7 +1142,7 @@ class IncrementalUpdateContext {
 		var twi = 0;
 		while (twi < activeTransitionTweens.length) {
 			final obj = activeTransitionTweens[twi].obj;
-			final isUnder = obj == container || isDescendantOf(obj, container);
+			final isUnder = (obj == container && !keepContainer) || isDescendantOf(obj, container);
 			if (isUnder) {
 				final entry = activeTransitionTweens[twi];
 				final t = entry.tween;
@@ -3805,11 +3812,12 @@ class MultiAnimBuilder {
 	/** Remove from `ir` any registration whose underlying h2d.Object is `container` itself or a descendant of it.
 	 *  Used by SWITCH/REPEAT rebuild closures to drop stale entries from the previous arm/iteration before
 	 *  rebuilding into the same container. Must be called BEFORE container.removeChildren() so parent links
-	 *  are still intact for the descendant walk. */
-	private static function removeRegistrationsUnder(ir:InternalBuilderResults, container:h2d.Object):Void {
+	 *  are still intact for the descendant walk. `keepContainer`: what is registered on `container`
+	 *  itself stays (it is not rebuilt). */
+	private static function removeRegistrationsUnder(ir:InternalBuilderResults, container:h2d.Object, keepContainer:Bool = false):Void {
 		function isUnder(obj:Null<h2d.Object>):Bool {
 			if (obj == null) return false;
-			if (obj == container) return true;
+			if (obj == container) return !keepContainer;
 			var p = obj.parent;
 			while (p != null) {
 				if (p == container) return true;
@@ -7731,7 +7739,7 @@ class MultiAnimBuilder {
 						// Drop registrations + per-element bookkeeping from the previous arm before tearing
 						// down its scene graph, then build the new arm into the parent internalResults so
 						// its registrations are visible via the parent BuilderResult.
-						capturedCtx.cleanupDestroyedSubtree(capturedIR, capturedContainer);
+						capturedCtx.cleanupDestroyedSubtree(capturedIR, capturedContainer, true);
 						capturedContainer.removeChildren();
 						armInPlace = null;
 						if (newArm != null) {
@@ -8161,7 +8169,7 @@ class MultiAnimBuilder {
 								capturedCtx.discardSubtree(capturedIR, item);
 							capturedSplice.parent;
 						} else {
-							capturedCtx.cleanupDestroyedSubtree(capturedIR, capturedObject);
+							capturedCtx.cleanupDestroyedSubtree(capturedIR, capturedObject, true);
 							capturedObject.removeChildren();
 							capturedObject;
 						}
@@ -8471,7 +8479,7 @@ class MultiAnimBuilder {
 						// Drop registrations + per-element bookkeeping from the previous iterations
 						// before tearing down their scene graph, then rebuild into the parent
 						// internalResults (mirrors REPEAT).
-						capturedCtx.cleanupDestroyedSubtree(capturedIR, capturedObject);
+						capturedCtx.cleanupDestroyedSubtree(capturedIR, capturedObject, true);
 						capturedObject.removeChildren();
 						final savedMode = incrementalMode;
 						final savedCtx = incrementalContext;

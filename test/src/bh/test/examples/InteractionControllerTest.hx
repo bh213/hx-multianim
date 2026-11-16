@@ -355,6 +355,32 @@ class InteractionControllerTest extends BuilderTestBase {
 		Assert.isTrue(h.helper.canDragCard("a"));
 	}
 
+	@Test
+	public function testPickTargetHighlightsGridCellsOfTheDocumentedCellContractByDefault():Void {
+		final builder = BuilderTestBase.builderFromSource("
+			#cell programmable(col:int=0, row:int=0, status:[normal,hover]=normal, highlight:[none,accept,reject]=none) {
+				bitmap(generated(color(50, 50, #666666))): 0, 0
+			}
+		");
+		final grid = new bh.ui.UIMultiAnimGrid(builder, {
+			gridType: Rect(50, 50, 2),
+			cellVisualFactory: new bh.ui.UIMultiAnimGridTypes.DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
+		});
+		grid.addRectRegion(2, 1);
+		final screen = new UITestScreen();
+		final ctrl = new UIPickTargetController(screen, {grid: grid}, (_) -> {});
+		var error:Null<String> = null;
+		try {
+			ctrl.lifecycleEvent(LifecycleControllerStarted);
+		} catch (e:Dynamic) {
+			error = Std.string(e);
+		}
+		Assert.isNull(error, "a pick on a grid of the documented cell contract starts without throwing");
+		final result = grid.getCellVisual(0, 0).getResult();
+		Assert.equals("accept", result == null ? null : result.getParameterValues().get("highlight"),
+			"a valid cell is highlighted with a value the cell contract declares");
+	}
+
 	// ==================== UIInteractionTypes ====================
 
 	@Test

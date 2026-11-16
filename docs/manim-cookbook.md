@@ -745,7 +745,7 @@ var ctrl = UISelectFromHandController.start(this, cardHand, {
 UIPickTargetController.start(this, {
     grid: hexGrid,
     cellFilter: (col, row) -> hexGrid.isOccupied(col, row),
-    highlightParam: "highlight", highlightValue: "valid",
+    highlightParam: "highlight", highlightValue: "accept",
 }, (result) -> {
     if (result != null) switch result {
         case TargetCell(col, row): castSpellAt(col, row);

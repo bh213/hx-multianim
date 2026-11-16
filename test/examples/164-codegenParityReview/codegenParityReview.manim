@@ -500,3 +500,10 @@ layouts {
   #c dynamicRef(cpIntFwdChild, n => $a / 2 * 2): 0, 0
   staticRef(cpIntFwdChild, n => $a / 2 * 2): 0, 20
 }
+// Elements inside a bitmap's body: a child bitmap and an apply onto the bitmap
+#cpBitmapChildren programmable(dim:bool=false) {
+  bitmap(generated(color(10, 10, #FFFFFF))) {
+    bitmap(generated(color(4, 4, #FF0000))): 2, 2
+    @(dim=>true) apply { alpha: 0.5 }
+  }
+}

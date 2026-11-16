@@ -1368,4 +1368,26 @@ class CodegenParityReviewTest extends BuilderTestBase {
 	public function testUnnamedRefsInARepeat_Codegen_EachButtonDrivesItsOwnChild():Void {
 		checkEachButtonDrivesItsOwnChild(cast createMp().cpBindHost.create(), "codegen");
 	}
+
+	/** A bitmap's body draws its child bitmap, and its apply acts on the bitmap. */
+	static function checkBitmapBodyIsBuilt(root:h2d.Object, setDim:Bool -> Void, label:String):Void {
+		Assert.equals("4,10", widths(root), label + ": the bitmap and the child bitmap in its body are drawn");
+		final outer = Lambda.find(BuilderTestBase.findVisibleBitmapDescendants(root), b -> Std.int(b.tile.width) == 10);
+		setDim(true);
+		Assert.equals(0.5, outer == null ? -1.0 : outer.alpha, label + ": the apply in the bitmap's body sets its alpha");
+		setDim(false);
+		Assert.equals(1.0, outer == null ? -1.0 : outer.alpha, label + ": and reverts it");
+	}
+
+	@Test
+	public function testElementsInABitmapBody_Builder_AreBuilt():Void {
+		final r = BuilderTestBase.buildFromFile(FIXTURE, "cpBitmapChildren", null, Incremental);
+		checkBitmapBodyIsBuilt(r.object, v -> r.setParameter("dim", v), "builder");
+	}
+
+	@Test
+	public function testElementsInABitmapBody_Codegen_AreBuilt():Void {
+		final inst:Dynamic = createMp().cpBitmapChildren.create();
+		checkBitmapBodyIsBuilt(cast inst, v -> inst.setParameter("dim", v), "codegen");
+	}
 }

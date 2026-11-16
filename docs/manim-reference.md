@@ -2141,6 +2141,7 @@ UISelectFromHandController.start(this, cardHand, {maxCount: 2}, (result) -> {
 |--------------|-------------|
 | `validTargetIds` / `targetPrefix` / `filter` | Interactive targets |
 | `grid` / `cellFilter` | Grid cell targets (highlights valid cells) |
+| `highlightParam` / `highlightValue` / `highlightResetValue` | The cell parameter a valid cell is set on while picking and the values (defaults `highlight`, `accept`, `none`: the grid's cell contract) |
 | `cardHand` / `cardFilter` | Card targets |
 
 Intercepts `UIInteractiveEvent(UIClick, ...)` for interactives/cards and overrides `handleClick()` with `grid.cellAtPoint()` for grid cells. Routes mouse move to grid for hover feedback. Result: `PickTargetResult` enum — `TargetInteractive(id)`, `TargetCell(col, row)`, `TargetCard(cardId)`.
