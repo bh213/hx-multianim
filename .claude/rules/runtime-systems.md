@@ -269,6 +269,7 @@ screenManager.finalizeTransition(); // jump to end immediately
 - If a new transition starts while one is in progress, the current one finalizes immediately
 - `finalizeTransition()` jumps the running transition's tweens (entering and leaving roots) to their end, then runs its cleanup; the `onComplete` of a finalized transition never fires later (it used to run the *next* transition's cleanup). Built-in transitions only: a `Custom` transition's own tweens keep running, though its `onComplete` is ignored once finalized
 - Closing a dialog — controller exit (`setExitCode`), `closeDialogWithTransition` instant or animated — finalizes a running transition first, so a dialog closed during its own open transition is not left part-faded and `isTransitioning` clears
+- Opening a dialog (`modalDialog`, `modalDialogWithTransition`) finalizes a running transition first too: a close still fading ends at once, its `OnDialogResult` delivered before the new dialog opens, so its cleanup cannot remove the new dialog's root or overlay
 - A switch that changes a screen's role (`Single(A)` → `MasterAndSingle(A, B)`, `MasterAndSingle(A, B)` → `Single(A)` or → `MasterAndSingle(B, A)`) throws on the animated path as on the instant path
 
 **What is showing** — `ScreenManagerMode` is private; read the mode through these instead:

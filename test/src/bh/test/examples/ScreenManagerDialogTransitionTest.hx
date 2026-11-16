@@ -491,6 +491,49 @@ class ScreenManagerDialogTransitionTest extends utest.Test {
 	}
 
 	@Test
+	public function testDialogOpenedWhileItsCloseStillFadesStaysOnStageWithItsOverlay():Void {
+		// modalDialog did not finish a running transition: the cleanup of the close still fading
+		// ran after the dialog was open again, and took its root and its new overlay out of the
+		// scene — a dialog that showed nothing and held all the input. The first overlay stayed
+		// in the scene for good.
+		var sm = newManager();
+		var main = new ProbeScreen(sm);
+		var d = new ProbeScreen(sm);
+		d.modalOverlayConfig = {color: 0x000000, alpha: 0.5};
+
+		sm.switchTo(main);
+		sm.modalDialog(d, main, "d");
+		final firstOverlay = sm.modalOverlay;
+		Assert.notNull(firstOverlay, "precondition: the dialog has an overlay");
+
+		sm.closeDialogWithTransition(Fade(1.0));
+		sm.update(0.016);
+		sm.update(0.1);
+		Assert.isTrue(sm.isTransitioning, "precondition: the close is still fading");
+
+		sm.modalDialog(d, main, "d");
+		// Past the end of the close's fade
+		sm.update(0.016);
+		sm.update(2.0);
+
+		Assert.isTrue(sm.isShowing(d), "the dialog is open");
+		Assert.notNull(d.getSceneRoot().parent, "an open dialog must be in the scene");
+		Assert.floatEquals(1.0, d.getSceneRoot().alpha, "and fully opaque");
+		final overlay = sm.modalOverlay;
+		Assert.notNull(overlay, "an open dialog must keep its overlay");
+		if (overlay != null)
+			Assert.notNull(overlay.parent, "its overlay must be in the scene");
+		if (firstOverlay != null) {
+			Assert.isNull(firstOverlay.parent, "the overlay of the first opening must have left the scene");
+			firstOverlay.remove();
+		}
+		Assert.equals("d", main.dialogResults.join(","), "the first opening's close delivers its result once");
+
+		sm.removeModalOverlay();
+		removeRoots([main, d]);
+	}
+
+	@Test
 	public function testPromotingTheSingleToMasterWithTransitionIsRejectedLikeTheInstantSwitch():Void {
 		// Single(A) -> MasterAndSingle(A, B): the instant path throws; the animated path put A in both
 		// the add and the remove set and left it detached from the scene but still active.

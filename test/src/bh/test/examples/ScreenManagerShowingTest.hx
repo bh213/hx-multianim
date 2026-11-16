@@ -255,6 +255,82 @@ class ScreenManagerShowingTest extends utest.Test {
 		animSM.remove();
 	}
 
+	// ==================== reload() ====================
+
+	static final ITEM_NARROW = "version: 1.0\n#item programmable() {\n\tbitmap(generated(color(10, 10, #ff0000))): 0, 0\n}\n";
+	static final ITEM_WIDE = "version: 1.0\n#item programmable() {\n\tbitmap(generated(color(99, 10, #ff0000))): 0, 0\n}\n";
+	// The block is never closed
+	static final ITEM_BROKEN = "version: 1.0\n#item programmable() {\n\tbitmap(generated(color(10, 10, #ff0000))): 0, 0\n";
+
+	/** Runs `body` with `test/res/<fileName>` holding `content`; the file is deleted afterwards. */
+	static function withTempManim(fileName:String, content:String, body:String -> Void):Void {
+		final filePath = "test/res/" + fileName;
+		sys.io.File.saveContent(filePath, content);
+		var caught:Null<Dynamic> = null;
+		try {
+			body(filePath);
+		} catch (e:Dynamic) {
+			caught = e;
+		}
+		if (sys.FileSystem.exists(filePath))
+			sys.FileSystem.deleteFile(filePath);
+		if (caught != null)
+			throw caught;
+	}
+
+	/** The width of the one bitmap `screen` shows, or -1 when it shows none or several. */
+	static function shownItemWidth(screen:UIScreen):Int {
+		final bitmaps = bh.test.BuilderTestBase.findVisibleBitmapDescendants(screen.getSceneRoot());
+		return bitmaps.length == 1 ? Std.int(bitmaps[0].tile.width) : -1;
+	}
+
+	@Test
+	public function testReloadBuildsTheScreensFromTheFilesNewText():Void {
+		// reload() asked the loader for each file before clearing the loader's cache, got the old
+		// parse back and kept it: the screens were loaded again, from the text of before.
+		withTempManim("screen-reload-tmp.manim", ITEM_NARROW, filePath -> {
+			var sm = newManager();
+			var screen = new FileScreen(sm, "screen-reload-tmp.manim");
+			sm.addScreen("file", screen);
+			sm.switchTo(screen);
+			Assert.equals(10, shownItemWidth(screen), "precondition: the screen shows the file as first written");
+
+			sys.io.File.saveContent(filePath, ITEM_WIDE);
+			final result = sm.reload();
+
+			Assert.isTrue(result.success, "the reload: " + result.error);
+			Assert.equals(2, screen.loads, "precondition: the reload loads the screen again");
+			Assert.equals(99, shownItemWidth(screen), "a reloaded screen must be built from the file's new text");
+
+			removeRoots([screen]);
+		});
+	}
+
+	@Test
+	public function testReloadReportsAnErrorInTheFilesNewTextAndKeepsTheScreens():Void {
+		withTempManim("screen-reload-broken-tmp.manim", ITEM_NARROW, filePath -> {
+			var sm = newManager();
+			var screen = new FileScreen(sm, "screen-reload-broken-tmp.manim");
+			sm.addScreen("file", screen);
+			sm.switchTo(screen);
+
+			sys.io.File.saveContent(filePath, ITEM_BROKEN);
+			final failed = sm.reload(null, false);
+
+			Assert.isFalse(failed.success, "a file that no longer parses must fail the reload");
+			Assert.notNull(failed.error, "with the error");
+			Assert.equals(1, screen.loads, "the screens are left as they were");
+			Assert.equals(10, shownItemWidth(screen), "showing what they showed");
+
+			sys.io.File.saveContent(filePath, ITEM_WIDE);
+			final result = sm.reload(null, false);
+			Assert.isTrue(result.success, "the reload of the mended file: " + result.error);
+			Assert.equals(99, shownItemWidth(screen), "the mended file is read");
+
+			removeRoots([screen]);
+		});
+	}
+
 	// ==================== dispose() ====================
 
 	@Test
@@ -284,6 +360,26 @@ private class LoaderProbe {
 	public function makeAnimSM(file:String, facing:String):bh.stateanim.AnimationSM {
 		return screenManager.loader.createAnimSM(file, ["direction" => facing]);
 	}
+}
+
+/** Builds `item` from a file on every load, counting loads. */
+private class FileScreen extends UIScreenBase {
+	final fileName:String;
+
+	public var loads:Int = 0;
+
+	public function new(sm:ScreenManager, fileName:String) {
+		super(sm);
+		this.fileName = fileName;
+	}
+
+	public function load():Void {
+		loads++;
+		final builder = screenManager.buildFromResourceName(fileName, false);
+		addObjectToLayer(builder.buildWithParameters("item", new Map(), null, null, true).object);
+	}
+
+	public function onScreenEvent(event:UIScreenEvent, source:Null<UIElement>):Void {}
 }
 
 /** Records the lifecycle events it receives and whether its root was attached at each. */

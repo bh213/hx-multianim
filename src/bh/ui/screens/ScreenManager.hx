@@ -611,6 +611,11 @@ class ScreenManager {
 	} {
 		final oldBuilders = builders.copy();
 		builders.clear();
+		// Before the files are built again, not after: the loader still held every file's builder,
+		// and handed the old parse back for the first reload of a file.
+		loader.clearCache();
+		// The cache's builders are gone: an import is a new builder from here on, taken again
+		importsTaken.resize(0);
 		try {
 			for (key => value in oldBuilders) {
 				if (resource != null && key.entry.path != resource.entry.path)
@@ -666,10 +671,6 @@ class ScreenManager {
 		}
 
 		var reloadedScreenNames = [];
-
-		loader.clearCache();
-		// The cache's builders are gone: an import is a new builder from here on, taken again
-		importsTaken.resize(0);
 
 		for (name => screen in configuredScreens) {
 			screen.clear();
@@ -849,6 +850,9 @@ class ScreenManager {
 	}
 
 	public function modalDialog(dialog:UIScreen, caller:UIScreen, dialogName:String, ?data:Dynamic) {
+		// A running transition ends first, as on every other open and close: the cleanup of a close
+		// still fading ran after this dialog was open, and took its root and its overlay away.
+		finalizeTransition();
 		// A result left from the previous opening (a screen switch closes a dialog without reading it).
 		takeExitResponse(dialog);
 		dialog.load();
