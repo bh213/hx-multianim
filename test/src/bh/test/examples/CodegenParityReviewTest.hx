@@ -1390,4 +1390,54 @@ class CodegenParityReviewTest extends BuilderTestBase {
 		final inst:Dynamic = createMp().cpBitmapChildren.create();
 		checkBitmapBodyIsBuilt(cast inst, v -> inst.setParameter("dim", v), "codegen");
 	}
+
+	// ==================== Elements in a dynamicRef's body ====================
+
+	@Test
+	public function testElementsInADynamicRefBody_Builder_AreBuilt():Void {
+		final r = BuilderTestBase.buildFromFile(FIXTURE, "cpRefBody", null, Incremental);
+		Assert.equals("4,10", widths(r.object), "builder: the programmable placed and the bitmap in the ref's body are drawn");
+	}
+
+	@Test
+	public function testElementsInADynamicRefBody_Codegen_AreBuilt():Void {
+		final inst:Dynamic = createMp().cpRefBody.create();
+		Assert.equals("4,10", widths(cast inst), "codegen: the programmable placed and the bitmap in the ref's body are drawn");
+	}
+
+	/** How many of `live`'s interactives are in the scene graph under its root, of how many it lists. */
+	static function interactivesInTheGraph(live:bh.multianim.LiveProgrammable):String {
+		final root = live.getRoot();
+		final all = live.getInteractives();
+		var inGraph = 0;
+		for (hit in all) {
+			var o:Null<h2d.Object> = hit;
+			while (o != null && o != root)
+				o = o.parent;
+			if (o == root)
+				inGraph++;
+		}
+		return inGraph + " of " + all.length;
+	}
+
+	/** The body of a `dynamicRef($tpl)` is the site's, not the template's: a swap leaves it. */
+	static function checkRefBodyOutlivesASwap(live:bh.multianim.LiveProgrammable, label:String):Void {
+		final root = live.getRoot();
+		Assert.equals("4,10", widths(root), label + ": the first template and the bitmap in the ref's body are drawn");
+		live.setParameter("tpl", "cpRefBodyB");
+		Assert.equals("4,20", widths(root), label + ": the other template is placed, the bitmap in the ref's body stays");
+		Assert.equals("1 of 1", interactivesInTheGraph(live), label + ": the interactive in the ref's body is still in the scene graph");
+		live.setParameter("tpl", "cpRefBodyA");
+		Assert.equals("4,10", widths(root), label + ": and back");
+	}
+
+	@Test
+	public function testDynamicRefBody_Builder_OutlivesATemplateSwap():Void {
+		checkRefBodyOutlivesASwap(BuilderTestBase.buildFromFile(FIXTURE, "cpRefBodySwap", null, Incremental), "builder");
+	}
+
+	@Test
+	public function testDynamicRefBody_Codegen_OutlivesATemplateSwap():Void {
+		checkRefBodyOutlivesASwap(cast createMp().cpRefBodySwap.create(), "codegen");
+	}
 }

@@ -2206,14 +2206,17 @@ class IncrementalUpdateContext {
 				}
 		}
 
-		// Target the OLD result.object (the only child of binding.container), NOT the container
+		// Target the OLD result.object (the first child of binding.container), NOT the container
 		// itself: passing the container would also reap THIS dynamicNameBinding (its own
 		// container == the cleanup target — see step 4 in cleanupDestroyedSubtree), wiping the
-		// rebuild we're doing.
-		if (binding.container.numChildren > 0)
-			cleanupDestroyedSubtree(binding.internalResults, binding.container.getChildAt(0));
-		binding.container.removeChildren();
-		binding.container.addChild(result.object);
+		// rebuild we're doing. Only the old template leaves: the ref's own body, built into the
+		// container after it, is the site's and stays with what it registered.
+		if (binding.container.numChildren > 0) {
+			final oldTemplate = binding.container.getChildAt(0);
+			cleanupDestroyedSubtree(binding.internalResults, oldTemplate);
+			oldTemplate.remove();
+		}
+		binding.container.addChildAt(result.object, 0);
 		binding.currentName = newName;
 		// For unnamed sites, stableKey tracks currentName so the next rebuild removes the right
 		// entry. For #name-labeled sites, stableKey is fixed and is what user code fetches by.

@@ -331,6 +331,47 @@ class ScreenManagerShowingTest extends utest.Test {
 		});
 	}
 
+	static final ITEM_ONE_CURSOR = "version: 1.0\n#c cursor { reloadTmpOld: generated(color(4, 4, #FF0000)), hot: 1, 1 }\n"
+		+ "#item programmable() {\n\tbitmap(generated(color(10, 10, #ff0000))): 0, 0\n}\n";
+	// The second cursor's name is one code has registered: taking the file's cursors fails after the first
+	static final ITEM_CURSOR_CLASH = "version: 1.0\n#c cursor {\n\treloadTmpNew: generated(color(4, 4, #FF0000)), hot: 1, 1\n"
+		+ "\treloadTmpCode: generated(color(4, 4, #FF0000)), hot: 1, 1\n}\n"
+		+ "#item programmable() {\n\tbitmap(generated(color(10, 10, #ff0000))): 0, 0\n}\n";
+
+	@Test
+	public function testFailedReloadLeavesTheCursorsOfTheTextBefore():Void {
+		// A file that failed while its blocks were taken had taken some of them: the screens went
+		// back to the builders of before, the registered names stayed those of the text that failed.
+		final names = ["reloadTmpOld", "reloadTmpNew", "reloadTmpCode"];
+		var caught:Null<Dynamic> = null;
+		try {
+			withTempManim("screen-reload-cursor-tmp.manim", ITEM_ONE_CURSOR, filePath -> {
+				var sm = newManager();
+				var screen = new FileScreen(sm, "screen-reload-cursor-tmp.manim");
+				sm.addScreen("file", screen);
+				sm.switchTo(screen);
+				Assert.notNull(bh.base.CursorManager.getCursor("reloadTmpOld"), "precondition: the file's cursor is registered as it loads");
+
+				bh.base.CursorManager.registerCursor("reloadTmpCode", hxd.Cursor.Move);
+				sys.io.File.saveContent(filePath, ITEM_CURSOR_CLASH);
+				final failed = sm.reload(null, false);
+
+				Assert.isFalse(failed.success, "precondition: a cursor named like one code registered fails the reload");
+				Assert.equals(1, screen.loads, "precondition: the screens are left as they were");
+				Assert.isNull(bh.base.CursorManager.getCursor("reloadTmpNew"), "a failed reload must leave no cursor of the text that failed");
+				Assert.notNull(bh.base.CursorManager.getCursor("reloadTmpOld"), "and keep those of the text before");
+
+				removeRoots([screen]);
+			});
+		} catch (e:Dynamic) {
+			caught = e;
+		}
+		for (name in names)
+			bh.base.CursorManager.unregisterCursor(name);
+		if (caught != null)
+			throw caught;
+	}
+
 	// ==================== dispose() ====================
 
 	@Test

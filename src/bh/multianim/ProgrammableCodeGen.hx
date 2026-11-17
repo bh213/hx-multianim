@@ -5719,6 +5719,10 @@ class ProgrammableCodeGen {
 			});
 		}
 
+		final hasChildren = node.children != null && node.children.length > 0;
+		final kidsField = "_dref_kids_" + fieldName;
+		if (hasChildren)
+			mapBuildExprs.push(refBodyParentExpr(fieldRef, kidsField));
 		createExprs.push(macro $b{mapBuildExprs});
 
 		// Register updates for forwarded parameter changes. Without this the codegen path
@@ -5757,8 +5761,21 @@ class ProgrammableCodeGen {
 		return {
 			fieldType: macro :h2d.Object,
 			createExprs: createExprs,
-			isContainer: false,
+			isContainer: hasChildren,
 			exprUpdates: [],
+			extraFields: hasChildren ? [makeField(kidsField, FVar(macro :h2d.Object, null), [APrivate], pos)] : null,
+			childrenParentField: hasChildren ? kidsField : null,
+		};
+	}
+
+	/** Where the body of a dynamicRef that names one programmable goes: into what it placed. Builder
+	 *  parity (MultiAnimBuilder DYNAMIC_REF, as STATIC_REF): a target with a root pos is built as
+	 *  holder(0,0) -> root(pos), and the body goes into that root so it moves with it. */
+	static function refBodyParentExpr(fieldRef:Expr, kidsField:String):Expr {
+		return macro {
+			final _o:h2d.Object = $fieldRef;
+			final _inner = _o.numChildren == 1 ? _o.getChildAt(0) : null;
+			$p{["this", kidsField]} = _inner != null && (_inner.x != 0 || _inner.y != 0) ? _inner : _o;
 		};
 	}
 
@@ -5856,6 +5873,13 @@ class ProgrammableCodeGen {
 				$fieldRef = _result != null && _result.object != null ? _result.object : new h2d.Object();
 				$p{["this", resultField]} = _result;
 			});
+		// The ref's own body: beside the template in the container of a ref that follows its name
+		// (a swap leaves it), inside what a fixed name placed
+		final hasChildren = node.children != null && node.children.length > 0;
+		final kidsField = "_dref_kids_" + fieldName;
+		final kidsInPlaced = hasChildren && templateRefs.length == 0;
+		if (kidsInPlaced)
+			mapBuildExprs.push(refBodyParentExpr(fieldRef, kidsField));
 		createExprs.push(macro $b{mapBuildExprs});
 
 		// Generate rebuild expression for when the template param changes
@@ -5873,8 +5897,10 @@ class ProgrammableCodeGen {
 				// Build first: a template that throws (a forwarded param it does not declare)
 				// leaves the old one in place, and the name field on it, so going back is a no-op.
 				final _result = this._pb.buildDynamicRef(_newName, _refParams, $extRefExpr, this._fireRebuildListeners, $v{currentProgrammableName}, $hiddenArg, $whereArg);
-				$p{["this", containerField]}.removeChildren();
-				if (_result != null && _result.object != null) $p{["this", containerField]}.addChild(_result.object);
+				// Only the old template leaves: the ref's own body, after it in the container, stays
+				final _old = $p{["this", resultField]};
+				if (_old != null && _old.object != null) _old.object.remove();
+				if (_result != null && _result.object != null) $p{["this", containerField]}.addChildAt(_result.object, 0);
 				$p{["this", resultField]} = _result;
 				$p{["this", nameField]} = _newName;
 			}
@@ -5932,8 +5958,10 @@ class ProgrammableCodeGen {
 		return {
 			fieldType: macro :h2d.Object,
 			createExprs: createExprs,
-			isContainer: false,
+			isContainer: hasChildren,
 			exprUpdates: [],
+			extraFields: kidsInPlaced ? [makeField(kidsField, FVar(macro :h2d.Object, null), [APrivate], pos)] : null,
+			childrenParentField: kidsInPlaced ? kidsField : null,
 		};
 	}
 

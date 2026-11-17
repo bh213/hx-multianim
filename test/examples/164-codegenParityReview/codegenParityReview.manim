@@ -507,3 +507,22 @@ layouts {
     @(dim=>true) apply { alpha: 0.5 }
   }
 }
+// A dynamicRef's body: its elements are drawn with the programmable it places
+#cpRefBodyA programmable() {
+  bitmap(generated(color(10, 10, #FF0000))): 0, 0
+}
+#cpRefBodyB programmable() {
+  bitmap(generated(color(20, 20, #00FF00))): 0, 0
+}
+#cpRefBody programmable() {
+  dynamicRef(cpRefBodyA) {
+    bitmap(generated(color(4, 4, #FFFFFF))): 2, 2
+  }
+}
+// ... and stay, with what they registered, when the template is swapped
+#cpRefBodySwap programmable(tpl:[cpRefBodyA, cpRefBodyB]=cpRefBodyA) {
+  #panel dynamicRef($tpl) {
+    bitmap(generated(color(4, 4, #FFFFFF))): 2, 2
+    interactive(4, 4, "mark"): 2, 2
+  }
+}

@@ -97,6 +97,8 @@ class ScreenManager {
 	var builders:Map<hxd.res.Resource, MultiAnimBuilder> = [];
 	/** The imported files whose cursor and audio blocks are taken (`takeFileBlocks`). */
 	final importsTaken:Array<MultiAnimBuilder> = [];
+	/** How many files' blocks were taken so far (or begun to be): a failed reload reads whether it took any. */
+	var blockTakes:Int = 0;
 	// The files this manager watches for hot reload (dispose stops watching them)
 	final watchedResources:Array<hxd.res.Resource> = [];
 	public var tweens(default, null):TweenManager = new TweenManager();
@@ -495,6 +497,7 @@ class ScreenManager {
 		#end
 		for (screen in activeScreens) {
 			final result = screen.getController().update(dt);
+			var left = false;
 			switch result {
 				case UIControllerRunning:
 				case UIControllerFinished(result):
@@ -510,8 +513,11 @@ class ScreenManager {
 							caller.onScreenEvent(UIOnControllerEvent(OnDialogResult(dialogName, result)), null);
 						default: throw 'unhandled exit $result code in $mode';
 					}
+					// The dialog that closed is updated no more, unless the result's handler opened it again
+					left = !activeScreens.contains(screen);
 			}
-			screen.update(dt);
+			if (!left)
+				screen.update(dt);
 		}
 	}
 
@@ -593,6 +599,7 @@ class ScreenManager {
 		if (seen.contains(b) || (isImport && importsTaken.contains(b)))
 			return 0;
 		seen.push(b);
+		blockTakes++;
 		if (isImport)
 			importsTaken.push(b);
 		var taken = 0;
@@ -600,6 +607,30 @@ class ScreenManager {
 			taken += takeBlocksOf(imported, true, seen);
 		b.registerCursors();
 		return taken + audio.addBanks(b);
+	}
+
+	/** After a reload that failed: the registered names go back with the builders. A file built
+	 *  before the failure (or the failing one, part way) took its cursors and sounds, and the
+	 *  builders of before take theirs again, their imports' too (a bank taken again cuts its
+	 *  plays). With nothing taken (a file that no longer parses) the imports taken are those of
+	 *  before and nothing is touched. */
+	function giveBlocksBack(old:Map<hxd.res.Resource, MultiAnimBuilder>, importsBefore:Array<MultiAnimBuilder>, takesBefore:Int):Void {
+		importsTaken.resize(0);
+		if (blockTakes == takesBefore) {
+			for (b in importsBefore)
+				importsTaken.push(b);
+			return;
+		}
+		for (b in old) {
+			try {
+				takeFileBlocks(b);
+			} catch (e) {
+				// The reload's own error is the one reported; this file's names stay as the failed text left them
+				#if MULTIANIM_DEV
+				trace('ScreenManager.reload: could not take back the blocks of a file: $e');
+				#end
+			}
+		}
 	}
 
 	public function reload(?resource:hxd.res.Resource = null, throwOnError:Bool = true):{
@@ -610,6 +641,8 @@ class ScreenManager {
 		col:Null<Int>
 	} {
 		final oldBuilders = builders.copy();
+		final importsBefore = importsTaken.copy();
+		final takesBefore = blockTakes;
 		builders.clear();
 		// Before the files are built again, not after: the loader still held every file's builder,
 		// and handed the old parse back for the first reload of a file.
@@ -634,6 +667,7 @@ class ScreenManager {
 			#end
 			loader.clearCache();
 			builders = oldBuilders;
+			giveBlocksBack(oldBuilders, importsBefore, takesBefore);
 			if (throwOnError)
 				throw e;
 

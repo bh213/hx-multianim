@@ -534,6 +534,55 @@ class ScreenManagerDialogTransitionTest extends utest.Test {
 	}
 
 	@Test
+	public function testDialogClosedByItsExitCodeIsNotUpdatedOnceClosed():Void {
+		// update() went on to update the screen whose controller had just finished: a dialog
+		// already closed, told UILeaving and out of the scene.
+		var sm = newManager();
+		var main = new ProbeScreen(sm);
+		var d = new ProbeScreen(sm);
+
+		sm.switchTo(main);
+		sm.modalDialog(d, main, "d");
+		sm.update(0.016);
+		Assert.equals(1, d.updates, "precondition: an open dialog is updated");
+
+		d.setExitCode(true);
+		sm.update(0.016);
+
+		Assert.equals("d", main.dialogResults.join(","), "precondition: the dialog closed and delivered its result");
+		Assert.isFalse(sm.isShowing(d), "precondition: it is no longer showing");
+		Assert.equals(1, d.updates, "a dialog that closed in this update must not be updated after it left");
+		Assert.equals(2, main.updates, "the screen below is updated as before");
+
+		removeRoots([main, d]);
+	}
+
+	@Test
+	public function testDialogOpenedAgainFromItsResultIsUpdatedInThatUpdate():Void {
+		// The same dialog opened again by the result's handler is showing: it is updated.
+		var sm = newManager();
+		var main = new ProbeScreen(sm);
+		var d = new ProbeScreen(sm);
+		var reopened = false;
+		main.onDialogResult = (name, result) -> {
+			if (!reopened) {
+				reopened = true;
+				sm.modalDialog(d, main, "d");
+			}
+		};
+
+		sm.switchTo(main);
+		sm.modalDialog(d, main, "d");
+		d.setExitCode(true);
+		sm.update(0.016);
+
+		Assert.isTrue(sm.isShowing(d), "precondition: the handler opened the dialog again");
+		Assert.equals(1, d.updates, "a dialog showing at the end of its turn is updated");
+
+		removeRoots([main, d]);
+	}
+
+	@Test
 	public function testPromotingTheSingleToMasterWithTransitionIsRejectedLikeTheInstantSwitch():Void {
 		// Single(A) -> MasterAndSingle(A, B): the instant path throws; the animated path put A in both
 		// the add and the remove set and left it detached from the scene but still active.
@@ -593,5 +642,10 @@ private class ProbeScreen extends UIScreenBase {
 		}
 	}
 
-	override public function update(dt:Float):Void {}
+	/** How many times the screen manager updated this screen. */
+	public var updates:Int = 0;
+
+	override public function update(dt:Float):Void {
+		updates++;
+	}
 }
