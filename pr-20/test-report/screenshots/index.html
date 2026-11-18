@@ -327,15 +327,15 @@
 </head>
 <body>
     <h1>Visual Test Report</h1>
-    <div class="timestamp">Generated: 2026-11-16 22:58:12</div>
+    <div class="timestamp">Generated: 2026-11-18 10:18:38</div>
     <div class="summary">
         <strong>Summary:</strong> 115 tests,         <span style="color: #4CAF50;">115 passed</span>,         <span style="color: #f44336;">0 failed</span>
-        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 1.5s, visual 31.7s)</span>
+        <span style="color: #999; font-size: 13px; margin-left: 10px;">(unit 2.1s, visual 27.1s)</span>
     </div>
     <div class="unit-tests-section">
         <h2>Unit Tests</h2>
         <div class="unit-tests-summary all-passed">
-            <strong>23259 assertions:</strong>             <span style="color: #4CAF50;">23259 passed</span>
+            <strong>23324 assertions:</strong>             <span style="color: #4CAF50;">23324 passed</span>
             <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>
         </div>
         <div class="unit-details" id="unitDetails">
@@ -2438,6 +2438,20 @@
                 <div class="unit-method pass">testRejectsAWrongWord: OK <span class="dots">.....</span></div>
             </div>
             <div class="unit-class">
+                <div class="unit-class-name">NumbersAndBoxesTest</div>
+                <div class="unit-method pass">testAFloatAloneIsStillRefused: OK <span class="dots">.....</span></div>
+                <div class="unit-method pass">testAFloatInAnExpression_Builder: OK <span class="dots">.......</span></div>
+                <div class="unit-method pass">testAFloatInAnExpression_Codegen: OK <span class="dots">.......</span></div>
+                <div class="unit-method pass">testAFloatInAnExpression_FollowsTheParameter: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testARichTextWidthFollowsSetParameter_Builder: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testARichTextWidthFollowsSetParameter_Codegen: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testATextWidthFollowsSetParameter_Builder: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testATextWidthFollowsSetParameter_Codegen: OK <span class="dots">..</span></div>
+                <div class="unit-method pass">testAnAutoFitBoxFollowsSetParameter_Builder: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testAnAutoFitBoxFollowsSetParameter_Codegen: OK <span class="dots">...</span></div>
+                <div class="unit-method pass">testAnExponentIsRead: OK <span class="dots">.....</span></div>
+            </div>
+            <div class="unit-class">
                 <div class="unit-class-name">PaletteIndexTrackingTest</div>
                 <div class="unit-method pass">testPaletteIndexTint_FullBuild_ResolvesIndex: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testPaletteIndexTint_Incremental_RefiresOnIndexChange: OK <span class="dots">....</span></div>
@@ -3507,11 +3521,13 @@
                 <div class="unit-method pass">testAColourByItsName: OK <span class="dots">.......</span></div>
                 <div class="unit-method pass">testAGameThatSaysNoneKeepsItsOwnStageShader: OK <span class="dots">.</span></div>
                 <div class="unit-method pass">testAGroundDrawnFromNothing: OK <span class="dots">..........</span></div>
+                <div class="unit-method pass">testAGroundHalfOffTheStageIsDrawnWhole: OK <span class="dots">.......</span></div>
                 <div class="unit-method pass">testAGroundInARepeatCountedByAParamHasItsShaderInGeneratedCode: OK <span class="dots">.......</span></div>
                 <div class="unit-method pass">testAGroundKeepsItsAlignmentWhenItsSizeChanges: OK <span class="dots">....</span></div>
                 <div class="unit-method pass">testAGroundOnlyAsABitmapsOwnTile: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testAPaletteByAnEnumParameter: OK <span class="dots">..........</span></div>
                 <div class="unit-method pass">testAPaletteByItsName: OK <span class="dots">...........</span></div>
+                <div class="unit-method pass">testAPaletteColourAsAnArgument: OK <span class="dots">......</span></div>
                 <div class="unit-method pass">testAShaderInASwitchArmIsSetInPlace: OK <span class="dots">..............</span></div>
                 <div class="unit-method pass">testAShaderInASwitchArmIsSetInPlaceInGeneratedCode: OK <span class="dots">........</span></div>
                 <div class="unit-method pass">testAShaderValueAMaskInTheArmUsesStillBuildsTheArm: OK <span class="dots">...</span></div>
@@ -3520,12 +3536,14 @@
                 <div class="unit-method pass">testDisposeTakesItsStageShaderOff: OK <span class="dots">.....</span></div>
                 <div class="unit-method pass">testEachScreenItsOwnADialogItsCallers: OK <span class="dots">........</span></div>
                 <div class="unit-method pass">testEveryShaderIsDescribedAndMade: OK <span class="dots">.....................................................................................................................................................................................................................................................................................................................</span></div>
+                <div class="unit-method pass">testFragmentShadersAskForHighPrecision: OK <span class="dots">...</span></div>
                 <div class="unit-method pass">testHeldToItsParameters: OK <span class="dots">........</span></div>
                 <div class="unit-method pass">testNeedsSayTheShadersApart: OK <span class="dots">..</span></div>
                 <div class="unit-method pass">testOverTheStageWithACrossfade: OK <span class="dots">........</span></div>
                 <div class="unit-method pass">testSetInPlaceInGeneratedCode: OK <span class="dots">........</span></div>
                 <div class="unit-method pass">testSetInPlaceWhenAParamChanges: OK <span class="dots">.........</span></div>
                 <div class="unit-method pass">testTheClockMovesThem: OK <span class="dots">....</span></div>
+                <div class="unit-method pass">testTheLoopedClock: OK <span class="dots">........</span></div>
                 <div class="unit-method pass">testWrittenByNameOrPosition: OK <span class="dots">........</span></div>
             </div>
             <div class="unit-class">
