@@ -15,8 +15,9 @@ interface UIComponentHost {
 	function addObjectToLayer(object:h2d.Object, ?layer:LayersEnum):h2d.Object;
 
 	/** Register all interactives from a source for event dispatch. Accepts either a
-	 *  `BuilderResult` (runtime path) or a codegen instance — both implement `UIInteractiveSource`. */
-	function addInteractives(source:UIInteractiveSource, ?prefix:String):Array<UIInteractiveWrapper>;
+	 *  `BuilderResult` (runtime path) or a codegen instance — both implement `UIInteractiveSource`.
+	 *  `eventPriority`, when given, applies to these wrappers and to the ones a rebuild adds later. */
+	function addInteractives(source:UIInteractiveSource, ?prefix:String, ?eventPriority:Int):Array<UIInteractiveWrapper>;
 
 	/** Unregister interactives by prefix. */
 	function removeInteractives(?prefix:String):Void;

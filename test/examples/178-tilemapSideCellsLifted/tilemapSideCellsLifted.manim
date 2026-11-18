@@ -1,0 +1,104 @@
+version: 1.0
+
+// Cells drawn in place of a rise's side (draw: side) on lifted maps, where a raised cell's side is
+// drawn on the cell itself, a piece a level, from the top down. Left, isometric (32x16 diamonds, a
+// level lifts 16): a wall two levels up with a door, whose frames are its pieces a level as a rise's
+// are (a window in the upper one, a doorway in the lower one), and a block one level up with the same
+// door, which takes its first frame, the window. Right, pointy hexes (32x28, upright sides 12, a level
+// lifts 12): a wall one level up with a drain in one cell's se face. Where a door or the drain is, no
+// piece of the wall's side is drawn: what is behind shows through the openings, not bricks.
+// The art is drawn for these tests (test/res/walls/LICENSE.txt).
+
+#walls atlas2("walls/walls.png") {
+    isoFloor: 0, 48, 32, 16
+    isoTop: 32, 48, 32, 16
+    isoFace: 64, 48, 32, 32
+    isoDoor: 96, 48, 32, 32, index: 0
+    isoDoor: 128, 48, 32, 32, index: 1
+    hexFloor: 0, 80, 32, 28
+    hexTop: 32, 80, 32, 28
+    hexFace: 64, 80, 32, 40
+    hexDrain: 96, 80, 32, 40
+}
+
+#isoWalls tileset {
+    grid: isometric, 32, 16
+    lift: 16
+    atlas: "walls"
+    terrain floor { cells: "isoFloor" }
+    terrain top { cells: "isoTop" }
+    rise any { side: "isoFace" metadata { wall:bool => true } }
+    cell isoDoor { draw: side }
+}
+
+#isoYard tilemap {
+    tileset: isoWalls
+    size: 7, 6
+    legend { ".": floor, "t": top }
+    terrain: [
+        ".......",
+        ".ttttt.",
+        ".......",
+        "...t...",
+        ".......",
+        ".......",
+    ]
+    levels: [
+        "0000000",
+        "0222220",
+        "0000000",
+        "0001000",
+        "0000000",
+        "0000000",
+    ]
+    layer doors { legend { "d": isoDoor } rows: [
+        "       ",
+        "   d   ",
+        "       ",
+        "   d   ",
+        "       ",
+        "       ",
+    ] }
+}
+
+#hexWalls tileset {
+    grid: hex, 32, 28, pointy, odd, 12
+    lift: 12
+    atlas: "walls"
+    terrain floor { cells: "hexFloor" }
+    terrain top { cells: "hexTop" }
+    rise any { side: "hexFace" }
+    cell hexDrain { draw: side }
+}
+
+#hexYard tilemap {
+    tileset: hexWalls
+    size: 5, 5
+    legend { ".": floor, "t": top }
+    terrain: [
+        ".....",
+        ".ttt.",
+        ".....",
+        ".....",
+        ".....",
+    ]
+    levels: [
+        "00000",
+        "01110",
+        "00000",
+        "00000",
+        "00000",
+    ]
+    layer drains { legend { "o": hexDrain } rows: [
+        "     ",
+        "  o  ",
+        "     ",
+        "     ",
+        "     ",
+    ] }
+}
+
+#tilemapSideCellsLifted programmable() {
+    @scale(3) tilemap(isoYard): 320, 110
+    @scale(3) tilemap(hexYard): 720, 200
+}

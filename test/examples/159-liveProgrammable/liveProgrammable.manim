@@ -1,0 +1,36 @@
+version: 1.0
+
+// LiveProgrammable: what a tool sees of a built programmable must be the same whether the runtime
+// builder built it (BuilderResult) or codegen did (@:manim instance). This programmable has one of
+// everything the view lists: a name given in two @() arms, an indexed name in a repeat gated by a
+// parameter, a slot, a named dynamicRef, a @switch with a name and a slot inside an arm, and a
+// parameter of every plain kind. ProgrammableCodeGenTest.testLiveProgrammableParity compares the
+// two sides; DevBridgeTest lists the codegen instance through the bridge.
+
+#liveChild programmable(value:uint=5) {
+  bitmap(generated(color($value, 8, #00ffff))): 0, 0
+}
+
+#liveProgrammable programmable(status:[normal, hover]=normal, on:bool=true, count:uint=3, ratio:float=0.5, label:string="hi", tint:color=#ff0000, mode:[a, b]=a) {
+  @(status=>normal) #frame bitmap(generated(color(40, 20, #444444))): 0, 0
+  @(status=>hover) #frame bitmap(generated(color(40, 20, #888888))): 0, 0
+  #title text(f3x5, $label, $tint): 2, 2
+  repeatable($i, step(4, dx: 12)) {
+    @($i < $count) #pip[$i] bitmap(generated(color(8, 8, #00ff00))): 0, 24
+  }
+  #tray slot {
+    bitmap(generated(color(40, 10, #222222))): 0, 36
+  }
+  #embed dynamicRef(liveChild, value=>10): 0, 50
+  @switch(mode) {
+    a {
+      #armMark bitmap(generated(color(6, 6, #ff00ff))): 50, 0
+      #armSlot slot {
+        bitmap(generated(color(10, 10, #333333))): 50, 10
+      }
+    }
+    b {
+      #armMark bitmap(generated(color(6, 6, #00ffff))): 50, 0
+    }
+  }
+}

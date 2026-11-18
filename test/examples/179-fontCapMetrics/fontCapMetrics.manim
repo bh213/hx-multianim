@@ -1,0 +1,10 @@
+version: 1.0
+
+// $ctx.font(name).capTop / .capHeight: where the capitals' glyph box ('H') starts and how tall it
+// is; capTop 0 and capHeight = baseLine for a font without 'H'. Builder and codegen must agree.
+// The 2x2 marker sits at (capTop, capHeight); the 3x3 one at the y that centres the capitals in a
+// 20 px box: (20 - capHeight) div 2 - capTop.
+#fontCaps programmable(font:string="o4b03") {
+  bitmap(generated(color(2, 2, #FF00FF))): $ctx.font($font).capTop, $ctx.font($font).capHeight
+  bitmap(generated(color(3, 3, #00FF00))): 0, (20 - $ctx.font($font).capHeight) div 2 - $ctx.font($font).capTop
+}

@@ -115,6 +115,24 @@ version: 1.0
     }
 
     // =========================================================================
+    // o4b03 font - scale 10x
+    // =========================================================================
+    point {
+        pos: 960, 200
+        @final lh = $ctx.font("o4b03").lineHeight
+        @final bl = $ctx.font("o4b03").baseLine
+        @final s = 10
+        @final boxW = 280
+        @final boxH = $lh * $s
+        graphics(
+            rect(#44AA44, 1, $boxW, $boxH): 0, 0;
+            line(#FF4444, 2, 0, $bl * $s, $boxW, $bl * $s);
+        );
+        @scale(10) text(o4b03, "Ag0Wx", white, left, $boxW):0,0;
+        text(dd, '  o4b03  lh:${$lh} bl:${$bl} @10x', #666, left, 280):5, $boxH + 5;
+    }
+
+    // =========================================================================
     // peaberry-white-outline on dark - scale 3x
     // =========================================================================
     point {
@@ -184,6 +202,38 @@ version: 1.0
         );
         @scale(5) text(dd, "The quick brown fox jumps xgx", white, left, $boxW):0,0;
         text(dd, '  dd sentence @5x  lh:${$lh} bl:${$bl}', #666, left, 400):5, $boxH + 5;
+    }
+
+    // =========================================================================
+    // departuremono font - scale 5x
+    // =========================================================================
+    point {
+        pos: 960, 320
+        @final lh = $ctx.font("departuremono").lineHeight
+        @final bl = $ctx.font("departuremono").baseLine
+        @final s = 5
+        @final boxW = 280
+        @final boxH = $lh * $s
+        graphics(
+            rect(#44AA44, 1, $boxW, $boxH): 0, 0;
+            line(#FF4444, 2, 0, $bl * $s, $boxW, $bl * $s);
+        );
+        @scale(5) text(departuremono, "Ag0Wx", white, left, $boxW):0,0;
+        text(dd, '  departuremono  lh:${$lh} bl:${$bl} @5x', #666, left, 280):5, $boxH + 5;
+    }
+
+    // =========================================================================
+    // departuremono box-drawing - scale 2x
+    // Stacked lines spaced by lineHeight*scale so strokes tile/connect across
+    // rows. Shows all junction glyphs: corners, tees, and the cross.
+    // =========================================================================
+    point {
+        pos: 1075, 430
+        @final step = $ctx.font("departuremono").lineHeight * 2
+        @scale(2) text(departuremono, "┌──┬──┐", white, left, 400):0, $step * 0;
+        @scale(2) text(departuremono, "├──┼──┤", white, left, 400):0, $step * 1;
+        @scale(2) text(departuremono, "└──┴──┘", white, left, 400):0, $step * 2;
+        text(dd, '  box-drawing @2x', #666, left, 280):0, $step * 3 + 4;
     }
 
     // Info

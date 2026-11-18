@@ -47,18 +47,18 @@ class AllocProfiler {
 			totalAllocs += r.count;
 			totalBytes += r.info;
 		}
-		trace('=== Allocation Report: $totalAllocs allocs, $totalBytes bytes, ${data.length} unique sites ===');
+		trace('=== Allocation Report: $totalAllocs allocs, $totalBytes bytes, ' + data.length + ' unique sites ===');
 		var shown = 0;
 		for (r in data) {
 			if (shown >= top)
 				break;
-			trace('  ${r.count}x ${r.t} (${r.info} bytes)');
+			trace('  ' + r.count + 'x ' + r.t + ' (' + r.info + ' bytes)');
 			for (s in r.stack)
 				trace('      $s');
 			shown++;
 		}
 		if (data.length > top)
-			trace('  ... and ${data.length - top} more');
+			trace('  ... and ' + (data.length - top) + ' more');
 	}
 
 	/** Dump full report to a file (delegates to `hl.Profile.dump`). Does NOT reset. **/

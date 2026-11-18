@@ -38,12 +38,22 @@ class UIMultiAnimTextInput implements UIElement implements UIElementDisablable i
 	var lastPlaceholderState:Bool = true;
 	var controllable:Null<Controllable> = null;
 	var enterPending:Bool = false;
+	/**
+	 * A push asks for focus; update() gives it. Focused at once, from the controller's handler of the
+	 * window's event, the field was blurred again a frame later when Heaps' SceneEvents handled the
+	 * same push, which did not land on the h2d.TextInput itself (its interactive is only as wide as
+	 * `inputWidth` or its text), so a field never took typing.
+	 */
+	var focusPending:Bool = false;
 
 	public var disabled(default, set):Bool = false;
 	public var placeholder:String;
 	public var maxLength:Int;
 	public var filter:Null<TextInputFilter> = null;
 	public var tabGroup:Null<UITabGroup> = null;
+	/** Where the input says its changes, focus and submit before a mouse event has given it the
+	 *  controller (focused by Tab, or by `focus()`): the screen it was added to sets it. */
+	public var screenEventSink:Null<(UIScreenEvent, UIElement) -> Void> = null;
 
 	public dynamic function onChange() {}
 
@@ -114,7 +124,7 @@ class UIMultiAnimTextInput implements UIElement implements UIElementDisablable i
 
 		textInput.onFocus = function(e:hxd.Event) {
 			focused = true;
-			result.setParameter("status", "focused");
+			bh.ui.UIInteractiveSource.UIStatusTools.setStatus(result, "focused");
 			syncPlaceholder();
 			onFocusChange(true);
 			pushScreenEvent(UIFocusChange(true));
@@ -122,7 +132,7 @@ class UIMultiAnimTextInput implements UIElement implements UIElementDisablable i
 
 		textInput.onFocusLost = function(e:hxd.Event) {
 			focused = false;
-			result.setParameter("status", "normal");
+			bh.ui.UIInteractiveSource.UIStatusTools.setStatus(result, "normal");
 			syncPlaceholder();
 			onFocusChange(false);
 			pushScreenEvent(UIFocusChange(false));
@@ -167,6 +177,8 @@ class UIMultiAnimTextInput implements UIElement implements UIElementDisablable i
 	function pushScreenEvent(event:UIScreenEvent) {
 		if (controllable != null)
 			controllable.pushEvent(event, this);
+		else if (screenEventSink != null)
+			screenEventSink(event, this);
 	}
 
 	// --- UIElement ---
@@ -191,13 +203,13 @@ class UIMultiAnimTextInput implements UIElement implements UIElementDisablable i
 		switch wrapper.event {
 			case OnEnter:
 				if (!focused)
-					result.setParameter("status", "hover");
+					bh.ui.UIInteractiveSource.UIStatusTools.setStatus(result, "hover");
 			case OnLeave:
 				if (!focused)
-					result.setParameter("status", "normal");
+					bh.ui.UIInteractiveSource.UIStatusTools.setStatus(result, "normal");
 			case OnPush(_):
 				if (!focused)
-					textInput.focus();
+					focusPending = true;
 			case OnRelease(_):
 			case OnReleaseOutside(_):
 			case OnPushOutside(_):
@@ -224,9 +236,9 @@ class UIMultiAnimTextInput implements UIElement implements UIElementDisablable i
 		if (this.disabled != value) {
 			this.disabled = value;
 			result.beginUpdate();
-			result.setParameter("status", value ? "disabled" : "normal");
+			bh.ui.UIInteractiveSource.UIStatusTools.setStatus(result, value ? "disabled" : "normal");
 			if (result.hasParameter("disabled"))
-				result.setParameter("disabled", '${value}');
+				result.setParameter("disabled", '$value');
 			result.endUpdate();
 			textInput.canEdit = !value;
 			if (value && focused)
@@ -246,6 +258,11 @@ class UIMultiAnimTextInput implements UIElement implements UIElementDisablable i
 	// --- UIElementUpdatable ---
 
 	public function update(dt:Float) {
+		if (focusPending) {
+			focusPending = false;
+			if (!disabled && !focused)
+				textInput.focus();
+		}
 		if (enterPending) {
 			enterPending = false;
 			if (tabGroup != null)

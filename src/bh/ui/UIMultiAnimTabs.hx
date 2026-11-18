@@ -42,9 +42,9 @@ class UIMultiAnimTabButton implements UIElement implements UIElementDisablable i
 		if (this.disabled != value) {
 			this.disabled = value;
 			result.beginUpdate();
-			result.setParameter("status", value ? "disabled" : "normal");
+			bh.ui.UIInteractiveSource.UIStatusTools.setStatus(result, value ? "disabled" : "normal");
 			if (result.hasParameter("disabled"))
-				result.setParameter("disabled", '${value}');
+				result.setParameter("disabled", '$value');
 			result.endUpdate();
 		}
 		return value;
@@ -55,9 +55,9 @@ class UIMultiAnimTabButton implements UIElement implements UIElementDisablable i
 			this.selected = value;
 			if (value)
 				result.beginUpdate();
-			result.setParameter("checked", '${value}');
+			result.setParameter("checked", '$value');
 			if (value)
-				result.setParameter("status", "normal");
+				bh.ui.UIInteractiveSource.UIStatusTools.setStatus(result, "normal");
 			if (value)
 				result.endUpdate();
 		}
@@ -94,22 +94,22 @@ class UIMultiAnimTabButton implements UIElement implements UIElementDisablable i
 			return;
 		switch wrapper.event {
 			case OnPush(button):
-				if (!selected) {
-					result.setParameter("status", "pressed");
+				if (button == 0 && !selected) {
+					bh.ui.UIInteractiveSource.UIStatusTools.setStatus(result, "pressed");
 					onInternalClick(wrapper.control);
 				}
 			case OnRelease(button):
 				if (!selected)
-					result.setParameter("status", "normal");
+					bh.ui.UIInteractiveSource.UIStatusTools.setStatus(result, "normal");
 			case OnReleaseOutside(_):
 			case OnPushOutside(_):
 
 			case OnEnter:
 				if (!selected)
-					result.setParameter("status", "hover");
+					bh.ui.UIInteractiveSource.UIStatusTools.setStatus(result, "hover");
 			case OnLeave:
 				if (!selected)
-					result.setParameter("status", "normal");
+					bh.ui.UIInteractiveSource.UIStatusTools.setStatus(result, "normal");
 			case OnKey(up, key):
 			case OnWheel(dir):
 			case OnMouseMove:
@@ -223,10 +223,10 @@ class UIMultiAnimTabs implements UIElement implements UIElementDisablable implem
 						btn.disabled = true;
 					return CBRObject(btn.getObject());
 				} else
-					throw 'invalid tab placeholder: ${name}';
+					throw 'invalid tab placeholder: $name';
 
 			default:
-				throw 'unsupported tab callback: ${request}';
+				throw 'unsupported tab callback: $request';
 		}
 	}
 
@@ -317,7 +317,7 @@ class UIMultiAnimTabs implements UIElement implements UIElementDisablable implem
 		if (populatingTabIndex != -1)
 			throw 'already populating tab $populatingTabIndex';
 		if (tabIndex < 0 || tabIndex >= items.length)
-			throw 'tab index $tabIndex out of range (0..${items.length - 1})';
+			throw 'tab index $tabIndex out of range (0..' + (items.length - 1) + ')';
 		populatingTabIndex = tabIndex;
 		screen.setContentTarget(this);
 	}

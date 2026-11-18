@@ -1,0 +1,23 @@
+version: 1.0
+
+// Ternary `?(cond)` equality parity between builder and codegen. The builder's resolveAsBool
+// evaluates == / != as STRING equality — enum params compared by value NAME, string params by
+// content (MultiAnimBuilder.hx). Codegen's rvToExpr previously emitted numeric `_field == "..."`,
+// which is an `Int == String` compile error for an enum/string operand (enum and string params
+// are typed :Int / :String in codegen). Both backends must now agree: the bitmap's x offset
+// differs per branch, so a parity test can assert builder == codegen.
+
+// Enum param == string literal: status=hover (default) -> true -> x=40.
+#ternaryEnumEq programmable(status:[normal,hover,pressed]=hover) {
+  bitmap(generated(color(6, 6, #ff0000))): ?($status == "hover") 40 : 0, 0
+}
+
+// Enum param != string literal: status=normal (default) -> (normal != hover) true -> x=25.
+#ternaryEnumNotEq programmable(status:[normal,hover,pressed]=normal) {
+  bitmap(generated(color(6, 6, #00ff00))): ?($status != "hover") 25 : 5, 0
+}
+
+// String param == string literal: mode="go" (default) -> true -> x=30.
+#ternaryStringEq programmable(mode:string="go") {
+  bitmap(generated(color(6, 6, #0000ff))): ?($mode == "go") 30 : 5, 0
+}

@@ -23,7 +23,7 @@ class MacroUtils {
 				};
 
 			default:
-				throw 'invalid input ${i} for identToString';
+				throw 'invalid input $i for identToString';
 		}
 	}
 
@@ -61,7 +61,7 @@ class MacroUtils {
         final clazz = Context.getLocalType();
         
         final uiScreenBase = haxe.macro.ComplexTypeTools.toType(macro:bh.ui.screens.UIScreen.UIScreenBase);
-        if (clazz == null || TypeTools.unify(clazz, uiScreenBase) == false)  throw '${clazz} should implement UIScreenBase';
+        if (clazz == null || TypeTools.unify(clazz, uiScreenBase) == false)  throw '$clazz should implement UIScreenBase';
 
         var factoryFunctionsUIElements:Map<String, Expr> = [];
         var factoryFunctionsH2dObjects:Map<String, Expr> = [];
@@ -98,9 +98,9 @@ class MacroUtils {
                                                             else if (TypeTools.unify(ret, h2dObjectType)) {
                                                                 factoryFunctionsH2dObjects.set(getString(name), funcExpr);
                                                             }
-                                                            else throw '${ExprTools.toString(e)} should have UIElement, UIHigherOrderComponent, or h2d.Object return value';
+                                                            else throw ExprTools.toString(e) + ' should have UIElement, UIHigherOrderComponent, or h2d.Object return value';
 
-                                                        default: throw '${ExprTools.toString(e)} should have UIElement, UIHigherOrderComponent, or h2d.Object return value';
+                                                        default: throw ExprTools.toString(e) + ' should have UIElement, UIHigherOrderComponent, or h2d.Object return value';
                                                     }
                                                     for (index => value in args) {
                                                         switch value.t {
@@ -113,12 +113,12 @@ class MacroUtils {
                                                         }
                                                     }
                                                     if (args.length != callParams.length) {
-                                                        var errorText = '${ExprTools.toString(e)}\n';
-                                                        errorText += args.map(x->'${x.name}${x.opt ? " opt":""}').join(",");
+                                                        var errorText = ExprTools.toString(e) + '\n';
+                                                        errorText += args.map(x->('' + x.name + (x.opt ? " opt":""))).join(",");
                                                         errorText+="\n";
-                                                        errorText += callParams.map(x->'${ExprTools.toString(x)}').join(",");
+                                                        errorText += callParams.map(x->('' + ExprTools.toString(x))).join(",");
 
-                                                        Context.fatalError('error adding ResolvedSettings to function ${ExprTools.toString(e)}: ${args.length} != ${callParams.length}\n${errorText}', e.pos);
+                                                        Context.fatalError('error adding ResolvedSettings to function ' + ExprTools.toString(e) + ': ' + args.length + ' != ' + callParams.length + '\n$errorText', e.pos);
                                                     }
                                                 default: throw 'function required, got $funcType';
                                             }
@@ -129,7 +129,7 @@ class MacroUtils {
                                         case EField(e, field, kind):
                                             providedValues.set(getString(name), macro $e.$field);
                                         default:
-                                            Context.fatalError('expected: value | call, got ${ExprTools.toString(funcExpr)}', v.pos);
+                                            Context.fatalError('expected: value | call, got ' + ExprTools.toString(funcExpr), v.pos);
                                     }
                                 default: Context.fatalError('expected: name|"name" => value | call', v.pos);
                             }
@@ -229,7 +229,7 @@ class MacroUtils {
             expr: EObjectDecl(retValFields) // pass to EObjectDecl
           };
         
-        var funcName = 'generatedByMacroBuildWithParameters${Context.getLocalMethod()}${builder.pos.getInfos().max}Builder';
+        var funcName = 'generatedByMacroBuildWithParameters' + Context.getLocalMethod() + builder.pos.getInfos().max + 'Builder';
 
 
 

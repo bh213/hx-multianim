@@ -41,7 +41,7 @@ version: 1.0
 
   // Legend - content
   text(f3x5, "content:", #888888): 200, 76
-  staticRef($contentBall): 200, 86
+  staticRef(contentBall): 200, 86
   text(f3x5, "= setContent()", #ff4444): 228, 88
   text(f3x5, "slot[1] gets content", #aaaaaa): 200, 108
 }

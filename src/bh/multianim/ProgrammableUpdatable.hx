@@ -27,7 +27,7 @@ class ProgrammableUpdatable implements IUpdatable {
 			if (Std.isOfType(obj, h2d.Text)) {
 				(cast obj : h2d.Text).text = newText;
 			} else if (throwIfAnyFails) {
-				throw BuilderError.of('invalid updateText: expected h2d.Text but got ${Type.getClassName(Type.getClass(obj))}');
+				throw BuilderError.of('invalid updateText: expected h2d.Text but got ' + (Type.getClassName(Type.getClass(obj))));
 			}
 		}
 	}
@@ -37,7 +37,7 @@ class ProgrammableUpdatable implements IUpdatable {
 			if (Std.isOfType(obj, h2d.Bitmap)) {
 				(cast obj : h2d.Bitmap).tile = newTile;
 			} else if (throwIfAnyFails) {
-				throw BuilderError.of('invalid updateTile: expected h2d.Bitmap but got ${Type.getClassName(Type.getClass(obj))}');
+				throw BuilderError.of('invalid updateTile: expected h2d.Bitmap but got ' + (Type.getClassName(Type.getClass(obj))));
 			}
 		}
 	}

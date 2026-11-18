@@ -5,6 +5,9 @@ import bh.ui.UIMultiAnimScrollableList.ClickMode;
 import bh.ui.UIMultiAnimDropdown.UIStandardMultiAnimDropdown;
 import bh.ui.UIMultiAnimCheckbox.UIStandardMultiCheckbox;
 import bh.ui.UIMultiAnimSlider.UIStandardMultiAnimSlider;
+import bh.ui.UIMultiAnimSlider.SliderDirection;
+import bh.ui.UIMultiAnimScrollbar;
+import bh.ui.UIMultiAnimScrollbar.ScrollbarDirection;
 import bh.ui.UIMultiAnimProgressBar.UIMultiAnimProgressBar;
 import bh.ui.UIMultiAnimButton.UIStandardMultiAnimButton;
 import bh.ui.UIMultiAnimTextInput;
@@ -42,6 +45,16 @@ typedef ModalOverlayConfig = {
 	var ?blur:Float;
 }
 
+/** A jukebox's key on a screen: its interactive, the track its `music.click` names, the status
+ *  parameter its `autoStatus` (`auto`) or `bind` names, and whether it is held pressed now. */
+private typedef MusicKeyHold = {
+	final wrapper:UIInteractiveWrapper;
+	final track:String;
+	final param:String;
+	final auto:Bool;
+	var held:Bool;
+}
+
 enum LayersEnum {
 	ModalLayer;
 	DefaultLayer;
@@ -67,7 +80,7 @@ interface UIScreen {
 }
 
 @:nullSafety
-abstract class UIScreenBase implements UIScreen implements UIControllerScreenIntegration implements bh.ui.UIComponentHost {
+abstract class UIScreenBase implements UIScreen implements UIControllerScreenIntegration implements bh.ui.UIComponentHost implements bh.ui.UIHeldKeys {
 	var elements:Array<UIElement> = [];
 	var subElementProviders:Array<UIElementSubElements> = [];
 	var controllersStack:Array<UIController> = [];
@@ -78,12 +91,30 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	var tweens(get, never):TweenManager;
 	var groups:Map<String, Array<UIElement>> = [];
 	var postCustomAddToLayer:Map<h2d.Object, UIElementCustomAddToLayer> = [];
+	// True while at least one element awaits a customAddToLayer drain in update().
+	// Lets update() skip iterating (and allocating a key-value iterator over) the
+	// postponed map on the common empty steady-state path.
+	var postCustomAddToLayerPending:Bool = false;
+	// Allocation watchdog for tests. Gated behind MULTIANIM_ALLOC_TRACK so the
+	// per-frame increment vanishes from production builds; counts how often
+	// update() allocates a key-value iterator to drain postponed
+	// customAddToLayer elements (should be 0 per frame in the empty steady state).
+	#if MULTIANIM_ALLOC_TRACK
+	public static var postponedDrainCount:Int = 0;
+	#end
 	var interactiveWrappers:Array<UIInteractiveWrapper> = [];
 	var interactiveMap:Map<String, UIInteractiveWrapper> = [];
 	/** Tracks (source, prefix) pairs registered via addInteractives so we can resync wrappers
 	 *  when a SWITCH arm flips or REPEAT count changes the underlying interactives list. */
 	var interactiveSubscriptions:Array<{source:bh.ui.UIInteractiveSource, prefix:Null<String>, listener:Void->Void}> = [];
 	var autoStatusHelper:Null<UIRichInteractiveHelper> = null;
+	/** The jukebox's keys among the interactives: a `music.click` track and an `autoStatus` or `bind`
+	 *  status. Found again when the interactives change (`musicKeyHoldsStale`), so `update` reads no
+	 *  metadata. Not `musicKeys`: a subclass may not declare a field of the same name. */
+	var musicKeyHolds:Array<MusicKeyHold> = [];
+	var musicKeyHoldsStale:Bool = false;
+	/** The ids of the keys held pressed now, their track heard (`isKeyHeld`). */
+	final heldMusicKeyIds:Map<String, Bool> = [];
 	var panelHelpers:Array<UIPanelHelper> = [];
 	var tooltipHelpers:Array<UITooltipHelper> = [];
 	var higherOrderComponents:Array<UIHigherOrderComponent> = [];
@@ -91,6 +122,28 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	var tabAutoWired:Bool = false;
 	/** When set, ScreenManager creates a darkening overlay behind this dialog. */
 	public var modalOverlayConfig:Null<ModalOverlayConfig> = null;
+
+	/** The music this screen plays, a track's full name (`music.title`), or "none" to stop what
+	 *  plays; null says nothing, and what plays plays on. Read from the first builder result added
+	 *  to the screen whose root settings have `music =>`, or set from code before the screen shows.
+	 *  The screen manager crossfades to it as the screen comes up (a dialog that says nothing keeps
+	 *  its caller's). Not `music`: a subclass may not declare a field of the same name, and screens
+	 *  name their controls after what they do (a `music` checkbox). */
+	public var screenMusic:Null<String> = null;
+	/** The ambience this screen holds, a sound's full name (`amb.hum`: a looping sound of a `sounds`
+	 *  block), or "none" to stop what plays; null says nothing, and what plays plays on. Read from the
+	 *  first builder result added whose root settings have `ambience =>`, or set from code before the
+	 *  screen shows. The screen manager starts it as the screen comes up and stops it (its stop layers
+	 *  playing) as a screen naming another or "none" comes up; a screen naming the same one keeps it,
+	 *  a dialog that says nothing keeps its caller's. Beside the music, not instead of it. */
+	public var screenAmbience:Null<String> = null;
+	/** The shader over the whole stage while this screen shows (`ScreenManager.setStageShader`), or
+	 *  null for the manager's `defaultScreenShader`; `screenShaderOff` shows it with none. A dialog is
+	 *  drawn under its caller's; a master-and-single has the single's. The manager crossfades from one
+	 *  to the next over `screenShaderFade` as the mode changes, so a screen's picture never depends on
+	 *  the way it was reached. */
+	public var screenShader:Null<h2d.filter.Filter> = null;
+	public var screenShaderOff:Bool = false;
 	private var _autoSyncInitialState:Bool = false;
 	var autoSyncInitialState(never, set):Bool;
 	var initialSyncDone:Bool = false;
@@ -172,6 +225,9 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		if (autoStatusHelper != null)
 			autoStatusHelper.unbindAll();
 		autoStatusHelper = null;
+		musicKeyHolds = [];
+		musicKeyHoldsStale = false;
+		heldMusicKeyIds.clear();
 		for (helper in panelHelpers)
 			helper.dispose();
 		panelHelpers = [];
@@ -182,13 +238,18 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 			comp.dispose();
 		higherOrderComponents = [];
 		postCustomAddToLayer.clear();
+		postCustomAddToLayerPending = false;
 		contentTarget = null;
 		contentTargetOwnership.clear();
 		inElementRouting = false;
 		initialSyncDone = false;
-		for (c in controllersStack) {
-			c.clearState();
+		while (controllersStack.length > 1) {
+			final c = controllersStack.pop();
+			if (c != null)
+				c.lifecycleEvent(LifecycleControllerFinished);
 		}
+		if (controllersStack.length > 0)
+			controllersStack[0].clearState();
 		getSceneRoot().removeChildren();
 		onClear();
 	}
@@ -216,6 +277,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 
 	/** Dispatch event with auto-wiring handled before onScreenEvent. Called by controllers. */
 	public function dispatchScreenEvent(event:UIScreenEvent, source:Null<UIElement>):Void {
+		playWidgetSound(event, source);
 		if (autoStatusHelper != null)
 			autoStatusHelper.handleEvent(event);
 		for (helper in panelHelpers)
@@ -228,6 +290,139 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 			}
 		if (!consumed)
 			onScreenEvent(event, source);
+	}
+
+	/** The widgets' sounds, with no code: a button's hover and click, a checkbox's toggle, a slider's,
+	 *  dropdown's, list's or tabs' change, a dropdown's open and close play `ui.<key>` when a
+	 *  `sounds` block named `ui` has it, unless the widget's own `settings { sound.<key> => … }` names
+	 *  another sound or `none`. An interactive's metadata says the same for it. A click of one whose
+	 *  settings or metadata say `music.click => "block.track"` plays that track as `playMusic` does
+	 *  (crossfading from the one playing), or stops the music when that track is the one playing; its
+	 *  click then plays only its own `sound.click`, never `ui.click`. */
+	function playWidgetSound(event:UIScreenEvent, source:Null<UIElement>):Void {
+		if (screenManager == null)
+			return;
+		var settings:Null<BuilderResolvedSettings> = null;
+		var inner = event;
+		switch event {
+			case UIInteractiveEvent(e, _, metadata):
+				inner = e;
+				settings = metadata;
+			default:
+				if (source != null && Std.isOfType(source, UIElementRootSettings))
+					settings = cast(source, UIElementRootSettings).getRootSettings();
+		}
+		final eventKey = widgetSoundKey(inner);
+		if (eventKey == null)
+			return;
+		final key:String = eventKey;
+		final music = key == "click" && settings != null && settings.has(MUSIC_CLICK) ? settings.getStringOrDefault(MUSIC_CLICK, "none") : null;
+		final own = settings != null && settings.has('sound.$key') ? settings.getStringOrDefault('sound.$key', "none") : null;
+		if (music != null) {
+			// a jukebox's key: its own click sound if it names one, then the track
+			if (own != null)
+				screenManager.audio.playUi(key, own);
+			playMusicKey(music);
+			return;
+		}
+		screenManager.audio.playUi(key, own);
+	}
+
+	/** The setting or metadata key of a click that plays a music track. */
+	public static inline final MUSIC_CLICK = "music.click";
+
+	/** A `music.click` key pressed: the track plays (crossfading), or, when it is the one playing, the music stops; `none` does nothing. */
+	function playMusicKey(track:String):Void {
+		if (track == "none" || track == "")
+			return;
+		screenManager.audio.toggleMusic(track);
+	}
+
+	/** Whether an interactive is held pressed now: a jukebox's key (`music.click` with an
+	 *  `autoStatus` or `bind` status) while its track is heard. Every `UIRichInteractiveHelper` on
+	 *  this screen shows such a key `pressed` whatever the pointer does (`UIHeldKeys`). */
+	public function isKeyHeld(interactiveId:String):Bool {
+		return heldMusicKeyIds.exists(interactiveId);
+	}
+
+	/** The jukebox's keys among the interactives now. A key held before stays held, and is shown
+	 *  pressed again: a rebuild may have made its result anew, at its default. */
+	function findMusicKeys():Void {
+		musicKeyHoldsStale = false;
+		musicKeyHolds = [];
+		for (w in interactiveWrappers) {
+			final meta = w.metadata;
+			if (!meta.has(MUSIC_CLICK))
+				continue;
+			final track = meta.getStringOrDefault(MUSIC_CLICK, "none");
+			final auto = meta.getStringOrDefault(UIRichInteractiveHelper.RESERVED_KEY, "");
+			final param = auto != "" ? auto : meta.getStringOrDefault("bind", "");
+			if (track == "none" || track == "" || param == "")
+				continue;
+			musicKeyHolds.push({wrapper: w, track: track, param: param, auto: auto != "", held: heldMusicKeyIds.exists(w.id)});
+		}
+		// a held key no more among them is let go
+		for (id in [for (id in heldMusicKeyIds.keys()) id])
+			if (!Lambda.exists(musicKeyHolds, k -> k.held && k.wrapper.id == id))
+				heldMusicKeyIds.remove(id);
+		for (k in musicKeyHolds)
+			if (k.held)
+				showMusicKey(k);
+	}
+
+	/** Once a frame: a jukebox's key is held pressed while its track is heard, and let go as the
+	 *  music stops, the track ends, or another track takes over (as its crossfade starts). */
+	function holdMusicKeys():Void {
+		if (screenManager == null)
+			return;
+		final audio = screenManager.audio;
+		for (k in musicKeyHolds) {
+			final heard = audio.isMusicPlaying(k.track);
+			if (heard == k.held)
+				continue;
+			k.held = heard;
+			if (heard)
+				heldMusicKeyIds.set(k.wrapper.id, true);
+			else
+				heldMusicKeyIds.remove(k.wrapper.id);
+			showMusicKey(k);
+		}
+	}
+
+	/** A jukebox's key shown as it is: `pressed` while held, else `hover` under the pointer and
+	 *  `normal` elsewhere; a disabled key is left as it is. An `autoStatus` key through the screen's
+	 *  helper, a `bind` key on the result that placed it (a game's own helper drives it otherwise). */
+	function showMusicKey(k:MusicKeyHold):Void {
+		final w = k.wrapper;
+		if (w.disabled)
+			return;
+		final helper = autoStatusHelper;
+		if (k.auto && helper != null && helper.hasBinding(w.id)) {
+			if (k.held)
+				helper.setParameter(w.id, k.param, "pressed");
+			else if (w.hovered)
+				helper.setHoverState(w.id);
+			else
+				helper.resetState(w.id);
+			return;
+		}
+		final source = w.source;
+		if (source != null)
+			UIRichInteractiveHelper.ownerOf(source, w.interactive).setParameter(k.param, k.held ? "pressed" : w.hovered ? "hover" : "normal");
+	}
+
+	/** The `ui.<key>` a widget event plays, or null for an event that makes no sound. */
+	public static function widgetSoundKey(event:UIScreenEvent):Null<String> {
+		return switch event {
+			case UIHover(true): "hover";
+			case UIClick: "click";
+			case UIToggle(_): "toggle";
+			// a slider sends its float beside its int: one sound
+			case UIChangeValue(_) | UIChangeItem(_, _): "change";
+			case UIOpen: "open";
+			case UIClose: "close";
+			default: null;
+		}
 	}
 
 	/** Dispatch mouse move to higher-order components and screen override. Called by controllers.
@@ -250,7 +445,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	public function dispatchMouseClick(pos:h2d.col.Point, button:Int, release:Bool):Bool {
 		if (release) {
 			for (comp in higherOrderComponents)
-				if (comp.onMouseRelease(pos.x, pos.y))
+				if (comp.onMouseRelease(pos.x, pos.y, button))
 					return false;
 		} else {
 			for (comp in higherOrderComponents)
@@ -286,13 +481,23 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		for (comp in higherOrderComponents)
 			comp.update(dt);
 		// controller.update(dt) is already called by ScreenManager.update() before screen.update()
-		for (obj => v in postCustomAddToLayer) {
-			var insertedLayer = findLayerFromObject(obj);
-			if (insertedLayer == null)
-				throw 'could not find layer for object $obj';
-			v.customAddToLayer(insertedLayer, this, true);
+		if (postCustomAddToLayerPending) {
+			#if MULTIANIM_ALLOC_TRACK
+			postponedDrainCount++;
+			#end
+			for (obj => v in postCustomAddToLayer) {
+				var insertedLayer = findLayerFromObject(obj);
+				if (insertedLayer == null)
+					throw 'could not find layer for object $obj';
+				v.customAddToLayer(insertedLayer, this, true);
+			}
+			postCustomAddToLayer.clear();
+			postCustomAddToLayerPending = false;
 		}
-		postCustomAddToLayer.clear();
+		if (musicKeyHoldsStale)
+			findMusicKeys();
+		if (musicKeyHolds.length > 0)
+			holdMusicKeys();
 	}
 
 	static inline function elementMatchesType(e:UIElement, type:SubElementsType):Bool {
@@ -411,7 +616,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 			return;
 		for (key in settings.keys()) {
 			if (!allowedSettings.contains(key)) {
-				throw 'Unknown setting "$key" for ${elementName}';
+				throw 'Unknown setting "$key" for $elementName';
 			}
 		}
 	}
@@ -461,7 +666,8 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	 * - Control and behavioral settings are skipped (caller handles them explicitly).
 	 * - Dotted keys (e.g. "item.fontColor") are routed to the prefixed map.
 	 * - Unprefixed keys that are not in multiForward go to the main map.
-	 * - Keys listed in multiForward go to ALL registered prefix maps AND main.
+	 * - Keys listed in multiForward go to ALL registered prefix maps AND main; a prefix that has
+	 *   its own "prefix.key" keeps that one.
 	 */
 	function splitSettings(settings:ResolvedSettings, controlSettings:Array<String>, behavioralSettings:Array<String>,
 			registeredPrefixes:Array<String>, multiForwardSettings:Array<String>,
@@ -499,6 +705,9 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 					main = new Map<String, Dynamic>();
 				main.set(key, value);
 				for (prefix in registeredPrefixes) {
+					// A prefixed setting for the same key wins, whichever of the two the map gives first
+					if (settings.exists('$prefix.$key'))
+						continue;
 					var prefixMap = prefixed.get(prefix);
 					if (prefixMap == null) {
 						prefixMap = new Map<String, Dynamic>();
@@ -538,10 +747,44 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		return UIStandardMultiAnimButton.create(builder.builder, builder.name, buttonText, split.main);
 	}
 
+	/** `prefixed` without the multi-forward settings (`font`, `fontColor`) that `splitSettings`
+	 *  copies into every registered prefix, keeping one written as `prefix.key` itself. A list's
+	 *  or a dropdown's scrollbar draws no text, so a bare `font` is not its business — an
+	 *  undeclared parameter would be a build error there. */
+	static function explicitlyPrefixed(settings:ResolvedSettings, prefixed:Null<Map<String, Dynamic>>, prefix:String,
+			multiForward:Array<String>):Null<Map<String, Dynamic>> {
+		if (prefixed == null)
+			return null;
+		for (key in multiForward)
+			if (prefixed.exists(key) && (settings == null || !settings.exists('$prefix.$key')))
+				prefixed.remove(key);
+		var any = false;
+		for (_ in prefixed) {
+			any = true;
+			break;
+		}
+		return any ? prefixed : null;
+	}
+
+	/** What a list's or a dropdown's unprefixed settings give its panel programmable: all but the
+	 *  multi-forwarded ones (`font`, `fontColor`), which are its items' and its button's. */
+	static function panelSettings(main:Null<Map<String, Dynamic>>, multiForward:Array<String>):Null<Map<String, Dynamic>> {
+		if (main == null)
+			return null;
+		var out:Null<Map<String, Dynamic>> = null;
+		for (key => value in main)
+			if (!multiForward.contains(key)) {
+				if (out == null)
+					out = new Map();
+				out.set(key, value);
+			}
+		return out;
+	}
+
 	function addSlider(providedBuilder, settings:ResolvedSettings, initialValue:Float = 0) {
 		final sliderBuildName = getSettings(settings, "buildName", "slider");
 		final size = getIntSettings(settings, "size", 200);
-		final split = splitSettings(settings, ["buildName", "size"], ["min", "max", "step"], [], [], "slider");
+		final split = splitSettings(settings, ["buildName", "size"], ["min", "max", "step", "direction", "initialValue"], [], [], "slider");
 		final slider = UIStandardMultiAnimSlider.create(providedBuilder, sliderBuildName, size, initialValue, split.main);
 		if (hasSettings(settings, "min"))
 			slider.min = getFloatSettings(settings, "min", 0);
@@ -549,7 +792,33 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 			slider.max = getFloatSettings(settings, "max", 100);
 		if (hasSettings(settings, "step"))
 			slider.step = getFloatSettings(settings, "step", 0);
+		if (hasSettings(settings, "direction"))
+			slider.direction = switch getSettings(settings, "direction", "auto").toLowerCase() {
+				case "vertical": Vertical;
+				case "horizontal": Horizontal;
+				case "auto": Auto;
+				case other: throw 'slider direction => "$other": expected vertical, horizontal or auto';
+			};
+		// in the slider's own range, so after min/max/step
+		if (hasSettings(settings, "initialValue"))
+			slider.setFloatValue(getFloatSettings(settings, "initialValue", initialValue));
 		return slider;
+	}
+
+	/** A scrollbar on its own (`UIMultiAnimScrollbar`): `buildName` (`scrollbar`), `direction`
+	 *  (`vertical`), `arrowStep`; anything else goes to the programmable. */
+	function addScrollbar(providedBuilder:MultiAnimBuilder, settings:ResolvedSettings, panelLength:Int, scrollableLength:Int, initialPosition:Int = 0) {
+		final buildName = getSettings(settings, "buildName", "scrollbar");
+		final direction:ScrollbarDirection = switch getSettings(settings, "direction", "vertical").toLowerCase() {
+			case "horizontal": Horizontal;
+			case "vertical": Vertical;
+			case other: throw 'scrollbar direction => "$other": expected vertical or horizontal';
+		};
+		final split = splitSettings(settings, ["buildName", "direction"], ["arrowStep"], [], [], "scrollbar");
+		final bar = UIMultiAnimScrollbar.create(providedBuilder, buildName, panelLength, scrollableLength, initialPosition, direction, split.main);
+		if (hasSettings(settings, "arrowStep"))
+			bar.arrowStep = getIntSettings(settings, "arrowStep", bar.arrowStep);
+		return bar;
 	}
 
 	function addProgressBar(providedBuilder, settings:ResolvedSettings, initialValue:Int = 0) {
@@ -654,7 +923,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 			if (extraParams == null)
 				extraParams = new Map();
 			for (key => value in tabPanelParams)
-				extraParams.set('panel${key.charAt(0).toUpperCase()}${key.substr(1)}', value);
+				extraParams.set('panel' + key.charAt(0).toUpperCase() + key.substr(1), value);
 		}
 
 		// Forward tab button height to tabBar so .manim can compute panelOffset from it
@@ -785,8 +1054,8 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 			final s = result.rootSettings;
 			if (s == null) return;
 			final p = settingsPrefix.length > 0 ? settingsPrefix + "." : "";
-			if (s.has('${p}originX') || s.has('${p}originY'))
-				grid.setOrigin(s.getFloatOrDefault('${p}originX', 0), s.getFloatOrDefault('${p}originY', 0));
+			if (s.has(p + 'originX') || s.has(p + 'originY'))
+				grid.setOrigin(s.getFloatOrDefault(p + 'originX', 0), s.getFloatOrDefault(p + 'originY', 0));
 		};
 	}
 
@@ -800,8 +1069,8 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 			final s = result.rootSettings;
 			if (s == null) return;
 			final p = settingsPrefix.length > 0 ? settingsPrefix + "." : "";
-			if (s.has('${p}anchorX') || s.has('${p}anchorY'))
-				cardHand.setAnchor(s.getFloatOrDefault('${p}anchorX', 640), s.getFloatOrDefault('${p}anchorY', 680));
+			if (s.has(p + 'anchorX') || s.has(p + 'anchorY'))
+				cardHand.setAnchor(s.getFloatOrDefault(p + 'anchorX', 640), s.getFloatOrDefault(p + 'anchorY', 680));
 		};
 	}
 	#end
@@ -867,9 +1136,12 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		final itemPrefixed = split.prefixed.get("item");
 		if (itemPrefixed != null)
 			itemBuilder = itemBuilder.withExtraParams(itemPrefixed);
-		final scrollbarPrefixed = split.prefixed.get("scrollbar");
+		final scrollbarPrefixed = explicitlyPrefixed(settings, split.prefixed.get("scrollbar"), "scrollbar", ["font", "fontColor"]);
 		if (scrollbarPrefixed != null)
 			scrollbarBuilder = scrollbarBuilder.withExtraParams(scrollbarPrefixed);
+		final panelExtra = panelSettings(split.main, ["font", "fontColor"]);
+		if (panelExtra != null)
+			panelBuilder = panelBuilder.withExtraParams(panelExtra);
 
 		final finalWidth = getIntSettings(settings, "width", width);
 		final finalHeight = getIntSettings(settings, "height", height);
@@ -922,9 +1194,12 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		final itemPrefixed = split.prefixed.get("item");
 		if (itemPrefixed != null)
 			itemBuilder = itemBuilder.withExtraParams(itemPrefixed);
-		final scrollbarPrefixed = split.prefixed.get("scrollbar");
+		final scrollbarPrefixed = explicitlyPrefixed(settings, split.prefixed.get("scrollbar"), "scrollbar", ["font", "fontColor"]);
 		if (scrollbarPrefixed != null)
 			scrollbarBuilder = scrollbarBuilder.withExtraParams(scrollbarPrefixed);
+		final panelExtra = panelSettings(split.main, ["font", "fontColor"]);
+		if (panelExtra != null)
+			panelBuilder = panelBuilder.withExtraParams(panelExtra);
 
 		final autoOpen = getBoolSettings(settings, "autoOpen", true);
 		final autoCloseOnLeave = getBoolSettings(settings, "autoCloseOnLeave", true);
@@ -994,7 +1269,26 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 
 	public function addBuilderResult(r:BuilderResult, ?layer:LayersEnum):BuilderResult {
 		addObjectToLayer(r.object, layer);
+		readMusicSetting(r);
 		return r;
+	}
+
+	/** `settings { music => "music.title" }` and `settings { ambience => "amb.hum" }` on the first
+	 *  result added that has each are the screen's music and ambience. */
+	function readMusicSetting(r:BuilderResult):Void {
+		final settings = r.rootSettings;
+		if (settings == null)
+			return;
+		if (screenMusic == null && settings.has("music")) {
+			final said = settings.getStringOrDefault("music", "");
+			if (said != "")
+				screenMusic = said;
+		}
+		if (screenAmbience == null && settings.has("ambience")) {
+			final said = settings.getStringOrDefault("ambience", "");
+			if (said != "")
+				screenAmbience = said;
+		}
 	}
 
 	public function addBuilderResultWithPos(r:BuilderResult, pos:FPoint, ?layer:LayersEnum):BuilderResult {
@@ -1008,13 +1302,52 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		return r;
 	}
 
-	/** Wraps a single interactive MAObject as a UIElement. Events arrive in `onScreenEvent` as `UIInteractiveEvent(event, id, metadata)`. */
-	public function addInteractive(obj:MAObject, ?prefix:String):UIInteractiveWrapper {
-		var wrapper = new UIInteractiveWrapper(obj, prefix);
+	/** Wraps a single interactive MAObject as a UIElement. Events arrive in `onScreenEvent` as `UIInteractiveEvent(event, id, metadata)`.
+	 *  The object is not added to the scene (it already sits in its builder's tree); `source` is the
+	 *  result it came from, which scopes the rebuild sync of `addInteractives`. */
+	public function addInteractive(obj:MAObject, ?prefix:String, ?source:bh.ui.UIInteractiveSource):UIInteractiveWrapper {
+		var wrapper = new UIInteractiveWrapper(obj, prefix, source);
 		interactiveWrappers.push(wrapper);
 		interactiveMap.set(wrapper.id, wrapper);
+		musicKeyHoldsStale = true;
 		addElement(wrapper, null);
 		return wrapper;
+	}
+
+	/** Drop a wrapper without touching its object. Interactive objects belong to their builder (or
+	 *  codegen instance): detaching one would take it out of a hidden container for good. */
+	function unregisterInteractiveWrapper(w:UIInteractiveWrapper):Void {
+		interactiveWrappers.remove(w);
+		musicKeyHoldsStale = true;
+		if (interactiveMap.get(w.id) == w) {
+			interactiveMap.remove(w.id);
+			// Another source under the same prefix may use the same id: it takes over the entry.
+			for (other in interactiveWrappers)
+				if (other.id == w.id) {
+					interactiveMap.set(w.id, other);
+					break;
+				}
+		}
+		w.clear();
+		final owner = contentTargetOwnership.get(w);
+		if (owner != null) {
+			owner.unregisterElement(w);
+			contentTargetOwnership.remove(w);
+		} else {
+			elements.remove(w);
+		}
+	}
+
+	static function hasAutoStatusInteractive(interactives:Array<MAObject>):Bool {
+		for (obj in interactives) {
+			switch obj.multiAnimType {
+				case MAInteractive(_, _, _, meta):
+					if (meta != null && new BuilderResolvedSettings(meta).getStringOrDefault(UIRichInteractiveHelper.RESERVED_KEY, "") != "")
+						return true;
+				default:
+			}
+		}
+		return false;
 	}
 
 	/** Registers all `interactive()` elements from a source for event dispatch. Events arrive in
@@ -1024,31 +1357,23 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	 *  Interactives with `autoStatus` metadata are automatically wired for Normal→Hover→Pressed
 	 *  state management.
 	 *
-	 *  Also installs a rebuild listener on the source so that `@switch` arm flips and param-
-	 *  dependent `repeatable` rebuilds automatically resync the screen's interactive map (and
-	 *  autoStatus bindings) to match the new arm/iteration set. */
-	public function addInteractives(source:bh.ui.UIInteractiveSource, ?prefix:String):Array<UIInteractiveWrapper> {
+	 *  Also installs a rebuild listener on the source so that `@switch` arm flips, param-dependent
+	 *  `repeatable` rebuilds and shown/hidden conditional containers automatically resync the
+	 *  screen's wrappers (and autoStatus bindings) with the interactives the source exposes.
+	 *
+	 *  `eventPriority`, when given, is set on every wrapper of this source — including the ones a
+	 *  later rebuild creates (e.g. `UIPanelHelper` raises its panels to `UIEventPriority.Overlay`). */
+	public function addInteractives(source:bh.ui.UIInteractiveSource, ?prefix:String, ?eventPriority:Int):Array<UIInteractiveWrapper> {
 		final interactives = source.getInteractives();
 		var wrappers:Array<UIInteractiveWrapper> = [];
 		for (obj in interactives) {
-			wrappers.push(addInteractive(obj, prefix));
+			final w = addInteractive(obj, prefix, source);
+			if (eventPriority != null)
+				w.eventPriority = eventPriority;
+			wrappers.push(w);
 		}
 		// Auto-wire interactives with autoStatus metadata
-		var hasAutoStatus = false;
-		for (obj in interactives) {
-			switch obj.multiAnimType {
-				case MAInteractive(_, _, _, meta):
-					if (meta != null) {
-						final brs = new BuilderResolvedSettings(meta);
-						if (brs.getStringOrDefault(UIRichInteractiveHelper.RESERVED_KEY, "") != "") {
-							hasAutoStatus = true;
-							break;
-						}
-					}
-				default:
-			}
-		}
-		if (hasAutoStatus) {
+		if (hasAutoStatusInteractive(interactives)) {
 			if (autoStatusHelper == null)
 				autoStatusHelper = new UIRichInteractiveHelper(this);
 			autoStatusHelper.registerAutoStatus(source, prefix);
@@ -1060,7 +1385,8 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		if (source.isIncremental) {
 			final capturedSource = source;
 			final capturedPrefix = prefix;
-			final listener = () -> syncInteractivesFrom(capturedSource, capturedPrefix);
+			final capturedPriority = eventPriority;
+			final listener = () -> syncInteractivesFrom(capturedSource, capturedPrefix, capturedPriority);
 			source.addRebuildListener(listener);
 			interactiveSubscriptions.push({source: source, prefix: prefix, listener: listener});
 		}
@@ -1068,48 +1394,54 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		return wrappers;
 	}
 
-	/** Diff the screen's interactive wrappers against the source's current `getInteractives()`
-	 *  list and bring them back in sync: remove stale wrappers (whose ids no longer exist), add
-	 *  new ones, and resync the autoStatus helper's bindings. Called automatically by the rebuild
-	 *  listener installed by `addInteractives`. */
-	function syncInteractivesFrom(source:bh.ui.UIInteractiveSource, prefix:Null<String>):Void {
+	/** Bring the wrappers of one `(source, prefix)` registration back in line with the interactives
+	 *  the source exposes now. Wrappers of other sources are never touched, even under the same
+	 *  prefix. A wrapper whose object a rebuild replaced with a new one of the same id follows it
+	 *  (`rebind`), so the element — its hover, `disabled` and priority — survives; other stale
+	 *  wrappers are dropped without detaching their objects, and new interactives are wrapped.
+	 *  Called by the rebuild listener installed by `addInteractives`. */
+	function syncInteractivesFrom(source:bh.ui.UIInteractiveSource, prefix:Null<String>, eventPriority:Null<Int>):Void {
 		final interactives = source.getInteractives();
 
-		// 1. Build expected fully-qualified id set from current interactives
-		final expectedIds = new Map<String, Bool>();
+		// Wrappers of this registration by the object they wrap. After the pass below only the
+		// stale ones (object no longer exposed by the source) are left in it.
+		final stale = new Map<MAObject, UIInteractiveWrapper>();
+		for (w in interactiveWrappers)
+			if (w.source == source && w.prefix == prefix)
+				stale.set(w.interactive, w);
+		final unwrapped:Array<MAObject> = [];
 		for (obj in interactives) {
-			switch obj.multiAnimType {
-				case MAInteractive(_, _, identifier, _):
-					final fullId = prefix != null ? '$prefix.$identifier' : identifier;
-					expectedIds.set(fullId, true);
-				default:
+			if (stale.exists(obj))
+				stale.remove(obj);
+			else
+				unwrapped.push(obj);
+		}
+
+		for (obj in unwrapped) {
+			final id = UIInteractiveWrapper.interactiveId(obj, prefix);
+			var rebound = false;
+			for (oldObj => w in stale) {
+				if (w.id == id) {
+					stale.remove(oldObj);
+					w.rebind(obj);
+					// its metadata and the result it is shown on may be new
+					musicKeyHoldsStale = true;
+					rebound = true;
+					break;
+				}
+			}
+			if (!rebound) {
+				final w = addInteractive(obj, prefix, source);
+				if (eventPriority != null)
+					w.eventPriority = eventPriority;
 			}
 		}
+		for (w in stale)
+			unregisterInteractiveWrapper(w);
 
-		// 2. Remove wrappers with matching prefix whose id is no longer in the expected set
-		final toRemove:Array<UIInteractiveWrapper> = [];
-		for (w in interactiveWrappers) {
-			if (w.prefix != prefix) continue;
-			if (!expectedIds.exists(w.id)) toRemove.push(w);
-		}
-		for (w in toRemove) {
-			interactiveWrappers.remove(w);
-			interactiveMap.remove(w.id);
-			removeElement(w);
-		}
-
-		// 3. Add wrappers for newly-appearing ids
-		for (obj in interactives) {
-			switch obj.multiAnimType {
-				case MAInteractive(_, _, identifier, _):
-					final fullId = prefix != null ? '$prefix.$identifier' : identifier;
-					if (!interactiveMap.exists(fullId))
-						addInteractive(obj, prefix);
-				default:
-			}
-		}
-
-		// 4. Resync autoStatus helper bindings (handles arm flip with `autoStatus` metadata)
+		// An autoStatus interactive can appear only after registration (a new arm, a shown block).
+		if (autoStatusHelper == null && hasAutoStatusInteractive(interactives))
+			autoStatusHelper = new UIRichInteractiveHelper(this);
 		if (autoStatusHelper != null)
 			autoStatusHelper.resyncAutoStatus(source, prefix);
 	}
@@ -1143,22 +1475,23 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 		}
 	}
 
+	/** Unregister the interactives added under `prefix` (all of them when null). The objects stay in
+	 *  their builder's tree, so `addInteractives` on the same source can wrap them again. */
 	public function removeInteractives(?prefix:String):Void {
 		var toRemove:Array<UIInteractiveWrapper> = [];
 		for (w in interactiveWrappers) {
 			if (prefix == null || w.prefix == prefix)
 				toRemove.push(w);
 		}
-		for (w in toRemove) {
-			interactiveWrappers.remove(w);
-			interactiveMap.remove(w.id);
-			removeElement(w);
-		}
-		// Auto-unregister from autoStatus helper
+		for (w in toRemove)
+			unregisterInteractiveWrapper(w);
+		// Auto-unregister from autoStatus helper: only the removed wrappers' bindings, so a child
+		// prefix ("hud.settings" under "hud") keeps its hover states.
 		if (autoStatusHelper != null) {
-			if (prefix != null)
-				autoStatusHelper.unregisterByPrefix(prefix);
-			else
+			if (prefix != null) {
+				for (w in toRemove)
+					autoStatusHelper.unbind(w.id);
+			} else
 				autoStatusHelper.unbindAll();
 		}
 		// Drop rebuild listener subscriptions matching the prefix
@@ -1189,6 +1522,12 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 	}
 
 	public function addElement(element:UIElement, layer:Null<LayersEnum>) {
+		// A text input says what the keyboard does with no mouse event to give it the controller
+		if (Std.isOfType(element, UIMultiAnimTextInput)) {
+			final input:UIMultiAnimTextInput = cast element;
+			if (input.screenEventSink == null)
+				input.screenEventSink = (event, source) -> getController().onScreenEvent(event, source);
+		}
 		if (contentTarget != null) {
 			// Route to content target (tabs, etc.) instead of main element list
 			contentTarget.registerElement(element);
@@ -1210,6 +1549,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 						if (postCustomAddToLayer.exists(element.getObject()))
 							throw 'element already is in postCustomAddToLayer';
 						postCustomAddToLayer.set(element.getObject(), customElement);
+						postCustomAddToLayerPending = true;
 				}
 			}
 			if (layer != null && element.getObject().parent == null) {
@@ -1233,6 +1573,7 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 					if (postCustomAddToLayer.exists(element.getObject()))
 						throw 'element already is in postCustomAddToLayer';
 					postCustomAddToLayer.set(element.getObject(), customElement);
+					postCustomAddToLayerPending = true;
 			}
 		}
 		if (layer != null && element.getObject().parent == null) {
@@ -1390,6 +1731,6 @@ abstract class UIScreenBase implements UIScreen implements UIControllerScreenInt
 					return enumLayer;
 			}
 		}
-		throw 'layer not found for object $obj. layers ${this.layers}';
+		throw 'layer not found for object $obj. layers ' + this.layers;
 	}
 }

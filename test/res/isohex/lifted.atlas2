@@ -1,0 +1,117 @@
+lifted.png
+size: 501,70
+format: RGBA8888
+filter: Nearest,Nearest
+repeat: none
+grass
+  rotate: false
+  xy: 1, 1
+  size: 32, 24
+  orig: 32, 24
+  offset: 0, 0
+  index: 0
+stone
+  rotate: false
+  xy: 34, 1
+  size: 32, 24
+  orig: 32, 24
+  offset: 0, 0
+  index: 0
+water
+  rotate: false
+  xy: 67, 1
+  size: 32, 24
+  orig: 32, 24
+  offset: 0, 0
+  index: 0
+water
+  rotate: false
+  xy: 100, 1
+  size: 32, 24
+  orig: 32, 24
+  offset: 0, 0
+  index: 1
+sideMid
+  rotate: false
+  xy: 133, 1
+  size: 32, 24
+  orig: 32, 24
+  offset: 0, 0
+  index: 0
+sideLeft
+  rotate: false
+  xy: 166, 1
+  size: 32, 24
+  orig: 32, 24
+  offset: 0, 0
+  index: 0
+sideRight
+  rotate: false
+  xy: 199, 1
+  size: 32, 24
+  orig: 32, 24
+  offset: 0, 0
+  index: 0
+sideSingle
+  rotate: false
+  xy: 232, 1
+  size: 32, 24
+  orig: 32, 24
+  offset: 0, 0
+  index: 0
+roofTop
+  rotate: false
+  xy: 265, 1
+  size: 32, 24
+  orig: 32, 24
+  offset: 0, 0
+  index: 0
+wall
+  rotate: false
+  xy: 298, 1
+  size: 32, 24
+  orig: 32, 24
+  offset: 0, 0
+  index: 0
+lip
+  rotate: false
+  xy: 331, 1
+  size: 32, 24
+  orig: 32, 24
+  offset: 0, 0
+  index: 0
+faceSE
+  rotate: false
+  xy: 364, 1
+  size: 16, 16
+  orig: 16, 16
+  offset: 0, 0
+  index: 0
+faceSW
+  rotate: false
+  xy: 381, 1
+  size: 16, 16
+  orig: 16, 16
+  offset: 0, 0
+  index: 0
+hall
+  rotate: false
+  xy: 398, 1
+  size: 80, 68
+  orig: 80, 68
+  offset: 0, 0
+  index: 0
+man
+  rotate: false
+  xy: 479, 1
+  size: 10, 40
+  orig: 10, 40
+  offset: 0, 0
+  index: 0
+man
+  rotate: false
+  xy: 490, 1
+  size: 10, 40
+  orig: 10, 40
+  offset: 0, 0
+  index: 1

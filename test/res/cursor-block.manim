@@ -1,0 +1,11 @@
+version: 1.0
+
+// A file with a cursor block, loaded through ScreenManager.buildFromResource, which registers it.
+#blockCursors cursor {
+  resHand: sheet("ui", "icon_drop"), hot: 2, 3
+  resArrow: sheet("ui", "icon_forward_idle")
+}
+
+#cursorUser programmable() {
+  interactive(40, 20, "grab", cursor => "resHand"): 0, 0
+}

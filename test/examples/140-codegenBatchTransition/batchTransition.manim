@@ -1,0 +1,20 @@
+version: 1.0
+
+// Batched updates must preserve declared transitions and leave unrelated
+// @switch arms untouched, matching BuilderResult batch semantics.
+
+#batchTrans programmable(status:[normal,hover]=normal) {
+  transition { status: crossfade(1.0) }
+  @(status=>normal) bitmap(generated(color(20, 20, #FF8800))): 0, 0
+  @(status=>hover) bitmap(generated(color(20, 20, #0088FF))): 0, 0
+}
+
+// Arm content distinguished by tile width (a -> 8px, default -> 12px). The
+// 4px bitmap's y position is the only thing that depends on $y.
+#batchSwitchKeep programmable(mode:[a,b]=a, y:int=0) {
+  @switch(mode) {
+    a: bitmap(generated(color(8, 8, #FF0000)));
+    default: bitmap(generated(color(12, 12, #0000FF)));
+  }
+  bitmap(generated(color(4, 4, #00FF00))): 0, $y
+}

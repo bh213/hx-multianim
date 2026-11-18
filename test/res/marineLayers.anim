@@ -1,0 +1,19 @@
+// A layered .anim for the tests: the marine's own frames stand in for a body, a hat and a glow.
+sheet: crew2
+states: direction(l, r), hat(none, cap), glow(off, on)
+layers: body, hat, glow
+center: 32, 48
+fps: 4
+
+animation walk {
+    loop: yes
+    layer body { sheet: "marine_${direction}_idle" }
+    layer hat @(hat != none) { sheet: "marine_${direction}_shooting" }
+}
+
+animation pose {
+    loop: yes
+    layer body { sheet: "marine_${direction}_standing" }
+    layer hat @(hat != none) { sheet: "marine_${direction}_dead" }
+    layer glow @(glow => on) { sheet: "marine_${direction}_standing" blend: add }
+}

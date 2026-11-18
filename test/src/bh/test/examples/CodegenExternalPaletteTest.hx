@@ -55,4 +55,44 @@ class CodegenExternalPaletteTest extends BuilderTestBase {
 		Assert.isNull(thrown,
 			'codegen must thread externalReference through palette() refs (matches runtime); threw: $thrown');
 	}
+	/** The colour drawn at (x, y) of an object, drawn alone into a picture (filters too). **/
+	static function pixelAt(o:h2d.Object, x:Int, y:Int):Int {
+		final scene = new h2d.Scene();
+		scene.addChild(o);
+		scene.syncOnly(0);
+		final texture = new h3d.mat.Texture(32, 16, [Target]);
+		texture.clear(0, 0);
+		o.drawTo(texture);
+		final pixels = texture.capturePixels();
+		texture.dispose();
+		o.remove();
+		scene.dispose();
+		pixels.convert(BGRA);
+		return pixels.getPixel(x, y);
+	}
+
+	// Request 26: replacePalette(external(ext), teams, 0, 1) and a shader's `palette: external(ext), tones`
+	// find the palette in the imported file: the red square recoloured to the other team's blue, the
+	// reddish one held to the import's tones (magenta), from the builder and from codegen alike
+	@Test
+	public function testAPaletteOfAnImportRecoloursAndHolds():Void {
+		final built = buildFromFile(MANIM_PATH, "externalSwap");
+		Assert.equals(0xFF0000FF, pixelAt(built.object, 4, 4), "replacePalette: row 0's red to row 1's blue");
+		Assert.equals(0xFFFF00FF, pixelAt(built.object, 14, 4), "paletteLock: the nearest of the import's tones");
+		final made:h2d.Object = createMp().externalSwap.create();
+		Assert.equals(0xFF0000FF, pixelAt(made, 4, 4), "codegen: the same");
+		Assert.equals(0xFFFF00FF, pixelAt(made, 14, 4));
+	}
+
+	@Test
+	public function testAPaletteOfAFileNotImportedIsAParseError():Void {
+		for (filter in ["replacePalette(external(nope), teams, 0, 1)", "paletteLock(palette: external(nope), tones)"]) {
+			final message = bh.test.BuilderTestBase.parseExpectingError('
+				#p programmable() { bitmap(generated(color(8, 8, #FF0000))) { filter: $filter pos: 0, 0 } }
+			');
+			Assert.notNull(message, filter);
+			if (message != null)
+				Assert.stringContains('the file imports no "nope"', message, filter);
+		}
+	}
 }

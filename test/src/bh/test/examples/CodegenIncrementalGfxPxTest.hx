@@ -47,12 +47,12 @@ class CodegenIncrementalGfxPxTest extends BuilderTestBase {
 				final actual = pl.data.getPixel(x, y);
 				if (x < filledWidth && y < PIXEL_H) {
 					if (actual != expectedColor) {
-						Assert.fail('$label: pixel($x,$y) expected filled 0x${StringTools.hex(expectedColor, 8)} but got 0x${StringTools.hex(actual, 8)}');
+						Assert.fail('$label: pixel($x,$y) expected filled 0x' + StringTools.hex(expectedColor, 8) + ' but got 0x' + StringTools.hex(actual, 8));
 						return;
 					}
 				} else {
 					if (actual != 0) {
-						Assert.fail('$label: pixel($x,$y) expected transparent but got 0x${StringTools.hex(actual, 8)}');
+						Assert.fail('$label: pixel($x,$y) expected transparent but got 0x' + StringTools.hex(actual, 8));
 						return;
 					}
 				}

@@ -1,0 +1,31 @@
+version: 1.0
+
+// A programmable built by codegen (@:manim) beside the three audio blocks: the codegen parses
+// the whole file and leaves the blocks to the builder and the screen manager (AudioCodegenTest).
+#fx sounds {
+	bus: sfx
+	param surface: [stone, grass]
+	hit { files: ["sound/hit_1.wav", "sound/hit_2.wav"], pick: shuffle, voices: 4 }
+	step @(surface => grass) { file: "sound/step_grass.wav" }
+	step { file: "sound/step.wav" }
+}
+
+#main mix {
+	bus music
+	bus sfx { voices: 24 }
+	vca Music: music
+	vca Effects: sfx
+	snapshot paused { sfx: pause, music: -6db, fade: 200ms }
+	snapshot dialog { music: -6db }
+}
+
+#music music {
+	track title { file: "music/title.mp3", loop: yes }
+	track play { file: "music/play.mp3" }
+}
+
+#audioBlocks programmable(status:[normal,hover]=normal) {
+	bitmap(generated(color(40, 20, #336699))): 0, 0
+	@(status => hover) bitmap(generated(color(40, 20, #66AAFF))): 0, 0
+	settings { music => "music.title" }
+}

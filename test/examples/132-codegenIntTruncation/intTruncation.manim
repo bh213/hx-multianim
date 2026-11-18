@@ -1,0 +1,71 @@
+version: 1.0
+
+// Integer-resolution parity between builder and codegen. The builder truncates
+// (Std.int) when resolving repeat counts (resolveAsInteger OpDiv) and grid cell
+// coordinates (resolveAsGrid takes Int). Codegen diverges in two places:
+// - tryResolveStaticInt uses Math.round for RVFloat and OpDiv, so a statically
+//   resolvable count like step(7/2) unrolls 4 iterations where the builder runs 3
+// - grid position exprs emit raw float math ($gx * spacing), so $grid.pos($col/2, 0)
+//   with col=3 lands at 1.5 * spacing instead of the builder's Std.int(1.5) * spacing
+
+#stepCountTrunc programmable() {
+  repeatable($i, step(7 / 2, dx: 12)) {
+    bitmap(generated(color(8, 8, #0000ff))): 0, 0
+  }
+}
+
+#gridCoordParam programmable(col:int=3) {
+  grid: 10, 10
+  bitmap(generated(color(6, 6, #ff0000))): $grid.pos($col / 2, 0)
+}
+
+#gridCoordStatic programmable() {
+  grid: 10, 10
+  bitmap(generated(color(6, 6, #00ff00))): $grid.pos(3 / 2, 0)
+}
+
+// `div` with float params in an OFFSET (float) context. Builder integerizes the
+// operands of div: resolveAsNumber OpIntegerDiv = Std.int(resolveAsInteger($a) /
+// resolveAsInteger($b)) = Std.int(9/2) = 4, then * 10 = 40 (x=40). Codegen rvToExpr
+// keeps floats: (Std.int($a / $b) * 10) = (Std.int(3.6) * 10) = (3 * 10) = 30 (x=30).
+#divOffsetFloat programmable(a:float=9.0, b:float=2.5) {
+  bitmap(generated(color(6, 6, #ff00ff))): $a div $b * 10, 0
+}
+
+// `div` with float params in an integer (grid) coordinate context. Builder:
+// resolveAsInteger($a) / resolveAsInteger($b) = 9 / 2 = Std.int(4.5) = 4 -> cell 4
+// (x=40). Codegen routes the whole arg through float rvToExpr then one Std.int:
+// Std.int(Std.int($a / $b)) = Std.int(3) = 3 -> cell 3 (x=30).
+#divGridFloat programmable(a:float=9.0, b:float=2.5) {
+  grid: 10, 10
+  bitmap(generated(color(6, 6, #ff0088))): $grid.pos($a div $b, 0)
+}
+
+// Compound expression in an integer coordinate context. Builder truncates at
+// every node: Std.int(7/2) * 2 = 3 * 2 = 6 -> cell 6 (x=60). Codegen truncates
+// once at the site: Std.int((7/2) * 2) = Std.int(7.0) = 7 -> cell 7 (x=70).
+#compoundTrunc programmable() {
+  grid: 10, 10
+  bitmap(generated(color(6, 6, #ffff00))): $grid.pos(7 / 2 * 2, 0)
+}
+
+// `%` with float params in an integer coordinate context. Builder integerizes:
+// Std.int(resolveAsInteger(7.0) % resolveAsInteger(2.5)) = Std.int(7 % 2) = 1 ->
+// cell 1 (x=10). Codegen does float mod then truncates once: Std.int(7.0 % 2.5) =
+// Std.int(2.0) = 2 -> cell 2 (x=20).
+#modGridFloat programmable(a:float=7.0, b:float=2.5) {
+  grid: 10, 10
+  bitmap(generated(color(6, 6, #00ffff))): $grid.pos($a % $b, 0)
+}
+
+// Param-dependent repeat count with a compound integer expression. A count that
+// references a parameter cannot be statically unrolled, so it routes through the
+// rebuild path (rebuildRepeatChildren / rvToExpr) instead of tryResolveStaticInt.
+// The builder truncates at every node: resolveAsInteger($n / 2 * 2) = Std.int(7/2)*2
+// = 3*2 = 6 iterations. Codegen evaluates the count as float and truncates once:
+// Std.int((7.0/2.0)*2.0) = Std.int(7.0) = 7 iterations. They must agree.
+#repeatCountParamTrunc programmable(n:int=7) {
+  repeatable($i, step($n / 2 * 2, dx: 12)) {
+    bitmap(generated(color(8, 8, #0000ff))): 0, 0
+  }
+}

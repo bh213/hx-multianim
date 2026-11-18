@@ -1,0 +1,90 @@
+version: 1.0
+
+// A sewer wall: the top of the wall is a level up, its face the rise's side two cells high
+// (bricks, every other cell mossy, a pillar at each end). Pieces of the face with an opening in them
+// are laid over it as cells of a layer. The arch on the left is drawn under the actors (draw: under,
+// as before): the face's bricks show through its opening. The arch, the drain and the broken hole
+// right of it are drawn in place of the side (draw: side): no piece of the face is drawn under them,
+// so the darkness under the face shows through, and the face's run goes on past them as if whole
+// (mossy every other cell, its ends where the wall ends). Water runs from the drain.
+// The art is drawn for these tests (test/res/walls/LICENSE.txt).
+
+#walls atlas2("walls/walls.png") {
+    floor: 0, 0, 16, 16, index: 0
+    floor: 16, 0, 16, 16, index: 1
+    dark: 32, 0, 16, 16
+    water: 48, 0, 16, 16
+    top: 64, 0, 16, 16
+    face: 0, 16, 16, 16, index: 0
+    face: 0, 32, 16, 16, index: 1
+    faceMoss: 16, 16, 16, 16, index: 0
+    faceMoss: 16, 32, 16, 16, index: 1
+    faceLeft: 32, 16, 16, 16, index: 0
+    faceLeft: 32, 32, 16, 16, index: 1
+    faceRight: 48, 16, 16, 16, index: 0
+    faceRight: 48, 32, 16, 16, index: 1
+    arch: 64, 16, 32, 32
+    archUnder: 64, 16, 32, 32
+    drain: 96, 16, 16, 32
+    hole: 112, 16, 16, 16
+}
+
+#lip autotile { format: corner tileSize: 16 demo: #2A2420, #00000000 }
+
+#sewer tileset {
+    tileSize: 16
+    atlas: "walls"
+    edge: lip
+    terrain floor { cells: "floor" }
+    terrain dark { cells: "dark" }
+    terrain water { cells: "water" metadata { swim:bool => true } }
+    terrain top { cells: "top" }
+    rise 1 { side: "face", "faceMoss" left: "faceLeft" right: "faceRight" span: 2 metadata { wall:bool => true } }
+    cell archUnder { size: 2, 2 draw: under }
+    cell arch { size: 2, 2 draw: side metadata { wall:bool => false } }
+    cell drain { size: 1, 2 draw: side }
+    cell hole { draw: side }
+}
+
+#tunnel tilemap {
+    tileset: sewer
+    size: 18, 8
+    legend { ".": floor, "#": dark, "~": water, "t": top }
+    terrain: [
+        ".tttttttttttttttt.",
+        ".tttttttttttttttt.",
+        ".################.",
+        ".################.",
+        ".........~........",
+        ".........~........",
+        ".........~~.......",
+        "..........~.......",
+    ]
+    levels: [
+        "011111111111111110",
+        "011111111111111110",
+        "000000000000000000",
+        "000000000000000000",
+        "000000000000000000",
+        "000000000000000000",
+        "000000000000000000",
+        "000000000000000000",
+    ]
+    layer openings {
+        legend { "u": archUnder, "a": arch, "d": drain, "h": hole }
+        rows: [
+            "                  ",
+            "                  ",
+            "               h  ",
+            "  u      d  a     ",
+            "                  ",
+            "                  ",
+            "                  ",
+            "                  ",
+        ]
+    }
+}
+
+#tilemapSideCells programmable() {
+    tilemap(tunnel): 16, 12
+}

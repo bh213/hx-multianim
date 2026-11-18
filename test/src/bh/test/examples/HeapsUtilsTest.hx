@@ -3,6 +3,7 @@ package bh.test.examples;
 import utest.Assert;
 import bh.base.HeapsUtils.solidTile;
 import bh.base.HeapsUtils.solidBitmap;
+import bh.base.HeapsUtils.roundedRectOutline;
 
 /**
  * Unit tests for solidTile / solidBitmap — lock the strict-D alpha
@@ -78,5 +79,30 @@ class HeapsUtilsTest extends utest.Test {
 		final bmp = solidBitmap(0xFF0000FF, 10, 10);
 		Assert.isNull(bmp.parent);
 		Assert.notNull(bmp.tile);
+	}
+
+	@Test
+	public function testRoundedOutlineHasNoPointTwice():Void {
+		// SUG61: Heaps' drawRoundedRect gives each side's end twice, and WebGL then draws only the
+		// corners of a rounded outline. Ours gives every point once, the last not the first again.
+		for (shape in [[20.0, 20.0, 200.0, 120.0, 10.0], [0.0, 0.0, 40.0, 20.0, 10.0], [5.0, 5.0, 20.0, 20.0, 10.0]]) {
+			final p = roundedRectOutline(shape[0], shape[1], shape[2], shape[3], shape[4]);
+			Assert.isTrue(p.length >= 8);
+			final n = Std.int(p.length / 2);
+			for (i in 0...n) {
+				final j = (i + 1) % n;
+				final apart = Math.abs(p[i * 2] - p[j * 2]) + Math.abs(p[i * 2 + 1] - p[j * 2 + 1]);
+				Assert.isTrue(apart > 1e-9, 'points $i and $j of $shape are the same');
+			}
+			// Every point on the rectangle's edge or its corners' arcs, within it.
+			for (i in 0...n) {
+				Assert.isTrue(p[i * 2] >= shape[0] - 1e-9 && p[i * 2] <= shape[0] + shape[2] + 1e-9);
+				Assert.isTrue(p[i * 2 + 1] >= shape[1] - 1e-9 && p[i * 2 + 1] <= shape[1] + shape[3] + 1e-9);
+			}
+		}
+		// It starts where the top side ends, at the top right corner's first point.
+		final p = roundedRectOutline(20, 20, 200, 120, 10);
+		Assert.floatEquals(210.0, p[0], 1e-9);
+		Assert.floatEquals(20.0, p[1], 1e-9);
 	}
 }

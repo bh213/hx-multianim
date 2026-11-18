@@ -210,6 +210,12 @@ enum ControllerEvents {
 enum UIScreenEvent {
 	UIClick;
 	UIPush;
+	/** The pointer came over the element (true) or left it (false). A button sends it; a disabled one does not. */
+	UIHover(over:Bool);
+	/** A dropdown's panel started to open. */
+	UIOpen;
+	/** A dropdown's panel started to close: by a click, a choice, the pointer leaving, or a click outside. */
+	UIClose;
 	UICustomEvent(eventName:String, data:Dynamic);
 	UIToggle(pressed:Bool);
 	UIChangeValue(value:Int);
@@ -226,6 +232,15 @@ enum UIScreenEvent {
 	UITextChange(text:String);
 	UITextSubmit(text:String);
 	UIFocusChange(focused:Bool);
+}
+
+/**
+ * A widget built from a programmable says what its root `settings { }` are, so the screen reads
+ * what the design wrote there for it: `sound.click => "ui.confirm"` for the sound its click plays.
+ */
+interface UIElementRootSettings {
+	/** Null before the widget has been built. */
+	function getRootSettings():Null<bh.multianim.MultiAnimBuilder.BuilderResolvedSettings>;
 }
 
 /**

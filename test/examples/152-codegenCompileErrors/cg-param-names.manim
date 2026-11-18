@@ -1,0 +1,8 @@
+version: 1.0
+
+// Parameters named as words a game uses, `stale` and `applying`, in a programmable with a conditional
+// element whose expression uses a parameter: the generated class's own fields must not take the names
+// of their backing fields (`_stale`, `_applying`).
+#paramNames programmable(stale:bool=false, applying:uint=4) {
+  @(stale=>false) bitmap(generated(color($applying, 4, #ffffff))): 0, 0
+}

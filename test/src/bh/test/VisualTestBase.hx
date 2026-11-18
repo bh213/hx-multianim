@@ -250,7 +250,7 @@ class VisualTestBase extends utest.Test {
 	}
 
 	public function getActualImagePath():String {
-		return 'test/screenshots/${testName}_actual.png';
+		return 'test/screenshots/' + testName + '_actual.png';
 	}
 
 	public function getDisplayName():String {
@@ -393,7 +393,7 @@ class VisualTestBase extends utest.Test {
 			return;
 		}
 
-		var builderPath = 'test/screenshots/${testName}_actual.png';
+		var builderPath = 'test/screenshots/' + testName + '_actual.png';
 		applyLifecycle(result.object, lifecycle);
 		var builderRaw = captureScreenshotRaw(sizeX, sizeY);
 
@@ -438,7 +438,7 @@ class VisualTestBase extends utest.Test {
 
 		applyLifecycle(macroRoot, lifecycle);
 
-		var macroPath = 'test/screenshots/${testName}_macro.png';
+		var macroPath = 'test/screenshots/' + testName + '_macro.png';
 		var referencePath = getReferenceImagePath();
 		var macroRaw = captureScreenshotRaw(sizeX, sizeY);
 		var displayName = getDisplayName();
@@ -544,7 +544,7 @@ class VisualTestBase extends utest.Test {
 
 		if (testTitle != null && testTitle.length > 0) addTitleOverlay();
 
-		var macroPath = 'test/screenshots/${testName}_macro.png';
+		var macroPath = 'test/screenshots/' + testName + '_macro.png';
 		var referencePath = getReferenceImagePath();
 		var macroRaw = captureScreenshotRaw(1280, 720);
 		var displayName = getDisplayName();
@@ -654,7 +654,7 @@ class VisualTestBase extends utest.Test {
 
 		if (testTitle != null && testTitle.length > 0) addTitleOverlay();
 
-		var macroPath = 'test/screenshots/${testName}_macro.png';
+		var macroPath = 'test/screenshots/' + testName + '_macro.png';
 		var referencePath = getReferenceImagePath();
 		var macroRaw = captureScreenshotRaw(1280, 720);
 		var displayName = getDisplayName();
@@ -708,7 +708,7 @@ class VisualTestBase extends utest.Test {
 		if (macroThreshold == null) macroThreshold = builderThreshold;
 
 		var actualPath = getActualImagePath();
-		var macroPath = 'test/screenshots/${testName}_macro.png';
+		var macroPath = 'test/screenshots/' + testName + '_macro.png';
 		var referencePath = getReferenceImagePath();
 		var displayName = getDisplayName();
 
@@ -857,8 +857,8 @@ class VisualTestBase extends utest.Test {
 		var pct = Math.round(similarity * 10000) / 100;
 		if (pct >= 100.0 && similarity < 1.0) {
 			var diffPixels = totalPixels - Math.round(similarity * totalPixels);
-			return '${pct}% (${diffPixels}px differ)';
+			return '$pct% (' + diffPixels + 'px differ)';
 		}
-		return '${pct}%';
+		return '$pct%';
 	}
 }
