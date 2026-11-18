@@ -170,6 +170,7 @@ class TestApp extends hxd.App {
 		testRunner.addCase(new bh.test.examples.CodegenTileSourceParityTest());
 		testRunner.addCase(new bh.test.examples.CodegenNamedHexCoordTest());
 		testRunner.addCase(new bh.test.examples.CodegenTextMaxWidthParityTest());
+		testRunner.addCase(new bh.test.examples.NumbersAndBoxesTest());
 		testRunner.addCase(new bh.test.examples.CodegenLayoutParamPointsTest());
 		testRunner.addCase(new bh.test.examples.CodegenForwardStringConcatTest());
 		testRunner.addCase(new bh.test.examples.CodegenSwitchFinalRefsTest());

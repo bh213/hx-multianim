@@ -404,6 +404,21 @@ enum ReferenceableValue {
 	EUnaryOp(op:RvUnaryOp, e:ReferenceableValue);
 }
 
+class ReferenceableValueTools {
+	/** True when an expression holds a float literal (`$r * 0.8`): where a whole number is wanted, the
+	 *  builder and codegen work such an expression out as a float and truncate it once, at the end. */
+	public static function hasFloatLiteral(v:Null<ReferenceableValue>):Bool {
+		if (v == null) return false;
+		return switch v {
+			case RVFloat(_): true;
+			case EBinop(_, e1, e2): hasFloatLiteral(e1) || hasFloatLiteral(e2);
+			case EUnaryOp(_, e) | RVParenthesis(e): hasFloatLiteral(e);
+			case RVTernary(_, ifTrue, ifFalse): hasFloatLiteral(ifTrue) || hasFloatLiteral(ifFalse);
+			default: false;
+		};
+	}
+}
+
 @:nullSafety
 enum TextAlignWidth {
 	TAWAuto;

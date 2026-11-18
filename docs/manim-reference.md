@@ -170,6 +170,10 @@ Every root element has a `#name` (an unnamed `curves`/`paths` block names itself
 | `autoFit: fill [f1, f2, ...]` | Try ALL fonts (including primary) — pick the largest that fits `maxWidth` |
 | `autoFit: fill box(w, h) [f1, f2, ...]` | Try ALL fonts — pick the largest that fits both dimensions |
 
+**A width given by a parameter** (`text(f, $s, c, right, $w)`, an `autoFit: box($w, $h)`) follows
+`setParameter`, as its position does, in an incremental build and in codegen: the text is laid out
+again in the new width (and fitted again).
+
 **Width/fill modes require `maxWidth` to be set.** Box dimensions are absolute pixels (divided by `@scale` internally). The font list is fallback-only for `width`/`box` modes; for `fill` modes, the primary font is also a candidate.
 
 ```manim
@@ -479,6 +483,14 @@ A parameter, and each choice of an enum parameter, may carry a `///` doc comment
 | 20 | `+` `-` | Addition (or string concatenation in string contexts) / subtraction |
 | 10 (lowest) | `==` `!=` `<` `>` `<=` `>=` | Equality and ordering comparison |
 
+**Numbers** are written `12`, `-3`, `0xFF`, `2.5`, `.5`, `1_000`, and with an exponent: `1.0e56`, `3e55`, `2.5e-4`
+(a float), wherever a number is read: data blocks, parameters' defaults, arguments, expressions.
+
+**A float where a whole number is wanted** (a line's ends, an ellipse's radii, a rect's size): an expression
+that holds a float literal (`$r * 0.8`, `-$s * 1.35`, `0.5 * $w`) is worked out as a float and truncated
+once, at the end (`Std.int`), in the builder and codegen alike; `$r * 0.8` with `r` 10 is `8`, not `$r * 0`.
+A float alone there (`line(c, 1, 0, 0, 2.5, 0)`) is still an error. A position keeps its fraction.
+
 All binary operators are **left-associative** (`a - b - c` parses as `(a - b) - c`). Comparisons sit below additive, so `$a + $b < $c` parses as `($a + $b) < $c`. Unary `-` binds at the atom level, before any infix operator.
 
 **Arithmetic where a string is wanted** (a text's content, an untyped metadata value): `+` joins the two sides as text, and `-` `*` `/` `%` `div` are worked out as an integer, each operand truncated first — `$a / 2` with `a` 5 is `2`, `$f * 2` with `f` 2.5 is `4`. Put the expression in parentheses for the number: `($a / 2)` is `2.5`, `($a + 1)` adds. The same in the builder and in codegen.
@@ -673,7 +685,7 @@ Slots with parameters support visual states via conditionals. `slotContent` mark
 - `slot.getInteractives()` — interactives declared inside the slot decoration body (returns a fresh copy each call). Empty for slots built via the runtime `BuilderResult` path
 - `slot.getUpdatable(name, ?index, ?indexY)` — named element declared inside the slot decoration body. Returns null when the name is absent or the slot has no per-slot IR
 - Codegen: `instance.getSlot_name().setParameter("status", "warning")`
-- Either path, through `bh.multianim.LiveProgrammable` (implemented by `BuilderResult` and every `@:manim` instance): `getSlotEntries()` lists every slot present with its `SlotKey` and handle; `getNamedKeys()` / `getNamedDrawn(name, ?index, ?indexY)` the named elements and the one drawn; `getDynamicRefKeys()`, `getDynamicRefResults()` (every dynamicRef child, one per site, unnamed sites sharing a key too), `getParameterValues()`, `getRoot()`, `getProgrammableName()`. What a tool (the DevBridge, a studio) reads without knowing which path built the programmable
+- Either path, through `bh.multianim.LiveProgrammable` (implemented by `BuilderResult` and every `@:manim` instance): `getSlotEntries()` lists every slot present with its `SlotKey` and handle; `getNamedKeys()` / `getNamedDrawn(name, ?index, ?indexY)` the named elements and the one drawn (null for one the game hid itself with `visible = false`, as for an arm not shown: a game that hides and shows an element takes it once after the build and keeps it); `getDynamicRefKeys()`, `getDynamicRefResults()` (every dynamicRef child, one per site, unnamed sites sharing a key too), `getParameterValues()`, `getRoot()`, `getProgrammableName()`. What a tool (the DevBridge, a studio) reads without knowing which path built the programmable
 
 **Indexed:** `#name[$i] slot(params)` inside repeatable — combines indexed access with parameters.
 
@@ -710,7 +722,9 @@ unit and label) are `bh.multianim.ShaderCatalog`, with no Heaps, for tools; the 
 - **Arguments by name or by position** (`crt(0.2, lineSize: 4)`): every parameter left out takes its
   default; a name the shader has not, a parameter given twice, or one by position after one by
   name is an error. Custom filters take names the same way. A colour is `#RRGGBB`, `0x…` or a
-  colour's name written bare (`vignette(color: black)`); an enum `$param` given to a word or palette
+  colour's name written bare (`vignette(color: black)`) or a palette's colour, as every other colour
+  (`vignette(color: palette(look, 3))`, `shader(stars, 640, 360, color: palette(external(pal), look, 0))`,
+  a `color` `$param` too); an enum `$param` given to a word or palette
   parameter is its value's name (`paletteLock(palette: $pal)`, `pal:[gameboy, mono]`), in both backends;
   a palette of an imported file is `palette: external(alias), name`.
 - **Three places.** On a thing (`flash`, `dissolve`, …: the element's `filter:`); over the whole
@@ -741,10 +755,24 @@ unit and label) are `bh.multianim.ShaderCatalog`, with no Heaps, for tools; the 
 - **Time** is `bh.base.ShaderClock`: `ScreenManager.update(dt)` advances it by the `dt` it is given,
   so a game that slows or stops its `dt` slows or stops its shaders; `ShaderClock.fixed = t` holds
   every shader at one time (a capture to compare). Nothing sets a shader's time by hand.
+- **A loop's time for what moves for long.** Beside `time`, a shader is given `loopTime` (seconds into a
+  loop of `EngineScreenShader.LOOP`, 32 s) and `loops` (the loops gone, counted to 1024 and round
+  again), worked out at full precision on the CPU. Move by them, beating a whole number of times a
+  loop so it has no seam: on a GPU without high precision, `time` has no fraction left after 1024 s
+  and is too coarse for motion long before.
+- **Precision.** Fragment shaders are compiled at `highp` where the GPU has it
+  (`GL_FRAGMENT_PRECISION_HIGH`), `mediump` elsewhere, in place of Heaps' `mediump` always: a build
+  macro on `hxsl.GlslOut` that `AtlasMacroInit.init()` puts on (`-D multianim_mediump` keeps Heaps'
+  line). Where mediump is a 16-bit float (some phones), a hash should keep to small whole numbers
+  (a modulus under 45) and a clock to `loopTime`.
+- **The whole tile, off the stage too.** Heaps cuts a filter's picture to the part on the stage; a
+  shader filter draws the whole tile again (the part laid into it), so `calculatedUV` and `size` mean
+  the whole tile: a disc ground half off the edge is drawn as half a disc, not shrunk into the half
+  shown. Past `EngineShaderFilter.wholeLimit` (4096 px a side) it shades only the part on the stage.
 - **Noise** is a hash of arithmetic (`fract`, `dot`), so a shader draws near alike on every GPU (a
   software renderer differs in a few pixels: compare captures with a threshold, as test 166 does).
-- **A game's own shader** extends `bh.base.filters.EngineScreenShader` (it is given `texture`, `size`
-  and `time`, and writes `pixelColor` from `calculatedUV`; the picture is premultiplied) and is
+- **A game's own shader** extends `bh.base.filters.EngineScreenShader` (it is given `texture`, `size`,
+  `time`, `loopTime` and `loops`, and writes `pixelColor` from `calculatedUV`; the picture is premultiplied) and is
   registered as a filter whose factory returns `EngineShaderFilter.of(name, shader, apply, params)`:
   set in place and moved by the clock as the engine's are.
 

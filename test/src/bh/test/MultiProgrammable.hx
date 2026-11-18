@@ -719,6 +719,18 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/149-codegenTextWidth/textWidth.manim", "tGrid")
 	public var tGrid;
 
+	@:manim("test/examples/180-numbersAndBoxes/numbersAndBoxes.manim", "floatInInt")
+	public var floatInInt;
+
+	@:manim("test/examples/180-numbersAndBoxes/numbersAndBoxes.manim", "textWidthParam")
+	public var textWidthParam;
+
+	@:manim("test/examples/180-numbersAndBoxes/numbersAndBoxes.manim", "richWidthParam")
+	public var richWidthParam;
+
+	@:manim("test/examples/180-numbersAndBoxes/numbersAndBoxes.manim", "textFitParam")
+	public var textFitParam;
+
 	@:manim("test/examples/150-codegenLayoutParamPts/layoutParamPts.manim", "layoutParam")
 	public var layoutParam;
 

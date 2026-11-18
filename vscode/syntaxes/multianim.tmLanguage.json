@@ -243,6 +243,10 @@
 				},
 				{
 					"name": "constant.numeric.float.multianim",
+					"match": "-?(?:\\d*\\.\\d+|\\d+\\.?)[eE][-+]?\\d+"
+				},
+				{
+					"name": "constant.numeric.float.multianim",
 					"match": "-?\\d*\\.\\d+"
 				},
 				{

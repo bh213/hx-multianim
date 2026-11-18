@@ -418,6 +418,99 @@ class ShaderTest extends utest.Test {
 		Assert.floatEquals(1.75, ShaderClock.now());
 	}
 
+	// A shader's colour takes palette(…), as every other colour does
+	@Test
+	public function testAPaletteColourAsAnArgument():Void {
+		final result = buildFromSource("
+			#look palette { #8A4FB0 #FF8A3D #FFF4D6 }
+			#test programmable() {
+				#a bitmap(generated(color(8, 8, #f00))) { filter: vignette(strength: 0.5, color: palette(look, 1)) pos: 0, 0 }
+				#b bitmap(generated(shader(stars, 16, 16, color: palette(look, 2)))): 0, 0
+				#c bitmap(generated(color(8, 8, #f00))) { filter: flash(palette(look, 0), 0.5) pos: 0, 0 }
+			}
+		", "test", null, Incremental);
+		Assert.equals(0xFF8A3D, (shaderOf(result.getNamedDrawn("a").filter).values["color"] : Int) & 0xFFFFFF, "a filter's colour by name");
+		Assert.equals(0xFFF4D6, (shaderOf(result.getNamedDrawn("b").filter).values["color"] : Int) & 0xFFFFFF, "a ground's colour");
+		Assert.equals(0x8A4FB0, (shaderOf(result.getNamedDrawn("c").filter).values["color"] : Int) & 0xFFFFFF, "by position");
+	}
+
+	// loopTime and loops beside time, worked out at full precision
+	@Test
+	public function testTheLoopedClock():Void {
+		final shader = shaderOf(FilterManager.buildCustomFilter("crt", [])).shader;
+		shader.setClock(100.5);
+		Assert.floatEquals(100.5, shader.time);
+		Assert.floatEquals(4.5, shader.loopTime, "seconds into a loop of 32");
+		Assert.floatEquals(3, shader.loops, "the loops gone");
+		shader.setClock(32 * 1024 * 2 + 33.25);
+		Assert.floatEquals(1.25, shader.loopTime);
+		Assert.floatEquals(1, shader.loops, "round again after 1024");
+		shader.setClock(0);
+		Assert.floatEquals(0, shader.loopTime);
+		Assert.floatEquals(0, shader.loops);
+	}
+
+	// Fragment shaders at highp where the GPU has it: the build macro on hxsl.GlslOut (AtlasMacroInit.init())
+	@Test
+	public function testFragmentShadersAskForHighPrecision():Void {
+		function glslOf(kind:hxsl.Ast.FunctionKind):String {
+			final ref:hxsl.Ast.TVar = {id: 1, name: "main", type: TFun([]), kind: Function};
+			final body:hxsl.Ast.TExpr = {e: TBlock([]), t: TVoid, p: null};
+			return new hxsl.GlslOut().run({name: "probe", vars: [], funs: [{kind: kind, ref: ref, args: [], ret: TVoid, expr: body}]});
+		}
+		final fragment = glslOf(Fragment);
+		Assert.stringContains("#ifdef GL_FRAGMENT_PRECISION_HIGH\nprecision highp float;\n#else\nprecision mediump float;\n#endif", fragment);
+		Assert.isTrue(fragment.indexOf("precision mediump float;") > fragment.indexOf("#else"), "mediump only where highp is missing");
+		Assert.stringContains("precision highp float;", glslOf(Vertex), "a vertex shader keeps Heaps' highp");
+	}
+
+	/** The colour drawn at (x, y) of an object drawn alone into a 32 by 16 picture. **/
+	static function pixelAt(o:h2d.Object, x:Int, y:Int):Int {
+		final scene = new h2d.Scene();
+		scene.addChild(o);
+		scene.syncOnly(0);
+		final texture = new h3d.mat.Texture(32, 16, [Target]);
+		texture.clear(0, 0);
+		o.drawTo(texture);
+		final pixels = texture.capturePixels();
+		texture.dispose();
+		o.remove();
+		scene.dispose();
+		pixels.convert(BGRA);
+		return pixels.getPixel(x, y);
+	}
+
+	// A ground half off the stage is drawn whole: its calculatedUV and size mean the whole tile, not
+	// the part on screen
+	@Test
+	public function testAGroundHalfOffTheStageIsDrawnWhole():Void {
+		FilterManager.registerFilter("uvprobe", [], params -> EngineShaderFilter.of("uvprobe", new UvProbeShader(), (s, p) -> {}, params));
+		final source = "#test programmable() { bitmap(generated(shader(uvprobe, 32, 16))): -16, 0 }";
+		try {
+			// the stage's left edge is the ground's middle: red there is u of 16.5 / 32
+			final red = (pixelAt(buildFromSource(source, "test", null, Incremental).object, 0, 8) >> 16) & 0xFF;
+			Assert.isTrue(red > 120 && red < 140, 'the left edge of the stage shades the middle of the ground (red $red)');
+			final offStage = buildFromSource("#test programmable() { #g bitmap(generated(shader(uvprobe, 32, 16))): -16, 0 }", "test", null, Incremental);
+			final offStageFilter = shaderOf(offStage.getNamedDrawn("g").filter);
+			final right = (pixelAt(offStage.object, 15, 8) >> 16) & 0xFF;
+			Assert.isTrue(right > 240, 'the right edge of the part shown shades the ground\'s right edge (red $right)');
+			Assert.notNull(@:privateAccess offStageFilter.place, "drawn off the stage, the filter made its placing pass");
+			// on the stage it is drawn as Heaps gives it: no placing pass made
+			final onStage = buildFromSource("#test programmable() { #g bitmap(generated(shader(uvprobe, 32, 16))): 0, 0 }", "test", null, Incremental);
+			final onStageFilter = shaderOf(onStage.getNamedDrawn("g").filter);
+			pixelAt(onStage.object, 0, 8);
+			Assert.isNull(@:privateAccess onStageFilter.place, "drawn whole on the stage, no placing pass is made");
+			// past the limit it shades only the part on the stage, as Heaps cut it: the whole picture squeezed into it
+			EngineShaderFilter.wholeLimit = 0;
+			final cut = (pixelAt(buildFromSource(source, "test", null, Incremental).object, 0, 8) >> 16) & 0xFF;
+			Assert.isTrue(cut < 20, 'cut to the stage, the part starts at u 0 (red $cut)');
+		} catch (e:Dynamic) {
+			Assert.fail(Std.string(e));
+		}
+		EngineShaderFilter.wholeLimit = 4096;
+		FilterManager.unregisterFilter("uvprobe");
+	}
+
 	@Test
 	public function testOverTheStageWithACrossfade():Void {
 		final sm = new ScreenManager(bh.test.VisualTestBase.appInstance);
@@ -517,4 +610,13 @@ private class ShaderScreen extends bh.ui.screens.UIScreen.UIScreenBase {
 	public function load():Void {}
 
 	public function onScreenEvent(event:bh.ui.UIElement.UIScreenEvent, source:Null<bh.ui.UIElement>):Void {}
+}
+
+/** Draws where it is in its tile: u as red, v as green. **/
+private class UvProbeShader extends bh.base.filters.EngineScreenShader {
+	static var SRC = {
+		function fragment() {
+			pixelColor = vec4(calculatedUV.x, calculatedUV.y, 0.0, 1.0);
+		}
+	};
 }

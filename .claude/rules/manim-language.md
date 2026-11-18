@@ -120,6 +120,8 @@ Works on discrete param types — `enum`, `int`, `uint`, `range`, `string` (quot
   - `+`, `-` (lbp 20)
   - `==`, `!=`, `<`, `>`, `<=`, `>=` (lbp 10) — comparisons sit *below* additive, so `$a + $b < $c` parses as `($a + $b) < $c`
 - References: `$paramName`
+- Numbers: `12`, `-3`, `0xFF`, `2.5`, `.5`, `1_000`, exponents `1.0e56` / `2.5e-4` (a float)
+- A float literal inside an int expression (`line(c, 1, 0, 0, $r * 0.8, 0)`) is worked out as a float and truncated once (`ReferenceableValueTools.hasFloatLiteral`; builder `resolveAsInteger`, codegen `rvToExprInt`); a float alone there is still a parse error
 - Ternary: `?(condition) trueValue : falseValue`
 - Callbacks: `callback("name")`, `callback("name", $index)`
 
@@ -156,7 +158,12 @@ other change builds the arm again). A ground: `bitmap(generated(shader(water, 32
 bitmap's own tile (not in `center()`/`pivot()`, a param value, a tilegroup), no `filter:` on it or an
 `apply` in it (parse errors; wrap in `layers()` for one). Over the
 whole stage: `ScreenManager.setStageShader(filter, fade)`. Time: `ShaderClock` (advanced by
-`ScreenManager.update(dt)`; `fixed` for captures). Docs: manim-reference.md, Shaders.
+`ScreenManager.update(dt)`; `fixed` for captures); a shader also gets `loopTime`/`loops`
+(`EngineScreenShader.setClock`, a 32 s loop, full precision) for motion that lasts. A colour argument
+takes `palette(…)`. Fragment shaders are `highp` where the GPU has it (`HighPrecisionShaders`, a
+build macro on `hxsl.GlslOut` from `AtlasMacroInit.init()`; `-D multianim_mediump` opts out). A
+shader filter shades its whole tile even when Heaps cut it to the stage (`EngineShaderFilter.wholeLimit`).
+Docs: manim-reference.md, Shaders.
 
 ### Custom Filters
 

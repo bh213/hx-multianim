@@ -271,6 +271,18 @@ private class MacroLexer {
 						pos++;
 					} else break;
 				}
+				// An exponent: `1.0e56`, `3e55`, `2.5e-4` (a float), only when a digit follows the `e` or its sign
+				if (pos < len && (src.charCodeAt(pos) == 'e'.code || src.charCodeAt(pos) == 'E'.code)) {
+					var at = pos + 1;
+					if (at < len && (src.charCodeAt(at) == '+'.code || src.charCodeAt(at) == '-'.code))
+						at++;
+					if (at < len && src.charCodeAt(at) >= '0'.code && src.charCodeAt(at) <= '9'.code) {
+						pos = at;
+						while (pos < len && src.charCodeAt(pos) >= '0'.code && src.charCodeAt(pos) <= '9'.code)
+							pos++;
+						isFloat = true;
+					}
+				}
 				final numStr = src.substring(numStart, pos);
 				return new Token(isFloat ? TFloat(numStr) : TInteger(numStr), startLine, startCol);
 			}
@@ -1090,6 +1102,11 @@ class MacroManimParser {
 						final e = parseExpression(0, EInt);
 						expect(TClosed);
 						return EUnaryOp(OpNeg, RVParenthesis(e));
+					case TFloat(n) if (floatBesideOperator(false)):
+						advance();
+						return RVFloat(-stringToFloat(n));
+					case TFloat(n):
+						return error('expected a whole number, got -$n: a float can be part of an expression here ($$r * -$n), not alone');
 					default:
 						return error('expected value after unary minus');
 				}
@@ -1107,9 +1124,23 @@ class MacroManimParser {
 				final e = parseExpression(0, EInt);
 				expect(TClosed);
 				return RVParenthesis(e);
+			case TFloat(n) if (floatBesideOperator(true)):
+				// a float in an expression (`$r * 0.8`): the whole expression is worked out as a float and truncated
+				advance();
+				return RVFloat(stringToFloat(n));
+			case TFloat(n):
+				return error('expected a whole number, got $n: a float can be part of an expression here ($$r * $n), not alone');
 			default:
 				return error('expected integer or expression, got ' + peek());
 		}
+	}
+
+	/** Whether the float literal at the current token is part of an expression: an operator before it
+	 *  (`$r * 0.8`; not when `afterOperator` is false, as after a unary minus) or after it (`0.8 * $r`). */
+	function floatBesideOperator(afterOperator:Bool):Bool {
+		if (afterOperator && tpos > 0 && infixBp(tokens[tpos - 1].type) != null)
+			return true;
+		return tpos + 1 < tokens.length && infixBp(tokens[tpos + 1].type) != null;
 	}
 
 
@@ -3044,6 +3075,9 @@ class MacroManimParser {
 			case TIdentifier(s) if (isKeyword(s, "false") || isKeyword(s, "no")):
 				advance();
 				return {value: RVFloat(0.0), type: CFBool};
+			case TIdentifier(s) if (isKeyword(s, "palette") && tpos + 1 < tokens.length && tokens[tpos + 1].type.match(TOpen)):
+				// a palette's colour, as every other colour takes it: `palette(name, 3)`, `palette(external(alias), name, 3)`
+				return {value: parseColorOrReference(), type: CFColor};
 			case TIdentifier(s) if (isKeyword(s, "external")):
 				// a palette of another file: `palette: external(alias), name`, the word `alias.name`
 				advance();

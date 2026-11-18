@@ -1983,6 +1983,17 @@ bh_multianim__$MacroManimParser_MacroLexer.prototype = {
 						break;
 					}
 				}
+				if(this.pos < this.len && (HxOverrides.cca(this.src,this.pos) == 101 || HxOverrides.cca(this.src,this.pos) == 69)) {
+					var at = this.pos + 1;
+					if(at < this.len && (HxOverrides.cca(this.src,at) == 43 || HxOverrides.cca(this.src,at) == 45)) {
+						++at;
+					}
+					if(at < this.len && HxOverrides.cca(this.src,at) >= 48 && HxOverrides.cca(this.src,at) <= 57) {
+						this.pos = at;
+						while(this.pos < this.len && HxOverrides.cca(this.src,this.pos) >= 48 && HxOverrides.cca(this.src,this.pos) <= 57) this.pos++;
+						isFloat = true;
+					}
+				}
 				var numStr = this.src.substring(numStart,this.pos);
 				return new bh_multianim__$MacroManimParser_Token(isFloat ? bh_multianim__$MacroManimParser_MacroTokenType.TFloat(numStr) : bh_multianim__$MacroManimParser_MacroTokenType.TInteger(numStr),startLine,startCol);
 			}
@@ -3370,6 +3381,17 @@ bh_multianim_MacroManimParser.prototype = {
 				var n = _g1.s;
 				this.advance();
 				return bh_multianim_ReferenceableValue.RVInteger(-this.stringToInt(n));
+			case 30:
+				var _g2 = _g1.s;
+				var n = _g2;
+				if(this.floatBesideOperator(false)) {
+					this.advance();
+					return bh_multianim_ReferenceableValue.RVFloat(-this.stringToFloat(n));
+				} else {
+					var n = _g2;
+					return this.error("expected a whole number, got -" + n + ": a float can be part of an expression here ($" + "r * -" + n + "), not alone");
+				}
+				break;
 			case 31:
 				var n = _g1.s;
 				this.advance();
@@ -3386,6 +3408,17 @@ bh_multianim_MacroManimParser.prototype = {
 			var n = _g.s;
 			this.advance();
 			return bh_multianim_ReferenceableValue.RVInteger(this.stringToInt(n));
+		case 30:
+			var _g1 = _g.s;
+			var n = _g1;
+			if(this.floatBesideOperator(true)) {
+				this.advance();
+				return bh_multianim_ReferenceableValue.RVFloat(this.stringToFloat(n));
+			} else {
+				var n = _g1;
+				return this.error("expected a whole number, got " + n + ": a float can be part of an expression here ($" + "r * " + n + "), not alone");
+			}
+			break;
 		case 31:
 			var n = _g.s;
 			this.advance();
@@ -3405,6 +3438,108 @@ bh_multianim_MacroManimParser.prototype = {
 			return this.parseRefExpr(s,bh_multianim__$MacroManimParser_ExprType.EInt);
 		default:
 			return this.error("expected integer or expression, got " + Std.string(this.tokens[this.tpos].type));
+		}
+	}
+	,floatBesideOperator: function(afterOperator) {
+		var tmp;
+		if(afterOperator && this.tpos > 0) {
+			var token = this.tokens[this.tpos - 1].type;
+			var tmp1;
+			switch(token._hx_index) {
+			case 16:
+				tmp1 = { lbp : 30, rbp : 31, op : bh_multianim_RvOp.OpMul};
+				break;
+			case 17:
+				tmp1 = { lbp : 30, rbp : 31, op : bh_multianim_RvOp.OpMod};
+				break;
+			case 18:
+				tmp1 = { lbp : 20, rbp : 21, op : bh_multianim_RvOp.OpAdd};
+				break;
+			case 19:
+				tmp1 = { lbp : 30, rbp : 31, op : bh_multianim_RvOp.OpDiv};
+				break;
+			case 20:
+				tmp1 = { lbp : 20, rbp : 21, op : bh_multianim_RvOp.OpSub};
+				break;
+			case 22:
+				tmp1 = { lbp : 10, rbp : 11, op : bh_multianim_RvOp.OpLess};
+				break;
+			case 23:
+				tmp1 = { lbp : 10, rbp : 11, op : bh_multianim_RvOp.OpGreater};
+				break;
+			case 24:
+				tmp1 = { lbp : 10, rbp : 11, op : bh_multianim_RvOp.OpLessEq};
+				break;
+			case 25:
+				tmp1 = { lbp : 10, rbp : 11, op : bh_multianim_RvOp.OpGreaterEq};
+				break;
+			case 26:
+				tmp1 = { lbp : 10, rbp : 11, op : bh_multianim_RvOp.OpNotEq};
+				break;
+			case 27:
+				tmp1 = { lbp : 10, rbp : 11, op : bh_multianim_RvOp.OpEq};
+				break;
+			case 32:
+				var s = token.s;
+				tmp1 = bh_multianim_MacroManimParser.isKeyword(s,"div") ? { lbp : 30, rbp : 31, op : bh_multianim_RvOp.OpIntegerDiv} : null;
+				break;
+			default:
+				tmp1 = null;
+			}
+			tmp = tmp1 != null;
+		} else {
+			tmp = false;
+		}
+		if(tmp) {
+			return true;
+		}
+		if(this.tpos + 1 < this.tokens.length) {
+			var token = this.tokens[this.tpos + 1].type;
+			var tmp;
+			switch(token._hx_index) {
+			case 16:
+				tmp = { lbp : 30, rbp : 31, op : bh_multianim_RvOp.OpMul};
+				break;
+			case 17:
+				tmp = { lbp : 30, rbp : 31, op : bh_multianim_RvOp.OpMod};
+				break;
+			case 18:
+				tmp = { lbp : 20, rbp : 21, op : bh_multianim_RvOp.OpAdd};
+				break;
+			case 19:
+				tmp = { lbp : 30, rbp : 31, op : bh_multianim_RvOp.OpDiv};
+				break;
+			case 20:
+				tmp = { lbp : 20, rbp : 21, op : bh_multianim_RvOp.OpSub};
+				break;
+			case 22:
+				tmp = { lbp : 10, rbp : 11, op : bh_multianim_RvOp.OpLess};
+				break;
+			case 23:
+				tmp = { lbp : 10, rbp : 11, op : bh_multianim_RvOp.OpGreater};
+				break;
+			case 24:
+				tmp = { lbp : 10, rbp : 11, op : bh_multianim_RvOp.OpLessEq};
+				break;
+			case 25:
+				tmp = { lbp : 10, rbp : 11, op : bh_multianim_RvOp.OpGreaterEq};
+				break;
+			case 26:
+				tmp = { lbp : 10, rbp : 11, op : bh_multianim_RvOp.OpNotEq};
+				break;
+			case 27:
+				tmp = { lbp : 10, rbp : 11, op : bh_multianim_RvOp.OpEq};
+				break;
+			case 32:
+				var s = token.s;
+				tmp = bh_multianim_MacroManimParser.isKeyword(s,"div") ? { lbp : 30, rbp : 31, op : bh_multianim_RvOp.OpIntegerDiv} : null;
+				break;
+			default:
+				tmp = null;
+			}
+			return tmp != null;
+		} else {
+			return false;
 		}
 	}
 	,parseAtomFloat: function() {
@@ -5863,21 +5998,26 @@ bh_multianim_MacroManimParser.prototype = {
 					return { value : bh_multianim_ReferenceableValue.RVFloat(0.0), type : bh_multianim_CustomFilterArgType.CFBool};
 				} else {
 					var s = _g1;
-					if(bh_multianim_MacroManimParser.isKeyword(s,"external")) {
-						this.advance();
-						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
-						var alias = this.externalAlias();
-						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
-						this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
-						var name = this.expectIdentifierOrString();
-						return { value : bh_multianim_ReferenceableValue.RVString("" + alias + "." + name), type : bh_multianim_CustomFilterArgType.CFWord};
+					if(bh_multianim_MacroManimParser.isKeyword(s,"palette") && this.tpos + 1 < this.tokens.length && this.tokens[this.tpos + 1].type._hx_index == 1) {
+						return { value : this.parseColorOrReference(), type : bh_multianim_CustomFilterArgType.CFColor};
 					} else {
 						var s = _g1;
-						if(!bh_multianim_MacroManimParser.isKeyword(s,"callback")) {
+						if(bh_multianim_MacroManimParser.isKeyword(s,"external")) {
 							this.advance();
-							return { value : bh_multianim_ReferenceableValue.RVString(s), type : bh_multianim_CustomFilterArgType.CFWord};
+							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TOpen);
+							var alias = this.externalAlias();
+							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TClosed);
+							this.expect(bh_multianim__$MacroManimParser_MacroTokenType.TComma);
+							var name = this.expectIdentifierOrString();
+							return { value : bh_multianim_ReferenceableValue.RVString("" + alias + "." + name), type : bh_multianim_CustomFilterArgType.CFWord};
 						} else {
-							return { value : this.parseFloatOrReference(), type : bh_multianim_CustomFilterArgType.CFFloat};
+							var s = _g1;
+							if(!bh_multianim_MacroManimParser.isKeyword(s,"callback")) {
+								this.advance();
+								return { value : bh_multianim_ReferenceableValue.RVString(s), type : bh_multianim_CustomFilterArgType.CFWord};
+							} else {
+								return { value : this.parseFloatOrReference(), type : bh_multianim_CustomFilterArgType.CFFloat};
+							}
 						}
 					}
 				}
@@ -16354,6 +16494,51 @@ var bh_multianim_ReferenceableValue = $hxEnums["bh.multianim.ReferenceableValue"
 	,EUnaryOp: ($_=function(op,e) { return {_hx_index:17,op:op,e:e,__enum__:"bh.multianim.ReferenceableValue",toString:$estr}; },$_._hx_name="EUnaryOp",$_.__params__ = ["op","e"],$_)
 };
 bh_multianim_ReferenceableValue.__constructs__ = [bh_multianim_ReferenceableValue.RVElementOfArray,bh_multianim_ReferenceableValue.RVString,bh_multianim_ReferenceableValue.RVInteger,bh_multianim_ReferenceableValue.RVArray,bh_multianim_ReferenceableValue.RVArrayReference,bh_multianim_ReferenceableValue.RVFloat,bh_multianim_ReferenceableValue.RVReference,bh_multianim_ReferenceableValue.RVPropertyAccess,bh_multianim_ReferenceableValue.RVMethodCall,bh_multianim_ReferenceableValue.RVChainedMethodCall,bh_multianim_ReferenceableValue.RVParenthesis,bh_multianim_ReferenceableValue.RVCallbacksWithIndex,bh_multianim_ReferenceableValue.RVCallbacks,bh_multianim_ReferenceableValue.RVColorXY,bh_multianim_ReferenceableValue.RVColor,bh_multianim_ReferenceableValue.RVTernary,bh_multianim_ReferenceableValue.EBinop,bh_multianim_ReferenceableValue.EUnaryOp];
+var bh_multianim_ReferenceableValueTools = function() { };
+bh_multianim_ReferenceableValueTools.__name__ = true;
+bh_multianim_ReferenceableValueTools.hasFloatLiteral = function(v) {
+	if(v == null) {
+		return false;
+	}
+	if(v == null) {
+		return false;
+	} else {
+		switch(v._hx_index) {
+		case 5:
+			var _g = v.f;
+			return true;
+		case 10:
+			var e = v.e;
+			return bh_multianim_ReferenceableValueTools.hasFloatLiteral(e);
+		case 15:
+			var _g = v.condition;
+			var ifTrue = v.ifTrue;
+			var ifFalse = v.ifFalse;
+			if(!bh_multianim_ReferenceableValueTools.hasFloatLiteral(ifTrue)) {
+				return bh_multianim_ReferenceableValueTools.hasFloatLiteral(ifFalse);
+			} else {
+				return true;
+			}
+			break;
+		case 16:
+			var _g = v.op;
+			var e1 = v.e1;
+			var e2 = v.e2;
+			if(!bh_multianim_ReferenceableValueTools.hasFloatLiteral(e1)) {
+				return bh_multianim_ReferenceableValueTools.hasFloatLiteral(e2);
+			} else {
+				return true;
+			}
+			break;
+		case 17:
+			var _g = v.op;
+			var e = v.e;
+			return bh_multianim_ReferenceableValueTools.hasFloatLiteral(e);
+		default:
+			return false;
+		}
+	}
+};
 var bh_multianim_TextAlignWidth = $hxEnums["bh.multianim.TextAlignWidth"] = { __ename__:true,__constructs__:null
 	,TAWAuto: {_hx_name:"TAWAuto",_hx_index:0,__enum__:"bh.multianim.TextAlignWidth",toString:$estr}
 	,TAWValue: ($_=function(value) { return {_hx_index:1,value:value,__enum__:"bh.multianim.TextAlignWidth",toString:$estr}; },$_._hx_name="TAWValue",$_.__params__ = ["value"],$_)

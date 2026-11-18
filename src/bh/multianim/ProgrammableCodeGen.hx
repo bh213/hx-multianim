@@ -3057,6 +3057,8 @@ class ProgrammableCodeGen {
 			// Std.int (truncate), NOT Math.round — must agree with the builder's
 			// resolveAsInteger so static and runtime counts run the same iterations.
 			case RVFloat(f): Std.int(f);
+			// `3 * 0.5` is worked out as a float and truncated once (rvToExprInt), not operand by operand
+			case EBinop(_, _, _) | EUnaryOp(_, _) if (ReferenceableValueTools.hasFloatLiteral(rv)): null;
 			case EBinop(op, e1, e2):
 				final left = tryResolveStaticInt(e1);
 				final right = tryResolveStaticInt(e2);
@@ -8245,6 +8247,7 @@ class ProgrammableCodeGen {
 		createExprs.push(textAssign);
 
 		// Auto-fit: generate font fallback logic
+		var autoFitCall:Null<Expr> = null;
 		if (textDef.autoFitFonts != null && textDef.autoFitMode != null) {
 			// Build array of fallback font load expressions
 			final fontLoadExprs:Array<Expr> = [];
@@ -8303,11 +8306,46 @@ class ProgrammableCodeGen {
 				default: false;
 			};
 
-			if (isFill) {
-				createExprs.push(macro bh.multianim.ProgrammableBuilder.autoFitFill($fieldRef, $fontsArrayExpr, $fitWidthExpr, $fitHeightExpr));
+			autoFitCall = if (isFill) {
+				macro bh.multianim.ProgrammableBuilder.autoFitFill($fieldRef, $fontsArrayExpr, $fitWidthExpr, $fitHeightExpr);
 			} else {
-				createExprs.push(macro bh.multianim.ProgrammableBuilder.autoFitFirstFit($fieldRef, $fontsArrayExpr, $fitWidthExpr, $fitHeightExpr));
+				macro bh.multianim.ProgrammableBuilder.autoFitFirstFit($fieldRef, $fontsArrayExpr, $fitWidthExpr, $fitHeightExpr);
 			}
+			createExprs.push(autoFitCall);
+		}
+
+		// The box a parameter sizes (its align width, an autoFit box) follows setParameter (builder: applyTextAlignWidth)
+		final boxParamRefs:Array<String> = [];
+		var widthUpdate:Null<Expr> = null;
+		switch (textDef.textAlignWidth) {
+			case TAWValue(value):
+				final refs = collectParamRefs(value);
+				if (refs.length > 0) {
+					for (r in refs) boxParamRefs.push(r);
+					final valExpr = rvToExpr(value);
+					widthUpdate = macro $fieldRef.maxWidth = $valExpr / $scaleDivExpr;
+				}
+			default:
+		}
+		switch (textDef.autoFitMode) {
+			case AFBox(w, h) | AFFillBox(w, h):
+				for (r in collectParamRefs(w).concat(collectParamRefs(h))) boxParamRefs.push(r);
+			default:
+		}
+		if (boxParamRefs.length > 0) {
+			final steps:Array<Expr> = [];
+			if (widthUpdate != null) steps.push(widthUpdate);
+			if (autoFitCall != null) {
+				// from the declared font, not the one an earlier fit left: a box that grows back takes it again (builder: applyAutoFit)
+				steps.push(macro $fieldRef.font = this._pb.loadFont($fontExpr));
+				steps.push(autoFitCall);
+			}
+			if (steps.length > 0)
+				exprUpdates.push({
+					fieldName: fieldName,
+					updateExpr: macro $b{steps},
+					paramRefs: boxParamRefs,
+				});
 		}
 
 		final textParamRefs = collectParamRefs(textDef.text);
@@ -8973,6 +9011,9 @@ class ProgrammableCodeGen {
 					macro $v{n};
 				} else macro Std.int(${rvToExpr(rv)});
 			case RVParenthesis(e): rvToExprInt(e);
+			case EBinop(_, _, _) | EUnaryOp(_, _) if (ReferenceableValueTools.hasFloatLiteral(rv)):
+				// `$r * 0.8` where a whole number is wanted: worked out as a float, truncated once (builder: resolveAsInteger)
+				macro Std.int(${rvToExpr(rv)});
 			case EUnaryOp(_, e): macro -(${rvToExprInt(e)});
 			case RVTernary(cond, ifTrue, ifFalse):
 				final c = rvToExpr(cond);

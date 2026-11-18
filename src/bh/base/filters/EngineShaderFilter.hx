@@ -68,20 +68,114 @@ class EngineShaderFilter extends h2d.filter.Filter {
 		return enable && !off;
 	}
 
+	override function sync(ctx:h2d.RenderContext, s:h2d.Object):Void {
+		super.sync(ctx, s);
+		owner = s;
+	}
+
 	override function draw(ctx:h2d.RenderContext, t:h2d.Tile):h2d.Tile {
-		final texture = t.getTexture();
-		final out = ctx.textures.allocTileTarget(target, t);
+		final whole = findWhole(ctx, t);
+		final texture = whole ? placedInWhole(ctx, t) : t.getTexture();
+		final out = whole ? ctx.textures.allocTarget(target, wholeW, wholeH, false) : ctx.textures.allocTileTarget(target, t);
 		ctx.engine.pushTarget(out);
 		shader.texture = texture;
 		shader.size.set(texture.width, texture.height);
-		shader.time = bh.base.ShaderClock.now();
+		shader.setClock(bh.base.ShaderClock.now());
 		pass.render();
 		ctx.engine.popTarget();
-		return h2d.Tile.fromTexture(out);
+		final drawn = h2d.Tile.fromTexture(out);
+		if (whole) {
+			// where the whole tile starts, from where the part Heaps drew starts (drawFilters adds that back)
+			drawn.dx = wholeDx;
+			drawn.dy = wholeDy;
+		}
+		return drawn;
+	}
+
+	/** The thing the filter is on, kept at `sync`: what its whole tile is measured by. **/
+	var owner:Null<h2d.Object>;
+
+	/** The widest or tallest whole tile drawn whole: past it a filter shades only the part on the stage. **/
+	public static var wholeLimit = 4096;
+
+	/** The owner's bounds, measured into this every draw: one per filter, and `draw` runs no game code
+		between writing it and reading it, so nothing else reaches it meanwhile. **/
+	final wholeBounds = new h2d.col.Bounds();
+
+	/** The whole tile `findWhole` found: its size in the filter's pixels and where it starts from the part drawn. **/
+	var wholeW = 0;
+	var wholeH = 0;
+	var wholeDx = 0;
+	var wholeDy = 0;
+
+	/**
+		Whether Heaps cut the filter's picture down to the part on the stage (`Object.clipBounds`) and the whole
+		tile is to be drawn: `wholeW`, `wholeH`, `wholeDx`, `wholeDy` then say where it is. False when the part is
+		the whole, or the whole is past `wholeLimit`. A shader's `calculatedUV` and `size` then mean the whole tile,
+		as they do on the stage: a disc half off the edge is drawn as half a disc, not as a smaller one in the half
+		shown. Allocates nothing.
+	**/
+	function findWhole(ctx:h2d.RenderContext, t:h2d.Tile):Bool {
+		final s = owner;
+		if (s == null || !autoBounds || boundsExtend < 0) return false;
+		final stack = @:privateAccess ctx.inFilter;
+		if (stack == null || stack.spr != s) return false;
+		final sx = stack.scaleX, sy = stack.scaleY;
+		final b = s.getBounds(s, wholeBounds); // getBounds empties it first
+		if (b.isEmpty()) return false;
+		final xMin = Math.floor(b.xMin * sx - boundsExtend + 1e-10);
+		final yMin = Math.floor(b.yMin * sy - boundsExtend + 1e-10);
+		final w = Math.ceil(b.xMax * sx + boundsExtend - xMin - 1e-10);
+		final h = Math.ceil(b.yMax * sy + boundsExtend - yMin - 1e-10);
+		// the part drawn: where it starts, in the filter's pixels, and its size
+		final cx = Math.round(t.dx * sx), cy = Math.round(t.dy * sy);
+		final cw = t.getTexture().width, ch = t.getTexture().height;
+		if (cx <= xMin && cy <= yMin && cx + cw >= xMin + w && cy + ch >= yMin + h) return false;
+		if (w <= 0 || h <= 0 || w > wholeLimit || h > wholeLimit) return false;
+		wholeW = w;
+		wholeH = h;
+		wholeDx = xMin - cx;
+		wholeDy = yMin - cy;
+		return true;
+	}
+
+	/** Lays the part into the whole: made the first time a filter is drawn off the stage, null until then. **/
+	var place:Null<h3d.pass.ScreenFx<PlaceShader>>;
+
+	/** The part Heaps drew laid into a clear picture of the whole tile (`findWhole`'s), where it sits in it. **/
+	function placedInWhole(ctx:h2d.RenderContext, t:h2d.Tile):h3d.mat.Texture {
+		var place = this.place;
+		if (place == null)
+			this.place = place = new h3d.pass.ScreenFx(new PlaceShader());
+		final part = t.getTexture();
+		final full = ctx.textures.allocTarget(target + "Whole", wholeW, wholeH, false);
+		ctx.engine.pushTarget(full);
+		ctx.engine.clear(0);
+		place.shader.texture = part;
+		// a pixel of the whole at uv is the part's at (uv * whole - offset) / part
+		place.shader.scale.set(wholeW / part.width, wholeH / part.height);
+		place.shader.offset.set(-wholeDx / part.width, -wholeDy / part.height);
+		place.render();
+		ctx.engine.popTarget();
+		return full;
 	}
 
 	/** A colour of a `.manim` (`0xRRGGBB`) into a shader's `Vec3`. **/
 	public static inline function rgb(into:h3d.Vector, color:Int):Void {
 		into.set(((color >> 16) & 0xFF) / 255, ((color >> 8) & 0xFF) / 255, (color & 0xFF) / 255);
 	}
+}
+
+/** Lays a picture into a bigger one: `scale` and `offset` take the bigger one's uv to the picture's; outside it, clear. **/
+private class PlaceShader extends h3d.shader.ScreenShader {
+	static var SRC = {
+		@param var texture:Sampler2D;
+		@param var scale:Vec2;
+		@param var offset:Vec2;
+		function fragment() {
+			var uv = calculatedUV * scale - offset;
+			var inside = step(0.0, uv.x) * step(uv.x, 1.0) * step(0.0, uv.y) * step(uv.y, 1.0);
+			pixelColor = texture.get(uv) * inside;
+		}
+	};
 }

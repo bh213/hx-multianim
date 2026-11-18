@@ -419,8 +419,8 @@ arc-length LUT on Path; widget bounds caching; grid batching.
 - Runtime particle tuning API (most ParticleGroup fields are builder-only); per-group `worldAnchor`;
   sub-emitter coordinate-space contract.
 - `PlayAnimComplete` card-hand event (can't currently sequence effects after a played card leaves).
-- Parser: float literals in int coordinate contexts; `.offset()` after bare `x, y`; scientific
-  notation; conditionals inside `settings{}`; `@switch` on loop variables; root-level `@final`
+- Parser: a float literal alone in an int coordinate context (one inside an expression, `$r * 0.8`,
+  landed 2026-11-18); `.offset()` after bare `x, y`; conditionals inside `settings{}`; `@switch` on loop variables; root-level `@final`
   visible inside programmables; strict particle keys; `.anim` duplicate `loop:` diagnostic
   (the rest of the duplicate-name family landed with VFX-16); `.anim` `@final` expressions.
 - Text input codegen (`createTextInput()` factory — already triaged post-1.0).

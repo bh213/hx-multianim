@@ -3112,7 +3112,9 @@ class BuilderResult implements bh.multianim.LiveProgrammable {
 	 *  several `@(…)` arms has one object an arm; an arm that does not match is taken out of the
 	 *  scene graph (not hidden), so its object still answers `getBounds()` in its own space. A
 	 *  widget that hit-tests a named element (a slider's `#start`, a scrollbar's `#thumb`) asks
-	 *  for the drawn one. Null when the name is unknown or no arm of it is drawn. */
+	 *  for the drawn one. Null when the name is unknown or no arm of it is drawn, and for an element
+	 *  the game hid itself (`visible = false` on it or a parent): take such an element once, after the
+	 *  build, and keep it, not by this every frame. */
 	public function getNamedDrawn(name:String, ?index:Null<Int>, ?indexY:Null<Int>):Null<h2d.Object> {
 		final items = names.get(bh.multianim.LiveProgrammable.LiveProgrammableTools.namedKey(name, index, indexY));
 		if (items == null)
@@ -4279,6 +4281,9 @@ class MultiAnimBuilder {
 				final result = builderParams.callback(input);
 				return handleCallback(result, input, defaultValue);
 
+			case EBinop(_, _, _) | EUnaryOp(_, _) if (ReferenceableValueTools.hasFloatLiteral(v)):
+				// `$r * 0.8` where a whole number is wanted: worked out as a float, truncated once
+				Std.int(resolveAsNumber(v));
 			case EBinop(op, e1, e2):
 				switch op {
 					case OpAdd: resolveAsInteger(e1) + resolveAsInteger(e2);
@@ -4945,6 +4950,35 @@ class MultiAnimBuilder {
 		return t;
 	}
 
+	/** A text's width to align and wrap in (`text(font, s, c, right, $w)`): at build and again when a parameter it reads changes. */
+	function applyTextAlignWidth(t:h2d.Text, textDef:TextDef, node:Node, grid:Null<GridCoordinateSystem>):Void {
+		if (textDef.textAlignWidth == null) return;
+		final scaleAdjust = if (node.scale != null) resolveAsNumber(node.scale) else 1.0;
+		switch textDef.textAlignWidth {
+			case TAWValue(value):
+				t.maxWidth = resolveAsNumber(value) / scaleAdjust;
+			case TAWGrid:
+				if (grid != null)
+					t.maxWidth = grid.spacingX / scaleAdjust;
+			case TAWAuto:
+				t.maxWidth = null;
+		}
+	}
+
+	/** The parameters a text's box reads: its align width and an autoFit box. */
+	function collectTextBoxRefs(textDef:TextDef, refs:Array<String>):Void {
+		switch textDef.textAlignWidth {
+			case TAWValue(value): collectParamRefs(value, refs);
+			default:
+		}
+		switch textDef.autoFitMode {
+			case AFBox(w, h) | AFFillBox(w, h):
+				collectParamRefs(w, refs);
+				collectParamRefs(h, refs);
+			default:
+		}
+	}
+
 	function applyAutoFit(t:h2d.Text, textDef:TextDef, node:Node):Void {
 		final autoFitFonts = textDef.autoFitFonts;
 		final autoFitMode = textDef.autoFitMode;
@@ -5547,12 +5581,14 @@ class MultiAnimBuilder {
 				final textRefs:Array<String> = [];
 				collectParamRefs(textDef.text, textRefs);
 				collectParamRefs(textDef.color, textRefs);
+				collectTextBoxRefs(textDef, textRefs);
 				if (textRefs.length > 0) {
 					final t = switch builtObject { case HeapsText(t): t; default: null; };
 					if (t != null) {
 						final textDefCapture = textDef;
 						final nodeCapture = node;
 						ctx.trackExpression(() -> {
+							applyTextAlignWidth(t, textDefCapture, nodeCapture, MultiAnimParser.getGridCoordinateSystem(nodeCapture));
 							t.text = resolveAsString(textDefCapture.text);
 							t.textColor = resolveAsColorInteger(textDefCapture.color);
 							if (textDefCapture.autoFitFonts != null)
@@ -5578,12 +5614,14 @@ class MultiAnimBuilder {
 						}
 					}
 				}
+				collectTextBoxRefs(textDef, textRefs);
 				if (textRefs.length > 0) {
 					final t = switch builtObject { case HeapsText(t): t; default: null; };
 					if (t != null) {
 						final textDefCapture = textDef;
 						final nodeCapture = node;
 						ctx.trackExpression(() -> {
+							applyTextAlignWidth(t, textDefCapture, nodeCapture, MultiAnimParser.getGridCoordinateSystem(nodeCapture));
 							final rawText = resolveAsString(textDefCapture.text);
 							t.text = TextMarkupConverter.convert(rawText);
 							t.textColor = resolveAsColorInteger(textDefCapture.color);
@@ -7280,18 +7318,7 @@ class MultiAnimBuilder {
 					case Right: Right;
 					case Center: Center;
 				}
-				if (textDef.textAlignWidth != null) {
-					final scaleAdjust = if (node.scale != null) resolveAsNumber(node.scale) else 1.0;
-					switch textDef.textAlignWidth {
-						case TAWValue(value):
-								t.maxWidth = resolveAsNumber(value) / scaleAdjust;
-						case TAWGrid:
-							if (gridCoordinateSystem != null)
-								t.maxWidth = gridCoordinateSystem.spacingX / scaleAdjust;
-						case TAWAuto:
-							t.maxWidth = null;
-					}
-				}
+				applyTextAlignWidth(t, textDef, node, gridCoordinateSystem);
 				t.letterSpacing = textDef.letterSpacing;
 				t.lineSpacing = textDef.lineSpacing;
 				t.lineBreak = textDef.lineBreak;
@@ -7357,18 +7384,7 @@ class MultiAnimBuilder {
 					case Right: Right;
 					case Center: Center;
 				}
-				if (textDef.textAlignWidth != null) {
-					final scaleAdjust = if (node.scale != null) resolveAsNumber(node.scale) else 1.0;
-					switch textDef.textAlignWidth {
-						case TAWValue(value):
-								ht.maxWidth = resolveAsNumber(value) / scaleAdjust;
-						case TAWGrid:
-							if (gridCoordinateSystem != null)
-								ht.maxWidth = gridCoordinateSystem.spacingX / scaleAdjust;
-						case TAWAuto:
-							ht.maxWidth = null;
-					}
-				}
+				applyTextAlignWidth(ht, textDef, node, gridCoordinateSystem);
 				ht.letterSpacing = textDef.letterSpacing;
 				ht.lineSpacing = textDef.lineSpacing;
 				ht.lineBreak = textDef.lineBreak;

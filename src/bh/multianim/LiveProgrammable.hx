@@ -33,7 +33,10 @@ interface LiveProgrammable extends bh.ui.UIInteractiveSource {
 	/** The object of a `#name` that is drawn now — visible, under the root. A name given in several
 	 *  `@()` arms has one object per arm; an arm that does not match is out of the scene graph (not
 	 *  hidden), so only the matching one answers. `index` for `#name[$i]`, `index` and `indexY` for
-	 *  `#name[$x, $y]`. Null when the name is unknown or none of its objects is drawn. */
+	 *  `#name[$x, $y]`. Null when the name is unknown or none of its objects is drawn — and so
+	 *  also for an element the game hid itself (`visible = false`, or a parent of it): hiding a thing
+	 *  makes it unfindable here. A game that hides and shows one element takes it once, after the
+	 *  build, and keeps it in a field. */
 	function getNamedDrawn(name:String, ?index:Null<Int>, ?indexY:Null<Int>):Null<h2d.Object>;
 
 	/** Every slot present now, with its key and handle. */

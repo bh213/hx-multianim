@@ -1,0 +1,24 @@
+version: 1.0
+
+// A float in an expression where a whole number is wanted (line ends, an ellipse's radii): worked
+// out as a float and truncated once, the same in the builder and codegen. A position keeps its fraction.
+#floatInInt programmable(r:int=10) {
+  graphics(line(#ffffff, 1, 0, 0, $r * 0.8, -$r * 1.35)): $r * 0.55, 0
+  graphics(ellipse(#ffffff, filled, $r, $r * 0.8)): 0, $r * 1.5
+}
+
+// A text's width given by a parameter follows setParameter, as its position does.
+#textWidthParam programmable(w:int=40) {
+  text(dd, "99", white, right, $w): 0, 0
+}
+
+// A rich text's width given by a parameter follows setParameter too.
+#richWidthParam programmable(w:int=40) {
+  richText(dd, "[b]99[/]", white, right, $w): 0, 0
+}
+
+// An autoFit box given by parameters fits again on setParameter: a smaller font when it shrinks,
+// the declared one again when it grows back.
+#textFitParam programmable(w:int=300, h:int=40) {
+  text(dd, "A long label to fit", white, left, 300, autoFit: box($w, $h) [m3x6, f3x5]): 0, 0
+}

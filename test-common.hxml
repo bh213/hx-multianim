@@ -9,6 +9,8 @@
 -main bh.test.TestApp
 -debug
 -D resourcesPath=test/res
+# What every game gets through extraParams.hxml: the .atlas2 extension, highp fragment shaders
+--macro bh.base.AtlasMacroInit.init()
 -D windowSize=1280x720
 # Enables hot-path allocation watchdog counters (FPoint.creationCount,
 # CardLayoutPosition.creationCount, UICardHandLayout.scratchArrayAllocationCount).
