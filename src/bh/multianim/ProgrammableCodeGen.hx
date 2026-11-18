@@ -11669,6 +11669,7 @@ class ProgrammableCodeGen {
 			case DVTFloat: "Float";
 			case DVTString: "String";
 			case DVTBool: "Bool";
+			case DVTColor: "Color";
 			case DVTEnum(enumName): 'Enum($enumName)';
 			case DVTRecord(recordName): 'Record($recordName)';
 			case DVTArray(elemType): 'Array<' + dataValueTypeSignature(elemType) + '>';
@@ -11684,6 +11685,7 @@ class ProgrammableCodeGen {
 			case DVTFloat: macro :Float;
 			case DVTString: macro :String;
 			case DVTBool: macro :Bool;
+			case DVTColor: macro :Int;
 			case DVTEnum(enumName):
 				final info = enumTypeMap.get(enumName);
 				if (info == null) macro :Int;

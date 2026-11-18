@@ -2530,6 +2530,9 @@ Field types are inferred from values:
 - `true` / `false` → bool
 - `[1, 2, 3]` → array (element type inferred from first element)
 
+A colour is not inferred, it is written with its type: `glow: color #F80`, `ramp: color[] [#000000, gold]`
+(`#RGB`, `#RRGGBB`, `#RRGGBBAA`, `0xAARRGGBB` or a colour's name). It is held as an Int, AARRGGBB.
+
 ### Enum Types
 
 Named enum types define finite sets of values. Declare them with `#name enum(val1, val2, ...)` inside a data block:
@@ -2575,7 +2578,7 @@ Named record types define schemas for structured data. Declare them with `#name 
 }
 ```
 
-**Supported field types in records:** `int`, `float`, `string`, `bool`, enum names
+**Supported field types in records:** `int`, `float`, `string`, `bool`, `color` (`tint: color`, a row's `tint: #FFF4D6`), enum names
 
 **Optional fields:** Prefix a field name with `?` to make it optional. Optional fields can be omitted from record values and default to `null`:
 ```

@@ -139,6 +139,7 @@ class CompletionProvider {
 			kw("float", "Float field type"),
 			kw("string", "String field type"),
 			kw("bool", "Boolean field type"),
+			kw("color", "Colour field type (#RRGGBB, 0xAARRGGBB, a colour's name), an Int"),
 		];
 	}
 

@@ -9055,7 +9055,7 @@ class MacroManimParser {
 		};
 	}
 
-	/** Parse a type keyword: int, float, string, bool, enum name, a record name, or `ref <record>`
+	/** Parse a type keyword: int, float, string, bool, color, enum name, a record name, or `ref <record>`
 	 *  (the id of a row of a record with a key; `selfName` is the record being defined, whose rows
 	 *  it may name). If followed by [], it becomes an array type. */
 	function parseDataType(enums:Map<String, DataEnumDef>, records:Map<String, DataRecordDef>, ?selfName:String):DataValueType {
@@ -9065,6 +9065,7 @@ class MacroManimParser {
 			case "float": DVTFloat;
 			case "string": DVTString;
 			case "bool": DVTBool;
+			case "color" if (!records.exists(typeName) && !enums.exists(typeName)): DVTColor;
 			case "ref" if (!records.exists(typeName) && !enums.exists(typeName)):
 				final target = expectIdentifierOrString();
 				final def = records.get(target);
@@ -9135,11 +9136,18 @@ class MacroManimParser {
 		}
 	}
 
-	/** An annotation's argument: a number, a string, true or false, or a bare word (a string). */
+	/** An annotation's argument: a number (`0x18` too: its 32 bits as written, which is what a colour's
+	 *  `0xAARRGGBB` is), a string, true or false, a colour (`#FFF4D6`), or a bare word (a string; a colour's
+	 *  name is one). */
 	function parseDataMetaArg():DataValue {
 		final scalar = parseDataScalar();
 		if (scalar != null) return scalar;
 		switch (peek()) {
+			case THexInteger(n):
+				advance();
+				return DVInt(stringToInt("0x" + n));
+			case TName(_):
+				return DVInt(parseDataColor());
 			case TIdentifier(s):
 				advance();
 				return DVString(s);
@@ -9205,11 +9213,16 @@ class MacroManimParser {
 				return arg;
 			case [DVTFloat, DVInt(v)]:
 				return DVFloat(v);
+			case [DVTColor, DVInt(_)]:
+				return arg;
+			case [DVTColor, DVString(name)] if (tryStringToColor(name) != null):
+				final named:Int = cast tryStringToColor(name);
+				return DVInt(named);
 			case [DVTEnum(enumName), DVString(v)]:
 				validateEnumValue(enumName, v, enums);
 				return DVEnumValue(enumName, v);
 			default:
-				return error('@default on $where: a default is a number, a word, true or false, or one of an enum\'s values, of the field\'s type');
+				return error('@default on $where: a default is a number, a word, true or false, a colour, or one of an enum\'s values, of the field\'s type');
 		}
 	}
 
@@ -9252,6 +9265,16 @@ class MacroManimParser {
 				// Bool value
 				final boolVal = parseBool();
 				return {name: fieldName, type: DVTBool, value: DVBool(boolVal)};
+
+			case TIdentifier(s) if (isKeyword(s, "color") && !records.exists(s) && !enums.exists(s)):
+				// color #FFF4D6, or color[] [ … ]
+				advance();
+				if (match(TBracketOpen)) {
+					expect(TBracketClosed);
+					expect(TBracketOpen);
+					return {name: fieldName, type: DVTArray(DVTColor), value: DVArray(parseDataArrayElements(DVTColor, enums, records))};
+				}
+				return {name: fieldName, type: DVTColor, value: DVInt(parseDataColor())};
 
 			case TIdentifier(s) if (enums.exists(s)):
 				// Enum type prefix: enumName value or enumName[] [...]
@@ -9392,6 +9415,7 @@ class MacroManimParser {
 					default: error('expected string value'); DVString("");
 				}
 			case DVTBool: DVBool(parseBool());
+			case DVTColor: DVInt(parseDataColor());
 			case DVTEnum(enumName):
 				final valueStr = expectIdentifierOrString();
 				validateEnumValue(enumName, valueStr, enums);
@@ -9638,10 +9662,18 @@ class MacroManimParser {
 		return result;
 	}
 
-	/** `int`, `float`, `string` or `bool` before `[] [ … ]`: the type of a typed scalar array. */
+	/** `int`, `float`, `string`, `bool` or `color` before `[] [ … ]`: the type of a typed scalar array. */
 	function scalarDataType(word:String):Null<DataValueType> {
 		return if (isKeyword(word, "int")) DVTInt else if (isKeyword(word, "float")) DVTFloat else if (isKeyword(word, "string")) DVTString else
-			if (isKeyword(word, "bool")) DVTBool else null;
+			if (isKeyword(word, "bool")) DVTBool else if (isKeyword(word, "color")) DVTColor else null;
+	}
+
+	/** A colour value of a data block, as a colour is written anywhere in a .manim. */
+	function parseDataColor():Int {
+		final color = tryParseColor();
+		if (color == null)
+			return error('expected a colour: #RRGGBB, #RGB, #RRGGBBAA, 0xAARRGGBB or a colour\'s name (white, gold, …)');
+		return color;
 	}
 
 	static function dataTypeWord(type:DataValueType):String {
@@ -9650,6 +9682,7 @@ class MacroManimParser {
 			case DVTFloat: "float";
 			case DVTString: "string";
 			case DVTBool: "bool";
+			case DVTColor: "color";
 			default: Std.string(type);
 		}
 	}

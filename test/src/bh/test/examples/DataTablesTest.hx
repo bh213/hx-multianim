@@ -318,6 +318,65 @@ class DataTablesTest extends utest.Test {
 		assertError("#d data {\n #r record(key id, xs: int[])\n t: r[] [ { id: a, xs: [ @by(claude) 1 ] } ]\n}", 'annotations go before a row');
 	}
 
+	static function dataOf(source:String, name:String):Dynamic {
+		final builder = bh.multianim.MultiAnimBuilder.load(byte.ByteData.ofString('version: 1.0\n$source'),
+			bh.test.TestResourceLoader.createLoader(false), "test-input");
+		return builder.getData(name);
+	}
+
+	@Test
+	public function testAColourField():Void {
+		final data = dataOf("#d data {\n #smoke record(?tint: color @default(white), size: int)\n trail: smoke { tint: #FFF4D6, size: 3 }\n plain: smoke { size: 1 }\n"
+			+ " glow: color #F80\n see: color 0x80FF0000\n named: color gold\n ramp: color[] [#000000, #FFFFFF]\n}", "d");
+		// #RRGGBB and #RGB are opaque; 0x is AARRGGBB as written, as every colour of a .manim.
+		Assert.equals(0xFFFFF4D6, data.trail.tint);
+		Assert.equals(0xFFFFFFFF, data.plain.tint);
+		Assert.equals(0xFFFF8800, data.glow);
+		Assert.equals(0x80FF0000, data.see);
+		Assert.equals(0xFFFFD700, data.named);
+		Assert.same([0xFF000000, 0xFFFFFFFF], data.ramp);
+	}
+
+	@Test
+	public function testAColourFieldThroughData():Void {
+		// Through @:data (test/examples/180-numbersAndBoxes): an Int, an optional one's @default too.
+		final data = new bh.test.MultiProgrammable(bh.test.TestResourceLoader.createLoader(false)).coloursData;
+		final tint:Int = data.trail.tint;
+		Assert.equals(0xFFFFF4D6, tint);
+		Assert.equals(0xFFFFE4D6, data.trail.edge);
+		final glow:Int = data.glow;
+		Assert.equals(0xFFFF8800, glow);
+		final ramp:Array<Int> = data.ramp;
+		Assert.same([0xFF000000, 0xFF00FF00], ramp);
+	}
+
+	@Test
+	public function testRefusesWhatIsNoColour():Void {
+		assertError("#d data {\n #smoke record(tint: color)\n s: smoke { tint: 3 }\n}", 'expected a colour');
+		assertError("#d data {\n c: color \"red\"\n}", 'expected a colour');
+		assertError("#d data {\n #smoke record(?tint: color @default(5.5))\n}", 'of the field\'s type');
+		assertError("#d data {\n #smoke record(tint: color @range(0, 3))\n}", 'only a number has a range');
+	}
+
+	@Test
+	public function testAHexNumberInAnAnnotation():Void {
+		// A number's annotation takes 0x as a row's value does: its 32 bits as written.
+		final data = dataOf("#d data {\n #r record(k: int, ?n: int @range(0x10, 0x20) @step(0x2) @default(0x18), ?bits: int @default(0x80000000), ?f: float @default(0x10))\n"
+			+ " plain: r { k: 1 }\n set: r { k: 2, n: 0x20 }\n @range(0x0, 0xFF) top: 200\n}", "d");
+		Assert.equals(24, data.plain.n);
+		Assert.equals(32, data.set.n);
+		Assert.equals(-2147483648, data.plain.bits);
+		Assert.equals(16.0, data.plain.f);
+		Assert.equals(200, data.top);
+		// The range it gives is kept to, by a row's value, a field of the block and the default.
+		assertError("#d data {\n #r record(n: int @range(0x10, 0x20))\n a: r { n: 0x30 }\n}", 'n is 48 in a r, outside its @range(16, 32)');
+		assertError("#d data {\n @range(0x0, 0x3) n: 5\n}", 'n is 5, outside its @range(0, 3)');
+		assertError("#d data {\n #r record(?n: int @range(0x10, 0x20) @default(0xFF))\n}", '255 is outside its @range(16, 32)');
+		assertError("#d data {\n #r record(n: int @range(0x20, 0x10))\n}", '32 is more than 16');
+		// Past 32 bits it is no number.
+		assertError("#d data {\n #r record(?n: int @default(0x1FFFFFFFF))\n}", 'does not fit in 32 bits');
+	}
+
 	@Test
 	public function testKeepsAnnotationsItDoesNotKnow():Void {
 		Assert.isNull(parseExpectingError("#d data {\n #r record(key id, n: int @tuned @owner(\"design\"))\n @whatever(1, 2) t: r[] [ @by(claude) { id: a, n: 1 } ]\n}"));

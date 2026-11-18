@@ -731,6 +731,9 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/180-numbersAndBoxes/numbersAndBoxes.manim", "textFitParam")
 	public var textFitParam;
 
+	@:data("test/examples/180-numbersAndBoxes/numbersAndBoxes.manim", "colours")
+	public var coloursData;
+
 	@:manim("test/examples/150-codegenLayoutParamPts/layoutParamPts.manim", "layoutParam")
 	public var layoutParam;
 

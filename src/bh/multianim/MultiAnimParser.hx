@@ -1335,6 +1335,9 @@ enum DataValueType {
 	DVTFloat;
 	DVTString;
 	DVTBool;
+	/** A colour, written as every colour of a .manim is (`#FFF4D6`, `#RGB`, `#RRGGBBAA`, `0xAARRGGBB`, a
+	 *  colour's name) and held as its Int, AARRGGBB (`DVInt`). */
+	DVTColor;
 	DVTEnum(enumName:String);
 	DVTRecord(recordName:String);
 	DVTArray(elementType:DataValueType);

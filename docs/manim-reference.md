@@ -1099,6 +1099,7 @@ Tile entry properties: `x, y, w, h`, plus optional `offset: ox, oy`, `orig: ow, 
 | `fieldName: recordName { ... }` | Record instance |
 | `fieldName: type[] [values]` | Typed array (`int[] []`, `float[]`, `string[]`, `bool[]` or a record's); the only way to write an empty one |
 | `fieldName: [values]` | Untyped array, typed by all its elements: ints among floats are floats, any other mix (or an empty one) is a parse error |
+| `fieldName: color #FFF4D6` | A colour field of the block (`color[] [ … ]` an array of them); in a record, `tint: color` |
 | Optional fields with `?` prefix | Field not required |
 | `#name record(key id, ...)` | A row type: an array of it is a table, its rows found by id |
 | `field: ref record` | The id of a row of a keyed record (in any one of its tables), checked when the block is read |
@@ -1109,7 +1110,16 @@ Tile entry properties: `x, y, w, h`, plus optional `offset: ox, oy`, `orig: ow, 
 | `name: pick(table, chance: col, otherwise: id)` | By chance; `otherwise` takes what is left |
 | `name: pick(table, weight: ref.col)` | The weight of the row a ref field links to |
 
-Types: `int`, `float`, `string`, `bool`, enum names, record names, `ref record`, `type[]` arrays.
+Types: `int`, `float`, `string`, `bool`, `color`, enum names, record names, `ref record`, `type[]` arrays.
+
+A `color` is written as every colour of a .manim is: `#RRGGBB` and `#RGB` (opaque), `#RRGGBBAA`, `0xAARRGGBB`
+as written (so `0xFFF4D6` has an alpha of 0), or a colour's name (`white`, `gold`). It is held as its Int,
+AARRGGBB: an `Int` in `@:data`'s classes and in `getData`. Its `@default` is a colour too
+(`?edge: color @default(#FFE4D6)`); it has no `@range` or `@step`. A colour where no type says `color` (`tint: #FFF4D6`
+as a field of the block) is refused: the block works out a field's type from its value, and a colour is no number.
+
+An annotation's number may be written in hex, as a row's `int` is: `n: int @range(0x10, 0x20) @default(0x18)`,
+its 32 bits as written (`0x80000000` is -2147483648); past 32 bits it is refused.
 
 A table is a `bh.multianim.data.DataTable` and a pick a `bh.multianim.data.DataPick` (`@:data` typed, with a
 class of ids as constants; `getData` Dynamic). A table whose record names its own rows is a tree. All of

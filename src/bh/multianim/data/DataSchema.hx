@@ -129,6 +129,7 @@ class DataSchema {
 			case DVTFloat: "float";
 			case DVTString: "string";
 			case DVTBool: "bool";
+			case DVTColor: "color";
 			case DVTEnum(_): "enum";
 			case DVTRecord(_): "record";
 			case DVTRef(_): "ref";

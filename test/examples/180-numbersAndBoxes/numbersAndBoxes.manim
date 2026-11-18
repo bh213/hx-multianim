@@ -22,3 +22,12 @@ version: 1.0
 #textFitParam programmable(w:int=300, h:int=40) {
   text(dd, "A long label to fit", white, left, 300, autoFit: box($w, $h) [m3x6, f3x5]): 0, 0
 }
+
+// A colour in a data block: a field typed color, written as
+// every colour of a .manim is, held as its Int AARRGGBB, an Int in @:data's classes too.
+#colours data {
+  #smoke record(tint: color, ?edge: color @default(#FFE4D6))
+  trail: smoke { tint: #FFF4D6 }
+  glow: color #F80
+  ramp: color[] [#000000, #00FF00]
+}

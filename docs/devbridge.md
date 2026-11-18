@@ -658,7 +658,7 @@ for a table registered in code.
 
 A table: `{name, kind, key, source, says?, columns, rows, rowMeta?, tree?}`. `columns` are
 `{id, type, optional?, many?, key?, whole?, options?, to?, columns?, unit?, meta?}` (`type` int, float,
-string, bool, enum, record or ref; `options` an enum's values; `to` the enum, record, or record a ref names;
+string, bool, color (its value an Int, AARRGGBB), enum, record or ref; `options` an enum's values; `to` the enum, record, or record a ref names;
 `columns` a record's own; `meta` the annotations); `rows` are plain objects, an enum's value and a ref's id
 as words, a record inside a row by its own columns; `rowMeta` is each row's
 annotations by id; a tree adds `tree: {by, edges: [{from, to}]}`. A pick: `{name, kind, over, by, chance,

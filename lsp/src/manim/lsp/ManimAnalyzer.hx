@@ -233,6 +233,7 @@ class ManimAnalyzer {
 			case DVTFloat: "float";
 			case DVTString: "string";
 			case DVTBool: "bool";
+			case DVTColor: "color";
 			case DVTEnum(name): name;
 			case DVTRecord(name): name;
 			case DVTArray(elemType): dataTypeName(elemType) + '[]';
