@@ -58,7 +58,7 @@ Every root element has a `#name` (an unnamed `curves`/`paths` block names itself
 |---------|-------------|
 | `flow(params)` | Layout container (horizontal, vertical, stack) with padding, spacing, overflow |
 | `layers()` | Z-ordering container for explicit depth stacking |
-| `mask(w, h)` | Clipping rectangle that hides overflow |
+| `mask(w, h)` | Clipping rectangle that hides overflow; inside a filtered object too, at any page zoom (`FilterRenderZone`, a build macro on Heaps' `RenderContext.setRZ`, which put the zone through the screen's viewport inside a filter; `-D multianim_heaps_render_zone` keeps Heaps' own) |
 | `tilegroup` | Optimized tile grouping (GPU batching for bitmaps, ninepatch, pixels, point). Children are baked once at build time, so conditionals on programmable parameters are **rejected up front** — both at runtime (`BuilderError code="tilegroup_conditional"`) and at `@:manim` macro compile time (same message, raised at the `@:manim` field position). The root form `#name programmable tileGroup(...)` runs the same validation as the nested `tilegroup {}` element. Use conditionals outside the tileGroup, or key them on a `repeatable` loop variable inside it |
 | `spacer(w, h)` | Empty spacing element inside flow containers |
 | `point` | Positioning anchor/marker point |
@@ -80,7 +80,7 @@ Every root element has a `#name` (an unnamed `curves`/`paths` block names itself
 | `dynamicRef(external("importName"), name, params)` | Dynamic embed from imported .manim file |
 | `dynamicRef($paramName, params)` | Dynamic embed where `$paramName` is a parameter naming the target programmable. Full rebuild on template change. Only a `string` or enum parameter names one: `dynamicRef($x)` / `staticRef($x)` with `x` a parameter of another type (`bool`, a number, `color`, `tile`, …) is a parse error. A programmable named like such a parameter (`panel:bool` beside `#panel`) is placed by its bare name, `dynamicRef(panel, …)`. A `$x` that is no parameter, loop variable or `@final` here is a parse error (as for `staticRef`). An `@final` places what its value names; one that uses a parameter swaps the template when that parameter changes, as `dynamicRef($param)` does. A target that is not there is reported at the site: `dynamicRef($template): $template is "nope", and there is no programmable "nope"` (`BuilderError`, code `missing_ref`) |
 
-**Arguments** — a ref gives every parameter of its target that has no default (a `tile` apart, which has none and may be left out) and none the target has not: `staticRef(card)` to `#card programmable(n:int)` is a `BuilderError` at the ref, `card's parameter "n" has no default and is not given`, and `n => 1, x => 2` is `card has no parameter "x" (its parameters: n)` (code `ref_argument`, builder and codegen alike). Each argument is worked out by the target parameter's type, at the build and on every forwarded change: a string or an enum (by its value's name) as text, a number, a color, a bool (`on => ?($n > 2) true : false`), flags, an array (`items => $items`) and a tile (`icon => $icon`, the tile the parameter holds) as what they are. Codegen reads the type at compile time for a target of the file named literally, and asks the target's file at runtime for an imported one or one a parameter names.
+**Arguments** — a ref gives every parameter of its target that has no default (a `tile` apart, which has none and may be left out) and none the target has not: `staticRef(card)` to `#card programmable(n:int)` is a `BuilderError` at the ref, `card's parameter "n" has no default and is not given`, and `n => 1, x => 2` is `card has no parameter "x" (its parameters: n)` (code `ref_argument`, builder and codegen alike). Each argument is worked out by the target parameter's type, at the build and on every forwarded change: a string or an enum (by its value's name) as text, a number, a color (`c => #FFF4D6`, or a palette's as every other colour: `c => palette(look, 5)`, `c => palette(external(pal), look, 5)`), a bool (`on => ?($n > 2) true : false`), flags, an array (`items => $items`) and a tile (`icon => $icon`, the tile the parameter holds) as what they are. Codegen reads the type at compile time for a target of the file named literally, and asks the target's file at runtime for an imported one or one a parameter names.
 
 **Builder API:**
 - `result.getDynamicRef("name")` — returns the `BuilderResult` for the named site; throws if the name is unknown or multiple unnamed sites collide on the key
@@ -338,9 +338,11 @@ Parse-time error when used outside a flow ancestor.
 | `@(param => *)` | Wildcard — match any value |
 | `@else` | Matches when preceding sibling `@()` did not match |
 | `@else(conditions)` | Else-if with additional conditions |
-| `@default` | Final fallback when nothing above matched |
+| `@default` | Final fallback: when no `@()`, `@else` or `@else()` above it matched, back to the last sibling without a conditional (or the last `@default`) |
 
 A bare `@else` or `@default` is **terminal** — it closes the chain. Any `@else` / `@default` that follows one is unreachable and rejected at parse time. To start a fresh chain, open a new `@(...)` sibling first.
+
+`@else` answers the arm right before it; `@default` answers every arm above it in a run of conditional siblings, separate `@()`s included: `@(s=>a) A  @(s=>b) B  @default C` draws C when neither holds. So in `@(fresh=>false) name  @(fresh=>true) X  @else(met=>true) Y  @default Z`, Z is never drawn when `fresh` is false, since the first `@()` matched. To end one chain, write a bare `@else` (`@(fresh=>true) X  @else(met=>true) Y  @else Z`), or put an element without a conditional between the runs.
 
 One conditional per element: `@(a=>1) @(b=>2)` and `@(a=>1) @else` / `@(a=>1) @default` are parse errors (combine conditions with `@all()` / `@any()`). A condition list must not be empty — `@()`, `@if()`, `@all()`, `@any()` and `@else()` are parse errors.
 
@@ -696,7 +698,7 @@ Slots with parameters support visual states via conditionals. `slotContent` mark
 | Filter | Description |
 |--------|-------------|
 | `outline(size, color)` | Stroke outline around edges |
-| `glow(color, alpha, radius, gain, quality, smoothColor, knockout)` | Glow effect |
+| `glow(color, alpha, radius, gain, quality, smoothColor, knockout)` | Glow round the outline of what it is on, filled shapes included. Without `smoothColor` it is hard: every pixel the blur reaches, however faint, glows at full `alpha`, so content with faint alpha over its bounds (a near-transparent shape, a soft shadow) glows as a box; `glow(color: #FFF4D6, alpha: 0.6, radius: 4, smoothColor: true)` fades out |
 | `blur(radius, gain, quality, linear)` | Gaussian blur |
 | `saturate(value)` | Color saturation (0=gray, 1=normal) |
 | `brightness(value)` | Brightness multiplier (0=black, 1=normal) |
@@ -1038,7 +1040,7 @@ Without a `#ui sounds { }` block the widgets are silent; one that defines `hover
 | `region` | `[x, y, w, h]`, `file:` source only; must fit the image and be whole tiles. Default: whole image |
 | `mapping` | Autotile index -> source index: `[a, b, ...]` (position = index) or `[i:j, ...]`; several for one index, `[15: 7 \| 8 \| 9]`, drawn by turns per position (the same every time; a source given twice is drawn twice as often); a source turned, `[1: 4 flipX rot90]` (`flipX`, `flipY`, one of `rot90`/`rot180`/`rot270`, clockwise). Keys validated per format; duplicates rejected; not allowed with `demo:` |
 | `margin`, `spacing` | `file:` source only: pixels from the region's edge to its first tile, and between tiles; the region must hold whole tiles that way |
-| `allowPartialMapping` | `blob47` only: unmapped indices use the closest mapped tile instead of a build error |
+| `allowPartialMapping` | `blob47` only: unmapped indices use the closest mapped tile instead of a build error: the same arms with the diagonals nearest, then fewer arms, then the full tile (46) and the lone one (0), then any mapped tile by arms added or taken away. A lone cell of a set of the 15 cardinal pieces (a one-tile path, wall, river) takes its first mapped end: N (1), E (2), S (5), W (13) |
 
 Every index must resolve to a tile (build-time `BuilderError` codes `autotile_missing_tile`, `autotile_index`, `autotile_region`), except corner index 0 and blob47 with `allowPartialMapping`. Removed: `depth:` / `buildAutotileElevation`, `sheet: ..., region: [...]` (use `file:` + `region:`).
 
@@ -1425,6 +1427,7 @@ group.shutdownSpeedCurve = myCurve;
 - No-op on non-looping groups, except that it marks a burst-driven (`count: 0`) group done so its container can end
 - After shutdown, `emitBurstAt()` still works (manual one-shot effects)
 - `emitBurstAt(x, y, vx, vy, count, ?tint)` / `emitBurst(count, ?tint)` — `tint` (0xRRGGBB) colours the burst's particles, multiplied into `colorStops` or their colour when the group has none; `group.tint = 0xRRGGBB` is the tint of every particle born from then on (null: none; a burst's own tint wins; live particles keep theirs); a sub-emitter's particles are born in their parent's tint. One group in white and greys serves every colour
+- `group.setBounds(mode, ?minX, ?maxX, ?minY, ?maxY)` sets the bounds after the build (a side left out is unbounded; lines are kept, `group.clearBoundsLines()` takes them away, `addBoundsLine` adds): a kill line only the game knows (`setBounds(Kill, null, null, null, waterY)`) kills there and fires the particles' `oncollision` sub-emitters. `group.setSpeed(speed, ?speedRand)` sets the speed particles are born with. Both apply from the next update / the next particle born
 - A burst (`emitBurst`/`emitBurstAt`, or a sub-emitter) into a group with particles of its own (`count > 0`) not drawn yet starts that group first, as its first frame would: its own particles plus the burst's
 - `group.emitFilter = (x:Float, y:Float) -> Bool` — filter particles by world-space spawn position (return `false` to discard). Works for both relative and non-relative groups
 - `particles.worldAnchor : Null<h2d.Object>` — designated world-space anchor for `relative: false` groups. When non-null, non-relative emit position/velocity/scale/rotation bake into `worldAnchor`'s local frame (not full scene space) and the draw branch renders through `worldAnchor`'s transform. Set this on a per-emitter trail's `Particles` container with the scene's world-root so the trail stays anchored to the world during camera pan/zoom. Null (default) preserves legacy screen-space baking. Runtime-only — no DSL surface

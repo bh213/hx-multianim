@@ -84,6 +84,44 @@ class CodegenExternalPaletteTest extends BuilderTestBase {
 		Assert.equals(0xFFFF00FF, pixelAt(made, 14, 4));
 	}
 
+	// A ref's colour parameter takes palette(…) as every other colour does: the palette of the file and
+	// one of an import, through staticRef and dynamicRef alike
+	@Test
+	public function testARefColourArgumentTakesAPaletteColour():Void {
+		final source = '
+			import "test/examples/115-codegenExternalPalette/extPalette.manim" as "ext"
+			#own palette { #00FF00, #FF8000 }
+			#swatch programmable(c:color=#FFFFFF) { bitmap(generated(color(8, 8, $$c))): 0, 0 }
+			#refs programmable() {
+				staticRef(swatch, c=>palette(own, 1)): 0, 0
+				staticRef(swatch, c=>palette(external(ext), tones, 1)): 10, 0
+				dynamicRef(swatch, c=>palette(external(ext), tones, 2)): 20, 0
+			}
+		';
+		var built:Null<bh.multianim.MultiAnimBuilder.BuilderResult> = null;
+		try {
+			built = bh.test.BuilderTestBase.buildFromSource(source, "refs");
+		} catch (e:Dynamic) {
+			Assert.fail("palette(…) as a ref's colour argument: " + Std.string(e));
+		}
+		if (built == null)
+			return;
+		Assert.equals(0xFFFF8000, pixelAt(built.object, 4, 4), "staticRef: the file's own palette");
+		Assert.equals(0xFF00FFFF, pixelAt(built.object, 14, 4), "staticRef: the import's palette");
+		Assert.equals(0xFFFFFF00, pixelAt(built.object, 24, 4), "dynamicRef: the import's palette");
+	}
+
+	@Test
+	public function testARefColourArgumentTakesAPaletteColourInCodegen():Void {
+		final built = buildFromFile(MANIM_PATH, "refColour");
+		final made:h2d.Object = createMp().refColour.create();
+		for (o in [built.object, made]) {
+			Assert.equals(0xFFFF8000, pixelAt(o, 4, 4), "staticRef: the file's own palette");
+			Assert.equals(0xFF00FFFF, pixelAt(o, 14, 4), "staticRef: the import's palette");
+			Assert.equals(0xFFFFFF00, pixelAt(o, 24, 4), "dynamicRef: the import's palette");
+		}
+	}
+
 	@Test
 	public function testAPaletteOfAFileNotImportedIsAParseError():Void {
 		for (filter in ["replacePalette(external(nope), teams, 0, 1)", "paletteLock(palette: external(nope), tones)"]) {

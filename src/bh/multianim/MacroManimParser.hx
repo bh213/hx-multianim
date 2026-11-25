@@ -5685,11 +5685,20 @@ class MacroManimParser {
 							error('$what: hide => [...] given twice: name every layer in one list');
 						hidden = parseHiddenLayers(what, nameLine);
 					} else
-						params.set(name, parseAnything());
+						params.set(name, isPaletteCallNext() ? parseColorOrReference() : parseAnything());
 					eatComma();
 				default:
 					return {params: params, hidden: hidden};
 			}
+		}
+	}
+
+	/** A palette's colour comes next, `palette(look, 3)` or `palette(external(pal), look, 3)`: a ref's
+	 *  argument takes one as every other colour does (the word `palette` alone stays a value). */
+	function isPaletteCallNext():Bool {
+		return switch (peek()) {
+			case TIdentifier(s): isKeyword(s, "palette") && tpos + 1 < tokens.length && tokens[tpos + 1].type.match(TOpen);
+			default: false;
 		}
 	}
 

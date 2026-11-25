@@ -10518,7 +10518,7 @@ class MultiAnimBuilder {
 					continue;
 				}
 				final where = explicitMapping != null ? "mapping: has no entry for it" : source.desc + ' does not provide it';
-				final hint = format == AutotileFormat.Blob47 || format == AutotileFormat.Hex64 ? " (or set allowPartialMapping: true to use the closest mapped tile)" : "";
+				final hint = !partial && (format == AutotileFormat.Blob47 || format == AutotileFormat.Hex64) ? " (or set allowPartialMapping: true to use the closest mapped tile)" : "";
 				throw builderErrorAt(node, 'autotile "$name": no tile for $formatName index $i - $where$hint', "autotile_missing_tile");
 			}
 			final variants:Array<AutotileTile> = [];

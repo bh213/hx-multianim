@@ -557,6 +557,65 @@ bh_base_Autotile.getBlob47FallbackChain = function(tileIndex,mapping) {
 			skipped.push(0);
 		}
 	}
+	var _g = [];
+	var _g1 = 0;
+	while(_g1 < 47) {
+		var t = _g1++;
+		if(t != tileIndex && skipped.indexOf(t) < 0) {
+			_g.push(t);
+		}
+	}
+	var rest = _g;
+	var cardinalMask = 85;
+	var cornerMask = 170;
+	rest.sort(function(a,b) {
+		var ma = bh_base_Autotile.blob47ReverseLUT[a];
+		var mb = bh_base_Autotile.blob47ReverseLUT[b];
+		var count = 0;
+		var x = (ma ^ mask) & cardinalMask;
+		while(x != 0) {
+			count += x & 1;
+			x >>>= 1;
+		}
+		var ca = count;
+		var count = 0;
+		var x = (mb ^ mask) & cardinalMask;
+		while(x != 0) {
+			count += x & 1;
+			x >>>= 1;
+		}
+		var cb = count;
+		if(ca != cb) {
+			return ca - cb;
+		}
+		var count = 0;
+		var x = (ma ^ mask) & cornerMask;
+		while(x != 0) {
+			count += x & 1;
+			x >>>= 1;
+		}
+		var da = count;
+		var count = 0;
+		var x = (mb ^ mask) & cornerMask;
+		while(x != 0) {
+			count += x & 1;
+			x >>>= 1;
+		}
+		var db = count;
+		if(da != db) {
+			return da - db;
+		}
+		return a - b;
+	});
+	var _g = 0;
+	while(_g < rest.length) {
+		var t = rest[_g];
+		++_g;
+		if(mapping.h.hasOwnProperty(t)) {
+			return { result : t, skipped : skipped};
+		}
+		skipped.push(t);
+	}
 	return { result : tileIndex, skipped : skipped};
 };
 bh_base_Autotile.addCornerCandidates = function(cardinals,wantedMask,skipTile,out,seen) {
@@ -9784,7 +9843,7 @@ bh_multianim_MacroManimParser.prototype = {
 					}
 					hidden = this.parseHiddenLayers(what,nameLine);
 				} else {
-					var value = this.parseAnything();
+					var value = this.isPaletteCallNext() ? this.parseColorOrReference() : this.parseAnything();
 					params.h[name] = value;
 				}
 				this.eatComma();
@@ -9792,6 +9851,23 @@ bh_multianim_MacroManimParser.prototype = {
 			default:
 				return { params : params, hidden : hidden};
 			}
+		}
+	}
+	,isPaletteCallNext: function() {
+		var _g = this.tokens[this.tpos].type;
+		if(_g._hx_index == 32) {
+			var s = _g.s;
+			if(bh_multianim_MacroManimParser.isKeyword(s,"palette") && this.tpos + 1 < this.tokens.length) {
+				if(this.tokens[this.tpos + 1].type._hx_index == 1) {
+					return true;
+				} else {
+					return false;
+				}
+			} else {
+				return false;
+			}
+		} else {
+			return false;
 		}
 	}
 	,parseHiddenLayers: function(what,line) {

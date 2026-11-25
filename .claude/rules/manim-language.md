@@ -41,7 +41,7 @@
 | `spacer(w, h)` | Empty space inside `flow` containers |
 | `interactive(w, h, id [, debug] [, key=>val ...])` | Hit-test region with optional metadata |
 | `layers()` | Z-ordering container |
-| `mask(w, h)` | Clipping mask rectangle |
+| `mask(w, h)` | Clipping mask rectangle; clips where drawn inside a filtered object too (`FilterRenderZone`, a build macro on Heaps' `RenderContext.setRZ` from `AtlasMacroInit.init()`; `-D multianim_heaps_render_zone` opts out) |
 | `flow(...)` | Layout flow container |
 | `repeatable($var, iterator)` | Loop elements |
 | `tilegroup` | Optimized tile grouping (supports `bitmap`, `ninepatch`, `repeatable`, `repeatable2d`, `pixels`, `point`). Children are baked once at build time, so conditionals on programmable parameters are **rejected at build time** (`BuilderError code="tilegroup_conditional"`), in both the nested `tilegroup {}` element and the root `programmable tileGroup(...)` form — use conditionals outside the tileGroup, or key them on a `repeatable` loop variable inside it |
@@ -84,8 +84,10 @@
 @($loopVar < $param)      # Comparison with $param reference (resolved at build time)
 @else                     # Matches when preceding @() didn't match
 @else(param=>value)       # Else-if with conditions
-@default                  # Final fallback
+@default                  # Final fallback: no conditional sibling above matched (back to the last unconditional one)
 ```
+
+`@default` answers every `@()`/`@else` above it in the run of conditional siblings, separate `@()`s included; to close one chain end it with a bare `@else`.
 
 A bare `@else` or `@default` is **terminal** — it closes the chain. Any `@else` / `@default` that follows one is unreachable and rejected at parse time. To start a fresh chain, open a new `@(...)` sibling first.
 
@@ -257,7 +259,7 @@ Operations reference other named curves **or built-in easing names** (e.g. `mult
 
 **Shutdown block:** Configures graceful particle stop. All curves use "progress" convention: `multiplier = 1.0 - curve(t)`. `curve` controls particle count (how many recycle vs die). `alphaCurve`/`sizeCurve`/`speedCurve` apply global multipliers during shutdown. `duration` is the default when `shutdown()` is called without arguments.
 
-**Runtime API:** `group.emitBurst(count, ?tint)`, `group.emitBurstAt(x, y, vx, vy, count, ?tint)` (tint 0xRRGGBB: the burst's particles' colour, multiplied into `colorStops` or the colour with none; sub-emitters inherit their parent's), `group.tint = 0xRRGGBB` (every particle born from then on; null none), `group.addForceField(ff)`, `group.removeForceFieldAt(i)`, `group.clearForceFields()`, `group.shutdown(?duration, ?curve)`, `particles.shutdown(?duration, ?curve)`, `group.isShuttingDown()`, `group.getShutdownRate()`, `group.emitFilter = (x, y) -> Bool`, `particles.worldAnchor : Null<h2d.Object>` (non-relative groups bake/render through the anchor's local frame instead of full scene-space — set to the scene world-root for per-shot trail emitters under a camera; null = legacy screen-space), `group.advanceTime(dt)`, `particles.advanceTime(dt)`
+**Runtime API:** `group.emitBurst(count, ?tint)`, `group.emitBurstAt(x, y, vx, vy, count, ?tint)` (tint 0xRRGGBB: the burst's particles' colour, multiplied into `colorStops` or the colour with none; sub-emitters inherit their parent's), `group.tint = 0xRRGGBB` (every particle born from then on; null none), `group.setBounds(mode, ?minX, ?maxX, ?minY, ?maxY)` (a side left out unbounded; a kill line the game knows fires `oncollision` sub-emitters there), `group.clearBoundsLines()`, `group.setSpeed(speed, ?speedRand)`, `group.addForceField(ff)`, `group.removeForceFieldAt(i)`, `group.clearForceFields()`, `group.shutdown(?duration, ?curve)`, `particles.shutdown(?duration, ?curve)`, `group.isShuttingDown()`, `group.getShutdownRate()`, `group.emitFilter = (x, y) -> Bool`, `particles.worldAnchor : Null<h2d.Object>` (non-relative groups bake/render through the anchor's local frame instead of full scene-space — set to the scene world-root for per-shot trail emitters under a camera; null = legacy screen-space), `group.advanceTime(dt)`, `particles.advanceTime(dt)`
 
 A burst into a `count > 0` group not drawn yet starts the group first (its own particles plus the burst's).
 

@@ -508,6 +508,9 @@ class MultiProgrammable extends bh.multianim.ProgrammableBuilder {
 	@:manim("test/examples/115-codegenExternalPalette/codegenExternalPalette.manim", "externalSwap")
 	public var externalSwap;
 
+	@:manim("test/examples/115-codegenExternalPalette/codegenExternalPalette.manim", "refColour")
+	public var refColour;
+
 	@:manim("test/examples/116-enumNumericConditional/enumNumericConditional.manim", "enumNumericConditional")
 	public var enumNumericConditional;
 

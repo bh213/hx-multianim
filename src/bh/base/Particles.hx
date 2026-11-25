@@ -699,6 +699,35 @@ class ParticleGroup {
 	**/
 	public var boundsLines : Array<{x1:Float, y1:Float, x2:Float, y2:Float, nx:Float, ny:Float}> = [];
 
+	/**
+		Sets the bounds after the group is built: how particles meet them and the box, a side left
+		out (null) unbounded. A line only the game knows (a level's water, its floor) kills there,
+		and the particles' `oncollision` sub-emitters fire at it. Lines (`addBoundsLine`) are kept;
+		`clearBoundsLines()` takes them away. Read on every update, so it applies at once.
+	**/
+	public function setBounds(mode:BoundsMode, ?minX:Float, ?maxX:Float, ?minY:Float, ?maxY:Float):Void {
+		boundsMode = mode;
+		boundsMinX = minX ?? Math.NEGATIVE_INFINITY;
+		boundsMaxX = maxX ?? Math.POSITIVE_INFINITY;
+		boundsMinY = minY ?? Math.NEGATIVE_INFINITY;
+		boundsMaxY = maxY ?? Math.POSITIVE_INFINITY;
+	}
+
+	/** Takes away every line boundary (`addBoundsLine`). */
+	public function clearBoundsLines():Void {
+		boundsLines.resize(0);
+	}
+
+	/**
+		Sets the speed particles are born with after the group is built, and its random part when
+		given (`speed * (1 + random * speedRand)`). Particles already alive keep theirs.
+	**/
+	public function setSpeed(speed:Float, ?speedRand:Float):Void {
+		this.speed = speed;
+		if (speedRand != null)
+			this.speedRand = speedRand;
+	}
+
 	/** Add a line boundary. The "out" side is the left side of the direction from (x1,y1) to (x2,y2). */
 	public function addBoundsLine(x1:Float, y1:Float, x2:Float, y2:Float):Void {
 		var dx = x2 - x1;

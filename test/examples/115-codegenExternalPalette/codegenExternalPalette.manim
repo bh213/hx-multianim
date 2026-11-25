@@ -6,6 +6,17 @@ import "test/examples/115-codegenExternalPalette/extPalette.manim" as "ext"
   bitmap(generated(color(20, 20, palette(external(ext), tones, 0)))): 0, 0
 }
 
+// a ref's colour argument takes palette(…): the file's own and one of the import
+#ownTones palette { #00FF00, #FF8000 }
+#swatch programmable(c:color=#FFFFFF) {
+  bitmap(generated(color(8, 8, $c))): 0, 0
+}
+#refColour programmable() {
+  staticRef(swatch, c=>palette(ownTones, 1)): 0, 0
+  staticRef(swatch, c=>palette(external(ext), tones, 1)): 10, 0
+  dynamicRef(swatch, c=>palette(external(ext), tones, 2)): 20, 0
+}
+
 // a palette of the import recolours (replacePalette) and holds a picture to it (a shader's palette:)
 #externalSwap programmable() {
   bitmap(generated(color(8, 8, #FF0000))) {

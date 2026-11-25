@@ -1226,7 +1226,7 @@ Elements can use `@else` and `@default` to form conditional chains, similar to i
 
 * `@else` - matches when the preceding sibling's `@()` condition did not match
 * `@else(conditions)` - matches when the preceding sibling didn't match AND the given conditions match
-* `@default` - matches when no preceding sibling in the chain matched (catch-all)
+* `@default` - matches when no conditional sibling above it matched (catch-all): every `@()`, `@else` and `@else()` back to the last sibling without a conditional or the last `@default`, separate `@()`s included
 
 ```
 @(status=>hover) text(dd, "Hovered", white)
@@ -1235,6 +1235,17 @@ Elements can use `@else` and `@default` to form conditional chains, similar to i
 ```
 
 `@else` and `@default` must follow a sibling that has a `@()` conditional. They cannot be used on root elements.
+
+`@default` is the catch-all of the whole run of conditional siblings above it, not only of the `@()` that starts its own chain: in
+
+```
+@(fresh=>false) text(dd, $name, white)
+@(fresh=>true) text(dd, "NEW", yellow)
+@else(met=>true) text(dd, $count, gold)
+@default text(dd, $count, white)
+```
+
+the last line is never drawn while `fresh` is false, since the first `@()` matched. To close one chain, end it with a bare `@else` instead of `@default`, or put an element without a conditional between the two runs.
 
 ### Conditional Blocks
 

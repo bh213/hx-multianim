@@ -549,6 +549,48 @@ class ParticleRuntimeTest extends utest.Test {
 			'a particle at (2000, 300) satisfies the only configured bound (x >= 0) and must survive; the hidden 800x600 default box must not kill it');
 	}
 
+	// A kill line the game sets after the build (a level's water) kills there and fires the
+	// particles' oncollision sub-emitters; speed is set the same way
+	@Test
+	public function testBoundsAndSpeedSetAtRunTime():Void {
+		var p = createParticles();
+		var drops = createBurstGroup("drops", p);
+		var splash = createBurstGroup("splash", p);
+		var ds:Dynamic = splash;
+		ds.subEmitters = ([
+			{groupId: "drops", trigger: OnCollision, probability: 1.0, inheritVelocity: 0.0, offsetX: 0.0, offsetY: 0.0, burstCount: 3}
+		] : Array<SubEmitter>);
+		splash.setBounds(Kill, null, null, null, 100);
+		Assert.equals(bh.base.Particles.BoundsMode.Kill, splash.boundsMode);
+		Assert.equals(Math.NEGATIVE_INFINITY, splash.boundsMinX, "a side left out is unbounded");
+		Assert.equals(100.0, splash.boundsMaxY);
+
+		splash.emitBurstAt(0, 50, 0, 0, 1);
+		Assert.isTrue(splash.checkBounds(cast splash.batch.first), "above the water line: alive");
+		splash.emitBurstAt(0, 150, 0, 0, 1);
+		var below:Dynamic = null;
+		var e = splash.batch.first;
+		while (e != null) {
+			if (e.y > 100) below = e;
+			e = e.next;
+		}
+		Assert.notNull(below);
+		Assert.isFalse(splash.checkBounds(cast below), "under the water line: killed");
+		advanceGroup(drops, 0.016);
+		Assert.equals(3, countParticles(drops), "the oncollision sub-emitter fired at the line");
+
+		splash.addBoundsLine(0, 0, 10, 0);
+		splash.clearBoundsLines();
+		Assert.equals(0, splash.boundsLines.length);
+
+		splash.setSpeed(42, 0.5);
+		Assert.equals(42.0, splash.speed);
+		Assert.equals(0.5, splash.speedRand);
+		splash.setSpeed(7);
+		Assert.equals(7.0, splash.speed);
+		Assert.equals(0.5, splash.speedRand, "speedRand left out stays");
+	}
+
 	// ==================== Force Field Physics ====================
 
 	@Test

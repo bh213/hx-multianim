@@ -71,6 +71,48 @@ class AutotileTest extends BuilderTestBase {
 		Assert.equals(0, mismatches);
 	}
 
+	/** The 15 cardinal pieces of a one-tile path (no diagonals, no lone cell): blob47 index → a source index. **/
+	static function cardinalPieces():Map<Int, Int> {
+		final mapping:Map<Int, Int> = [];
+		var source = 0;
+		for (arms in 1...16) {
+			var mask = 0;
+			if ((arms & 1) != 0) mask |= Autotile.N;
+			if ((arms & 2) != 0) mask |= Autotile.E;
+			if ((arms & 4) != 0) mask |= Autotile.S;
+			if ((arms & 8) != 0) mask |= Autotile.W;
+			mapping.set(Autotile.getBlob47Index(mask), source++);
+		}
+		return mapping;
+	}
+
+	@Test
+	public function testBlob47LoneCellFallsBackToAnEndPiece():Void {
+		// Neither the full tile (46) nor the lone one (0) is mapped: the lone cell takes the first
+		// mapped one-arm end, N (1), E (2), S (5), W (13) in that order
+		Assert.equals(1, Autotile.getBlob47FallbackChain(0, cardinalPieces()).result, "a lone cell of a cardinal set: the N end");
+		final westOnly:Map<Int, Int> = [13 => 0, 21 => 1];
+		Assert.equals(13, Autotile.getBlob47FallbackChain(0, westOnly).result, "the one end there is");
+		// Past every end, the closest mapped tile there is rather than none
+		final crossOnly:Map<Int, Int> = [21 => 0];
+		Assert.equals(21, Autotile.getBlob47FallbackChain(0, crossOnly).result, "a lone cell with only the crossing mapped");
+		Assert.equals(21, Autotile.getBlob47FallbackChain(1, crossOnly).result, "an N end with only the crossing mapped");
+	}
+
+	@Test
+	public function testPartialCardinalSetDrawsALoneCell():Void {
+		final tiles = [for (_ in 0...15) "generated(color(8, 8, #f00))"].join(" ");
+		final entries = [for (index => source in cardinalPieces()) '$index: $source'].join(", ");
+		final builder = builderFromSource('#path autotile { format: blob47 tileSize: 8 tiles: $tiles allowPartialMapping: true mapping: [$entries] }');
+		var drawn = -1;
+		try {
+			drawn = builder.buildAutotile("path", [[1]]).count();
+		} catch (e:Dynamic) {
+			Assert.fail("a lone cell of a partial cardinal set must draw an end piece: " + Std.string(e));
+		}
+		Assert.equals(1, drawn, "one tile for the lone cell");
+	}
+
 	@Test
 	public function testBlob47AllTilesGridCoversEveryTile():Void {
 		final grid = AutotileTestHelper.BLOB47_ALL_TILES_GRID;

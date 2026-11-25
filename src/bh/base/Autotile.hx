@@ -318,6 +318,8 @@ class Autotile {
 	 *    then more diagonals - a missing notch reads better than a stray one).
 	 * 2. Drop cardinals one at a time, ranked the same way.
 	 * 3. The full tile (46), then the isolated tile (0).
+	 * 4. Every other tile, fewest cardinals added or taken away first, then fewest mismatched
+	 *    diagonals, then the lower index: a lone cell of a set of cardinal pieces takes an end.
 	 *
 	 * Returns {result: actual fallback tile, skipped: tiles tried but not mapped (in order of priority)}.
 	 * If the tile is directly mapped, result == tileIndex and skipped is empty. If nothing fits,
@@ -367,6 +369,28 @@ class Autotile {
 		if (tileIndex != 0) {
 			if (mapping.exists(0)) return {result: 0, skipped: skipped};
 			if (skipped.indexOf(0) < 0) skipped.push(0);
+		}
+
+		// Phase 4: the closest of every other tile, by cardinals added or taken away, then diagonals,
+		// then index. A lone cell (0) of a set of cardinal pieces takes its first mapped end: N (1),
+		// E (2), S (5), W (13); an end with only the crossing mapped takes the crossing
+		final rest:Array<Int> = [for (t in 0...BLOB47_TILE_COUNT) if (t != tileIndex && skipped.indexOf(t) < 0) t];
+		final cardinalMask = N | E | S | W;
+		final cornerMask = NE | SE | SW | NW;
+		rest.sort((a, b) -> {
+			final ma = blob47ReverseLUT[a];
+			final mb = blob47ReverseLUT[b];
+			final ca = bitCount((ma ^ mask) & cardinalMask);
+			final cb = bitCount((mb ^ mask) & cardinalMask);
+			if (ca != cb) return ca - cb;
+			final da = bitCount((ma ^ mask) & cornerMask);
+			final db = bitCount((mb ^ mask) & cornerMask);
+			if (da != db) return da - db;
+			return a - b;
+		});
+		for (t in rest) {
+			if (mapping.exists(t)) return {result: t, skipped: skipped};
+			skipped.push(t);
 		}
 
 		return {result: tileIndex, skipped: skipped};
