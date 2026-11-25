@@ -1,0 +1,15 @@
+version: 1.0
+
+// Two records of one shape, for DataReadsTest: merged (mergeTypes) into one type, each value
+// counted at its own path. No enums: a merged enum is shared by every package that merges it.
+#shapes data {
+    #point record(x: int, y: int)
+    #size record(x: int, y: int)
+
+    start: point { x: 1, y: 2 }
+    end: size { x: 3, y: 4 }
+    corners: point[] [
+        { x: 0, y: 0 }
+        { x: 8, y: 8 }
+    ]
+}

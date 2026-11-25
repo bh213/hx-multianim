@@ -1,0 +1,16 @@
+version: 1.0
+
+// Untyped `key => true` infers the bool type but keeps the literal as the string "true";
+// codegen lowered it as RSVBool("true" != 0) -> String/Int type error in the generated
+// class. Typed `key:bool => true` (parsed as 1) always compiled. Covers both lowering
+// sites: interactive metadata and element settings (placeholder builderParameter).
+// Also registered in MultiProgrammable (CodegenIncrementalInteractiveStateanimTest checks
+// the values match the builder).
+
+#untypedBool programmable() {
+  interactive(10, 10, "hit", selected => true, locked => FALSE, typed:bool => true): 0, 0
+  placeholder(nothing, builderParameter("slot")) {
+    settings { autoOpen => true, closeOnPick => false }
+    pos: 0, 20
+  }
+}

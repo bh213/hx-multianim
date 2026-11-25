@@ -126,7 +126,7 @@ enum abstract GridDirection(Int) {
 		  	case DIRECTION_LEFT: "left";
 		  	case DIRECTION_DOWN_LEFT: "down-left";
 			case DIRECTION_DOWN_RIGHT: "down-right";
-			default: '???(${this})';
+			default: '???(' + this + ')';
 			  
 		}
 	}
@@ -155,7 +155,7 @@ enum abstract GridDirection(Int) {
 			case 3 : return FRONT;
 			case 1|2 : return RIGHT;
 			case 4|5 : return LEFT;
-			case _: throw 'invalid relative direction ${relativeDirection}';
+			case _: throw 'invalid relative direction $relativeDirection';
 		}
 
 	}
@@ -178,7 +178,7 @@ enum abstract GridDirection(Int) {
 		for (i in 0...directions.length) {
 			if (directions[i].equals(direction)) return allEnumDirections[i];
 		}
-		throw 'direction not found ${direction.toString()}';
+		throw 'direction not found ' + direction.toString();
 	}
 
 	public function calculateStepsFromTiles(from:Hex, to:Hex):Int{

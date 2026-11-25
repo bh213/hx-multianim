@@ -1,0 +1,22 @@
+version: 1.0
+
+// Offset and doubled hex coordinates follow the Red Blob convention: a pointy
+// layout shoves rows (odd-r / even-r, double-width), a flat layout shoves
+// columns (odd-q / even-q, double-height). Builder and codegen must agree on
+// the exact pixel positions, static and param-dependent alike.
+#hexOffsetParity programmable(col:int=0, row:int=1) {
+  point {
+    hex: pointy(16, 16)
+    #pOdd bitmap(generated(color(4, 4, #FF0000))): $hex.offset(0, 1, odd)
+    #pEven bitmap(generated(color(4, 4, #FF0000))): $hex.offset(0, 1, even)
+    #pParam bitmap(generated(color(4, 4, #FF0000))): $hex.offset($col, $row, odd)
+    #pDoubled bitmap(generated(color(4, 4, #FF0000))): $hex.doubled(2, 0)
+  }
+  point {
+    hex: flat(16, 16)
+    #fOdd bitmap(generated(color(4, 4, #0000FF))): $hex.offset(1, 0, odd)
+    #fEven bitmap(generated(color(4, 4, #0000FF))): $hex.offset(1, 0, even)
+    #fParam bitmap(generated(color(4, 4, #0000FF))): $hex.offset($col, $row, even)
+    #fDoubled bitmap(generated(color(4, 4, #0000FF))): $hex.doubled(0, 2)
+  }
+}

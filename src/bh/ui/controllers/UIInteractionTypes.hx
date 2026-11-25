@@ -72,7 +72,7 @@ typedef PickTargetConfig = {
 	/** Cell/interactive highlight parameter name (default: "highlight"). */
 	var ?highlightParam:String;
 
-	/** Highlight value for valid targets (default: "valid"). */
+	/** Highlight value for valid targets (default: "accept", of the cell contract's `none/accept/reject`). */
 	var ?highlightValue:Dynamic;
 
 	/** Cell highlight parameter to reset on deactivate (default: "none"). */

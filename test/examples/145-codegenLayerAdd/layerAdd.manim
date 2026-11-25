@@ -1,0 +1,14 @@
+version: 1.0
+
+// A repeat container inside layers() must honor the declared layer. The
+// codegen adds wrapper containers with a bare addChild, which lands them on
+// the topmost existing layer instead of the declared one.
+// Contents distinguished by tile width: green 40px (layer 1), red 16px (layer 0).
+#layerRepeat programmable() {
+  layers() {
+    @layer(1) bitmap(generated(color(40, 40, #00FF00))): 0, 0
+    @layer(0) repeatable($i, step(4, dx: 12)) {
+      bitmap(generated(color(16, 16, #FF0000))): 0, 0
+    }
+  }
+}

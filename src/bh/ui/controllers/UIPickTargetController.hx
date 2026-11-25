@@ -56,7 +56,7 @@ class UIPickTargetController extends UIInteractionController {
 		super(integration, resultCallback);
 		this.config = config;
 		this.highlightParam = config.highlightParam != null ? config.highlightParam : "highlight";
-		this.highlightValue = config.highlightValue != null ? config.highlightValue : "valid";
+		this.highlightValue = config.highlightValue != null ? config.highlightValue : "accept";
 		this.highlightResetValue = config.highlightResetValue != null ? config.highlightResetValue : "none";
 	}
 

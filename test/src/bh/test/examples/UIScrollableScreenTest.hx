@@ -63,6 +63,10 @@ class UIScrollableScreenTest extends utest.Test {
 		sm = new ScreenManager(VisualTestBase.appInstance);
 	}
 
+	function teardown():Void {
+		sm.dispose();
+	}
+
 	function createScreen(?config:ScrollConfig):TestScrollableScreen {
 		return new TestScrollableScreen(sm, config);
 	}

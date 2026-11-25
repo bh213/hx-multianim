@@ -34,7 +34,7 @@ class BuilderError extends haxe.Exception {
 
 	override public function toString():String {
 		#if MULTIANIM_DEV
-		return node != null ? '$message at ${node.parserPos}' : message;
+		return node != null ? '$message at ' + node.parserPos : message;
 		#else
 		return message;
 		#end

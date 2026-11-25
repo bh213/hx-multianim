@@ -1,0 +1,15 @@
+version: 1.0
+
+// Layers in .anim: marineLayers.anim draws a body, a hat and a glow (blend: add) on one clock.
+// Single-frame poses, so the builder and the macro screenshots show the same frame.
+
+#animLayers programmable() {
+    stateanim("marineLayers.anim", "pose", "direction"=>"l", "hat"=>"none", "glow"=>"off"): 40, 70
+    stateanim("marineLayers.anim", "pose", "direction"=>"l", "hat"=>"cap", "glow"=>"off"): 110, 70
+    stateanim("marineLayers.anim", "pose", "direction"=>"r", "hat"=>"cap", "glow"=>"on"): 180, 70
+}
+
+// A selector that names a parameter changes that state in place.
+#animLayersParams programmable(hat:string="none", dir:string="l") {
+    stateanim("marineLayers.anim", "walk", "direction"=>$dir, "hat"=>$hat, "glow"=>"off"): 0, 0
+}

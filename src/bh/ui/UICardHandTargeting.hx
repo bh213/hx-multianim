@@ -8,6 +8,8 @@ import bh.paths.MultiAnimPaths.PathNormalization;
 import bh.ui.UICardHandTypes.CardId;
 import bh.ui.UICardHandTypes.TargetHighlightCallback;
 import bh.ui.UICardHandTypes.TargetAcceptsCallback;
+import bh.ui.UICardHandTypes.TargetHook;
+import bh.multianim.MultiAnimBuilder.BuilderResolvedSettings;
 import bh.ui.UIInteractiveWrapper;
 
 /** Manages targeting arrow visual and target zone hit-testing.
@@ -71,6 +73,11 @@ class UICardHandTargeting {
 	/** Optional filter: return false to reject a card from a target. */
 	public var acceptsFilter:Null<TargetAcceptsCallback> = null;
 
+	/** Grids' hooks (`UIMultiAnimGrid.registerAsCardTarget`), beside the two callbacks above and
+	 *  never wrapped around them, so a grid that leaves takes nothing of the game's with it. Replaced,
+	 *  not spliced, on removal: a highlight being told walks the hooks it started with. */
+	var hooks:Array<TargetHook> = [];
+
 	/** When non-null, overrides the valid/invalid arrow state (bypasses target hit-testing for visuals). */
 	public var forceValid:Null<Bool> = null;
 
@@ -128,13 +135,53 @@ class UICardHandTargeting {
 			registerTarget(w);
 	}
 
+	@:allow(bh.ui.UIMultiAnimGrid)
+	function addHook(hook:TargetHook):Void {
+		hooks.push(hook);
+	}
+
+	@:allow(bh.ui.UIMultiAnimGrid)
+	function removeHook(hook:TargetHook):Void {
+		final i = hooks.indexOf(hook);
+		if (i < 0)
+			return;
+		final rest = hooks.copy();
+		rest.splice(i, 1);
+		hooks = rest;
+	}
+
+	/** Whether the card may go to the target: a hook that owns it decides, else `acceptsFilter`. */
+	function acceptsTarget(cardId:CardId, wrapper:UIInteractiveWrapper):Bool {
+		for (hook in hooks) {
+			final accepts = hook.accepts;
+			if (accepts != null && hook.owns(wrapper.id))
+				return accepts(cardId, wrapper.id, wrapper.metadata);
+		}
+		return acceptsFilter == null || acceptsFilter(cardId, wrapper.id, wrapper.metadata);
+	}
+
+	/** Tells `onTargetHighlight`, then every hook, that a target is (un)highlighted. */
+	function notifyHighlight(targetId:String, highlight:Bool, metadata:BuilderResolvedSettings):Void {
+		if (onTargetHighlight != null)
+			onTargetHighlight(targetId, highlight, metadata);
+		final told = hooks;
+		for (i in 0...told.length)
+			told[i].highlight(targetId, highlight, metadata);
+	}
+
+	/** Un-highlights the active target (it stays active; the caller moves on). */
+	function unhighlightActive():Void {
+		final id = activeTargetId;
+		if (id == null || (onTargetHighlight == null && hooks.length == 0))
+			return;
+		final wrapper = findTarget(id);
+		if (wrapper != null)
+			notifyHighlight(id, false, wrapper.metadata);
+	}
+
 	public function unregisterTarget(id:String):Void {
 		if (id == activeTargetId) {
-			if (onTargetHighlight != null) {
-				var wrapper = findTarget(activeTargetId);
-				if (wrapper != null)
-					onTargetHighlight(activeTargetId, false, wrapper.metadata);
-			}
+			unhighlightActive();
 			activeTargetId = null;
 		}
 		var i = 0;
@@ -148,11 +195,7 @@ class UICardHandTargeting {
 	}
 
 	public function clearTargets():Void {
-		if (activeTargetId != null && onTargetHighlight != null) {
-			var wrapper = findTarget(activeTargetId);
-			if (wrapper != null)
-				onTargetHighlight(activeTargetId, false, wrapper.metadata);
-		}
+		unhighlightActive();
 		activeTargetId = null;
 		targets = [];
 	}
@@ -165,7 +208,7 @@ class UICardHandTargeting {
 		_scratchPt.set(sceneX, sceneY);
 		for (wrapper in targets) {
 			if (wrapper.containsPoint(_scratchPt)) {
-				if (acceptsFilter == null || acceptsFilter(cardId, wrapper.id, wrapper.metadata)) {
+				if (acceptsTarget(cardId, wrapper)) {
 					hoveredWrapper = wrapper;
 					break;
 				}
@@ -174,14 +217,10 @@ class UICardHandTargeting {
 
 		var newTargetId = if (hoveredWrapper != null) hoveredWrapper.id else null;
 		if (newTargetId != activeTargetId) {
-			if (activeTargetId != null && onTargetHighlight != null) {
-				var oldWrapper = findTarget(activeTargetId);
-				if (oldWrapper != null)
-					onTargetHighlight(activeTargetId, false, oldWrapper.metadata);
-			}
+			unhighlightActive();
 			activeTargetId = newTargetId;
-			if (activeTargetId != null && onTargetHighlight != null && hoveredWrapper != null)
-				onTargetHighlight(activeTargetId, true, hoveredWrapper.metadata);
+			if (activeTargetId != null && hoveredWrapper != null)
+				notifyHighlight(activeTargetId, true, hoveredWrapper.metadata);
 		}
 
 		return newTargetId;
@@ -193,7 +232,7 @@ class UICardHandTargeting {
 		_scratchPt.set(sceneX, sceneY);
 		for (wrapper in targets) {
 			if (wrapper.containsPoint(_scratchPt)) {
-				if (acceptsFilter == null || acceptsFilter(cardId, wrapper.id, wrapper.metadata))
+				if (acceptsTarget(cardId, wrapper))
 					return wrapper.id;
 			}
 		}
@@ -215,7 +254,7 @@ class UICardHandTargeting {
 		_scratchPt.set(sceneX, sceneY);
 		for (wrapper in targets) {
 			if (wrapper.containsPoint(_scratchPt)) {
-				if (acceptsFilter == null || acceptsFilter(cardId, wrapper.id, wrapper.metadata)) {
+				if (acceptsTarget(cardId, wrapper)) {
 					hoveredWrapper = wrapper;
 					break;
 				}
@@ -225,14 +264,10 @@ class UICardHandTargeting {
 		// Update highlight state
 		var newTargetId = if (hoveredWrapper != null) hoveredWrapper.id else null;
 		if (newTargetId != activeTargetId) {
-			if (activeTargetId != null && onTargetHighlight != null) {
-				var oldWrapper = findTarget(activeTargetId);
-				if (oldWrapper != null)
-					onTargetHighlight(activeTargetId, false, oldWrapper.metadata);
-			}
+			unhighlightActive();
 			activeTargetId = newTargetId;
-			if (activeTargetId != null && onTargetHighlight != null && hoveredWrapper != null)
-				onTargetHighlight(activeTargetId, true, hoveredWrapper.metadata);
+			if (activeTargetId != null && hoveredWrapper != null)
+				notifyHighlight(activeTargetId, true, hoveredWrapper.metadata);
 		}
 
 		var valid = if (forceValid != null) forceValid else hoveredWrapper != null;
@@ -341,11 +376,7 @@ class UICardHandTargeting {
 		if (headInvalid != null) headInvalid.object.visible = false;
 		if (headValid != null) headValid.object.visible = false;
 
-		if (activeTargetId != null && onTargetHighlight != null) {
-			var wrapper = findTarget(activeTargetId);
-			if (wrapper != null)
-				onTargetHighlight(activeTargetId, false, wrapper.metadata);
-		}
+		unhighlightActive();
 		activeTargetId = null;
 	}
 

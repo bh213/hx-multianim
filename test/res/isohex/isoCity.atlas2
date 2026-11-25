@@ -1,0 +1,75 @@
+isoCity.png
+size: 932,231
+format: RGBA8888
+filter: Nearest,Nearest
+repeat: none
+plaza
+  rotate: false
+  xy: 1, 1
+  size: 132, 101
+  orig: 132, 101
+  offset: 0, 0
+  index: 0
+plaza
+  rotate: false
+  xy: 134, 1
+  size: 132, 99
+  orig: 132, 99
+  offset: 0, 0
+  index: 1
+plaza
+  rotate: false
+  xy: 267, 1
+  size: 132, 101
+  orig: 132, 101
+  offset: 0, 0
+  index: 2
+asphalt
+  rotate: false
+  xy: 400, 1
+  size: 132, 99
+  orig: 132, 99
+  offset: 0, 0
+  index: 0
+roadA
+  rotate: false
+  xy: 533, 1
+  size: 132, 101
+  orig: 132, 101
+  offset: 0, 0
+  index: 0
+roadB
+  rotate: false
+  xy: 666, 1
+  size: 132, 101
+  orig: 132, 101
+  offset: 0, 0
+  index: 0
+cross
+  rotate: false
+  xy: 799, 1
+  size: 132, 101
+  orig: 132, 101
+  offset: 0, 0
+  index: 0
+treeBlock
+  rotate: false
+  xy: 1, 103
+  size: 132, 113
+  orig: 132, 113
+  offset: 0, 0
+  index: 0
+cliff
+  rotate: false
+  xy: 134, 103
+  size: 132, 99
+  orig: 132, 99
+  offset: 0, 0
+  index: 0
+house
+  rotate: false
+  xy: 267, 103
+  size: 132, 127
+  orig: 132, 127
+  offset: 0, 0
+  index: 0

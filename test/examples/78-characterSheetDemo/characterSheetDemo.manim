@@ -57,10 +57,10 @@ version: 1.0
     bitmap(generated(color(360, 1, #7fdbda33))): 20, 110
 
     // HP bar via dynamicRef
-    dynamicRef($resourceBar, value=>$hp, maxValue=>$maxHp, barColor=>#ff4444, label=>"HP"): 20, 125
+    dynamicRef(resourceBar, value=>$hp, maxValue=>$maxHp, barColor=>#ff4444, label=>"HP"): 20, 125
 
     // MP bar via dynamicRef
-    dynamicRef($resourceBar, value=>$mp, maxValue=>$maxMp, barColor=>#4a90a4, label=>"MP"): 20, 150
+    dynamicRef(resourceBar, value=>$mp, maxValue=>$maxMp, barColor=>#4a90a4, label=>"MP"): 20, 150
 
     // Separator
     bitmap(generated(color(360, 1, #7fdbda33))): 20, 178
@@ -68,9 +68,9 @@ version: 1.0
     // Attributes
     text(pixellari, "Attributes", #7fdbda): 20, 190
 
-    dynamicRef($statBar, statName=>"STR", statValue=>$strStat, barColor=>#ff7f50, maxStat=>30): 30, 215
-    dynamicRef($statBar, statName=>"DEX", statValue=>$dexStat, barColor=>#4caf50, maxStat=>30): 30, 235
-    dynamicRef($statBar, statName=>"INT", statValue=>$intStat, barColor=>#4a90a4, maxStat=>30): 30, 255
+    dynamicRef(statBar, statName=>"STR", statValue=>$strStat, barColor=>#ff7f50, maxStat=>30): 30, 215
+    dynamicRef(statBar, statName=>"DEX", statValue=>$dexStat, barColor=>#4caf50, maxStat=>30): 30, 235
+    dynamicRef(statBar, statName=>"INT", statValue=>$intStat, barColor=>#4a90a4, maxStat=>30): 30, 255
 
     // Separator
     bitmap(generated(color(360, 1, #7fdbda33))): 20, 278
@@ -78,7 +78,7 @@ version: 1.0
     // Experience
     text(m6x11, "Experience", #7fdbda): 20, 292
 
-    dynamicRef($xpBar, xp=>$xp, xpMax=>$xpMax): 30, 312
+    dynamicRef(xpBar, xp=>$xp, xpMax=>$xpMax): 30, 312
 
     // Level Up button
     placeholder(generated(cross(200, 30, #FF0000)), builderParameter("levelUpButton")) {

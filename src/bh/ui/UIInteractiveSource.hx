@@ -49,4 +49,32 @@ interface UIInteractiveSource {
 	 *  guard `setParameter` for opportunistic params (e.g. `disabled:bool` companion to a
 	 *  `status` enum) that may or may not exist on a given client template. */
 	function hasParameter(name:String):Bool;
+
+	/** True when the programmable declares `name` and `setParameter(name, value)` would take `value`
+	 *  as far as its kind goes: for an enum, one of its values by name or index (setParameter
+	 *  refuses others); for any other kind, true (setParameter checks the value). Widgets give a
+	 *  design only the status values it declares through it (`UIStatusTools.setStatus`). */
+	function acceptsParameterValue(name:String, value:Dynamic):Bool;
+}
+
+/** Status values a widget gives its design: the one it wants when the design's enum declares it,
+ *  else the nearest it does (`pressed` → `hover` → `normal`; `disabled`, `hover`, `focused` or
+ *  another → `normal`), as `setParameter` takes only values of the enum. A design whose status has
+ *  none of them gets the wanted one (setParameter says what is wrong). */
+@:nullSafety
+class UIStatusTools {
+	public static function setStatus(source:UIInteractiveSource, wanted:String, param:String = "status"):Void {
+		source.setParameter(param, declaredStatus(source, wanted, param));
+	}
+
+	/** The status `setStatus` gives for `wanted`. */
+	public static function declaredStatus(source:UIInteractiveSource, wanted:String, param:String = "status"):String {
+		if (source.acceptsParameterValue(param, wanted))
+			return wanted;
+		if (wanted == "pressed" && source.acceptsParameterValue(param, "hover"))
+			return "hover";
+		if (source.acceptsParameterValue(param, "normal"))
+			return "normal";
+		return wanted;
+	}
 }

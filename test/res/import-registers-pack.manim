@@ -1,0 +1,15 @@
+version: 1.0
+
+// Imported by import-registers.manim: its cursor and sounds blocks are registered when the file
+// that imports it loads.
+#packCursors cursor {
+  importHand: sheet("ui", "icon_drop"), hot: 1, 1
+}
+
+#packfx sounds {
+  ping { file: "sound/click.wav" }
+}
+
+#packUser programmable() {
+  interactive(40, 20, "grab", cursor => "importHand"): 0, 0
+}

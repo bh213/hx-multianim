@@ -456,20 +456,20 @@ class HtmlReportGenerator {
 		html.add('</head>\n');
 		html.add('<body>\n');
 		html.add('    <h1>Visual Test Report</h1>\n');
-		html.add('    <div class="timestamp">Generated: ${timestamp}</div>\n');
+		html.add('    <div class="timestamp">Generated: $timestamp</div>\n');
 
 		// Summary section
 		var passed = results.filter(r -> r.passed).length;
 		var failed = results.length - passed;
 		html.add('    <div class="summary">\n');
-		html.add('        <strong>Summary:</strong> ${results.length} tests, ');
-		html.add('        <span style="color: #4CAF50;">${passed} passed</span>, ');
-		html.add('        <span style="color: #f44336;">${failed} failed</span>\n');
+		html.add('        <strong>Summary:</strong> ' + results.length + ' tests, ');
+		html.add('        <span style="color: #4CAF50;">$passed passed</span>, ');
+		html.add('        <span style="color: #f44336;">$failed failed</span>\n');
 		if (unitSeconds != null || visualSeconds != null) {
 			var timeParts:Array<String> = [];
-			if (unitSeconds != null) timeParts.push('unit ${unitSeconds}s');
-			if (visualSeconds != null) timeParts.push('visual ${visualSeconds}s');
-			html.add('        <span style="color: #999; font-size: 13px; margin-left: 10px;">(${timeParts.join(", ")})</span>\n');
+			if (unitSeconds != null) timeParts.push('unit ' + unitSeconds + 's');
+			if (visualSeconds != null) timeParts.push('visual ' + visualSeconds + 's');
+			html.add('        <span style="color: #999; font-size: 13px; margin-left: 10px;">(' + timeParts.join(", ") + ')</span>\n');
 		}
 		html.add('    </div>\n');
 
@@ -483,10 +483,10 @@ class HtmlReportGenerator {
 			html.add('        <h3>Failed Tests</h3>\n');
 			for (result in failedResults) {
 				html.add('        <div>\n');
-				html.add('            <a href="#test-${result.testName}">${result.testName}</a>\n');
+				html.add('            <a href="#test-' + result.testName + '">' + result.testName + '</a>\n');
 				if (result.errorMessage != null && result.errorMessage.length > 0) {
 					var escapedError = result.errorMessage.htmlEscape();
-					html.add('            <span class="error-message">${escapedError}</span>\n');
+					html.add('            <span class="error-message">$escapedError</span>\n');
 				}
 				html.add('        </div>\n');
 			}
@@ -501,10 +501,10 @@ class HtmlReportGenerator {
 		});
 		if (macroMismatches.length > 0) {
 			html.add('    <div class="failed-links" style="border-left-color:#b71c1c;background:#ffcdd2;">\n');
-			html.add('        <h3 style="color:#b71c1c;">Builder vs Macro Mismatches (${macroMismatches.length})</h3>\n');
+			html.add('        <h3 style="color:#b71c1c;">Builder vs Macro Mismatches (' + macroMismatches.length + ')</h3>\n');
 			for (result in macroMismatches) {
 				html.add('        <div>\n');
-				html.add('            <a href="#test-${result.testName}">${result.testName}</a>\n');
+				html.add('            <a href="#test-' + result.testName + '">' + result.testName + '</a>\n');
 				html.add('        </div>\n');
 			}
 			html.add('    </div>\n');
@@ -535,52 +535,52 @@ class HtmlReportGenerator {
 			var similarityPercent = Math.round(result.similarity * 10000) / 100;
 			var hasMacro = result.macroPath != null;
 
-			html.add('    <div class="test-result ${statusClass}" id="test-${result.testName}">\n');
+			html.add('    <div class="test-result $statusClass" id="test-' + result.testName + '">\n');
 			html.add('        <div class="test-header">\n');
-			html.add('            <div class="test-name">${result.testName}</div>\n');
+			html.add('            <div class="test-name">' + result.testName + '</div>\n');
 			html.add('            <div>\n');
 			// Manim link first (leftmost of right-aligned items)
 			if (result.manimPath != null && result.manimContent != null) {
 				var manimFileName = haxe.io.Path.withoutDirectory(result.manimPath);
-				html.add('                <a class="manim-link" onclick="showManim(\'${result.testName}\')">${manimFileName}</a>\n');
+				html.add('                <a class="manim-link" onclick="showManim(\'' + result.testName + '\')">$manimFileName</a>\n');
 			}
-			html.add('                <span class="test-status ${statusClass}">Builder: ${statusText}</span>\n');
+			html.add('                <span class="test-status $statusClass">Builder: $statusText</span>\n');
 			if (hasMacro) {
 				var macroStatusClass = result.macroPassed == true ? "passed" : "failed";
 				var macroStatusText = result.macroPassed == true ? "PASSED" : "FAILED";
-				html.add('                <span class="test-status ${macroStatusClass}">Macro: ${macroStatusText}</span>\n');
+				html.add('                <span class="test-status $macroStatusClass">Macro: $macroStatusText</span>\n');
 			}
 			html.add('            </div>\n');
 			html.add('        </div>\n');
 			var thresholdPercent = result.threshold != null ? Math.round(result.threshold * 10000) / 100 : 99.99;
 			var builderPassed = similarityPercent >= thresholdPercent;
 			var thresholdStyle = builderPassed ? 'color: #999;' : 'color: #c62828; font-weight: bold;';
-			html.add('        <div class="similarity">Builder similarity: ${similarityStr} <span style="${thresholdStyle}">(acceptance: ${thresholdPercent}%)</span>');
+			html.add('        <div class="similarity">Builder similarity: $similarityStr <span style="$thresholdStyle">(acceptance: $thresholdPercent%)</span>');
 			if (hasMacro && result.macroSimilarity != null) {
 				var macroSimStr = formatSimilarity(result.macroSimilarity, totalPixels);
 				var macroSimPercent = Math.round(result.macroSimilarity * 10000) / 100;
 				var macroThresholdPercent = result.macroThreshold != null ? Math.round(result.macroThreshold * 10000) / 100 : 99.0;
 				var macroPassed = macroSimPercent >= macroThresholdPercent;
 				var macroThresholdStyle = macroPassed ? 'color: #999;' : 'color: #c62828; font-weight: bold;';
-				html.add(' | Macro similarity: ${macroSimStr} <span style="${macroThresholdStyle}">(acceptance: ${macroThresholdPercent}%)</span>');
+				html.add(' | Macro similarity: $macroSimStr <span style="$macroThresholdStyle">(acceptance: $macroThresholdPercent%)</span>');
 			}
 			html.add('</div>\n');
 
 			// Show error message if present
 			if (result.errorMessage != null && result.errorMessage.length > 0) {
 				var escapedError = result.errorMessage.htmlEscape();
-				html.add('        <div class="test-error">${escapedError}</div>\n');
+				html.add('        <div class="test-error">$escapedError</div>\n');
 			}
 
 			var colsClass = hasMacro ? "cols-3" : "cols-2";
-			html.add('        <div class="image-comparison ${colsClass}">\n');
+			html.add('        <div class="image-comparison $colsClass">\n');
 
 			// Reference image
 			html.add('            <div class="image-container">\n');
 			html.add('                <div class="image-label">Reference</div>\n');
 			if (FileSystem.exists(result.referencePath)) {
 				var relPath = makeRelativePath(result.referencePath);
-				html.add('                <img src="${relPath}" alt="Reference" onclick="showOverlay(this.src)">\n');
+				html.add('                <img src="$relPath" alt="Reference" onclick="showOverlay(this.src)">\n');
 			} else {
 				html.add('                <div class="no-image">No reference image</div>\n');
 			}
@@ -588,10 +588,10 @@ class HtmlReportGenerator {
 
 			// Builder (actual) image
 			html.add('            <div class="image-container">\n');
-			html.add('                <div class="image-label">${hasMacro ? "Builder" : "Actual"}</div>\n');
+			html.add('                <div class="image-label">' + (hasMacro ? "Builder" : "Actual") + '</div>\n');
 			if (FileSystem.exists(result.actualPath)) {
 				var relPath = makeRelativePath(result.actualPath);
-				html.add('                <img src="${relPath}" alt="Builder" onclick="showOverlay(this.src)">\n');
+				html.add('                <img src="$relPath" alt="Builder" onclick="showOverlay(this.src)">\n');
 			} else {
 				html.add('                <div class="no-image">No builder image</div>\n');
 			}
@@ -603,7 +603,7 @@ class HtmlReportGenerator {
 				html.add('                <div class="image-label">Macro</div>\n');
 				if (FileSystem.exists(result.macroPath)) {
 					var relPath = makeRelativePath(result.macroPath);
-					html.add('                <img src="${relPath}" alt="Macro" onclick="showOverlay(this.src)">\n');
+					html.add('                <img src="$relPath" alt="Macro" onclick="showOverlay(this.src)">\n');
 				} else {
 					html.add('                <div class="no-image">No macro image</div>\n');
 				}
@@ -620,14 +620,14 @@ class HtmlReportGenerator {
 				var refRel = makeRelativePath(result.referencePath);
 				var dp = diffBase + "_diff_bref.png";
 				var dpRel = FileSystem.exists(dp) ? makeRelativePath(dp) : "";
-				diffLinks.push('<a class="diff-link" onclick="showDiff(\'${actRel}\',\'${refRel}\',\'Builder\',\'Reference\',\'${dpRel}\')">Diff: Builder vs Ref</a>');
+				diffLinks.push('<a class="diff-link" onclick="showDiff(\'$actRel\',\'$refRel\',\'Builder\',\'Reference\',\'$dpRel\')">Diff: Builder vs Ref</a>');
 			}
 			if (hasMacro && result.macroSimilarity != null && result.macroSimilarity < 1.0 && FileSystem.exists(result.macroPath) && FileSystem.exists(result.referencePath)) {
 				var macRel = makeRelativePath(result.macroPath);
 				var refRel = makeRelativePath(result.referencePath);
 				var dp = diffBase + "_diff_mref.png";
 				var dpRel = FileSystem.exists(dp) ? makeRelativePath(dp) : "";
-				diffLinks.push('<a class="diff-link" onclick="showDiff(\'${macRel}\',\'${refRel}\',\'Macro\',\'Reference\',\'${dpRel}\')">Diff: Macro vs Ref</a>');
+				diffLinks.push('<a class="diff-link" onclick="showDiff(\'$macRel\',\'$refRel\',\'Macro\',\'Reference\',\'$dpRel\')">Diff: Macro vs Ref</a>');
 			}
 			if (result.builderVsMacroSimilarity != null) {
 				var mth:Float = result.macroThreshold != null ? result.macroThreshold : 1.0;
@@ -636,13 +636,13 @@ class HtmlReportGenerator {
 					var macRel = makeRelativePath(result.macroPath);
 					var dp = diffBase + "_diff_bm.png";
 					var dpRel = FileSystem.exists(dp) ? makeRelativePath(dp) : "";
-					diffLinks.push('<a class="diff-link-error" onclick="showDiff(\'${actRel}\',\'${macRel}\',\'Builder\',\'Macro\',\'${dpRel}\')">ERROR: Builder vs Macro differ</a>');
+					diffLinks.push('<a class="diff-link-error" onclick="showDiff(\'$actRel\',\'$macRel\',\'Builder\',\'Macro\',\'$dpRel\')">ERROR: Builder vs Macro differ</a>');
 				}
 			}
 			if (diffLinks.length > 0) {
 				html.add('        <div class="diff-links">\n');
 				for (link in diffLinks) {
-					html.add('            ${link}\n');
+					html.add('            $link\n');
 				}
 				html.add('        </div>\n');
 			}
@@ -695,11 +695,11 @@ class HtmlReportGenerator {
 				var manimFileName = haxe.io.Path.withoutDirectory(result.manimPath);
 				// Escape the content for JSON
 				var escapedContent = result.manimContent.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t');
-				manimMap.add('"${result.testName}":{"file":"${manimFileName}","content":"${escapedContent}"}');
+				manimMap.add('"' + result.testName + '":{"file":"$manimFileName","content":"$escapedContent"}');
 			}
 		}
 		manimMap.add('}');
-		html.add('${manimMap.toString()}\n');
+		html.add(manimMap.toString() + '\n');
 		html.add('    </script>\n');
 
 		// Unit test details toggle (separate script so JSON parse errors can't block it)
@@ -836,7 +836,7 @@ class HtmlReportGenerator {
 		var parts:Array<String> = [];
 		if (failed > 0) {
 			var failedNames = results.filter(r -> !r.passed).map(r -> r.testName);
-			parts.push('FAILED: ${failed}/${results.length} visual tests failed [${failedNames.join(", ")}]');
+			parts.push('FAILED: $failed/' + results.length + ' visual tests failed [' + failedNames.join(", ") + ']');
 		}
 		var macroMismatchCount = results.filter(function(r) {
 			if (r.builderVsMacroSimilarity == null) return false;
@@ -844,14 +844,14 @@ class HtmlReportGenerator {
 			return r.builderVsMacroSimilarity < mth;
 		}).length;
 		if (macroMismatchCount > 0) {
-			parts.push('ERROR: ${macroMismatchCount} builder vs macro mismatches');
+			parts.push('ERROR: $macroMismatchCount builder vs macro mismatches');
 		}
 		if (includeUnitTests && unitAggregator != null && unitAggregator.root != null && !unitAggregator.root.stats.isOk) {
 			var us = unitAggregator.root.stats;
-			parts.push('FAILED: unit tests: ${us.failures} failures, ${us.errors} errors out of ${us.assertations} assertions');
+			parts.push('FAILED: unit tests: ' + us.failures + ' failures, ' + us.errors + ' errors out of ' + us.assertations + ' assertions');
 		}
 		if (parts.length > 0) return parts.join("; ");
-		return 'OK: ${passed}/${results.length} visual tests passed';
+		return 'OK: $passed/' + results.length + ' visual tests passed';
 	}
 
 	public static function getStructuredSummary(elapsedSeconds:Int, ?statusOverride:String, ?unitSeconds:Float, ?visualSeconds:Float):String {
@@ -885,50 +885,50 @@ class HtmlReportGenerator {
 		if (macroMismatchNames.length > 0) hasFailures = true;
 
 		var status = statusOverride != null ? statusOverride : (hasFailures ? "FAILED" : "OK");
-		buf.add('status: ${status}\n');
-		buf.add('visual_total: ${results.length}\n');
-		buf.add('visual_passed: ${visualPassed}\n');
-		buf.add('visual_failed: ${visualFailed}\n');
+		buf.add('status: $status\n');
+		buf.add('visual_total: ' + results.length + '\n');
+		buf.add('visual_passed: $visualPassed\n');
+		buf.add('visual_failed: $visualFailed\n');
 		if (visualFailed > 0) {
 			var failedNames = results.filter(r -> !r.passed).map(r -> r.testName);
-			buf.add('visual_failures: [${failedNames.join(", ")}]\n');
+			buf.add('visual_failures: [' + failedNames.join(", ") + ']\n');
 			// Per-visual-failure details
 			for (r in results) {
 				if (r.passed) continue;
 				var reason:String;
 				if (r.errorMessage != null) {
-					reason = 'error: ${r.errorMessage}';
+					reason = 'error: ' + r.errorMessage;
 				} else if (!FileSystem.exists(r.referencePath)) {
 					reason = "no_reference";
 				} else {
 					var simPct = Math.round(r.similarity * 10000) / 100;
 					var thrPct = r.threshold != null ? Math.round(r.threshold * 10000) / 100 : 99.0;
-					reason = 'low_similarity (${simPct}%, threshold: ${thrPct}%)';
+					reason = 'low_similarity ($simPct%, threshold: $thrPct%)';
 				}
-				buf.add('  visual_detail: ${r.testName} | ${reason}\n');
+				buf.add('  visual_detail: ' + r.testName + ' | $reason\n');
 				// Report macro sub-failure if applicable
 				if (r.macroPassed != null && !r.macroPassed) {
 					var macroSimPct = r.macroSimilarity != null ? Math.round(r.macroSimilarity * 10000) / 100 : 0.0;
 					var macroThrPct = r.macroThreshold != null ? Math.round(r.macroThreshold * 10000) / 100 : 99.0;
-					buf.add('  visual_detail: ${r.testName} (macro) | low_similarity (${macroSimPct}%, threshold: ${macroThrPct}%)\n');
+					buf.add('  visual_detail: ' + r.testName + ' (macro) | low_similarity ($macroSimPct%, threshold: $macroThrPct%)\n');
 				}
 			}
 		}
-		buf.add('macro_mismatches: ${macroMismatchNames.length}\n');
+		buf.add('macro_mismatches: ' + macroMismatchNames.length + '\n');
 		if (macroMismatchNames.length > 0) {
-			buf.add('macro_mismatch_tests: [${macroMismatchNames.join(", ")}]\n');
+			buf.add('macro_mismatch_tests: [' + macroMismatchNames.join(", ") + ']\n');
 			for (r in results) {
 				if (r.builderVsMacroSimilarity == null) continue;
 				var mth:Float = r.macroThreshold != null ? r.macroThreshold : 1.0;
 				if (r.builderVsMacroSimilarity >= mth) continue;
 				var simPct = Math.round(r.builderVsMacroSimilarity * 10000) / 100;
-				buf.add('  macro_detail: ${r.testName} | builder_vs_macro: ${simPct}%\n');
+				buf.add('  macro_detail: ' + r.testName + ' | builder_vs_macro: $simPct%\n');
 			}
 		}
-		buf.add('unit_assertions: ${unitAssert}\n');
-		buf.add('unit_failures: ${unitFail}\n');
-		buf.add('unit_errors: ${unitErr}\n');
-		buf.add('unit_warnings: ${unitWarn}\n');
+		buf.add('unit_assertions: $unitAssert\n');
+		buf.add('unit_failures: $unitFail\n');
+		buf.add('unit_errors: $unitErr\n');
+		buf.add('unit_warnings: $unitWarn\n');
 
 		// Per-failure/warning details for unit tests
 		if ((unitFail > 0 || unitErr > 0 || unitWarn > 0) && unitAggregator != null && unitAggregator.root != null) {
@@ -941,11 +941,11 @@ class HtmlReportGenerator {
 						for (assertation in fixture) {
 							switch (assertation) {
 								case Failure(msg, pos):
-									buf.add('  unit_detail: ${cls.className}.${methodName}: ${pos.fileName}:${pos.lineNumber}: ${msg}\n');
+									buf.add('  unit_detail: ' + cls.className + '.$methodName: ' + pos.fileName + ':' + pos.lineNumber + ': $msg\n');
 								case Error(e, stack):
-									buf.add('  unit_detail: ${cls.className}.${methodName}: ${Std.string(e)}\n');
+									buf.add('  unit_detail: ' + cls.className + '.$methodName: ' + Std.string(e) + '\n');
 								case Warning(msg):
-									buf.add('  unit_detail: ${cls.className}.${methodName}: warning: ${msg}\n');
+									buf.add('  unit_detail: ' + cls.className + '.$methodName: warning: $msg\n');
 								default:
 							}
 						}
@@ -954,9 +954,9 @@ class HtmlReportGenerator {
 			}
 		}
 
-		buf.add('elapsed_seconds: ${elapsedSeconds}\n');
-		if (unitSeconds != null) buf.add('unit_seconds: ${unitSeconds}\n');
-		if (visualSeconds != null) buf.add('visual_seconds: ${visualSeconds}\n');
+		buf.add('elapsed_seconds: $elapsedSeconds\n');
+		if (unitSeconds != null) buf.add('unit_seconds: $unitSeconds\n');
+		if (visualSeconds != null) buf.add('visual_seconds: $visualSeconds\n');
 		buf.add("--- END TEST RESULT ---");
 		return buf.toString();
 	}
@@ -969,9 +969,9 @@ class HtmlReportGenerator {
 		var percent = Math.round(similarity * 10000) / 100;
 		if (percent >= 100.0 && similarity < 1.0) {
 			var diffPixels = totalPixels - Math.round(similarity * totalPixels);
-			return '${percent}% (${diffPixels}px differ)';
+			return '$percent% (' + diffPixels + 'px differ)';
 		}
-		return '${percent}%';
+		return '$percent%';
 	}
 
 	/** Bulk-add pre-computed results from ImageProcessingPool. Call after pool.shutdownAndWait(). */
@@ -1114,12 +1114,12 @@ class HtmlReportGenerator {
 
 		html.add('    <div class="unit-tests-section">\n');
 		html.add('        <h2>Unit Tests</h2>\n');
-		html.add('        <div class="unit-tests-summary ${summaryClass}">\n');
-		html.add('            <strong>${stats.assertations} assertions:</strong> ');
-		html.add('            <span style="color: #4CAF50;">${stats.successes} passed</span>');
-		if (stats.failures > 0) html.add(', <span style="color: #f44336;">${stats.failures} failures</span>');
-		if (stats.errors > 0) html.add(', <span style="color: #f44336;">${stats.errors} errors</span>');
-		if (stats.warnings > 0) html.add(', <span style="color: #FF9800;">${stats.warnings} warnings</span>');
+		html.add('        <div class="unit-tests-summary $summaryClass">\n');
+		html.add('            <strong>' + stats.assertations + ' assertions:</strong> ');
+		html.add('            <span style="color: #4CAF50;">' + stats.successes + ' passed</span>');
+		if (stats.failures > 0) html.add(', <span style="color: #f44336;">' + stats.failures + ' failures</span>');
+		if (stats.errors > 0) html.add(', <span style="color: #f44336;">' + stats.errors + ' errors</span>');
+		if (stats.warnings > 0) html.add(', <span style="color: #FF9800;">' + stats.warnings + ' warnings</span>');
 		html.add('\n');
 		html.add('            <button class="expand-btn" id="unitToggleBtn" onclick="toggleUnitDetails()">Show Details</button>\n');
 		html.add('        </div>\n');
@@ -1154,7 +1154,7 @@ class HtmlReportGenerator {
 
 	private static function generateUnitClass(html:StringBuf, cls:utest.ui.common.ClassResult):Void {
 		html.add('            <div class="unit-class">\n');
-		html.add('                <div class="unit-class-name">${cls.className.htmlEscape()}</div>\n');
+		html.add('                <div class="unit-class-name">' + cls.className.htmlEscape() + '</div>\n');
 
 		for (methodName in cls.methodNames()) {
 			var fixture = cls.get(methodName);
@@ -1175,18 +1175,18 @@ class HtmlReportGenerator {
 				}
 			}
 			var prefix = ok ? "OK" : "FAIL";
-			html.add('                <div class="unit-method ${statusCls}">${methodName.htmlEscape()}: ${prefix} <span class="dots">${dots}</span></div>\n');
+			html.add('                <div class="unit-method $statusCls">' + methodName.htmlEscape() + ': $prefix <span class="dots">$dots</span></div>\n');
 
 			// Show failure details
 			if (!ok) {
 				for (assertation in fixture) {
 					switch (assertation) {
 						case Failure(msg, pos):
-							var detail = '${pos.fileName}:${pos.lineNumber}: ${msg}';
-							html.add('                <div class="unit-fail-detail">${detail.htmlEscape()}</div>\n');
+							var detail = pos.fileName + ':' + pos.lineNumber + ': $msg';
+							html.add('                <div class="unit-fail-detail">' + detail.htmlEscape() + '</div>\n');
 						case Error(e, stack):
 							var detail = Std.string(e);
-							html.add('                <div class="unit-fail-detail">${detail.htmlEscape()}</div>\n');
+							html.add('                <div class="unit-fail-detail">' + detail.htmlEscape() + '</div>\n');
 						default:
 					}
 				}

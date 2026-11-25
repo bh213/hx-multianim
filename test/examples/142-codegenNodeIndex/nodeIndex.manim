@@ -1,0 +1,38 @@
+version: 1.0
+
+// Positional index contracts between macro-generated fields and the
+// ProgrammableBuilder runtime lookups.
+
+// particles inside a statically-unrolled repeatable: the macro emits one
+// buildParticles(index) per unrolled iteration, but the runtime lookup counts
+// PARTICLES parse nodes (one), so the second iteration's index is out of range.
+#particlesRepeat programmable() {
+  repeatable($i, range(0, 2)) {
+    point {
+      pos: $i * 40, 0
+      particles {
+        count: 10
+        emit: point(dist: 0, distRand: 0)
+        maxLife: 1.0
+        speed: 20
+        tiles: sheet("demo", "tile-center")
+        loop: false
+        size: 1.0
+      }
+    }
+  }
+}
+
+// Conditional sibling tilegroups: the macro bakes a document-order ordinal
+// over ALL tilegroup nodes, but the runtime lookup collects TileGroups from
+// the conditional-filtered built tree. (The param is an int on purpose — an
+// enum param would trip the separate enum-Int forwarding divergence in the
+// codegen's full-build param handoff before reaching this contract.)
+#tgCond programmable(m:int=0) {
+  @(m=>0) tileGroup {
+    bitmap(generated(color(8, 8, #FF0000))): 0, 0
+  }
+  @else tileGroup {
+    bitmap(generated(color(12, 12, #00FF00))): 0, 0
+  }
+}

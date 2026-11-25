@@ -1,0 +1,54 @@
+padded.png
+size: 666,146
+format: RGBA8888
+filter: Nearest,Nearest
+repeat: none
+plaza
+  rotate: false
+  xy: 1, 1
+  size: 140, 118
+  orig: 140, 118
+  offset: 0, 0
+  index: 0
+house
+  rotate: false
+  xy: 142, 1
+  size: 140, 144
+  orig: 140, 144
+  offset: 0, 0
+  index: 0
+cliff
+  rotate: false
+  xy: 283, 1
+  size: 140, 116
+  orig: 140, 116
+  offset: 0, 0
+  index: 0
+auto0
+  rotate: false
+  xy: 424, 1
+  size: 140, 130
+  orig: 140, 130
+  offset: 0, 0
+  index: 0
+temperate
+  rotate: false
+  xy: 565, 1
+  size: 40, 65
+  orig: 40, 65
+  offset: 0, 0
+  index: 0
+desert
+  rotate: false
+  xy: 606, 1
+  size: 40, 65
+  orig: 40, 65
+  offset: 0, 0
+  index: 0
+man
+  rotate: false
+  xy: 647, 1
+  size: 18, 57
+  orig: 18, 57
+  offset: 0, 0
+  index: 0

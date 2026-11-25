@@ -68,7 +68,7 @@ class AnimAnalyzer {
 					kind: SymbolKind.Variable,
 					range: range,
 					selectionRange: range,
-					detail: 'state (${s.values.join(", ")})'
+					detail: 'state (' + s.values.join(", ") + ')'
 				});
 			}
 
@@ -126,7 +126,7 @@ class AnimAnalyzer {
 		final kw = AnimKeywordInfo.findByName(word);
 		if (kw == null) return null;
 
-		return {contents: {kind: "markdown", value: '**${kw.name}** — ${kw.description}'}};
+		return {contents: {kind: "markdown", value: '**' + kw.name + '** — ' + kw.description}};
 	}
 
 	// ---- Helpers ----

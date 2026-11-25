@@ -18,7 +18,7 @@ version: 1.0
   interactive(100, 50, "btn", price:int => $price): 0, 0
 }
 
-// Param referenced ONLY in untracked stateanim selector — setParameter must throw.
-#codegenIncUntrackedSelector programmable(dir:string="l") {
+// Param referenced only in a stateanim selector — setParameter changes that state in place.
+#codegenIncSelector programmable(dir:string="l") {
   stateanim("marine.anim", "idle", "direction"=>$dir): 0, 0
 }

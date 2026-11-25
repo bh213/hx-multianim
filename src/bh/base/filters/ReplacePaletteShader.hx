@@ -48,7 +48,7 @@ class ReplacePaletteShader extends h3d.shader.ScreenShader {
   
   public function new(source:Array<Int>, replacement:Array<Int>) {
     super();
-    if (source.length != replacement.length) throw 'source and destination palette sizes don\'t match ${source.length} != ${replacement.length}';
+    if (source.length != replacement.length) throw 'source and destination palette sizes don\'t match ' + source.length + ' != ' + replacement.length;
     PALETTE_SIZE = source.length;
     for (i in 0...PALETTE_SIZE) {
         SRC_COL[i] = new Vector4();

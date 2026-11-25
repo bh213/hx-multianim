@@ -166,6 +166,12 @@ class UITestScreen extends UIScreenBase {
 		return parseOverlaySettings(rootSettings);
 	}
 
+	/** Expose addScrollableListWithSingleBuilder for testing. */
+	public function testAddScrollableList(builder, panelName:String, itemName:String, scrollbarName:String, items:Array<UIElementListItem>,
+			settings:ResolvedSettings, width:Int, height:Int) {
+		return addScrollableListWithSingleBuilder(builder, panelName, itemName, scrollbarName, "scrollbar", items, settings, 0, width, height);
+	}
+
 	/** Expose createPanelHelper for testing. */
 	public function testCreatePanelHelper(builder, ?defaults:PanelDefaults):UIPanelHelper {
 		return createPanelHelper(builder, defaults);

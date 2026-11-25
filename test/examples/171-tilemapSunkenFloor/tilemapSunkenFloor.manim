@@ -1,0 +1,109 @@
+version: 1.0
+
+// A sunken floor whose rim is drawn on the ground around it, not on the floor: the floor is a
+// terrain under the dirt, and `transition floor, dirt` draws the rim (a dark line, nothing
+// elsewhere) on the dirt cells beside the floor, by which of their neighbours are floor (a blob47
+// over the dirt's cells). The floor's own tiles stay plain.
+// Left: a floor with a path of dirt into it and a notch, no other terrain: no ignore: needed.
+// Middle: the dirt yard also meets grass, a terrain below it, and its edge toward the grass is
+// a transition of its own; where the dirt is one cell wide it touches both, and neither pair is
+// alone there, so neither the rim nor the edge is drawn. Right: the same with each transition
+// ignoring the other's terrain (`ignore: grass`, `ignore: floor`): both are drawn all round, each
+// facing its own terrain.
+// Tiles: Minifantasy - Forgotten Plains by Krishna Palacio (free tiles); demo autotiles.
+
+#fp atlas2("Tileset/Minifantasy_ForgottenPlainsTiles.png") {
+    grass: 32, 24, 8, 8, index: 0
+    grass: 32, 40, 8, 8, index: 1
+    grass: 32, 48, 8, 8, index: 2
+    grass: 32, 32, 8, 8, index: 3
+}
+
+#floorPlain autotile { format: blob47 tileSize: 8 demo: #3A2E26, #3A2E26 }
+#dirtPlain autotile { format: blob47 tileSize: 8 demo: #B08A5A, #B08A5A }
+// the rim of the floor, on the dirt's side facing it; nothing elsewhere
+#rim autotile { format: blob47 tileSize: 8 demo: #1A120C, #00000000 }
+// the dirt's edge toward the grass
+#dirtEdge autotile { format: blob47 tileSize: 8 demo: #E8D8A0, #00000000 }
+
+#hut tileset {
+    tileSize: 8
+    atlas: "fp"
+    terrain floor { autotile: floorPlain }
+    terrain dirt { autotile: dirtPlain }
+    transition floor, dirt { autotile: rim }
+}
+
+#yardPlain tileset {
+    tileSize: 8
+    atlas: "fp"
+    terrain grass { cells: "grass" }
+    terrain floor { autotile: floorPlain }
+    terrain dirt { autotile: dirtPlain }
+    transition floor, dirt { autotile: rim }
+    transition grass, dirt { autotile: dirtEdge }
+}
+
+#yardIgnoring tileset {
+    tileSize: 8
+    atlas: "fp"
+    terrain grass { cells: "grass" }
+    terrain floor { autotile: floorPlain }
+    terrain dirt { autotile: dirtPlain }
+    transition floor, dirt { autotile: rim  ignore: grass }
+    transition grass, dirt { autotile: dirtEdge  ignore: floor }
+}
+
+#hutFloor tilemap {
+    tileset: hut
+    size: 10, 8
+    legend { "d": dirt, "f": floor }
+    terrain: [
+        "dddddddddd",
+        "dddddddddd",
+        "ddffdfffdd",
+        "ddffdfffdd",
+        "ddfffffddd",
+        "ddfffffddd",
+        "dddddddddd",
+        "dddddddddd",
+    ]
+}
+
+#yardPlainMap tilemap {
+    tileset: yardPlain
+    size: 11, 8
+    legend { ".": grass, "d": dirt, "f": floor }
+    terrain: [
+        "...........",
+        ".ddddddddd.",
+        ".ddfffffd..",
+        ".ddfffffd..",
+        ".ddfffffdd.",
+        ".ddfffffd..",
+        ".dddddddd..",
+        "...........",
+    ]
+}
+
+#yardIgnoringMap tilemap {
+    tileset: yardIgnoring
+    size: 11, 8
+    legend { ".": grass, "d": dirt, "f": floor }
+    terrain: [
+        "...........",
+        ".ddddddddd.",
+        ".ddfffffd..",
+        ".ddfffffd..",
+        ".ddfffffdd.",
+        ".ddfffffd..",
+        ".dddddddd..",
+        "...........",
+    ]
+}
+
+#tilemapSunkenFloor programmable() {
+    tilemap(hutFloor): 8, 8
+    tilemap(yardPlainMap): 96, 8
+    tilemap(yardIgnoringMap): 192, 8
+}

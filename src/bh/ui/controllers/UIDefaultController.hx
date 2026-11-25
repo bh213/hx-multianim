@@ -3,6 +3,7 @@ package bh.ui.controllers;
 import bh.ui.UIElement;
 // import bh.ui.controllers.UIController.EventWrapper;
 import bh.ui.controllers.UIController;
+import bh.base.CursorManager;
 import h2d.col.Point;
 
 private class CaptureEventsImpl implements CaptureEventsControl {
@@ -26,7 +27,7 @@ private class CaptureEventsImpl implements CaptureEventsControl {
 	}
 
 	public function toString() {
-		return 'start:${start}, stop:${stop}, target:${target}';
+		return 'start:$start, stop:$stop, target:$target';
 	}
 
 	public function isCapturing() {
@@ -99,6 +100,11 @@ class UIDefaultController implements UIController {
 	#end
 
 	var currentOver:Null<UIElement> = null;
+	// The cursor updateCursor last set, and CursorManager's override version then: as a new
+	// controller starts, the default with no override changed, so it sets nothing until the
+	// mouse moves onto something with a cursor of its own (or an override comes or goes)
+	var lastCursor:hxd.Cursor = CursorManager.getDefaultCursor();
+	var lastOverrideVersion:Int = CursorManager.getOverrideVersion();
 	final controllable:ControllableImpl;
 	final integration:bh.ui.controllers.UIController.UIControllerScreenIntegration;
 
@@ -114,14 +120,56 @@ class UIDefaultController implements UIController {
 	// Array allocation on every mouse move/click/wheel/key.
 	final _hits:Array<UIElement> = [];
 
-	// Stable sort comparator: higher eventPriority first, registration order as
-	// tiebreaker. Hoisted to a static field so it's allocated once per program
-	// rather than per getEventElements call.
+	// State threaded into the cached hit-test callback so getEventElements
+	// doesn't allocate a fresh closure capturing `pos` per input event.
+	var _hitsPos:Null<Point> = null;
+	final _hitsCallback:UIElement->Void;
+
+	// Stable sort comparator: higher eventPriority first, then the one drawn on top, registration
+	// order for two with no draw order between them. Hoisted to a static field so it's allocated
+	// once per program rather than per getEventElements call.
 	static final _priorityComparator:(UIElement, UIElement) -> Int = (a, b) -> {
 		final pa = Std.isOfType(a, UIElementPriority) ? (cast(a, UIElementPriority)).eventPriority : 0;
 		final pb = Std.isOfType(b, UIElementPriority) ? (cast(b, UIElementPriority)).eventPriority : 0;
-		return pb - pa;
+		return pa != pb ? pb - pa : compareDrawOrder(a.getObject(), b.getObject());
 	};
+
+	/**
+		Negative when `a` is drawn over `b`, positive when under it, 0 when neither can be told (no
+		object, or two objects in no one tree). Children are drawn in order, so of two under one parent
+		the later is on top (an `h2d.Layers` keeps its children sorted by layer), and a child over its
+		own parent.
+	**/
+	static function compareDrawOrder(a:Null<h2d.Object>, b:Null<h2d.Object>):Int {
+		if (a == null || b == null || a == b)
+			return 0;
+		final depthA = depthOf(a);
+		final depthB = depthOf(b);
+		var x:h2d.Object = a;
+		var y:h2d.Object = b;
+		for (_ in depthB...depthA)
+			x = x.parent;
+		for (_ in depthA...depthB)
+			y = y.parent;
+		if (x == y)
+			return depthB - depthA;
+		while (x.parent != y.parent) {
+			x = x.parent;
+			y = y.parent;
+		}
+		final parent = x.parent;
+		return parent == null ? 0 : parent.getChildIndex(y) - parent.getChildIndex(x);
+	}
+
+	static function depthOf(object:h2d.Object):Int {
+		var depth = 0;
+		var o = object.parent;
+		while (o != null) {
+			depth++;
+			o = o.parent;
+		}
+		return depth;
+	}
 
 	public function new(integration) {
 		this.integration = integration;
@@ -132,6 +180,9 @@ class UIDefaultController implements UIController {
 		this._updateCallback = function(element:UIElement):Void {
 			@:nullSafety(Off) redrawAndUpdate(element, _updateDt);
 		};
+		this._hitsCallback = function(element:UIElement):Void {
+			@:nullSafety(Off) if (isShown(element.getObject()) && element.containsPoint(_hitsPos)) _hits.push(element);
+		};
 		this.controllable = new ControllableImpl(this);
 		#if MULTIANIM_ALLOC_TRACK
 		hitsCreationCount++;
@@ -140,6 +191,23 @@ class UIDefaultController implements UIController {
 
 	public function getDebugName():String {
 		return "default UI controller";
+	}
+
+	/**
+		Whether an element's object is shown: it and every parent of it visible. Only a shown element
+		takes the pointer (a click, a move, the wheel, a key): one hidden by `getObject().visible =
+		false`, or under a hidden parent (an `@()` arm that is not shown), passes it to the next one
+		under the pointer, so two controls swapped in one place (Deal and Hit) need no check of which
+		sent the click. An element with no object is taken as shown.
+	**/
+	public static function isShown(object:Null<h2d.Object>):Bool {
+		var o = object;
+		while (o != null) {
+			if (!o.visible)
+				return false;
+			o = o.parent;
+		}
+		return true;
 	}
 
 	/** Returns true if the event was consumed (default), false if it should bubble. */
@@ -177,6 +245,10 @@ class UIDefaultController implements UIController {
 	}
 
 	public function handleClick(mousePoint:Point, button:Int, release:Bool, eventWrapper:EventWrapper) {
+		final touch = PointerEvent.isTouch(eventWrapper.sourceEvent);
+		// A finger arrives with its press: no move brought it over the control, as a mouse's does
+		if (touch && !release)
+			handleMove(mousePoint, eventWrapper);
 		final elements = getEventElements(mousePoint);
 		final topElement = elements.length > 0 ? elements[0] : null;
 		if (integration.dispatchMouseClick(mousePoint, button, release) == false) {
@@ -187,6 +259,8 @@ class UIDefaultController implements UIController {
 				for (value in triggeredElements)
 					handleEvent(value, OnReleaseOutside(button), mousePoint);
 			}
+			if (touch && release)
+				endHover(mousePoint);
 			return;
 		}
 		if (release) {
@@ -199,6 +273,17 @@ class UIDefaultController implements UIController {
 			if (handleEvent(element, release ? OnRelease(button) : OnPush(button), mousePoint))
 				break;
 		}
+		if (touch && release)
+			endHover(mousePoint);
+	}
+
+	/** A lifted finger is nowhere: unlike a mouse it will not move off what it was over. */
+	function endHover(pos:Point) {
+		final over = currentOver;
+		if (over == null)
+			return;
+		currentOver = null;
+		handleEvent(over, OnLeave, pos);
 	}
 
 	public function handleMouseWheel(mousePoint:Point, wheelDelta:Float, eventWrapper:EventWrapper) {
@@ -211,14 +296,20 @@ class UIDefaultController implements UIController {
 
 	function getEventElements(pos:Point):Array<UIElement> {
 		_hits.resize(0);
-		if (controllable.captureEvents.target != null) {
-			_hits.push(controllable.captureEvents.target);
-			return _hits;
+		final captured = controllable.captureEvents.target;
+		if (captured != null) {
+			// A widget disabled while it held the mouse ignores every event, so it never hears the
+			// release that would end its capture: the capture ends with it
+			if (Std.isOfType(captured, UIElementDisablable) && cast(captured, UIElementDisablable).disabled)
+				controllable.captureEvents.target = null;
+			else {
+				_hits.push(captured);
+				return _hits;
+			}
 		}
-		integration.forEachElement(SETReceiveEvents, function(element:UIElement):Void {
-			if (element.containsPoint(pos))
-				_hits.push(element);
-		});
+		_hitsPos = pos;
+		integration.forEachElement(SETReceiveEvents, _hitsCallback);
+		_hitsPos = null;
 		if (_hits.length > 1) {
 			haxe.ds.ArraySort.sort(_hits, _priorityComparator);
 		}
@@ -232,27 +323,35 @@ class UIDefaultController implements UIController {
 
 		if (element != null)
 			handleEvent(element, OnMouseMove, mousePoint);
-		if (element == currentOver)
-			return;
-		else if (element == null && currentOver != null) {
+		if (element == null && currentOver != null) {
 			handleEvent(currentOver, OnLeave, mousePoint);
 			currentOver = null;
-		} else if (element != null) {
+		} else if (element != null && element != currentOver) {
 			if (currentOver != null) {
 				handleEvent(currentOver, OnLeave, mousePoint);
 			}
 			handleEvent(element, OnEnter, mousePoint);
 			currentOver = element;
 		}
+		// on every move, not only when the hovered element changes: its cursor may follow its state
 		updateCursor();
 	}
 
+	/**
+		Sets the cursor: `CursorManager`'s override while there is one, else the hovered element's,
+		else the default. Only when that or the override changed since the controller last set it,
+		so a cursor game code sets lasts until the UI's own changes. Run on every move and frame.
+	**/
 	function updateCursor() {
-		if (currentOver != null && Std.isOfType(currentOver, UIElementCursor)) {
-			hxd.System.setCursor((cast(currentOver, UIElementCursor)).getCursor());
-		} else {
-			hxd.System.setCursor(bh.base.CursorManager.getDefaultCursor());
-		}
+		final overrideCursor = CursorManager.getOverrideCursor();
+		final cursor = if (overrideCursor != null) overrideCursor else if (currentOver != null && Std.isOfType(currentOver, UIElementCursor))
+			(cast(currentOver, UIElementCursor)).getCursor() else CursorManager.getDefaultCursor();
+		final version = CursorManager.getOverrideVersion();
+		if (version == lastOverrideVersion && Type.enumEq(cursor, lastCursor))
+			return;
+		lastCursor = cursor;
+		lastOverrideVersion = version;
+		hxd.System.setCursor(cursor);
 	}
 
 	function redrawAndUpdate(element:UIElement, dt:Float) {
@@ -269,6 +368,8 @@ class UIDefaultController implements UIController {
 	public function update(dt:Float) {
 		_updateDt = dt;
 		integration.forEachElement(SETReceiveUpdates, _updateCallback);
+		// the hovered element's state may have changed its cursor without the mouse moving
+		updateCursor();
 
 		if (exitResponse != null) {
 			final retVal = exitResponse;

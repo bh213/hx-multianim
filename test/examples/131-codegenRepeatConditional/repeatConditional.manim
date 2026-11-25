@@ -1,0 +1,21 @@
+version: 1.0
+
+// Conditionals on inline-kind children (bitmap/text/ninepatch/graphics/...) inside a
+// param-dependent repeatable must be evaluated per iteration in codegen, matching the
+// builder's per-iteration resolveConditionalChildren (MultiAnimBuilder.build REPEAT).
+// Codegen's generateRuntimeChildExprs (ProgrammableCodeGen.hx) currently emits the
+// inline child unconditionally — the element renders on every iteration regardless of
+// the @() condition. Builder-forwarded kinds (interactive, dynamicRef, ...) are not
+// affected: buildSingleNodeWithParams honors conditionals via shouldBuildInFullMode.
+
+#repeatCondParam programmable(show:bool=false, count:int=2) {
+  repeatable($i, range(0, $count)) {
+    @(show=>true) bitmap(generated(color(10, 10, #ff0000))): 0, $i * 20
+  }
+}
+
+#repeatCondLoopVar programmable(count:int=3) {
+  repeatable($i, range(0, $count)) {
+    @($i => 0) bitmap(generated(color(10, 10, #00ff00))): 0, $i * 20
+  }
+}

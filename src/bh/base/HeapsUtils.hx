@@ -23,9 +23,72 @@ function solidTile(color:Int, width:Int, height:Int):h2d.Tile {
     return h2d.Tile.fromColor(color & 0xFFFFFF, width, height, alpha);
 }
 
+/** The points of a rounded rectangle's outline, x then y, round from the top side's right end: the
+ *  same corners as Heaps' `drawRoundedRect` (so it fits a filled one), no point twice in a row and
+ *  the last not the first again. What `strokeRoundedRect` draws. */
+function roundedRectOutline(x:Float, y:Float, w:Float, h:Float, radius:Float, nsegments = 0):Array<Float> {
+    var n = nsegments == 0 ? Math.ceil(Math.abs(radius * hxd.Math.degToRad(90) / 4)) : nsegments;
+    if (n < 3) n = 3;
+    final step = hxd.Math.degToRad(90) / (n - 1);
+    final out:Array<Float> = [];
+    inline function corner(cx:Float, cy:Float, start:Float) {
+        for (i in 0...n) {
+            final a = hxd.Math.degToRad(start) + i * step;
+            final px = cx + Math.cos(a) * radius, py = cy + Math.sin(a) * radius;
+            final at = out.length;
+            if (at == 0 || Math.abs(px - out[at - 2]) > 1e-9 || Math.abs(py - out[at - 1]) > 1e-9) {
+                out.push(px);
+                out.push(py);
+            }
+        }
+    }
+    corner(x + w - radius, y + radius, 270);
+    corner(x + w - radius, y + h - radius, 0);
+    corner(x + radius, y + h - radius, 90);
+    corner(x + radius, y + radius, 180);
+    final last = out.length;
+    if (last > 2 && Math.abs(out[last - 2] - out[0]) <= 1e-9 && Math.abs(out[last - 1] - out[1]) <= 1e-9) out.resize(last - 2);
+    return out;
+}
+
+/** A rounded rectangle's outline, in the line style set on `g`. Heaps' `drawRoundedRect` gives each
+ *  straight side's last point again as its corner's first, and a line of no length leaves the sides
+ *  undrawn in WebGL: an outline showed only its four corners. Drawn from `roundedRectOutline`, the
+ *  path closed where it began. */
+function strokeRoundedRect(g:h2d.Graphics, x:Float, y:Float, w:Float, h:Float, radius:Float, nsegments = 0):Void {
+    if (radius <= 0) {
+        g.drawRect(x, y, w, h);
+        return;
+    }
+    final p = roundedRectOutline(x, y, w, h, radius, nsegments);
+    g.moveTo(p[0], p[1]);
+    var i = 2;
+    while (i < p.length) {
+        g.lineTo(p[i], p[i + 1]);
+        i += 2;
+    }
+    g.lineTo(p[0], p[1]);
+}
+
 /** Solid-color bitmap. Color is strict-D 0xAARRGGBB — top byte is alpha. */
 function solidBitmap(color:Int, width:Int, height:Int, ?parent:h2d.Object):h2d.Bitmap {
     return new h2d.Bitmap(solidTile(color, width, height), parent);
+}
+
+/** Cross-in-a-box placeholder tile: rect border + 4 diagonals, repeated per
+ *  thickness step. The same drawing the runtime builder uses for
+ *  generated(cross(...)) — shared so codegen output renders identically. */
+function crossTile(color:Int, width:Int, height:Int, thickness:Int):h2d.Tile {
+    final pl = new bh.base.PixelLine.PixelLines(width, height);
+    for (t in 0...thickness) {
+        pl.rect(t, t, width - 1 - t * 2, height - 1 - t * 2, color);
+        pl.line(t, 0, width - 1, height - 1 - t, color);
+        pl.line(0, t, width - 1 - t, height - 1, color);
+        pl.line(t, height - 1, width - 1, t, color);
+        pl.line(0, height - 1 - t, width - 1 - t, 0, color);
+    }
+    pl.updateBitmap();
+    return pl.tile;
 }
 
 private function displayH2dObjectNode(sb:StringBuf, obj:h2d.Object, indent:Int) {

@@ -219,6 +219,24 @@ class InteractionControllerTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testSelectFromHandLeavesCardsTheGameDisabledDisabled():Void {
+		var h = createCardHand();
+		h.helper.setHand([desc("a"), desc("b"), desc("c")]);
+		h.helper.setCardEnabled("c", false); // the game's own: unplayable this turn
+
+		var ctrl = new UISelectFromHandController(h.screen, h.helper, {
+			maxCount: 1,
+			filter: (id) -> id == "b"
+		}, (_) -> {});
+		ctrl.lifecycleEvent(LifecycleControllerStarted);
+		ctrl.lifecycleEvent(LifecycleControllerFinished);
+
+		Assert.isTrue(h.helper.isCardInHand("a"), "the card the filter dimmed is enabled again");
+		Assert.isTrue(h.helper.isCardInHand("b"));
+		Assert.isFalse(h.helper.isCardInHand("c"), "a card the game disabled stays disabled");
+	}
+
+	@Test
 	public function testSelectFromHandConfirmRequiresMinCount():Void {
 		var h = createCardHand();
 		h.helper.setHand([desc("a"), desc("b")]);
@@ -337,6 +355,32 @@ class InteractionControllerTest extends BuilderTestBase {
 		Assert.isTrue(h.helper.canDragCard("a"));
 	}
 
+	@Test
+	public function testPickTargetHighlightsGridCellsOfTheDocumentedCellContractByDefault():Void {
+		final builder = BuilderTestBase.builderFromSource("
+			#cell programmable(col:int=0, row:int=0, status:[normal,hover]=normal, highlight:[none,accept,reject]=none) {
+				bitmap(generated(color(50, 50, #666666))): 0, 0
+			}
+		");
+		final grid = new bh.ui.UIMultiAnimGrid(builder, {
+			gridType: Rect(50, 50, 2),
+			cellVisualFactory: new bh.ui.UIMultiAnimGridTypes.DefaultCellVisualFactory(builder, {cellBuildName: "cell"}),
+		});
+		grid.addRectRegion(2, 1);
+		final screen = new UITestScreen();
+		final ctrl = new UIPickTargetController(screen, {grid: grid}, (_) -> {});
+		var error:Null<String> = null;
+		try {
+			ctrl.lifecycleEvent(LifecycleControllerStarted);
+		} catch (e:Dynamic) {
+			error = Std.string(e);
+		}
+		Assert.isNull(error, "a pick on a grid of the documented cell contract starts without throwing");
+		final result = grid.getCellVisual(0, 0).getResult();
+		Assert.equals("accept", result == null ? null : result.getParameterValues().get("highlight"),
+			"a valid cell is highlighted with a value the cell contract declares");
+	}
+
 	// ==================== UIInteractionTypes ====================
 
 	@Test
@@ -442,6 +486,48 @@ class InteractionControllerTest extends BuilderTestBase {
 		ctrl.cancel();
 		ctrl.update(0.016);
 		Assert.equals("default UI controller", h.screen.get_controller().getDebugName());
+	}
+
+	@Test
+	public function testClearRestoresDefaultControllerOnTopOfStack():Void {
+		var screen = new UITestScreen();
+		var ctrl = new UIInteractionController(screen, (_) -> {});
+		screen.pushController(ctrl);
+		Assert.equals("interaction controller", screen.get_controller().getDebugName());
+
+		screen.clear();
+
+		Assert.equals("default UI controller", screen.get_controller().getDebugName());
+	}
+
+	@Test
+	public function testClearFiresLifecycleFinishedOnPushedControllers():Void {
+		var screen = new UITestScreen();
+		var activated = false;
+		var deactivated = false;
+		var ctrl = new TestableInteractionController(screen, (_) -> {}, () -> { activated = true; }, () -> { deactivated = true; });
+
+		screen.pushController(ctrl);
+		Assert.isTrue(activated);
+		Assert.isFalse(deactivated);
+
+		screen.clear();
+
+		Assert.isTrue(deactivated);
+	}
+
+	@Test
+	public function testClearWithNestedControllersRestoresDefault():Void {
+		var screen = new UITestScreen();
+		var ctrl1 = new UIInteractionController(screen, (_) -> {});
+		var ctrl2 = new UIInteractionController(screen, (_) -> {});
+		screen.pushController(ctrl1);
+		screen.pushController(ctrl2);
+		Assert.equals("interaction controller", screen.get_controller().getDebugName());
+
+		screen.clear();
+
+		Assert.equals("default UI controller", screen.get_controller().getDebugName());
 	}
 
 	// ==================== Composable controllers ====================

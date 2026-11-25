@@ -443,6 +443,33 @@ class UIRichInteractiveHelperTest extends BuilderTestBase {
 	}
 
 	@Test
+	public function testUnnamedDynamicRefsInARepeatDriveTheirOwnStatus():Void {
+		// Each iteration's dynamicRef places its own button: its bind drives that child's status,
+		// not the host's (unnamed sites in a repeat share one key, which getDynamicRef refuses)
+		var ctx = createHelper("
+			#btn programmable(status:[normal,hover,pressed]=normal, n:int=0) {
+				interactive(10, 10, $n, bind => \"status\"): 0, 0
+			}
+			#host programmable() {
+				repeatable($i, step(2, dx: 20)) {
+					dynamicRef(btn, n => $i): 0, 0
+				}
+			}
+		", "host");
+		for (id in ["0", "1"]) {
+			final owner = ctx.helper.getSource(id);
+			Assert.notNull(owner, "button " + id + " is bound");
+			Assert.notEquals((ctx.result : bh.ui.UIInteractiveSource), owner, "button " + id + " is driven through its own child");
+		}
+		var thrown:Null<Dynamic> = null;
+		try ctx.helper.handleEvent(UIInteractiveEvent(UIEntering(), "1", null)) catch (e:Dynamic) thrown = e;
+		Assert.isNull(thrown, "hovering a button sets its child's status");
+		final owner = ctx.helper.getSource("1");
+		if (owner != null && thrown == null && Std.isOfType(owner, BuilderResult))
+			Assert.equals("hover", (cast owner : BuilderResult).getParameterValues().get("status"), "the hovered child shows hover");
+	}
+
+	@Test
 	public function testGetResultReturnsNullForUnknown():Void {
 		var ctx = createHelper(BOUND_MANIM, "bound");
 		Assert.isNull(ctx.helper.getSource("nonexistent"));

@@ -256,4 +256,30 @@ class FloatingTextHelperTest extends BuilderTestBase {
 		Assert.isTrue(inst.object.alpha < 0.9);
 		Assert.isTrue(inst.object.alpha > 0.1);
 	}
+
+	// ============== Color from path ==============
+
+	@Test
+	public function testColorCurveOnWhiteIsApplied():Void {
+		// A color curve that is on white (here: all along) still drives the text color;
+		// white must not be read as "no color curve".
+		var builder = BuilderTestBase.builderFromSource("
+			paths { #colorPath path { lineTo(0, -50) } }
+			#colorAnim animatedPath {
+				path: colorPath
+				type: time
+				duration: 1.0
+				0.0: colorCurve: linear, #FFFFFF, #FFFFFF
+			}
+		");
+		var helper = new FloatingTextHelper(new h2d.Object());
+		var font = hxd.res.DefaultFont.get();
+		var inst = helper.spawn("-42", font, 0, 0, builder.createAnimatedPath("colorAnim"), 0x00FF00);
+		helper.update(0.25);
+		var text:h2d.Text = cast inst.object;
+		Assert.floatEquals(1.0, text.color.r, "red channel follows the white curve");
+		Assert.floatEquals(1.0, text.color.g, "green channel follows the white curve");
+		Assert.floatEquals(1.0, text.color.b, "blue channel follows the white curve");
+		Assert.floatEquals(1.0, text.color.a, "and the text stays opaque");
+	}
 }

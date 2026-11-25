@@ -63,6 +63,18 @@ A groovy, round typeface with chunky '70s charm. Free for personal or commercial
 - **License**: CC0 (public domain)
 - **Usage**: `f3x5` font in tests
 
+### 04b-03
+- **Author**: Yuji Oshimoto
+- **Source**: http://www.04.jp.org/
+- **License**: Free
+- **Usage**: `o4b03` font in tests
+
+### Departure Mono
+- **Author**: Helena Zhang
+- **Source**: https://departuremono.com / https://github.com/rektdeckard/departure-mono
+- **License**: SIL Open Font License 1.1 (https://openfontlicense.org)
+- **Usage**: `departuremono` font in tests; provides Unicode box-drawing glyphs. Baked from the v1.500 OTF into a BMFont.
+
 ## Assets
 
 ### Some particle textures
@@ -72,6 +84,18 @@ https://jellyfish0.itch.io/
 https://krishna-palacio.itch.io/minifantasy-forgotten-plains
 by Krishna Palacio
 Used for autotile test examples.
+
+### Kenney: Isometric Tiles City, Isometric Tiles Buildings, Hexagon Pack
+https://kenney.nl/assets/isometric-tiles-city, https://kenney.nl/assets/isometric-tiles-buildings, https://kenney.nl/assets/hexagon-pack
+by Kenney (www.kenney.nl)
+- **License**: CC0 (public domain)
+- **Usage**: `test/res/isohex/isoCity` and `hexKenney`, a few tiles of each packed into one sheet, for the isometric and hex tile map tests (example 168); four of the city's tiles again, with clear margins, in `test/res/isohex/padded` for the trimmed atlas test. `test/res/isohex/LICENSE.txt` lists them.
+
+### Hexset v0.1.1
+https://opengameart.org/content/hexset-v011-hex-pixel-art-terrain-tileset
+by mbartelsm
+- **License**: CC0 (public domain)
+- **Usage**: `test/res/isohex/hexset`, seven of its 32x48 tiles, for the hex tile map tests (example 168); two of them again in `test/res/isohex/padded`.
 
 ---
 

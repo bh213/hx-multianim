@@ -1,0 +1,81 @@
+version: 1.0
+
+// A transition that ignores a third terrain: land, the deep sea and shallows on it (a terrain
+// above the sea), with a coast (a sand line) from land to the shallows and from land to the sea.
+// The shallows are two cells wide on the left and one cell wide elsewhere, so a shallow cell there
+// touches the sea as well as the land. Left, the coast does not ignore the sea: such a cell meets
+// land and something else, and gets no coast (the shallows' own blue edge shows). Right, the same
+// map with `ignore: sea`: the sea counts as shallows, the coast runs all round the island and faces
+// the land alone. The sea's own coast (land against the sea, one cell on the right) is drawn on both.
+// Tiles: Minifantasy - Forgotten Plains by Krishna Palacio (free tiles); demo autotiles.
+
+#fp atlas2("Tileset/Minifantasy_ForgottenPlainsTiles.png") {
+    grass: 32, 24, 8, 8, index: 0
+    grass: 32, 40, 8, 8, index: 1
+    grass: 32, 48, 8, 8, index: 2
+    grass: 32, 32, 8, 8, index: 3
+}
+
+#deep autotile { format: blob47 tileSize: 8 demo: #1E3C78, #1E3C78 }
+#shallow autotile { format: blob47 tileSize: 8 demo: #2A5294, #5A96D2 }
+// a sand line on the side facing the land, nothing elsewhere: what is under it shows
+#coast autotile { format: blob47 tileSize: 8 demo: #F0D890, #00000000 }
+
+#coastPlain tileset {
+    tileSize: 8
+    atlas: "fp"
+    terrain land { cells: "grass" }
+    terrain sea { autotile: deep }
+    terrain shallows { autotile: shallow }
+    transition land, sea { autotile: coast }
+    transition land, shallows { autotile: coast }
+}
+
+#coastIgnoring tileset {
+    tileSize: 8
+    atlas: "fp"
+    terrain land { cells: "grass" }
+    terrain sea { autotile: deep }
+    terrain shallows { autotile: shallow }
+    transition land, sea { autotile: coast }
+    transition land, shallows { autotile: coast  ignore: sea }
+}
+
+#islandPlain tilemap {
+    tileset: coastPlain
+    size: 12, 9
+    legend { ".": land, "~": sea, "s": shallows }
+    terrain: [
+        "~~~~~~~~~~~~",
+        "~ssssssss~~~",
+        "~ss......s~~",
+        "~ss.......s~",
+        "~ss.......~~",
+        "~ss.......s~",
+        "~sss.....s~~",
+        "~~~sssssss~~",
+        "~~~~~~~~~~~~",
+    ]
+}
+
+#islandIgnoring tilemap {
+    tileset: coastIgnoring
+    size: 12, 9
+    legend { ".": land, "~": sea, "s": shallows }
+    terrain: [
+        "~~~~~~~~~~~~",
+        "~ssssssss~~~",
+        "~ss......s~~",
+        "~ss.......s~",
+        "~ss.......~~",
+        "~ss.......s~",
+        "~sss.....s~~",
+        "~~~sssssss~~",
+        "~~~~~~~~~~~~",
+    ]
+}
+
+#tilemapIgnore programmable() {
+    tilemap(islandPlain): 8, 8
+    tilemap(islandIgnoring): 112, 8
+}
